@@ -1,4 +1,4 @@
-//! 帧的线上形：金样（后端序列化器写的那几份）每一行按这里的类型解得开、重写逐字节相同；`line` 帧的记录那一格另三种解法各解一遍。
+//! 帧的线上形：金样（后端序列化器写的那几份）每一行按这里的类型解得开、重写逐字节相同；`line` 帧的记录那一格另两种解法各解一遍（按 `face_core::record::OrUnread` 解的那一种由 `face-core` 的判据管）。
 
 use super::*;
 
@@ -68,7 +68,6 @@ fn the_line_frames_decode_with_each_record_reading() {
         "金样里要有带记录与不带记录的 line 帧各一行"
     );
     for (rel, line) in &line_frames {
-        same_bytes::<crate::record::OrUnread>(rel, line);
         same_bytes::<Box<serde_json::value::RawValue>>(rel, line);
         // 记录当一团 JSON 值：解得开，值相等（值的键序是字典序，字节不比）。
         let f: Frame<serde_json::Value> = decode(line).unwrap();
@@ -81,17 +80,10 @@ fn the_line_frames_decode_with_each_record_reading() {
 }
 
 #[test]
-fn a_record_that_does_not_read_becomes_the_unread_one_and_the_frame_still_decodes() {
+fn a_record_that_does_not_read_is_refused_as_a_record_and_passed_through_raw() {
     let line = r#"{"kind":"line","session_id":"s","path":"/p","seq":1,"record":{"agent":"a","id":"x","t":"later"},"byte_offset":9}"#;
     assert!(decode::<crate::record::Record>(line).is_err());
-    let Frame::Line(l) = decode::<crate::record::OrUnread>(line).unwrap() else {
-        panic!("不是 line 帧");
-    };
-    assert!(matches!(
-        l.record.unwrap().0.body,
-        crate::record::Body::Unread { .. }
-    ));
-    // 原文照转那一种：记录那一格逐字不动。
+    // 原文照转那一种：记录那一格逐字不动（按记录解不开 ⇒ 认不出那一条，那一读法住 `face_core::record`）。
     let Frame::Line(l) = decode::<Box<serde_json::value::RawValue>>(line).unwrap() else {
         panic!("不是 line 帧");
     };

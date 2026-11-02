@@ -22,6 +22,8 @@ backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
 acct-core = { path = "../../common/acct-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
+# 认不出那一行的句子（`face_core::record::unread_body`）：手机核心解不开的那一条同一份。
+face-core = { path = "../../common/face-core" }
 copy-core = { path = "../../common/copy-core" }
 md-core = { path = "../../common/md-core" }
 relay-route-core = { path = "../../common/relay-route-core" }

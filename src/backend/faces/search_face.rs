@@ -164,7 +164,7 @@ codes! {
 }
 
 /// `history-search-merge`：本机后端自己问到各台（本机同进程搜、别的台经 `--resident-call` 问它的常驻 `history-search`），
-/// 几台的结果合成一份再答（`cmd_wire::search::merge`）。没答上的那几台照实进 `down`，别台照常。
+/// 几台的结果合成一份再答（`face_core::search::merge`）。没答上的那几台照实进 `down`，别台照常。
 pub(crate) struct HistorySearchMerge;
 
 impl Command for HistorySearchMerge {
@@ -242,7 +242,7 @@ pub(crate) async fn merge_with(
             }),
         }
     }
-    let mut merged = cmd_wire::search::merge(&req.search.query, answered, down);
+    let mut merged = face_core::search::merge(&req.search.query, answered, down);
     // 合只放缺省：「打开目录」出不出 · 删除确认的正文照哪台答的在这里逐行补（与历史清单的行同一对函数）。
     for s in &mut merged.sessions {
         s.reveal = face_core::history_asks::reveal_of(&s.origin, &s.row.row.project_path);

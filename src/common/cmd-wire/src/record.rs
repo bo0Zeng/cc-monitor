@@ -5,7 +5,8 @@
 //! `t` 的闭集：`said` · `reply` · `retry` · `title` · `unread`；内容块 [`Block`] 是两家共有的词。
 //!
 //! 回包里的那一份记录后端照原样的一团写（出口的声明可能去过格），所以 [`ReadRow`] · [`RecordLine`] 及其回包对记录那一格是泛型：
-//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`calls!` 表里那几条 `reads` 写的是 `HistoryRead<OrUnread>`：解不开的那一条成认不出那一条，整份不失败；核心交 Kotlin 之前照同一判法改那一格，[`mend_records`]）；TS 一侧照 `Record` 出（`ts(concrete)`）。
+//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`face_core::record::OrUnread`：解不开的那一条成认不出那一条，整份不失败；核心交 Kotlin 之前照同一判法改那一格，`face_core::record::mend_records`）；TS 一侧照 `Record` 出（`ts(concrete)`）。
+//! 认不出那一条的句子与判法住 `face_core::record`；这里只有它的形状（[`Body::Unread`] · [`UnreadWhy`] · `t` 的闭集 [`BODY_TAGS`] · 摘录的截法 [`excerpt_of`]）。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
@@ -155,13 +156,13 @@ pub enum Body {
     /// 会话标题（代理起的 · 人改的）。
     Title { text: String, by: TitleBy },
     /// 这一家的这一行，适配层认不出（没见过的类型 · 见过的类型、形状变了）。出口照 `text` 画一行，不按 `type` 分支。
-    /// 相邻同类由出记录页那一遍并成一条（[`unread_text`] 重写 `text`、`count` 记几条）。
+    /// 相邻同类由出记录页那一遍并成一条（`face_core::record::unread_text` 重写 `text`、`count` 记几条）。
     Unread {
         why: UnreadWhy,
         /// 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
         #[serde(rename = "type")]
         kind: Option<String>,
-        /// 写好的一句（[`unread_text`]）。
+        /// 写好的一句（`face_core::record::unread_text`）。
         #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
         text: Words,
         /// 恒 `warn`。
@@ -952,112 +953,16 @@ pub fn excerpt_of(raw: &str) -> String {
     raw[..end].to_string()
 }
 
-/// 认不出那一条的一句：「认不出的记录 · {type}」/「记录形状变了 · {type}」，并了几条 ⇒ 后面带「 · {n} 条」。
-/// 后端适配层认不出的那一行与客户端解不开的那一条（[`OrUnread`]）同这一句。
-pub fn unread_text(why: UnreadWhy, kind: Option<&str>, count: u32) -> Words {
-    use copy_core::copy_text;
-    let kind = kind
-        .filter(|k| !k.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| copy_text("record.unread.noType", &[]));
-    let n = count.to_string();
-    let text = match (why, count > 1) {
-        (UnreadWhy::UnknownType, false) => {
-            copy_text("record.unread.unknownType", &[("type", &kind)])
-        }
-        (UnreadWhy::UnknownType, true) => copy_text(
-            "record.unread.unknownTypeMany",
-            &[("type", &kind), ("n", &n)],
-        ),
-        (UnreadWhy::ParseFailed, false) => {
-            copy_text("record.unread.parseFailed", &[("type", &kind)])
-        }
-        (UnreadWhy::ParseFailed, true) => copy_text(
-            "record.unread.parseFailedMany",
-            &[("type", &kind), ("n", &n)],
-        ),
-    };
-    Words(text)
-}
-
-impl Body {
-    /// 认不出的一行（每行一条，`count` 1）：一句 ＋ 原文摘录。
-    pub fn unread(why: UnreadWhy, kind: Option<String>, raw: &str) -> Self {
-        Self::Unread {
-            why,
-            text: unread_text(why, kind.as_deref(), 1),
-            kind,
-            tone: Tone::Warn,
-            excerpt: Words(excerpt_of(raw)),
-            count: 1,
-        }
-    }
-}
-
 /// `t` 的闭集（[`Body`] 各支的标签；判据逐支核过）：解不开的那一条按它分「没见过的类」与「形状变了」。
-const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "unread"];
+pub const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "unread"];
 
-/// 客户端解记录那一层：[`Record`] 外面包一层，解得开 ⇒ 那一条原样；解不开 ⇒ 认不出那一支（[`Body::unread`]，带原样的类名与摘录），
-/// 不让整份回包 / 整帧失败（后端照原样的一团写记录，记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出）。
-/// 线上照 [`Record`] 写（`transparent`）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct OrUnread(pub Record);
-
-impl OrUnread {
-    /// 一团 JSON ⇒ 一条（解不开 ⇒ 认不出那一条：类在 [`BODY_TAGS`] 里 ⇒ 形状变了，否则没见过的类；
-    /// 身份原样有就用，没有 ⇒ 按原文摘一个稳定的；时刻那几格型对就带上）。
-    pub fn of(raw: Value) -> Self {
-        if let Ok(r) = Record::deserialize(&raw) {
-            return Self(r);
-        }
-        let s = |k: &str| raw.get(k).and_then(Value::as_str).map(str::to_string);
-        let kind = s("t");
-        let why = match kind.as_deref() {
-            Some(t) if BODY_TAGS.contains(&t) => UnreadWhy::ParseFailed,
-            _ => UnreadWhy::UnknownType,
-        };
-        let text = raw.to_string();
-        let id = s("id")
-            .filter(|i| !i.is_empty())
-            .unwrap_or_else(|| format!("unread:{:016x}", crate::fnv::fnv1a64(text.as_bytes())));
-        Self(Record {
-            agent: s("agent").unwrap_or_default().into(),
-            id,
-            at: s("at"),
-            time_text: s("timeText").map(Words),
-            at_ms: raw.get("atMs").and_then(Value::as_i64),
-            // 认不出的那一条恒画成一张卡（一行 warn 细条），不判。
-            draw: Draw::Card,
-            human: false,
-            body: Body::unread(why, kind, &text),
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for OrUnread {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        Value::deserialize(d).map(Self::of)
-    }
-}
-
-/// 带记录的那几条回包（`history-read` · `history-tail` 的 `rows[].record`，`history-lines` 的 `lines[].record`）：
-/// 记录那一格解不开完整记录的，换成认不出那一条（[`OrUnread::of`]：带原样的类名与摘录，同桌面那几句）；解得开的、别的格都原样不动。
-/// 后端照原样的一团写记录、记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出，这一条判定只在这里（手机核心交 Kotlin 之前）。
-pub fn mend_records(cmd: &str, data: &mut Value) {
-    let list = match cmd {
-        "history-read" | "history-tail" => "rows",
-        "history-lines" => "lines",
-        _ => return,
-    };
-    let Some(items) = data.get_mut(list).and_then(Value::as_array_mut) else {
-        return;
-    };
-    for rec in items.iter_mut().filter_map(|i| i.get_mut("record")) {
-        if Record::deserialize(&*rec).is_err() {
-            let mended = OrUnread::of(std::mem::take(rec));
-            *rec = serde_json::to_value(&mended).unwrap_or_default();
-        }
+/// 回包里带记录的那几条命令，各自哪一列的行带 `record` 那一格（`history-read` · `history-tail` 的 `rows`，`history-lines` 的 `lines`）；
+/// 别的命令 ⇒ 缺。
+pub fn records_cell(cmd: &str) -> Option<&'static str> {
+    match cmd {
+        "history-read" | "history-tail" => Some("rows"),
+        "history-lines" => Some("lines"),
+        _ => None,
     }
 }
 
@@ -1095,7 +1000,14 @@ mod lenient_tests {
                 text: String::new(),
                 by: TitleBy::Agent,
             },
-            Body::unread(UnreadWhy::UnknownType, None, ""),
+            Body::Unread {
+                why: UnreadWhy::UnknownType,
+                kind: None,
+                text: Words::default(),
+                tone: Tone::Warn,
+                excerpt: Words::default(),
+                count: 1,
+            },
         ];
         let tags: Vec<String> = each
             .iter()

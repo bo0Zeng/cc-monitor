@@ -9,9 +9,10 @@
 //! 不在这一形里的：链（上一条是谁 —— 主线外清单另给，`mainline`）· 会话事实（分叉血缘、用量、花费 —— `history-facts`）· 原文（线上不带）。
 
 //!
-//! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 类别）；认不出那一行的一句与摘录跟形状一起住 `cmd-wire`（手机解不开的那一条也写这一句）。
+//! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 类别）；认不出那一行的一句住 `face_core::record`（手机解不开的那一条也写这一句），摘录的截法跟形状一起住 `cmd-wire`。
 
-pub use cmd_wire::record::{excerpt_of, unread_text};
+pub use cmd_wire::record::excerpt_of;
+pub use face_core::record::unread_body;
 pub use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 
 pub use cmd_wire::record::Draw;

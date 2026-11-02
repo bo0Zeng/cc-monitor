@@ -1,11 +1,14 @@
 //! 手机读的那几条回包的跨语言金样（`tests/__fixtures__/wire-replies.golden.json`）。
 //!
 //! 每条命令一份结构夹具（`sample`：每格都填、并集取第一形，`node tests/scripts/gen-kotlin-wire.mjs --samples` 现出，不放真正文），
-//! 这里按 `calls!` 那张表里的类型（写了 `reads` 的照那一形）解、照类型写成一行（`rust`）。手机那一侧（`RepliesGoldenTest`）拿生成的 Kotlin 类解 `rust`
+//! 这里按 `calls!` 那张表里的类型解、照类型写成一行（`rust`）。手机那一侧（`RepliesGoldenTest`）拿生成的 Kotlin 类解 `rust`
 //! 再写回，要与它逐字节同 —— 生成的类与 Rust 那一份类型对不上（少一格 · 型不对 · 顺序不同 · null 与缺席分不清）就红在那边。
+//! 带记录的那几条（[`records_cell`]）客户端按完整记录解，那一形住 `face-core`：它们的 `rust` 由 `face-core` 的 `record` 判据现打对拍，
+//! 这里原样留着金样里那一格。
 //! 判据只比不写：现打的与仓里那份不一样 ⇒ 现打的落在本树 `.build/golden/` 下、红；对过之后跑 `tests/scripts/bless-golden.sh` 拷回。
 
 use super::{typed_text, COMMANDS};
+use crate::record::records_cell;
 
 const REL: &str = "tests/__fixtures__/wire-replies.golden.json";
 
@@ -26,9 +29,14 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
             .and_then(|c| c.get("sample"))
             .unwrap_or_else(|| panic!("{cmd} 没有结构夹具（`--samples` 现出那一份贴进 cases）"))
             .clone();
-        let rust = typed_text(cmd, sample.clone())
-            .expect("表里的命令")
-            .unwrap_or_else(|e| panic!("{cmd} 的结构夹具解不开：{e}"));
+        let rust = if records_cell(cmd).is_some() {
+            cases[*cmd]["rust"].clone()
+        } else {
+            typed_text(cmd, sample.clone())
+                .expect("表里的命令")
+                .unwrap_or_else(|e| panic!("{cmd} 的结构夹具解不开：{e}"))
+                .into()
+        };
         fresh.insert(
             cmd.to_string(),
             serde_json::json!({ "sample": sample, "rust": rust }),
@@ -43,7 +51,7 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
         "说明": [
             "手机读的那几条回包的跨语言金样。",
             "sample：结构夹具（每格都填、并集取第一形；node tests/scripts/gen-kotlin-wire.mjs --samples 现出，不放真正文）。",
-            "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
+            "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）；带记录的那几条按 face-core 的 OrUnread 解（tests/common/face-core/record_tests.rs）。",
             "Kotlin：core-wire 的 RepliesGoldenTest 拿生成的类解 rust、再写回，逐字节同。"
         ],
         "cases": fresh,
@@ -56,40 +64,4 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
         panic!("{REL} 与现打的不一致：现打的在 .build/golden/{REL}；对过后跑 bash tests/scripts/bless-golden.sh 拷回");
     }
     let _ = std::fs::remove_file(&fresh_path);
-}
-
-/// 助手那一行的正文上线是块树（`prose`：解析好的 `doc` ＋ 原文字节），不是原文：手机按记录解的那几条（`history-tail` 这一形）
-/// 照类型解得开、写回逐字同；解不开就成了「认不出」那一条（`t: unread`），这里红。夹具是造的短样例，不放真正文。
-#[test]
-fn a_reply_carrying_a_prose_tree_reads_back_as_itself() {
-    let reply = serde_json::json!({
-        "agent": "claude", "at": "2026-10-09T01:30:03.000Z", "atMs": 1791509403000_u64, "autoReply": false,
-        "blocks": [{
-            "type": "prose",
-            "doc": {
-                "blocks": [
-                    { "t": "p", "k": ["改好了，", { "t": "b", "k": ["两处"] }, "：", { "t": "c", "x": "a.rs" }] },
-                    { "t": "code", "lang": "rust", "x": "fn main() {}", "cont": false },
-                    { "t": "list", "start": null, "tight": true, "items": [{ "task": null, "blocks": [{ "t": "p", "k": ["一"] }] }] }
-                ],
-                "segs": []
-            },
-            "bytes": 52
-        }],
-        "draw": "card", "human": false, "id": "a-prose", "t": "reply", "timeText": "01:30"
-    });
-    let mut sample = serde_json::json!({
-        "end": 7, "eof": true, "from": 7, "how": "tail",
-        "held": { "mark": "mark-x", "next": 7, "next_byte": 7, "path": "path-x" }, "next": 7, "split_at": 7, "tail_from": 7, "total": 7,
-        "rows": [{ "cwd": "cwd-x", "end": 7, "hash": 7 }]
-    });
-    sample["rows"][0]["record"] = reply.clone();
-    let rust = typed_text("history-tail", sample)
-        .expect("表里的命令")
-        .unwrap_or_else(|e| panic!("history-tail 解不开：{e}"));
-    let back: serde_json::Value = serde_json::from_str(&rust).unwrap();
-    assert_eq!(
-        back["rows"][0]["record"], reply,
-        "助手正文那一块的树没照原样读回来"
-    );
 }

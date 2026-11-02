@@ -349,7 +349,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         (
             "认不出",
-            Body::unread(UnreadWhy::UnknownType, None, "{}"),
+            unread_body(UnreadWhy::UnknownType, None, "{}"),
             Draw::Card,
             false,
         ),

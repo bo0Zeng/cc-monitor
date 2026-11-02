@@ -52,6 +52,10 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
         "comms-outward",
         &[
             "copy-core",
+            // 契约 crate：经 `copy-core` 进来（失败投成应答时补的兜底码 `cmd_wire::failed::FALLBACK_CODE`）；不是业务。
+            "cmd-wire",
+            // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来。
+            "shell-quote-core",
             "relay-route-core",
             "upstream-url-core",
             "rustls",
