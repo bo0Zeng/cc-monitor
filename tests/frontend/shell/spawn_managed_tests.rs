@@ -14,7 +14,11 @@ fn a_built_command_is_unstarted_and_can_be_started_twice_through_the_injected_sp
     let mut cmd = command("true");
     assert_eq!(cmd.get_program(), "true");
     assert_eq!(cmd.get_args().count(), 0);
-    let spawn = managed_spawner(ConsolePolicy::Hidden, Lifetime::JobKillOnClose, StderrSink::Null);
+    let spawn = managed_spawner(
+        ConsolePolicy::Hidden,
+        Lifetime::JobKillOnClose,
+        StderrSink::Null,
+    );
     for _ in 0..2 {
         let mut child = spawn(&mut cmd).expect("起得来");
         assert!(child.wait().expect("收尸").success());

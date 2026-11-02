@@ -31,15 +31,16 @@ fn slot_rows() -> Result<Vec<SlotRow>, Said> {
     let mut rows = Vec::new();
     for (key, id, bytes) in crate::byte_table::carried_backends() {
         let name = format!("{}-{}", key.os.label(), key.arch.label()).to_lowercase();
-        let path = crate::local_backend::place_local_program(&slots, &name, bytes).map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "deploy.bytes.unreadable",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                &e,
-            )
-        })?;
+        let path =
+            crate::local_backend::place_local_program(&slots, &name, bytes).map_err(|e| {
+                Said::with_raw(
+                    copy_text(
+                        "deploy.bytes.unreadable",
+                        &[("why", &copy_core::io_reason(e.kind()))],
+                    ),
+                    &e,
+                )
+            })?;
         rows.push(SlotRow {
             os: key.os.label().to_string(),
             arch: key.arch.label().to_string(),

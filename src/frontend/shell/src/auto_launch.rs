@@ -16,9 +16,9 @@
 //! - `auto_launch_enabled`：UI 上的 toggle 控制；cc function 检查此 flag 决定是否
 //!   `Start-Process` 启动 monitor
 
+use crate::platform::own_fs::OwnState;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use crate::platform::own_fs::OwnState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

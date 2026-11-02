@@ -112,7 +112,6 @@ impl BindRegistry {
         self.by_ps_pid.read().get(&ps_pid).cloned()
     }
 
-
     fn spawn_await_watcher(this: Arc<Self>, await_dir: PathBuf) {
         if let Err(e) = std::thread::Builder::new()
             .name("bind-await-watcher".into())

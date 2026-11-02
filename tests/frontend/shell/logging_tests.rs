@@ -97,7 +97,7 @@ fn write_then_read_diagnostics_roundtrip() {
         error_toast: false,
         max_files: 7,
     };
-    write_diagnostics_to_config(&own_in(&tmp),&cfg).unwrap();
+    write_diagnostics_to_config(&own_in(&tmp), &cfg).unwrap();
 
     let back = read_diagnostics_from_config(&tmp);
     assert_eq!(back, cfg);
@@ -124,7 +124,7 @@ fn write_diagnostics_preserves_other_fields() {
     std::fs::write(tmp.join("config.json"), original).unwrap();
 
     // 再写 diagnostics
-    write_diagnostics_to_config(&own_in(&tmp),&DiagnosticsConfig::default()).unwrap();
+    write_diagnostics_to_config(&own_in(&tmp), &DiagnosticsConfig::default()).unwrap();
 
     // 老字段必须还在
     let raw = std::fs::read_to_string(tmp.join("config.json")).unwrap();
@@ -175,7 +175,7 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
     let cfg_path = tmp.join("config.json");
     std::fs::write(&cfg_path, broken).unwrap();
 
-    let err = write_diagnostics_to_config(&own_in(&tmp),&DiagnosticsConfig::default())
+    let err = write_diagnostics_to_config(&own_in(&tmp), &DiagnosticsConfig::default())
         .expect_err("读不懂的 config.json 被当成空的写回去了");
     assert_eq!(
         std::fs::read_to_string(&cfg_path).unwrap(),

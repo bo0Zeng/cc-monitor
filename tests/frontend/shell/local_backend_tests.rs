@@ -1027,9 +1027,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     ));
     let no_partials = || !partial.exists();
     let mine = stamped("p5a-mine", 1);
-    let put = |fake: &FakeAsk| {
-        extract_embedded_to(&bin, "p5a-mine", &mine, &|p, a| fake.ask(p, a))
-    };
+    let put = |fake: &FakeAsk| extract_embedded_to(&bin, "p5a-mine", &mine, &|p, a| fake.ask(p, a));
     // 缺 ⇒ 问 ⇒ 放
     let fake = FakeAsk::new(place(), &mine);
     assert_eq!(put(&fake).expect("答放 ⇒ 放"), dest);
@@ -1326,12 +1324,11 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     let landing = bin_under(&blocker);
     let dir = landing.dir().to_path_buf();
 
-    let Err(Unplaced::Write(err)) = extract_embedded_to(
-        &landing,
-        "p2e-dial",
-        b"not-a-real-backend",
-        &|_, _| panic!("目录都建不出来还去问放不放"),
-    ) else {
+    let Err(Unplaced::Write(err)) =
+        extract_embedded_to(&landing, "p2e-dial", b"not-a-real-backend", &|_, _| {
+            panic!("目录都建不出来还去问放不放")
+        })
+    else {
         panic!("目标目录的父路径是个普通文件，它居然没走「写不进去」那一形");
     };
     let reason = extraction_failure_reason(&dir, err.clone());
@@ -2243,11 +2240,9 @@ fn e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem() {
     );
     let dir = landing.dir().to_path_buf();
     let said = "这一份产物没带本机后端（夹具句）";
-    let r = resolve_or_extract(
-        &landing,
-        Err(said.to_string()),
-        &|_, _| panic!("没带字节还去问放不放"),
-    );
+    let r = resolve_or_extract(&landing, Err(said.to_string()), &|_, _| {
+        panic!("没带字节还去问放不放")
+    });
     let Resolved::Missing { reason, .. } = r else {
         panic!("没带字节居然找到了 local_backend：{r:?}");
     };
@@ -2672,11 +2667,9 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).expect("建夹具目录");
     let said = "本机 是 macOS / arm64 的机器（夹具句）";
-    let r = resolve_or_extract(
-        &bin_under(&base),
-        Err(said.to_string()),
-        &|_, _| panic!("取不到字节还去问放不放"),
-    );
+    let r = resolve_or_extract(&bin_under(&base), Err(said.to_string()), &|_, _| {
+        panic!("取不到字节还去问放不放")
+    });
     let Resolved::Missing { reason, .. } = r else {
         panic!("取不到字节竟然 Found 了：{r:?}");
     };

@@ -284,8 +284,8 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     let blocker = root.join("blocker");
     std::fs::write(&blocker, b"x").expect("写不出占位文件");
     let blocked = bin_under(&blocker);
-    let e = resolve_window_bin_in(None, Some(b"x"), Some(&blocked))
-        .expect_err("建不了目录也解出来了");
+    let e =
+        resolve_window_bin_in(None, Some(b"x"), Some(&blocked)).expect_err("建不了目录也解出来了");
     assert_ne!(e.said, copy_text("rsFilewinProc.bin.noHome", &[]));
     assert_ne!(
         e.said,
@@ -304,8 +304,8 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let e = resolve_window_bin_in(None, Some(b"x"), Some(&ro))
-            .expect_err("只读目录里竟然写进去了");
+        let e =
+            resolve_window_bin_in(None, Some(b"x"), Some(&ro)).expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。
         if !e.said.is_empty() && std::fs::write(denied.join("probe"), b"").is_err() {
             assert_eq!(

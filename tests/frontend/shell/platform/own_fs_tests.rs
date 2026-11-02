@@ -117,10 +117,7 @@ fn a_log_dir_is_created_where_the_caller_says() {
 }
 
 /// 喂进去的环境只答这几个名字（家目录两臂都答同一个，`CCM_DATA_DIR` 给了才答）。
-fn env_of(
-    home: &Path,
-    data: Option<&Path>,
-) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+fn env_of(home: &Path, data: Option<&Path>) -> impl Fn(&str) -> Option<std::ffi::OsString> {
     let home = home.to_path_buf();
     let data = data.map(Path::to_path_buf);
     move |k: &str| match k {
@@ -143,8 +140,14 @@ fn the_two_roots_follow_their_own_rules() {
     let bin = OwnBin::issue_with(&env_of(&home, Some(&data))).expect("有家");
     assert_eq!(bin.dir(), home.join(".cc-monitor").join("bin"));
     let slots = bin.sub("slots").expect("一段名字");
-    assert_eq!(slots.dir(), home.join(".cc-monitor").join("bin").join("slots"));
+    assert_eq!(
+        slots.dir(),
+        home.join(".cc-monitor").join("bin").join("slots")
+    );
     assert!(bin.sub("a/b").is_err(), "落点底下只认一段名字");
-    assert!(OwnState::issue_with(&|_: &str| None).is_none(), "没有家 ⇒ 造不出");
+    assert!(
+        OwnState::issue_with(&|_: &str| None).is_none(),
+        "没有家 ⇒ 造不出"
+    );
     std::fs::remove_dir_all(&home).ok();
 }

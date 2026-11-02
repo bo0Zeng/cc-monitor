@@ -161,7 +161,7 @@ fn set_and_remove_touch_only_their_path() {
 fn a_missing_file_starts_from_an_empty_object() {
     let dir = tmpdir("missing");
     let file = dir.join("sub").join("config.json");
-    patch_config_at(&own_of(&file),&[set(&["theme"], json!({"bg": "#000"}))]).unwrap();
+    patch_config_at(&own_of(&file), &[set(&["theme"], json!({"bg": "#000"}))]).unwrap();
     assert_eq!(read(&file), json!({"theme": {"bg": "#000"}}));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -173,11 +173,11 @@ fn the_config_file_and_its_new_directory_are_only_for_the_owner() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = tmpdir("private");
     let file = dir.join("data").join("config.json");
-    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).unwrap();
+    patch_config_at(&own_of(&file), &[set(&["a"], json!(1))]).unwrap();
     let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
     assert_eq!((mode(&dir.join("data")), mode(&file)), (0o700, 0o600));
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o664)).unwrap();
-    patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]).unwrap();
+    patch_config_at(&own_of(&file), &[set(&["a"], json!(2))]).unwrap();
     assert_eq!(mode(&file), 0o600);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -189,8 +189,11 @@ fn an_empty_path_refuses_the_whole_batch() {
     let file = dir.join("config.json");
     let original = r#"{"keep":1}"#;
     std::fs::write(&file, original).unwrap();
-    let err = patch_config_at(&own_of(&file),&[set(&["a"], json!(1)), set(&[], json!({}))])
-        .expect_err("空路径被接受了");
+    let err = patch_config_at(
+        &own_of(&file),
+        &[set(&["a"], json!(1)), set(&[], json!({}))],
+    )
+    .expect_err("空路径被接受了");
     assert!(matches!(err, ConfigWriteError::BadEdit(_)), "{err:?}");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
     let _ = std::fs::remove_dir_all(&dir);
@@ -203,7 +206,8 @@ fn an_unreadable_file_is_left_alone() {
         let dir = tmpdir(tag);
         let file = dir.join("config.json");
         std::fs::write(&file, original).unwrap();
-        let err = patch_config_at(&own_of(&file),&[set(&["a"], json!(9))]).expect_err("读不懂的被写了");
+        let err =
+            patch_config_at(&own_of(&file), &[set(&["a"], json!(9))]).expect_err("读不懂的被写了");
         assert!(
             matches!(err, ConfigWriteError::Unreadable { .. }),
             "{err:?}"
@@ -254,7 +258,7 @@ fn the_golden_cases_hold() {
         let before = c["before"].as_str().unwrap();
         std::fs::write(&file, before).unwrap();
         let edits: Vec<ConfigEdit> = serde_json::from_value(c["edits"].clone()).unwrap();
-        let got = patch_config_at(&own_of(&file),&edits);
+        let got = patch_config_at(&own_of(&file), &edits);
         match c.get("refused").and_then(Value::as_str) {
             Some(kind) => {
                 let err = got.expect_err(name);
@@ -296,7 +300,7 @@ fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
     let (tx, rx) = std::sync::mpsc::channel();
     let f2 = file.clone();
     let racer = std::thread::spawn(move || {
-        let r = patch_config_at(&own_of(&f2),&[set(&["mine"], json!(1))]);
+        let r = patch_config_at(&own_of(&f2), &[set(&["mine"], json!(1))]);
         tx.send(r.is_ok()).unwrap();
     });
     assert!(
@@ -373,8 +377,8 @@ fn a_config_path_longer_than_260_characters_is_written() {
         dir.push("abcdefghijklmnopqrstuvwxyz0123456789");
     }
     let file = dir.join("config.json");
-    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).unwrap();
-    patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]).unwrap();
+    patch_config_at(&own_of(&file), &[set(&["a"], json!(1))]).unwrap();
+    patch_config_at(&own_of(&file), &[set(&["a"], json!(2))]).unwrap();
     assert_eq!(read(&file), json!({"a": 2}));
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -439,7 +443,7 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
         path: vec!["theme".to_string()],
         value: serde_json::json!("dark"),
     };
-    let Err(ConfigWriteError::Io(s)) = patch_config_at(&own_of(&path),&[edit]) else {
+    let Err(ConfigWriteError::Io(s)) = patch_config_at(&own_of(&path), &[edit]) else {
         panic!("父路径是个普通文件，写口居然没走盘上失败那一形");
     };
     assert!(s.said.contains("occupied"), "没说清是哪个目录：{s}");
@@ -488,7 +492,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         load_config_at(&file).unwrap()["pad"].as_str().map(str::len),
         Some(cap - 10)
     );
-    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).expect("刚好上限那一份写不进");
+    patch_config_at(&own_of(&file), &[set(&["a"], json!(1))]).expect("刚好上限那一份写不进");
 
     let over = sized(cap + 1);
     std::fs::write(&file, &over).unwrap();
@@ -501,7 +505,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         "{}",
         said.said
     );
-    let Err(err) = patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]) else {
+    let Err(err) = patch_config_at(&own_of(&file), &[set(&["a"], json!(2))]) else {
         panic!("超了上限的被写了")
     };
     assert!(matches!(err, ConfigWriteError::Io(_)), "{err:?}");
