@@ -692,6 +692,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
           session_id: "ring",
           cwd: null,
           path: "/tmp/scale1/ring.jsonl",
+          origin: LOCAL,
           seq: i,
           record: {
             agent: "claude",

@@ -278,9 +278,8 @@ enum SubKind {
 
 impl Sub {
     fn wants(&self, p: &JsonlLinePayload) -> bool {
-        let origin = p.origin.as_deref().unwrap_or(crate::origin::LOCAL);
         self.kind == SubKind::Lines
-            && origin == self.origin
+            && p.origin.to_string() == self.origin
             && self.only.as_deref().is_none_or(|s| s == p.session_id)
     }
 }
@@ -305,13 +304,7 @@ fn held_size(p: &JsonlLinePayload) -> usize {
 
 /// 一行记在哪条留存下。
 fn tail_key(p: &JsonlLinePayload) -> TailKey {
-    (
-        p.origin
-            .as_deref()
-            .unwrap_or(crate::origin::LOCAL)
-            .to_string(),
-        p.session_id.clone(),
-    )
+    (p.origin.to_string(), p.session_id.clone())
 }
 
 /// →**总留存的上限：64 MiB 正文。**
