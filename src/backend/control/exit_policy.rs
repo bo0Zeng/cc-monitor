@@ -11,7 +11,7 @@
 //! - 没有「归零后再等一会儿」：那是一个会自己醒来的构件，后端零定时器（`no_timer_guard`）不放行；归零即现读即决定。
 //!
 //! 本模块只答「这台机器的值是什么」。谁在什么时候按它动手住两处，都是「最后一个客户走了」那一刻：
-//! 常驻那条载体的流结束（`main.rs::serve_listening`）· monitor 退出臂现问一次。逐条登记在 `tests::DECISION_SITES`。
+//! 常驻那条载体的流结束（`stream/entry.rs::serve_listening`）· monitor 退出臂现问一次。逐条登记在 `tests::DECISION_SITES`。
 
 use crate::platform::Own;
 use copy_core::copy_text;
@@ -114,7 +114,7 @@ pub fn read_now() -> Read {
 
 /// 最后一个客户走了的那一刻问一次：这台机器要不要跟着退。
 ///
-/// 只被常驻那条载体的流结束那一臂调（`main.rs::serve_listening`）。那条载体单流（第二条流回 `stream-busy`）⇒
+/// 只被常驻那条载体的流结束那一臂调（`stream/entry.rs::serve_listening`）。那条载体单流（第二条流回 `stream-busy`）⇒
 /// 连接计数恒 ∈ {0, 1}，「归零」＝「那一条流断了」。只读 hello 就走的连接不是客户。
 /// 读不出来 ⇒ 按缺省（不结束）办，并出声（`warn`）—— 那不等于有人这么选过。
 pub fn last_client_left() -> bool {

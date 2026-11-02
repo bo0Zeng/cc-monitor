@@ -4178,9 +4178,9 @@ fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
     std::fs::remove_dir_all(&home).ok();
     assert_eq!(got, vec![("live-1".to_string(), me)]);
     // 接线：`ccm` 入口注入的就是这一份扫描（恰一处）。
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
-        .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
+        .unwrap_or_else(|e| panic!("`stream/entry.rs` 注入的不是观测层那一份扫描：{e}"));
 }
 
 /// 〔要求住址 「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，monitor 那份 notify 删」〕

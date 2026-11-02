@@ -183,11 +183,6 @@ impl LineageStore {
         }
     }
 
-    /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 当作空的）。
-    pub(crate) fn now(&self) -> Book {
-        self.current().0
-    }
-
     /// 此刻那一份 ＋ 盘上那一份读不读得懂。读不懂在重读那一下说一次（戳不变就不再读、不再说）。
     fn current(&self) -> (Book, bool) {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());

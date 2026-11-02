@@ -5,7 +5,7 @@
 fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
     let src = include_str!("../../../../src/backend/lib.rs");
     let at = src
-        .find("pub const STREAM_FLAGS: &[&str] = &[")
+        .find(" const STREAM_FLAGS: &[&str] = &[")
         .expect("后端 lib.rs 里找不到 `STREAM_FLAGS` 的定义");
     let rest = &src[at..];
     let body = &rest[..rest.find("];").expect("STREAM_FLAGS 没有收尾")];

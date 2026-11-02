@@ -276,18 +276,18 @@ fn a_computed_body_is_the_reask_reply() {
     }
 }
 
-/// 生产进程真把现算装上了：`main` 恰好一处装 `topic_body::body_now`（没装 ⇒ 帧里永远不带小成品、客户端照旧重问，不红任何别的判据）；
+/// 生产进程真把现算装上了：进程入口（`stream/entry.rs::run`）恰好一处装 `topic_body::body_now`（没装 ⇒ 帧里永远不带小成品、客户端照旧重问，不红任何别的判据）；
 /// 发端只经那一层调，不直接引命令表那一份。
 #[test]
 fn main_installs_the_body_and_emitters_go_through_the_hook() {
     let root = guard_core::addr::backend_src_root();
-    let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
+    let main = std::fs::read_to_string(root.join("stream/entry.rs")).expect("读 stream/entry.rs");
     let prod = guard_core::production_code(&main);
     let install = format!("{}::install({})", "topic_hook", "topic_body::body_now");
     assert_eq!(
         prod.matches(&install).count(),
         1,
-        "main.rs 不是恰好一处装上现算"
+        "stream/entry.rs 不是恰好一处装上现算"
     );
     // `login` 的小成品由发端自己给（作业怎么收的），不现算 ⇒ 分派那一层不在这里。
     for rel in ["stream/tap.rs", "observe/watcher.rs"] {

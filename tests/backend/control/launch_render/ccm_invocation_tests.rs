@@ -621,7 +621,7 @@ pub(crate) fn shell_words(line: &str) -> Vec<String> {
 }
 
 /// ★★ 起会话只有 ccm 一处，且与 `ccm` 那套 argv 的**唯一解析口**对得上（异源：渲染一侧 vs 解析一侧）：
-/// 表里渲得出来的每一行都是一行 `ccm …`、都被 `ccm_line::argv::parse` 收下。
+/// 表里渲得出来的每一行都是一行 `ccm …`、都被 `ccm_line::argv::parse_layered` 收下。
 /// 它是 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 里 `ccm_invocation.rs` 那一格的接盘判据。
 #[test]
 fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
@@ -635,7 +635,7 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
             "「{}」不是一行 ccm：{line}",
             c.0
         );
-        let parsed = crate::ccm_line::argv::parse(&words[1..]);
+        let parsed = crate::ccm_line::argv::tests::parse(&words[1..]);
         assert!(
             parsed.is_ok(),
             "渲染器吐的「{}」那一行 `ccm` 自己不认：{line}（{:?}）",

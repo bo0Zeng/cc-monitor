@@ -6,7 +6,7 @@ use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
 /// 两形的字节由会话流金样钉；本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
 #[test]
 fn production_hello_fills_unavailable_from_this_machine() {
-    let prod = guard_core::production_code(include_str!("../../src/backend/main.rs"));
+    let prod = guard_core::production_code(include_str!("../../src/backend/stream/entry.rs"));
     let sites: Vec<&str> = prod
         .lines()
         .map(str::trim)
@@ -15,7 +15,7 @@ fn production_hello_fills_unavailable_from_this_machine() {
     assert_eq!(
         sites,
         ["unavailable: unavailable_here(),"],
-        "`main.rs` 生产段里给 `unavailable` 赋值的地方应当恰好一处、填 `unavailable_here()`\n\
+        "`stream/entry.rs` 生产段里给 `unavailable` 赋值的地方应当恰好一处、填 `unavailable_here()`\n\
              （0 处 ⇒ 抽取坏了；≥2 处 ⇒ 有第二条路；`Vec::new()` ⇒ 退回了恒空）。实得：{sites:?}"
     );
 }

@@ -72,11 +72,11 @@ src/frontend/shell/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧
 src/frontend/shell/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
 src/frontend/filewin/src/fonts.rs:318	双另右己底标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（标签页 ＋ 双栏那几个字；−1 字 `恰`）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:324	仍然盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（＋4 字，编辑器存盘 CAS 那几句）
-src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] exit_after_drain 的 why，只进后端 tracing 日志
-src/backend/main.rs:361	hello 写不出去	保留	[不对外] 同上，只进后端日志
-src/backend/main.rs:424	收到停机信号	保留	[不对外] 同上，只进后端日志
-src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 同上，只进后端日志
-src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 同上，只进后端日志
+src/backend/stream/entry.rs:251	常驻后端收到停机信号	保留	[不对外] exit_after_drain 的 why，只进后端 tracing 日志
+src/backend/stream/entry.rs:328	hello 写不出去	保留	[不对外] 同上，只进后端日志
+src/backend/stream/entry.rs:407	收到停机信号	保留	[不对外] 同上，只进后端日志
+src/backend/stream/entry.rs:412	对端走了（写不出去）	保留	[不对外] 同上，只进后端日志
+src/backend/stream/entry.rs:698	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 同上，只进后端日志
 src/frontend/filewin/src/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（算大小那几句的字）
 src/frontend/filewin/src/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（编辑面查找替换那几句的字）
 src/frontend/shell/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
