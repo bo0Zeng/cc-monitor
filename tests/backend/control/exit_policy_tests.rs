@@ -509,17 +509,17 @@ fn the_decision_path_has_no_cache_point() {
 
 /// ★★ `E2` 的另一半：**决策那一处**在它该在的地方，而且是**唯一**一处。
 ///
-/// `main.rs` 里对本模块的引用恰好一处、就在「流结束」那一臂的体内 ⇒
+/// 进程入口（`stream/entry.rs`）里对本模块的引用恰好一处、就在「流结束」那一臂的体内 ⇒
 /// 「启动时读一次、存进一个变量、流结束时用那个变量」这一形（启动时快照）过不了：
 /// 那需要第二处引用，或者引用不在那一臂里。
 #[test]
 fn the_only_decision_site_is_the_stream_end_arm() {
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let needle = "exit_policy::";
     assert_eq!(
         main.matches(needle).count(),
         1,
-        "`main.rs` 生产段里 `{needle}` 不是恰好一处 —— 多一处多半是启动时快照（E2 点名的那一形）"
+        "`stream/entry.rs` 生产段里 `{needle}` 不是恰好一处 —— 多一处多半是启动时快照（E2 点名的那一形）"
     );
     let arm = main
         .find("done_rx.recv()")

@@ -68,9 +68,7 @@ mod tests {
         ),
     ];
 
-    use guard_core::{assert_no_test_code, production_code};
-
-    /// 从 `main.rs` 的生产段抠出 `Some("--x")` 形态的子命令，排序去重。
+    /// 命令面的指纹：子命令全集（分派查的那一份）· 通道命令 · 子命令选项 · 冻结格，各段排序去重。
     ///
     /// **剥测试段与剥注释两样都要**：散文里也会提到这些字面量，不剥的话「注释里写了它」也能把指纹喂饱 —— 那正是安慰剂。
     ///
@@ -112,20 +110,9 @@ mod tests {
     ///
     /// # 为什么通道那半直接引用 const，而不照 CLI 那半去 scrape 文本
     ///
-    /// CLI 那面只能 scrape（`main.rs` 的 dispatch 是 `match` 字面量，没有集中的 const）。
-    /// 通道那面**有**单一源头常量 ⇒ 直接引用它更强：**没有抽取器可坏**，
-    /// 改名/增删会自动反映到指纹里。两半的取法不同是刻意的，不是遗漏。
+    /// 两面都直接引用单一源头（子命令全集 · `inbound::command_names`）：**没有抽取器可坏**，
+    /// 改名/增删会自动反映到指纹里。
     fn subcommand_fingerprint() -> String {
-        let prod = production_code(include_str!("../../src/backend/main.rs"));
-        // 反向自检：剥完还得剩下真代码，否则下面数出来的空集会「恰好等于」某个错误期望。
-        assert!(
-            prod.len() > 3_000,
-            "剥完 main 生产段只剩 {} 字节 —— 剥法坏了，本护栏此刻是无效的",
-            prod.len()
-        );
-        // 反向自检之二：**测试段真的剥掉了**。旧的 `len` 自检光靠剥注释就满足，
-        // 与测试段有没有剥掉毫无关系 —— 那正是本护栏扫了几个月测试代码没人发现的原因。
-        assert_no_test_code("build_id_guard/main.rs", &prod);
         // 子命令那一面取子命令全集（`stream::cli::tests::subcommands`：手写的一次性表 ∪ 帧命令派生的 CLI 面），不自己抠 `Some("--`：
         // 分派查的就是这一份，加一条子命令不进它就分派不到。
         let mut subs: Vec<String> = crate::stream::cli::tests::subcommands()

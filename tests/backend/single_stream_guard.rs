@@ -59,7 +59,7 @@
 //! - **它数的是什么**（两条针，各数各的）：
 //!   ① **搬 `Frame` 的 mpsc 通道的诞生点**，不是类型名的出现处（`PINS` 里两行）：
 //!      观测通道 `mpsc::unbounded_channel::<(Frame, usize)>(` = 1（`observe/watcher.rs`，按字节记账的那条）；
-//!      应答通道 `mpsc::channel::<Frame>(` = 2（`main.rs`：stdio 那条 + 常驻那条，与 `writer_task(` 那条针的 2 同源）。
+//!      应答通道 `mpsc::channel::<Frame>(` = 2（`stream/entry.rs`：stdio 那条 + 常驻那条，与 `writer_task(` 那条针的 2 同源）。
 //!   ② 生产段里 `::channel(` 出现几次 = **0**
 //!      （[`tests::no_qualified_channel_call_leaves_its_payload_type_to_inference`]）——
 //!      一处「**带路径前缀而把载荷类型交给推导**」的诞生点都没有。
@@ -141,17 +141,17 @@ mod tests {
     /// ⚙ 全 crate 那个数**可以大于**文件内那个数，而且大得有名有姓 —— 逐条在说法里写清多出来的是谁。
     const PINS: &[(&str, &str, usize, usize, &str)] = &[
         (
-            "main.rs",
+            "stream/entry.rs",
             "writer_task(",
             2,
             2,
             "出方向的写者**一条载体一个**：stdio 那条 + 常驻那条。\
              第三处意味着同一个进程里同时有两条流在写 —— 那正是 fan-out 的入口，\
              而两条流各自记各自的丢帧账 之后，那本账就不再是「这台机丢了几帧」。\
-             ⇒ 全 crate 也是 2：`main.rs` 之外一处都没有，**换个文件写第三条也会红**。",
+             ⇒ 全 crate 也是 2：进程入口之外一处都没有，**换个文件写第三条也会红**。",
         ),
         (
-            "main.rs",
+            "stream/entry.rs",
             "inbound::spawn(",
             2,
             2,
@@ -183,7 +183,7 @@ mod tests {
              **改本行之前先读那一条。**",
         ),
         (
-            "main.rs",
+            "stream/entry.rs",
             "mpsc::channel::<Frame>(",
             2,
             2,
@@ -196,9 +196,9 @@ mod tests {
             1,
             2,
             "「交出流」这一档**全 crate 只此一处产出**（`listen::admit` 的那一臂）。\
-             ⇒ 全 crate 2 = 那一处产出 + `main.rs` 里 `match` 的**模式**那一处。\
+             ⇒ 全 crate 2 = 那一处产出 + 进程入口（`stream/entry.rs`）里 `match` 的**模式**那一处。\
              第 3 处 = 有人绕过 `admit()` 自己造了一个 `Admit::Stream`，也就是有第二条路能拿到流。\
-             ★ 这正是 `D1` `重-5` 点名的那一格：回修前语料只有 `listen.rs`，`main.rs` 里\
+             ★ 这正是 `D1` `重-5` 点名的那一格：回修前语料只有 `listen.rs`，别的文件里\
              直接构造一个它**看不见**。",
         ),
         (
