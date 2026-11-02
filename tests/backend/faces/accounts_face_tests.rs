@@ -161,7 +161,8 @@ fn call_door(
 /// 这一族的应答：成品或失败（码 ＋ 那一句 ＋ 原话）。
 pub(crate) type Answer = Result<Value, Said>;
 
-/// 按名字跑一条（别族的判据也借它搭夹具）：入参经 typed 那一处收（同生产），再交给本体。门 · key 表那几口由判据给。
+/// 按名字跑一条（别族的判据也借它搭夹具）：入参经 typed 那一处收（同生产），再交给本体。门 · key 表那几口由判据给；
+/// 策略目录落在门那个家目录的 `.cc-monitor/` 底下。
 pub(crate) fn answer(
     d: &dyn crate::common::door::Door,
     cmd: &str,
@@ -172,13 +173,22 @@ pub(crate) fn answer(
     fn out<T: serde::Serialize>(v: Result<T, Said>) -> Answer {
         v.map(|v| serde_json::to_value(v).expect("成品序列化得出"))
     }
+    let own = crate::common::door::home(d)
+        .ok()
+        .map(|h| crate::platform::fs::Own::issue_data_at(&Path::new(&h).join(".cc-monitor")));
+    let unlist = |name: &str| {
+        own.as_ref()
+            .map(|o| crate::accounts::quota::setup::shelf::unlist(o, name))
+            .unwrap_or_default()
+    };
+    let change = |req| change(d, req, keys, &unlist);
     match cmd {
-        "accounts-init" => out(change(d, wire::Request::Init(take(args)?), keys)),
-        "accounts-add" => out(change(d, wire::Request::Add(take(args)?), keys)),
-        "accounts-remove" => out(change(d, wire::Request::Remove(take(args)?), keys)),
-        "accounts-set-default" => out(change(d, wire::Request::SetDefault(take(args)?), keys)),
-        "accounts-repair" => out(change(d, wire::Request::Repair(take(args)?), keys)),
-        "accounts-rollback" => out(change(d, wire::Request::Rollback(take(args)?), keys)),
+        "accounts-init" => out(change(wire::Request::Init(take(args)?))),
+        "accounts-add" => out(change(wire::Request::Add(take(args)?))),
+        "accounts-remove" => out(change(wire::Request::Remove(take(args)?))),
+        "accounts-set-default" => out(change(wire::Request::SetDefault(take(args)?))),
+        "accounts-repair" => out(change(wire::Request::Repair(take(args)?))),
+        "accounts-rollback" => out(change(wire::Request::Rollback(take(args)?))),
         "accounts-verify" => {
             take::<NoArgs>(args)?;
             out(wire::run_verify(d))
@@ -863,6 +873,44 @@ fn remove_deletes_only_the_account_dir_and_its_alias() {
         code(&t, "accounts-remove", json!({ "name": "nope" })),
         "refused"
     );
+}
+
+/// ★ 删号 ⇒ 每份策略的号列表里摘掉它那一行（只重写头：说明与代码逐字节不变，其余行原样）；没列它的那份不动。
+#[test]
+fn remove_takes_the_account_off_every_strategy_list() {
+    use crate::accounts::quota::setup::{samples, script};
+    let t = two_accounts("rm-strat");
+    let with = |accounts: Value| {
+        let src = samples::of(0);
+        let mut head = script::parse(src).expect("读得懂").head;
+        head.settings["accounts"] = accounts;
+        script::with_head(src, &head).expect("头")
+    };
+    let listed = json!([{"start": true}, {"id": "x", "delay": 5}, {"id": "lab", "delay": 9}]);
+    t.write(".cc-monitor/strategies/p.rhai", &with(listed.clone()));
+    t.write(".cc-monitor/strategies/q.rhai", &with(json!([{"id": "x"}, {"id": "lab"}])));
+    let other = with(json!([{"start": true}, {"id": "lab"}]));
+    t.write(".cc-monitor/strategies/r.rhai", &other);
+    let below = |text: &str| text.split_once("\n---*/").map(|x| x.1.to_string());
+    let above = |text: &str| text.split_once("/*--- rotation").map(|x| x.0.to_string());
+    let before = t.read(".cc-monitor/strategies/p.rhai");
+    ok(&t, "accounts-remove", json!({ "name": "x" }));
+    let accounts = |id: &str| {
+        script::parse(&t.read(&format!(".cc-monitor/strategies/{id}.rhai")))
+            .expect("读得懂")
+            .head
+            .settings["accounts"]
+            .clone()
+    };
+    assert_eq!(
+        accounts("p"),
+        json!([{"start": true}, {"id": "lab", "delay": 9}])
+    );
+    assert_eq!(accounts("q"), json!([{"id": "lab"}]));
+    let after = t.read(".cc-monitor/strategies/p.rhai");
+    assert_eq!(below(&after), below(&before), "代码动了");
+    assert_eq!(above(&after), above(&before), "说明动了");
+    assert_eq!(t.read(".cc-monitor/strategies/r.rhai"), other, "没列它的那份动了");
 }
 
 /// 删掉默认号（带 `force`）⇒ 剩下的第一个号接着当默认；设默认只改清单那一格。

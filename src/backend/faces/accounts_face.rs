@@ -3,7 +3,8 @@
 //!    删号 ⇒ 表里这个号那一行跟着清掉、回滚 ⇒ 放回去（那两步由执行器排进同一份备份，写的仍是表自己那一口）；
 //! ② 建号 ⇒ 这台的别名文件加上 `<名>cc` ＋ `<名>cct`；删号 ⇒ 删掉参数指向它的全部（`assets::aliases::accounts`；
 //!    这台说哪几种 shell 就改哪几份，没有 tmux 的那一份只加 `<名>cc`）。只在这两个时刻动，平时不回补；
-//! ③ 账号库改过之后 ⇒ 各号共用的用户级 MCP 同步一趟（`accounts::manage::mcp_share_exec`），并让监听器的名单跟上。
+//! ③ 账号库改过之后 ⇒ 各号共用的用户级 MCP 同步一趟（`accounts::manage::mcp_share_exec`），并让监听器的名单跟上；
+//! ④ 删号 ⇒ 各份轮换策略的号列表里摘掉它（`accounts::quota::setup::shelf::unlist`，只重写头）。
 //! 各号共用的 MCP 那几条（`accounts-mcp-*`）也从这里进。
 //! 两块互不认识，接在这里（`accounts/mod.rs` 头注：账号库与上游选择零引用）。
 
@@ -37,11 +38,13 @@ pub(crate) struct KeyDoor<'a> {
     pub(crate) path: &'a dyn Fn() -> Result<PathBuf, String>,
 }
 
-/// 改账号库那几条的本体（入参已由 typed 那一处收好）。key 表那几口由门递进来（[`KeyDoor`]）。
+/// 改账号库那几条的本体（入参已由 typed 那一处收好）。key 表那几口由门递进来（[`KeyDoor`]）；
+/// `unlist`：删了一个号 ⇒ 各份策略的号列表里摘掉它（回写不成的那几句）。
 pub(crate) fn change(
     d: &dyn Door,
     req: wire::Request,
     keys: &KeyDoor,
+    unlist: &dyn Fn(&str) -> Vec<String>,
 ) -> Result<AccountChange, Said> {
     let key = match &req {
         // 预演不带 key（界面填表时每改一格问一次，明文不必跟着走），地址照样判：界面只交原样打的字、只画这里拒的那一句。
@@ -108,6 +111,11 @@ pub(crate) fn change(
     if change.applied {
         if let (Some((k, base)), Some(acct)) = (key, change.account.clone()) {
             put_key(&mut change, keys.set, &acct.config_dir, k, base.as_deref());
+        }
+    }
+    for ev in &done.alias_events {
+        if let wire::AliasEvent::Removed(name) = ev {
+            change.notes.extend(unlist(name));
         }
     }
     if !done.alias_events.is_empty() {
@@ -229,7 +237,8 @@ fn change_with(
     own: &crate::platform::Own,
     req: wire::Request,
 ) -> Result<AccountChange, ChangeErr> {
-    with_account_keys(own, |keys| change(files, req, keys))
+    let unlist = |name: &str| crate::accounts::quota::setup::shelf::unlist(own, name);
+    with_account_keys(own, |keys| change(files, req, keys, &unlist))
         .map_err(|f| typed::of_fail(f, ChangeErr::IoFailed))
 }
 

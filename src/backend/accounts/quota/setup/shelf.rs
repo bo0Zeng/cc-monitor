@@ -238,6 +238,43 @@ pub(crate) fn write_file(
     Ok(file.as_path().to_path_buf())
 }
 
+/// 账号库删了号 `account` ⇒ 每份读得懂、号列表里有它的策略摘掉它那一行（同「清掉库里没有的号」那一个意图，只重写头：
+/// 说明与代码一个字不动，版本跟着变；在用旧版的活会话照常「载入新版」才换）。没列它的不动。回写不成的那几句（全成 ⇒ 空）。
+pub(crate) fn unlist(own: &crate::platform::fs::Own, account: &str) -> Vec<String> {
+    let Ok(dir) = own.path(DIR_NAME) else {
+        return Vec::new();
+    };
+    let gone = |id: &str| id != account;
+    let mut failed = Vec::new();
+    for sh in all(Some(dir.as_path())).iter() {
+        let Ok(f) = &sh.file else { continue };
+        let Ok(settings) = super::form::apply(
+            &f.head.form,
+            &f.head.settings,
+            &super::form::RotEdit::Prune {},
+            &gone,
+        ) else {
+            continue;
+        };
+        if settings == f.head.settings {
+            continue;
+        }
+        let mut head = f.head.clone();
+        head.settings = settings;
+        let wrote = script::with_head(&sh.source, &head)
+            .map_err(|e| e.msg)
+            .and_then(|text| {
+                write_file(own, &sh.id, &text)
+                    .map(|_| ())
+                    .map_err(crate::common::said::IntoNote::into_note)
+            });
+        if let Err(e) = wrote {
+            failed.push(e);
+        }
+    }
+    failed
+}
+
 /// 帧面那一路删一份策略文件（只删策略目录里的那一份）。
 pub(crate) fn remove_file(
     own: &crate::platform::fs::Own,
