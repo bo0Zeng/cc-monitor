@@ -66,7 +66,7 @@ src/frontend/ui/session-head.ts	2
 src/frontend/ui/session-open.ts	1
 src/frontend/ui/session-status.ts	2
 src/frontend/ui/settings/account-new-form.ts	3
-src/frontend/ui/styles.css	10
+src/frontend/ui/styles.css	8
 src/frontend/ui/styles/layout.css	1
 src/frontend/ui/styles/main.css	8
 src/frontend/ui/styles/settings.css	4
