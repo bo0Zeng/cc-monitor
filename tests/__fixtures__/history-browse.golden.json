@@ -116,7 +116,9 @@
       "accounts": true,
       "fork": true,
       "delete": "yes"
-     }
+     },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复"
     },
     {
      "agent": "claude",
@@ -196,6 +198,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "forkedFromSessionId": "a1",
      "forkedFromMessageUuid": "m"
     },
@@ -277,6 +281,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "forkedFromSessionId": "k1",
      "forkedFromMessageUuid": "m"
     },
@@ -357,7 +363,9 @@
       "accounts": true,
       "fork": true,
       "delete": "yes"
-     }
+     },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复"
     },
     {
      "agent": "claude",
@@ -437,6 +445,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "forkedFromSessionId": "nowhere",
      "forkedFromMessageUuid": "m"
     },
@@ -518,6 +528,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "forkedFromSessionId": "d1",
      "forkedFromMessageUuid": "m"
     },
@@ -598,7 +610,9 @@
       "accounts": true,
       "fork": true,
       "delete": "yes"
-     }
+     },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复"
     },
     {
      "agent": "claude",
@@ -678,6 +692,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "context": true
     },
     {
@@ -758,6 +774,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": true,
+     "deleteAsk": "删除：会话记录 · 不可恢复",
      "forkedFromSessionId": "cx",
      "forkedFromMessageUuid": "m"
     }
@@ -878,6 +896,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": false,
+     "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
      "origin": "dev"
     },
     {
@@ -957,6 +977,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": false,
+     "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
      "origin": "dev"
     },
     {
@@ -1036,6 +1058,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": false,
+     "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
      "origin": "dev"
     }
    ]
@@ -1155,6 +1179,8 @@
       "fork": true,
       "delete": "yes"
      },
+     "reveal": false,
+     "deleteAsk": "删除：box 上的会话记录 · 不可恢复",
      "origin": "box"
     }
    ]
