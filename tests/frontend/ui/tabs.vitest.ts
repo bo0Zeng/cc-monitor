@@ -2397,7 +2397,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     paint([call("b2", "unclear", "noWriter")], null);
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["unclear", "unclear"]);
     expect(b2.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写好的那一句").toBe("W:noWriter");
-    settleStepLine(b1, undefined, { ok: true } as never, false, "0s");
+    settleStepLine(b1, undefined, { ok: true } as never, false);
     paint([call("b1", "running")], null);
     expect(b1.dataset.state, "结果到了的不动").toBe("ok");
   });

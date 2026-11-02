@@ -35,6 +35,12 @@ class CodexRecordGoldenTest {
 
     private fun record(case: String): Map<String, Any?> = golden.first { it["case"] == case }["record"] as Map<String, Any?>
 
+    /** 核心给这次调用的结果写好的那一句（`said.results.<id>.text`，用时也在里面）：金样里必须有。 */
+    private fun resultLine(call: String): String =
+        golden
+            .mapNotNull { ((it["record"] as Map<String, Any?>)["results"] as Map<String, Any?>?)?.get(call) as Map<String, Any?>? }
+            .single()["text"] as String
+
     /** 金样照 `history-read` 的回话交进来（`rows[].record` · `end`）。 */
     private fun read(): List<LineRecord> {
         val rows = golden.mapIndexed { i, g -> mapOf("end" to (i + 1).toLong(), "hash" to 0L, "record" to g["record"]) }
@@ -70,6 +76,7 @@ class CodexRecordGoldenTest {
                     isError = false,
                     pending = false,
                     sourceUuid = shell["id"] as String,
+                    resultLine = resultLine("call-1"),
                 ),
                 RenderUnit.ToolCall(
                     key = "${patch["id"]}#0",
@@ -79,6 +86,7 @@ class CodexRecordGoldenTest {
                     isError = false,
                     pending = false,
                     sourceUuid = patch["id"] as String,
+                    resultLine = resultLine("call-2"),
                 ),
                 RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), "msg-9"),
                 record("line-16").let { u ->

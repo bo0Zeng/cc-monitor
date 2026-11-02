@@ -544,12 +544,6 @@
         },
         {
           "frozen": true,
-          "kind": "text",
-          "path": "{t=said}.results.*.timed",
-          "type": "string"
-        },
-        {
-          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].bodyEnd",
           "type": "number"
