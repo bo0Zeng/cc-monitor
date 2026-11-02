@@ -1988,6 +1988,18 @@ mod g6_dependency_signoff {
              现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）",
         ),
         (
+            "resident-client",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍客户端那一侧（会话簿「那台看不见」那一张），多出来的 0 处写面",
+        ),
+        (
+            "comms-inward",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包的判据拿它对拍握手行的读法与离线那一句，多出来的 0 处写面",
+        ),
+        (
             GATED_CRATE,
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,

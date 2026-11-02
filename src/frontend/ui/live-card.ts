@@ -1,12 +1,16 @@
 /**
- * **活卡**：壳交来的成品照画（会话流 `session-live-card`，一格 = 那台某会话某运行此刻整份的卡）。对账 · 缺口 · 记录到了整轮覆盖 ·
- * 子运行归位 · 截头 · 挤谁在后端（`src/backend/stream/live.rs`）；一帧一帧折成整份在端核心（`src/comms/resident-client/live.rs`，
- * 壳与手机核心同一份）。这里不认 `op`、不对号：每一格换掉那一处手上那一份。
+ * **活卡**：壳交来的成品照画（会话流 `session-live-card`，一格 = 那台某会话某运行此刻整份的卡，或某张卡只换了正文的尾巴）。
+ * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁在后端（`src/backend/stream/live.rs`）；一帧一帧折好在端核心
+ * （`src/comms/resident-client/live.rs`，壳与手机核心同一份）。这里不认 `op`、不对号：整份一格换掉那一处手上那一份；
+ * 尾巴一格把那张卡的正文前 `keep` 块原样留着（同一批对象）、后面换成交来的那几块 —— 画法照对象认哪几块没变。
  *
  * {@link LiveCards} 把每个 tab 此刻的卡画到它流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
  * 不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json。主 tab 只画主运行的卡（`run` 缺）。
  */
 import type { LiveCardNow } from "./generated/LiveCardNow";
+import type { LiveCards as LivePlace } from "./generated/LiveCards";
+import type { LiveTail } from "./generated/LiveTail";
+import type { MdBlock } from "./generated/MdBlock";
 import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayload";
 import type { RunInfo } from "./generated/RunInfo";
 import { RunBoard, type RunTable } from "./runs";
@@ -18,8 +22,8 @@ export interface LiveCardState {
   /** `streaming` = 上游还在说；`awaiting` = 上游说完了、那一轮的记录还没到（只挑样子）。 */
   phase: "streaming" | "awaiting";
   head: string;
-  /** 纯文字，一块一行（不走 Markdown / 高亮 —— 定稿那一张卡才走渲染管线）。 */
-  body: string;
+  /** 正文的顶层块（后端解析好的树；尾巴一格之后，前面没变的那几块还是同一批对象）。活卡不拉高亮。 */
+  body: readonly MdBlock[];
 }
 
 /** 手上那一处（某台某会话某运行）最新那一份。 */
@@ -28,6 +32,12 @@ interface Held {
   sid: string;
   run: string | null;
   cards: LiveCardNow[];
+}
+
+/** 哪一处变了。 */
+interface At {
+  sid: string;
+  run: string | null;
 }
 
 const stateOf = (origin: string, c: LiveCardNow): LiveCardState => ({
@@ -42,7 +52,7 @@ const stateOf = (origin: string, c: LiveCardNow): LiveCardState => ({
 export type TrailerOf = (sid: string) => HTMLElement | null;
 
 /**
- * 把一个 tab 此刻的活卡画进它流尾巴上那一块（同一张卡沿用节点、正文只追加）。实现住 `live-card-view.ts`（带 `.module.css`），
+ * 把一个 tab 此刻的活卡画进它流尾巴上那一块（同一张卡沿用节点、正文只重建变了的尾巴）。实现住 `live-card-view.ts`（带 `.module.css`），
  * **由主窗口的入口装进来**（`TabManager.setLivePainter`）：本文件被主窗口与独立查看器两个入口共用（进共享块），
  * 而 `.module.css` 进共享块会让它的规则排在主窗口全局样式之前（`entry-graphs` 的次序判据）—— 画法只有主窗口要
  * （只有它订 `session-live-card`），所以样式跟着画法住主窗口独有的那一块。
@@ -53,8 +63,8 @@ export interface LivePainter {
 }
 
 /**
- * 视图：手上每一处最新那一份整份（`route(origin, sid)` 由宿主给：这台上有这个 tab ⇒ 留，没有就没处画）；
- * 主运行那一处变了 ⇒ 重画它流尾巴上那一块（同一张卡沿用节点、正文只追加）。没装画法（独立查看器那一形）⇒ 只记不画。
+ * 视图：手上每一处最新那一份（`route(origin, sid)` 由宿主给：这台上有这个 tab ⇒ 留，没有就没处画）；
+ * 主运行那一处变了 ⇒ 重画它流尾巴上那一块（同一张卡沿用节点、正文只重建变了的尾巴）。没装画法（独立查看器那一形）⇒ 只记不画。
  */
 export class LiveCards {
   private readonly held = new Map<string, Held>();
@@ -71,18 +81,39 @@ export class LiveCards {
     this.painter = p;
   }
 
-  /** 一格：那一处此刻整份的卡（空 ⇒ 那里没有卡了）。 */
+  /** 一格：那一处此刻整份的卡（空 ⇒ 那里没有卡了），或某张卡只换了尾巴。 */
   onCards(p: SessionLiveCardsPayload): void {
-    const { sid, cards } = p.live;
-    const run = p.live.run ?? null;
+    const ch = p.live;
+    const at = ch.t === "whole" ? this.onWhole(p.origin, ch.whole) : this.onTail(ch.tail);
+    if (!at) return;
+    if (at.run === null) this.paint(at.sid);
+    else this.onRunLive?.(at.sid, at.run);
+  }
+
+  private onWhole(origin: string, w: LivePlace): At | null {
+    const { sid, cards } = w;
+    const run = w.run ?? null;
     const key = `${sid}\u0000${run ?? ""}`;
-    if (cards.length === 0 || !this.route(p.origin, sid)) {
-      if (!this.held.delete(key)) return;
+    if (cards.length === 0 || !this.route(origin, sid)) {
+      if (!this.held.delete(key)) return null;
     } else {
-      this.held.set(key, { origin: p.origin, sid, run, cards });
+      this.held.set(key, { origin, sid, run, cards });
     }
-    if (run === null) this.paint(sid);
-    else this.onRunLive?.(sid, run);
+    return { sid, run };
+  }
+
+  /** 尾巴：那张卡前 `keep` 块原样留着，后面换成交来的。手上没有那一处 · 那张卡 ⇒ 不收（壳在丢过格之后先交整份）。 */
+  private onTail(t: LiveTail): At | null {
+    const run = t.run ?? null;
+    const h = this.held.get(`${t.sid}\u0000${run ?? ""}`);
+    const at = h ? h.cards.findIndex((c) => c.card === t.card) : -1;
+    const was = h?.cards[at];
+    if (!h || !was) return null;
+    const next: LiveCardNow = { ...was, body: [...was.body.slice(0, t.keep), ...t.blocks] };
+    if (t.last === undefined) delete next.last;
+    else next.last = t.last;
+    h.cards = h.cards.map((c, i) => (i === at ? next : c));
+    return { sid: t.sid, run };
   }
 
   /** 一个 tab 里某个运行此刻的活卡（先来的在前；`run` 缺 ＝ 主运行）。 */

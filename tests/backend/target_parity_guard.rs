@@ -1,7 +1,7 @@
 //! **四个 target 横向对等**：帧面命令集与 CLI 子命令集在四个编译 target 上两向相等，不等的每一格在 [`TARGET_GAPS`] 有一行理由。
 //!
 //! 每个 target 上那一份从实现侧的声明现推：命令自己声明的码（`no_tmux` · `no_unix_mode`）× 那个 target 的平台档，
-//! 与生产里填 `hello.unavailable` 的是同一对函数（[`crate::unavailable_from`] · [`crate::unix_mode_unavailable`]）。
+//! 与生产里填 `hello.unavailable` 的是同一对函数（[`crate::stream::inbound::unavailable_from`] · [`crate::stream::inbound::unix_mode_unavailable`]）。
 //! 现推不读 [`TARGET_GAPS`]，两侧异源。另两条从实现那一侧反过来对声明：真够得着 tmux 的命令都声明了 `no_tmux`，
 //! 真靠 tmux 的 ccm 能力都登记进了 `CCM_TMUX_CARRIED`（本文件后半）。
 //!
@@ -163,12 +163,14 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
 
 /// 那个 target 上做不到的帧命令名（生产里填 `hello.unavailable` 的同一对函数）。
 fn unavailable_on(t: Target) -> Vec<String> {
-    crate::unavailable_from(crate::platform::tmux::tmux_present(
+    crate::stream::inbound::unavailable_from(crate::platform::tmux::tmux_present(
         tmux_platform_of(t),
         None,
     ))
     .into_iter()
-    .chain(crate::unix_mode_unavailable(unix_mode_bits_on(t)))
+    .chain(crate::stream::inbound::unix_mode_unavailable(
+        unix_mode_bits_on(t),
+    ))
     .map(|u| u.command)
     .collect()
 }
@@ -218,7 +220,7 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
     );
     assert_eq!(
         crate::files::write::WriteRefusal::Unsupported(String::new()).code(),
-        crate::NO_UNIX_MODE,
+        crate::wire::NO_UNIX_MODE,
         "写面回的那个码与现推读的那个码不是同一个串"
     );
 
@@ -1349,7 +1351,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         .collect();
     let declared: BTreeSet<&str> = crate::stream::inbound::REGISTRY
         .iter()
-        .filter(|s| s.codes.contains(&crate::NO_TMUX))
+        .filter(|s| s.codes.contains(&crate::wire::NO_TMUX))
         .map(|s| s.name)
         .collect();
     let excused: BTreeSet<&str> = REACHES_TMUX_WITHOUT_NO_TMUX

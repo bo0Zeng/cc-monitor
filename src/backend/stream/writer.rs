@@ -61,7 +61,7 @@ pub async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
             //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— 它走自己那个
             //   有界发件箱（`live::LIVE_OUTBOX_CAP`），满了合成整卡。
             let pick = async {
-                if burst < REPLY_BURST && burst_bytes < crate::REPLY_PAGE_BYTES.as_len() {
+                if burst < REPLY_BURST && burst_bytes < crate::wire::REPLY_PAGE_BYTES.as_len() {
                     tokio::select! {
                         biased;
                         Some(f) = reply_rx.recv() => { burst += 1; Some((f, true)) }

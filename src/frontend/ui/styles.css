@@ -669,7 +669,7 @@
    切回来沿用收起前的渲染状态（滚动位置也留着）。
    - 不用 display:none：切回 display:block 要整棵子树重建布局（长会话 100-500ms）。
    - 不再用 visibility:hidden ＋ pointer-events:none：两样都是继承属性 —— WebKitGTK 每切一下把新旧两个 tab 的
-     整棵子树样式重算一遍；收起的 tab 还留在渲染树里，每一帧的可见性观察（下面卡片的 content-visibility:auto）·
+     整棵子树样式重算一遍；收起的 tab 还留在渲染树里，每一帧的可见性观察 ·
      命中测试 · 合成都按所有 tab 的节点总数算（性能台架 tests/shots/perf/：24 个 tab 时 Chromium 每帧 4-15ms 的交叉计算、
      WebKitGTK 热切同步段 p50 68ms）。判据 tests/frontend/ui/tab-switch-cost.vitest.ts：切换只许翻不继承的属性。
    - 收起的盒子还在原位（透明、内容不画）⇒ 当前那个靠层叠压在上面接点击与滚轮。
@@ -712,36 +712,18 @@
   margin: 0 auto;
 }
 
-/* Batch13-F38（issue #35 Phase 0）：视口外顶层卡片 skip layout/paint。
-   隐藏 tab 的常驻子树同享（visibility 保活的几万节点只有视口带仍参与布局）——
-   这就是切长会话 Tab 卡/拖侧栏全量重排的根治第一步。
-   intrinsic-size 由建卡时 JS 写精确估值（height-estimate.ts），此处只兜底；
-   auto 关键字 = 渲染过后浏览器记住真实尺寸，估值只影响首次滚动条精度。
-   已知交互面：原生 overflow-anchor 贴底/向上插旧仍走 stream.ts 既有机制（E2E 锚定）。
-   平台前提：生产 WebView2/Chromium 两特性齐备；Linux 开发用 WebKitGTK 缺
-   overflow-anchor——上翻时高度校正会顶视口，属开发环境已知差异非回归。 */
-.stream-content > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
-}
+/* 流里的行（`.stream-content > *` · 折叠段里的 `.branch-fold-body-inner > *`）不挂 `content-visibility`：
+   骨架只建视口那一截（`skeleton-view.ts`），视口外是显式高的占位，c-v 再省的那一点量不出来；
+   WebKitGTK 上 `auto` 的行从「跳过」翻回「可见」会留着旧的 0 高布局（WebKit bug 321501），真滚轮滚过去那一块一直空着。
+   台架读数与判据：`tests/frontend/ui/tab-switch-cost.vitest.ts` ②。 */
 
-/* 折叠段内部同享 c-v（D 审计：卡被 reparent 进 fold 后不匹配上一条规则，
-   大回退段会原样保留全量重排成本——这是覆盖空洞不是设计豁免）。
-   卡片自带的 inline contain-intrinsic-size 随 c-v 的 size containment 重新生效 */
-.branch-fold-body-inner > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
-}
-
-/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-id,恒为首子)。
-   contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
+/* 上翻补批顶端哨兵（非 timeline 实体，无 data-id，恒为首子）。 */
 .stream-more-above {
   text-align: center;
   font-size: var(--font-size-small);
   color: var(--text-2);
   padding: 6px 0 10px;
   user-select: none;
-  contain-intrinsic-size: auto 30px;
 }
 
 .empty-state {
@@ -882,12 +864,6 @@
 .has-said-edit:hover .said-edit-btn,
 .has-said-edit .said-edit-btn:focus-visible {
   opacity: 1;
-}
-
-/* 人说的气泡本身就是流里的那一行：行上的 `content-visibility: auto`（`.stream-content > *`）自带绘制隔离，
-   贴在气泡左边、整颗落在行框外的「编辑」会被裁掉、也点不着 ⇒ 挂了「编辑」的那一行不做隔离（同过程行那一条；气泡短，代价可忽略）。 */
-.stream-content > .has-said-edit {
-  content-visibility: visible;
 }
 
 /* assistant 消息：full-width、无背景、无色条 */
@@ -1545,7 +1521,6 @@
   margin: 2px 0;
   color: var(--text-faint);
   font-size: var(--font-size-small);
-  content-visibility: visible;
 }
 
 .show-injected .card-injected:not(.proc-hidden) {
@@ -1644,7 +1619,6 @@
 
 .stream-content > .proc-line {
   position: relative;
-  content-visibility: visible;
 }
 
 .proc-rule {

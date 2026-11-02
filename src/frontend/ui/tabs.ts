@@ -871,7 +871,7 @@ export class TabManager {
     if (isEnded(face) && !(was !== null && isEnded(was))) this.hider.reap();
   }
 
-  /** `session-live-card`：那一处整份的活卡（`events.ts` 直派）。 */
+  /** `session-live-card`：那一处整份的活卡，或某张卡的尾巴（`events.ts` 直派）。 */
   onLiveCard(p: SessionLiveCardsPayload): void {
     this.live.onCards(p);
   }

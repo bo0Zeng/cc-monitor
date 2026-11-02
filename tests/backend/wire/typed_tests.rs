@@ -1,120 +1,14 @@
 //! typed 命令的两份生成物由类型现算：形状指纹表（`src/common/cmd-wire/src/shapes.rs`，后端 hello 交出去、客户端拿来比）·
 //! 界面那张命令表（`src/frontend/ui/generated/TypedCommands.ts`：命令名 ⇒ 入参 · 回包 · 码）。
 //! 跟盘上那份不一样 ⇒ 重写盘上那份、并红（提交新的那一份）。
+//! 读登记表（主 crate 的 `stream::inbound::REGISTRY`）⇒ 挂主 crate（`cross/wire.rs`）；形状那一套住 `wire::typed::test_support`。
 
-use super::{Codes, Command, How, Typed};
 use crate::stream::inbound::REGISTRY;
-
-impl Typed {
-    /// 开跑之后打不打得断（阻塞档打不断）：读它的只有形状指纹与协议文档（撤不动的算进指纹，`cmd_wire::shapes::UNCANCELLABLE` 由它写）。
-    pub(crate) fn blocking(&self) -> bool {
-        matches!(self.how, How::Blocking | How::FrameBlocking)
-    }
-}
-
-/// 一条 typed 命令的形状（测试档）：入参 · 回包的 TS 名，连同它们引到的每个具名类型的 TS 声明，＋ 码表。
-pub(crate) struct Shape {
-    pub(crate) req: String,
-    pub(crate) reply: String,
-    pub(crate) codes: &'static [&'static str],
-    /// `(TS 名, 声明)`，按名排、去重：入参与回包本身 ＋ 它们递归引到的每个具名类型。
-    pub(crate) decls: Vec<(String, String)>,
-    /// 开跑之后撤不动（阻塞档）。登记那一档定，[`typed`] 填；算进指纹：两端指纹对得上 ⇒ 撤不撤得动也一致。
-    pub(crate) uncancellable: bool,
-    /// 带 `data` 的那几个码 ⇒ `data` 的 TS 名（码表次序）；算进指纹：两端读 `data` 的形状对不上 ⇒ 指纹就对不上。
-    pub(crate) data: Vec<(&'static str, String)>,
-    /// 一份入参照这条命令的入参类型解（与分派同一个解码 [`super::take`]）；解不开 ⇒ 那一句。
-    pub(crate) decode: fn(&serde_json::Value) -> Result<(), String>,
-}
-
-fn decode_of<C: Command>(args: &serde_json::Value) -> Result<(), String> {
-    super::take::<C::Req>(args)
-        .map(drop)
-        .map_err(|f| format!("{}：{}", f.said, f.raw.unwrap_or_default()))
-}
-
-pub(crate) use cmd_wire::fingerprint::{ty_of, Ty};
-
-/// [`super::Codes::Data`] 的那一份 TS 形状：元组逐位一个；[`super::Each`] ＝ 每个码同一形（`n` ＝ 码数）。
-pub(crate) trait DataTys {
-    fn tys(n: usize) -> Vec<Ty>;
-}
-
-impl<T: ts_rs::TS + 'static> DataTys for super::Each<T> {
-    fn tys(n: usize) -> Vec<Ty> {
-        (0..n).map(|_| ty_of::<T>()).collect()
-    }
-}
-
-macro_rules! data_tys {
-    ($($t:ident),*) => {
-        impl<$($t: ts_rs::TS + 'static),*> DataTys for ($($t,)*) {
-            fn tys(_: usize) -> Vec<Ty> {
-                vec![$(ty_of::<$t>()),*]
-            }
-        }
-    };
-}
-data_tys!();
-data_tys!(A);
-data_tys!(A, B);
-data_tys!(A, B, C);
-data_tys!(A, B, C, D);
-data_tys!(A, B, C, D, E);
-data_tys!(A, B, C, D, E, F);
-
-pub(crate) fn shape_of<C: Command>() -> Shape {
-    let (req, reply) = (ty_of::<C::Req>(), ty_of::<C::Reply>());
-    let mut decls = req.decls;
-    decls.extend(reply.decls);
-    let codes = <C::Err as Codes>::DATA;
-    let tys = <<C::Err as Codes>::Data as DataTys>::tys(codes.len());
-    assert_eq!(
-        tys.len(),
-        codes.len(),
-        "`{}`：带 `data` 的码与 `data` 的类型对不上位",
-        C::NAME
-    );
-    let mut data = Vec::new();
-    for (code, ty) in codes.iter().zip(tys) {
-        decls.extend(ty.decls);
-        data.push((*code, ty.name));
-    }
-    Shape {
-        req: req.name,
-        reply: reply.name,
-        codes: <C::Err as Codes>::ALL,
-        decls: decls.into_iter().collect(),
-        uncancellable: false,
-        data,
-        decode: decode_of::<C>,
-    }
-}
-
-impl Shape {
-    /// 形状指纹：名 · 声明 · 码表逐行拼起来的 FNV-1a 32 位，8 位十六进制（两端比的就是它）。
-    pub(crate) fn fingerprint(&self) -> String {
-        let mut text = format!(
-            "req {}\nreply {}\ncodes {}\ncancel {}\n",
-            self.req,
-            self.reply,
-            self.codes.join(","),
-            if self.uncancellable { "no" } else { "yes" }
-        );
-        // 带 `data` 的码：没有就不写这一行（不带 `data` 的命令指纹不变）。
-        if !self.data.is_empty() {
-            let d: Vec<String> = self.data.iter().map(|(c, t)| format!("{c}={t}")).collect();
-            text.push_str(&format!("data {}\n", d.join(",")));
-        }
-        for (name, decl) in &self.decls {
-            text.push_str(&format!("{name}\n{decl}\n"));
-        }
-        cmd_wire::fingerprint::fnv32(&text)
-    }
-}
+use crate::wire::typed::test_support::Shape;
+use crate::wire::typed::Codes;
 
 /// 走登记表跑一条命令（同分派那一层：写句柄是测试档那一份；异步档在当场起的运行时上等它）。各族的测试经它问。
-pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> super::super::spec::Outcome {
+pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> crate::wire::spec::Outcome {
     let spec = REGISTRY
         .iter()
         .find(|s| s.name == cmd)
@@ -129,9 +23,9 @@ pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> super::super::spec::Out
         until: None,
     };
     let own = crate::platform::fs::Own::for_tests();
-    match super::super::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {
-        Some(super::super::spec::Prepared::Blocking(f)) => f(req),
-        Some(super::super::spec::Prepared::Async(f)) => {
+    match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {
+        Some(crate::wire::spec::Prepared::Blocking(f)) => f(req),
+        Some(crate::wire::spec::Prepared::Async(f)) => {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -151,7 +45,7 @@ fn typed() -> Vec<(&'static str, Shape)> {
                 s.name,
                 Shape {
                     uncancellable: s.run.blocking(),
-                    ..(s.run.shape)()
+                    ..s.run.shape()
                 },
             )
         })
@@ -295,12 +189,12 @@ export interface RefusalData {{\n{data}}}\n"
 /// 那一句照旧，原码与原话进原话（复制详情）；码表里有的照交。
 #[test]
 fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
-    super::codes! {
+    crate::wire::typed::codes! {
         enum OuterErr {
             IoFailed = "io_failed",
         }
     }
-    let kept = super::of_fail(
+    let kept = crate::wire::typed::of_fail(
         crate::wire::spec::fail("io_failed", "读不了"),
         OuterErr::IoFailed,
     )
@@ -313,7 +207,7 @@ fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
 
     let lower =
         crate::wire::spec::fail("not_dir", "那不是一个目录").and_raw(Some("ENOTDIR (os error 20)"));
-    let f = super::of_fail(lower, OuterErr::IoFailed).into_said();
+    let f = crate::wire::typed::of_fail(lower, OuterErr::IoFailed).into_said();
     assert_eq!(
         f.code.as_deref(),
         Some("io_failed"),
@@ -336,7 +230,7 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     }
     let sentinel = "SENTINEL_SECRET_VALUE_12345";
     let args = serde_json::json!({ "port": sentinel });
-    let fail = super::take::<DummyReq>(&args).expect_err("should fail");
+    let fail = crate::wire::typed::take::<DummyReq>(&args).expect_err("should fail");
     let rejection = format!(
         "code={} message={} raw={:?}",
         fail.code_or_fallback(),

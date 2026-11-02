@@ -22,6 +22,7 @@ use crate::observe::runs::RunBook;
 use crate::relay::TapEvent;
 use crate::stream::run_route::{Routed, RunRouter};
 use crate::wire::{Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd};
+use md_core::Growing;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -70,13 +71,32 @@ impl<T: std::hash::Hash + Eq + Clone> Bounded<T> {
     }
 }
 
+/// 卡里的一块：种类 · 工具名 · 文字块的正文（原文连同解析好的顶层块，[`Growing`]：每接一截只重解析最后一个顶层块）。
+struct Slot {
+    kind: BlockKind,
+    tool: Option<String>,
+    doc: Option<Growing>,
+}
+
+impl Slot {
+    fn wire(&self) -> LiveBlock {
+        LiveBlock {
+            kind: self.kind,
+            md: self.doc.as_ref().map(|d| d.blocks().to_vec()),
+            tool: self.tool.clone(),
+        }
+    }
+}
+
 struct Card {
     sid: String,
     run: Option<String>,
     rid: Option<String>,
     stopped: bool,
     clipped: bool,
-    blocks: Vec<LiveBlock>,
+    blocks: Vec<Slot>,
+    /// 各文字块原文的字数之和（截头看它）。
+    chars: usize,
     born: u64,
 }
 
@@ -90,33 +110,29 @@ impl Card {
                 LivePhase::Streaming
             },
             clipped: self.clipped,
-            blocks: self.blocks.clone(),
+            blocks: self.blocks.iter().map(Slot::wire).collect(),
         })
     }
 
-    fn text_len(&self) -> usize {
-        self.blocks
-            .iter()
-            .map(|b| b.text.as_ref().map_or(0, |t| t.chars().count()))
-            .sum()
-    }
-
-    /// 正文总长超留尾 ⇒ 从最前面的块开始截头，截到正好留尾。
+    /// 正文总长超留尾 ⇒ 从最前面的块开始截头，截到正好留尾；截过的块整段重解析。
     fn clip(&mut self) {
-        let mut over = self.text_len().saturating_sub(LIVE_TEXT_KEEP);
+        let mut over = self.chars.saturating_sub(LIVE_TEXT_KEEP);
         for b in &mut self.blocks {
             if over == 0 {
                 break;
             }
-            let Some(t) = b.text.as_mut() else { continue };
+            let Some(d) = b.doc.as_mut() else { continue };
+            let t = d.src();
             let n = t.chars().count();
             let cut = n.min(over);
             if cut == 0 {
                 continue;
             }
             let at = t.char_indices().nth(cut).map_or(t.len(), |(i, _)| i);
-            t.drain(..at);
+            let rest = t[at..].to_string();
+            d.reset(rest);
             over -= cut;
+            self.chars -= cut;
             self.clipped = true;
         }
     }
@@ -433,6 +449,7 @@ impl Live {
                 stopped: false,
                 clipped: false,
                 blocks: Vec::new(),
+                chars: 0,
                 born: self.born,
             };
             self.born += 1;
@@ -468,16 +485,19 @@ impl Live {
                 };
                 let i = i as usize;
                 while c.blocks.len() <= i {
-                    c.blocks.push(LiveBlock {
+                    c.blocks.push(Slot {
                         kind: BlockKind::Other,
-                        text: None,
                         tool: None,
+                        doc: None,
                     });
                 }
-                c.blocks[i] = LiveBlock {
+                if let Some(old) = c.blocks[i].doc.as_ref() {
+                    c.chars -= old.src().chars().count();
+                }
+                c.blocks[i] = Slot {
                     kind,
-                    text: (kind == BlockKind::Text).then(String::new),
                     tool: tool.clone(),
+                    doc: (kind == BlockKind::Text).then(Growing::default),
                 };
                 self.fan(
                     k,
@@ -492,15 +512,21 @@ impl Live {
                 let Some(c) = self.cards.get_mut(&k) else {
                     return;
                 };
-                let Some(t) = c.blocks.get_mut(i as usize).and_then(|b| b.text.as_mut()) else {
+                let Some(d) = c.blocks.get_mut(i as usize).and_then(|b| b.doc.as_mut()) else {
                     return;
                 };
-                t.push_str(&s);
-                if c.text_len() > LIVE_TEXT_KEEP + LIVE_TEXT_SLACK {
+                let (keep, tail) = d.push(&s);
+                let op = LiveOp::Text {
+                    i,
+                    keep: keep as u64,
+                    tail: tail.to_vec(),
+                };
+                c.chars += s.chars().count();
+                if c.chars > LIVE_TEXT_KEEP + LIVE_TEXT_SLACK {
                     c.clip();
                     self.fan_owe(k);
                 } else {
-                    self.fan(k, LiveOp::Text { i, s });
+                    self.fan(k, op);
                 }
             }
             StreamEv::Stop { ok } => {

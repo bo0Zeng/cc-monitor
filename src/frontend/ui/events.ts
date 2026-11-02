@@ -611,15 +611,19 @@ export async function bindEvents(
 
 
 
-  // `session-live-card`：一格 = 那一处整份的活卡（`SessionLiveCardsPayload`），当场交活卡、当场还 credit；
-  //   `Gap` 不补（下一格就是那一处的整份）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
+  // `session-live-card`：一格 = 那一处整份的活卡，或某张卡只换了尾巴（`SessionLiveCardsPayload`），当场交活卡、当场还 credit；
+  //   `Gap` 不补（壳在丢过格之后，那一处下一格交整份）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
   const onLiveCardItems = (origin: Machine, hold: StreamHold, items: Item[]): void => {
     let used = 0;
     for (const it of items) {
       if (it.t === "frame") {
         used += 1;
         const p = tryDecodeJson<SessionLiveCardsPayload>(it.body);
-        if (p !== null && typeof p === "object" && typeof p.live?.sid === "string" && Array.isArray(p.live.cards)) {
+        const live = p !== null && typeof p === "object" ? p.live : undefined;
+        const ok =
+          (live?.t === "whole" && typeof live.whole?.sid === "string" && Array.isArray(live.whole.cards)) ||
+          (live?.t === "tail" && typeof live.tail?.sid === "string" && Array.isArray(live.tail.blocks));
+        if (p !== null && ok) {
           handlers.onLiveCard?.(p);
         } else {
           console.warn("[events] 活卡流里一格读不懂，跳过：", it.body.slice(0, 200));

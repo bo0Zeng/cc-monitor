@@ -128,7 +128,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
 
 /// 一页分页应答（`data` 里垫到一页那么大）。
 fn page(id: &str) -> Frame {
-    let pad = "p".repeat(crate::REPLY_PAGE_BYTES.as_len());
+    let pad = "p".repeat(crate::wire::REPLY_PAGE_BYTES.as_len());
     Frame::Reply(crate::wire::Reply {
         id: id.into(),
         ok: true,

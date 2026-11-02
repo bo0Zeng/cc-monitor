@@ -793,10 +793,10 @@ fn traits_of(spec: &CommandSpec) -> String {
     } else {
         t.push("只在流上".to_string());
     }
-    if spec.codes.contains(&crate::NO_TMUX) {
+    if spec.codes.contains(&crate::wire::NO_TMUX) {
         t.push("没有 tmux 的机器上做不到（hello `unavailable` 会列它）".to_string());
     }
-    if spec.codes.contains(&crate::NO_UNIX_MODE) {
+    if spec.codes.contains(&crate::wire::NO_UNIX_MODE) {
         t.push("没有 unix 权限位的机器上做不到".to_string());
     }
     t.join(" · ")
@@ -808,7 +808,7 @@ fn command(out: &mut String, spec: &CommandSpec) {
     let _ = writeln!(out, "{}\n", traits_of(spec));
     // 字段不手写，照它的类型写（入参 · 回包的 TS 声明，连同它们引到的类型）。
     {
-        let shape = (spec.run.shape)();
+        let shape = spec.run.shape();
         let _ = writeln!(
             out,
             "入参 `{}` · 回包 `{}`（类型从 Rust 生成，`generated/TypedCommands.ts`）：\n",
@@ -826,7 +826,7 @@ fn command(out: &mut String, spec: &CommandSpec) {
     }
     // 带 `data` 的码：`data` 的形状（声明在上面那一块里）。
     {
-        let data = (spec.run.shape)().data;
+        let data = spec.run.shape().data;
         if !data.is_empty() {
             let d: Vec<String> = data.iter().map(|(c, t)| format!("`{c}` ⇒ `{t}`")).collect();
             let _ = writeln!(out, "失败带 `data` 的码：{}\n", d.join(" · "));

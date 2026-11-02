@@ -138,8 +138,8 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
       off.sort(),
       "§13：祖先有 `transform`/`filter`/`perspective`/`will-change`（或 layout containment）时，\n" +
         "`position: fixed` 后代的包含块从 viewport 重置到那个祖先 ⇒ fixed 失去 viewport 锚定。\n" +
-        "本仓 `.settings-panel` 有 `transform: translateX(0)` 做 slide-in、`.stream-content > *` 有\n" +
-        "`content-visibility: auto` ⇒ 挂在它们子树里的 fixed 元素会乱跑。挂 body 是唯一可靠路径。\n" +
+        "本仓 `.settings-panel` 有 `transform: translateX(0)` 做 slide-in、收起的 tab 有\n" +
+        "`content-visibility: hidden` ⇒ 挂在它们子树里的 fixed 元素会乱跑。挂 body 是唯一可靠路径。\n" +
         "★ 真有正当理由不挂 body ⇒ 写进 `BODY_MOUNT_EXCEPTIONS` 并说清宿主是谁（宿主会被机检）。" +
         `\n当前登记：${BODY_MOUNT_EXCEPTIONS.map((e) => e.sel).join(" · ")}`,
     ).toEqual(BODY_MOUNT_EXCEPTIONS.map((e) => e.sel).sort());

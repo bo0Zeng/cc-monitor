@@ -7,10 +7,12 @@ import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
+import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -609,18 +611,17 @@ class ResidentFeedTest {
             backgroundScope.launch { f.live.collect { got += it } }
             core.emit(
                 "live",
-                """{"sid":"s1","cards":[{"card":4,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"字"}],"head":"核心·头","body":"字"}]}""",
+                """{"sid":"s1","cards":[{"card":4,"rid":"m","phase":"streaming","clipped":false,"head":"核心·头","body":[{"t":"p","k":["字"]}]}]}""",
             )
             core.emit("live", """{"sid":"s1","cards":[{"card":4}]}""")
             assertEquals(
-                "字",
+                MdBlock.P(listOf(Inl.Text("字"))),
                 got
                     .single()
                     .cards
                     .single()
-                    .blocks
-                    .single()
-                    .text,
+                    .body
+                    .single(),
             )
             assertEquals(1, broken.size)
             core.emit("book", """{"live":{},"left":{},"runs":{},"successors":{"a":"d"},"rereads":{},"listed":true}""")

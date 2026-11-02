@@ -67,7 +67,8 @@ pub trait ItemSink: Send + Sync {
 /// 本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
-/// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardsPayload`]：某会话某运行此刻整份的卡，壳照端核心的活卡板折好）。
+/// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardsPayload`]：某会话某运行此刻整份的卡，
+/// 或某张卡只换了尾巴；壳照端核心的活卡板折好）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
 /// ① **没有留存**：活卡不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
@@ -206,7 +207,7 @@ struct Inner {
     snapshot_level: u32,
     /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
     kept_moved: bool,
-    /// 每台的活卡板（端核心那一份折法，键 = origin 线上串）：界面收的是折好的整份。那台看不见了 ⇒ 清空。
+    /// 每台的活卡板（端核心那一份折法，键 = origin 线上串）：界面收的是折好的整份或尾巴。那台看不见了 ⇒ 清空。
     live: HashMap<String, resident_client::live::Board>,
 }
 
@@ -259,6 +260,8 @@ struct Sub {
     live: bool,
     /// 最后一次告诉它的「那台看不看得见」。
     told_seen: bool,
+    /// `session-live-card` 那一形：丢过格（没 credit）、还没再交过整份的那几处（会话 · 运行）—— 那一处下一格交整份，不交尾巴。
+    live_stale: HashSet<resident_client::live::Where>,
 }
 
 /// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（活卡 / `lines`），合并时收成这一个枚举。
@@ -1061,6 +1064,7 @@ impl EventReplay {
                 gap_from: None,
                 live: immediate,
                 told_seen: seen,
+                live_stale: HashSet::new(),
             };
             let job = (immediate && kind == SubKind::Lines).then(|| {
                 let mine = held_for(&inner.tails, &sub);
@@ -1177,32 +1181,56 @@ impl EventReplay {
     }
 
     /// 那台后端发来的一帧活卡（核心拼好的成品；分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
-    /// 交那台的活卡板折（端核心 `resident_client::live`，手机核心同一份），变了的那一处（某会话某运行）整份、带上哪台，
-    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
-    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：每一格都是那一处的整份，丢了一格下一格就补齐。
+    /// 交那台的活卡板折（端核心 `resident_client::live`，手机核心同一份），变了的那一处（某会话某运行）带上哪台，
+    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 一段字只换了一张卡的尾巴 ⇒ 交尾巴（前几块不变 ＋ 新的一两块），
+    /// 别的交那一处整份。有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`（与会话行实时那一份同一个 [`plan_live`]）。
+    /// **不等 credit、不攒**：一条订阅丢过某一处的格 ⇒ 那一处下一格交整份（界面从不在缺了一格的底子上接尾巴）。
     /// 对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
     pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
-        let at = origin.to_string();
+        use resident_client::live::LiveChange;
+        let origin_s = origin.to_string();
         let (sink, plans) = {
-            let mut inner = self.inner.lock();
-            let board = inner.live.entry(at.clone()).or_default();
-            let Some((sid, run)) = board.apply(&card) else {
+            let mut guard = self.inner.lock();
+            let inner = &mut *guard;
+            let board = inner.live.entry(origin_s.clone()).or_default();
+            let Some(change) = board.apply(&card) else {
                 return;
             };
-            let payload = crate::ui_contract::SessionLiveCardsPayload {
-                origin: origin.clone(),
-                live: board.cards_of(&sid, run.as_deref()),
+            let at = change.at();
+            let body_of = |live: LiveChange| {
+                let payload = crate::ui_contract::SessionLiveCardsPayload {
+                    origin: origin.clone(),
+                    live,
+                };
+                Body(serde_json::to_vec(&payload).unwrap_or_default())
             };
-            let origin = at;
+            let is_tail = matches!(change, LiveChange::Tail { .. });
+            let body = body_of(change);
+            let mut whole: Option<Body> = None;
             let sink = Arc::clone(&inner.sink);
-            let body = Body(serde_json::to_vec(&payload).unwrap_or_default());
             let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
             for sub in inner
                 .subs
                 .iter_mut()
-                .filter(|s| s.kind == SubKind::LiveCard && s.live && s.origin == origin)
+                .filter(|s| s.kind == SubKind::LiveCard && s.live && s.origin == origin_s)
             {
-                let items = plan_live(sub, vec![body.clone()]);
+                let b = if is_tail && sub.live_stale.contains(&at) {
+                    whole
+                        .get_or_insert_with(|| {
+                            body_of(LiveChange::Whole {
+                                whole: board.cards_of(&at.0, at.1.as_deref()),
+                            })
+                        })
+                        .clone()
+                } else {
+                    body.clone()
+                };
+                let items = plan_live(sub, vec![b]);
+                if items.iter().any(|i| matches!(i, Item::Frame { .. })) {
+                    sub.live_stale.remove(&at);
+                } else {
+                    sub.live_stale.insert(at.clone());
+                }
                 if !items.is_empty() {
                     plans.push((sub.label.clone(), sub.id, items));
                 }

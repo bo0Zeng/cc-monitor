@@ -1,7 +1,6 @@
 //! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）· 书签 `bookmarks-*`。
 
 use crate::wire::spec::CommandSpec;
-use crate::wire::typed;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // ── `files-read` 这一族上线 ────────────────────────────
@@ -58,7 +57,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⇒ 这一条同拍进了子命令闸门（`stream::cli::is_subcommand`，从本表派生）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `files/write.rs` 头注「写怎么被挡住」那一节。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesCreate>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesCreate>(
         "在文件管理目标根底下新建一份此前不存在的文件",
     ),
     // ── 改动既有数据的那五条 ──────────
@@ -68,32 +67,36 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⚠ 本段五条与上面 `files-create` 的 `run` 逐字同形（名字从 `r.cmd` 来）。
     // ⚠ 全在阻塞档：同步文件系统 I/O（外加围栏那几次 `canonicalize`），开跑之后打不断
     //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesMkdir>("新建一个目录"),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesRename>("改名 / 同根内移动"),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesDelete>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesMkdir>("新建一个目录"),
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesRename>(
+        "改名 / 同根内移动",
+    ),
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesDelete>(
         "删一组（文件 · 空目录 · 显式递归的整棵）",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesChmod>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesChmod>(
         "一组改成同一个 unix 权限位",
     ),
     // 写面第七条：同根内复制。与上面五条同住一个模块、
     //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给 `Face` 添动词**：由 `O_EXCL` 新建 ＋
     //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `files/write.rs::copy_entry`）。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>("同根内复制一组"),
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>("同根内复制一组"),
     // 撤一组（复制 · 删除 · 改权限那三条带票的那一组）：只立旗，不碰盘。
-    typed::asynchronous::<crate::stream::inbound::files_write_face::FilesBatchStop>(
+    super::typed::asynchronous::<crate::stream::inbound::files_write_face::FilesBatchStop>(
         "撤一组复制 · 删除 · 改权限",
     ),
     // 解压：处理器住
     //   `files/extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesExtract>("解压到一个新目录"),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesWriteText>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesExtract>(
+        "解压到一个新目录",
+    ),
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesWriteText>(
         "覆盖写一份已经在的普通文件",
     ),
     // ── 删历史会话 ─────────────────────────
     //
     // 只收 sid（理由住 `files_session_face` 那一条的 `delete_session`）。阻塞档（同步文件 I/O）。
-    typed::blocking::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
+    super::typed::blocking::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
         "删一份历史会话",
     ),
     // ── 上传的**提交** ──────────────────────
@@ -103,58 +106,64 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   处理器住 `files/commit.rs`，写经 `Face`。阻塞档：同步文件系统 I/O（路径解析的 `canonicalize` ＋ 改名）。
     // ── 存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
     //   同住 `files/commit.rs`，阻塞档理由同上一条。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesStageChunk>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesStageChunk>(
         "存盘的一块进暂存区",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitText>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitText>(
         "按块读回、拼起来、覆盖写",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
         "把暂存区里一份传完的上传件挪进目标",
     ),
     // ── 聊天附件：落点固定在会话工作目录下 `.ccm-attach/`（本体住 `files/commit/session_attachment.rs`，阻塞档理由同上传提交）──
-    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentCheck>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentCheck>(
         "开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写）",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentCommit>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentCommit>(
         "把暂存区里传完的一份落进会话工作目录下一个新的附件目录",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentDrop>(
+    super::typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentDrop>(
         "删掉会话工作目录下的一个附件目录（草稿上撤掉那一份）",
     ),
     // 名单记在本连接名下、连接断了摘掉 ⇒ 要本连接的号 ⇒ 帧面硬臂（只在帧面：一次 exec 的进程交了也随它没了）；改盘上的 watch ⇒ 阻塞池。
-    typed::frame_blocking::<crate::stream::inbound::files_face::FilesBrowse>(
+    super::typed::frame_blocking::<crate::stream::inbound::files_face::FilesBrowse>(
         "告诉后端「这条连接现在在看哪几个目录」（各条连接的并集被盯着；连接断了摘掉它那份）",
     ),
-    typed::blocking::<crate::stream::inbound::files_face::FilesIndexRebuild>(
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesIndexRebuild>(
         "重建常驻文件名索引：走一遍，做完返回",
     ),
     // **按内容搜**：`{path, needle, ignore_ascii_case?, limit?}` ⇒ 命中的那几份（第一处命中那一行 ＋ 命中几行）
     //   ＋ 走了多少。**可撤** ⇒ 异步档：走那一趟放进阻塞线程池，`cancel` 丢掉这个 future 时守卫置取消位、那一趟随即停
     //   （`files/mod.rs::answer_grep_cancellable`）。纯读。
-    typed::asynchronous::<crate::stream::inbound::files_face::FilesGrep>("在一个目录底下按内容搜"),
-    typed::blocking::<crate::stream::inbound::files_face::FilesFind>("在常驻索引里查"),
-    typed::blocking::<crate::stream::inbound::files_face::FilesIndexStatus>(
+    super::typed::asynchronous::<crate::stream::inbound::files_face::FilesGrep>(
+        "在一个目录底下按内容搜",
+    ),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesFind>("在常驻索引里查"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesIndexStatus>(
         "索引的新鲜度 / 条目数 / 常驻字节",
     ),
-    typed::blocking::<crate::stream::inbound::files_face::FilesLs>("列一个目录的直接子项"),
-    typed::blocking::<crate::stream::inbound::files_face::FilesStat>("一个路径的元数据"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesLs>("列一个目录的直接子项"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesStat>("一个路径的元数据"),
     // ── 窗口换走通道的那两问 ────────────────
     //
     // 🔴 **同一族（`files-read`）的第七、第八条，整族照旧纯读**：编辑器读一份文本 ·
     //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（
     //   那张欠账表），现在经通道问后端 —— 窗口进程够后端**只剩通道**这一条路。
     // ⚠ `run` 与同族那六条逐字同形（名字从 `r.cmd` 来）；同在 `Run::Blocking`、同样取消不掉。
-    typed::blocking::<crate::stream::inbound::files_face::FilesReadText>("读一份文本进编辑器"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesReadText>(
+        "读一份文本进编辑器",
+    ),
     // 读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
-    typed::blocking::<crate::stream::inbound::files_face::FilesReadChunk>("按字节寻址分块读回"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesReadChunk>(
+        "按字节寻址分块读回",
+    ),
     // 读族第九条：算目录大小。与同族那几条逐字同形、同在阻塞档。
-    typed::blocking::<crate::stream::inbound::files_face::FilesSize>("算一个目录有多大"),
-    typed::blocking::<crate::stream::inbound::files_face::FilesHome>("后端这个用户的 home"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesSize>("算一个目录有多大"),
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesHome>("后端这个用户的 home"),
     // 书签归这台后端（`control/bookmarks.rs`，`~/.cc-monitor/bookmarks.json`）：文件窗口与手机按机器名问，本机与远端同一形。
     //   读—改—写在跨进程锁里、原子写 ⇒ 阻塞档（同步文件 I/O），只要写句柄。
-    typed::blocking::<crate::faces::bookmarks_face::BookmarksReadCmd>("这台的书签"),
-    typed::blocking::<crate::faces::bookmarks_face::BookmarksEditCmd>(
+    super::typed::blocking::<crate::faces::bookmarks_face::BookmarksReadCmd>("这台的书签"),
+    super::typed::blocking::<crate::faces::bookmarks_face::BookmarksEditCmd>(
         "切换 · 删 · 加几条书签，回改完的整份",
     ),
 ];

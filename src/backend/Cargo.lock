@@ -254,6 +254,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-wire"
+version = "0.0.0"
+dependencies = [
+ "backend-agents",
+ "backend-common",
+ "backend-platform",
+ "backend-relay",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "creds-core",
+ "deploy-contract",
+ "flate2",
+ "guard-core",
+ "relay-route-core",
+ "resident-client",
+ "serde",
+ "serde_json",
+ "test-home",
+ "tokio",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "base16ct"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,6 +454,7 @@ dependencies = [
  "backend-plugin",
  "backend-relay",
  "backend-stderr-log",
+ "backend-wire",
  "batch-core",
  "cmd-wire",
  "comms-inward",

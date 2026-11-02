@@ -220,10 +220,8 @@ fn guard_target(cond: &str) -> Option<&str> {
         (r, Some("]]"))
     } else if let Some(r) = c.strip_prefix("[ ") {
         (r, Some("]"))
-    } else if let Some(r) = c.strip_prefix("test ") {
-        (r, None)
     } else {
-        return None;
+        (c.strip_prefix("test ")?, None)
     };
     let mut w = inner.split_whitespace();
     if !matches!(w.next()?, "-f" | "-r" | "-e" | "-s") {

@@ -1,28 +1,9 @@
 //! 主题表：线上名 ＝ serde 名；每个主题恰好一行；可丢的只从 tap 那条发、不可丢的只从 watcher 的出方向发；
 //! 生产段造 `changed` 帧只经 `Frame::changed`。
+//! 读命令表与各族的面（上层）⇒ 挂主 crate（`cross/wire.rs`）；全部主题那一份住 `wire::test_support::ALL`。
 
-use super::*;
-
-/// 全部主题（表的行序；逐行核表用；`wire_tests` 也读这一份）。
-pub(in crate::wire) const ALL: [Topic; 17] = [
-    Topic::Accounts,
-    Topic::Profiles,
-    Topic::Quota,
-    Topic::Rotation,
-    Topic::RotationStrategies,
-    Topic::Plan,
-    Topic::Tasks,
-    Topic::Needs,
-    Topic::Login,
-    Topic::Machines,
-    Topic::Machine,
-    Topic::Empty,
-    Topic::SessionHidden,
-    Topic::FilesDir,
-    Topic::HistoryList,
-    Topic::Groups,
-    Topic::SessionQueue,
-];
+use crate::wire::test_support::ALL;
+use crate::wire::topic::*;
 
 #[test]
 fn the_wire_name_is_the_serde_name() {

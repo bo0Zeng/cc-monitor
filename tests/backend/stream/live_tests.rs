@@ -64,7 +64,8 @@ impl Seg {
         self.put(l, r#"{"ev":"part","at":0,"is":"words"}"#);
     }
     fn say(&mut self, l: &mut Live, s: &str) {
-        self.put(l, &format!(r#"{{"ev":"chunk","at":0,"txt":"{s}"}}"#));
+        let txt = serde_json::to_string(s).unwrap();
+        self.put(l, &format!(r#"{{"ev":"chunk","at":0,"txt":{txt}}}"#));
     }
     fn shut(&mut self, l: &mut Live) {
         self.put(l, r#"{"ev":"shut"}"#);
@@ -134,18 +135,21 @@ impl Screen {
                             while c.4.len() <= i {
                                 c.4.push(LiveBlock {
                                     kind: BlockKind::Other,
-                                    text: None,
+                                    md: None,
                                     tool: None,
                                 });
                             }
                             c.4[i] = LiveBlock {
                                 kind: *block,
-                                text: (*block == BlockKind::Text).then(String::new),
+                                md: (*block == BlockKind::Text).then(Vec::new),
                                 tool: tool.clone(),
                             };
                         }
-                        LiveOp::Text { i, s } => {
-                            c.4[*i as usize].text.as_mut().unwrap().push_str(s)
+                        LiveOp::Text { i, keep, tail } => {
+                            let md = c.4[*i as usize].md.as_mut().unwrap();
+                            assert!(*keep as usize <= md.len(), "keep 越过了手上的块：{f:?}");
+                            md.truncate(*keep as usize);
+                            md.extend(tail.iter().cloned());
                         }
                         LiveOp::Awaiting => c.2 = LivePhase::Awaiting,
                         LiveOp::Close { .. } => {
@@ -160,11 +164,35 @@ impl Screen {
             self.next.insert(f.card, f.n + 1);
         }
     }
+    /// 各文字块的段落字接起来（判据只喂不带格式的字）。
     fn text(&self, card: u64) -> Option<String> {
-        self.cards
-            .get(&card)
-            .map(|c| c.4.iter().filter_map(|b| b.text.clone()).collect())
+        self.cards.get(&card).map(|c| {
+            c.4.iter()
+                .filter_map(|b| b.md.as_deref())
+                .map(plain)
+                .collect()
+        })
     }
+    fn md(&self, card: u64, i: usize) -> Vec<md_core::MdBlock> {
+        self.cards[&card].4[i].md.clone().unwrap_or_default()
+    }
+}
+
+/// 段落里的纯字接起来。
+fn plain(bs: &[md_core::MdBlock]) -> String {
+    bs.iter()
+        .filter_map(|b| match b {
+            md_core::MdBlock::P { k } => Some(
+                k.iter()
+                    .filter_map(|i| match i {
+                        md_core::Inl::S(s) => Some(s.as_str()),
+                        md_core::Inl::N(_) => None,
+                    })
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect()
 }
 
 fn closes(fs: &[LiveCard]) -> Vec<(String, u64, LiveWhy)> {
@@ -395,6 +423,51 @@ fn a_long_reply_keeps_only_its_tail_and_is_resent_whole_once_clipped() {
     s.eat(&fs);
     assert_eq!(s.text(1).unwrap().chars().count(), LIVE_TEXT_KEEP);
     assert!(s.cards[&1].3, "没标截过头");
+}
+
+/// 造的一段回答（段落 · 标题 · 列表 · 引用 · 代码块轮着来，每块都比一段长），截到正好 `chars` 个字。
+fn made_up_reply(chars: usize) -> String {
+    let mut s = String::new();
+    let mut k = 0;
+    while s.chars().count() < chars {
+        s.push_str(&match k % 5 {
+            0 => format!("第 {k} 段：把分页改成游标之后，调用点要跟着改，测试也要补上 **一条** 会红的。\n\n"),
+            1 => format!("## 第 {k} 节：游标怎么编码、过期了怎么办、翻到底了交什么（只讲线上形）\n\n"),
+            2 => format!("- 第 {k} 条：游标里只放排序键与方向\n- 过期的游标回 `410`，界面从头翻\n- 翻到底交空页，不交错\n\n"),
+            3 => format!("> 第 {k} 处提醒：旧的页码参数先留一版，日志里记一句谁还在用、用了几次、从哪台来。\n\n"),
+            _ => format!("```rust\nfn page_{k}(cur: Option<Cursor>) -> Page {{\n    let rows = query(cur);\n    Page::of(rows)\n}}\n```\n\n"),
+        });
+        k += 1;
+    }
+    s.chars().take(chars).collect()
+}
+
+/// 正文长一截只重解析最后一个顶层块：4 000 字按 40 字一段喂 100 次 ⇒ 每帧只交一两块的尾巴，
+/// 客户端照帧拼出来的树与整段一次解析的相同。
+#[test]
+fn a_growing_reply_ships_only_its_last_top_level_blocks_and_adds_up_to_the_whole_parse() {
+    let mut l = live();
+    let (id, _) = l.join();
+    let mut a = Seg::new("A", 1);
+    a.open(&mut l, "r");
+    let mut s = Screen::default();
+    s.eat(&drain(&mut l, id));
+    let whole = made_up_reply(4_000);
+    let chars: Vec<char> = whole.chars().collect();
+    let mut texts = 0;
+    for piece in chars.chunks(40) {
+        a.say(&mut l, &piece.iter().collect::<String>());
+        let fs = drain(&mut l, id);
+        for f in &fs {
+            if let LiveOp::Text { tail, .. } = &f.op {
+                texts += 1;
+                assert!(tail.len() <= 2, "一帧交了 {} 块的尾巴：{f:?}", tail.len());
+            }
+        }
+        s.eat(&fs);
+    }
+    assert_eq!(texts, 100, "不是每段字各一帧");
+    assert_eq!(s.md(1, 0), md_core::parse(&whole).blocks);
 }
 
 /// 发件箱满了：不丢件，那张卡合成一张整卡 —— 客户端照画，得到的正文与核心一字不差、`n` 处处接得上。
