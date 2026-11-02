@@ -17,7 +17,7 @@ fn no_duplicated_cfg_test_attributes_in_the_mod_block() {
     let dup = format!("#[cfg({0})]\n#[cfg({0})]", "test");
     // 抽取器自检：本文件必须真的有 `mod` 声明与 cfg 属性，否则整条空转。
     assert!(
-        src.contains("mod bus_identity_registry;") && src.contains(&format!("#[cfg({})]", "test")),
+        src.contains("mod command_home_registry;") && src.contains(&format!("#[cfg({})]", "test")),
         "抽不到 `mod` 声明区或 cfg 属性 —— 抽取器坏了，本条会零命中地绿"
     );
     assert!(
