@@ -130,11 +130,6 @@ androidComponents {
     onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(stageBackends, StageBackends::outDir) }
 }
 
-// prism4j 带进 org.jetbrains:annotations-java5，与主 annotations 重复，排除掉免 duplicate-class。
-configurations.all {
-    exclude(group = "org.jetbrains", module = "annotations-java5")
-}
-
 dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-data"))
@@ -162,18 +157,8 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
-    // Markdown 渲染
-    implementation(libs.markwon.core)
-    implementation(libs.markwon.ext.tables)
-    implementation(libs.markwon.ext.strikethrough)
-    implementation(libs.markwon.linkify)
-    implementation(libs.markwon.ext.latex) // LaTeX 数学（JLaTeXMath）
-
-    // 代码块语法高亮：syntax-highlight + Prism4j。bundler 是 Java 注解处理器，用 annotationProcessor
-    // 处理 src/main/java 下的 @PrismBundle 类（生成 GrammarLocatorDef），不必为一个注解引入 kapt。
-    implementation(libs.markwon.syntax.highlight)
-    implementation(libs.prism4j)
-    annotationProcessor(libs.prism4j.bundler)
+    // 正文公式：块树里的 TeX 经 JLaTeXMath 画成图（正文排版本身是 Compose，照后端的块树排）。
+    implementation(libs.jlatexmath.android)
 
     debugImplementation(libs.androidx.ui.tooling)
 

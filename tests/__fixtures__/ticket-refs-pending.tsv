@@ -234,7 +234,6 @@ tests/frontend/ui/palette-names.vitest.ts	1
 tests/frontend/ui/plan-refs.vitest.ts	13
 tests/frontend/ui/reconcile-shell.vitest.ts	1
 tests/frontend/ui/record-timeline.vitest.ts	1
-tests/frontend/ui/render.vitest.ts	1
 tests/frontend/ui/scale3-one-screen-gate.vitest.ts	1
 tests/frontend/ui/settings/add-machine-prefill.vitest.ts	1
 tests/frontend/ui/settings/backend-section.vitest.ts	1

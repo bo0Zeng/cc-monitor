@@ -9,7 +9,7 @@ import java.io.File
 /**
  * 列表行高照手机适配层（`Touch`：单行 48 · 双行 64 · 设置一项 56 · 文件行 52 · 抽屉项 52），逐屏登记：
  * 登记的每个画行的函数里要引到那一档 `Touch.rowX`，且不许自己写行高数（`height(56.dp)` · `heightIn(min = 48.dp)` · 常量）。
- * 消息流正文（Markwon 那个 TextView）字号 · 行高取 `bodyLarge`（`--font-size-prose` 15 / `--line-height-prose` 1.65），不写死。
+ * 消息流正文（排版器给段落挑字样那一处）字号 · 行高取 `bodyLarge`（`--font-size-prose` 15 / `--line-height-prose` 1.65），不写死。
  */
 class RowHeightsTest {
     private val app: File =
@@ -72,11 +72,11 @@ class RowHeightsTest {
 
     @Test
     fun proseTakesSizeAndLineHeightFromTheTypeScale() {
-        val f = File(app, "claude/MarkdownText.kt")
+        val f = File(app, "claude/MdDoc.kt")
         val code = KotlinSourceScanner.codeOnlyDroppingLiterals(f.readText())
-        val tv = body(code, "MarkdownText") ?: error("没有 fun MarkdownText")
-        assertTrue("正文 TextView 没取 bodyLarge（--font-size-prose / --line-height-prose）", tv.contains("typography.bodyLarge"))
-        val hard = Regex("""textSize\s*=\s*\d|setLineSpacing\(""")
-        assertEquals("正文字号 / 行高写死了", null, hard.find(tv)?.value)
+        val style = body(code, "textStyleOf") ?: error("没有 fun textStyleOf")
+        assertTrue("正文段落没取 bodyLarge（--font-size-prose / --line-height-prose）", style.contains("typography.bodyLarge"))
+        val hard = Regex("""fontSize\s*=\s*\d|lineHeight\s*=\s*\d""")
+        assertEquals("正文字号 / 行高写死了", null, hard.find(style)?.value)
     }
 }
