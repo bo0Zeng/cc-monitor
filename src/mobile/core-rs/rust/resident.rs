@@ -196,7 +196,8 @@ pub struct Folds {
 
 impl Folds {
     /// 流上一帧 ⇒ 交 Kotlin 的那几件：会话帧折进簿、交整份（`book`，[`SessionBook`]）；活卡折进板、交变了的那一处整份
-    /// （`live`，[`LiveCards`]；没变 ⇒ 不交）；别的帧照 [`event_of`] 那样按类型写一行（`frame`）· 解不开 ⇒ `unread`。
+    /// （`live`，[`LiveCards`]；没变 ⇒ 不交。进程内一行、不过 IPC ⇒ 板交尾巴时这里也交整份，Kotlin 不折；
+    /// 正文前面没变的块由界面按块作键跳过重画）；别的帧照 [`event_of`] 那样按类型写一行（`frame`）· 解不开 ⇒ `unread`。
     pub fn frame(&mut self, line: &str) -> Vec<(&'static str, String)> {
         let Ok(f) = cmd_wire::frame::decode::<OrUnread>(line) else {
             return vec![("unread", line.to_string())];
@@ -205,7 +206,8 @@ impl Folds {
             return self
                 .board
                 .apply(c)
-                .map(|(sid, run)| {
+                .map(|ch| {
+                    let (sid, run) = ch.at();
                     (
                         "live",
                         live_line(&self.board.cards_of(&sid, run.as_deref())),
@@ -898,17 +900,17 @@ mod tests {
         assert_eq!(got, want);
     }
 
-    /// 活卡折好交那一处整份；换了一条流 ⇒ 有卡的那一处交空的、簿交空的。
+    /// 活卡折好交那一处整份（板交尾巴的那一帧也交整份）；换了一条流 ⇒ 有卡的那一处交空的、簿交空的。
     #[test]
     fn live_cards_go_out_whole_and_a_new_link_empties_both() {
         let mut folds = Folds::default();
-        let open = r#"{"kind":"live_card","sid":"s1","run":"a1","card":3,"n":0,"op":"open","rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"你"}]}"#;
-        let text = r#"{"kind":"live_card","sid":"s1","run":"a1","card":3,"n":1,"op":"text","i":0,"s":"好"}"#;
+        let open = r#"{"kind":"live_card","sid":"s1","run":"a1","card":3,"n":0,"op":"open","rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","md":[{"t":"p","k":["你"]}]}]}"#;
+        let text = r#"{"kind":"live_card","sid":"s1","run":"a1","card":3,"n":1,"op":"text","i":0,"keep":1,"tail":[{"t":"rule"}]}"#;
         folds.frame(open);
         let got = folds.frame(text);
         let card = serde_json::json!({"card": 3, "rid": "m", "phase": "streaming", "clipped": false,
-            "blocks": [{"kind": "text", "text": "你好"}],
-            "head": copy_core::copy_text("liveCard.state.streaming", &[]), "body": "你好",
+            "head": copy_core::copy_text("liveCard.state.streaming", &[]),
+            "body": [{"t": "p", "k": ["你"]}, {"t": "rule"}],
             "last": copy_core::copy_text("runs.last.say", &[])});
         let got: Vec<(&str, serde_json::Value)> = got
             .into_iter()

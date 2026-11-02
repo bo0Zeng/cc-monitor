@@ -30,10 +30,10 @@ import { bindEvents, LIVE_CARD_WINDOW, SUBSCRIBE_COALESCE_MS, subscribeTopics } 
 import { CHANGED_WINDOW, type Changed, type Topic } from "../../../src/frontend/ui/changed-stream";
 import { chanStreamModule, streamFake } from "../../test-support/chan-stream-fake.ts";
 
-const tap = (n: number): unknown => ({
-  origin: "<local>",
-  live: { sid: "sid", cards: [{ card: n, rid: "m", phase: "awaiting", clipped: false, blocks: [] }] },
-});
+const tap = (n: number): unknown =>
+  n === 0
+    ? { origin: "<local>", live: { t: "whole", whole: { sid: "sid", cards: [{ card: n, rid: "m", phase: "awaiting", clipped: false, head: "", body: [] }] } } }
+    : { origin: "<local>", live: { t: "tail", tail: { sid: "sid", card: 0, keep: 0, blocks: [{ t: "p", k: ["字"] }] } } };
 
 describe("〔TAP〕session-live-card 走 subscribe（不是裸事件）", () => {
   beforeEach(() => {

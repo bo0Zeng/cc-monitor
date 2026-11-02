@@ -853,26 +853,31 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 那张卡的第 `n` 帧：0 ＝ 整卡（一块空正文），之后每帧在那一块后面接一个 `x`（折好的正文长度就是 `n`）。
+/// 那张卡的第 `n` 帧：0 ＝ 整卡（一块空正文），之后每帧那一块的一段里多一个 `x`（尾巴就是那一段，折好的正文长度就是 `n`）。
 fn tap(n: u64) -> cmd_wire::live::LiveCard {
     let v = if n == 0 {
         serde_json::json!({"sid":"sid-t","card":0,"n":0,"op":"open","rid":"m","phase":"streaming","clipped":false,
-            "blocks":[{"kind":"text","text":""}]})
+            "blocks":[{"kind":"text","md":[]}]})
     } else {
-        serde_json::json!({"sid":"sid-t","card":0,"n":n,"op":"text","i":0,"s":"x"})
+        let x = "x".repeat(n as usize);
+        serde_json::json!({"sid":"sid-t","card":0,"n":n,"op":"text","i":0,"keep":0,"tail":[{"t":"p","k":[x]}]})
     };
     serde_json::from_value(v).unwrap()
 }
 
-/// 交出去的一格是那一处整份的活卡（壳折好的）：读出它折到了第几帧（正文长度）。
+/// 交出去的一格是活卡（壳折好的整份或尾巴）：读出它是哪一种、折到了第几帧（正文长度）。
 fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     match i {
         WItem::Frame { seq, body } => {
             let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
             match v.get("live") {
                 Some(l) => {
-                    let text = l["cards"][0]["blocks"][0]["text"].as_str().unwrap_or("");
-                    ("tap", *seq, text.chars().count() as u64)
+                    let (kind, first) = match l["t"].as_str() {
+                        Some("tail") => ("tail", &l["tail"]["blocks"][0]),
+                        _ => ("tap", &l["whole"]["cards"][0]["body"][0]),
+                    };
+                    let text = first["k"][0].as_str().unwrap_or("");
+                    (kind, *seq, text.chars().count() as u64)
                 }
                 None => what(i),
             }
@@ -881,7 +886,7 @@ fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     }
 }
 
-/// 交的是折好的整份：丢过的那几帧不用补，下一格就是此刻的整张；那台看不见了 ⇒ 板清空，接回来之前的增量不再接到旧卡上；关 tab ⇒ 那个会话的卡不留。
+/// 开卡交整份、一段字只交那张卡的尾巴；那台看不见了 ⇒ 板清空，接回来之前的增量不再接到旧卡上；关 tab ⇒ 那个会话的卡不留。
 #[tokio::test]
 async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_board() {
     let (r, rec) = hub();
@@ -891,17 +896,26 @@ async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_
     for n in 0..3 {
         r.on_live_card(&local(), tap(n));
     }
-    let last = rec.all().last().cloned().expect("交了");
-    let WItem::Frame { body, .. } = last else {
-        panic!("{last:?}")
+    let got = rec.all();
+    let WItem::Frame { body, .. } = &got[0] else {
+        panic!("{got:?}")
     };
     let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({"origin":"<local>","live":{"sid":"sid-t","cards":[
-            {"card":0,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"xx"}],
-             "head":copy_core::copy_text("liveCard.state.streaming", &[]),"body":"xx",
-             "last":copy_core::copy_text("runs.last.say", &[])}]}})
+        serde_json::json!({"origin":"<local>","live":{"t":"whole","whole":{"sid":"sid-t","cards":[
+            {"card":0,"rid":"m","phase":"streaming","clipped":false,
+             "head":copy_core::copy_text("liveCard.state.streaming", &[]),"body":[],
+             "last":copy_core::copy_text("runs.last.say", &[])}]}}})
+    );
+    let WItem::Frame { body, .. } = got.last().unwrap() else {
+        panic!("{got:?}")
+    };
+    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"origin":"<local>","live":{"t":"tail","tail":{"sid":"sid-t","card":0,"keep":0,
+            "blocks":[{"t":"p","k":["xx"]}],"last":copy_core::copy_text("runs.last.say", &[])}}})
     );
     r.origin_seen(&local(), false);
     rec.clear();
@@ -932,7 +946,7 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
     r.on_live_card(&crate::origin::Origin::named("pi"), tap(9)); // 别的机器
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
-        vec![("tap", 0, 0), ("tap", 1, 1)]
+        vec![("tap", 0, 0), ("tail", 1, 1)]
     );
     rec.clear();
     r.want("w", 7, 4);
@@ -942,11 +956,46 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
     );
     rec.clear();
     r.on_live_card(&local(), tap(3));
+    r.on_live_card(&local(), tap(4));
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
-        vec![("tap", 3, 3)]
+        vec![("tap", 3, 3), ("tail", 4, 4)],
+        "丢过一格 ⇒ 那一处下一格交整份（不在缺了一格的底子上接尾巴），之后照旧交尾巴"
     );
     assert_eq!(r.stats().history_len, 0, "tap 进了重放留存");
+}
+
+/// 读数（不是判据）：一轮长回答（500 段 × 40 字，每 10 段一个自然段 ⇒ 2 万字、50 段）一段一帧，壳交给界面的字节总数。
+/// 帧照后端那一形写（开卡一帧整卡，之后每帧 `keep` ＝ 已写完的自然段数、尾巴是正在写的那一段）。
+/// 跑法：`cargo test --lib -- --ignored --nocapture event_replay::tests::live_card_bytes_to_the_page_reading`
+#[tokio::test]
+#[ignore]
+async fn live_card_bytes_to_the_page_reading() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 7, &local(), "session-live-card", None, 100_000);
+    rec.clear();
+    r.on_live_card(&local(), tap(0));
+    let piece = "游标分页调用点要跟着改测试也补一条红的".repeat(2);
+    let piece: String = piece.chars().take(40).collect();
+    let mut para = String::new();
+    for k in 0..500u64 {
+        if k % 10 == 0 {
+            para.clear();
+        }
+        para.push_str(&piece);
+        let v = serde_json::json!({"sid":"sid-t","card":0,"n":k + 1,"op":"text","i":0,"keep":k / 10,
+            "tail":[{"t":"p","k":[para.clone()]}]});
+        r.on_live_card(&local(), serde_json::from_value(v).unwrap());
+    }
+    let (mut frames, mut bytes) = (0usize, 0usize);
+    for i in rec.all() {
+        if let WItem::Frame { body, .. } = i {
+            frames += 1;
+            bytes += body.0.len();
+        }
+    }
+    println!("READING live-card to page: frames={frames} bytes={bytes}");
 }
 
 /// T5c：两条流互不串：会话行不交给 tap 订阅、tap 不交给会话行订阅（两向）。
