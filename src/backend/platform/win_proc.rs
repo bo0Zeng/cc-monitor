@@ -39,6 +39,8 @@ extern "system" {
     fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
     fn GetCurrentThread() -> RawHandle;
     fn SetThreadPriority(thread: RawHandle, priority: i32) -> i32;
+    /// 本 crate 里关手写拿到的 Win32 句柄（Job · 令牌 …）只走这一处声明。
+    pub(crate) fn CloseHandle(handle: RawHandle) -> i32;
 }
 
 /// `GetExitCodeProcess` 对还在跑的进程回的那个值。
