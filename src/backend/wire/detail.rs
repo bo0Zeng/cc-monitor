@@ -8,20 +8,20 @@ use copy_core::detail::{failure, os_word, Host};
 use copy_core::discard::{Discard, Why};
 
 /// 这台后端此刻的一份详情。`cmd` 缺 ＝ 协议级失败（还没落到哪条命令上）；`raw` 是下层原话（子进程 stderr · 系统报错）。
-pub(crate) fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
+pub fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
     failure(&now(), Host::Machine(&machine()), cmd, Some(code), raw)
 }
 
 /// 一趟跑起来之后才停下的事（传输收场帧的 `failed` 那一格：没有命令级的码）：时刻 · 机器 · 命令 · 原话。
-pub(crate) fn of_run(cmd: &str, raw: Option<&str>) -> String {
+pub fn of_run(cmd: &str, raw: Option<&str>) -> String {
     failure(&now(), Host::Machine(&machine()), Some(cmd), None, raw)
 }
 
 /// **一次失败投出去的那一份**（[`cmd_wire::failed::Failed`]）：帧面的失败应答与 CLI 面的失败信封都从它出（两个面只是装运不同：一帧 `reply` · stderr 一行）。
-pub(crate) use cmd_wire::failed::Failed;
+pub use cmd_wire::failed::Failed;
 
 /// 拼一份投出去的失败：`cmd` 缺 ＝ 协议级失败（还没落到哪条命令上）；`raw` 是下层原话（进详情、不进句子）。
-pub(crate) fn failed(
+pub fn failed(
     cmd: Option<&str>,
     code: &str,
     said: String,
@@ -40,14 +40,14 @@ pub(crate) fn failed(
 
 /// 给人看那一形（CLI 的 `--text`）：那一句 ＋ 下面原样接复制详情（同界面［复制详情］复制出去的那一段）。
 /// `tz` ＝ 看的那一台的时区：详情里那一行时刻按它填。
-pub(crate) fn text_of(f: &Failed, tz: &crate::common::time::Tz) -> String {
+pub fn text_of(f: &Failed, tz: &crate::common::time::Tz) -> String {
     crate::common::time::fill_at(&copy_core::detail::one(&f.said, &f.detail), tz).into_owned()
 }
 
 /// 投到 CLI 面（**唯一一处**：CLI 控制面与常驻后端起停那几条都经这里）：
 /// stderr 一行 `{code, said, detail, data?}`，退出 2；`text`（[`crate::wire::cli_words::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
 /// `tz` ＝ 看的那一台的时区（`--tz`）：详情里那一行时刻按它填。
-pub(crate) fn emit_to(
+pub fn emit_to(
     f: &Failed,
     err: &mut dyn std::io::Write,
     text: bool,
@@ -66,7 +66,7 @@ pub(crate) fn emit_to(
 
 /// 读不出来那一形在成功应答里的两格：`reason` 是那一句（不带原话）· `detail` 是复制详情（排法同失败应答，码 `unreadable`）。
 /// 读得到 / 不在 ⇒ 两格都是 `null`。各读答（额度账 · 轮换 · 退出策略 · 额度探针）都经这里，不各拼一份。
-pub(crate) fn unreadable(
+pub fn unreadable(
     cmd: &str,
     why: Option<&crate::common::said::Said>,
 ) -> (Option<String>, Option<String>) {
@@ -105,11 +105,11 @@ pub fn emit_err(cmd: &str, code: &str, said: impl Into<copy_core::said::Said>) -
         &failed_of(cmd, code, said.into()),
         &mut std::io::stderr(),
         false,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     )
 }
 
 /// [`emit_err`] 交出去的那一份：那一句进 `said`，下层原话进复制详情（[`failed`] 的 `raw`）。
-pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
+pub fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
     failed(Some(cmd), code, s.said, s.raw.as_deref(), None)
 }

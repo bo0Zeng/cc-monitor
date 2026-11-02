@@ -1,7 +1,7 @@
 //! 计划读面的帧面宿主：参数形状（一格的 agent 视角点到才起 pb：`dump_tests` 里真起假 pb 判）。
 
 use super::*;
-use crate::wire::typed::tests::ask;
+use crate::cross_wire::typed_tests::ask;
 use serde_json::json;
 
 /// `plan-list` 那一条照 [`reads_in`] 读、再拼成清单：判据换成替身数起了几次 pb。

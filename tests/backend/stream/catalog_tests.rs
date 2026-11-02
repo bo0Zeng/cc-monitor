@@ -111,7 +111,7 @@ fn req_decls(name: &str, out: &mut Vec<(String, String)>) -> Option<String> {
     if !spec.takes_input {
         return None;
     }
-    let shape = (spec.run.shape)();
+    let shape = spec.run.shape();
     let mut todo = vec![shape.req.clone()];
     while let Some(t) = todo.pop() {
         if out.iter().any(|(n, _)| *n == t) {

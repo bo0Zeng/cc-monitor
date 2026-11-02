@@ -159,7 +159,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
         "生产段里没有 `write_and_flush_hello` —— 抽取器坏了，本条此刻无效"
     );
 
-    // ② `impl HelloFlushed` 里的关联函数：只许 `for_tests`，且必须 cfg(test)。
+    // ② `impl HelloFlushed` 里的关联函数：只许 `for_tests`，且必须只在测试档与 `test-support`（只由上层的 dev 依赖开）。
     let at = src
         .find("impl HelloFlushed {")
         .expect("找不到 `impl HelloFlushed` —— 抽取器坏了");
@@ -169,7 +169,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
         if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) {
             break;
         }
-        if line.trim() == concat!("#[cfg(te", "st)]") {
+        if line.trim() == concat!("#[cfg(any(te", "st, feature = \"test-support\"))]") {
             cfg_test_seen = true;
         }
         if let Some(rest) = line.trim().strip_prefix("pub fn ") {
@@ -195,7 +195,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
     );
     assert!(
         fns[0].1,
-        "`for_tests` 上没有 `#[cfg(test)]` —— 那它在 release 里也存在，\
+        "`for_tests` 上没有「只在测试档与 `test-support`」那一格 cfg —— 那它在 release 里也存在，\
              「生产路径拿不到见证」这句话当场不成立"
     );
 
@@ -210,526 +210,11 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
              那样任何模块都能 `HelloFlushed(())` 凭空造见证，连函数都不用走。"
     );
 }
+use super::test_support::{said_record, ALL, SECOND_FRONTEND_READS};
 use super::*;
 use serde_json::Value;
 
-/// Helper: assert a line is a single JSON object ending in exactly one
-/// `\n` with no other bare newline, then return its parsed `kind`.
-fn parse_kind(line: &str) -> String {
-    assert!(line.ends_with('\n'), "line must end in newline: {line:?}");
-    let body = line.strip_suffix('\n').unwrap();
-    assert!(
-        !body.contains('\n'),
-        "body must contain no bare newline: {body:?}"
-    );
-    assert!(
-        !body.contains('\r'),
-        "body must contain no bare carriage return: {body:?}"
-    );
-    let v: Value = serde_json::from_str(body).expect("body must be valid JSON");
-    v.get("kind")
-        .and_then(Value::as_str)
-        .expect("kind must be a string")
-        .to_string()
-}
-
-/// 会话流金样的住址（仓根相对）。monitor 那一侧读同一份逐行判自己的解析器。
-const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.jsonl";
-
-/// 每种帧两行：`[全格, 最少格]` —— 全格 ＝ 可选格（`skip_serializing_if` 的）都在；最少格 ＝ 都缺。
-/// 没有可选格的帧两行相同。
-/// `live` 一种 `op` 一形：全格取整卡（带 `run`），最少格取「说完了」那一形（不带 `run`）。
-fn golden_pairs() -> Vec<[Frame; 2]> {
-    use crate::agents::{BlockKind, RunDid};
-    use crate::wire::Life;
-    use crate::wire::{
-        LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
-        SessionContainer, TransferEnd, Unavailable,
-    };
-    use cmd_wire::frame::{RunEndLine, RunExplain, RunLine};
-    let s = |v: &str| v.to_string();
-    let w = |v: &str| crate::common::cells::Words(v.to_string());
-    let both = |f: Frame| [f.clone(), f];
-    vec![
-        [
-            Frame::Hello(crate::wire::Hello {
-                build_id: s("b1"),
-                host_arch: s("x86_64"),
-                version: Some(s("4.2.0")),
-                commands: vec![s("ping")],
-                unavailable: vec![Unavailable {
-                    command: s("tmux-list"),
-                    code: s("no_tmux"),
-                }],
-                host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
-                shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
-                frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
-            }),
-            Frame::Hello(crate::wire::Hello {
-                build_id: s("b1"),
-                host_arch: s("x86_64"),
-                version: None,
-                commands: vec![],
-                unavailable: vec![],
-                host_env: Default::default(),
-                shapes: Default::default(),
-                frames: Default::default(),
-            }),
-        ],
-        [
-            Frame::Line(crate::wire::Line {
-                session_id: s("s1"),
-                path: s("/p/s1.jsonl"),
-                seq: 3,
-                record: Some(crate::agents::record::Record {
-                    at: Some(s("2026-10-09T01:30:00.000Z")),
-                    time_text: Some(crate::common::cells::Words(s("09:30"))),
-                    at_ms: Some(1_791_509_400_000),
-                    ..said_record("u1", "q")
-                }),
-                cwd: Some(s("/w")),
-                byte_offset: 120,
-                rid: Some(s("r1")),
-            }),
-            Frame::Line(crate::wire::Line {
-                session_id: s("s1"),
-                path: s("/p/s1.jsonl"),
-                seq: 3,
-                record: None,
-                cwd: None,
-                byte_offset: 120,
-                rid: None,
-            }),
-        ],
-        [
-            Frame::SessionAdded(crate::wire::SessionAdded {
-                sid: s("s1"),
-                agent_kind: s("claude"),
-                background: true,
-                attachable: Some(true),
-                cwd: Some(s("/w")),
-                project_dir: Some(s("/w")),
-                name: Some(s("n")),
-                path: Some(s("/p/s1.jsonl")),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
-                    .under(Some(s("b"))),
-                name_face: crate::history::search_rules::name_face(
-                    &crate::history::search_rules::LabelFacts {
-                        title: Some(s("t")),
-                        project_dir: Some(s("/w")),
-                        ..Default::default()
-                    },
-                ),
-                hidden: crate::history::session_hidden::judge(
-                    &crate::history::session_hidden::Facts {
-                        bg: true,
-                        rules: crate::history::session_hidden::Rules {
-                            child_tab: cmd_wire::session::Tab::Hide,
-                            bg_tab: cmd_wire::session::Tab::Hide,
-                        },
-                        ..Default::default()
-                    },
-                ),
-                container: Some(SessionContainer::Tmux {
-                    terminal: Some("tmux-3-7".into()),
-                }),
-                pid: 42,
-            }),
-            Frame::SessionAdded(crate::wire::SessionAdded {
-                sid: s("s1"),
-                agent_kind: "claude".to_string(),
-                background: false,
-                attachable: None,
-                cwd: None,
-                project_dir: None,
-                name: None,
-                path: None,
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, host: None }),
-                name_face: crate::history::search_rules::name_face(&Default::default()),
-                hidden: None,
-                container: None,
-                pid: 0,
-            }),
-        ],
-        [
-            Frame::SessionPrimed(crate::wire::SessionPrimed {
-                sid: s("s1"),
-                path: Some(s("/p/s1.jsonl")),
-                lines: Some(9),
-            }),
-            Frame::SessionPrimed(crate::wire::SessionPrimed {
-                sid: s("s1"),
-                path: None,
-                lines: None,
-            }),
-        ],
-        [
-            Frame::SessionStatus(crate::wire::SessionStatus {
-                sid: s("s1"),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
-                    .under(Some(s("b"))),
-                name_face: crate::history::search_rules::name_face(
-                    &crate::history::search_rules::LabelFacts {
-                        title: Some(s("t")),
-                        project_dir: Some(s("/w")),
-                        ..Default::default()
-                    },
-                ),
-                waiting_for: Some(s("permission prompt")),
-                path: Some(s("/r/s1.jsonl")),
-            }),
-            Frame::SessionStatus(crate::wire::SessionStatus {
-                sid: s("s1"),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, host: None }),
-                name_face: crate::history::search_rules::name_face(&Default::default()),
-                waiting_for: None,
-                path: None,
-            }),
-        ],
-        // 全格：被顶替（带顶替它的那条）、带号；少的那一形：可重连（不带号，关不掉 · 终端那两格的形只它有）。
-        [
-            Frame::session_left(s("s1"), Life::Ended, Some(s("s2")), Some(s("b"))),
-            Frame::session_left(s("s1"), Life::Reconnectable, None, None),
-        ],
-        [Frame::overflow(0, true), Frame::overflow(7, false)],
-        [
-            Frame::Reply(crate::wire::Reply {
-                id: s("q1"),
-                ok: false,
-                code: Some(s("bad_args")),
-                said: Some(s("m")),
-                detail: Some(s("码：bad_args")),
-                data: Some(serde_json::json!({"k": 1})),
-            }),
-            Frame::Reply(crate::wire::Reply {
-                id: s("q1"),
-                ok: true,
-                code: None,
-                said: None,
-                detail: None,
-                data: None,
-            }),
-        ],
-        both(Frame::Cancelled(crate::wire::Cancelled { id: s("q1") })),
-        [
-            Frame::changed(crate::wire::Changed::Plan {
-                key: s("/w"),
-                rev: Some(s("r1")),
-                body: Some(cmd_wire::frame::PlanNeeds { needs: 2 }),
-            }),
-            Frame::changed(crate::wire::Changed::Accounts {}),
-        ],
-        both(Frame::SessionsReplayed(crate::wire::SessionsReplayed {})),
-        both(Frame::SessionFileGone(crate::wire::SessionFileGone {
-            session_id: s("s1"),
-            path: s("/p/s1.jsonl"),
-        })),
-        both(Frame::SessionFileReread(crate::wire::SessionFileReread {
-            session_id: s("s1"),
-            path: s("/p/s1.jsonl"),
-            why: RereadWhy::Truncated,
-            lines: 7,
-        })),
-        [
-            Frame::Transfer(crate::wire::Transfer {
-                id: s("x1"),
-                got: 4,
-                total: 4,
-                end: Some(TransferEnd::Done {
-                    bytes: 4,
-                    sha256: Some(s("ab")),
-                }),
-            }),
-            Frame::Transfer(crate::wire::Transfer {
-                id: s("x1"),
-                got: 0,
-                total: 4,
-                end: None,
-            }),
-        ],
-        both(Frame::Probe(crate::wire::Probe {
-            ticket: s("t1"),
-            cell: serde_json::json!({"reached": "ssh"}),
-        })),
-        [
-            Frame::FilesBatch(crate::wire::FilesBatch {
-                ticket: s("b1"),
-                done: 1,
-                total: 3,
-                current: Some(cmd_wire::files::WirePath::from("a.txt")),
-                bytes_done: Some(512),
-                bytes_total: Some(2048),
-            }),
-            Frame::FilesBatch(crate::wire::FilesBatch {
-                ticket: s("b1"),
-                done: 3,
-                total: 3,
-                current: None,
-                bytes_done: None,
-                bytes_total: None,
-            }),
-        ],
-        [
-            Frame::LiveCard(LiveCard {
-                sid: s("s1"),
-                run: Some(s("a1")),
-                card: 0,
-                n: 0,
-                op: LiveOp::Open {
-                    rid: s("r1"),
-                    phase: LivePhase::Awaiting,
-                    clipped: true,
-                    blocks: vec![
-                        LiveBlock {
-                            kind: BlockKind::Text,
-                            text: Some(s("hi")),
-                            tool: None,
-                        },
-                        LiveBlock {
-                            kind: BlockKind::Tool,
-                            text: None,
-                            tool: Some(s("Bash")),
-                        },
-                    ],
-                },
-            }),
-            Frame::LiveCard(LiveCard {
-                sid: s("s1"),
-                run: None,
-                card: 0,
-                n: 1,
-                op: LiveOp::Awaiting,
-            }),
-        ],
-        [
-            Frame::SessionRuns(crate::wire::SessionRuns {
-                sid: s("s1"),
-                runs: vec![RunInfo {
-                    run: s("a1"),
-                    label: Some(s("scan")),
-                    kind: Some(s("Explore")),
-                    tool: Some(s("t1")),
-                    parent: Some(s("a9")),
-                    state: RunState::Failed,
-                    status_text: crate::common::cells::Words(s("核心·失败")),
-                    took_text: Some(crate::common::cells::Words(s("核心·用时 2s"))),
-                    label_text: crate::common::cells::Words(s("scan")),
-                    last: Some(RunDid::Tool { name: s("Bash") }),
-                    last_text: Some(crate::common::cells::Words(s("调用 Bash"))),
-                    waiting: Some(s("Bash")),
-                    started_ms: Some(1_000),
-                    started_text: Some(s("00:00 起")),
-                    active_ms: Some(2_000),
-                    ended_ms: Some(3_000),
-                    why: Some(RunWhy::Reported),
-                    error: Some(s("boom")),
-                    calls: 7,
-                    background: true,
-                    facts: vec![
-                        RunLine {
-                            text: w("核心·用时 {dur}"),
-                            from: Some(1_000),
-                        },
-                        RunLine {
-                            text: w("核心·工具 ×7"),
-                            from: None,
-                        },
-                    ],
-                    explain: Some(RunExplain {
-                        lead: Some(w("核心·不明")),
-                        line: RunLine {
-                            text: w("核心·失败说明"),
-                            from: None,
-                        },
-                        note: Some(w("核心·补一句")),
-                        refresh: true,
-                    }),
-                    end: Some(RunEndLine {
-                        head: w("核心·失败"),
-                        sub: RunLine {
-                            text: w("核心·记录 {dur}"),
-                            from: Some(2_000),
-                        },
-                    }),
-                    needs: crate::observe::recognize::facts::dress_ask_with(
-                        None,
-                        Some(crate::agents::asks::specimen()),
-                        1,
-                    ),
-                }],
-                ended: vec![RunEnded {
-                    run: s("a0"),
-                    tool: s("t0"),
-                    state: RunState::Failed,
-                    status_text: crate::common::cells::Words(s("核心·失败")),
-                }],
-                groups: cmd_wire::frame::RunGroups {
-                    running: vec![],
-                    recent: vec![s("a1")],
-                    older: vec![s("a2")],
-                    older_text: None,
-                    ..Default::default()
-                },
-                summary: Some(w("核心·agent 1")),
-            }),
-            Frame::SessionRuns(crate::wire::SessionRuns {
-                sid: s("s1"),
-                runs: vec![RunInfo {
-                    run: s("a1"),
-                    ..RunInfo::default()
-                }],
-                ended: vec![],
-                groups: cmd_wire::frame::RunGroups::default(),
-                summary: None,
-            }),
-        ],
-        [
-            Frame::SessionBranch(crate::wire::SessionBranch {
-                sid: s("s1"),
-                path: s("/p/s1.jsonl"),
-                at: 0,
-                off: vec![s("u2"), s("a2")],
-                sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
-            }),
-            Frame::SessionBranch(crate::wire::SessionBranch {
-                sid: s("s1"),
-                path: s("/p/s1.jsonl"),
-                at: 2,
-                off: vec![],
-                sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
-            }),
-        ],
-        [
-            Frame::TerminalScreen(crate::wire::TerminalScreen {
-                ticket: s("t1"),
-                seq: 2,
-                view: serde_json::from_value(serde_json::json!({"screen": "00000000000000a1", "cols": 80, "rows": 1, "cursor": {"x": 0, "y": 0, "visible": true}, "lines": [{"text": "ok", "spans": [{"from": 0, "to": 2, "fg": "green"}]}], "scrollback_lines": 0, "capped": false, "captured_at": 1, "captured_at_text": "00:00:01"})).unwrap(),
-                input: cmd_wire::session::TermInput::Shared,
-            }),
-            Frame::TerminalScreen(crate::wire::TerminalScreen {
-                ticket: s("t1"),
-                seq: 1,
-                view: serde_json::from_value(serde_json::json!({"screen": "0000000000000000", "cols": 1, "rows": 0, "cursor": {"x": 0, "y": 0, "visible": false}, "lines": [], "scrollback_lines": 0, "capped": false, "captured_at": 0, "captured_at_text": "00:00:00"})).unwrap(),
-                input: cmd_wire::session::TermInput::Shared,
-            }),
-        ],
-        [
-            Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
-                ticket: s("t1"),
-                why: crate::wire::FollowEnd::TooBig,
-                said: s("that-sentence-1"),
-            }),
-            Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
-                ticket: s("t1"),
-                why: crate::wire::FollowEnd::Gone,
-                said: s("that-sentence-2"),
-            }),
-        ],
-        [
-            Frame::Relayed(cmd_wire::frame::Relayed::Line {
-                machine: s("m1"),
-                line: s(r#"{"kind":"sessions_replayed"}"#),
-            }),
-            Frame::Relayed(cmd_wire::frame::Relayed::Ended { machine: s("m1") }),
-        ],
-    ]
-}
-
-/// `Frame` 的全部变体名（从源码的 `pub enum Frame` 里数，异源于上面的样本）→ 线上 kind（snake_case）。
-fn frame_variant_kinds() -> std::collections::BTreeSet<String> {
-    let src = include_str!("../../../src/common/cmd-wire/src/frame.rs");
-    let beg = src.find("pub enum Frame").expect("找不到 Frame 枚举");
-    let end = src[beg..].find("\n}\n").expect("找不到枚举结尾") + beg;
-    src[beg..end]
-        .lines()
-        .filter_map(|l| {
-            let t = l.trim_end();
-            let head = t.strip_prefix("    ")?;
-            if head.starts_with(' ') || !head.starts_with(|c: char| c.is_ascii_uppercase()) {
-                return None;
-            }
-            if !(t.contains('{') || t.ends_with(',')) {
-                return None;
-            }
-            let name: String = head
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .collect();
-            let mut kind = String::new();
-            for (i, c) in name.chars().enumerate() {
-                if c.is_ascii_uppercase() && i > 0 {
-                    kind.push('_');
-                }
-                kind.push(c.to_ascii_lowercase());
-            }
-            Some(kind)
-        })
-        .collect()
-}
-
-/// ★ 会话流跨语言金样：金样 == 真序列化器此刻的产出（逐行字节）；金样的 kind 集合 == `Frame` 的全部变体。
-///
-/// 每一行都是单行 JSON、`\n` 收尾。
-/// 重打是显式动作：`REGOLD_SESSION_STREAM=1` 跑本条写盘；不设就只比、不一致就红并打印差异。
-#[test]
-fn the_session_stream_golden_is_what_the_serializer_writes() {
-    let mut produced = String::new();
-    let mut kinds = std::collections::BTreeSet::new();
-    for pair in golden_pairs() {
-        let pair_kinds: Vec<String> = pair
-            .iter()
-            .map(|f| {
-                let line = to_line(f).expect("serialize");
-                let kind = parse_kind(&line);
-                produced.push_str(&line);
-                kind
-            })
-            .collect();
-        assert_eq!(
-            pair_kinds[0], pair_kinds[1],
-            "一对样本不是同一种帧：{pair_kinds:?}"
-        );
-        assert!(
-            kinds.insert(pair_kinds[0].clone()),
-            "{} 出现了两对样本",
-            pair_kinds[0]
-        );
-    }
-    let variants = frame_variant_kinds();
-    assert!(
-        variants.len() >= 20,
-        "只数出 {} 个 Frame 变体 —— 抽取坏了，下面的对拍会空转",
-        variants.len()
-    );
-    assert_eq!(
-        kinds, variants,
-        "金样的 kind 集合与 `Frame` 的变体对不上 —— 新增的帧要在 `golden_pairs` 补「全格」「最少格」两行"
-    );
-
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(SESSION_STREAM_GOLDEN);
-    if std::env::var_os("REGOLD_SESSION_STREAM").is_some() {
-        std::fs::write(&path, &produced).expect("写金样");
-    }
-    let on_disk = std::fs::read_to_string(&path).expect("读金样");
-    if on_disk != produced {
-        let diff: Vec<String> = on_disk
-            .lines()
-            .zip(produced.lines())
-            .enumerate()
-            .filter(|(_, (a, b))| a != b)
-            .map(|(i, (a, b))| format!("第 {} 行\n  金样：{a}\n  此刻：{b}", i + 1))
-            .collect();
-        panic!(
-            "会话流金样与序列化器此刻的产出不一致（金样 {} 行 · 此刻 {} 行）：\n{}\n\
-             形状是有意改的 ⇒ `REGOLD_SESSION_STREAM=1` 重打这一条，连同手机端一起对。",
-            on_disk.lines().count(),
-            produced.lines().count(),
-            diff.join("\n")
-        );
-    }
-}
+// 会话流跨语言金样那几条（夹具经历史 · 识别两层造）挂主 crate：`on_upper_tests.rs`。
 
 /// ★ W1：`changed` 的**逐字节**金标准。
 #[test]
@@ -846,20 +331,20 @@ fn live_frames_have_exactly_these_bytes() {
                     phase: LivePhase::Streaming,
                     clipped: false,
                     blocks: vec![
-                        LiveBlock { kind: BlockKind::Thinking, text: None, tool: None },
-                        LiveBlock { kind: BlockKind::Text, text: Some("你好".into()), tool: None },
+                        LiveBlock { kind: BlockKind::Thinking, md: None, tool: None },
+                        LiveBlock { kind: BlockKind::Text, md: Some(vec![cmd_wire::md::MdBlock::P { k: vec![cmd_wire::md::Inl::S("你好".into())] }]), tool: None },
                     ],
                 },
             ),
-            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"text\":\"你好\"}]}\n",
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"md\":[{\"t\":\"p\",\"k\":[\"你好\"]}]}]}\n",
         ),
         (
             live(Some("a1"), 1, LiveOp::Block { i: 2, block: BlockKind::Tool, tool: Some("Bash".into()) }),
             "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"card\":12,\"n\":1,\"op\":\"block\",\"i\":2,\"block\":\"tool\",\"tool\":\"Bash\"}\n",
         ),
         (
-            live(None, 2, LiveOp::Text { i: 1, s: "hi".into() }),
-            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":2,\"op\":\"text\",\"i\":1,\"s\":\"hi\"}\n",
+            live(None, 2, LiveOp::Text { i: 1, keep: 3, tail: vec![cmd_wire::md::MdBlock::Rule] }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":2,\"op\":\"text\",\"i\":1,\"keep\":3,\"tail\":[{\"t\":\"rule\"}]}\n",
         ),
         (
             live(None, 3, LiveOp::Awaiting),
@@ -1001,35 +486,6 @@ fn b64_matches_the_rfc_4648_test_vectors() {
     }
 }
 
-/// 叫这条会话什么那两格：名字（`session_label`）＋ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
-#[test]
-fn the_name_face_carries_the_name_and_the_project() {
-    use crate::history::search_rules::LabelFacts;
-    let face =
-        |f: LabelFacts| serde_json::to_value(crate::history::search_rules::name_face(&f)).unwrap();
-    let proj = || Some("/w/proj/".to_string());
-    let untitled = copy_core::copy_text("history.row.untitled", &[]);
-    assert_eq!(
-        face(LabelFacts {
-            first: "修一下".into(),
-            project_dir: proj(),
-            ..Default::default()
-        }),
-        serde_json::json!({"label": "修一下", "label_project": "proj"})
-    );
-    assert_eq!(
-        face(LabelFacts {
-            project_dir: Some("C:\\w\\q".into()),
-            ..Default::default()
-        }),
-        serde_json::json!({"label": untitled, "label_project": "q"})
-    );
-    assert_eq!(
-        face(LabelFacts::default()),
-        serde_json::json!({ "label": untitled })
-    );
-}
-
 /// `overflow` 只有那一句：只丢了行 · 已重新对齐 · 两样都有，三种各一句（数在句子里）。
 #[test]
 fn the_overflow_frame_is_the_one_sentence() {
@@ -1071,31 +527,6 @@ fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
     let mut d = SeqCounter::default();
     assert_eq!(d.next("/x"), 0);
     assert_eq!(d.next("/x"), 1);
-}
-
-/// 一条最少格的 `said` 通用记录（结构占位）。
-fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
-    use crate::agents::record::{Block, Body, Record};
-    Record {
-        agent: "claude".into(),
-        id: id.into(),
-        at: None,
-        time_text: None,
-        at_ms: None,
-        draw: crate::agents::record::Draw::Card,
-        human: true,
-        body: Body::Said {
-            who: crate::agents::UserText {
-                speaker: crate::agents::Speaker::Human,
-                text: text.into(),
-                pasted: Vec::new(),
-            },
-            blocks: vec![Block::text(text.into())],
-            results: Default::default(),
-            cwd: None,
-            attachments: Vec::new(),
-        },
-    }
 }
 
 #[test]
@@ -1169,34 +600,6 @@ fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
         to_line(&Frame::SessionsReplayed(crate::wire::SessionsReplayed {})).unwrap(),
         "{\"kind\":\"sessions_replayed\"}\n"
-    );
-}
-
-/// `session_added.pid` 的线上形：恒在、排在最后、是个整数。
-#[test]
-fn loc1b_session_added_carries_the_pid() {
-    let line = to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "s".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-            activity: None,
-            host: None,
-        }),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        hidden: None,
-        container: None,
-        pid: 4242,
-    }))
-    .unwrap();
-    assert_eq!(
-        line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"host\":\"direct\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1281,53 +684,12 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
 }
 
 // ═══ 第二个前端在读的形状：冻结（只许加字段）═══════════════════════════════
-//
-// 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
-// （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
-// 会话三帧（`session_added` · `session_status` · `session_left`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
-
-/// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
-pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
-    ("hello", "build_id", "string"),
-    ("hello", "host_arch", "string"),
-    ("line", "session_id", "string"),
-    ("line", "path", "string"),
-    ("line", "seq", "number"),
-    ("line", "byte_offset", "number"),
-    // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `file` …）整件冻结在格目录
-    // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
-    ("line", "record", "object"),
-    ("overflow", "said", "string"),
-    // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
-    // 本表钉的是**有人在读它**。⚠ 一份样本只带得动一种 `op`：取整卡（`open`）那一支；增量与撤卡那几种的字节由逐字节判据钉。
-    ("live_card", "sid", "string"),
-    ("live_card", "run", "string"),
-    ("live_card", "card", "number"),
-    ("live_card", "n", "number"),
-    ("live_card", "op", "string"),
-    ("live_card", "rid", "string"),
-    ("live_card", "phase", "string"),
-    ("live_card", "clipped", "bool"),
-    ("live_card", "blocks", "array"),
-    // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `said` / `detail`）是
-    // 失败卡与「复制详情」的全部原料：`detail` 跟着帧回，而最常见的那条错正好是「联系不上」—— 那时再去取就取不到。
-    ("reply", "id", "string"),
-    ("reply", "ok", "bool"),
-    ("reply", "code", "string"),
-    ("reply", "said", "string"),
-    ("reply", "detail", "string"),
-    ("reply", "data", "object"),
-    ("cancelled", "id", "string"),
-    ("request", "id", "string"),
-    ("request", "cmd", "string"),
-    ("request", "args", "object"),
-    ("request", "within_ms", "number"),
-];
+// 那张表住 `test_support::SECOND_FRONTEND_READS`（`build_id_guard` 也读它）。
 
 /// 每一种帧都填满（可选格全给值），这样「这一格还在不在、是什么类型」才看得见。
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
-    let frames = vec![
+    let frames = [
         Frame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
@@ -1359,7 +721,9 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
                 clipped: false,
                 blocks: vec![crate::wire::LiveBlock {
                     kind: crate::agents::BlockKind::Text,
-                    text: Some("hi".into()),
+                    md: Some(vec![cmd_wire::md::MdBlock::P {
+                        k: vec![cmd_wire::md::Inl::S("hi".into())],
+                    }]),
                     tool: None,
                 }],
             },
@@ -1437,7 +801,7 @@ fn the_shapes_the_second_frontend_reads_stay_put() {
 /// 推出去的帧在写出去那一下按这条流的时区写钟面（[`Frame::stamp`]）：`line.record.timeText`。
 #[test]
 fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
-    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
     let tz_of = |line: &str| serde_json::from_str::<Request>(line).expect("信封认得").tz;
     assert_eq!(tz_of(r#"{"id":"1","cmd":"ping","tz":"Asia/Shanghai"}"#), sh);
     for line in [
@@ -1446,7 +810,7 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         r#"{"id":"1","cmd":"ping","tz":480}"#,
         r#"{"id":"1","cmd":"ping","tz":null}"#,
     ] {
-        assert_eq!(tz_of(line), crate::Tz::default(), "{line}");
+        assert_eq!(tz_of(line), crate::common::time::Tz::default(), "{line}");
     }
     let rec = crate::agents::claudecode::parse::translated(&crate::agents::Line::new(r#"{"type":"user","uuid":"u","timestamp":"2026-10-07T20:30:00.000Z","message":{"role":"user","content":"hi"}}"#, 0))
     .unwrap()
@@ -1471,123 +835,6 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         "{}",
         to_line(&f).unwrap()
     );
-}
-
-// ═══ 第二个前端调的一次性子命令：冻结（叫法）══════════════════════════════════════
-//
-// 手机只调这两条（其余都走常驻流上的帧命令）：起 / 找常驻后端 · 接常驻后端的小中继（那台是哪一版在 attach 之后的 hello 里）。
-
-/// 第二个前端调的一次性子命令（都不带位置参数；`--resident-ensure` 认一个 `--replace`）。叫法一改它那一侧就叫不通了。
-const SECOND_FRONTEND_SUBCOMMANDS: &[&str] = &["--resident-ensure", "--resident-attach"];
-
-/// 每一条都还在子命令表里、还进一次性模式。
-#[test]
-fn the_subcommands_the_second_frontend_calls_stay_put() {
-    for flag in SECOND_FRONTEND_SUBCOMMANDS {
-        assert!(
-            crate::stream::cli::is_subcommand(flag),
-            "{flag} 不是子命令了"
-        );
-        assert!(
-            crate::stream::cli::is_query_mode(&[flag.to_string()]),
-            "{flag} 不进一次性模式了"
-        );
-    }
-}
-
-/// 〔G2〕会话状态带写好的字与语气（对所有出口一次补齐）：整份脸的 `name` · `tone` · `order`（活着的几态 · 读记录中 ·
-/// 离开「活」之后的两种，后两种另带悬停那一句 `tip`）。字走文案表，出口照抄、不按码取字。
-#[test]
-fn session_frames_carry_the_state_written_and_toned() {
-    use crate::agents::SessionActivity as A;
-    use crate::wire::Life;
-    let status = |a: Option<A>| {
-        serde_json::to_value(Frame::<crate::agents::record::Record>::SessionStatus(
-            crate::wire::SessionStatus {
-                sid: "s".into(),
-                face: crate::wire::SessionFace::of(Life::Live {
-                    activity: a,
-                    host: None,
-                }),
-                name_face: crate::history::search_rules::name_face(&Default::default()),
-                waiting_for: None,
-                path: None,
-            },
-        ))
-        .unwrap()["face"]
-            .clone()
-    };
-    for (a, key, tone) in [
-        (A::Working, "beSession.activity.working", "now"),
-        (A::NeedsYou, "beSession.activity.needsYou", "need"),
-        (A::Idle, "beSession.activity.idle", "plain"),
-        (
-            A::BackgroundWork,
-            "beSession.activity.backgroundWork",
-            "busy",
-        ),
-    ] {
-        let v = status(Some(a));
-        assert_eq!(v["name"], copy_core::copy_text(key, &[]), "{a:?}");
-        assert_eq!(v["tone"], tone, "{a:?}");
-    }
-    // 说不清在干什么（活着、那一家没说）⇒ 核心照实写「说不清」、语气 plain（不说一句没判出来的「运行中」）。
-    let none = status(None);
-    assert_eq!(
-        none["name"],
-        copy_core::copy_text("beSession.activity.unclear", &[])
-    );
-    assert_ne!(
-        none["name"],
-        copy_core::copy_text("beSession.activity.working", &[]),
-        "判不出却写了运行中"
-    );
-    assert_eq!(none["tone"], "plain");
-
-    // V10 监控板组内的序由核心给（`order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 ＝ 说不清（序跟着语气走）。
-    let order = |a: Option<A>| status(a)["order"].as_u64().expect("order 必有");
-    let ranked = [
-        Some(A::NeedsYou),
-        Some(A::Working),
-        Some(A::BackgroundWork),
-        Some(A::Idle),
-    ];
-    for w in ranked.windows(2) {
-        assert!(order(w[0]) < order(w[1]), "{:?} 应排在 {:?} 前", w[0], w[1]);
-    }
-    assert_eq!(
-        order(None),
-        order(Some(A::Idle)),
-        "说不清与闲着同一档（语气都是 plain）"
-    );
-    // 读记录中：同「说不清」那一档，字照实说。
-    let reading =
-        serde_json::to_value(crate::wire::SessionFace::of(Life::Reading { host: None })).unwrap();
-    assert_eq!(reading["tone"], "plain");
-    assert_eq!(reading["order"], none["order"]);
-    assert!(
-        reading["life"].get("activity").is_none(),
-        "读记录中不说判出了哪一态"
-    );
-
-    for (f, name, hint) in [
-        (
-            Life::Reconnectable,
-            "sessionState.reconnectable.name",
-            "sessionState.reconnectable.tooltip",
-        ),
-        (
-            Life::Ended,
-            "sessionState.ended.name",
-            "sessionState.ended.tooltip",
-        ),
-    ] {
-        let v =
-            &serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"];
-        assert_eq!(v["name"], copy_core::copy_text(name, &[]), "{f:?}");
-        assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
-        assert_eq!(v["tone"], "plain", "{f:?}");
-    }
 }
 
 /// `changed` 的小成品超了主题表那一格的上限 ⇒ 不带（客户端重问）；没超 ⇒ 照带。
@@ -1618,7 +865,7 @@ fn a_changed_body_over_its_cap_is_left_off() {
 /// `changed` 丢了能不能恢复照主题表答。
 #[test]
 fn changed_loss_follows_the_topic_table() {
-    for t in super::topic::tests::ALL {
+    for t in ALL {
         let f = Frame::changed(
             crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
         );
@@ -1639,7 +886,7 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     for f in &frames {
         let line = to_line(f).unwrap();
         assert!(
-            line.len() <= crate::REPLY_PAGE_BYTES.as_len(),
+            line.len() <= REPLY_PAGE_BYTES.as_len(),
             "一帧 {} 字节",
             line.len()
         );
@@ -1862,9 +1109,7 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         .unwrap(),
     );
     let produced = serde_json::to_string_pretty(&produced).unwrap() + "\n";
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(SESSION_FACE_GOLDEN);
+    let path = guard_core::addr::repo_root().join(SESSION_FACE_GOLDEN);
     if std::env::var_os("REGOLD_SESSION_FACE").is_some() {
         std::fs::write(&path, &produced).expect("写金样");
     }

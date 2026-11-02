@@ -2,7 +2,7 @@
 import type { LiveCardNow } from "./LiveCardNow";
 
 /**
- * 某会话某运行此刻的活卡（整份，先来的在前）：交给界面 / Kotlin 的就是它；空 ⇒ 那里此刻没有卡。
+ * 某会话某运行此刻的活卡（整份，先来的在前）：空 ⇒ 那里此刻没有卡。
  */
 export type LiveCards = { sid: string, 
 /**

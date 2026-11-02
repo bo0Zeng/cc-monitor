@@ -1,0 +1,53 @@
+# 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸。只引 agents · relay · 纯工具 · 平台四层。
+[package]
+name = "backend-wire"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（判据夹具 · typed 命令的形状）：上层的 `[dev-dependencies]` 开它。
+test-support = ["ts"]
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts"]
+
+[dependencies]
+backend-agents = { path = "../agents" }
+backend-relay = { path = "../relay" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 回显给宿主的那两个环境量名之一（数据目录）。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# attach 那一行的新旧判定（序键是 `BUILD_ID` 的）。
+deploy-contract = { path = "../../common/deploy-contract" }
+relay-route-core = { path = "../../common/relay-route-core" }
+serde.workspace = true
+serde_json.workspace = true
+# attach 之后那条流按帧 full flush 的压缩（客户端要了 deflate 才压）。
+flate2.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+# 契约错记进日志的那条诊断怎么读（纯工具那一层的 `test-support`）。
+backend-common = { path = "../common", features = ["test-support"] }
+# 对拍客户端那一侧：会话簿的「那台看不见」那一张 · 握手行的读法（判据两端同一份）。
+resident-client = { path = "../../comms/resident-client" }
+comms-inward = { path = "../../comms/inward" }

@@ -1095,7 +1095,7 @@ fn exec_shell(line: &str, why: &str, account: Note<'_>, own: &crate::platform::f
 
 /// 命令级 code —— **「这台机器上没有 POSIX shell」**。
 ///
-/// ⚠ 与 `crate::NO_TMUX` 同形（`ccm: 起不来 —— <code>: <话>`），但**不是**一条 wire code：
+/// ⚠ 与 `crate::wire::NO_TMUX` 同形（`ccm: 起不来 —— <code>: <话>`），但**不是**一条 wire code：
 /// 它只出现在 `ccm` 这条用户终端命令的 stderr 上，`inbound::REGISTRY` 里没有它、
 /// 也不该有 —— 那张表登记的是 monitor↔backend 帧面上的 code，而这里是一次性模式的出口。
 pub(crate) const NO_SHELL: &str = "no_shell";

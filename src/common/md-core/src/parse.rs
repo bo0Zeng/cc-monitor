@@ -19,6 +19,27 @@ pub fn parse(src: &str) -> Doc {
     segment(blocks)
 }
 
+/// 一段原文的顶层节点逐个：起在原文哪一行的行首（字节偏移）· 收成的那一串块（段落里独占的块级公式会把它拆成几块；
+/// 脚注定义收不成块、给空串）。不分段、不收脚注：只给 [`crate::Growing`] 用，它只重解析最后一个顶层节点往后的那一截。
+pub(crate) fn parse_top(src: &str) -> Vec<(usize, Vec<MdBlock>)> {
+    let arena = Arena::new();
+    let root = parse_document(&arena, src, &options());
+    let mut conv = Conv::new(src);
+    let mut out = Vec::new();
+    for child in root.children() {
+        let line = child.data().sourcepos.start.line;
+        let at = conv
+            .lines
+            .get(line.wrapping_sub(1))
+            .copied()
+            .unwrap_or(src.len());
+        let mut blocks = Vec::new();
+        conv.block(child, &mut blocks);
+        out.push((at, blocks));
+    }
+    out
+}
+
 fn options() -> Options<'static> {
     let mut o = Options::default();
     let e = &mut o.extension;

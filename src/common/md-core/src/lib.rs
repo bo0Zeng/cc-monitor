@@ -11,14 +11,18 @@
 //!
 //! 分段见 [`segment`]：按顶层块累计字数，到 [`SEG_BYTES`] 就在下一个顶层块前记一个段起点；[`seg_blocks`] 取一段。
 //! 超长代码切开的几块各自高亮（语法状态从每块的头一行起）。
+//!
+//! 正在长的正文（活卡）见 [`Growing`]：每接上一截只重解析最后一个顶层块，交「前几块不变 ＋ 尾巴」。
 
 pub use cmd_wire::md;
 
+mod growing;
 mod highlight;
 mod parse;
 mod refs;
 mod segment;
 
+pub use growing::Growing;
 pub use highlight::Highlighter;
 pub use md::*;
 pub use parse::parse;

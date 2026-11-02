@@ -5,18 +5,43 @@
 //! escapes any inner newline as `\n` (two chars), so the only literal newline
 //! on the wire is the trailing terminator appended by [`to_line`].
 //!
-//! 这一份是**帧面的协议零件**那一层的根（最底下，只引 `platform` · `common` · `agents` · `relay`；`layering_guard` 钉着）：
-//! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住上面的 `crate::stream`。
+//! 这一份是**帧面的协议零件**那一层的根（只引 `platform` · `common` · `agents` · `relay`）：
+//! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住主 crate 的 `stream`。
+//!
+//! 独立的包 `backend-wire`：引了上层就编不过。上层只够得到这里的 `pub` 项。
+
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
+
+// 包里照旧写 `crate::wire::…` · `crate::agents::…` · `crate::relay::…` · `crate::common::…` · `crate::platform::…`。
+extern crate self as wire;
+use backend_agents as agents;
+use backend_common as common;
+use backend_platform as platform;
+use backend_relay as relay;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
 
 pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的选项词（与请求信封同名的那几格）· 帧命令名到子命令的拼法
-pub(crate) mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
-pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
+pub mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
+pub mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
-pub mod listen; // 常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
-pub(crate) mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
+pub mod listen; // 常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 `stream/entry.rs`）
+pub mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
 pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
-pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；`main` 装 `stream::topic_body`）
-pub(crate) mod typed; // typed 命令：入参 · 回包 · 错误码各是一个 Rust 类型
+pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；进程入口 `stream/entry.rs` 装 `stream::topic_body`）
+pub mod typed; // typed 命令：入参 · 回包 · 错误码各是一个 Rust 类型
 
 use crate::agents::record::RecordExt as _;
 use crate::common::cells::{Tone, Words};
@@ -43,7 +68,7 @@ use cmd_wire::session::Launch;
 /// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）：比线上那一格 [`WireLife`] 多带写字要的几样
 /// （住在哪种宿主里 · 记录读没读完 · 那台看不见）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Life {
+pub enum Life {
     /// 进程在：那一家说在干什么（说不清 ⇒ `None`）· 住在哪（判不了 ⇒ `None`）。
     Live {
         activity: Option<SessionActivity>,
@@ -63,7 +88,7 @@ pub(crate) enum Life {
 
 impl Life {
     /// 活会话的那一段：容器那一格（宣告时判的；判不了 ⇒ 不知道在不在 tmux 里）。
-    pub(crate) fn live(activity: Option<SessionActivity>, c: Option<&SessionContainer>) -> Self {
+    pub fn live(activity: Option<SessionActivity>, c: Option<&SessionContainer>) -> Self {
         Life::Live {
             activity,
             host: housed(c),
@@ -71,12 +96,12 @@ impl Life {
     }
 
     /// 记录还没读完的那一段（容器同上）。
-    pub(crate) fn reading(c: Option<&SessionContainer>) -> Self {
+    pub fn reading(c: Option<&SessionContainer>) -> Self {
         Life::Reading { host: housed(c) }
     }
 
     /// 清单行 · 搜索命中那一段：那台判的一生（清单不看容器）。
-    pub(crate) fn of_wire(life: &WireLife) -> Self {
+    pub fn of_wire(life: &WireLife) -> Self {
         match life {
             WireLife::Live { activity } => Life::Live {
                 activity: *activity,
@@ -92,7 +117,7 @@ impl Life {
 
 /// 一条活会话住在哪（容器那一格去掉句柄）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Housed {
+pub enum Housed {
     /// 在某种宿主的终端里。
     In(TerminalHost),
     /// 不在任何宿主里。
@@ -109,7 +134,7 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
 
 /// **一条会话整份脸的构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判；那台看不见时那一张住会话簿那一层
 /// （`resident_client::book::unseen`，桌面与手机核心同一处）。
-pub(crate) trait SessionFaceExt: Sized {
+pub trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
@@ -382,9 +407,9 @@ fn live_face(
     }
 }
 
-/// **这条会话叫什么那两格的唯一构造口**（[`NameFace`]）：`label` ＝ [`crate::history::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；
+/// **这条会话叫什么那两格的唯一构造口**（[`NameFace`]）：`label` ＝ 历史那一层的 `search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；
 /// `label_project` ＝ 项目目录最后一截。
-pub(crate) trait NameFaceExt: Sized {
+pub trait NameFaceExt: Sized {
     fn of_parts(label: String, label_project: Option<String>) -> Self;
 }
 
@@ -439,7 +464,7 @@ pub enum TapEnd {
 }
 
 /// 传输收场那一形（跑起来之后才停下的那一形写复制详情）。
-pub(crate) trait TransferEndExt {
+pub trait TransferEndExt {
     fn failed(why: String, code: Option<String>, cmd: &str, raw: Option<&str>) -> TransferEnd;
 }
 
@@ -456,7 +481,7 @@ impl TransferEndExt for TransferEnd {
 }
 
 /// 造帧的那几处（写字的那几种帧只经这里造）。
-pub(crate) trait FrameMake {
+pub trait FrameMake {
     /// 成功、不带数据的那一种应答。
     fn ok(id: &str) -> Frame;
 
@@ -651,7 +676,7 @@ impl FrameRules for Frame {
         let fixed = serde_json::to_vec(&page(usize::MAX, &[], BranchSum::default().hex()))
             .map_or(0, |b| b.len())
             + 1;
-        let room = crate::REPLY_PAGE_BYTES.as_len().saturating_sub(fixed);
+        let room = REPLY_PAGE_BYTES.as_len().saturating_sub(fixed);
         let mut out = Vec::new();
         let mut start = at;
         loop {
@@ -753,10 +778,10 @@ pub struct Request {
     pub view: serde_json::Value,
     /// 看的那一台的时区（IANA 名）：回包里「几点」「今天 / 昨天」按它写。可缺；缺 · 认不得 ⇒ UTC（不拒）。
     #[serde(default, deserialize_with = "lenient_tz")]
-    pub(crate) tz: crate::common::time::Tz,
+    pub tz: crate::common::time::Tz,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
-    pub(crate) until: Option<crate::platform::child::Until>,
+    pub until: Option<crate::platform::child::Until>,
 }
 
 /// `within_ms` 的宽读：只认正整数，别的（字符串 · 负数 · 小数 · 零 · null）一律当没带。
@@ -773,7 +798,7 @@ fn lenient_tz<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::common::t
 }
 
 /// `within_ms` 那一格的读法（帧面信封 · CLI 面的期限口同一处读）：只认正整数，别的当没带。
-pub(crate) fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
+pub fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
     v.as_u64().filter(|&n| n > 0)
 }
 
@@ -803,9 +828,9 @@ pub struct HelloFlushed(());
 impl HelloFlushed {
     /// 只给测试用的见证。
     ///
-    /// 生产路径拿不到它 —— `#[cfg(test)]` 在 release 构建里不存在，
+    /// 生产路径拿不到它 —— 测试档与 `test-support`（只由上层的 dev 依赖开）在 release 构建里都不存在，
     /// 所以「不可表示」这条性质不受它影响。
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn for_tests() -> Self {
         Self(())
     }
@@ -882,7 +907,7 @@ impl Default for SeqCounter {
 }
 
 /// 读一份 hello 帧成人读摘要（`build=.. arch=.. cmds=..`）：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时进日志。
-pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
+pub fn hello_summary(h: &serde_json::Value) -> String {
     use serde_json::Value;
     let s = |k: &str| h.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
     let cmds: Vec<&str> = h
@@ -897,6 +922,27 @@ pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
     )
 }
 
+// ── 第四面：本机到底缺什么（hello 的 `unavailable` 那一格用的两个码） ───────────
+/// 命令级 code —— **「这台机器上没有 tmux」**。
+///
+/// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个源头**：真相是
+/// 主 crate 命令表 `stream::inbound::REGISTRY` 里各条命令自己登记的 `codes`，本常量只拿它去**查那张表**
+/// （`stream::inbound::unavailable_from`）。查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
+/// 谁把那边的拼写改了，这边不会静默跟丢。
+pub const NO_TMUX: &str = "no_tmux";
+
+/// 命令级 code —— **「这个平台没有 unix 权限位」**。
+///
+/// 只有 `files-chmod` 声明它（`files/write.rs::change_mode_reporting` 在非 unix 上回它）。
+/// 与 [`NO_TMUX`] 同形：真相是命令表里命令自己登记的 `codes`，本常量只拿去查那张表；
+/// `hello.unavailable` 经 `stream::inbound::unix_mode_unavailable` 读它。
+pub const NO_UNIX_MODE: &str = "no_unix_mode";
+
+// 上层测试读的那几样夹具（二前端读的字段表 · 全部主题 · 带一行字的记录）：本包与上层判据经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/wire/wire_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/wire/wire_tests.rs"]
-pub(crate) mod tests;
+mod tests;

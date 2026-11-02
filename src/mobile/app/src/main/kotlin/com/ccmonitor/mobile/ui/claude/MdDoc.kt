@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -374,6 +375,34 @@ fun rememberMdStyle(): MdStyle {
 fun rememberMdDocState(doc: Doc): MdDocState {
     val style = rememberMdStyle()
     return remember(doc, style) { MdDocState(doc, style) }
+}
+
+/** 一个顶层块排成一块（活卡那一路：不分段、不拉高亮，代码照纯字）。 */
+fun layoutBlock(
+    b: MdBlock,
+    style: MdStyle,
+): MdPiece = Ctx(emptyList(), style).block(b)
+
+/**
+ * 一串顶层块逐块画（活卡：那台只换了尾巴时，前面的块值不变）：按块号作键、块的值没变就沿用排好的那一块 ⇒
+ * 前面没变的块不重排、跳过重组，只重建尾巴那一两块。
+ */
+@Composable
+fun MdBlocksView(
+    blocks: List<MdBlock>,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    val tokens = LocalAppTokens.current
+    val style = rememberMdStyle()
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
+        blocks.forEachIndexed { i, b ->
+            key(i) {
+                val piece = remember(b, style) { layoutBlock(b, style) }
+                Piece(piece, color, tokens)
+            }
+        }
+    }
 }
 
 /** 照 [MdDocState] 里已建的那几段画；字可选、链接可点。 */

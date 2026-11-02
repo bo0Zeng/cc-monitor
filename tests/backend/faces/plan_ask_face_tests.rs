@@ -87,7 +87,7 @@ fn a_tmuxless_machine_refuses_with_no_tmux() {
         Some(false),
     );
     let e = out.expect_err("没有 tmux 要拒（开口那句只跟 tmux）");
-    assert_eq!(e.code.as_deref(), Some(crate::NO_TMUX), "{e:?}");
+    assert_eq!(e.code.as_deref(), Some(crate::wire::NO_TMUX), "{e:?}");
     assert!(kept.is_empty(), "拒了就不记：{kept:?}");
     let (out, _) = ask_on(
         json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),

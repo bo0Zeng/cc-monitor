@@ -70,7 +70,7 @@ impl crate::wire::typed::Handle for ResyncCmd {
                 retagged: d.retagged,
                 caught_up: d.caught_up,
                 watchers,
-                unavailable: crate::unavailable_here(),
+                unavailable: crate::stream::inbound::unavailable_here(),
             })
         }
     }

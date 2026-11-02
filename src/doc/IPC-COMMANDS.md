@@ -562,7 +562,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `kind` | BlockKind |  |
-| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
+| `md` | [MdBlock]? | 文字块已到的正文解析成的顶层块（只有文字块有；思考不展开、工具入参不显示） |
 | `tool` | string? | 工具块的工具名 |
 
 #### `LiveOp`
@@ -571,7 +571,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 - `op: "open"`，带 `rid` string · `phase` LivePhase · `clipped` bool · `blocks` [LiveBlock] —— 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换
 - `op: "block"`，带 `i` number · `block` BlockKind · `tool` string? —— 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）
-- `op: "text"`，带 `i` number · `s` string —— 第 `i` 块（文字块）接着一段字
+- `op: "text"`，带 `i` number · `keep` number · `tail` [MdBlock] —— 第 `i` 块（文字块）接着一段字：它的顶层块前 `keep` 块不变，从第 `keep` 块起换成 `tail` （后端只重解析最后一个顶层块往后的那一截，`tail` 多半是一两块）
 - `op: "awaiting"` —— 上游说完了，等写入记录
 - `op: "close"`，带 `why` LiveWhy —— 撤卡（为什么见 `LiveWhy`；客户端对哪种都一样：撤）
 

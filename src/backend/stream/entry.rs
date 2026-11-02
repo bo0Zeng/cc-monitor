@@ -15,11 +15,12 @@
 use crate::common::id::{BUILD_ID, VERSION};
 use crate::faces::read_face;
 use crate::stream::claim::claim_then_log;
+use crate::stream::inbound::unavailable_here;
 use crate::stream::inbound::views::StreamWants;
 use crate::stream::writer::writer_task;
 use crate::stream::{cli, inbound, oneshot, tap, topic_body};
 use crate::wire::{self, drain, listen, topic_hook, Frame};
-use crate::{agents, control, dial, faces, history, observe, stderr_log, unavailable_here};
+use crate::{agents, control, dial, faces, history, observe, stderr_log};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::discard::{Discard, Why};
 
