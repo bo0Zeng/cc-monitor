@@ -70,6 +70,10 @@ pub(crate) fn capture_full(
         if std::time::Instant::now() >= deadline {
             break (true, None);
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "等问后端一次的那个子进程退出：10ms 一步问 `try_wait`，到调用方给的上限（自举那一问 20s）就杀掉收尸；一问一等，不是节拍。std 有了带期限的 `wait` 就换掉"
+        )]
         std::thread::sleep(std::time::Duration::from_millis(10));
     };
     if timed_out {
