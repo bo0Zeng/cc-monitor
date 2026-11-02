@@ -7,8 +7,7 @@
 //!
 //! 这条性质没有护栏的话会以最不起眼的方式退化：某天 `fork_write` 需要读一份账号信息，
 //! 顺手 `use crate::observe::accounts_query::...` —— 编译通过、测试全绿，而两层从此互相咬死。
-//! U3 摸底时**真的就有这么一条**（`fork_write` → `accounts_query::read_regular_capped`），
-//! 处置不是开例外，是把那个函数搬进 `common/`（它本来就不是 observe 的域逻辑）。
+//! 处置不是开例外，是把被引用的那个通用工具搬到两层都能用的地方（如带上限的整读住 `platform::fs::Ro`）。
 //!
 //! 全后端顶层模块之间另有两条：定了方向的那几对只许单向（`ONE_WAY`）· 不成环（`the_top_modules_form_no_ring`）。
 //!
@@ -266,9 +265,8 @@ mod tests {
             bad.is_empty(),
             "control/ 与 observe/ 之间有引用（§1.1-2 互不引用）：\n  {}\n\
              时机在观测侧、做的那一半在控制面的，watcher 只报一声，由 `main.rs` 接上（`observe::watcher::Reactions`）。\n\
-             **先别急着加例外** —— U3 摸底时那条反向边（fork_write → accounts_query::read_regular_capped）\
-             的正解是「那个函数根本不属于 observe」，搬进 common/ 之后边就没了。\n\
-             先问：被引用的那个东西，是不是也只是个放错地方的通用工具？",
+             **先别急着加例外** —— 先问：被引用的那个东西，是不是只是个放错地方的通用工具？\
+             是 ⇒ 搬进 common/ 或 platform/，边就没了。",
             bad.join("\n  ")
         );
     }

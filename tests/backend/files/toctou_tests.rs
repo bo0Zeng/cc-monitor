@@ -232,7 +232,14 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
         "暂存旁名留下了"
     );
     assert!(
-        crate::platform::fs::Ro::read_nofollow(&src).is_err(),
+        crate::platform::fs::Ro::read_capped_nofollow(
+            &src,
+            relay_route_core::Cap {
+                bytes: 1024,
+                over: relay_route_core::Over::Reject,
+            },
+        )
+        .is_err(),
         "读那一口跟了链接"
     );
     std::fs::remove_dir_all(&base).ok();

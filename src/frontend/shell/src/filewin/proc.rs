@@ -36,7 +36,7 @@
 
 use copy_core::copy_text;
 use copy_core::{Discard, Why};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 // 种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
 pub use filewin_contract::{
@@ -65,23 +65,16 @@ pub fn window_bin_name() -> String {
 ///
 /// 两处都给不出一个存在的文件；或自带的那份放不下来。
 pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
+    // 自带那份放到本机后端落点所在的那个目录（`~/.cc-monitor/bin`）；家目录问不到 ⇒ 没有落点（不发明一个目录）。
     resolve_window_bin_in(
         std::env::var_os(BIN_ENV).map(PathBuf::from),
         crate::byte_table::native_filewin(),
-        landing_dir().as_deref(),
-        &crate::platform::fs::make_executable,
-        &crate::platform::fs::ensure_private_dir,
+        crate::platform::own_fs::OwnBin::issue().as_ref(),
     )
 }
 
-/// 自带那份放到哪：本机后端落点所在的那个目录（`~/.cc-monitor/bin`）。家目录问不到 ⇒ `None`（不发明一个目录）。
-fn landing_dir() -> Option<PathBuf> {
-    let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
-    crate::data_paths::home().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
-}
-
-/// [`resolve_window_bin`] 的注入形：环境变量的值 · 自带的字节 · 落点目录 · 两样宿主知识都由调用方给
-/// （判据在临时目录上喂它，不碰真 `~/.cc-monitor`）。
+/// [`resolve_window_bin`] 的注入形：环境变量的值 · 自带的字节 · 落点的句柄都由调用方给
+/// （判据在临时目录上造句柄喂它，不碰真 `~/.cc-monitor`）。
 ///
 /// # Errors
 ///
@@ -89,9 +82,7 @@ fn landing_dir() -> Option<PathBuf> {
 pub fn resolve_window_bin_in(
     env: Option<PathBuf>,
     embedded: Option<&[u8]>,
-    landing: Option<&Path>,
-    make_executable: &dyn Fn(&Path) -> Result<(), copy_core::said::Said>,
-    ensure_dir: &dyn Fn(&Path) -> Result<(), copy_core::said::Said>,
+    landing: Option<&crate::platform::own_fs::OwnBin>,
 ) -> Result<PathBuf, ProcFail> {
     let mut looked: Vec<PathBuf> = Vec::new();
     if let Some(p) = env {
@@ -111,20 +102,15 @@ pub fn resolve_window_bin_in(
             raw: Some(looked.join("\n")),
         });
     };
-    let Some(dir) = landing else {
+    let Some(bin) = landing else {
         return Err(copy_text("rsFilewinProc.bin.noHome", &[]).into());
     };
-    crate::local_backend::place_local_program(
-        dir,
-        &window_bin_name(),
-        bytes,
-        make_executable,
-        ensure_dir,
-    )
-    .map_err(|e| ProcFail {
-        said: copy_core::reason::io_reason(e.kind()),
-        code: None,
-        raw: Some(format!("{}\n{e}", dir.display())),
+    crate::local_backend::place_local_program(bin, &window_bin_name(), bytes).map_err(|e| {
+        ProcFail {
+            said: copy_core::reason::io_reason(e.kind()),
+            code: None,
+            raw: Some(format!("{}\n{e}", bin.dir().display())),
+        }
     })
 }
 

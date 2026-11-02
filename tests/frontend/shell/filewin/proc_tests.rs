@@ -157,14 +157,22 @@ fn a_seed_that_cannot_be_read_is_a_loud_failure_not_a_default_window() {
     );
 }
 
+/// 落点句柄：家目录喂成 `home`（真 `~/.cc-monitor` 不碰），落点就是它底下的 `.cc-monitor/bin`。
+fn bin_under(home: &std::path::Path) -> crate::platform::own_fs::OwnBin {
+    let home = home.to_path_buf();
+    crate::platform::own_fs::OwnBin::issue_with(&|k| {
+        matches!(k, "HOME" | "USERPROFILE").then(|| home.clone().into_os_string())
+    })
+    .expect("家是绝对路径")
+}
+
 /// **那份二进制只有两处来路（环境变量 · monitor 自带那份），都给不出就出声并说出看过哪儿。**（注入形：不读真环境变量、不碰真 `~/.cc-monitor`。）
 #[test]
 fn the_window_binary_is_never_guessed() {
     let dir = std::env::temp_dir().join(format!("filewin-bin-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
-    let landing = dir.join("home-bin");
-    let mk = |_: &Path| -> Result<(), copy_core::said::Said> { Ok(()) };
-    let ensure = crate::platform::fs::ensure_private_dir;
+    let bin = bin_under(&dir.join("home"));
+    let landing = bin.dir().to_path_buf();
     // ① 纯函数那一格：文件名的形状（Windows 上带 `.exe`）。
     assert_eq!(
         window_bin_name(),
@@ -173,7 +181,7 @@ fn the_window_binary_is_never_guessed() {
     );
     // ② 环境变量指着一个**不存在**的路径、这一份没带 ⇒ 出声，而且**把看过的都说出来**。
     let missing = dir.join("根本没有这个文件");
-    let e = resolve_window_bin_in(Some(missing.clone()), None, Some(&landing), &mk, &ensure)
+    let e = resolve_window_bin_in(Some(missing.clone()), None, Some(&bin))
         .expect_err("指着一个不存在的文件居然解出来了");
     // 句子只说原因词「未装」＋ 出路；看过的那几条路径进复制详情（原话）。
     assert_eq!(
@@ -199,14 +207,8 @@ fn the_window_binary_is_never_guessed() {
     let real = dir.join("假装是那个二进制");
     std::fs::write(&real, b"#!/bin/true\n").expect("写不出那个文件");
     assert_eq!(
-        resolve_window_bin_in(
-            Some(real.clone()),
-            Some(b"carried"),
-            Some(&landing),
-            &mk,
-            &ensure
-        )
-        .expect("指着一个真文件却解不出来"),
+        resolve_window_bin_in(Some(real.clone()), Some(b"carried"), Some(&bin))
+            .expect("指着一个真文件却解不出来"),
         real,
         "环境变量指的那一份没被用上 —— 判据从此指不动它"
     );
@@ -224,28 +226,30 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     let _ = std::fs::remove_dir_all(&root);
     let exe_dir = root.join("exe");
     std::fs::create_dir_all(&exe_dir).expect("造不出 exe 目录");
+    let bin = bin_under(&root.join("home"));
     let landing = root.join("home").join(".cc-monitor").join("bin");
-    let made = std::cell::Cell::new(0usize);
-    let mk = |_: &Path| -> Result<(), copy_core::said::Said> {
-        made.set(made.get() + 1);
-        Ok(())
-    };
-    let ensure = crate::platform::fs::ensure_private_dir;
+    assert_eq!(bin.dir(), landing, "落点不在家目录底下的 .cc-monitor/bin");
     let want = landing.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX));
-    let resolve =
-        |carried: &[u8]| resolve_window_bin_in(None, Some(carried), Some(&landing), &mk, &ensure);
+    let resolve = |carried: &[u8]| resolve_window_bin_in(None, Some(carried), Some(&bin));
+    // 同一份文件没被重写 ⇒ 修改时刻不变（换名上位的那一份是新文件，时刻跟着变）。
+    let stamp = || std::fs::metadata(&want).and_then(|m| m.modified()).ok();
     // ① 第一次：放下来、置可执行位、回落点那一份。
     assert_eq!(resolve(b"carried-v1").expect("自带着却没放下来"), want);
     assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
-    assert_eq!(made.get(), 1, "放下来的那一份没置可执行位");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&want).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "放下来的那一份没置可执行位");
+    }
+    let first = stamp();
     // ② 同一份再开一次：零写。
     assert_eq!(resolve(b"carried-v1").expect("第二次没解出来"), want);
-    assert_eq!(made.get(), 1, "逐字节相等还重写了一次");
+    assert_eq!(stamp(), first, "逐字节相等还重写了一次");
     // ③ 盘上是别的版本（同长不同字节）⇒ 换成自带那份。
     std::fs::write(&want, b"other-ver!").expect("写不出旧版替身");
     assert_eq!(resolve(b"carried-v1").expect("换版没解出来"), want);
     assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
-    assert_eq!(made.get(), 2, "字节不同却没换");
     // ④ 原地换不掉（落点被一个非空目录占着，`rename` 必失败 —— Windows 上正在跑的那份同形）⇒ 挪开再上位，挪开的那份留着。
     std::fs::remove_file(&want).expect("删不掉上一份");
     std::fs::create_dir_all(want.join("占着")).expect("造不出占位目录");
@@ -271,37 +275,37 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     std::fs::remove_file(&beside).expect("删不掉旁边那份");
     // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
     assert_eq!(
-        resolve_window_bin_in(None, Some(b"x"), None, &mk, &ensure)
+        resolve_window_bin_in(None, Some(b"x"), None)
             .expect_err("没有落点也解出来了")
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
-    let no_dir = |_: &Path| -> Result<(), copy_core::said::Said> {
-        Err(copy_core::said::Said::from("不许建"))
-    };
-    let fresh = root.join("fresh");
-    let e = resolve_window_bin_in(None, Some(b"x"), Some(&fresh), &mk, &no_dir)
-        .expect_err("建不了目录也解出来了");
-    // 建不了目录（宿主注入那一下只回一句话）⇒ 判不出 IO 种类 ⇒「原因不明」；落点与原话进详情。
-    assert_eq!(
+    // 建不了落点目录（家目录那一格是个普通文件）⇒ 按 IO 种类取词，不是「没带」也不是「无主目录」；落点与原话进详情。
+    let blocker = root.join("blocker");
+    std::fs::write(&blocker, b"x").expect("写不出占位文件");
+    let blocked = bin_under(&blocker);
+    let e =
+        resolve_window_bin_in(None, Some(b"x"), Some(&blocked)).expect_err("建不了目录也解出来了");
+    assert_ne!(e.said, copy_text("rsFilewinProc.bin.noHome", &[]));
+    assert_ne!(
         e.said,
-        copy_core::reason::io_reason(std::io::ErrorKind::Other)
+        copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)])
     );
     let raw = e.raw.unwrap_or_default();
     assert!(
-        raw.contains("不许建") && raw.contains(&fresh.display().to_string()),
+        raw.contains(&blocked.dir().display().to_string()) && raw.contains("blocker"),
         "放不下来的原话与落点没进详情：{raw}"
     );
     // 落点目录只读（真 IO 错）⇒ 按 IO 种类取词「无权限」，不是「原因不明」。
-    let denied = root.join("ro");
+    let ro = bin_under(&root.join("ro"));
+    let denied = ro.dir().to_path_buf();
     std::fs::create_dir_all(&denied).expect("建不出只读目录");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let ok_dir = |_: &Path| -> Result<(), copy_core::said::Said> { Ok(()) };
-        let e = resolve_window_bin_in(None, Some(b"x"), Some(&denied), &mk, &ok_dir)
-            .expect_err("只读目录里竟然写进去了");
+        let e =
+            resolve_window_bin_in(None, Some(b"x"), Some(&ro)).expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。
         if !e.said.is_empty() && std::fs::write(denied.join("probe"), b"").is_err() {
             assert_eq!(

@@ -10,12 +10,17 @@
 //! 零定时器：只等套接字与文件事件。
 
 use crate::agents::SessionActivity;
+use comms_inward::line::{read_capped_all, CappedAll};
 use copy_core::{Discard, Why};
+use relay_route_core::{Cap, Over};
 use serde_json::{json, Value};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 /// stdin 上限（同 CLI 入参那一道）：超了整份拒。
-const STDIN_CAP: u64 = 1_048_576;
+const STDIN_CAP: Cap = Cap {
+    bytes: 1_048_576,
+    over: Over::Reject,
+};
 /// 这一问的请求 id（一条连接只问这一次）。
 const REQ_ID: &str = "answer-hook";
 
@@ -29,17 +34,10 @@ pub async fn run(args: &[String], states: StatesOf) -> i32 {
     let Some(face) = crate::agents::ask_face(agent) else {
         return 0;
     };
-    let mut raw = Vec::new();
-    // 多读一个字节分得出「正好到上限」与「超了」：超了整份拒（不给决定，框照常在终端里问），不截断着用。
-    if tokio::io::stdin()
-        .take(STDIN_CAP + 1)
-        .read_to_end(&mut raw)
-        .await
-        .is_err()
-        || raw.len() as u64 > STDIN_CAP
-    {
+    // 超了整份拒（不给决定，框照常在终端里问），不截断着用。
+    let Ok(CappedAll::All(raw)) = read_capped_all(tokio::io::stdin(), STDIN_CAP).await else {
         return 0;
-    }
+    };
     let Ok(hook) = serde_json::from_slice::<Value>(&raw) else {
         return 0;
     };

@@ -27630,12 +27630,6 @@
       "zh": "保存失败 · 无主目录",
       "args": []
     },
-    "rsConfig.write.noParent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {path} · 路径不合规",
-      "args": ["path"]
-    },
     "rsConfig.write.encodeFailed": {
       "kind": "error",
       "role": "报错",

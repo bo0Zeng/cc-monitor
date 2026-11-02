@@ -339,9 +339,6 @@ pub(crate) const CONFIG_CAP: Cap = Cap {
     over: Over::SkipAndSay,
 };
 
-/// 同一个数的裸字节形：`mcp.rs` 那一处读的助手收裸数。
-pub(crate) const MAX_CONFIG_BYTES: u64 = CONFIG_CAP.bytes;
-
 /// 某个根目录下的配置文件路径。
 pub(crate) fn config_path_in(root: &std::path::Path) -> std::path::PathBuf {
     root.join(CONFIG_FILE_NAME)

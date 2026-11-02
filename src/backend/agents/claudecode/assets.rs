@@ -33,8 +33,6 @@ pub(crate) const PROJECT_MCP_CAP: Cap = Cap {
     bytes: 4 * 1024 * 1024,
     over: Over::SkipAndSay,
 };
-/// 同一个数的裸字节形：`mcp.rs` 那一处读的助手收裸数。
-pub(crate) const MAX_PROJECT_MCP_BYTES: u64 = PROJECT_MCP_CAP.bytes;
 /// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 错交给调用方，不取说明、记进 `problems`。
 const SKILL_DOC_MAX_BYTES: Cap = Cap {
     bytes: 1024 * 1024,

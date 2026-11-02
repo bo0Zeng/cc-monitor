@@ -1225,6 +1225,16 @@ mod tests {
                 rec("gradle")
             ),
         );
+        // 假 rustc：sysroot 指到假仓里一份装了 Windows 目标的（win-check 那一格看它判目标装没装；判据不随跑它的机器变）
+        std::fs::create_dir_all(d.join("sysroot/lib/rustlib/x86_64-pc-windows-gnu")).unwrap();
+        exe(
+            &d,
+            "bin/rustc",
+            &format!(
+                "#!/bin/sh\ncase \"$1\" in --print) echo '{}' ;; -vV) echo 'host: x86_64-unknown-linux-gnu' ;; esac\nexit 0\n",
+                d.join("sysroot").display()
+            ),
+        );
         // 假锁：记下起它的那个 HOME 与它看到的 `CCM_BUILD_REMOTE_OK`（没有 ⇒ 空），标上「在锁里」，原样起命令
         exe(
             &d,
@@ -1239,6 +1249,16 @@ mod tests {
 
     /// 在假仓里跑一趟 quick-check（`args` 照给）；`lock` 给了 ⇒ 设 `CCM_BUILD_LOCK`，没给 ⇒ 摘掉。回整趟输出。
     fn run_fake_quick(d: &Path, args: &[&str], lock: Option<&Path>) -> String {
+        run_fake_quick_with(d, args, lock, &[])
+    }
+
+    /// 同上，另设 `envs` 里那几个变量（外面会话带进来的）。
+    fn run_fake_quick_with(
+        d: &Path,
+        args: &[&str],
+        lock: Option<&Path>,
+        envs: &[(&str, &str)],
+    ) -> String {
         let path = format!(
             "{}:{}",
             d.join("bin").display(),
@@ -1256,6 +1276,8 @@ mod tests {
             .env_remove("HEAVY_HELD")
             .env_remove("TMUX")
             .env_remove("TMUX_PANE")
+            .env_remove("CCM_BUILD_REMOTE_OK")
+            .envs(envs.iter().copied())
             .current_dir(d);
         match lock {
             Some(l) => cmd.env("CCM_BUILD_LOCK", l),
@@ -1283,6 +1305,9 @@ mod tests {
         assert_eq!(
             seen,
             vec![
+                // win-check：后端那棵 · 壳那棵各一次 `cargo check --target …`
+                "cargo check held=1",
+                "cargo check held=1",
                 "cargo clippy held=1",
                 "cargo fmt held=0",
                 "cargo fmt held=0",
@@ -1304,11 +1329,11 @@ mod tests {
             .collect();
         assert_eq!(
             lock_calls.iter().map(|c| c.0).collect::<Vec<_>>(),
-            vec![home.as_str(); 5],
-            "锁脚本该在真家下起五次（后端 · clippy · 壳 · creds-harden · 手机）：{said}"
+            vec![home.as_str(); 6],
+            "锁脚本该在真家下起六次（后端 · clippy · 壳 · win-check · creds-harden · 手机）：{said}"
         );
         // 可去远端的只有 cargo 那四段：锁脚本拿到的是这一段写在同步的树以外的几个目录（沙箱家 · tmux 目录 · 临时目录），
-        // 正是被起的 cargo 看到的那三个；cargo 自己看不见这个变量（会话变量照摘）；手机那一趟不带
+        // 正是被起的 cargo 看到的那三个；cargo 自己看不见这个变量（会话变量照摘）；win-check（别的机器没装 Windows 目标）与手机那一趟不带
         let dirs = std::fs::read_to_string(d.join("dirs")).unwrap_or_default();
         let seen_dirs: Vec<(&str, &str)> = dirs
             .lines()
@@ -1319,13 +1344,10 @@ mod tests {
             seen_dirs.iter().all(|c| c.1.is_empty()),
             "cargo 看见了 CCM_BUILD_REMOTE_OK：{dirs}"
         );
+        let d4: Vec<&str> = seen_dirs.iter().map(|c| c.0).collect();
         assert_eq!(
             lock_calls.iter().map(|c| c.1).collect::<Vec<_>>(),
-            seen_dirs
-                .iter()
-                .map(|c| c.0)
-                .chain([""])
-                .collect::<Vec<_>>(),
+            vec![d4[0], d4[1], d4[2], "", d4[3], ""],
             "{said}"
         );
         // 没给锁 ⇒ 照跑，谁都不在锁里
@@ -1335,11 +1357,59 @@ mod tests {
         let said = run_fake_quick(&d, &[], None);
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);
-        assert_eq!(calls.lines().count(), 10, "{said}");
+        assert_eq!(calls.lines().count(), 12, "{said}");
         assert!(
             calls.lines().all(|l| l.ends_with("held=0")),
             "{calls}\n{said}"
         );
+    }
+
+    /// ★ win-check（两棵树的库在 Windows 目标上 `cargo check`）：外面会话带着 `CCM_BUILD_REMOTE_OK` 也不交给锁脚本（别的机器没装这个目标）；
+    /// 工具链没装这个目标 ⇒ 照实报没装、算红，不起 cargo。命令整行钉住：后端只主包的库、壳那棵整棵的库。
+    #[test]
+    fn quick_check_win_check_stays_local_and_reports_a_missing_target_red() {
+        let d = fake_quick_repo("qc-win");
+        let lock = d.join("bin/fake-lock.sh");
+        let said = run_fake_quick_with(
+            &d,
+            &["--only", "win-check"],
+            Some(&lock),
+            &[("CCM_BUILD_REMOTE_OK", "/outer")],
+        );
+        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
+        let lock_calls = std::fs::read_to_string(d.join("lock-calls")).unwrap_or_default();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            vec!["cargo check held=1", "cargo check held=1"],
+            "{said}"
+        );
+        assert_eq!(lock_calls.lines().count(), 1, "{lock_calls}\n{said}");
+        assert!(
+            lock_calls.trim_end().ends_with('|'),
+            "win-check 把 CCM_BUILD_REMOTE_OK 交给了锁脚本：{lock_calls}"
+        );
+        assert!(said.contains("ok   win-check"), "{said}");
+        assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+        // 目标没装
+        std::fs::remove_dir_all(d.join("sysroot/lib/rustlib/x86_64-pc-windows-gnu")).unwrap();
+        let _ = std::fs::remove_file(d.join("calls"));
+        let said = run_fake_quick(&d, &["--only", "win-check"], Some(&lock));
+        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(
+            said.contains("红   win-check") && said.contains("没装 x86_64-pc-windows-gnu"),
+            "{said}"
+        );
+        assert!(said.trim_end().contains("QUICK: 红 —— win-check"), "{said}");
+        assert_eq!(calls, "", "目标没装还起了 cargo：{said}");
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        guard_core::pin_line(&qc, "win_target=x86_64-pc-windows-gnu")
+            .unwrap_or_else(|e| panic!("win-check 的目标认不出了：{e}"));
+        guard_core::pin_line(
+            &qc,
+            r#"(cd src/backend && cargo check --target "$1" -p cc-monitor-backend --lib) && (cd src/frontend/shell && cargo check --target "$1" --workspace --lib)' _ "$win_target""#,
+        )
+        .unwrap_or_else(|e| panic!("win-check 不是「后端主包的库 ＋ 壳那棵整棵的库」那一行：{e}"));
     }
 
     /// ★ 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制

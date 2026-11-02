@@ -337,7 +337,7 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
     // 超上限的那一个：只按长度算，并且**说出是哪一个**（降级要说清）
     std::fs::write(
         s.join("huge.dat"),
-        vec![b'x'; SKILL_MAX_FILE_BYTES as usize + 1],
+        vec![b'x'; SKILL_FILE_CAP.bytes as usize + 1],
     )
     .unwrap();
     let huge = skill_asset(None, "demo", &s, None);

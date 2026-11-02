@@ -34,4 +34,4 @@ tests/backend/relay/upstream_selection_guard.rs	1
 tests/backend/relay/wire_golden.rs	1
 tests/common/relay-route-core/lib_tests.rs	1
 tests/frontend/shell/capability_registry_tests.rs	46
-tests/frontend/shell/write_site_registry_tests.rs	3
+tests/frontend/shell/write_site_registry_tests.rs	2

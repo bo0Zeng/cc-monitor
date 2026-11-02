@@ -7,29 +7,45 @@
 
 use super::*;
 use std::fs;
+use std::path::{Path, PathBuf};
+
+/// 根在 `dir` 的句柄（经 `CCM_DATA_DIR` 喂成它；真数据目录不碰）。
+fn own_in(dir: &Path) -> OwnState {
+    let dir: PathBuf = dir.to_path_buf();
+    OwnState::issue_with(&|k| {
+        (k == crate::config::DATA_DIR_ENV).then(|| dir.clone().into_os_string())
+    })
+    .expect("临时目录是绝对路径")
+}
+
+fn scratch(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-auto-launch-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&d);
+    d
+}
 
 #[test]
 fn default_when_missing() {
-    let tmp = std::env::temp_dir().join(format!("ccm-auto-launch-{}.json", std::process::id()));
-    let _ = fs::remove_file(&tmp);
-    let cfg = load(&tmp);
+    let d = scratch("missing");
+    let cfg = load(&own_in(&d));
     assert!(!cfg.auto_launch_enabled);
     assert!(cfg.monitor_exe_path.is_none());
 }
 
 #[test]
 fn save_and_load_roundtrip() {
-    let tmp = std::env::temp_dir().join(format!("ccm-auto-launch-rt-{}.json", std::process::id()));
-    let _ = fs::remove_file(&tmp);
+    let d = scratch("rt");
+    let own = own_in(&d);
     let cfg = AutoLaunchConfig {
         auto_launch_enabled: true,
         monitor_exe_path: Some(r"C:\bar\cc-monitor.exe".to_string()),
     };
-    save(&tmp, &cfg).unwrap();
-    let loaded = load(&tmp);
+    save(&own, &cfg).unwrap();
+    assert!(d.join("auto-launch.json").is_file(), "落在数据目录里那一份");
+    let loaded = load(&own);
     assert!(loaded.auto_launch_enabled);
     assert_eq!(loaded.monitor_exe_path.unwrap(), r"C:\bar\cc-monitor.exe");
-    let _ = fs::remove_file(&tmp);
+    let _ = fs::remove_dir_all(&d);
 }
 
 /// 开机启动那一格存不下：句子是「保存开机启动设置失败 · 原因词」，系统原话只进复制详情。
@@ -39,7 +55,7 @@ fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
     let not_a_dir =
         std::env::temp_dir().join(format!("ccm-auto-launch-notdir-{}", std::process::id()));
     fs::write(&not_a_dir, b"x").unwrap();
-    let e = set_enabled(&not_a_dir, true).expect_err("文件下面建不了文件");
+    let e = set_enabled(&own_in(&not_a_dir), true).expect_err("文件下面建不了文件");
     let _ = fs::remove_file(&not_a_dir);
     assert!(
         e.said.starts_with(&copy_core::copy_text(
@@ -102,7 +118,7 @@ fn the_wire_names_are_the_same_in_the_powershell_reader_and_the_rust_writer() {
         read, written,
         "PowerShell 那一侧读的字段 ≠ monitor 写出去的字段：改名要两边同拍改（读不到 = 开关开着却永远不自启、不报错）"
     );
-    // 文件名：模板 `Join-Path $ccmDir '<名>'` == 生产段 `join("<名>")`。
+    // 文件名：模板 `Join-Path $ccmDir '<名>'` == 生产段 `const FILE: &str = "<名>"`。
     let key = "Join-Path $ccmDir '";
     let at = TPL
         .find(&format!("{key}auto"))
@@ -113,7 +129,7 @@ fn the_wire_names_are_the_same_in_the_powershell_reader_and_the_rust_writer() {
         "../../../src/frontend/shell/src/auto_launch.rs"
     ));
     assert!(
-        prod.contains(&format!("join(\"{file}\")")),
-        "模板读 `{file}`，monitor 生产段里没有 `join(\"{file}\")` —— 文件名两边对不上"
+        prod.contains(&format!("const FILE: &str = \"{file}\";")),
+        "模板读 `{file}`，monitor 生产段里那份文件名不是 `{file}` —— 文件名两边对不上"
     );
 }

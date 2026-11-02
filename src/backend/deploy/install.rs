@@ -25,8 +25,8 @@ pub struct Slot {
     pub path: PathBuf,
 }
 
-/// 读一格的字节（宿主给：本 crate 不碰本机文件系统，读文件是宿主的事）。
-pub type Load = dyn Fn(&std::path::Path) -> std::io::Result<Vec<u8>> + Send + Sync;
+/// 读一格的字节（宿主给：本 crate 不碰本机文件系统，读文件是宿主的事）。读不成 ⇒ 那一句就是原因（原因词 · 超出上限 …），原话随 `raw` 走。
+pub type Load = dyn Fn(&std::path::Path) -> Result<Vec<u8>, Said> + Send + Sync;
 
 /// 走到哪一步了（宿主照它显示进度；那一句 [`Step::said`] 两端照画）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,15 +165,10 @@ async fn run_staged(
 
 /// 一格字节：从文件读出来、自报的身份恰是 `id`；不是 ⇒ `not_carried`（解错了文件 · 包里那份被换过）。
 fn bytes_of(slot: &Slot, load: &Load) -> Result<Vec<u8>, Said> {
-    let bytes = load(&slot.path).map_err(|e| {
-        Said::new(
-            "not_carried",
-            copy_text(
-                "deploy.bytes.unreadable",
-                &[("why", &copy_core::io_reason(e.kind()))],
-            ),
-        )
-        .and_raw(Some(&format!("{}: {e}", slot.path.display())))
+    let bytes = load(&slot.path).map_err(|s| {
+        s.wrap(|why| copy_text("deploy.bytes.unreadable", &[("why", why)]))
+            .coded("not_carried")
+            .and_raw(Some(&slot.path.display().to_string()))
     })?;
     if deploy_contract::identity_of_bytes(&bytes, crate::MARKS)
         != RemoteIdentity::Stamp(slot.id.clone())

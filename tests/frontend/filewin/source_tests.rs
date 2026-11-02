@@ -897,11 +897,6 @@ fn every_place_that_splits_a_remote_path_is_declared() {
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
         ("filewin-contract/lib.rs", "parent_dir", "上一级"),
         ("filewin-contract/lib.rs", "remote_basename", "尾段"),
-        (
-            "shell/filewin/proc.rs",
-            "landing_dir",
-            "自带那份窗口程序的本机落点：契约里 `/` 分隔的相对路径逐段拼进本机家目录，不是远端路径",
-        ),
     ];
     sites_match(
         &[
