@@ -126,7 +126,7 @@ fn watch_terminal(
 )> {
     let local = crate::agents::local_face_among(crate::agents::REGISTRY, agent)?;
     let dir = (local.pidfile_dir)(&(local.home_at)(None, true));
-    let started = now_ms();
+    let started = crate::common::time::now_ms();
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     let mut tx = Some(tx);
     let mut seen_waiting = false;
@@ -169,12 +169,6 @@ pub(crate) fn closed_now(
         return false;
     }
     *seen_waiting || states.iter().any(|(_, at)| at.is_some_and(|t| t > started))
-}
-
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// 发问的那个进程：hook 是它的直接子进程（exec 形，不经 shell）。说不出 ⇒ `None`。

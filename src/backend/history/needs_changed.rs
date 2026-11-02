@@ -5,6 +5,7 @@
 //! watcher 订这一个铃：照此刻挂着请求的那几条改会话的点、给运行表配 needs，再从出方向推 `changed {needs, key?}`（不可丢）；活会话表判「在等人」也问 [`asked_sids`]。
 //! 登记表头一回开张时把自己的读法交进来（[`answer_asked`]）；没开张过（一次性子命令 · 常驻进程里还没人挂过）⇒ 空。
 
+use copy_core::{Discard, Why};
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
@@ -25,7 +26,8 @@ pub(crate) fn ring() {
 }
 
 fn ring_for(sid: Option<String>) {
-    let _ = changes().send(sid);
+    // 此刻没有 watcher 在订（一次性子命令 · 判据）⇒ 没人收；下一个连上来的照常重问
+    changes().send(sid).discard(Why::PeerGone);
 }
 
 /// 订那一声（watcher）。

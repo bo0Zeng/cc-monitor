@@ -107,7 +107,7 @@ fn mutex_name(namespace: &str, dir: &Path) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, Said> {
+pub fn hold(dir: &Path) -> Result<DirLock, Said> {
     /// 「一直等」—— 只等内核那一个事件（同 `win_proc.rs` 那一格）。
     const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
     const WAIT_OBJECT_0: u32 = 0;
