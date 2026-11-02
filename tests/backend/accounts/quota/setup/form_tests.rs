@@ -400,9 +400,15 @@ fn a_cell_goes_back_to_default_and_missing_accounts_are_pruned() {
         .expect("ok")
     };
     let a = reset("delay", Some(2));
-    assert_eq!(a["accounts"][2], json!({"id": "a", "caps": {"5h": [], "7d": []}}));
+    assert_eq!(
+        a["accounts"][2],
+        json!({"id": "a", "caps": {"5h": [], "7d": []}})
+    );
     assert_eq!(a["accounts"][1], s["accounts"][1], "别的行不动");
-    assert_eq!(reset("caps", Some(2))["accounts"][2], json!({"id": "a", "delay": 5}));
+    assert_eq!(
+        reset("caps", Some(2))["accounts"][2],
+        json!({"id": "a", "delay": 5})
+    );
     let top = reset("force", None);
     assert!(top.get("force").is_none() && top["caps"] == s["caps"]);
     assert_eq!(reset("delay", Some(3)), s, "没设过 ⇒ 原样");

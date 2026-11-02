@@ -888,7 +888,10 @@ fn remove_takes_the_account_off_every_strategy_list() {
     };
     let listed = json!([{"start": true}, {"id": "x", "delay": 5}, {"id": "lab", "delay": 9}]);
     t.write(".cc-monitor/strategies/p.rhai", &with(listed.clone()));
-    t.write(".cc-monitor/strategies/q.rhai", &with(json!([{"id": "x"}, {"id": "lab"}])));
+    t.write(
+        ".cc-monitor/strategies/q.rhai",
+        &with(json!([{"id": "x"}, {"id": "lab"}])),
+    );
     let other = with(json!([{"start": true}, {"id": "lab"}]));
     t.write(".cc-monitor/strategies/r.rhai", &other);
     let below = |text: &str| text.split_once("\n---*/").map(|x| x.1.to_string());
@@ -910,7 +913,11 @@ fn remove_takes_the_account_off_every_strategy_list() {
     let after = t.read(".cc-monitor/strategies/p.rhai");
     assert_eq!(below(&after), below(&before), "代码动了");
     assert_eq!(above(&after), above(&before), "说明动了");
-    assert_eq!(t.read(".cc-monitor/strategies/r.rhai"), other, "没列它的那份动了");
+    assert_eq!(
+        t.read(".cc-monitor/strategies/r.rhai"),
+        other,
+        "没列它的那份动了"
+    );
 }
 
 /// 删掉默认号（带 `force`）⇒ 剩下的第一个号接着当默认；设默认只改清单那一格。

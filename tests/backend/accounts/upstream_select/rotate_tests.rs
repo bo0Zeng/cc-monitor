@@ -423,7 +423,11 @@ fn account_zero_is_not_a_rotation_account() {
     home.sub("b", 3_600, Some(UUID_B));
     let row = |id: &str| book_row(id, Some(home.dir(id)), false);
     let hop = home.hop_of(acct_core::AccountBook {
-        accounts: vec![book_row(acct_core::BARE_ACCOUNT, None, false), row("a"), row("b")],
+        accounts: vec![
+            book_row(acct_core::BARE_ACCOUNT, None, false),
+            row("a"),
+            row("b"),
+        ],
     });
     let ids: Vec<String> = hop
         .facts(AGENT, &no_row, now(), &crate::Tz::default())

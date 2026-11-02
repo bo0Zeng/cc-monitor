@@ -1376,8 +1376,8 @@ fn every_board_row_names_its_own_listed_account_and_edits_land_on_it() {
         },
     )
     .expect("设得上");
-    let src = std::fs::read_to_string(home.root.join(shelf::DIR_NAME).join("by-list.rhai"))
-        .expect("读");
+    let src =
+        std::fs::read_to_string(home.root.join(shelf::DIR_NAME).join("by-list.rhai")).expect("读");
     assert_eq!(
         crate::accounts::quota::setup::script::parse(&src)
             .expect("读得懂")
