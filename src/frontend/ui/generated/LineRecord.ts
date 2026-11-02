@@ -90,7 +90,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
