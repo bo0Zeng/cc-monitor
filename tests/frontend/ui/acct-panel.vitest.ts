@@ -82,9 +82,9 @@ describe("账号面板", () => {
     appStore.quota.set(new Map([["<local>", { state: "failed", said: "连接层那一句", detail: "D-detail" }]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[role=alert]")?.textContent).toContain("连接层那一句");
-    expect(btn(copyText("acct.now.retry"))).toBeDefined();
+    expect(btn(copyText("front.act.retry"))).toBeDefined();
     appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null }]]));
-    expect(btn(copyText("acct.now.retry"))).toBeUndefined();
+    expect(btn(copyText("front.act.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
   });
 
@@ -105,7 +105,7 @@ describe("账号面板", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[role=alert]")).toBeNull();
-    expect(btn(copyText("acct.now.retry"))).toBeUndefined();
+    expect(btn(copyText("front.act.retry"))).toBeUndefined();
     expect(panel().textContent).toContain(copyText("kit.state.reading"));
   });
 });

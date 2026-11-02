@@ -127,7 +127,7 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
       answer(reply);
       const said = await saidOf(() => agentOnline("devbox", id));
       expect(said, what).toMatch(copyPattern(key));
-      expect(said, `${what}：说成了「不在线」`).not.toMatch(copyPattern("ccBus.check.offline"));
+      expect(said, `${what}：说成了「不在线」`).not.toMatch(copyPattern("machinePage.state.down"));
     }
   });
 });

@@ -52,11 +52,11 @@ fun TerminalToolbar(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolChip(Ph.Tabs, copyText("mobKeys.action.tabs"), onShowTabs)
-        ToolChip(Ph.Command, copyText("mobDefaultButtons.label.command"), onCommandPalette)
-        ToolChip(Ph.TerminalWindow, copyText("mobDefaultButtons.label.tmux"), onTmuxSessions, enabled = terminalsReachable)
+        ToolChip(Ph.Tabs, copyText("beProfile.slot.tab"), onShowTabs)
+        ToolChip(Ph.Command, copyText("detail.label.command"), onCommandPalette)
+        ToolChip(Ph.TerminalWindow, copyText("mobDrawer.item.terminal"), onTmuxSessions, enabled = terminalsReachable)
         Spacer(Modifier.weight(1f))
-        PhIconButton(Ph.DotsThree, copyText("mobKeys.tool.more"), onClick = onMore, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.DotsThree, copyText("history.row.more"), onClick = onMore, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

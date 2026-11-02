@@ -75,6 +75,6 @@ class MachineBarTest {
         assertTrue(code("ui/chat/ChatRoute.kt").contains("MachineBar("))
         val usage = code("ui/usage/UsageScreen.kt")
         assertTrue(usage.contains("MachineBar("))
-        assertTrue("用量屏离线那一条交给机器条", !usage.contains("newSession.machine.reconnect"))
+        assertTrue("用量屏离线那一条交给机器条", !usage.contains("history.list.reconnect"))
     }
 }

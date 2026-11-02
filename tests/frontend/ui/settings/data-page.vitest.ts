@@ -198,7 +198,7 @@ describe("待办", () => {
     expect(local.textContent).toContain(copyText("dataPage.install.kind"));
     expect(local.textContent).toContain(copyText("dataPage.install.kindOptional"));
     const gpu = page.element.querySelector<HTMLElement>('[data-machine="gpu"]')!;
-    expect(gpu.textContent).toContain(copyText("dataPage.chores.offline", { machine: "gpu" }));
+    expect(gpu.textContent).toContain(copyText("dataPage.placed.offline", { machine: "gpu" }));
     expect(page.element.querySelector('[data-machine="devbox"]')!.textContent).toContain(copyText("dataPage.chores.noneOn", { machine: "devbox" }));
   });
 
@@ -377,7 +377,7 @@ describe("cc-monitor 放了什么", () => {
     expect(rows[0].textContent).toContain(copyText("data.class.keep"));
     expect(rows[2].querySelectorAll("button:not([disabled])").length, "不在的那一样没有可打开的").toBe(0);
     const btn = (r: HTMLElement, text: string) => [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;
-    btn(rows[0], copyText("data.item.open")).click();
+    btn(rows[0], copyText("mobTerms.row.attach")).click();
     btn(rows[0], copyText("data.item.reveal")).click();
     await settle();
     expect(localOpened).toEqual(["/l/.cc-monitor/profiles.toml"]);

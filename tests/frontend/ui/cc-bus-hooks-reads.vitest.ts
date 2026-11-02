@@ -21,7 +21,7 @@ describe("钩子状态：四态不误说", () => {
     expect(gone.text).toContain("/gone/cc-bus-stop-hook");
     const wrapped = describeState({ kind: "unknown", command: 'sh -c "cc-bus-stop-hook"' });
     expect(wrapped.tone).toBe("unknown");
-    expect(wrapped.text).not.toContain(copyText("ccBusHooks.state.missing"));
+    expect(wrapped.text).not.toContain(copyText("reason.spawn.notInstalled"));
     expect(describeState({ kind: "not-installed" }).tone).toBe("bad");
     expect(describeState({ kind: "installed-via-path", command: "cc-bus-stop-hook" }).tone).toBe("ok");
   });

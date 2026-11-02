@@ -182,7 +182,7 @@ describe("没见到", () => {
     make().add(SPEC);
     await answer({ kind: "unknown", said: "devbox 无应答", detail: "d" });
     expect(rows()[0].dataset.state).toBe("unknown");
-    expect(rows()[0].textContent).toBe(`devboxbilling${copyText("launch.slot.unknownTitle")}`);
+    expect(rows()[0].textContent).toBe(`devboxbilling${copyText("sessionState.unseen.name")}`);
     expect(panelText()).toContain("devbox 无应答");
     expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `close:${copyText("launch.slot.close")}`]);
   });

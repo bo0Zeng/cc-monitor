@@ -235,7 +235,7 @@ class RotationBoard(
 
     fun copy(id: String) =
         _state.update {
-            it.copy(ask = RotAsk.Name(copyText("rot.ask.copyTitle", "name" to id), "") { name -> launchWrite(copyText("rot.fail.copy"), Rotation.COPY, Rotation.copy(id, name)) })
+            it.copy(ask = RotAsk.Name(copyText("rot.ask.copyTitle", "name" to id), "") { name -> launchWrite(copyText("detail.act.failed"), Rotation.COPY, Rotation.copy(id, name)) })
         }
 
     fun rename(
@@ -270,8 +270,8 @@ class RotationBoard(
                     RotAsk.Name(
                         copyText("rot.ask.createTitle"),
                         "",
-                        label = copyText("rot.ask.createName"),
-                        action = copyText("rot.ask.createGo"),
+                        label = copyText("acctNew.name.label"),
+                        action = copyText("mobTerms.new.detached"),
                         note = copyText("rot.ask.createNote"),
                     ) { name ->
                         scope.launch {

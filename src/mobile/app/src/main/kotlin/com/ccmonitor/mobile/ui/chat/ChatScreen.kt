@@ -188,7 +188,7 @@ private fun HistoryStatusBar(state: ChatUiState) {
             )
 
         state.loadingOlder ->
-            Text(copyText("mobChat.history.loading"), modifier = base.testTag(ChatTestTags.LOADING_OLDER))
+            Text(copyText("tabStreamView.sentinel.loading"), modifier = base.testTag(ChatTestTags.LOADING_OLDER))
 
         // 只有读着一条会话才谈得上「到顶」；新建会话不出这一条。
         state.sid != null && !state.canLoadOlder && state.units.isNotEmpty() ->

@@ -46,8 +46,8 @@ private val OLD_TOOLBAR_ACTIONS = setOf("show_tabs", "command_palette", "tmux_se
 private val LEGACY_SEED: List<Array<String>> =
     listOf(
         arrayOf("ak-tb-tabs", "▤ tab", "builtin", "show_tabs", OLD_MAIN),
-        arrayOf("ak-tb-cmd", copyText("mobDefaultButtons.label.command"), "builtin", "command_palette", OLD_MAIN),
-        arrayOf("ak-tb-tmux", copyText("mobDefaultButtons.label.tmux"), "builtin", "tmux_sessions", OLD_MAIN),
+        arrayOf("ak-tb-cmd", copyText("detail.label.command"), "builtin", "command_palette", OLD_MAIN),
+        arrayOf("ak-tb-tmux", copyText("mobDrawer.item.terminal"), "builtin", "tmux_sessions", OLD_MAIN),
         arrayOf("ak-fn-switch", SWITCH_KEY_LABEL, "switch", OLD_ALT, OLD_FN),
         arrayOf("ak-fn-ctrl", "Ctrl", "builtin", "toggle_ctrl", OLD_FN),
         arrayOf("ak-fn-tab", "Tab", "escape", "\\t", OLD_FN),
@@ -56,7 +56,7 @@ private val LEGACY_SEED: List<Array<String>> =
         arrayOf("ak-fn-down", "↓", "escape", "\\e[B", OLD_FN),
         arrayOf("ak-fn-left", "←", "escape", "\\e[D", OLD_FN),
         arrayOf("ak-fn-right", "→", "escape", "\\e[C", OLD_FN),
-        arrayOf("ak-fn-paste", copyText("mobDefaultButtons.label.paste"), "builtin", "paste", OLD_FN),
+        arrayOf("ak-fn-paste", copyText("login.act.paste"), "builtin", "paste", OLD_FN),
         arrayOf("ak-alt-switch", SWITCH_KEY_LABEL, "switch", OLD_VIM, OLD_ALT),
         arrayOf("ak-alt-alt", "Alt", "builtin", "toggle_alt", OLD_ALT),
         arrayOf("ak-alt-ctrlend", "Ctrl+End", "escape", "\\e[1;5F", OLD_ALT),

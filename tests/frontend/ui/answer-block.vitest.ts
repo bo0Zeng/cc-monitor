@@ -155,7 +155,7 @@ describe("甲2 拒绝并说明（note: required）", () => {
     expect(input).not.toBeNull();
     expect(document.activeElement).toBe(input);
     expect(b.el.querySelector("[data-row=main]"), "选项那两行收起").toBeNull();
-    expect([...b.el.querySelectorAll("[data-part=scroll] button")].map(label), "头一行那颗［收起］不算").toEqual([ASKS.approve.choices[4].text, copyText("askBlock.note.cancel")]);
+    expect([...b.el.querySelectorAll("[data-part=scroll] button")].map(label), "头一行那颗［收起］不算").toEqual([ASKS.approve.choices[4].text, copyText("kit.dialog.cancel")]);
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(answers, "必附话的空着不交").toEqual([]);
@@ -390,7 +390,7 @@ describe("甲8 收起：头一行常驻", () => {
   it("★ 挂着请求 ⇒ 头一行末尾一颗［收起］；点了块只剩头一行、消息流让出的高跟着报成收起后的高", () => {
     const r = rig(tab(needs(ASKS.approve)));
     stubHeight(r.b);
-    expect(label(foldBtn(r.b))).toBe(copyText("askBlock.fold.collapse"));
+    expect(label(foldBtn(r.b))).toBe(copyText("kit.dock.close"));
     foldBtn(r.b).click();
     expect(folded(r.b)).toBe(true);
     expect(label(foldBtn(r.b))).toBe(copyText("askBlock.fold.expand"));
@@ -520,7 +520,7 @@ describe("甲9 多题：只展开正在答的那一题", () => {
       const text = boxes(b)[0].querySelector<HTMLElement>("[data-part=qtext]")!;
       expect(text.dataset.clamped).toBe("true");
       const full = boxes(b)[0].querySelector<HTMLButtonElement>("button[data-part=qfull]")!;
-      expect(label(full)).toBe(copyText("askBlock.question.full"));
+      expect(label(full)).toBe(copyText("agentWindow.brief.more"));
       full.click();
       expect(text.dataset.clamped).toBeUndefined();
       expect(boxes(b)[0].querySelector("button[data-part=qfull]")).toBeNull();

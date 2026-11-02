@@ -115,7 +115,7 @@ describe("md-view：金样逐例", () => {
     expect(blk?.querySelector(".code-bar .code-lang")?.textContent).toBe("bash");
     const btn = blk?.querySelector("button.code-copy");
     expect(btn?.hasAttribute("data-copy")).toBe(true);
-    expect(btn?.textContent).toBe(copyText("render.codeBlock.copy"));
+    expect(btn?.textContent).toBe(copyText("beFiles.batch.verbCopy"));
   });
 
   it("代码块：没拉到高亮 ⇒ 整块纯字；拉的那一下失败 ⇒ 照旧纯字；三元组越界 ⇒ 截在串尾", async () => {

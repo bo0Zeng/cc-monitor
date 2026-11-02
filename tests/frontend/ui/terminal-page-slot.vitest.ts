@@ -122,7 +122,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     page.sessionChanged();
     page.setVisible(true);
     await flush();
-    const keys = [...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("terminal.key.esc"));
+    const keys = [...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("kit.dock.escKey"));
     expect(keys).toHaveLength(1);
     expect(keys[0].getAttribute("aria-disabled") === "true" || keys[0].disabled, "按键灰着").toBe(true);
     expect(page.el.textContent).toContain(heldLine());
@@ -151,7 +151,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     await page.send({ key: "esc" });
     await flush();
     expect(page.el.textContent).toContain(copyText("terminal.input.failed", { why: "S-held" }));
-    expect([...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("terminal.input.retry"))).toHaveLength(0);
+    expect([...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("front.act.retry"))).toHaveLength(0);
     expect(reads.send.mock.calls.map((c) => c.length)).toEqual([4]);
   });
 });

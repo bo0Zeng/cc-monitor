@@ -452,7 +452,7 @@ class FilesViewModel(
         val r = ops.writeText(dir, entry.rel, text, sha256)
         r
             .onSuccess {
-                _events.tryEmit(Notice(copyText("mobFiles.save.done")))
+                _events.tryEmit(Notice(copyText("remote.save.done")))
                 refresh()
             }.onFailure(::say)
         _busy.value = false

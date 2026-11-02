@@ -80,7 +80,7 @@ fun ConflictSheet(
                 FilterChip(selected = each, onClick = { each = !each }, label = { Text(copyText("rsFilewinBatch.btn.each")) })
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
-                SecondaryButton(onClick = { onAnswer(null) }) { Text(copyText("rsFilewinBatch.btn.cancel")) }
+                SecondaryButton(onClick = { onAnswer(null) }) { Text(copyText("kit.dialog.cancel")) }
                 if (each) {
                     SecondaryButton(onClick = { onAnswer(BatchAnswer.Each(picks.toMap())) }) { Text(go.orEmpty()) }
                 } else {

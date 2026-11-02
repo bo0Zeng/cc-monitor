@@ -207,7 +207,7 @@ private fun QueueRow(
         Text(row.state, style = MaterialTheme.typography.bodySmall, color = if (row.error) tokens.errorText else MaterialTheme.colorScheme.onSurface, maxLines = 1)
         row.from?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1) }
         Text(row.head, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (row.retry) SecondaryButton(onClick = { actions.retry(row.id) }) { Text(copyText("terminal.input.retry")) }
+        if (row.retry) SecondaryButton(onClick = { actions.retry(row.id) }) { Text(copyText("front.act.retry")) }
         SecondaryButton(onClick = { if (row.listed) actions.cancelQueued(row.id) else actions.cancel(row.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
 }
@@ -428,7 +428,7 @@ private fun SendOrStop(
 ) {
     // 运行中且框里没字、没附件 ⇒ 停止；二选一，不并存。输入框只在那台说说不了时锁（[sayLook]）。
     if (running && can == Sendable.EMPTY) {
-        SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
+        SendButton(Ph.Stop, copyText("composer.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
     } else {
         SendButton(
             Ph.PaperPlaneRight,
@@ -542,7 +542,7 @@ private fun PlusRows(
     say: (String) -> Unit,
     confirmClear: (String) -> Unit,
 ) {
-    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}", next = true, enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
+    SheetRow(copyText("detail.label.command"), end = "${list.commands.size}", next = true, enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
     SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}", next = true, enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
     val acts = oneShots(list)
     if (acts.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = LocalAppTokens.current.spacing.xs))
@@ -561,7 +561,7 @@ private fun CommandList(
     Row(verticalAlignment = Alignment.CenterVertically) {
         SecondaryButton(onClick = back) { Text(copyText("mobKit.act.back")) }
         Text(
-            if (skills) copyText("mobPlus.row.skills") else copyText("mobPlus.row.commands"),
+            if (skills) copyText("mobPlus.row.skills") else copyText("detail.label.command"),
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(Modifier.width(LocalAppTokens.current.spacing.sm))
@@ -605,7 +605,7 @@ private fun ClearDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         modifier = Modifier.testTag(ChatTestTags.CLEAR_DIALOG),
-        title = { Text(copyText("session.clear.title")) },
+        title = { Text(copyText("mobPlus.row.clear")) },
         text = { Text(copyText("session.clear.body")) },
         dismissButton = { SecondaryButton(onClick = onCancel, modifier = Modifier.focusRequester(cancel)) { Text(copyText("kit.dialog.cancel")) } },
         confirmButton = { Button(onClick = onClear, modifier = Modifier.testTag(ChatTestTags.CLEAR_OK)) { Text(copyText("session.clear.ok")) } },

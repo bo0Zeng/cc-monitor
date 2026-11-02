@@ -204,7 +204,7 @@ private fun IdentityRow(
         DangerConfirmDialog(
             title = { Text(copyText("mobIdentity.delete.title")) },
             text = { Text(identityDeleteWarning(identity.label, identity.isKeystoreBacked())) },
-            confirm = copyText("mobIdentity.delete.ok"),
+            confirm = copyText("beFiles.batch.verbDelete"),
             onConfirm = {
                 showDeleteConfirm = false
                 onDelete()
@@ -232,7 +232,7 @@ private fun IdentityRow(
         )
         Row(Modifier.padding(start = Touch.iconBar), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconTextButton(Ph.Copy, copyText("mobIdentity.row.copyKey"), onClick = onCopy)
-            IconTextButton(Ph.Trash, copyText("mobIdentity.row.delete"), onClick = { showDeleteConfirm = true }, danger = true)
+            IconTextButton(Ph.Trash, copyText("beFiles.batch.verbDelete"), onClick = { showDeleteConfirm = true }, danger = true)
         }
     }
 }
@@ -265,7 +265,7 @@ private fun NewIdentityDialog(
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
-                label = { Text(copyText("mobIdentity.new.name")) },
+                label = { Text(copyText("machineForm.field.name")) },
                 singleLine = true,
             )
         },
@@ -284,7 +284,7 @@ private fun IdentityChooserSheet(
 ) {
     // 上屏叫「钥匙」不叫「身份」：「身份」会与账号身份撞（同 `IDENTITY_SCREEN_TITLE`）。
     ActionSheet(
-        title = copyText("mobIdentity.add.title"),
+        title = copyText("mobIdentity.fab.aria"),
         actions =
             listOf(
                 SheetAction(Ph.Fingerprint, copyText("mobIdentity.add.hardware"), onClick = onGenerate),
@@ -311,7 +311,7 @@ private fun ImportPrivateKeyDialog(
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    label = { Text(copyText("mobIdentity.import.name")) },
+                    label = { Text(copyText("machineForm.field.name")) },
                     singleLine = true,
                 )
                 OutlinedTextField(

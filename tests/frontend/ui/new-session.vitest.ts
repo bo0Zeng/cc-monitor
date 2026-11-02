@@ -99,7 +99,7 @@ const choose = (b: HTMLButtonElement, label: string): void => {
 };
 const input = (label: string): HTMLInputElement => dialog().querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
 const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*=nsRow]")!;
-const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
+const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("mobTerms.new.detached"))!;
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-open").map((s) => s.body);
 /** 请求里「起什么」那一份。 */
 const whatOf = (r: Record<string, unknown>): Record<string, unknown> => r.what as Record<string, unknown>;
@@ -157,7 +157,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     const acct = sel(copyText("newSession.label.account"));
     expect(acct.dataset.value).toBe("work");
     expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
-    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("newSession.account.default")}`, `▣personal${copyText("acct.tag.login")}`]);
+    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("resumeSelect.option.defaultBare")}`, `▣personal${copyText("acct.tag.login")}`]);
     expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("orders-cc");
     expect(sent.find((s) => s.op === "session-open-facts")!.body).toEqual({});
   });
@@ -369,7 +369,7 @@ describe("点［新建］：交那台的那一份", () => {
     });
     const done = openNewSession({ origin: "devbox" });
     await flush();
-    const sel = document.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.new.label")}"]`)!;
+    const sel = document.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("machinePage.tab.rot")}"]`)!;
     expect(sel.textContent).toContain("按权重轮换");
     sel.click();
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="option"]')].find((e) => e.textContent?.includes(copyText("rot.none.label")))!.click();
@@ -572,8 +572,8 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(commands.backend_machines).not.toHaveBeenCalled();
     const items = optionsOf(sel(copyText("newSession.label.machine")));
     expect(items.some((t) => t.includes("old")), "关着的不列").toBe(false);
-    expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("newSession.machine.down"));
-    expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("newSession.machine.down"));
+    expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("machinePage.state.down"));
+    expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("machinePage.state.down"));
   });
 
   it("那台连不上、成品还没到 ⇒ 框顶不说离线（不知道 ≠ 离线），说状态不明", async () => {
@@ -590,7 +590,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(top()).toContain("成品写的 devbox 离线那一句");
     expect(createBtn().title).toBe("成品写的 devbox 离线那一句");
     expect(sent.filter((x) => x.op.startsWith("session-")), "断开还去问那台").toEqual([]);
-    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
+    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("history.list.reconnect"))!.click();
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
   });
 
@@ -599,7 +599,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     vi.mocked(commands.backend_start).mockRejectedValueOnce(new Error("devbox 停用着-甲"));
     void openNewSession({ origin: "devbox" });
     await flush();
-    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
+    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("history.list.reconnect"))!.click();
     await flush();
     expect(top()).toContain("devbox 停用着-甲");
   });

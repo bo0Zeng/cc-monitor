@@ -51,7 +51,7 @@ describe("换号条", () => {
     expect(strips).toHaveLength(1);
     expect(strips[0].textContent).toContain(copyText("rot.strip.move", { from: "team", to: "lab" }));
     expect(strips[0].textContent).toContain("后端配好的为什么");
-    [...strips[0].querySelectorAll("button")].find((b) => b.textContent === copyText("rot.strip.open"))!.click();
+    [...strips[0].querySelectorAll("button")].find((b) => b.textContent === copyText("acct.menu.open"))!.click();
     expect(host.openPanel).toHaveBeenCalledWith("s1", "<local>");
   });
 });

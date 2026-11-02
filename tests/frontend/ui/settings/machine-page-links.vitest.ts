@@ -41,7 +41,7 @@ const up = (more: Partial<MachineState> = {}): MachineState => ({
 const page = () => buildMachinePage({ pageId: "machine:deep", name: "deep", meta: "", ccMonitor: [], menu: () => [{ label: "连接设置（夹具）" }] });
 const routeEl = (p: ReturnType<typeof page>) => p.element.querySelector<HTMLElement>(".machine-route")!;
 const openMore = (p: ReturnType<typeof page>): Item[] => {
-  p.element.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("machinePage.head.more")}"]`)!.click();
+  p.element.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("history.row.more")}"]`)!.click();
   return menus.last;
 };
 

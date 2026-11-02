@@ -130,7 +130,7 @@ class RustTransport(
             try {
                 val line = link.readLine() ?: throw IOException(copyText("reason.link.lost"))
                 // 收全的那一行认不出 ⇒ 两端契约对不上（不补默认、不当成功）。
-                val got = Wire.read<Captured>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
+                val got = Wire.read<Captured>(line) ?: throw IOException(copyText("beServer.words.cantConnect"))
                 ExecResult(
                     exitStatus = got.exitStatus,
                     stdout = got.stdout,
@@ -222,7 +222,7 @@ class RustTransport(
         ack: DialAck,
         cfg: ConnectionConfig,
     ): Exception {
-        val said = ack.said?.ifEmpty { null } ?: copyText("mobSsh.log.connectFailed")
+        val said = ack.said?.ifEmpty { null } ?: copyText("beServer.words.cantConnect")
         val expected = ack.expectedFingerprint
         return when {
             expected != null ->
@@ -412,7 +412,7 @@ internal class RustLink(
             val line = readLine() ?: throw IOException(copyText("reason.link.lost"))
             val row =
                 Wire.read<StageRow>(line)
-                    ?: return Wire.read<DialAck>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
+                    ?: return Wire.read<DialAck>(line) ?: throw IOException(copyText("beServer.words.cantConnect"))
             onStage(row.stage)
         }
     }

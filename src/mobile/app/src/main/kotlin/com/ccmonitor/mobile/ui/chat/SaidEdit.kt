@@ -284,7 +284,7 @@ internal fun SaidMenu(
 ) {
     val actions =
         if (recorded) {
-            listOf(SheetAction(Ph.PencilSimple, copyText("mobSaidEdit.menu.edit"), onClick = onEdit), SheetAction(Ph.Copy, copyText("mobSaidEdit.menu.copy"), onClick = onCopy))
+            listOf(SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit), SheetAction(Ph.Copy, copyText("beFiles.batch.verbCopy"), onClick = onCopy))
         } else {
             listOf(SheetAction(Ph.ArrowCounterClockwise, copyText("mobChat.outbox.cancel"), onClick = onRecall))
         }
@@ -302,7 +302,7 @@ internal fun SaidEditor(
     val tokens = LocalAppTokens.current
     var text by remember(initial) { mutableStateOf(initial) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-        Text(copyText("mobSaidEdit.editor.hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(copyText("saidEdit.bar.hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(
             value = text,
             onValueChange = {
@@ -312,8 +312,8 @@ internal fun SaidEditor(
             modifier = Modifier.fillMaxWidth().testTag(ChatTestTags.SAID_EDIT_BOX),
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
-            SecondaryButton(onClick = onCancel) { Text(copyText("mobSaidEdit.editor.cancel")) }
-            SecondaryButton(onClick = { onSend(text) }, modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_SEND)) { Text(copyText("mobSaidEdit.editor.send")) }
+            SecondaryButton(onClick = onCancel) { Text(copyText("kit.dialog.cancel")) }
+            SecondaryButton(onClick = { onSend(text) }, modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_SEND)) { Text(copyText("mobChat.input.send")) }
         }
     }
 }
@@ -399,7 +399,7 @@ internal fun RewindSheet(
 private fun SheetHead(target: String) {
     val faint = MaterialTheme.colorScheme.onSurfaceVariant
     Column {
-        Text(copyText("mobSaidEdit.sheet.title"), style = MaterialTheme.typography.titleMedium)
+        Text(copyText("saidEdit.pick.confirm"), style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.xs)) {
             Text(copyText("mobSaidEdit.sheet.to"), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1)
             Text(target.lineSequence().firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -417,10 +417,10 @@ private fun Choices(
     onHow: (RewindHow) -> Unit,
     onWhen: (RewindWhen) -> Unit,
 ) {
-    if (o.how.isNotEmpty()) Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
+    if (o.how.isNotEmpty()) Text(copyText("saidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
     o.how.forEach { r -> Choice(r.text, pickable && how == r.how, enabled = pickable && r.enabled, why = r.why) { onHow(r.how) } }
     if (pickable && o.`when`.isNotEmpty()) {
-        Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
+        Text(copyText("saidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
         o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { onWhen(r.`when`) } }
     }
     o.said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -438,11 +438,11 @@ private fun SheetButtons(
         acts.forEach { a ->
             when (a) {
                 SheetAct.CANCEL -> SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
-                SheetAct.CLOSE -> SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) }
+                SheetAct.CLOSE -> SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) }
                 SheetAct.RETRY -> Unit
                 SheetAct.CONFIRM ->
                     Button(onClick = onConfirm, enabled = confirmOn, modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_CONFIRM)) {
-                        Text(copyText("mobSaidEdit.pick.confirm"))
+                        Text(copyText("saidEdit.pick.confirm"))
                     }
             }
         }
@@ -453,7 +453,7 @@ private fun SheetButtons(
 @Composable
 private fun Skeleton() {
     val tokens = LocalAppTokens.current
-    Text(copyText("mobSaidEdit.pick.loading"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(copyText("saidEdit.pick.loading"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     repeat(SKELETON_ROWS) {
         Box(
             Modifier

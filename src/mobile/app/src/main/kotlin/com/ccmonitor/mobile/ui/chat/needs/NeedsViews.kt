@@ -422,7 +422,7 @@ private fun GoneChoices(
         onClick = act.dismiss,
         modifier = Modifier.fillMaxWidth().heightIn(min = TOUCH).testTag(NeedsTags.CLOSE),
         shape = ROW_SHAPE,
-    ) { Text(copyText("mobKit.act.close")) }
+    ) { Text(copyText("kit.drawer.close")) }
 }
 
 /** 要附话的那一项：抽屉里就地换成一格输入框 ＋ 那一项的主按钮 ＋［取消］（不借聊天输入框）。 */
@@ -445,7 +445,7 @@ private fun NoteBox(
     ChoiceButton(c.text, ChoiceLook.PRIMARY, enabled = !sheet.locked && (!required || text.isNotBlank()), busy = sheet.sending == c.id, tag = NeedsTags.choice(c.id)) {
         act.sendNote(text)
     }
-    ChoiceButton(copyText("askBlock.note.cancel"), ChoiceLook.QUIET, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("note-back"), onClick = act.cancelNote)
+    ChoiceButton(copyText("kit.dialog.cancel"), ChoiceLook.QUIET, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("note-back"), onClick = act.cancelNote)
 }
 
 /** 一题一屏：题头（header）· 题目 · 选项（单选圆点 / 多选方块，选中淡底 ＋ 强调色描边）· 末尾「其他…」。 */

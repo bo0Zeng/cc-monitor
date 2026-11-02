@@ -355,7 +355,7 @@ describe("会话头", () => {
     expect(h.el.textContent).toContain(LOCAL_NAME);
     expect(h.el.textContent).toContain("/w/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
-    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("tabBarView.tab.terminalHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
+    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("terminal.head.front"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("history.row.more")]);
     const btns = h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])");
     expect(btns[1].getAttribute("aria-disabled")).toBe("true");
     btns[1].click();
@@ -367,15 +367,15 @@ describe("会话头", () => {
   });
 
   it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］；状态不明不多（那台由栏底机器条说、在那一行修）；活着不多", () => {
-    expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("sessionHead.act.resume"));
+    expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("history.row.resume"));
     const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
     expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
     expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
     const unseen = labels(head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") })).h.el);
-    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(unseen).not.toContain(copyText(x));
+    for (const x of ["history.row.resume", "sessionHead.act.openTerm"] as const) expect(unseen).not.toContain(copyText(x));
     expect(labels(head(tab("e", { face: goldenFace("ended") })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
     const live = labels(head(tab("d")).h.el);
-    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(live).not.toContain(copyText(x));
+    for (const x of ["history.row.resume", "sessionHead.act.openTerm"] as const) expect(live).not.toContain(copyText(x));
   });
 
   it("没有当前会话 ⇒ 不显示", () => {
@@ -545,7 +545,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     key(b, "Enter", { ctrlKey: true });
     await flush();
     expect(b.value).toBe("1");
-    const retry = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
+    const retry = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("front.act.retry"));
     expect(retry).toBeDefined();
   });
 
@@ -555,7 +555,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    const retryButton = () => [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
+    const retryButton = () => [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("front.act.retry"));
     r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 不在", screen: null, acts: ["relist"] }));
     const lists = vi.mocked(r.reads.list).mock.calls.length;
     key(b, "Enter", { ctrlKey: true });
@@ -585,7 +585,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(note).toContain("送不出去-甲");
     expect(note).not.toContain("夹具原话-乙");
     const labels = [...r.page.el.querySelectorAll("button")].map((x) => x.textContent);
-    expect(labels).toContain(copyText("terminal.input.retry"));
+    expect(labels).toContain(copyText("front.act.retry"));
     expect(labels).toContain(copyText("detail.act.copy"));
   });
 
@@ -740,7 +740,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.follows, "抓屏都失败了还去订实时（订也会被拒，叠出第二条警告）").toHaveLength(0);
     expect(r.page.el.textContent).not.toContain(copyText("terminal.bar.liveRetry"));
     r.failShots(null);
-    [...r.page.el.querySelectorAll("button")].find((b) => b.textContent === copyText("terminal.state.refresh"))!.click();
+    [...r.page.el.querySelectorAll("button")].find((b) => b.textContent === copyText("accountChip.menu.refresh"))!.click();
     await flush();
     expect(r.follows.map((f) => f.terminal)).toEqual(["tmux-a"]);
   });

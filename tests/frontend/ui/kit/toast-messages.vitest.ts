@@ -39,13 +39,13 @@ describe("toast 排版 ＋「消息」记录", () => {
   it("🔴 右侧抽屉开着 ⇒ toast 让到它左边（抽屉宽写进 toast 那一栏的 --kit-drawer-right：开着之前就有的、开着时才出来的都算），关了还原", async () => {
     const { openDrawer } = await import("../../../../src/frontend/ui/kit/drawer");
     const inset = (): string => document.getElementById("kit-toast-stack")?.style.getPropertyValue("--kit-drawer-right") ?? "<没有那一栏>";
-    const d = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 440 });
+    const d = openDrawer({ title: copyText("newSession.label.account"), body: document.createElement("div"), width: 440 });
     kit.toast("已复制", "", { level: "info" });
     expect(inset()).toBe("440px");
     await d.close();
     expect(inset()).toBe("");
     kit.toast("已复制", "", { level: "info" });
-    const d2 = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 400 });
+    const d2 = openDrawer({ title: copyText("newSession.label.account"), body: document.createElement("div"), width: 400 });
     expect(inset()).toBe("400px");
     await d2.close();
     expect(inset()).toBe("");
@@ -56,7 +56,7 @@ describe("toast 排版 ＋「消息」记录", () => {
     const seen: string[] = [];
     const mo = new MutationObserver((rs) => rs.forEach((r) => seen.push(r.attributeName ?? "")));
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-    const d = openDrawer({ title: copyText("keybindingActions.category.account"), body: document.createElement("div"), width: 440 });
+    const d = openDrawer({ title: copyText("newSession.label.account"), body: document.createElement("div"), width: 440 });
     await d.close();
     await Promise.resolve();
     mo.disconnect();

@@ -254,7 +254,7 @@ describe("buildProfilesList", () => {
     await flush();
     const top = el.querySelector<HTMLElement>('[data-role="form-top"]')!;
     expect(top.textContent).toContain(copyText("profilesPage.form.stale"));
-    expect(top.textContent).toContain(copyText("profilesPage.form.reread"));
+    expect(top.textContent).toContain(copyText("accountChip.menu.refresh"));
     expect(el.querySelector('[data-role="profile-form"]')).not.toBeNull();
   });
 
@@ -321,7 +321,7 @@ describe("buildProfilesList", () => {
     book.profiles = [];
     const again = await mount();
     const card = again.el.querySelector<HTMLElement>('[data-role="file-problem"]')!;
-    expect(card.textContent).toContain(copyText("profilesPage.file.at", { line: "3", why: "坏了" }));
+    expect(card.textContent).toContain(copyText("beProfile.at.line", { line: "3", why: "坏了" }));
     expect(card.textContent, "原话不上屏").not.toContain("expected");
     expect(card.querySelector('[data-part="copy-detail"]'), "有详情 ⇒ 句子后面跟［复制详情］").not.toBeNull();
     expect([...again.el.querySelectorAll("button")].map((x) => x.textContent)).not.toContain(copyText("profilesPage.list.add"));

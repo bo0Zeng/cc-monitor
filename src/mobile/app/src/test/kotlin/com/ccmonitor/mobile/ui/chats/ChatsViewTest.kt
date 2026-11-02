@@ -133,12 +133,12 @@ class ChatsViewTest {
     @Test
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
-        val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
+        val update = MachineFixButton(MachineFix.UPDATE, copyText("front.act.update"))
         val down = hostPart(snap(linkDown("远端 cc-monitor 未装", fixes = listOf(install))))
         assertEquals(install, down.bar?.fix)
         assertEquals("装一次会好 ⇒ 红条（不是断线那一条）", false, down.bar?.offline)
         assertNull(down.bar?.busy)
-        val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")))
+        val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")))
         assertNull(hostPart(snap(linkDown("m 离线", fixes = retry))).bar?.fix)
         val old = hostPart(snap(linkUp("box 后端要更新", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE)))
         assertEquals(update, old.bar?.fix)

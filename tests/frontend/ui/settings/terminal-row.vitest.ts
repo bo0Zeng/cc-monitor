@@ -35,7 +35,7 @@ describe("终端那一行", () => {
       ["", "ptyxis"],
       ["ptyxis", ""],
       ["xterm", ""],
-      [copyText("settingsPanel.terminal.custom"), ""],
+      [copyText("resumeSelect.option.custom"), ""],
     ]);
     expect(optionsOf(facts(null, []))[0].note).toBe(copyText("settingsPanel.terminal.autoNone"));
     expect(selectedOf(facts("ptyxis", ["ptyxis", "xterm"], "xterm")).value).toBe("xterm");
@@ -60,7 +60,7 @@ describe("终端那一行", () => {
       { edits: [{ op: "remove", path: ["terminal"] }] },
     ]);
     ipc.patch.mockClear();
-    choose(selectOf(el), copyText("settingsPanel.terminal.custom"));
+    choose(selectOf(el), copyText("resumeSelect.option.custom"));
     expect(ipc.patch).not.toHaveBeenCalled();
     expect(customOf(el).hidden).toBe(false);
     customOf(el).value = "  kitty  ";

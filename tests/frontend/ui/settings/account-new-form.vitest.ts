@@ -64,7 +64,7 @@ function form(confirmAnswer = true) {
   };
   const name = byLabel(copyText("acctNew.name.label"));
   const key = byLabel("API key");
-  const base = byLabel(copyText("acctNew.base.label"));
+  const base = byLabel(copyText("machineForm.field.host"));
   const cred = byLabel(copyText("acctNew.import.label"));
   const radio = (t: string) => [...el.querySelectorAll<HTMLLabelElement>("label")].find((l) => l.textContent === t)!.querySelector("input")!;
   const btn = (t: string) => [...el.querySelectorAll("button")].find((b) => b.textContent === t)!;
@@ -88,7 +88,7 @@ describe("新建账号表单", () => {
     const f = form();
     for (const x of [f.name, f.key, f.base, f.cred, f.radio(SUB), f.radio("API key")]) expect(x).toBeTruthy();
     expect(f.btn(copyText("acctNew.form.createLogin"))).toBeTruthy();
-    expect(f.btn(copyText("acctNew.form.cancel"))).toBeTruthy();
+    expect(f.btn(copyText("kit.dialog.cancel"))).toBeTruthy();
   });
 
   it("默认是「订阅」：地址 / key 两格藏着、主按钮「创建并登录」；切到 API key 两格出来、主按钮「创建」、导入那一项藏起", async () => {

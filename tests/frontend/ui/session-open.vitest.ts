@@ -239,7 +239,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     refusal = { code: "account_unavailable", said: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } } };
     await openSession("devbox", RESUME);
     const acts = toasts.toast.mock.calls[0][2].action as { label: string; run: () => void }[];
-    expect(acts.map((a) => a.label)).toEqual([copyText("sessionOpen.account.useAlt", { alt: "b" }), copyText("newSession.account.login")]);
+    expect(acts.map((a) => a.label)).toEqual([copyText("newSession.account.useAlt", { alt: "b" }), copyText("newSession.account.login")]);
     acts[1].run();
     expect(drawer.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "z" } }));
   });
@@ -274,7 +274,7 @@ describe("开窗失败 · 在飞", () => {
     expect(clip.writeClipboard, "不许自动写剪贴板").not.toHaveBeenCalled();
     const [title, , opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
     expect(title).toBe(copyText("terminalOpen.setMissing.title"));
-    expect((opts.action ?? []).map((x) => x.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
+    expect((opts.action ?? []).map((x) => x.label)).toEqual([copyText("mobDrawer.settings.aria"), copyText("terminalOpen.noTerminal.copy")]);
     vi.clearAllMocks();
     clip.writeClipboard.mockResolvedValue(undefined);
     term.openLocalTerminal.mockRejectedValueOnce(new Error(copyText("rsLaunch.posix.noTerminalWindow")));
