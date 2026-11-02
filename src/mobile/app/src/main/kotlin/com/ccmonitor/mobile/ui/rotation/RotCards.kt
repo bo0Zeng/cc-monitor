@@ -113,9 +113,15 @@ internal fun Cards(
             AddCard(Modifier.width(w), enabled = view.accounts.size > view.listed) { adding = true }
         }
     }
+    pruneEdit(view)?.let { e ->
+        SecondaryButton(onClick = { board.edit(e) }, modifier = Modifier.testTag("rot-prune")) { Text(copyText("rot.acct.prune")) }
+    }
     ui.open?.let { a -> EditSheet(ui, view, board, a) }
     if (adding) AddSheet(view, board) { adding = false }
 }
+
+/** 「清掉库里没有的号」那一发（同桌面）：号列表里有那台标了 `missing` 的号才有。 */
+internal fun pruneEdit(view: RotationViewReply): Map<String, Any?>? = if (view.board.rows.any { it.missing == true }) RotEdit.prune() else null
 
 /** 长按（先震一下）再拖：拖的时候号牌浮起；松在哪张号牌上 ⇒ 排到它前头。 */
 private fun Modifier.cardDrag(

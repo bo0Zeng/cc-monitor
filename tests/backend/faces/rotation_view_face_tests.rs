@@ -1325,6 +1325,11 @@ fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
         v.board.rows[1].line,
         copy_core::copy_text("rot.acct.missing", &[])
     );
+    assert_eq!(
+        v.board.rows.iter().map(|r| r.missing).collect::<Vec<_>>(),
+        [false, true, false],
+        "库里没有的那一行带成品信号（界面照它出「清掉库里没有的号」，不比字）"
+    );
 }
 
 /// ★ 号列表 `[a, gone, b]`、账号库 `[a, b, c, api]`（两头各缺一个）：看板逐行号名照它自己在列表里的 id，库里没有的 gone 照实出一行，
@@ -1411,4 +1416,48 @@ fn an_unseen_session_with_its_own_upstream_says_so() {
         said(false),
         copy_core::copy_text("beRotation.session.gone", &[])
     );
+}
+
+/// ★ 一格出不出［恢复默认］后端算一次（`reset`，两端照它）：自己设的那一格出；跟总体 · 声明默认的不出；
+/// 分段后面那几窗另设的不出（它们照［同第一窗］回去），分段第一窗自己设的照出。
+#[test]
+fn the_board_says_which_cells_can_go_back_to_default() {
+    let home = Home::new("reset-cells");
+    let ctx = home.ctx();
+    shelf::write_file(
+        &home.own(),
+        "ed",
+        &setup::editor::fresh(&["a".into(), "b".into()], Some("UTC".into())),
+    )
+    .expect("写");
+    let segs = json!([{"from": 0, "to": 1440, "v": 70}]);
+    home.settings_of(
+        "ed",
+        json!({"smart": true, "accounts": [{"id": "a"}, {"id": "b", "in": "force", "caps": {"5h": segs, "7d": segs}}]}),
+    );
+    let v = strategy_view(&ctx, &home, "ed");
+    let at = |i: usize, key: &str, w: Option<&str>| -> (form::RotFrom, bool) {
+        let c = v.board.rows[i]
+            .cells
+            .iter()
+            .find(|c| c.key == key && c.window.as_deref() == w)
+            .unwrap_or_else(|| panic!("{key}"));
+        (c.from, c.reset)
+    };
+    assert_eq!(at(1, "in", None), (form::RotFrom::Own, true));
+    assert_eq!(at(1, "caps", Some("5h")), (form::RotFrom::Own, true));
+    assert_eq!(
+        at(1, "caps", Some("7d")),
+        (form::RotFrom::Own, false),
+        "分段后面那几窗另设的照［同第一窗］回去，不出［恢复默认］"
+    );
+    assert!(!at(0, "in", None).1, "没设的那一格不出");
+    assert!(!at(0, "caps", Some("5h")).1);
+    let smart = v
+        .board
+        .all
+        .iter()
+        .find(|c| c.key == "smart")
+        .expect("smart");
+    assert_eq!((smart.from, smart.reset), (form::RotFrom::Own, true));
 }
