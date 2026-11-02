@@ -6,7 +6,7 @@
 //! 用户文件一律经后端文件管理面写（INVARIANTS § 4）。今天的调用方：monitor 的 `bind.rs` · `auto_launch.rs`、文件窗口的书签。
 
 use copy_core::{Discard, Why};
-use relay_route_core::Cap;
+use relay_route_core::{Cap, CappedAll};
 
 /// 一个进程里第几次写（临时件名字里带它：同一毫秒两个线程各写各的）。
 static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -75,21 +75,18 @@ pub enum Capped<T> {
 }
 
 /// 整读一份文件，最多 `cap.bytes` 字节（上限是调用方声明的那道 [`Cap`]，如声明表 `relay_route_core::CONFIG_FILE` 那一行的）。
-/// 只读 `cap.bytes + 1` 个字节分辨「刚好读满」与「其实还有」，不按文件大小分配。前端两个包整读一份文件只经它与 [`read_capped`]。
+/// 读经 [`relay_route_core::read_capped_from`]：只读 `cap.bytes + 1` 个字节分辨「刚好读满」与「其实还有」，不按文件大小分配。
+/// 前端两个包整读一份文件只经它与 [`read_capped`]。
 pub fn read_capped_bytes(path: &std::path::Path, cap: Cap) -> std::io::Result<Capped<Vec<u8>>> {
-    use std::io::Read as _;
-    let Cap { bytes: cap, .. } = cap;
     let f = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Capped::Absent),
         Err(e) => return Err(e),
     };
-    let mut buf = Vec::new();
-    f.take(cap.saturating_add(1)).read_to_end(&mut buf)?;
-    if buf.len() as u64 > cap {
-        return Ok(Capped::TooBig);
-    }
-    Ok(Capped::Whole(buf))
+    Ok(match relay_route_core::read_capped_from(f, cap)? {
+        CappedAll::All(buf) => Capped::Whole(buf),
+        CappedAll::OverCap => Capped::TooBig,
+    })
 }
 
 /// 同 [`read_capped_bytes`]，交回原文：不是 UTF-8 ⇒ `InvalidData`。

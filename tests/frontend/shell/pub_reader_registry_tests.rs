@@ -100,11 +100,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧一台常驻流的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，后端那棵 workspace，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
-        "src/comms/inward/line.rs",
-        "read_capped_all_sync",
-        "带上限的同步整读：今天的读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/install.rs`，后端那棵 workspace，不在扫描面里）；后端与壳的同步整读随后改经它",
-    ),
-    (
         "src/common/batch-core/src/lib.rs",
         "CMD_STOP",
         "手机那一侧停一组发的命令名：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，后端那棵 workspace，不在扫描面里）",

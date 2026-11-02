@@ -423,10 +423,7 @@ pub(crate) fn read_page(
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| Said::new("failed", format!("seek failed: {e}")))?;
     let mut src = f.take(limit - offset);
-    let mut bytes = Vec::with_capacity(page.min((limit - offset) as usize));
-    (&mut src)
-        .take(page as u64)
-        .read_to_end(&mut bytes)
+    let mut bytes = relay_route_core::read_window(&mut src, page as u64)
         .map_err(|e| Said::new("failed", format!("read failed: {e}")))?;
     let reached_limit = offset + bytes.len() as u64 >= limit;
     if !reached_limit {

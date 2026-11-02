@@ -177,21 +177,26 @@ pub(crate) fn read_input<R: std::io::BufRead>(
     r: R,
     one_line: bool,
 ) -> Result<String, crate::common::said::Said> {
-    let mut buf: Vec<u8> = Vec::new();
-    // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
-    let mut capped = r.take(MAX_CLI_STDIN + 1);
-    let got = if one_line {
-        std::io::BufRead::read_until(&mut capped, b'\n', &mut buf)
-    } else {
-        capped.read_to_end(&mut buf)
+    let read_failed = |e: std::io::Error| {
+        crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}"))
     };
-    if let Err(e) = got {
-        return Err(crate::common::said::Said::new(
-            "stdin_read_failed",
-            format!("read stdin failed: {e}"),
-        ));
-    }
-    if buf.len() as u64 > MAX_CLI_STDIN {
+    let within = if one_line {
+        let mut buf: Vec<u8> = Vec::new();
+        // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
+        std::io::BufRead::read_until(&mut r.take(MAX_CLI_STDIN + 1), b'\n', &mut buf)
+            .map_err(read_failed)?;
+        (buf.len() as u64 <= MAX_CLI_STDIN).then_some(buf)
+    } else {
+        let cap = relay_route_core::Cap {
+            bytes: MAX_CLI_STDIN,
+            over: relay_route_core::Over::Reject,
+        };
+        match relay_route_core::read_capped_from(r, cap).map_err(read_failed)? {
+            relay_route_core::CappedAll::All(buf) => Some(buf),
+            relay_route_core::CappedAll::OverCap => None,
+        }
+    };
+    let Some(buf) = within else {
         return Err(crate::common::said::Said::new(
             "args_too_large",
             // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
@@ -199,7 +204,7 @@ pub(crate) fn read_input<R: std::io::BufRead>(
                 "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
             )),
         ));
-    }
+    };
     String::from_utf8(buf).map_err(|e| {
         crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}"))
     })
