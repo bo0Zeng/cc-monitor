@@ -497,12 +497,7 @@ fn unreadable_ui(
         })
         .collect();
     let more = (st.unreadable_dirs as usize).saturating_sub(rows.len());
-    let tail = (more > 0).then(|| {
-        copy_text(
-            "kit.dialog.more",
-            &[("n", &more.to_string())],
-        )
-    });
+    let tail = (more > 0).then(|| copy_text("kit.dialog.more", &[("n", &more.to_string())]));
     // 浮层挂在［查看］正下方（贴着窗口右缘放不下时 egui 把它往左推回窗口里）。
     let hit = super::kit::path_list(
         ui,
@@ -543,10 +538,7 @@ pub fn first_build_line(machine: &str, cold_first_build_secs: u64) -> String {
 
 /// 没结果那一句。
 pub fn no_match_line(q: &str) -> String {
-    copy_text(
-        "kit.menu.noMatch",
-        &[("q", &q.trim().to_string())],
-    )
+    copy_text("kit.menu.noMatch", &[("q", &q.trim().to_string())])
 }
 
 /// 状态行与结果表尾上点出来的事。

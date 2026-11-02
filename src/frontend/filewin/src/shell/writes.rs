@@ -435,10 +435,7 @@ impl FileWindow {
                 }
             },
             &[
-                (
-                    copy_text("kit.dialog.cancel", &[]),
-                    crate::kit::Btn::Plain,
-                ),
+                (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                 (
                     copy_text("beFiles.batch.verbChmod", &[]),
                     crate::kit::Btn::Primary,

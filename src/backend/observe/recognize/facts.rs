@@ -1430,9 +1430,7 @@ fn note_quiet(f: &mut SessionFacts, kind: &str, v: &Value) {
         q.kinds.push(t);
     }
     let n = q.count.to_string();
-    let types = q
-        .kinds
-        .join(&copy_core::copy_text("kit.text.sep", &[]));
+    let types = q.kinds.join(&copy_core::copy_text("kit.text.sep", &[]));
     q.text = Words(copy_core::copy_text(
         "record.unread.quiet",
         &[("n", &n), ("types", &types)],

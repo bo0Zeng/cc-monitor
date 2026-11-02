@@ -948,21 +948,18 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
                 other => Err(format!("{other:?}")),
             },
         ),
-        (
-            copy_core::copy_static!("history.menu.delete"),
-            |w| {
-                // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
-                let e = w
-                    .listing
-                    .error
-                    .lock()
-                    .unwrap()
-                    .clone()
-                    .unwrap_or_default()
-                    .said;
-                no_runtime(&e).then_some(()).ok_or(e)
-            },
-        ),
+        (copy_core::copy_static!("history.menu.delete"), |w| {
+            // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
+            let e = w
+                .listing
+                .error
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_default()
+                .said;
+            no_runtime(&e).then_some(()).ok_or(e)
+        }),
     ];
     for (label, check) in on_file {
         let (mut d, mut w, texts) = open_menu(vec![file("a.bin"), file("f.txt")], &[], "f.txt");

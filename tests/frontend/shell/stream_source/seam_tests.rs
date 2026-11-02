@@ -83,10 +83,7 @@ async fn an_overflow_on_the_local_stream_is_said() {
         copy_core::copy_text(
             "rsUiError.overflow.said",
             &[
-                (
-                    "host",
-                    &copy_core::copy_text("detail.label.local", &[])
-                ),
+                ("host", &copy_core::copy_text("detail.label.local", &[])),
                 ("said", "那台写的一句")
             ]
         ),

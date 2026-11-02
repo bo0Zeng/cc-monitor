@@ -881,8 +881,7 @@ async fn the_unreadable_dirs_can_be_listed_and_a_click_copies_the_path() {
     };
     let _ = paint(&mut w, Vec::new());
     let painted = paint(&mut w, Vec::new());
-    let look =
-        crate::copy::testing::rects_of(&painted, &copy_text("tabBatch.result.view", &[]));
+    let look = crate::copy::testing::rects_of(&painted, &copy_text("tabBatch.result.view", &[]));
     assert_eq!(look.len(), 1, "状态行上没有［查看］：{painted:?}");
     assert!(crate::copy::testing::painted_contains(
         &painted,

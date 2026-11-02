@@ -233,7 +233,10 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
         &env(),
     );
     assert_eq!(row(&alias, "newSession.label.cwd").1, "/a");
-    assert_eq!(row(&alias, "newSession.label.cwd").2, Source::Alias("cct".into()));
+    assert_eq!(
+        row(&alias, "newSession.label.cwd").2,
+        Source::Alias("cct".into())
+    );
     assert_eq!(row(&alias, "beProfile.slot.tmux").1, "t1");
     assert_eq!(
         row(&alias, "beProfile.slot.tmux").2,
@@ -293,7 +296,11 @@ fn the_from_section_is_comment_lines_only() {
             &c("beCcm.value.noAccount"),
             "resumeSelect.option.defaultBare",
         ),
-        row(c("beProfile.slot.launcher"), "claude", "resumeSelect.option.defaultBare"),
+        row(
+            c("beProfile.slot.launcher"),
+            "claude",
+            "resumeSelect.option.defaultBare",
+        ),
         row(
             c("beProfile.slot.tmux"),
             &c("beCcm.value.here"),

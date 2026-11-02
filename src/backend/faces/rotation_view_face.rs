@@ -370,9 +370,7 @@ pub(crate) fn lines_of(
                     _ => copy_text("beRotation.line.next", &[]),
                 },
                 RotGroup::Next => copy_text("beRotation.line.spare", &[]),
-                RotGroup::Out => {
-                    blocked(a).unwrap_or_else(|| copy_text("rot.order.groupOut", &[]))
-                }
+                RotGroup::Out => blocked(a).unwrap_or_else(|| copy_text("rot.order.groupOut", &[])),
                 RotGroup::Off => copy_text("rot.order.groupOff", &[]),
             };
             let stay = match group {
@@ -812,8 +810,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
     };
     if c.kind == form::Kind::DaySegments {
         let win = |w: &str| match w {
-            "5h" => copy_text("acct.slot.fiveHour", &[]),
-            "7d" => copy_text("acct.slot.sevenDay", &[]),
+            "5h" | "7d" => crate::accounts::quota::name_words::slot_text(w),
             _ => copy_text("rot.win.other", &[("w", w)]),
         };
         let first = c.windows.first().map(|w| win(w)).unwrap_or_default();

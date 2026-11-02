@@ -831,10 +831,7 @@ impl FileWindow {
                     );
                 },
                 &[
-                    (
-                        copy_text("kit.dialog.cancel", &[]),
-                        crate::kit::Btn::Plain,
-                    ),
+                    (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                     (
                         copy_text("rsFilewinShell.editor.discard", &[]),
                         crate::kit::Btn::Plain,
@@ -1008,11 +1005,7 @@ pub(super) fn find_row(
         ) {
             act = Some(FindAct::Prev);
         }
-        if icon(
-            ui,
-            ph::CARET_DOWN,
-            copy_text("beRotation.line.next", &[]),
-        ) {
+        if icon(ui, ph::CARET_DOWN, copy_text("beRotation.line.next", &[])) {
             act = Some(FindAct::Next);
         }
         if icon(ui, ph::X, copy_text("rsFilewinEditPage.find.close", &[])) {

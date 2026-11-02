@@ -714,9 +714,7 @@ fn write_merged(
         Read::Present(b) => b,
         // 读不懂的那份不覆盖：那一句说清是哪份、没覆盖，读不懂的原因（已带原因词）与原话照它的。
         Read::Unreadable(e) => {
-            return Err(
-                e.wrap(|said| copy_text("beLineage.write.unreadable", &[("said", said)]))
-            )
+            return Err(e.wrap(|said| copy_text("beLineage.write.unreadable", &[("said", said)])))
         }
     };
     let entry = match book

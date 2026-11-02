@@ -364,7 +364,10 @@ fn each_item_carries_the_owner_written_words() {
         vec![
             (place(1), copy_text("beQueue.from.phone", &[])),
             (place(2), copy_text("beQueue.from.desktop", &[])),
-            (copy_text("mobAttach.card.queued", &[]), "cc-bus".to_string()),
+            (
+                copy_text("mobAttach.card.queued", &[]),
+                "cc-bus".to_string()
+            ),
         ]
     );
     let after = cancel(&o, &sid(), "a", T0 + 4).unwrap().queue;

@@ -193,10 +193,7 @@ impl FileWindow {
                 }
             },
             &[
-                (
-                    copy_text("kit.dialog.cancel", &[]),
-                    crate::kit::Btn::Plain,
-                ),
+                (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                 (
                     copy_text(
                         "rsFilewinCrossCopy.prompt.go",

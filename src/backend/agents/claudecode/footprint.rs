@@ -173,9 +173,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 TouchedFile {
                     path: "~/.cc-monitor/launch-pending",
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsDataPaths.backend.launchNotes", &[])
-                    })),
+                    note: Some(Text(|| copy_text("rsDataPaths.backend.launchNotes", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 换了启动器起会话时交给 claude 的答题插件（清单 ＋ 答题那一组 hook）。

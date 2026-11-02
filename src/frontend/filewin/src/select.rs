@@ -529,9 +529,7 @@ impl ActionFace for Action {
                 copy_text("rsFilewinSelect.label.crossMany", &[("n", &n.to_string())])
             }
             Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
-            Action::Across => {
-                copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())])
-            }
+            Action::Across => copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())]),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])

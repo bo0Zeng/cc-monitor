@@ -254,10 +254,7 @@ fn the_clash_choices_carry_their_own_words_in_one_order() {
         three[2].label,
         copy_text("rsFilewinBatch.btn.overwrite", &[])
     );
-    assert_eq!(
-        three[1].pick,
-        copy_text("rsFilewinBatch.btn.keepBoth", &[])
-    );
+    assert_eq!(three[1].pick, copy_text("rsFilewinBatch.btn.keepBoth", &[]));
     assert_ne!(
         three[0].label, three[0].pick,
         "整组那一句与逐项那一格是两句"

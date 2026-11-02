@@ -187,10 +187,7 @@ impl FileWindow {
                         }
                     });
             },
-            &[(
-                copy_text("kit.drawer.close", &[]),
-                super::kit::Btn::Primary,
-            )],
+            &[(copy_text("kit.drawer.close", &[]), super::kit::Btn::Primary)],
             0,
             0,
         );

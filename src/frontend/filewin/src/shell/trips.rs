@@ -377,10 +377,7 @@ impl FileWindow {
                 ui.label(copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
             },
             &[
-                (
-                    copy_text("kit.dialog.cancel", &[]),
-                    crate::kit::Btn::Plain,
-                ),
+                (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                 (
                     crate::copy::COPY_LABEL.to_string(),
                     crate::kit::Btn::Primary,

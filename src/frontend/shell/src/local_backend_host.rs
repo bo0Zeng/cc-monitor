@@ -249,10 +249,7 @@ fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String
         .collect();
     Some(copy_text(
         "rsLocalBackendHost.dataDir.otherDataDir",
-        &[(
-            "diffs",
-            &diffs.join(&copy_text("kit.text.sep", &[])),
-        )],
+        &[("diffs", &diffs.join(&copy_text("kit.text.sep", &[])))],
     ))
 }
 

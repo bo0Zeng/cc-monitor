@@ -1281,10 +1281,7 @@ impl WriteBoard {
                 &[("name", remote_basename(&path_of(&asking[0])))],
             )
         } else {
-            copy_text(
-                "rsFilewinSelect.label.deleteMany",
-                &[("n", &n.to_string())],
-            )
+            copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
         };
         let go_label = if n == 1 {
             copy_text("beFiles.batch.verbDelete", &[])
@@ -1330,10 +1327,7 @@ impl WriteBoard {
                 ui.label(copy_text("rsFilewinWriteops.delete.body", &[]));
             },
             &[
-                (
-                    copy_text("kit.dialog.cancel", &[]),
-                    super::kit::Btn::Plain,
-                ),
+                (copy_text("kit.dialog.cancel", &[]), super::kit::Btn::Plain),
                 (go_label, super::kit::Btn::Danger),
             ],
             0,

@@ -295,10 +295,7 @@ fn tail_row(ui: &mut Ui, tail: HitTail, tally: &mut HitTally) {
                         egui::RichText::new(copy_text("rsFilewinRows.hitTail.failed", &[]))
                             .color(p.error_text),
                     );
-                    if ui
-                        .button(copy_text("front.act.retry", &[]))
-                        .clicked()
-                    {
+                    if ui.button(copy_text("front.act.retry", &[])).clicked() {
                         tally.retry_more = true;
                     }
                 }

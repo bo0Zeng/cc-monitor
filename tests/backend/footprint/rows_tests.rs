@@ -1349,10 +1349,7 @@ fn rows_carry_the_host_label() {
         "至少三种 host 出现在表里，实得 {labels:?}"
     );
     let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
-    assert_eq!(
-        ps.host_label,
-        copy_core::copy_static!("detail.label.local")
-    );
+    assert_eq!(ps.host_label, copy_core::copy_static!("detail.label.local"));
     let ccm = rows
         .iter()
         .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")

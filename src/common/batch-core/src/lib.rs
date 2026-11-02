@@ -331,10 +331,7 @@ pub fn title_of(p: &Plan) -> String {
             "rsFilewinBatch.ask.title",
             &[("action", &action), ("n", &n), ("dir", dir)],
         ),
-        None => copy_text(
-            "beFiles.batch.head",
-            &[("action", &action), ("n", &n)],
-        ),
+        None => copy_text("beFiles.batch.head", &[("action", &action), ("n", &n)]),
     }
 }
 

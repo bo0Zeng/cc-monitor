@@ -48,10 +48,7 @@ fn the_window_spells_the_local_address_only_as_cmd_wire_local() {
 #[test]
 fn the_local_machine_is_shown_as_a_word_and_sent_as_its_address() {
     let shown = shown_machine(cmd_wire::LOCAL);
-    assert_eq!(
-        shown,
-        copy_text("detail.label.local", &[])
-    );
+    assert_eq!(shown, copy_text("detail.label.local", &[]));
     assert!(!shown.contains('<'), "下拉里出现了字面的本机地址");
     assert_eq!(origin_of(&shown), cmd_wire::LOCAL);
     assert_eq!(origin_of(&format!(" {shown} ")), cmd_wire::LOCAL);

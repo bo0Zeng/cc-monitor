@@ -60,7 +60,10 @@ fn jump_line(place: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> St
 fn jumped(chain: &[&str]) -> String {
     copy_text(
         "beLinks.route.jump",
-        &[("chain", &chain.join(&copy_text("beProfile.chain.arrow", &[])))],
+        &[(
+            "chain",
+            &chain.join(&copy_text("beProfile.chain.arrow", &[])),
+        )],
     )
 }
 

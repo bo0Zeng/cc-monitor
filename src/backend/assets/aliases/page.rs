@@ -1355,10 +1355,7 @@ fn changes_of_remove(
                 "beProfile.install.basedOn",
                 &[
                     ("name", name),
-                    (
-                        "children",
-                        &kids.join(&copy_text("plan.page.listSep", &[])),
-                    ),
+                    ("children", &kids.join(&copy_text("plan.page.listSep", &[]))),
                 ],
             ))
         }
@@ -1509,10 +1506,7 @@ pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<Pro
                     .filter(|x| x.slot == s.id && x.overridden_by.is_none())
                     .map(|x| x.said.clone())
                     .collect();
-                (
-                    s.id,
-                    said.join(&copy_text("kit.text.sep", &[])),
-                )
+                (s.id, said.join(&copy_text("kit.text.sep", &[])))
             })
             .collect())
     };
