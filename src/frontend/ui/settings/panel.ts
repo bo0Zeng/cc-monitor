@@ -481,7 +481,7 @@ export class SettingsPanel {
   /** 「这台上的 cc-monitor」折叠头右侧：`版本 x · 在跑` ／ `未连接`（没问到 ⇒ 空）。 */
   private ccSummary(origin: string, connected: boolean | null): string {
     if (connected === null) return "";
-    const state = connected ? copyText("history.row.live") : copyText("machinePage.state.down");
+    const state = connected ? copyText("runs.state.running") : copyText("machinePage.state.down");
     const ver = this.stateOf.get(origin)?.version ?? null;
     return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
   }
@@ -1028,7 +1028,7 @@ export class SettingsPanel {
         // 渲染成什么样归 `accounts-section.vitest.ts`；在哪一页看得见归 `panel-machine-page-visibility.vitest.ts`。
         appliesTo: "both",
         tab: "acct",
-        ...this.loadableBlock(copyText("newSession.label.account"), () => new AccountsSection()),
+        ...this.loadableBlock(copyText("beProfile.slot.account"), () => new AccountsSection()),
       },
       {
         // 「轮换」栏：那台的策略目录 · 新会话用哪份 · 那一份的设置与模拟（策略文件按机器存：两页都有）。渲染归 `rot-section.vitest.ts`。
@@ -1073,7 +1073,7 @@ export class SettingsPanel {
     if (!this.remoteSection) this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
     router.addRoute({
       id: "machines",
-      title: copyText("newSession.label.machine"),
+      title: copyText("detail.label.machine"),
       element: machinesPage,
       icon: NAV_ICON.machines,
       headActions: this.remoteSection?.headActions() ?? [],

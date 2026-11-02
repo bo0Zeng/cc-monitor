@@ -104,7 +104,7 @@ const val DRAWER_TITLE = "cc-monitor"
 
 val RECENT_HEADER: String get() = copyText("mobDrawer.recent.title")
 
-fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("newSession.label.machine") else copyText("mobDrawer.server.named", "name" to name)
+fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("detail.label.machine") else copyText("mobDrawer.server.named", "name" to name)
 
 /** 底行设置那颗（gear-six）念给读屏软件听的字。 */
 val SETTINGS_DESCRIPTION: String get() = copyText("mobDrawer.settings.aria")

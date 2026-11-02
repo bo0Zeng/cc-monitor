@@ -58,7 +58,7 @@ fn each_standard_sftp_status_becomes_a_word_in_the_closed_set_and_the_rest_is_un
         (5, "reason.code.bug"),
         (6, "reason.link.lost"),
         (7, "reason.link.lost"),
-        (8, "reason.sftp.unsupported"),
+        (8, "machineState.word.unsupported"),
         (99, "reason.io.unknown"),
     ];
     for (code, key) in cases {

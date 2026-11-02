@@ -603,7 +603,7 @@ export class BackendSection {
       this.paintHealth(origin, st.health);
       return on;
     } catch (e) {
-      state.textContent = copyText("sessionState.unseen.name");
+      state.textContent = copyText("runs.state.unknown");
       this.onChannel?.(origin, null);
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
       return null;

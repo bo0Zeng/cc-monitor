@@ -85,12 +85,12 @@ impl Props {
         let unknown = || copy_text("rsFilewinProps.value.unknown", &[]);
         match st {
             State::Loading => out.push((
-                copy_text("rsFilewinProps.label.path", &[]),
+                copy_text("detail.label.path", &[]),
                 copy_text("kit.state.reading", &[]),
             )),
-            State::Failed(why) => out.push((copy_text("rsFilewinProps.label.path", &[]), why)),
+            State::Failed(why) => out.push((copy_text("detail.label.path", &[]), why)),
             State::Ready(s) => {
-                out.push((copy_text("rsFilewinProps.label.path", &[]), s.path.clone()));
+                out.push((copy_text("detail.label.path", &[]), s.path.clone()));
                 if !self.row.is_dir {
                     out.push((
                         copy_text("rsFilewinSource.sort.size", &[]),

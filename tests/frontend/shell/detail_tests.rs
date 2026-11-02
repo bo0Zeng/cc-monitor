@@ -43,7 +43,7 @@ fn a_channel_failure_detail_names_the_machine_command_hop_and_code() {
     for want in [
         format!(
             "{}：devbox（{}）",
-            label("newSession.label.machine"),
+            label("detail.label.machine"),
             label("detail.value.notConnected")
         ),
         format!("{}：accounts-list", label("detail.label.command")),
@@ -352,7 +352,7 @@ fn naming_does_not_split_raw_words_that_look_like_items() {
         "line one\n{}：not a code\n{}：not a command\n{}：not a path",
         label("detail.label.code"),
         label("detail.label.command"),
-        label("rsFilewinProps.label.path")
+        label("detail.label.path")
     );
     let s = Said::with_raw("x".into(), &raw).named("open_log_dir");
     let cmd = format!("{}：open_log_dir", label("detail.label.command"));

@@ -237,10 +237,10 @@ export class TabBarView {
     this.needsEl.type = "button";
     this.needsEl.className = "tab-needs";
     this.needsEl.style.display = "none";
-    const needsDot = statusDot("needs-you", copyText("tabBar.needs.label"), "compact");
+    const needsDot = statusDot("needs-you", copyText("beSession.needs.unknown"), "compact");
     const needsText = document.createElement("span");
     needsText.className = "tab-needs-text";
-    needsText.textContent = copyText("tabBar.needs.label");
+    needsText.textContent = copyText("beSession.needs.unknown");
     this.needsCount = document.createElement("span");
     this.needsCount.className = "tab-needs-count";
     const needsSp = document.createElement("span");
@@ -323,7 +323,7 @@ export class TabBarView {
     }
     const content = this.needsPanel(0);
     openPopover(this.needsEl, content, {
-      label: copyText("tabBar.needs.label"),
+      label: copyText("beSession.needs.unknown"),
       align: "start",
       onClose: () => {
         this.needsEl.classList.remove("is-open");

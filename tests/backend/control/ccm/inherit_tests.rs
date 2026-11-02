@@ -203,10 +203,10 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     );
     assert_eq!(row(&bare, "beProfile.slot.tmux").2, Source::Default);
     assert_eq!(
-        row(&bare, "newSession.label.account").1,
+        row(&bare, "beProfile.slot.account").1,
         copy_core::copy_text("beCcm.value.noAccount", &[])
     );
-    assert_eq!(row(&bare, "newSession.label.account").2, Source::Default);
+    assert_eq!(row(&bare, "beProfile.slot.account").2, Source::Default);
     // 命令行给的 ⇒ 命令行。
     let flags = rows_of(
         &[],
@@ -224,8 +224,8 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     assert_eq!(row(&flags, "newSession.label.cwd").2, Source::Flag);
     assert_eq!(row(&flags, "beProfile.slot.launcher").1, "mycc");
     assert_eq!(row(&flags, "beProfile.slot.launcher").2, Source::Flag);
-    assert_eq!(row(&flags, "newSession.label.account").1, "/acct/x");
-    assert_eq!(row(&flags, "newSession.label.account").2, Source::Flag);
+    assert_eq!(row(&flags, "beProfile.slot.account").1, "/acct/x");
+    assert_eq!(row(&flags, "beProfile.slot.account").2, Source::Flag);
     // 别名里写的 ⇒ 别名 <那一段>；命令行当场给的盖过它 ⇒ 命令行。
     let alias = rows_of(
         &[("cct", &["--cwd", "/a", "--ccm-tmux=t1"])],
@@ -255,8 +255,8 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     e.inherited_config_dir = Some("/acct/b".into());
     e.inherited_parent = Some(("CLAUDE_CODE_SESSION_ID".into(), "s-parent".into()));
     let kid = rows_of(&[], &["--"], &e);
-    assert_eq!(row(&kid, "newSession.label.account").1, "/acct/b");
-    assert_eq!(row(&kid, "newSession.label.account").2, Source::Inherit);
+    assert_eq!(row(&kid, "beProfile.slot.account").1, "/acct/b");
+    assert_eq!(row(&kid, "beProfile.slot.account").2, Source::Inherit);
     assert_eq!(row(&kid, "beCcm.item.parent").1, "s-parent");
     assert_eq!(row(&kid, "beCcm.item.parent").2, Source::Inherit);
     assert!(
@@ -292,7 +292,7 @@ fn the_from_section_is_comment_lines_only() {
         format!("# {}\n", c("beCcm.print.from")),
         row(c("newSession.label.cwd"), "/p", "beCcm.from.flag"),
         row(
-            c("newSession.label.account"),
+            c("beProfile.slot.account"),
             &c("beCcm.value.noAccount"),
             "resumeSelect.option.defaultBare",
         ),

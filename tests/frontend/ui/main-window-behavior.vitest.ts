@@ -550,13 +550,13 @@ describe("一步还没结果时：照会话事实画", () => {
     expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", copyText("beSession.needs.approve"), "2m"]);
     expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
     paintWaiting(row, { state: "awaiting", text: null, whyText: null }, null, false);
-    expect(row.querySelector(".step-await")?.textContent).toBe(copyText("tabBar.needs.label"));
+    expect(row.querySelector(".step-await")?.textContent).toBe(copyText("beSession.needs.unknown"));
     // 状态不明：右侧与悬停照核心写好的那两句（`text` · `whyText`）原样；事实里没有这一步 ⇒ 状态不明（这一判在桌面）。
     paintWaiting(row, { state: "unclear", text: "U-text", whyText: "U-why" }, null, false);
     expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, "U-text", "svg"]);
     expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写的那一句").toBe("U-why");
     paintWaiting(row, null, null, false);
-    expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("sessionState.unseen.name"), false]);
+    expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("runs.state.unknown"), false]);
     settleStepLine(row, undefined, { ok: true } as never, false);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
     paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);

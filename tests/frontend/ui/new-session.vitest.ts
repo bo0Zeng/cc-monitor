@@ -153,8 +153,8 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/srv/orders");
-    expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(true);
-    const acct = sel(copyText("newSession.label.account"));
+    expect(rowOf(sel(copyText("beProfile.slot.agent"))).hidden).toBe(true);
+    const acct = sel(copyText("beProfile.slot.account"));
     expect(acct.dataset.value).toBe("work");
     expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
     expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("resumeSelect.option.defaultBare")}`, `▣personal${copyText("acct.tag.login")}`]);
@@ -166,7 +166,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     replies.set("session-open-facts", { ...FACTS, hosts: ["direct"], run: "direct", agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
-    expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);
+    expect(rowOf(sel(copyText("beProfile.slot.agent"))).hidden).toBe(false);
     const radios = [...dialog().querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     expect(radios.find((r) => r.value === "tmux")!.closest("label")!.hidden).toBe(true);
     expect(radios.find((r) => r.value === "window")!.checked).toBe(true);
@@ -197,7 +197,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   it("选了需登录的号 ⇒ 那一格下照那台那一句说「需登录」＋［登录…］（那台说给才给），［新建］灰着", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    const acct = sel(copyText("newSession.label.account"));
+    const acct = sel(copyText("beProfile.slot.account"));
     choose(acct, "personal");
     expect(rowOf(acct).textContent).toContain(copyText("acct.tag.login"));
     expect(rowOf(acct).textContent).toContain(copyText("newSession.account.login"));
@@ -207,7 +207,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   it("★ 点［登录…］⇒ 框不关、开登录抽屉（那台 · 那一家 · 那个号），不开设置窗", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    const acct = sel(copyText("newSession.label.account"));
+    const acct = sel(copyText("beProfile.slot.account"));
     choose(acct, "personal");
     [...rowOf(acct).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.login"))!.click();
     await flush();
@@ -221,7 +221,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     vi.mocked(fetchAccounts).mockResolvedValueOnce({ ...st, accounts: st.accounts.map((a) => (a.name === "personal" ? { ...a, login: false, unselectable: copyText("accounts.row.loginElsewhere") } : a)) });
     void openNewSession({ origin: "devbox" });
     await flush();
-    const acct = sel(copyText("newSession.label.account"));
+    const acct = sel(copyText("beProfile.slot.account"));
     choose(acct, "personal");
     expect(rowOf(acct).textContent).toContain(copyText("accounts.row.loginElsewhere"));
     expect(rowOf(acct).textContent).not.toContain(copyText("newSession.account.login"));
@@ -275,11 +275,11 @@ describe("单个 · 一组：页签与别名那一格", () => {
     choose(sel(copyText("newSession.label.alias")), "look");
     await flush();
     expect(sent.find((s) => s.op === "profiles-resolve")?.body).toMatchObject({ name: "look", edit: null });
-    const acct = sel(copyText("newSession.label.account"));
+    const acct = sel(copyText("beProfile.slot.account"));
     const from = "FROM-look";
     expect(acct.textContent, "账号格是别名合下来的号").toContain("lab");
     expect(rowOf(acct).textContent).toContain(from);
-    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("beProfile.slot.say")}"]`)!;
     expect(prompt.value).toBe("读 pb 图（夹具）");
     expect(rowOf(prompt).textContent).toContain(from);
     createBtn().click();
@@ -300,11 +300,11 @@ describe("单个 · 一组：页签与别名那一格", () => {
     await flush();
     choose(sel(copyText("newSession.label.alias")), "look");
     await flush();
-    const acct = sel(copyText("newSession.label.account"));
+    const acct = sel(copyText("beProfile.slot.account"));
     choose(acct, "work");
     const from = "FROM-look";
     expect(rowOf(acct).textContent).not.toContain(from);
-    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("beProfile.slot.say")}"]`)!;
     prompt.value = "";
     prompt.dispatchEvent(new Event("input"));
     prompt.dispatchEvent(new Event("blur"));
@@ -425,7 +425,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     createBtn().click();
     await flush();
-    const acctRow = rowOf(sel(copyText("newSession.label.account")));
+    const acctRow = rowOf(sel(copyText("beProfile.slot.account")));
     expect(acctRow.textContent, "那一句是那台写的，原样上屏").toContain("那台说 work 选不了");
     const use = [...acctRow.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.useAlt", { alt: "personal" }))!;
     expect(use).toBeTruthy();
@@ -536,7 +536,7 @@ describe("分叉那一形", () => {
     expect(dialog().textContent, "那一轮的钟面照抄后端写好的字").toContain(copyText("newSession.fork.from", { title: "给订单服务加重试", n: 9, time: "02:05" }));
     expect(dialog().querySelector(`input[aria-label="${copyText("newSession.label.tmuxName")}"]`), "分叉不给终端名那一格").toBeNull();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/work/orders");
-    expect(sel(copyText("newSession.label.machine")).disabled).toBe(true);
+    expect(sel(copyText("detail.label.machine")).disabled).toBe(true);
     createBtn().click();
     await flush();
     const req = newRequests()[0];
@@ -557,7 +557,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     cwd.value = "/typed";
     replies.set("session-open-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1, lastText: "00:00" }] });
     const asked = sent.filter((x) => x.op === "session-open-facts").length;
-    choose(sel(copyText("newSession.label.machine")), "devbox");
+    choose(sel(copyText("detail.label.machine")), "devbox");
     await flush();
     expect(sent.filter((x) => x.op === "session-open-facts").length).toBe(asked + 1);
     expect(cwd.value, "换机器没清掉手填的目录").toBe("/srv/b");
@@ -570,7 +570,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(sent.filter((x) => x.op === "machine-read").length).toBe(1);
     expect(commands.backend_status).not.toHaveBeenCalled();
     expect(commands.backend_machines).not.toHaveBeenCalled();
-    const items = optionsOf(sel(copyText("newSession.label.machine")));
+    const items = optionsOf(sel(copyText("detail.label.machine")));
     expect(items.some((t) => t.includes("old")), "关着的不列").toBe(false);
     expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("machinePage.state.down"));
     expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("machinePage.state.down"));
@@ -630,9 +630,9 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     const cmd = input(copyText("newSession.label.command"));
     const before = cmd.placeholder;
     // 菜单里写那台写好的名字（不是线上的 kind），选中交回的是 kind。
-    choose(sel(copyText("newSession.label.agent")), "Codex");
+    choose(sel(copyText("beProfile.slot.agent")), "Codex");
     await flush();
-    expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("codex");
+    expect(sel(copyText("beProfile.slot.agent")).dataset.value).toBe("codex");
     expect(cmd.placeholder).not.toBe(before);
     createBtn().click();
     await flush();
@@ -702,7 +702,7 @@ describe("目录格 · 最近的 · 更多那几格", () => {
 });
 
 describe("锁住的目录 · 第一句", () => {
-  const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+  const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("beProfile.slot.say")}"]`)!;
   const recentBtn = (): HTMLButtonElement | null => dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`);
 
   it("★ 入口锁了目录 ⇒ 目录格只读、不拿最近用过的顶替、［最近的］不出；交的就是那个目录", async () => {
@@ -799,7 +799,7 @@ describe("那台说不行的其余几形", () => {
     };
     createBtn().click();
     await flush();
-    const note = rowOf(sel(copyText("newSession.label.account"))).querySelector<HTMLElement>("[class*=nsNote]")!;
+    const note = rowOf(sel(copyText("beProfile.slot.account"))).querySelector<HTMLElement>("[class*=nsNote]")!;
     expect(note.textContent).toContain("work 被钉住了-甲");
     expect([...note.querySelectorAll("button")].map((b) => b.textContent)).toEqual([copyText("newSession.account.login")]);
   });
@@ -823,8 +823,8 @@ describe("分叉：那台说得出源会话的号与终端", () => {
     expect(dialog().textContent).toContain(copyText("newSession.fork.fromBare", { title: "t" }));
     expect(input(copyText("newSession.label.cwd")).value, "源会话目录说不出 ⇒ 用最近的").toBe("/home/u/srv/orders");
     expect(dialog().querySelector<HTMLInputElement>('input[value="window"]')!.checked).toBe(true);
-    expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("claude");
-    const acct = sel(copyText("newSession.label.account"));
+    expect(sel(copyText("beProfile.slot.agent")).dataset.value).toBe("claude");
+    const acct = sel(copyText("beProfile.slot.account"));
     expect(acct.dataset.value).toBe("personal");
     expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
   });
@@ -832,7 +832,7 @@ describe("分叉：那台说得出源会话的号与终端", () => {
 
 describe("问图框：三格 ＋ 那台写的起在哪", () => {
   const BOOK = { rev: "r", sets: [], profiles: [{ name: "look", usable: true }, { name: "dev", usable: true }] };
-  const textarea = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+  const textarea = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("beProfile.slot.say")}"]`)!;
   const askOf = (runs: string | null, relined = async (a: string) => ({ line: `L-${a}`, runs: `R-${a}` })) => ({
     origin: "devbox",
     lockMachine: true,
@@ -846,7 +846,7 @@ describe("问图框：三格 ＋ 那台写的起在哪", () => {
     replies.set("profiles-read", BOOK);
     void openNewSession(askOf("tmux 里 · 号 lab（夹具）"));
     await flush();
-    expect(rowOf(sel(copyText("newSession.label.machine"))).hidden, "机器那一格不出").toBe(true);
+    expect(rowOf(sel(copyText("detail.label.machine"))).hidden, "机器那一格不出").toBe(true);
     const cwd = input(copyText("newSession.label.cwd"));
     expect(cwd.readOnly).toBe(true);
     expect(rowOf(cwd).textContent).toContain(copyText("newSession.ask.cwdTag"));

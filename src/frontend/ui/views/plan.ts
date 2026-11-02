@@ -787,7 +787,7 @@ export class PlanView {
       { key: "all", label: copyText("extPage.filter.all"), n: total },
       { key: "open", label: copyText("plan.filter.open"), n: slice.openCells },
     ];
-    items.push({ key: "needs", label: copyText("tabBar.needs.label"), n: slice.needCount, tone: "needs" });
+    items.push({ key: "needs", label: copyText("beSession.needs.unknown"), n: slice.needCount, tone: "needs" });
     for (const it of items) {
       const b = document.createElement("button");
       b.type = "button";

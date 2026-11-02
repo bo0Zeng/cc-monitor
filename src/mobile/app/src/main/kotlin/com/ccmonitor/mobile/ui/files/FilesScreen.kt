@@ -428,7 +428,7 @@ private fun OfflineBand(vm: FilesViewModel) {
     val offline by vm.offline.collectAsState()
     val line = tokens.borderStrong
     Text(
-        offline ?: copyText("sessionState.unseen.name"),
+        offline ?: copyText("runs.state.unknown"),
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier =

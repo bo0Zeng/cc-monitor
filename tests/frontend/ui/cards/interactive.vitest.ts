@@ -80,7 +80,7 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
     expect(text).toContain("甲案");
     expect(text).toContain("乙案");
     // 「在等你」这件事必须是**看得见的**，不只是结构上分了一类。
-    expect(text).toContain(copyText("needs.bar.answer"));
+    expect(text).toContain(copyText("beSession.needs.answer"));
   });
 
   it("★ 出口省掉 `tool_use.input` 之后（`omit` 声明）：交互卡照样建成提问卡，不退成通用工具卡", () => {

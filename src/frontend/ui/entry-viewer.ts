@@ -194,7 +194,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   title.textContent = r.label;
   const out: Node[] = [project, sep, title];
   if (live) {
-    const b = tag(copyText("history.row.live"));
+    const b = tag(copyText("runs.state.running"));
     b.dataset.emph = "live";
     out.push(b);
   }

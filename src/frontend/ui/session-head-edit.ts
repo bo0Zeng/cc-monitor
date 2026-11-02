@@ -31,7 +31,7 @@ export const HEAD_BUTTON_FACE: Readonly<Record<HeadButtonId, { icon: IconName; n
   terminal: { icon: "terminal", name: () => copyText("sessionHead.act.terminal") },
   popOut: { icon: "popOut", name: () => copyText("history.menu.openWindow") },
   find: { icon: "search", name: () => copyText("sessionHead.act.find") },
-  account: { icon: "account", name: () => copyText("newSession.label.account") },
+  account: { icon: "account", name: () => copyText("beProfile.slot.account") },
   display: { icon: "list", name: () => copyText("sessionHead.act.display"), note: () => copyText("sessionHead.edit.displayNote") },
   pin: { icon: "pin", name: () => copyText("tabMenu.pin.pin") },
   group: { icon: "list", name: () => copyText("tabMenu.collection.add") },

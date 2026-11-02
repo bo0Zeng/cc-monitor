@@ -772,7 +772,7 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
             "{detail}"
         );
         assert!(
-            detail.contains(&format!("\n{}：", label("newSession.label.machine"))),
+            detail.contains(&format!("\n{}：", label("detail.label.machine"))),
             "{detail}"
         );
         assert!(

@@ -1772,7 +1772,7 @@ pub(crate) fn from_rows(
                     (None, None) if !name.is_empty() => (name, Source::Default),
                     (None, None) => (none(), Source::Default),
                 };
-                push(copy_text("newSession.label.account", &[]), value, from);
+                push(copy_text("beProfile.slot.account", &[]), value, from);
             }
             Item::Parent => {
                 if let Some((_, sid)) = &env.inherited_parent {

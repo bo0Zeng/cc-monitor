@@ -810,7 +810,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const dlg = document.querySelector<HTMLElement>('[role="dialog"]');
     expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(dlg!.textContent).toContain(copyText("newSession.title.onMachine", { machine: "a" }));
-    expect(dlg!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.label.machine")}"]`)!.disabled).toBe(true);
+    expect(dlg!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("detail.label.machine")}"]`)!.disabled).toBe(true);
     expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
   });

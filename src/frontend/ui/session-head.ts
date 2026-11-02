@@ -320,7 +320,7 @@ export class SessionHead {
         if (id === "resume" && extra === "resume") return null;
         const it = this.host.menuItem(sid, id as HeadMenuId);
         if (!it) return null;
-        const label = id === "popOut" ? copyText("history.menu.openWindow") : id === "account" ? copyText("newSession.label.account") : it.label;
+        const label = id === "popOut" ? copyText("history.menu.openWindow") : id === "account" ? copyText("beProfile.slot.account") : it.label;
         return this.fromItem(id, it, label, id === "popOut" ? "tab.pop-out" : null);
       }
     }

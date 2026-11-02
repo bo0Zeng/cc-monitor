@@ -386,7 +386,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("sessionState.unseen.name"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("runs.state.unknown"),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("history.list.reconnect")) }

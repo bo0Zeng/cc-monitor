@@ -131,12 +131,12 @@ const GROUP_ORDER: readonly CommandGroup[] = ["needs", "current", "machine", "op
 
 /** 每一段的标题（骨架字，不随数据变）。 */
 const GROUP_TITLE: Record<CommandGroup | "sessions" | "commands", () => string> = {
-  needs: () => copyText("tabBar.needs.label"),
+  needs: () => copyText("beSession.needs.unknown"),
   current: () => copyText("commandBar.group.current"),
-  machine: () => copyText("newSession.label.machine"),
+  machine: () => copyText("detail.label.machine"),
   open: () => copyText("mobTerms.row.attach"),
   window: () => copyText("commandBar.group.window"),
-  account: () => copyText("newSession.label.account"),
+  account: () => copyText("beProfile.slot.account"),
   sessions: () => copyText("mobDrawer.item.sessions"),
   commands: () => copyText("detail.label.command"),
 };

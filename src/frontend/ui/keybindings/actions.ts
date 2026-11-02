@@ -143,7 +143,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
 
   // ===== Panel =====
   { id: "panel.toggle-tasks", label: copyText("tasksPanel.page.title"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
-  { id: "panel.toggle-agents", label: copyText("newSession.label.agent"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
+  { id: "panel.toggle-agents", label: copyText("beProfile.slot.agent"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
   { id: "panel.toggle-terminal", label: copyText("sessionHead.act.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
 ] as const;
 
@@ -173,7 +173,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   App: copyText("keybindingActions.category.app"),
   Beh: copyText("settingsPanel.group.behavior"),
   Panel: copyText("keybindingActions.category.panel"),
-  Acct: copyText("newSession.label.account"),
+  Acct: copyText("beProfile.slot.account"),
 };
 
 /**

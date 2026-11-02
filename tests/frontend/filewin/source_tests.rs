@@ -1080,7 +1080,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
     for want in [
         format!(
             "{}：devbox（{}）",
-            label("newSession.label.machine"),
+            label("detail.label.machine"),
             label("detail.value.notConnected")
         ),
         format!("{}：files-ls", label("detail.label.command")),

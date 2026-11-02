@@ -192,7 +192,7 @@ pub(crate) fn line_of(
         A::NeedsYou => {
             let n = f.needs.as_ref();
             let kind = n.map_or_else(
-                || copy_core::copy_text("tabBar.needs.label", &[]),
+                || copy_core::copy_text("beSession.needs.unknown", &[]),
                 |n| n.text.0.clone(),
             );
             let line = |w: &str| {
@@ -637,7 +637,7 @@ pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
             (StepWait::Unclear, Some(UnclearWhy::Untracked))
         };
         p.text = (p.state == StepWait::Unclear)
-            .then(|| Words(copy_core::copy_text("sessionState.unseen.name", &[])));
+            .then(|| Words(copy_core::copy_text("runs.state.unknown", &[])));
         p.why_text = p.why.map(|w| {
             Words(match w {
                 UnclearWhy::NoWriter => copy_core::copy_text("stream.step.unclearNoWriter", &[]),
@@ -773,13 +773,13 @@ pub(crate) fn dress_ask_with(
 pub(crate) fn needs_words(kind: NeedsKind) -> Words {
     Words(match kind {
         NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
-        NeedsKind::Answer => copy_core::copy_text("needs.bar.answer", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
         NeedsKind::Plan => copy_core::copy_text("beSession.needs.approve", &[]),
         NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
         NeedsKind::Worker => copy_core::copy_text("beSession.needs.approve", &[]),
         NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
-        NeedsKind::Choose => copy_core::copy_text("needs.bar.choose", &[]),
-        NeedsKind::Unknown => copy_core::copy_text("tabBar.needs.label", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
     })
 }
 
@@ -790,13 +790,13 @@ pub(crate) fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
             Some(t) => copy_core::copy_text("needs.bar.approve", &[("tool", t)]),
             None => return needs_words(kind),
         },
-        NeedsKind::Answer => copy_core::copy_text("needs.bar.answer", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
         NeedsKind::Plan => copy_core::copy_text("needs.bar.plan", &[]),
         NeedsKind::Network => copy_core::copy_text("needs.bar.network", &[]),
         NeedsKind::Worker => copy_core::copy_text("needs.bar.worker", &[]),
         NeedsKind::Goal => copy_core::copy_text("needs.bar.goal", &[]),
-        NeedsKind::Choose => copy_core::copy_text("needs.bar.choose", &[]),
-        NeedsKind::Unknown => copy_core::copy_text("tabBar.needs.label", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
     })
 }
 

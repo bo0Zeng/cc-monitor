@@ -82,7 +82,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   root.className = s.npPanel;
   root.tabIndex = 0;
   root.setAttribute("role", "listbox");
-  root.setAttribute("aria-label", copyText("tabBar.needs.label"));
+  root.setAttribute("aria-label", copyText("beSession.needs.unknown"));
   const rows: { el: HTMLElement; go: () => void }[] = [];
   const add = (el: HTMLElement, go: () => void): void => {
     el.addEventListener("click", go);
@@ -92,7 +92,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   };
 
   for (const t of f.sessions) {
-    const r = row(statusDot("needs-you", copyText("tabBar.needs.label"), "compact"));
+    const r = row(statusDot("needs-you", copyText("beSession.needs.unknown"), "compact"));
     r.dataset.row = "session";
     const l1 = lineOne();
     if (isRemoteOrigin(t.origin)) l1.appendChild(tag(t.origin));

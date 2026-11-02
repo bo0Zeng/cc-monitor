@@ -114,7 +114,7 @@ fun MachineSheet(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) = Sheet(onDismiss) {
-    SheetHead(copyText("newSession.label.machine"), null)
+    SheetHead(copyText("detail.label.machine"), null)
     machines.forEach { m ->
         PickRow(
             title = m.name,
@@ -135,7 +135,7 @@ fun AgentSheet(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) = Sheet(onDismiss) {
-    SheetHead(copyText("newSession.label.agent"), machine)
+    SheetHead(copyText("beProfile.slot.agent"), machine)
     ui.agents.forEach { a -> PickRow(title = a.text, tag = NewSessionTags.ROW, selected = a.kind == ui.agent, onClick = { onPick(a.kind) }) }
 }
 
@@ -188,7 +188,7 @@ fun AccountSheet(
     onLogin: (String) -> Unit,
     onDismiss: () -> Unit,
 ) = Sheet(onDismiss) {
-    SheetHead(copyText("newSession.label.account"), machine)
+    SheetHead(copyText("beProfile.slot.account"), machine)
     ui.accountsFailed?.let { Note(it) }
     ui.note?.let { Note(it) }
     ui.accounts.forEach { a ->

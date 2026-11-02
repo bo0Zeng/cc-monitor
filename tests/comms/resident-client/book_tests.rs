@@ -90,7 +90,7 @@ fn going_unseen_folds_the_open_ones_into_the_one_unseen_face_and_the_replay_clea
     assert_eq!(
         (face.name.0.as_str(), face.line.0.as_str()),
         (
-            copy_core::copy_text("sessionState.unseen.name", &[]).as_str(),
+            copy_core::copy_text("runs.state.unknown", &[]).as_str(),
             "X 离线"
         )
     );

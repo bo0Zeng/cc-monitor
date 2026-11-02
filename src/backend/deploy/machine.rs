@@ -343,7 +343,7 @@ pub fn word(state: K, relation: Option<Relation>) -> String {
         K::NeedsUpdate => copy_text("machineState.word.needsUpdate", &[]),
         K::Newer => copy_text("machineState.word.newer", &[]),
         K::Disabled => copy_text("machinePage.state.disabled", &[]),
-        K::Unsupported => copy_text("reason.sftp.unsupported", &[]),
+        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
     }
 }
 

@@ -166,7 +166,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   const acct = document.createElement("div");
   const rot = document.createElement("div");
   const config = document.createElement("div");
-  tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("newSession.label.account"), element: acct });
+  tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("beProfile.slot.account"), element: acct });
   tabs.addRoute({ id: `${spec.pageId}#rot`, title: copyText("machinePage.tab.rot"), element: rot });
   tabs.addRoute({ id: `${spec.pageId}#config`, title: copyText("machinePage.tab.config"), element: config });
   root.appendChild(tabs.element);

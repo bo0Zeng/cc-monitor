@@ -36,7 +36,7 @@ fun Reply.problem(
         is Reply.Failed -> core(failure)
         Reply.TimedOut -> Problem(copyText("front.body.timeout", "machine" to machine), "")
         Reply.Cancelled -> Problem(copyText("reason.op.cancelled"), "")
-        Reply.LinkDown -> Problem(offline ?: copyText("sessionState.unseen.name"), "")
+        Reply.LinkDown -> Problem(offline ?: copyText("runs.state.unknown"), "")
         is Reply.Unreadable -> unreadableReply(machine, command, raw)
     }
 

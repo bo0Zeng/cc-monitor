@@ -55,10 +55,10 @@ impl Label {
     pub fn said(self) -> String {
         match self {
             Label::At => copy_text("detail.label.at", &[]),
-            Label::Machine => copy_text("newSession.label.machine", &[]),
+            Label::Machine => copy_text("detail.label.machine", &[]),
             Label::Local => copy_text("detail.label.local", &[]),
             Label::Command => copy_text("detail.label.command", &[]),
-            Label::Path => copy_text("rsFilewinProps.label.path", &[]),
+            Label::Path => copy_text("detail.label.path", &[]),
             Label::Target => copy_text("detail.label.target", &[]),
             Label::Hop => copy_text("detail.label.hop", &[]),
             Label::Code => copy_text("detail.label.code", &[]),
