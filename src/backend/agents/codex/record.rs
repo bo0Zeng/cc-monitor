@@ -13,8 +13,8 @@
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
 use crate::agents::record::{Block, Body, Record};
-use crate::agents::{SpeakerExt as _, StepResultExt as _};
 use crate::agents::{Speaker, StepResult, Translated, UserText};
+use crate::agents::{SpeakerExt as _, StepResultExt as _};
 use serde_json::Value;
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
