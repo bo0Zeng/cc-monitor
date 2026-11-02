@@ -12,7 +12,7 @@ import type { RotRow } from "../../../src/frontend/ui/generated/RotRow";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-// 文案表这两条由合并树落（表是热点）；落之前夹具补上，落了以后这一块不起作用、随手删。
+// 文案表还没有这两条时取夹具里的字；表里有了就照表（这一块随之可删）。
 vi.mock("../../../src/frontend/ui/copy-table", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/copy-table")>();
   const extra: Record<string, string> = { "rot.cell.reset": "夹具·恢复默认", "rot.acct.prune": "夹具·清掉库里没有的号" };
