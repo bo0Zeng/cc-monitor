@@ -25,6 +25,26 @@ pub struct SegHl {
     pub hl: Vec<Vec<u32>>,
 }
 
+/// `prose-hl` 的入参：一段里每个代码块（先序，同 [`SegHl`] 的数法）的语言与原文；回包的 `hl[n]` 对 `codes[n]`。
+/// 按内容拉、不按记录行：两端手上本来就有整棵树，不在记录行里的正文（计划卡等）也走这一条。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct ProseHlReq {
+    pub codes: Vec<HlCode>,
+}
+
+/// 一个代码块：`lang` 照树上 [`MdBlock::Code`] 的那一格（没写 ⇒ 空），`x` 是原文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct HlCode {
+    pub lang: Option<String>,
+    pub x: String,
+}
+
 /// 一个块。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
