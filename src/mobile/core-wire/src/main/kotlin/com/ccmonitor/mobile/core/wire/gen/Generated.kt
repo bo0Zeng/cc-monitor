@@ -20931,6 +20931,7 @@ data class RotRow(
     val cells: List<RotCell>,
     val rules: List<String>,
     val marks: List<RotMark>,
+    val missing: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20944,9 +20945,10 @@ data class RotRow(
             Field("cells", { arr(RotCell.ADAPTER) }, optional = false, nullable = false),
             Field("rules", { arr(Str) }, optional = false, nullable = false),
             Field("marks", { arr(RotMark.ADAPTER) }, optional = false, nullable = false),
+            Field("missing", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> RotRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as List<RotCell>, a[5] as List<String>, a[6] as List<RotMark>) },
-            { v -> arrayOf(v.account, v.row, v.line, v.hover, v.cells, v.rules, v.marks) },
+            { a -> RotRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as List<RotCell>, a[5] as List<String>, a[6] as List<RotMark>, a[7] as Boolean?) },
+            { v -> arrayOf(v.account, v.row, v.line, v.hover, v.cells, v.rules, v.marks, v.missing) },
         )
     }
 }

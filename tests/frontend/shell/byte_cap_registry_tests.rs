@@ -659,13 +659,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
         "拒收+回错",
     ),
-    // ── 常驻监听口的握手（**两侧各一条，方向不同**）───────────
-    (
-        "src/frontend/shell/src/local_backend_host.rs",
-        "LISTEN_HANDSHAKE_LINE_CAP",
-        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
-        "拒收+回错",
-    ),
     // 一台的平铺清单（`history_list.rs`，手机 · 按会话 ID 那一问）：一台一次最多回多少行；窗外的不回、头里的总数比这一窗多 ⇒ 手机列表底「更早的用搜索找」。
     (
         "src/backend/history/history_list.rs",
@@ -725,15 +718,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "RAW_CAP",
         "「复制详情」里**原话那一项**的上界（子进程 stderr · 系统报错原文；三端写详情都经这一处）。\
              超了按字符边界往回退到上界以内，末尾接「…（截断）」⇒ 贴出去的人看得出后面还有",
-        "截断+说清",
-    ),
-    (
-        "src/frontend/shell/src/local_backend.rs",
-        "STDERR_MAX_LINE_BYTES",
-        "子进程 stderr **一条**的上界（对端一个 `\\n` 都不发时，`read_until` 会一直吃内存）。\
-             ⚠ **不丢字节**：超了这一段照记，断口贴一句 `STDERR_CUT_MARK` 说「在此切开，\
-             下一条接着它」，余下的字节成为下一条 ⇒ 「说清」那一半是承重的 —— \
-             没有那句标记，日志里会出现一条**看起来完整、其实是半句**的诊断",
         "截断+说清",
     ),
     // 🔴 没有 `daemonless` 轮询读（定框 `K35`）⇒ 没有它的读上限 ——

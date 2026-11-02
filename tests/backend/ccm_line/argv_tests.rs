@@ -6,9 +6,14 @@
 
 use super::*;
 
+/// 没有配置层的那一形（命令行当场给的就是全部）：判据各处喂解析器都经它。
+pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
+    parse_layered(&[], args).map(|(p, _)| p)
+}
+
 /// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `<交给 agent 的…> -- <ccm 的…>` 排列（意图逐词不变）。
-fn parse(a: &[String]) -> Result<Parsed, Die> {
-    super::parse(&mixed_to_split(a))
+fn parse_mixed(a: &[String]) -> Result<Parsed, Die> {
+    parse(&mixed_to_split(a))
 }
 
 /// 〔只给测试〕把旧写法（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成
@@ -71,14 +76,14 @@ fn v(a: &[&str]) -> Vec<String> {
 }
 
 fn ok(a: &[&str]) -> Opts {
-    match parse(&v(a)).expect("该解析得动") {
+    match parse_mixed(&v(a)).expect("该解析得动") {
         Parsed::Opts(o) => *o,
         other => panic!("期望拿到 Opts，实得 {other:?}"),
     }
 }
 
 fn err(a: &[&str]) -> String {
-    match parse(&v(a)) {
+    match parse_mixed(&v(a)) {
         Err(Die(m)) => m,
         other => panic!("期望 die，实得 {other:?}"),
     }
@@ -129,7 +134,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
     let codex = |a: &[&str]| {
         let mut w = v(a);
         w.extend(v(&["--", "--ccm-agent", "codex"]));
-        match crate::ccm_line::argv::parse(&w).expect("该解析得动") {
+        match parse(&w).expect("该解析得动") {
             Parsed::Opts(o) => *o,
             other => panic!("{other:?}"),
         }
@@ -145,7 +150,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
 #[test]
 fn an_agent_without_accounts_refuses_to_pick_one() {
     let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", "codex")]);
-    let said = |a: &[&str]| match crate::ccm_line::argv::parse(&v(a)) {
+    let said = |a: &[&str]| match parse(&v(a)) {
         Err(Die(m)) => m,
         other => panic!("{a:?} 该被拒：{other:?}"),
     };
@@ -360,7 +365,7 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
 /// `ccm new` 整行交 claude，不开例外」。直接喂原排列（不经本文件的换排列）。
 #[test]
 fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {
-    let raw = |a: &[&str]| super::parse(&v(a));
+    let raw = |a: &[&str]| parse(&v(a));
     assert!(
         matches!(raw(&["-p", "x", "--", "new", "--ccm-tmux"]), Ok(Parsed::Opts(o)) if o.passthru == v(&["-p", "x"]) && o.use_tmux),
         "`-- new …` 没被当成 ccm 的起新会话"

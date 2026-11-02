@@ -52,7 +52,7 @@ fn launch_from(
 ) -> (plan::Direct, Option<Taken>) {
     let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
     let crate::ccm_line::argv::Parsed::Opts(o) =
-        crate::ccm_line::argv::parse(&crate::ccm_line::argv::tests::mixed_to_split(&a))
+        crate::ccm_line::argv::tests::parse(&crate::ccm_line::argv::tests::mixed_to_split(&a))
             .expect("解析得动")
     else {
         panic!()

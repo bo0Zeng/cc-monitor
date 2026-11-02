@@ -9,7 +9,7 @@
 //! - 写是原子的、只有一个写口、不留临时文件（`E1` 的后端半）。
 //! - `E1` 的全仓半：文件名字面量在 `src/` 全部生产代码里**恰好一个家**（两向集合相等 ＋ 正控）。
 //! - `E2` 的结构半：本模块生产段的缓存构件数 == 登记表里的 0（相等，不是「扫不到就绿」）；
-//!   决策那一处（`main.rs` 流结束那一臂）是**唯一**一处引用本模块的地方、而且在那一臂里面。
+//!   决策那一处（`stream/entry.rs` 流结束那一臂）是**唯一**一处引用本模块的地方、而且在那一臂里面。
 //!
 //! # 买不到的
 //!
@@ -509,17 +509,17 @@ fn the_decision_path_has_no_cache_point() {
 
 /// ★★ `E2` 的另一半：**决策那一处**在它该在的地方，而且是**唯一**一处。
 ///
-/// `main.rs` 里对本模块的引用恰好一处、就在「流结束」那一臂的体内 ⇒
+/// 进程入口（`stream/entry.rs`）里对本模块的引用恰好一处、就在「流结束」那一臂的体内 ⇒
 /// 「启动时读一次、存进一个变量、流结束时用那个变量」这一形（启动时快照）过不了：
 /// 那需要第二处引用，或者引用不在那一臂里。
 #[test]
 fn the_only_decision_site_is_the_stream_end_arm() {
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let needle = "exit_policy::";
     assert_eq!(
         main.matches(needle).count(),
         1,
-        "`main.rs` 生产段里 `{needle}` 不是恰好一处 —— 多一处多半是启动时快照（E2 点名的那一形）"
+        "`stream/entry.rs` 生产段里 `{needle}` 不是恰好一处 —— 多一处多半是启动时快照（E2 点名的那一形）"
     );
     let arm = main
         .find("done_rx.recv()")

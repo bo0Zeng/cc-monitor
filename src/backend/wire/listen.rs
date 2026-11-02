@@ -11,7 +11,7 @@
 //! # 两档连接，hello 写在分档之前
 //!
 //! - 流：attach 行形状对 ⇒ 这条连接接管出 / 入两个方向（[`admit`]），回话里带这台相对客户端那一版的新旧；
-//!   这台一份 watcher，每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ inbound / writer（`main.rs::serve_listening`），几个前端可以同时挂着。
+//!   这台一份 watcher，每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ inbound / writer（`stream/entry.rs::serve_listening`），几个前端可以同时挂着。
 //! - 不限次的「只读 hello 就走」：连上就有 hello，读完即关。
 //!
 //! hello 写在分档之前：「有没有长驻后端」靠读一行 hello 答，协议一个字节都不用加。
@@ -47,43 +47,6 @@ pub const ATTACH_LINE: Cap = Cap {
     bytes: 8 * 1024,
     over: Over::Reject,
 };
-
-/// [`ATTACH_LINE`] 的字节数：`main.rs` 读 attach 请求那一处还按字节数传给 [`read_capped_line`]。
-pub const ATTACH_LINE_CAP: usize = ATTACH_LINE.bytes as usize;
-
-/// 读一行 attach 请求的三种结局。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HandshakeLine {
-    /// 对端读完 hello 就关了 —— **那正是「只读 hello 就走」那一档**，是正常结局。
-    Eof,
-    /// 一整行。
-    Line(String),
-    /// 超限。**丢弃 + 出声**，不静默。
-    TooLong(usize),
-}
-
-/// 读一行 attach 请求：至多 `cap` 字节、超了拒收（[`ATTACH_LINE`] 那一档），读本身是 `comms_inward::line::read_capped_line`。
-/// `main.rs` 那一处改调 `comms_inward::line` 之后，本函数与 [`ATTACH_LINE_CAP`] · [`HandshakeLine`] 一起删。
-pub async fn read_capped_line<R>(rd: &mut R, cap: usize) -> std::io::Result<HandshakeLine>
-where
-    R: tokio::io::AsyncBufRead + Unpin,
-{
-    use comms_inward::line::CappedLine;
-    let mut buf: Vec<u8> = Vec::new();
-    let cap = Cap {
-        bytes: cap as u64,
-        ..ATTACH_LINE
-    };
-    Ok(
-        match comms_inward::line::read_capped_line(rd, &mut buf, cap).await? {
-            CappedLine::Eof => HandshakeLine::Eof,
-            CappedLine::Line => HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned()),
-            CappedLine::TooLong(n) => {
-                HandshakeLine::TooLong(usize::try_from(n).unwrap_or(usize::MAX))
-            }
-        },
-    )
-}
 
 /// 拒绝的理由（闭集）：`refusal_line` 只拼这里的常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。

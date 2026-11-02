@@ -140,7 +140,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
         "control/launch_render/ccm_invocation.rs",
         "`ccm …` 调用行的渲染器：它写的是用户终端里那一行 `ccm` 的旗标（终端命令面），不是后端自己分派的 wire 子命令；\
-         接盘判据 `ccm_invocation_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
+         接盘判据 `ccm_invocation_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过真解析器 `argv::parse_layered`）。",
     ),
 ];
 
@@ -574,11 +574,11 @@ mod tests {
              （本条只认 include 路径的**收尾文件名**，所以搬树改相对前缀不会让它假红；\n\
              它真红就是那条 include 没了或读了别的文件。）"
         );
-        // 渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
+        // 渲染器那一格的接盘判据：渲出的每一行都过真解析器（`argv::tests::parse` 即没有配置层的 `parse_layered`）。
         let render_side = include_str!("control/launch_render/ccm_invocation_tests.rs");
         assert!(
             render_side.contains("fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv")
-                && render_side.contains("argv::parse("),
+                && render_side.contains("argv::tests::parse("),
             "渲染器那一格的接盘判据不在了 —— `ccm_invocation.rs` 的旗标从此没人管"
         );
         for (f, _) in TERMINAL_SURFACE_FILES {

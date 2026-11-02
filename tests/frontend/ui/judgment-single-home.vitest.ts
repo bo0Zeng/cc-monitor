@@ -1120,8 +1120,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
   "host-core": {
     atomic_write_json: NONE,
-    // 前端自有状态文件读回来先过上限（上限从声明表来，monitor 读写 `config.json` 用）；TS 侧没有孪生。
+    // 前端两个包整读一份文件只经这两样（原文 · 字节），上限是调用方声明的那道 `Cap`；TS 侧没有孪生。
     read_capped: NONE,
+    read_capped_bytes: NONE,
     fit_into_work_area: NONE,
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,

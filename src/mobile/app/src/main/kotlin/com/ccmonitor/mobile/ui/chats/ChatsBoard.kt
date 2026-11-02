@@ -328,7 +328,7 @@ private fun contentOf(
         summary = r.summary,
         rows =
             r.sessions.map { row ->
-                val id = row.origin ?: current
+                val id = row.origin
                 ContentRow(id, byId[id].takeIf { tagged && id != current }, row)
             },
         // 核心解不开哪台那一份 ⇒ 那台一句（同「答了读不出」那一说法）。

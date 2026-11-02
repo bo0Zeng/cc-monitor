@@ -4,6 +4,18 @@ use super::*;
 use crate::wire::typed::tests::ask;
 use serde_json::json;
 
+/// `plan-list` 那一条照 [`reads_in`] 读、再拼成清单：判据换成替身数起了几次 pb。
+fn list_in(
+    b: &book::Book,
+    dirs: Vec<String>,
+    fresh: bool,
+    read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
+    tz: &crate::Tz,
+) -> wire::PlanList {
+    let (pb, docs) = reads_in(b, dirs, fresh, read, tz);
+    list_of(pb, &docs)
+}
+
 #[test]
 fn missing_args_are_bad_args() {
     assert_eq!(

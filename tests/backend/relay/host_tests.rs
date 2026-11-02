@@ -450,16 +450,16 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
 }
 
-/// `main.rs` 那一处：生产段里 `faces::rotation_face::host_relay(`（上游选择的装配口 ＋ 账号库 · 配置编辑层）**恰好一处**，
+/// 进程入口（`stream/entry.rs`）那一处：生产段里 `faces::rotation_face::host_relay(`（上游选择的装配口 ＋ 账号库 · 配置编辑层）**恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、起载体（`run_over_stdio` / `serve_listening` 那一处分派）之前 ——
 /// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
 fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carrier_choice() {
-    let raw = std::fs::read_to_string(guard_core::addr::backend_src_root().join("main.rs"))
-        .expect("读 main.rs");
+    let raw = std::fs::read_to_string(guard_core::addr::backend_src_root().join("stream/entry.rs"))
+        .expect("读 stream/entry.rs");
     let prod = guard_core::production_code(&raw);
     let call = guard_core::find_pinned(&prod, "faces::rotation_face::host_relay(")
-        .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
+        .unwrap_or_else(|e| panic!("stream/entry.rs 生产段里那一处接线：{e}"));
     let dispatch = guard_core::find_pinned(
         &prod,
         "if cli::is_query_mode(&args) || bad_view.is_some() {",

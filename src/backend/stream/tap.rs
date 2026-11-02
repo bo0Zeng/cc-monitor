@@ -130,11 +130,6 @@ pub struct TapRx {
 }
 
 impl TapRx {
-    /// 这条连接的号（`stream-watch` 那一处同拍把名单交给活卡时用）。
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
     /// 这条连接此刻在看哪几个会话（整份换；与 watcher 那份名单同拍交）。
     pub fn watch_handle(&self) -> LiveWatch {
         LiveWatch {
