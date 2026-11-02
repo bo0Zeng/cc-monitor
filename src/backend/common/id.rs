@@ -30,7 +30,7 @@ pub const BUILD_STAMP_LEN: usize =
 /// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
 ///
 /// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是这里的支点，
-/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_backends` 头注）：
+/// 它治的是 monitor `src/frontend/shell/build.rs` 里逐字记着的那次失败（`embed_backends` 头注）：
 /// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
 ///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，
 /// 也就是「把标签抄到旁边」。
