@@ -101,7 +101,11 @@ fn the_comms_layer_names_nothing_from_creds_core_but_the_key_type() {
             .lines()
             .filter(|l| l.trim_start().starts_with("creds-core"))
             .collect();
-        assert_eq!(dep.len(), 1, "`comms-outward` 的清单里 `creds-core` 那一行：{dep:?}");
+        assert_eq!(
+            dep.len(),
+            1,
+            "`comms-outward` 的清单里 `creds-core` 那一行：{dep:?}"
+        );
         assert!(
             !dep[0].contains("features"),
             "`comms-outward` 引 `creds-core` 开了 feature：{} —— 通信层只要那个类型，不碰凭据文件",

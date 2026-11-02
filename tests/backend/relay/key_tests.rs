@@ -17,11 +17,7 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
     assert!(relay_route_core::key_shape_ok(plain(&p1)));
     assert_ne!(plain(&p1), plain(&a), "派生出来的就是根钥匙本身");
     let b = key_from_text(&"b".repeat(64)).unwrap();
-    assert_ne!(
-        plain(&pass_of(&b)),
-        plain(&p1),
-        "换了根钥匙，派生的却没变"
-    );
+    assert_ne!(plain(&pass_of(&b)), plain(&p1), "换了根钥匙，派生的却没变");
     let home = std::env::temp_dir().join(format!("ccm-pass-derive-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     seed_test_home(&home);
