@@ -99,7 +99,7 @@ pub fn outcome_text(results: &[SizeResult]) -> String {
             ),
         })
         .collect::<Vec<_>>()
-        .join(&copy_text("rsFilewinSize.outcome.sep", &[]))
+        .join(&copy_text("kit.text.sep", &[]))
 }
 
 /// 真发一趟（经通道问后端 `files-size`，按 `SizeReq` 发、按 `SizeReply` 解）。

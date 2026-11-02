@@ -39,7 +39,7 @@ pub(crate) fn slot_words(
 ) -> (Words, Tone) {
     if here && state == QuotaState::OverageInUse {
         return (
-            Words(copy_core::copy_text("acct.val.over", &[])),
+            Words(copy_core::copy_text("acct.row.over", &[])),
             Tone::Warn,
         );
     }

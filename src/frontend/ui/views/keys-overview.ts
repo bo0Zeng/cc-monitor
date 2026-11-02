@@ -34,7 +34,7 @@ function groups(): { title: string; rows: Row[] }[] {
       ],
     },
     {
-      title: copyText("keys.group.current"),
+      title: copyText("commandBar.group.current"),
       rows: [
         { ids: ["session.find"] },
         { ids: ["session.find-scope-user"] },
@@ -100,7 +100,7 @@ function scopeText(scope: Scope, chord: string | null): string {
     case "bare":
       return copyText("keys.scope.bare");
     case "bar":
-      return copyText("keys.scope.bar");
+      return copyText("keys.group.bar");
   }
 }
 
@@ -170,7 +170,7 @@ export class KeysOverview {
         this.host.editKeys();
       },
     });
-    const done = button({ label: copyText("keys.close.label"), kind: "primary", onClick: () => this.handle?.close() });
+    const done = button({ label: copyText("kit.drawer.close"), kind: "primary", onClick: () => this.handle?.close() });
     foot.append(note, edit, done);
 
     const panel = [head, this.list, foot];

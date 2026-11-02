@@ -244,10 +244,7 @@ pub(crate) fn relay_with(
             "rsHistory.relay.downRefused",
             &[
                 ("account", &format!("{account:?}")),
-                (
-                    "where",
-                    &copy_text("beUpstreamEndpoint.relay.thisMachine", &[]),
-                ),
+                ("where", &copy_text("detail.label.local", &[])),
                 (
                     "why",
                     &copy_text("beUpstreamEndpoint.relay.notListening", &[]),

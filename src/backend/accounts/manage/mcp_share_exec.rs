@@ -58,7 +58,7 @@ pub(crate) fn read_text(p: &str, cap: Cap) -> Result<Option<String>, crate::comm
             let b = crate::platform::fs::Ro::read_capped(Path::new(p), cap)?;
             String::from_utf8(b)
                 .map(Some)
-                .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]).into())
+                .map_err(|_| copy_text("beSkillInstall.text.binary", &[]).into())
         }
         _ => Err(copy_text("reason.fs.notRegular", &[]).into()),
     }

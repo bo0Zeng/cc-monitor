@@ -317,7 +317,7 @@ class FilesViewModel(
         viewModelScope.launch {
             val id = start(dir)
             if (id == 0L) {
-                _events.tryEmit(Notice(offline.value ?: copyText("sessionState.unseen.name")))
+                _events.tryEmit(Notice(offline.value ?: copyText("runs.state.unknown")))
             } else {
                 mine += id
                 early.remove(id)?.let(::onBatch)
@@ -452,7 +452,7 @@ class FilesViewModel(
         val r = ops.writeText(dir, entry.rel, text, sha256)
         r
             .onSuccess {
-                _events.tryEmit(Notice(copyText("mobFiles.save.done")))
+                _events.tryEmit(Notice(copyText("remote.save.done")))
                 refresh()
             }.onFailure(::say)
         _busy.value = false

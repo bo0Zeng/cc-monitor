@@ -1179,11 +1179,11 @@ fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
     }
     if i.calls > 0 {
         let n = i.calls.to_string();
-        out.push(said(copy_text("agentWindow.facts.calls", &[("n", &n)])));
+        out.push(said(copy_text("rsTurns.proc.tools", &[("n", &n)])));
     }
     if kids > 0 {
         let n = kids.to_string();
-        out.push(said(copy_text("agentWindow.facts.kids", &[("n", &n)])));
+        out.push(said(copy_text("rsTurns.proc.agents", &[("n", &n)])));
     }
     if i.background {
         out.push(said(copy_text("agentWindow.facts.background", &[])));
@@ -1339,7 +1339,7 @@ fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
         i.label
             .clone()
             .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| copy_text("runs.label.unnamed", &[])),
+            .unwrap_or_else(|| copy_text("beProfile.slot.agent", &[])),
     );
     i.last_text = i.last.as_ref().map(|d| {
         Words(match d {

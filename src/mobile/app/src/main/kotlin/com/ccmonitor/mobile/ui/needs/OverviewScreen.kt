@@ -82,9 +82,9 @@ fun entryText(
     uncertain: Boolean,
 ): String? =
     when {
-        uncertain -> copyText("tabBar.needs.label")
+        uncertain -> copyText("beSession.needs.unknown")
         n == 0 -> null
-        else -> copyText("tabBar.needs.aria", "n" to n)
+        else -> copyText("beGroups.count.needs", "n" to n)
     }
 
 /** [NeedsEntry] 的样子。 */
@@ -144,10 +144,10 @@ fun OverviewScreen(
     Column(Modifier.fillMaxSize().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BackButton(onBack)
-            Text(copyText("tabBar.needs.label"), style = MaterialTheme.typography.titleMedium)
+            Text(copyText("beSession.needs.unknown"), style = MaterialTheme.typography.titleMedium)
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            item { Head(if (ov.uncertain || ov.loading.isNotEmpty()) copyText("tabBar.needs.label") else copyText("tabBar.needs.aria", "n" to ov.total)) }
+            item { Head(if (ov.uncertain || ov.loading.isNotEmpty()) copyText("beSession.needs.unknown") else copyText("beGroups.count.needs", "n" to ov.total)) }
             items(ov.needs) { line ->
                 when (line) {
                     is NeedsLine.Session -> SessionLine(line, tick) { onOpen(line.host.id, line.row.sid) }

@@ -144,7 +144,7 @@ describe("后端那几格住机器页", () => {
     for (const cells of all) {
       expect(cells.querySelector(".backend-row-state")?.textContent).toBe(copyText("backend.status.connected"));
       expect([...cells.querySelectorAll('[data-col="state"] [data-op]')].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.stop"), copyText("backend.buildCells.restart"), copyText("backend.buildCells.start")]);
-      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.log"), copyText("backend.buildCells.resync")]);
+      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.log"), copyText("accountChip.menu.refresh")]);
       expect(cells.querySelector('.backend-row-kill [role="switch"]')!.getAttribute("aria-disabled")).toBeNull();
     }
     const asked = ipc.calls

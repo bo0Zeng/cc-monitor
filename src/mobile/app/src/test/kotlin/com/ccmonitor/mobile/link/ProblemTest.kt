@@ -22,7 +22,7 @@ class ProblemTest {
     @Test
     fun `断着：照那台成品写的离线那一句；成品还没到 ⇒ 状态不明，不说离线`() {
         assertEquals("成品写的 box 离线那一句", Reply.LinkDown.problem("box", "history-list", "成品写的 box 离线那一句")!!.text)
-        assertEquals(copyText("sessionState.unseen.name"), Reply.LinkDown.problem("box", "history-list", null)!!.text)
+        assertEquals(copyText("runs.state.unknown"), Reply.LinkDown.problem("box", "history-list", null)!!.text)
     }
 
     @Test

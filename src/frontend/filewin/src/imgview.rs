@@ -234,7 +234,7 @@ pub struct Acts {
 
 /// 「查看」那一项的字（菜单 · 预览头）。
 pub static VIEW_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinImgview.label.view", &[]));
+    std::sync::LazyLock::new(|| copy_text("tabBatch.result.view", &[]));
 
 /// 查看页这一页的键（这一栏有焦点、没在输入框里）：← → 翻页 · + − 缩放 · 0 回到适应窗口。
 /// Ctrl 组合键是整窗缩放（不抢）。
@@ -306,7 +306,7 @@ pub fn head_acts(ui: &mut egui::Ui, v: &Viewer, pct: Option<u32>, acts: &mut Act
     ui.separator();
     let ready = pct.is_some();
     if super::kit::ghost(ui, ph::PLUS, "", ready, "")
-        .on_hover_text(copy_text("rsFilewinImgview.head.zoomIn", &[]))
+        .on_hover_text(copy_text("main.cmd.zoomIn", &[]))
         .clicked()
     {
         acts.steps += 1.0;
@@ -319,7 +319,7 @@ pub fn head_acts(ui: &mut egui::Ui, v: &Viewer, pct: Option<u32>, acts: &mut Act
         egui::Label::new(egui::RichText::new(shown).color(p.text).small()),
     );
     if super::kit::ghost(ui, ph::MINUS, "", ready, "")
-        .on_hover_text(copy_text("rsFilewinImgview.head.zoomOut", &[]))
+        .on_hover_text(copy_text("main.cmd.zoomOut", &[]))
         .clicked()
     {
         acts.steps -= 1.0;
@@ -491,7 +491,7 @@ pub fn canvas(
                 &said,
                 &[
                     super::download::DOWNLOAD_LABEL.to_string(),
-                    copy_text("rsFilewinEditPage.action.retry", &[]),
+                    copy_text("front.act.retry", &[]),
                 ],
             ) {
                 Some(0) => acts.download = true,

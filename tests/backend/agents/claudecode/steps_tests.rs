@@ -87,7 +87,7 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
-            text: Words(copy_core::copy_text("stream.step.failed", &[])),
+            text: Words(copy_core::copy_text("runs.state.failed", &[])),
             preview: Some("Exit code 127".into()),
             chars: Some(32),
             ..Default::default()
@@ -483,7 +483,7 @@ fn a_result_carries_how_many_chars_its_body_has() {
     assert_eq!(r.chars, Some(4), "报错那一支也带");
 }
 
-/// ★ 结果那一行的首行预览是核心出的一格（`preview`）：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾。
+/// ★ 结果那一行的首行预览是核心出的一格（`preview`）：第一条非空行、去掉两头空白、留 60 字（按字符），截了接「…」。
 /// 出口省掉 `blocks[type=tool_result].content` 之后预览照样有。
 #[test]
 fn a_result_carries_its_first_line_preview() {
@@ -497,7 +497,7 @@ fn a_result_carries_its_first_line_preview() {
         &json!({"type": "tool_result", "content": [{"type": "text", "text": long}]}),
         None,
     );
-    assert_eq!(r.preview, Some(format!("{}…", "字".repeat(59))));
+    assert_eq!(r.preview, Some(format!("{}…", "字".repeat(60))));
     let exact = "字".repeat(60);
     let r = result_of(
         &json!({"type": "tool_result", "content": exact.clone()}),

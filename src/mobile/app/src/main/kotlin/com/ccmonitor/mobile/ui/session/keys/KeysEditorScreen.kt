@@ -112,7 +112,7 @@ fun KeysEditorScreen(onBack: () -> Unit) {
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).settingsGroupScreenInsets()) {
         EditorTopBar(
-            title = copyText("mobKeys.more.edit"),
+            title = copyText("mobKeys.action.editKeys"),
             onBack = onBack,
             menu = { close -> ResetMenuItem(!resetPreview(state.groups, state.keys).pristine, close) { overlay = Overlay.Reset } },
         )
@@ -207,12 +207,12 @@ private fun EditorOverlay(
     when (overlay) {
         null -> {}
         Overlay.NewGroup ->
-            GroupNameDialog(copyText("mobKeys.group.new"), copyText("mobKeys.group.create"), "", state.groups, null, onDone) { name ->
+            GroupNameDialog(copyText("mobKeys.group.new"), copyText("acctNew.form.create"), "", state.groups, null, onDone) { name ->
                 scope.launch { onCreated(ops.createGroup(name)) }
                 onDone()
             }
         is Overlay.Rename ->
-            GroupNameDialog(copyText("mobKeys.group.rename"), copyText("mobKeys.edit.save"), overlay.group.name, state.groups, overlay.group.id, onDone) { name ->
+            GroupNameDialog(copyText("rsFilewinWriteops.label.rename"), copyText("rsFilewinShell.editor.save"), overlay.group.name, state.groups, overlay.group.id, onDone) { name ->
                 scope.launch { ops.renameGroup(overlay.group, name) }
                 onDone()
             }
@@ -270,7 +270,7 @@ internal fun EditorTopBar(
         if (menu != null) {
             var open by remember { mutableStateOf(false) }
             Box {
-                PhIconButton(Ph.DotsThree, copyText("mobKeys.tool.more"), onClick = { open = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                PhIconButton(Ph.DotsThree, copyText("history.row.more"), onClick = { open = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = tokens.card) { menu { open = false } }
             }
         }
@@ -383,7 +383,7 @@ private fun MigrateBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) { NoteLine(copyText("mobKeys.migrate.bar", "n" to n), warn = true) }
-        SecondaryButton(onClick = onView) { Text(copyText("mobKeys.migrate.view")) }
+        SecondaryButton(onClick = onView) { Text(copyText("tabBatch.result.view")) }
     }
 }
 
@@ -403,9 +403,9 @@ private fun GroupHeader(
     Row(Modifier.fillMaxWidth().padding(start = tokens.spacing.lg), verticalAlignment = Alignment.CenterVertically) {
         HintLine(group.name + copyText("kit.text.sep") + copyText("mobKeys.group.count", "n" to count), Modifier.weight(1f))
         Box {
-            PhIconButton(Ph.DotsThree, copyText("mobKeys.tool.more"), onClick = { open = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            PhIconButton(Ph.DotsThree, copyText("history.row.more"), onClick = { open = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = tokens.card) {
-                MenuItem(Ph.PencilSimple, copyText("mobKeys.group.rename")) {
+                MenuItem(Ph.PencilSimple, copyText("rsFilewinWriteops.label.rename")) {
                     open = false
                     onRename()
                 }
@@ -577,7 +577,7 @@ private fun BottomActions(
         OutlinedButton(onClick = onModifier) {
             PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline)
             Spacer(Modifier.width(tokens.spacing.xs))
-            Text(copyText("mobKeys.add.modifier"))
+            Text(copyText("mobKeys.mod.title"))
         }
         PrimaryIconButton(Ph.Plus, copyText("mobKeys.add.key"), onClick = onKey)
     }
@@ -632,16 +632,16 @@ private fun ResetDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = tokens.card,
-        title = { Text(copyText("mobKeys.reset.title")) },
+        title = { Text(copyText("mobKeys.reset.menu")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-                lines.changed?.let { ResetLine(copyText("mobKeys.reset.changed"), it) }
-                lines.deleted?.let { ResetLine(copyText("mobKeys.reset.deleted"), it) }
+                lines.changed?.let { ResetLine(copyText("dataPage.chore.diff"), it) }
+                lines.deleted?.let { ResetLine(copyText("rsFilewinWriteops.label.delete"), it) }
             }
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         },
         confirmButton = {
-            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = tokens.errorStrong)) { Text(copyText("mobKeys.reset.confirm")) }
+            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = tokens.errorStrong)) { Text(copyText("rot.cell.reset")) }
         },
         dismissButton = { SecondaryButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text(copyText("kit.dialog.cancel")) } },
     )

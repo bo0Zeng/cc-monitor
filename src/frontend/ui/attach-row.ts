@@ -28,11 +28,11 @@ export interface AttachRowHost {
 
 /** 每一态的那个词（界面自己的态，不是线上的码）。 */
 const STATE_WORD: { readonly [K in ChipAt["at"]]: () => string } = {
-  queued: () => copyText("attach.chip.queued"),
+  queued: () => copyText("mobAttach.card.queued"),
   sending: () => copyText("attach.chip.sending"),
-  offline: () => copyText("attach.chip.queued"),
+  offline: () => copyText("mobAttach.card.queued"),
   done: () => copyText("attach.chip.done"),
-  failed: () => copyText("attach.chip.failed"),
+  failed: () => copyText("runs.state.failed"),
 };
 
 /** 词后面跟的那一格：离线那一句 · 那台说的原因；别的态没有（传了多少只看进度条，不写字节）。 */
@@ -213,6 +213,6 @@ export class AttachRow {
   }
 
   private retryBtn(draft: AttachDraft, c: Chip): HTMLButtonElement {
-    return button({ label: copyText("attach.chip.retry"), kind: "ghost", size: "compact", onClick: () => draft.retry(c.n) });
+    return button({ label: copyText("front.act.retry"), kind: "ghost", size: "compact", onClick: () => draft.retry(c.n) });
   }
 }

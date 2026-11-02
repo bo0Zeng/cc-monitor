@@ -112,7 +112,7 @@ fn state_row(show: &QuotaShow, reading: &ResetsAt) -> Option<Vec<Cell>> {
         QuotaState::ResetSinceSeen => c(copy_text("acct.val.none", &[])),
         _ => return None,
     };
-    let mut row = vec![c(copy_text("acct.row.state", &[])), value];
+    let mut row = vec![c(copy_text("backend.column.status", &[])), value];
     row.extend(reset_cells(
         reading.resets_at,
         reading.resets_at_text.as_ref(),

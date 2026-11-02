@@ -46,7 +46,7 @@ export const SAID_EDIT_EVENT = "said-edit";
 /** 给人说的那一句的卡挂上「编辑」（贴在气泡左边，悬停才显）。 */
 export function markEditable(card: HTMLElement, at: SaidAt): void {
   const b = button({
-    label: copyText("saidEdit.card.edit"),
+    label: copyText("rsFilewinEditor.label.edit"),
     kind: "ghost",
     size: "compact",
     onClick: () => card.dispatchEvent(new CustomEvent(SAID_EDIT_EVENT, { bubbles: true, detail: { at } })),
@@ -137,7 +137,7 @@ export class SaidEdit {
     const pick = el("div", s.pick);
     const refused = el("p", s.error);
     refused.dataset.role = "said-edit-refused";
-    const cancel = button({ label: copyText("saidEdit.bar.cancel"), onClick: () => this.close() });
+    const cancel = button({ label: copyText("kit.dialog.cancel"), onClick: () => this.close() });
     cancel.dataset.role = "said-edit-cancel";
     const confirm = button({ label: copyText("saidEdit.pick.confirm"), kind: "primary", onClick: () => void this.submit(o) });
     confirm.dataset.role = "said-edit-confirm";
@@ -261,7 +261,7 @@ export class SaidEdit {
     if (this.open_ !== o || o.sending || how === undefined || o.confirm.getAttribute("aria-disabled") === "true") return;
     o.sending = true;
     o.refused.remove();
-    setBusy(o.confirm, copyText("terminal.queue.sending"));
+    setBusy(o.confirm, copyText("mobChat.delivery.sending"));
     const locked = [...o.pick.querySelectorAll("input")].filter((i) => !i.disabled);
     for (const i of locked) i.disabled = true;
     const text = o.box.value;

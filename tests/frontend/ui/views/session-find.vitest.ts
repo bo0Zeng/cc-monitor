@@ -148,7 +148,7 @@ describe("会话内查找面板", () => {
     p.outline.toggle.click(); // 同一个入口再按 ⇒ 收起
     expect(box(p).hidden).toBe(true);
     p.open("outline");
-    q(p, `[aria-label='${copyText("sessionFind.box.closeHint")}']`).click();
+    q(p, `[aria-label='${copyText("kit.drawer.close")}']`).click();
     expect(box(p).hidden).toBe(true);
   });
 
@@ -228,7 +228,7 @@ describe("会话内查找 · 搜索", () => {
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
     const rows = hitRows(p.el);
     expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2", "u4"]);
-    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.meta", { who: copyText("sessionFind.who.user"), n: 3, time: "09-30 18:20" }));
+    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.meta", { who: copyText("machineForm.field.user"), n: 3, time: "09-30 18:20" }));
     expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
     expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
@@ -262,7 +262,7 @@ describe("会话内查找 · 搜索", () => {
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "y");
     await settleOutline();
-    expect(status(p)).toBe(copyText("findStrip.status.none", { q: "y" }));
+    expect(status(p)).toBe(copyText("kit.menu.noMatch", { q: "y" }));
     enter(p, "z");
     await settleOutline();
     expect(status(p)).toBe(copyText("findStrip.status.unavailable", { reason: "后端版本旧" }));
@@ -314,7 +314,7 @@ describe("会话内查找 · 搜索", () => {
     expect(stateOf(row).textContent).toBe(copyText("sessionFind.jump.pending"));
     settle.no(new Error("网络断开"));
     await settleOutline();
-    expect(stateOf(row).textContent).toBe(copyText("sessionFind.fetchFailed.line", { reason: "网络断开" }) + copyText("sessionFind.jump.retry"));
+    expect(stateOf(row).textContent).toBe(copyText("sessionFind.fetchFailed.line", { reason: "网络断开" }) + copyText("front.act.retry"));
     stateOf(row).querySelector("button")!.click();
     expect(jumpTo).toHaveBeenCalledTimes(2);
     settle.ok(document.createElement("div"));
@@ -449,10 +449,10 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
     const { p } = panelWith();
     p.open("search");
     expect([...scopeSeg(p.el).querySelectorAll("button")].map((b) => [b.dataset.key, b.textContent, b.getAttribute("aria-checked")])).toEqual([
-      ["all", copyText("sessionFind.scope.all"), "true"],
-      ["user", copyText("sessionFind.scope.user"), "false"],
+      ["all", copyText("extPage.filter.all"), "true"],
+      ["user", copyText("machineForm.field.user"), "false"],
     ]);
-    expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("findStrip.box.tools"));
+    expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("history.filter.tools"));
     const query = q(p, "[data-role=find-input]").closest("div")!;
     expect(query.contains(scopeSeg(p.el)), "分段不挤在框那一行").toBe(false);
   });
@@ -506,7 +506,7 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
     expect(s.mock.calls.at(-1)).toEqual(["指数退避", false, 0]);
     expect(seg(p.el, "all").getAttribute("aria-checked")).toBe("true");
     expect(document.activeElement).toBe(input(p));
-    expect(status(p)).toBe(copyText("findStrip.status.none", { q: "指数退避" }));
+    expect(status(p)).toBe(copyText("kit.menu.noMatch", { q: "指数退避" }));
     expect(head.querySelector("button")).toBeNull();
   });
 

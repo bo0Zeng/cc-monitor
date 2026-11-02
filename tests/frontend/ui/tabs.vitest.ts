@@ -1288,7 +1288,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     return items.find((b) => b.querySelector("[data-part=label]")?.textContent === label) ?? null;
   };
   const whyOf = (b: HTMLElement | null): string | undefined => b?.querySelector("[data-part=why]")?.textContent ?? undefined;
-  const attachBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.attach.label"));
+  const attachBtn = (): HTMLButtonElement | null => itemLabeled(copyText("sessionHead.act.openTerm"));
   const killBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.kill.label"));
   /** 点「在终端里打开」⇒ 交那台的那一问（接哪个由那台判）。 */
   const attachTarget = (): unknown => {
@@ -1320,9 +1320,9 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL);
     rightClick("k1abcdef");
     const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.querySelector("[data-part=label]")?.textContent);
-    expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
-    expect(labels.filter((l) => l?.includes(copyText("rsFilewinEditPage.more.reload")) || l === copyText("tabBar.head.refresh"))).toEqual([]);
-    expect(document.body.querySelector(".tab-bar-reread")?.getAttribute("aria-label")).toBe(copyText("tabBar.head.refresh"));
+    expect(labels).toContain(copyText("history.menu.openWindow"));
+    expect(labels.filter((l) => l?.includes(copyText("accountChip.menu.refresh")) || l === copyText("accountChip.menu.refresh"))).toEqual([]);
+    expect(document.body.querySelector(".tab-bar-reread")?.getAttribute("aria-label")).toBe(copyText("accountChip.menu.refresh"));
   });
 
   // 栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
@@ -1367,7 +1367,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(lines).toHaveLength(3);
     expect(lines).toEqual(
       expect.arrayContaining([
-        copyText("resync.machines.ok", { machine: copyText("resync.machines.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
+        copyText("resync.machines.ok", { machine: copyText("detail.label.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
         copyText("resync.machines.ok", { machine: "laptop", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
         expect.stringMatching(copyPattern("resync.machines.failed", { machine: "box" }, { whole: true })),
       ]),
@@ -1381,7 +1381,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.onFace("k1abcdef", goldenFace("live-needs-you-tmux"));
     rightClick("k1abcdef");
     expect(killBtn()?.disabled).toBe(false);
-    expect(await killConfirmText()).toContain(copyText("tabBatch.stop.title", { n: 1 }));
+    expect(await killConfirmText()).toContain(copyText("tabBatch.menu.stop", { n: 1 }));
     tm.ensureTab("k2abcdef", "/home/u/p", "/p/k2.jsonl", "hostA");
     tm.onFace("k2abcdef", goldenFace("live-working-plain"));
     rightClick("k2abcdef");
@@ -1551,7 +1551,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     await flush();
     const items = [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? [])];
     const labels = items.map((b) => b.querySelector("[data-part=label]")?.textContent);
-    expect(labels).toContain(copyText("tabMenu.open.drawer"));
+    expect(labels).toContain(copyText("sessionHead.act.terminal"));
     expect(items.filter((b) => b.dataset.id === "preview" || b.querySelector("[data-part=label]")?.textContent?.includes("画面")), "旧浮层那一项还在").toEqual([]);
   });
 
@@ -1606,7 +1606,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   const item = (label: string): HTMLButtonElement | undefined =>
     [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])].filter((b) => labelOf(b) === label).pop();
   const flyout = (): HTMLElement => {
-    const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === copyText("tabMenu.item.resume"));
+    const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === copyText("history.row.resume"));
     expect(wrap, "找不到「恢复 ▸」那一项").toBeTruthy();
     return wrap!.querySelector<HTMLElement>(":scope > [role=menu]")!;
   };
@@ -1830,7 +1830,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交本机一项的
     const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.endSession("hostA", "s1", "cc-abc");
     await microFlush();
-    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabBatch.stop.title", { n: 1 }));
+    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabBatch.menu.stop", { n: 1 }));
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
     await answerAskDialog(false);
     expect(killCalls()).toHaveLength(0);
@@ -2135,7 +2135,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
 
   it("★ 后端交来那一张（没有标签可找）⇒ 不找窗口、照摆；同一个会话再来一次原地换内容", async () => {
     const cases: [unknown, string, string, string[], string][] = [
-      [{ labels: [], chain: [], tmux: true, face: face("甲", "甲正文", "plain", [{ kind: "open-in-terminal" }]) }, "甲", "甲正文", [copyText("front.act.openInTerminal")], "grey"],
+      [{ labels: [], chain: [], tmux: true, face: face("甲", "甲正文", "plain", [{ kind: "open-in-terminal" }]) }, "甲", "甲正文", [copyText("sessionHead.act.openTerm")], "grey"],
       [{ labels: [], chain: [], tmux: false, face: face("乙", "乙正文", "plain") }, "乙", "乙正文", [], "grey"],
       [{ labels: [], chain: [], tmux: false, face: face("丙", "", "fail", [{ kind: "retry" }, { kind: "copy", detail: "d" }]) }, "丙", "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
       [{ labels: [], chain: [], tmux: false, face: face("丁", "丁正文", "warn", [{ kind: "update" }]) }, "丁", "丁正文", [copyText("front.act.update")], "amber"],
@@ -2252,7 +2252,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     const cases: [unknown, string, string, string[]][] = [
       [UNSUPPORTED, copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
       [hop("Overrun"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
-      [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("front.act.reconnect")]],
+      [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("history.list.reconnect")]],
     ];
     for (const [err, title, body, buttons] of cases) {
       mockInvoke.mockReset();
@@ -2307,7 +2307,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
     expect(popText()).toContain(copyText("front.body.redialFailed"));
-    expect(popButtons()).toEqual([copyText("front.act.reconnect")]);
+    expect(popButtons()).toEqual([copyText("history.list.reconnect")]);
 
     // 部署失败：同一个浮层里红着说；壳带回的复制详情挂在［复制详情］上（复制的是那份详情，不是那一句）；［重试］再更新一次。
     vi.mocked(updateBackendOf).mockReset();
@@ -2477,7 +2477,7 @@ describe("LF1 · A2-17-12-1：↗ 在哪都画；做不了只灰着写原因", (
       .map(([c]) => c);
     expect(sent, "macos 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
     expect(showActionFailureToast, "做不了不弹 toast").not.toHaveBeenCalled();
-    expect(noteMessage).toHaveBeenCalledWith(copyText("tabBarView.tab.terminalHint"), copyText("terminalFront.unavailable.short"));
+    expect(noteMessage).toHaveBeenCalledWith(copyText("terminal.head.front"), copyText("terminalFront.unavailable.short"));
   });
 
   it("★ 对照：windows / linux 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
@@ -3288,7 +3288,7 @@ describe("步 17·B 固定：交那台 · 复活 · 正交", () => {
     const hintOf = (sid: string): HTMLElement => tabOf(sid).streamEl.querySelector(".pin-revived-hint") as HTMLElement;
 
     expect(hintOf("ok"), "复活的 tab 里一片空白 —— 那与坏了没有区别").toBeTruthy();
-    expect(hintOf("ok").querySelector(".pin-revived-hint-btn")?.textContent).toBe(copyText("tabBarPrefs.pin.resume"));
+    expect(hintOf("ok").querySelector(".pin-revived-hint-btn")?.textContent).toBe(copyText("history.row.resume"));
     expect(hintOf("bad").querySelector("strong")?.textContent, "记录已不在的要提示「这个会话没有留下记录」").toBe(
       copyText("sessionState.pinnedEmpty.head"),
     );
@@ -5781,10 +5781,10 @@ describe("组头", () => {
     head().querySelector<HTMLElement>(".tab-group-more")!.click();
     const labels = [...document.body.querySelectorAll("[role=menu] [role^=menuitem]")].map((b) => b.textContent ?? "");
     expect(labels.map((l) => l.split("\n")[0])).toEqual([
-      copyText("tabMenu.group.rename"),
-      copyText("tabMenu.group.collapse"),
+      copyText("rsFilewinWriteops.label.rename"),
+      copyText("kit.dock.close"),
       copyText("tabMenu.group.collapseAll"),
-      copyText("tabMenu.group.expandAll"),
+      copyText("history.list.expandAll"),
       copyText("tabMenu.group.inPlan"),
       copyText("sessionState.closeEnded.inGroup", { n: 0 }),
       copyText("tabMenu.group.dissolve"),

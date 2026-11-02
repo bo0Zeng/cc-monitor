@@ -140,7 +140,7 @@ export class SessionHead {
     this.el = document.createElement("div");
     this.el.id = "session-head";
     this.el.className = s.shHead;
-    this.dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
+    this.dot = statusDot("running", copyText("backend.status.connected"), "compact");
     this.title = document.createElement("span");
     this.title.className = s.shTitle;
     this.title.dataset.headTitle = "";
@@ -161,7 +161,7 @@ export class SessionHead {
     this.acts = document.createElement("span");
     this.acts.className = s.shActs;
     this.acts.addEventListener("contextmenu", (e) => this.onActsMenu(e));
-    this.moreBtn = this.iconButton("more", copyText("tabBarView.tab.moreHint"), () => copyText("tabBarView.tab.moreHint"), (b) => {
+    this.moreBtn = this.iconButton("more", copyText("history.row.more"), () => copyText("history.row.more"), (b) => {
       const t = this.host.active();
       if (t) this.host.more(b, t.sessionId, this.moreExtra());
     });
@@ -289,12 +289,12 @@ export class SessionHead {
     });
     switch (id) {
       case "cwd":
-        return tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabMenu.open.cwd")) : null;
+        return tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabBarView.tab.cwdHint")) : null;
       case "front": {
         // 做不了也画、灰着，悬停写那一句（A2-17-12-1）：壳说这台 ↗ 不是真的 · 那台说没有终端可去。
         const why = frontWhy(tab.face);
-        const label = copyText("tabBarView.tab.terminalHint");
-        const item: MenuItem = { label: copyText("tabMenu.open.front"), detail: chordOf("terminal.bring-front"), enabled: why === null, why: why || undefined, onClick: () => this.host.front(sid) };
+        const label = copyText("terminal.head.front");
+        const item: MenuItem = { label: copyText("terminal.head.front"), detail: chordOf("terminal.bring-front"), enabled: why === null, why: why || undefined, onClick: () => this.host.front(sid) };
         const b = this.fromItem(id, item, label, "terminal.bring-front");
         // ↗ 的结果浮层锚在这一颗上（按会话找）。
         b.el.dataset.role = "head-front";
@@ -320,7 +320,7 @@ export class SessionHead {
         if (id === "resume" && extra === "resume") return null;
         const it = this.host.menuItem(sid, id as HeadMenuId);
         if (!it) return null;
-        const label = id === "popOut" ? copyText("sessionHead.act.popOut") : id === "account" ? copyText("sessionHead.act.account") : it.label;
+        const label = id === "popOut" ? copyText("history.menu.openWindow") : id === "account" ? copyText("beProfile.slot.account") : it.label;
         return this.fromItem(id, it, label, id === "popOut" ? "tab.pop-out" : null);
       }
     }
@@ -362,7 +362,7 @@ export class SessionHead {
     const sid = tab.sessionId;
     const extraBtn =
       extra === "resume"
-        ? button({ label: copyText("sessionHead.act.resume"), size: "compact", icon: "caretDown", onClick: (e) => this.host.resume(e.currentTarget as HTMLElement, sid) })
+        ? button({ label: copyText("history.row.resume"), size: "compact", icon: "caretDown", onClick: (e) => this.host.resume(e.currentTarget as HTMLElement, sid) })
         : extra === "attach"
           ? button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.host.attach(sid) })
           : null;
@@ -401,7 +401,7 @@ export class SessionHead {
   private kinChips(tab: Tab): HTMLElement[] {
     const out: HTMLElement[] = [];
     if (tab.hidden) {
-      const t = tag(copyText("sessionHead.kin.hidden"));
+      const t = tag(copyText("history.row.hidden"));
       t.dataset.head = "hidden";
       attachTooltip(t, () => tab.hidden?.said ?? null);
       out.push(t);
@@ -434,7 +434,7 @@ export class SessionHead {
         id: c.sid,
         label: c.title,
         avatar: t ? statusDot(dotOf(t), stateWord(t), "compact") : statusDot(c.face.dot, c.face.name, "compact"),
-        detail: c.hidden ? copyText("sessionHead.kin.hidden") : undefined,
+        detail: c.hidden ? copyText("history.row.hidden") : undefined,
         enabled: t !== null,
         onClick: () => this.host.switchTo(c.sid),
       };

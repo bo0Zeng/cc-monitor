@@ -65,7 +65,7 @@ describe("accountAvatarEl（头像元素）", () => {
     const el = accountAvatarEl("zhang");
     expect(el.classList.contains("acct-avatar")).toBe(true);
     expect(el.textContent, "号牌字照那台后端写好的那一格").toBe("核牌");
-    expect(accountAvatarEl("nobody").textContent, "库里没有 ⇒ 不另取").toBe(copyText("accounts.sessionBadge.none"));
+    expect(accountAvatarEl("nobody").textContent, "库里没有 ⇒ 不另取").toBe(copyText("acct.val.none"));
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });
   it("ghost=true → 加 .ghost（幽灵态）", () => {

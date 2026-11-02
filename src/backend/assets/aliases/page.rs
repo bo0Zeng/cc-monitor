@@ -220,8 +220,8 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
         Some(flag::CWD) => copy_text("beProfile.val.cwd", &[("dir", &v(0))]),
         Some(flag::DETACH) => copy_text("beProfile.val.on", &[]),
         Some(flag::TAB) => match vals.first().and_then(|v| argv::tab_of(v)) {
-            Some(cmd_wire::session::Tab::Hide) => copy_text("beProfile.val.tabHide", &[]),
-            _ => copy_text("beProfile.val.tabShow", &[]),
+            Some(cmd_wire::session::Tab::Hide) => copy_text("history.menu.hide", &[]),
+            _ => copy_text("sessionHead.act.display", &[]),
         },
         Some(_) => vals.join(" "),
     }
@@ -582,11 +582,11 @@ fn summary_of(p: &Profile, shell: Shell) -> String {
             0,
             match shell {
                 Shell::PowerShell => copy_text("rsAccountAliases.said.hereWindow", &[]),
-                Shell::Posix => copy_text("rsAccountAliases.said.hereTerminal", &[]),
+                Shell::Posix => copy_text("beCcm.value.here", &[]),
             },
         );
     }
-    out.join(&copy_text("rsAccountAliases.said.sep", &[]))
+    out.join(&copy_text("kit.text.sep", &[]))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1287,7 +1287,7 @@ fn changes_of_set(book: &Book, was: Option<&str>, e: &ProfileEdit) -> Result<Vec
     match was {
         Some(w) if w != e.name => {
             if book.find(&e.name).is_some() {
-                return Err(copy_text("beProfile.rename.taken", &[("name", &e.name)]));
+                return Err(copy_text("addMachine.err.taken", &[("name", &e.name)]));
             }
             out.push(Change::Rename {
                 from: w.to_string(),
@@ -1301,7 +1301,7 @@ fn changes_of_set(book: &Book, was: Option<&str>, e: &ProfileEdit) -> Result<Vec
             }
         }
         None if book.find(&e.name).is_some() => {
-            return Err(copy_text("beProfile.rename.taken", &[("name", &e.name)]));
+            return Err(copy_text("addMachine.err.taken", &[("name", &e.name)]));
         }
         _ => {}
     }
@@ -1355,10 +1355,7 @@ fn changes_of_remove(
                 "beProfile.install.basedOn",
                 &[
                     ("name", name),
-                    (
-                        "children",
-                        &kids.join(&copy_text("beProfile.list.sep", &[])),
-                    ),
+                    ("children", &kids.join(&copy_text("plan.page.listSep", &[]))),
                 ],
             ))
         }
@@ -1509,10 +1506,7 @@ pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<Pro
                     .filter(|x| x.slot == s.id && x.overridden_by.is_none())
                     .map(|x| x.said.clone())
                     .collect();
-                (
-                    s.id,
-                    said.join(&copy_text("rsAccountAliases.said.sep", &[])),
-                )
+                (s.id, said.join(&copy_text("kit.text.sep", &[])))
             })
             .collect())
     };

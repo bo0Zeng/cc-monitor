@@ -53,7 +53,7 @@ describe("↗ 结局 ⇒ 浮层", () => {
       body: "连接层写的那一句",
       hint: null,
       tone: "red",
-      acts: [copyText("front.act.reconnect")],
+      acts: [copyText("history.list.reconnect")],
     });
     expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("reason.io.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
   });

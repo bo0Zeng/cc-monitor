@@ -62,8 +62,8 @@ class PortForwardPanel {
     title.className = "pf-title";
     title.textContent = copyText("portForward.buildChrome.title");
     header.appendChild(title);
-    header.appendChild(mkBtn(copyText("portForward.buildChrome.refresh"), () => void this.reload()));
-    const close = mkBtn(copyText("portForward.buildChrome.close"), () => this.close());
+    header.appendChild(mkBtn(copyText("accountChip.menu.refresh"), () => void this.reload()));
+    const close = mkBtn(copyText("kit.drawer.close"), () => this.close());
     close.classList.add("pf-close");
     header.appendChild(close);
     panel.appendChild(header);
@@ -77,14 +77,14 @@ class PortForwardPanel {
     form.appendChild(this.localInput);
     const arrow = document.createElement("span");
     arrow.className = "pf-arrow";
-    arrow.textContent = copyText("portForward.buildChrome.arrow");
+    arrow.textContent = copyText("registry.prettyChord.right");
     form.appendChild(arrow);
     this.rhostInput = mkInput(copyText("portForward.buildChrome.remoteHost"));
     this.rhostInput.value = "localhost";
     form.appendChild(this.rhostInput);
     this.rportInput = mkInput(copyText("portForward.buildChrome.remotePort"));
     form.appendChild(this.rportInput);
-    const startBtn = mkBtn(copyText("portForward.buildChrome.start"), () => void this.onStart());
+    const startBtn = mkBtn(copyText("backend.buildCells.start"), () => void this.onStart());
     startBtn.classList.add("pf-start");
     form.appendChild(startBtn);
     panel.appendChild(form);
@@ -146,7 +146,7 @@ class PortForwardPanel {
       desc.className = "pf-desc";
       desc.textContent = copyText("portForward.reload.row", { origin: f.origin, localPort: f.localPort, remoteHost: f.remoteHost, remotePort: f.remotePort, connCount: f.connCount });
       row.appendChild(desc);
-      row.appendChild(mkBtn(copyText("portForward.reload.stop"), () => void this.onStop(f.id)));
+      row.appendChild(mkBtn(copyText("composer.input.stop"), () => void this.onStop(f.id)));
       this.listEl.appendChild(row);
     }
   }

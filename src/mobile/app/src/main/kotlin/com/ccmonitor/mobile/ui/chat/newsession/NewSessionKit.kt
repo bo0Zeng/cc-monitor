@@ -152,7 +152,7 @@ internal fun AccountBadge(
     val acct = LocalAppTokens.current.acct
     val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
-        Text(text ?: copyText("accounts.sessionBadge.none"), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
+        Text(text ?: copyText("acct.val.none"), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
     }
 }
 

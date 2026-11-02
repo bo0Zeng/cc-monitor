@@ -43,7 +43,7 @@ describe("壳推来的出错 toast", () => {
   });
 
   it("连不上（reconnect 有值）⇒［重新连接］在［看日志］前；没有 ⇒ 只［看日志］", () => {
-    const reconnect = copyText("errorToast.showErrorToast.reconnect");
+    const reconnect = copyText("history.list.reconnect");
     const log = copyText("errorToast.showErrorToast.openLog");
     expect(mod.uiErrorActions(payload()).map((a) => a.label)).toEqual([reconnect, log]);
     expect(mod.uiErrorActions(payload({ reconnect: undefined })).map((a) => a.label)).toEqual([log]);

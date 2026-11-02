@@ -1493,7 +1493,7 @@ export class TabManager {
    */
   private frontRefused(tab: Tab): boolean {
     const why = frontWhy(tab.face);
-    const title = copyText("tabBarView.tab.terminalHint");
+    const title = copyText("terminal.head.front");
     if (why === null) return false;
     if (why !== "") noteMessage(title, why);
     return true;

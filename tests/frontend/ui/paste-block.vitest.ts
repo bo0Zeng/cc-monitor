@@ -103,7 +103,7 @@ describe("复制失败必须说出来（迁移前 A3 的真缺陷）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock).toHaveBeenCalledWith(
-      copyText("pasteBlock.buildPasteBlock.copyFailed"),
+      copyText("detail.act.failed"),
       expect.stringContaining(copyText("pasteBlock.buildPasteBlock.noClipboard")),
       expect.objectContaining({ level: "error" }),
     );

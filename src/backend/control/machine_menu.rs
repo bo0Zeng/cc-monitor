@@ -210,7 +210,7 @@ pub(crate) fn menu_in(
     if from != MachineFrom::Local {
         out.push(action(
             MenuAct::Files,
-            Some(copy_text("beMachineMenu.files.home", &[])),
+            Some(copy_text("rsFilewinChrome.side.home", &[])),
             (!reachable).then(|| not_now.clone().unwrap_or_default()),
         ));
     }

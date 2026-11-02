@@ -101,7 +101,7 @@ fn the_outcome_line_says_the_numbers_as_reported() {
                 &[("name", "x"), ("why", "原话")]
             ),
         ]
-        .join(copy_core::copy_static!("rsFilewinSize.outcome.sep"))
+        .join(copy_core::copy_static!("kit.text.sep"))
     );
 }
 

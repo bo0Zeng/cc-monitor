@@ -381,7 +381,7 @@ private fun ChatTopBar(
                         menu = false
                         renaming = true
                     })
-                    DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
+                    DropdownMenuItem(text = { Text(copyText("machinePage.tab.rot")) }, onClick = {
                         menu = false
                         onRotation(sid)
                     })

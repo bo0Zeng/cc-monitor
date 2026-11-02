@@ -193,7 +193,7 @@ describe("编辑已发的一句 · 桌面", () => {
     await flush();
     const c = btn("said-edit-confirm")!;
     expect(c.dataset.busy).toBe("true");
-    expect(c.textContent).toContain(copyText("terminal.queue.sending"));
+    expect(c.textContent).toContain(copyText("mobChat.delivery.sending"));
     expect(radios("said-edit-how").every((x) => x.disabled)).toBe(true);
     c.click();
     key("Enter");
@@ -301,7 +301,7 @@ describe("编辑已发的一句 · 桌面", () => {
     const got: SaidAt[] = [];
     document.addEventListener(SAID_EDIT_EVENT, (e) => got.push((e as CustomEvent<{ at: SaidAt }>).detail.at), { once: true });
     const b = btn("said-edit")!;
-    expect(b.textContent).toBe(copyText("saidEdit.card.edit"));
+    expect(b.textContent).toBe(copyText("rsFilewinEditor.label.edit"));
     b.click();
     expect(got).toEqual([AT]);
 

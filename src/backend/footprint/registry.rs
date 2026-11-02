@@ -325,7 +325,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
         id: "tmux",
-        display_name: Text(|| copy_text("rsToolRegistry.env.tmuxName", &[])),
+        display_name: Text(|| copy_text("mobTerms.row.tmux", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "tmux",

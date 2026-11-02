@@ -320,7 +320,7 @@ pub fn way_of(snap: &[(String, Vec<LinkFacts>)], req: &DialRequest) -> Way {
         .into_iter()
         .map(crate::connect::hop_name)
         .collect();
-    let chain = chain.join(&copy_text("beLinks.route.then", &[]));
+    let chain = chain.join(&copy_text("beProfile.chain.arrow", &[]));
     let proxied = links.iter().any(LinkFacts::proxied);
     let route = match (chain.is_empty(), proxied) {
         (true, false) => None,

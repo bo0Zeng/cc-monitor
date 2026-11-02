@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 function rig(): { dot: HTMLElement; other: HTMLElement; breath: FakeAnim; spin: FakeAnim; anims: FakeAnim[] } {
-  const dot = statusDot("running", copyText("sessionFace.dot.running"));
+  const dot = statusDot("running", copyText("backend.status.connected"));
   const other = document.createElement("span");
   document.body.append(dot, other);
   const breath = new FakeAnim({ target: dot });
@@ -101,7 +101,7 @@ describe("停与续", () => {
     const stop = installDotRest();
     focused = false;
     window.dispatchEvent(new FocusEvent("blur"));
-    const fresh = statusDot("running", copyText("sessionFace.dot.running"));
+    const fresh = statusDot("running", copyText("backend.status.connected"));
     const plain = document.createElement("div");
     document.body.append(fresh, plain);
     const a = new FakeAnim({ target: fresh });

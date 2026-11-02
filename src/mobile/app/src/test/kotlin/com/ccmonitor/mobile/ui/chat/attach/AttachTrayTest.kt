@@ -281,7 +281,7 @@ class AttachTrayTest {
                 local = null,
             )
         val got = Wire.read<AttachFace>(Core.attachFace(Wire.line(want)))
-        assertEquals(listOf("超上限", copyText("mobAttach.card.failed")), got?.cards?.map { it.line })
+        assertEquals(listOf("超上限", copyText("runs.state.failed")), got?.cards?.map { it.line })
         assertEquals(AttachAct.RETRY, got?.note?.act)
         assertEquals("", Core.attachFace("""{"cards":[{"name":"a.png","phase":{"kind":"nope"}}],"offline":null,"local":null}"""))
     }

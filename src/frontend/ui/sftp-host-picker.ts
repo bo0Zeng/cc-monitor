@@ -24,7 +24,7 @@ export async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
     // 这是引导提示不是失败 → info 级（非红色错误）。
     toast(
       copyText("main.sftp.noMachine"),
-      copyText("main.sftp.noMachineHint"),
+      copyText("main.sftp.noMachine"),
       { level: "info" },
     );
     return;
@@ -37,6 +37,6 @@ export async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
   openMenu(
     { el: anchor, align: "end" },
     hosts.map((h) => ({ label: h.name, onClick: () => void openFileWindow(h.name) })),
-    { label: copyText("main.sftp.pickHost") },
+    { label: copyText("detail.label.machine") },
   );
 }

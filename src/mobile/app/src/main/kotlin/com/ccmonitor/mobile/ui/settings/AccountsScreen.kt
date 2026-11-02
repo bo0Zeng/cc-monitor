@@ -84,7 +84,7 @@ fun AccountsScreen(
             look.failed?.let { MachineBarView(it, board::reloadAccounts) }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 Text(
-                    copyText("mobAccounts.list.section", "machine" to here.machine),
+                    copyText("acctPage.head.title", "machine" to here.machine),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -144,7 +144,7 @@ private fun AccountsHead(
     Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
         BackButton(onBack)
         Column {
-            Text(copyText("mobSettings.entry.accounts"), style = MaterialTheme.typography.titleLarge)
+            Text(copyText("beProfile.slot.account"), style = MaterialTheme.typography.titleLarge)
             Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -273,7 +273,7 @@ private fun AccountSheet(
             )
         }
         PickRow(copyText("acctPage.detail.model"), AccountsTags.MODEL, second = modelText(ui, ui.model(a.name)), onClick = onModel)
-        PickRow(copyText("mobUsage.page.title"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
+        PickRow(copyText("acct.hover.usage"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
     }
 }
 

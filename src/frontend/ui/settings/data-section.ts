@@ -316,9 +316,9 @@ export function localOpenButtons(path: string, exists: boolean): HTMLElement[] {
   const open = document.createElement("button");
   open.type = "button";
   open.className = "settings-data-item-open";
-  open.textContent = exists ? copyText("data.item.open") : copyText("data.item.openNone");
+  open.textContent = exists ? copyText("mobTerms.row.attach") : copyText("acct.val.none");
   open.disabled = !exists;
-  open.title = exists ? copyText("data.item.openHint", { path }) : copyText("data.item.missing");
+  open.title = exists ? copyText("beChore.step.open", { path }) : copyText("data.item.missing");
   if (!exists) return [open];
   open.addEventListener("click", () => void openItem(path));
   const reveal = document.createElement("button");
@@ -339,7 +339,7 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    failToast(copyText("data.open.failed"), e);
+    failToast(copyText("machineAliases.openRc.failed"), e);
   }
 }
 

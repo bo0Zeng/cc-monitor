@@ -172,7 +172,7 @@ fn run_words(label: Option<&str>, kind: Option<&str>) -> Words {
         ),
         (Some(l), None) => copy_text("speaker.agent.title", &[("label", l)]),
         (None, Some(k)) => copy_text("askBlock.tag.run", &[("kind", k)]),
-        (None, None) => copy_text("askBlock.tag.runBare", &[]),
+        (None, None) => copy_text("beProfile.slot.agent", &[]),
     })
 }
 

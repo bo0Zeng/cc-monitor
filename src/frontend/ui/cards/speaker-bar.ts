@@ -69,11 +69,11 @@ function bar(
 
 /** agent 交回 / 途中来话。`label` ＝ 运行表给的标签（查不到 ⇒ 来话自带的名字 ⇒「agent」）。`pull` ＝ 正文里代码块的高亮问谁。 */
 export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: string | undefined, pull?: HlPull): HTMLElement {
-  const name = label || sp.name || copyText("speaker.agent.unnamed");
+  const name = label || sp.name || copyText("beProfile.slot.agent");
   return bar(
     "agent",
     copyText("speaker.agent.title", { label: name }),
-    sp.handback ? copyText("speaker.tag.handback") : copyText("speaker.tag.message"),
+    sp.handback ? copyText("speaker.tag.handback") : copyText("kit.toast.region"),
     time,
     sp.doc,
     sp.handback,
@@ -84,12 +84,12 @@ export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: strin
 
 /** 另一个会话发来的话（左条琥珀）。 */
 export function buildPeerBar(sp: Of<"peerSession">, time: string, pull?: HlPull): HTMLElement {
-  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("speaker.tag.message"), time, sp.doc, true, undefined, pull);
+  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("kit.toast.region"), time, sp.doc, true, undefined, pull);
 }
 
 /** （agent 那一侧）主会话后来发给它的话：默认收起。 */
 export function buildCoordinatorBar(sp: Of<"coordinator">, time: string, pull?: HlPull): HTMLElement {
-  return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), time, sp.doc, false, undefined, pull);
+  return bar("coordinator", copyText("beCcm.item.parent"), copyText("kit.toast.region"), time, sp.doc, false, undefined, pull);
 }
 
 export function buildInjectedLine(body: string, time: string): HTMLDetailsElement {

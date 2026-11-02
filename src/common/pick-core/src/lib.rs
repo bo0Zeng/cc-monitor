@@ -449,7 +449,7 @@ fn why_not_previewable(p: &Pick) -> Option<String> {
 pub fn blocked(a: Action, picked: &[Pick]) -> Option<String> {
     let names = |hit: &dyn Fn(&Pick) -> bool| -> Option<String> {
         let v: Vec<&str> = picked.iter().filter(|r| hit(r)).map(|r| r.name).collect();
-        (!v.is_empty()).then(|| v.join(&copy_text("rsFilewinCopy.batch.listSep", &[])))
+        (!v.is_empty()).then(|| v.join(&copy_text("kit.text.sep", &[])))
     };
     match (a, picked) {
         (Action::Edit, [r]) => why_not_editable(r),
@@ -513,7 +513,7 @@ pub fn refused_here(a: Action, here: &Here) -> Option<String> {
 /// 那台断着 ⇒ 离线 · 只读；与 cc-monitor 断开 ⇒ 照实说那一段，不说那台离线。连着 ⇒ `None`。
 pub fn write_refused(cut: Option<Cut>) -> Option<String> {
     cut.map(|c| match c {
-        Cut::Machine => copy_text("rsFilewinChrome.link.readOnly", &[]),
+        Cut::Machine => copy_text("acctPage.offline.hover", &[]),
         Cut::Monitor => copy_text("rsFilewinChrome.link.severedReadOnly", &[]),
     })
 }

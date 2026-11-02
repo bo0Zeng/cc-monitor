@@ -84,6 +84,6 @@ describe("快捷键编辑器 · 恢复默认那颗是纯图标按钮", () => {
     const b = resetBtnOf("tab.next");
     expect(b.textContent).toBe("");
     expect(b.querySelector<SVGElement>("svg")?.dataset.icon).toBe("reset");
-    expect([b.getAttribute("aria-label"), b.title]).toEqual([copyText("keybindingEditor.buildActionRow.resetHint"), copyText("keybindingEditor.buildActionRow.resetHint")]);
+    expect([b.getAttribute("aria-label"), b.title]).toEqual([copyText("rot.cell.reset"), copyText("rot.cell.reset")]);
   });
 });

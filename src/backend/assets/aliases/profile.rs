@@ -760,7 +760,7 @@ pub(crate) fn remove_profile(doc: &mut DocumentMut, name: &str) {
 pub(crate) fn rename_profile(doc: &mut DocumentMut, from: &str, to: &str) -> Result<(), String> {
     name_ok(to)?;
     if doc.contains_key(to) {
-        return Err(copy_text("beProfile.rename.taken", &[("name", to)]));
+        return Err(copy_text("addMachine.err.taken", &[("name", to)]));
     }
     let (key, item) = doc
         .as_table_mut()

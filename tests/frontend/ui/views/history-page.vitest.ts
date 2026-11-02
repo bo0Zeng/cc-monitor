@@ -594,7 +594,7 @@ describe("按项目", () => {
     await flush();
     expect(titles()).toEqual(["标题 a", "标题 b"]);
     invokeMock.mock.calls.length = 0;
-    byText("button", copyText("history.group.retry"))!.click();
+    byText("button", copyText("front.act.retry"))!.click();
     await flush();
     expect(calls("history-browse").map((a) => a.fresh)).toEqual([[]]);
     byText('[role="tab"]', copyText("history.page.byTime"))!.click();
@@ -708,14 +708,14 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(inHead(copyText("history.menu.openWindow"))).toBeTruthy();
     expect(inHead(copyText("history.row.more"))).toBeTruthy();
     expect(head().textContent).toContain("p");
-    expect(head().textContent).toContain(copyText("history.filter.local"));
+    expect(head().textContent).toContain(copyText("detail.label.local"));
     expect(head().textContent).toContain("/w/p");
     expect(head().textContent, "时间段照抄那台写好的 spanText").toContain("09:10–12:00");
     inHead(copyText("history.resume.more"))!.click();
     await flush();
     expect(vi.mocked(resumeAccounts).mock.calls[0].slice(0, 2)).toEqual(["<local>", "claude"]);
     const headings = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="presentation"]')].map((e) => e.textContent);
-    expect(headings).toEqual([copyText("resumeMenu.group.account"), copyText("resumeMenu.group.run")]);
+    expect(headings).toEqual([copyText("beProfile.slot.account"), copyText("resumeMenu.group.run")]);
     const items = menuItems();
     const work = menuItem("work")!;
     expect(work.querySelector(".acct-avatar"), "号前面它的头像").not.toBeNull();
@@ -940,7 +940,7 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
     invokeMock.mock.calls.length = 0;
     world.fail.clear();
     byText("[class*=strip], div", copyText("history.list.localFailed"));
-    const retries = [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === copyText("history.list.retry"));
+    const retries = [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === copyText("front.act.retry"));
     expect(retries).toHaveLength(2);
     retries[0].click();
     await flush();
@@ -991,7 +991,7 @@ describe("内容搜索的其余几态", () => {
     enter("词");
     await flush();
     expect(document.body.textContent).toContain(copyText("history.search.searching"));
-    byText("button", copyText("history.search.stop"))!.click();
+    byText("button", copyText("rsFilewinProgress.action.stop"))!.click();
     expect(titles()).toEqual(["标题 a"]);
     for (const r of held) r();
     await flush();
@@ -1009,7 +1009,7 @@ describe("内容搜索的其余几态", () => {
     enter("无");
     await flush();
     const body = document.body.textContent ?? "";
-    expect(body).toContain(copyText("history.search.noMatch", { q: "无" }));
+    expect(body).toContain(copyText("kit.menu.noMatch", { q: "无" }));
     expect(body).toContain(copyText("history.search.machineDown", { machine: "dev" }));
     expect(body).toContain("核心·codex 只按标题");
     expect(body).toContain("核心·读不动 2 份");
@@ -1033,7 +1033,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     byText("button", copyText("history.page.filter"))!.click();
     await flush();
     const box = (label: string) => byText("label", label)!.querySelector("input")!;
-    expect(byText("label", "dev")!.textContent).toContain(copyText("history.filter.offline"));
+    expect(byText("label", "dev")!.textContent).toContain(copyText("machinePage.state.down"));
     box("dev").click();
     await flush();
     invokeMock.mock.calls.length = 0;
@@ -1083,7 +1083,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     head().click();
     await flush();
     expect(titles()).toEqual([]);
-    byText("button", copyText("history.list.collapseAll"))!.click();
+    byText("button", copyText("tabMenu.group.collapseAll"))!.click();
     await flush();
     expect(titles()).toEqual([]);
     invokeMock.mock.calls.length = 0;

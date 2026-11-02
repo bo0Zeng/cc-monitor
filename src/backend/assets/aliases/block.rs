@@ -129,7 +129,7 @@ pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockStat
 /// 两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
 /// 由同一个函数保证，不是两份拼法对拍。
 pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
-    let what = copy_text("rsProfileInstaller.preview.what", &[]);
+    let what = copy_text("rsFilewinWorkspace.label.preview", &[]);
     plan_install(shell, "", &what, home)
 }
 

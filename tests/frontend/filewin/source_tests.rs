@@ -591,7 +591,7 @@ fn the_four_columns_and_how_a_click_turns_the_order() {
     assert_eq!(
         labels,
         [
-            copy_core::copy_static!("rsFilewinSource.sort.name"),
+            copy_core::copy_static!("machineForm.field.name"),
             copy_core::copy_static!("rsFilewinSource.sort.mtime"),
             copy_core::copy_static!("rsFilewinSource.sort.type"),
             copy_core::copy_static!("rsFilewinSource.sort.size")

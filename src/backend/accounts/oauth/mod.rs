@@ -74,7 +74,7 @@ impl Unusable {
         let plain = |s: String| crate::common::said::Said::from(s);
         match self {
             Unusable::NotLoggedIn => plain(copy_text(
-                "beOauth.unusable.notLoggedIn",
+                "beManual.list.accountLogin",
                 &[("account", account)],
             )),
             Unusable::Unreadable(why) => why.clone().wrap(|w| {

@@ -23,7 +23,7 @@ fn the_ending_line_leaves_out_the_parts_that_are_zero() {
         _ => copy_text("beFiles.batch.segLeft", &[("left", n)]),
     };
     let sep = copy_text("kit.text.sep", &[]);
-    let del = copy_text("beFiles.batch.verbDelete", &[]);
+    let del = copy_text("rsFilewinWriteops.label.delete", &[]);
     let head = |n: &str| copy_text("beFiles.batch.head", &[("action", &del), ("n", n)]);
     let line = |parts: Vec<String>| parts.join(&sep);
     assert_eq!(
@@ -254,10 +254,7 @@ fn the_clash_choices_carry_their_own_words_in_one_order() {
         three[2].label,
         copy_text("rsFilewinBatch.btn.overwrite", &[])
     );
-    assert_eq!(
-        three[1].pick,
-        copy_text("rsFilewinBatch.pick.keepBoth", &[])
-    );
+    assert_eq!(three[1].pick, copy_text("rsFilewinBatch.btn.keepBoth", &[]));
     assert_ne!(
         three[0].label, three[0].pick,
         "整组那一句与逐项那一格是两句"

@@ -76,7 +76,6 @@ src/frontend/ui/tabs.ts	1
 src/frontend/ui/terminal-front-command.ts	1
 src/mobile/app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsSheetShotTest.kt	1
 src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatInput.kt	1
-src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ui/copy/ReconnectOneKeyTest.kt	1
 src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ui/needs/NeedsBoardTest.kt	5
 src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ui/plan/PlanScreensTest.kt	1
 src/mobile/build.gradle.kts	1

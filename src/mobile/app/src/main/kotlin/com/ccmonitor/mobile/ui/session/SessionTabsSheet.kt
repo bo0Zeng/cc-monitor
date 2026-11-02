@@ -94,8 +94,8 @@ fun SessionTabsSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconTextButton(Ph.Plus, copyText("mobTabs.sheet.newTerminal"), onClick = onNewTerminalTab)
-                IconTextButton(Ph.Plus, copyText("mobTabs.sheet.newFiles"), onClick = onNewFilesTab)
+                IconTextButton(Ph.Plus, copyText("mobDrawer.item.terminal"), onClick = onNewTerminalTab)
+                IconTextButton(Ph.Plus, copyText("mobDrawer.item.files"), onClick = onNewFilesTab)
             }
         }
     }
@@ -134,7 +134,7 @@ private fun SessionTabRowItem(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
-        PhIconButton(Ph.X, copyText("mobTabs.row.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.X, copyText("kit.drawer.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

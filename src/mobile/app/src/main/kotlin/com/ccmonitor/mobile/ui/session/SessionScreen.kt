@@ -176,11 +176,11 @@ private fun ErrorContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        ErrorLine(copyText("mobSession.connect.failed"))
+        ErrorLine(copyText("beServer.words.cantConnect"))
         // 下层给的原话（或这一侧判出的原因）不上屏，进复制详情；连接日志照旧给原文。
-        CopyDetailButton(copyText("mobSession.connect.failed"), s.message)
+        CopyDetailButton(copyText("beServer.words.cantConnect"), s.message)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
-        SecondaryButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = { vm.retry() }) { Text(copyText("history.list.reconnect")) }
         EditHostButton(s.edit, onEditHost)
     }
 }
@@ -192,7 +192,7 @@ private fun ErrorContent(
 @Composable
 private fun SessionStateTabButton(onShowTabs: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-        PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.Tabs, copyText("beProfile.slot.tab"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -386,10 +386,10 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("sessionState.unseen.name"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("runs.state.unknown"),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
-        SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = onReconnect) { Text(copyText("history.list.reconnect")) }
     }
 }
 
@@ -568,11 +568,11 @@ private fun PushKeyDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("mobKeyPush.dialog.title")) },
+        title = { Text(copyText("mobKeys.action.pushKey")) },
         text = {
             Column {
                 if (identities.isEmpty()) {
-                    Text(copyText("mobKeyPush.dialog.empty"), style = MaterialTheme.typography.bodySmall)
+                    Text(copyText("mobIdentity.list.empty"), style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text(copyText("mobKeyPush.dialog.hint"), style = MaterialTheme.typography.bodySmall)
                     identities.forEach { id ->
@@ -582,7 +582,7 @@ private fun PushKeyDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 }
 
@@ -598,13 +598,13 @@ private fun CaptureDialog(
         title = { Text(copyText("mobCapture.dialog.title")) },
         text = {
             Text(
-                text.ifBlank { copyText("mobCapture.dialog.empty") },
+                text.ifBlank { copyText("plan.fileState.empty") },
                 style = monoSmall,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
-        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("render.codeBlock.copy")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 }
 
@@ -749,7 +749,7 @@ private class KeyBarNav(
         f: KeyActionFail,
         b: KeyBinding,
     ) = when (f) {
-        KeyActionFail.GroupGone -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+        KeyActionFail.GroupGone -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("rsFilewinEditor.label.edit"), env.onEditKeys)
         is KeyActionFail.Unavailable -> {
             val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
             snackbar.showSticky(copyText("mobKeys.err.actionUnavailable", "action" to action, "why" to f.why))
@@ -793,9 +793,9 @@ internal fun terminalPaletteActions(
     buildList {
         if (reach.noBackend == null) {
             // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
-            models.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m.text, m.value) { onModel(m.value) }) }
-            add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })
-            add(PaletteAction(copyText("mobPalette.group.tmux"), copyText("mobPalette.item.tmux")) { onShowTmux() })
+            models.forEach { m -> add(PaletteAction(copyText("session.model.title"), m.text, m.value) { onModel(m.value) }) }
+            add(PaletteAction(copyText("mobCapture.dialog.title"), copyText("mobPalette.item.capture")) { onCapture() })
+            add(PaletteAction(copyText("mobDrawer.item.terminal"), copyText("mobPalette.item.tmux")) { onShowTmux() })
         }
         add(PaletteAction(copyText("mobPalette.group.key"), copyText("mobPalette.item.key"), reach.noBackend, onPushKey.takeIf { reach.noBackend == null }))
     }

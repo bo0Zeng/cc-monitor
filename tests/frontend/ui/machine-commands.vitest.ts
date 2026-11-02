@@ -57,8 +57,8 @@ describe("machineBlock", () => {
     expect(head.machine).toEqual({ dot: "failed", name: "nas", word: "w-down", said: "said-down", right: "Linux" });
     expect(rest.map((c) => [c.title, c.sub, c.disabled, c.note])).toEqual([
       [copyText("commandBar.machine.openTerminal"), "ssh nas · 登录 shell", undefined, "终端照开"],
-      [copyText("commandBar.machine.newSession"), undefined, "nas w-down", undefined],
-      [copyText("commandBar.machine.files"), "sub-home", "nas w-down", undefined],
+      [copyText("main.cmd.newSession"), undefined, "nas w-down", undefined],
+      [copyText("mobDrawer.item.files"), "sub-home", "nas w-down", undefined],
       [copyText("commandBar.machine.status"), "设置 → 机器 → nas", undefined, undefined],
     ]);
     expect(b.select).toBe(rest[0].id);
@@ -71,7 +71,7 @@ describe("machineBlock", () => {
   it("这台的会话按那台挑、照给的先后编号；带了第几条 ⇒ 选中那一条，超出 ⇒ 不选会话", () => {
     const sessions = [ses("a", "nas"), ses("x", "devbox"), ses("b", "nas")];
     const b = machineBlock({ machine: "nas", from: "table", nth: 2 }, menu, sessions, to());
-    expect(b.sections[1].title).toBe(copyText("commandBar.group.sessions"));
+    expect(b.sections[1].title).toBe(copyText("mobDrawer.item.sessions"));
     expect(b.sections[1].items.map((c) => [c.id, c.hint])).toEqual([
       ["a", "1"],
       ["b", "2"],

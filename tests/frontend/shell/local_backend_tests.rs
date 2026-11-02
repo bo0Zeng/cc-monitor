@@ -1143,7 +1143,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(!partial.exists(), "放上去之后暂存件还在（该是换名上位）");
     assert_eq!(
         asked[0].2,
-        serde_json::json!({ "dest": dest.to_string_lossy(), "machine": copy_core::copy_static!("rsLocalBackend.place.thisMachine") })
+        serde_json::json!({ "dest": dest.to_string_lossy(), "machine": copy_core::copy_static!("detail.label.local") })
     );
     assert!(no_partials());
     // 逐字节相同 ⇒ 不问
@@ -1358,7 +1358,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         os: "Windows".into(),
         arch: "x86_64".into(),
     }
-    .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
+    .say(&copy_text("detail.label.local", &[]));
     let absent = copy_core::said::Said::from(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),

@@ -85,7 +85,7 @@ fun agentsList(
     val byRun = t.runs.associateBy { it.run }
     val groups =
         listOf(
-            Triple(RunGroup.RUNNING, t.groups.running, copyText("agentsPanel.group.running")),
+            Triple(RunGroup.RUNNING, t.groups.running, copyText("runs.state.running")),
             Triple(RunGroup.RECENT, t.groups.recent, copyText("agentsPanel.group.recent")),
             Triple(RunGroup.OLDER, t.groups.older, t.groups.olderText.orEmpty()),
         )
@@ -117,7 +117,7 @@ fun AgentsScreen(
     val table by feed.table.collectAsState()
     var olderOpen by rememberSaveable(sid) { mutableStateOf(false) }
     val items = table.runs[sid]?.let { agentsList(it, olderOpen) }.orEmpty()
-    Scaffold(topBar = { AgentsTopBar(copyText("agentsPanel.page.title"), table.runs[sid]?.summary.orEmpty(), onBack) }) { inner ->
+    Scaffold(topBar = { AgentsTopBar(copyText("beProfile.slot.agent"), table.runs[sid]?.summary.orEmpty(), onBack) }) { inner ->
         Column(Modifier.fillMaxSize().padding(inner)) {
             MachineBar(hostId)
             if (items.isEmpty()) {

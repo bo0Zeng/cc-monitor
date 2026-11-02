@@ -47,7 +47,7 @@ export class FirstRun {
     sub.className = "settings-hint";
     sub.textContent = copyText("firstRun.head.sub", { n: r.steps.length });
     const skip = button({
-      label: copyText("firstRun.head.skip"),
+      label: copyText("rsFilewinBatch.pick.skip"),
       kind: "ghost",
       size: "compact",
       onClick: () => {
@@ -79,9 +79,9 @@ export class FirstRun {
     hint.className = "settings-hint";
     let act: { label: string; run: () => void; primary: boolean };
     if (id === "terminal") {
-      name.textContent = copyText("firstRun.terminal.name");
+      name.textContent = copyText("front.act.connect");
       hint.textContent = copyText("firstRun.terminal.hint");
-      act = { label: copyText("firstRun.terminal.action"), run: () => this.host.go({ machine: LOCAL, tab: "config", anchor: "connect-terminal" }), primary: true };
+      act = { label: copyText("machineAliases.access.connect"), run: () => this.host.go({ machine: LOCAL, tab: "config", anchor: "connect-terminal" }), primary: true };
     } else if (id === "named") {
       name.textContent = copyText("firstRun.named.name");
       hint.textContent = copyText("firstRun.named.hint");
@@ -89,7 +89,7 @@ export class FirstRun {
     } else {
       name.textContent = copyText("firstRun.remote.name");
       hint.textContent = copyText("firstRun.remote.hint");
-      act = { label: copyText("firstRun.remote.action"), run: () => this.host.addMachine(), primary: false };
+      act = { label: copyText("mobHosts.fab.aria"), run: () => this.host.addMachine(), primary: false };
     }
     text.append(name, hint);
     row.append(mark, text);

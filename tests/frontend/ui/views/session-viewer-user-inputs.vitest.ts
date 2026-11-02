@@ -183,7 +183,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(saidOf(v)).toBe(copyText("sessionViewer.tools.saidNone")); // 0 条不挂计数
+    expect(saidOf(v)).toBe(copyText("sessionViewer.tools.saidLabel")); // 0 条不挂计数
   });
 });
 
@@ -405,7 +405,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
-    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("findStrip.status.none", { q: "nothing" }));
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("kit.menu.noMatch", { q: "nothing" }));
     const box = strip.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     box.click();
     await settleOutline();
@@ -470,7 +470,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     expect(bar.textContent).toMatch(copyPattern("sessionViewer.load.failed"));
     expect(status(v)).toBe("");
     viewerRig.failPage = false;
-    [...bar.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionViewer.load.retry"))!.click();
+    [...bar.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     await settleOutline();
     expect(v.element.querySelector('[role="alert"]')).toBeNull();
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: 1 }));

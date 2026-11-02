@@ -481,7 +481,7 @@ export class SettingsPanel {
   /** 「这台上的 cc-monitor」折叠头右侧：`版本 x · 在跑` ／ `未连接`（没问到 ⇒ 空）。 */
   private ccSummary(origin: string, connected: boolean | null): string {
     if (connected === null) return "";
-    const state = connected ? copyText("machinePage.cc.summaryUp") : copyText("machinePage.cc.summaryDown");
+    const state = connected ? copyText("runs.state.running") : copyText("machinePage.state.down");
     const ver = this.stateOf.get(origin)?.version ?? null;
     return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
   }
@@ -532,7 +532,7 @@ export class SettingsPanel {
       if (fix === "update") await this.remoteSection?.updateMachine(pageId);
       await this.backendSection?.reconnect(origin);
     } catch (e) {
-      failToast(copyText("machineState.fix.failed"), e);
+      failToast(copyText("mobIdentity.op.failed"), e);
     }
   }
 
@@ -636,7 +636,7 @@ export class SettingsPanel {
       })
       .catch((e: unknown) => {
         // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
-        sayFailure(this.banner, copyText("settingsPanel.close.saveFailed"), e);
+        sayFailure(this.banner, copyText("remote.save.failed"), e);
         this.banner.classList.add("settings-banner-show");
       });
   }
@@ -733,8 +733,8 @@ export class SettingsPanel {
   private async resetAll(): Promise<void> {
     if (
       !(await confirmDialog({
-        title: copyText("settingsPanel.appearance.resetTitle"),
-        action: copyText("settingsPanel.appearance.resetAction"),
+        title: copyText("settingsPanel.appearance.reset"),
+        action: copyText("rot.cell.reset"),
         body: copyText("settingsPanel.appearance.resetConfirm"),
       }))
     ) {
@@ -876,7 +876,7 @@ export class SettingsPanel {
     const appearancePage = document.createElement("div");
     appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.fonts"), FIELDS().filter((f) => f.group === "font")));
     appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.colors"), FIELDS().filter((f) => f.group === "color")));
-    const kbBlock = this.safeBlock(copyText("settingsPanel.group.keybindings"), () => this.buildKeybindingsGroup());
+    const kbBlock = this.safeBlock(copyText("keys.title.main"), () => this.buildKeybindingsGroup());
     // 主窗口快捷键一览的「改快捷键…」开 `{page: "appearance", anchor: "keybindings"}`：落到这一节。
     kbBlock.dataset.anchor = "keybindings";
     appearancePage.appendChild(kbBlock);
@@ -893,7 +893,7 @@ export class SettingsPanel {
     const logsPage = document.createElement("div");
     logsPage.appendChild(
       this.safeBlock(
-        copyText("settingsPanel.group.logs"),
+        copyText("settingsPanel.nav.logs"),
         () => {
           const sec = new DiagnosticsSection();
           this.logsSection = sec;
@@ -906,7 +906,7 @@ export class SettingsPanel {
     // 文件与数据：两栏（待办 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
     const dataPage = document.createElement("div");
     const ownFiles = this.safeBlock(
-      copyText("settingsPanel.group.dataPlaces"),
+      copyText("data.ctor.title"),
       () => {
         const sec = new DataSection({ headless: true });
         this.dataSection = sec;
@@ -947,7 +947,7 @@ export class SettingsPanel {
       this.backendSection = backend;
     } catch (e) {
       machinesPage.appendChild(
-        this.safeBlock(copyText("settingsPanel.group.backend"), () => {
+        this.safeBlock(copyText("backend.ctor.title"), () => {
           throw e;
         }),
       );
@@ -1028,7 +1028,7 @@ export class SettingsPanel {
         // 渲染成什么样归 `accounts-section.vitest.ts`；在哪一页看得见归 `panel-machine-page-visibility.vitest.ts`。
         appliesTo: "both",
         tab: "acct",
-        ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
+        ...this.loadableBlock(copyText("beProfile.slot.account"), () => new AccountsSection()),
       },
       {
         // 「轮换」栏：那台的策略目录 · 新会话用哪份 · 那一份的设置与模拟（策略文件按机器存：两页都有）。渲染归 `rot-section.vitest.ts`。
@@ -1042,7 +1042,7 @@ export class SettingsPanel {
         appliesTo: "local",
         tab: "term",
         el: this.safeBlock(
-          copyText("settingsPanel.group.aliases"),
+          copyText("newSession.label.alias"),
           () => {
             // 认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
             const shell = localShell();
@@ -1073,7 +1073,7 @@ export class SettingsPanel {
     if (!this.remoteSection) this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
     router.addRoute({
       id: "machines",
-      title: copyText("settingsPanel.nav.machines"),
+      title: copyText("detail.label.machine"),
       element: machinesPage,
       icon: NAV_ICON.machines,
       headActions: this.remoteSection?.headActions() ?? [],
@@ -1235,7 +1235,7 @@ export class SettingsPanel {
     this.machinePagesSettled = true;
     this.applyPendingTarget();
     if (this.machinePageRegistered) return;
-    this.revealPerMachineFallback(copyText("settingsPanel.machines.unreadable"));
+    this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
   }
 
   /** 一个开关行 ＋ 它下面那一句（存失败时说为什么）。`indent` ＝ 挂在上一项下面（上一项关着时禁用）。 */
@@ -1331,7 +1331,7 @@ export class SettingsPanel {
     });
     row.appendChild(this.claudeDirInput);
     const resetBtn = button({ label: copyText("settingsPanel.dataDir.reset"), hint: copyText("settingsPanel.dataDir.resetHint"), onClick: () => this.resetClaudeDir() });
-    const pickBtn = button({ label: copyText("settingsPanel.dataDir.browse"), onClick: () => void this.pickClaudeDir() });
+    const pickBtn = button({ label: copyText("acctPage.detail.keyChange"), onClick: () => void this.pickClaudeDir() });
     row.append(resetBtn, pickBtn);
     group.appendChild(row);
     this.claudeDirRestart = document.createElement("div");
@@ -1448,7 +1448,7 @@ export class SettingsPanel {
     applyThemeToken(f.key, undefined);
     this.syncOneInput(f);
     // 单项恢复默认也是改了就落。
-    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.save.appearance"), e));
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.nav.appearance"), e));
   }
 
   /** 把单个 token 的当前值（覆盖了的）或 :root 计算值写到对应 input。 */
@@ -1479,7 +1479,7 @@ export class SettingsPanel {
 
   /** 外观那一格落盘（失败说出来，不静默吞）。 */
   private commitTheme(): void {
-    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.save.appearance"), e));
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.nav.appearance"), e));
   }
 
   private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {

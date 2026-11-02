@@ -132,7 +132,7 @@ private fun Body(
         NavRow(e.icon, e.title, n?.toString(), enabled = !e.readsMachine || readable == true) { onNavigate(e.route) }
     }
     if (here != null && board != null) Prefs(here, board, readable == true)
-    SectionHead(copyText("mobSettings.section.look"))
+    SectionHead(copyText("settingsPanel.nav.appearance"))
     val context = LocalContext.current
     NavRow(Ph.GearSix, copyText("mobSettings.entry.fontSize"), copyText("mobSettings.entry.fontSystem")) {
         // 字号用系统那一个：打开系统「显示」设置。
@@ -259,7 +259,7 @@ private fun TabRow(
             Text(MachineSettings.tabTip(kind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             notSaved?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
-        val choices = listOf(Tab.SHOW to copyText("settings.machine.tabShow"), Tab.HIDE to copyText("settings.machine.tabHide"))
+        val choices = listOf(Tab.SHOW to copyText("sessionHead.act.display"), Tab.HIDE to copyText("history.menu.hide"))
         SingleChoiceSegmentedButtonRow(Modifier.testTag(SettingsTags.tab(kind))) {
             choices.forEachIndexed { i, (v, label) ->
                 SegmentedButton(

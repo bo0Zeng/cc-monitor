@@ -178,7 +178,7 @@ describe("撤销提示条", () => {
     const row = el.querySelector('[data-part="detail"]')!.parentElement!.lastElementChild as HTMLElement;
     expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["act-1", copyText("detail.act.copy")]);
     const right = el.lastElementChild as HTMLElement;
-    expect([...right.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual([copyText("kit.toast.close")]);
+    expect([...right.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual([copyText("kit.drawer.close")]);
     kit.toast("t-2", "", { detail: "码：b" });
     kit.toast("t-2", "", { detail: "码：c" });
     const merged = toasts()[0];

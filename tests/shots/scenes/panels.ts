@@ -480,7 +480,7 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
     await rightClick(await byText("#tab-bar .tab", "账单导出改成流式"));
-    await click(await byText("[role^=menuitem]", copyText("tabMenu.item.resume")));
+    await click(await byText("[role^=menuitem]", copyText("history.row.resume")));
     // 「运行于」那几项是单选（选了不起）；起是子菜单顶上那一项。
     await click(await byText("[role^=menuitem]", copyText("resumeMenu.run.direct")));
     await click(await byText('[data-sub-open="true"] > [role="menu"] [role^=menuitem]', copyText("history.row.resume")));

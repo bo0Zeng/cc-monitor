@@ -66,7 +66,7 @@ export function showFrontResult(anchor: HTMLElement, sid: string, view: FrontVie
   const title = document.createElement("div");
   title.className = s.fpTitle;
   title.textContent = view.title;
-  head.append(title, button({ label: copyText("front.pop.close"), kind: "icon", size: "compact", icon: "close", onClick: () => closePopover() }));
+  head.append(title, button({ label: copyText("kit.drawer.close"), kind: "icon", size: "compact", icon: "close", onClick: () => closePopover() }));
   box.appendChild(head);
   if (view.body !== "") {
     const body = document.createElement("div");

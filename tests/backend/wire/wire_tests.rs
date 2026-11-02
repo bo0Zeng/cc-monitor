@@ -1027,7 +1027,7 @@ fn session_frames_say_whether_the_session_can_be_ended() {
     );
     assert_eq!(
         end(SessionFace::of(Life::Unclear)),
-        no(copy_core::copy_text("beSession.activity.unclear", &[]))
+        no(copy_core::copy_text("runs.state.unknown", &[]))
     );
     assert_eq!(
         end(resident_client::book::unseen(crate::common::cells::Words(
@@ -1300,10 +1300,7 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offlin
     }
     assert_eq!(f.tip.0, said, "悬停是那台的离线那一句");
     assert_eq!(f.line.0, said);
-    assert_eq!(
-        f.name.0,
-        copy_core::copy_text("sessionState.unseen.name", &[])
-    );
+    assert_eq!(f.name.0, copy_core::copy_text("runs.state.unknown", &[]));
 }
 
 /// 界面那一侧不造脸：`src/frontend` 的 ts 生产源里没有一个函数交出一张 `SessionFace`（`…): SessionFace {` / `=>`），

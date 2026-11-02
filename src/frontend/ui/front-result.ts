@@ -67,7 +67,7 @@ export function frontActLabel(a: FrontAct): string {
     case "connect":
       return copyText("front.act.connect");
     case "open-in-terminal":
-      return copyText("front.act.openInTerminal");
+      return copyText("sessionHead.act.openTerm");
     case "open-here":
       return copyText("front.act.openHere");
     case "copy":
@@ -78,6 +78,6 @@ export function frontActLabel(a: FrontAct): string {
     case "retry-update":
       return copyText("front.act.retry");
     case "reconnect":
-      return copyText("front.act.reconnect");
+      return copyText("history.list.reconnect");
   }
 }

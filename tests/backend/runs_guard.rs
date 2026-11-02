@@ -1683,7 +1683,7 @@ fn the_run_table_carries_its_own_words() {
         words(&s.runs[1]),
         (
             Words(copy_text("runs.state.failed", &[])),
-            Words(copy_text("runs.label.unnamed", &[])),
+            Words(copy_text("beProfile.slot.agent", &[])),
             Some(Words(copy_text("runs.last.think", &[]))),
         )
     );
@@ -1780,8 +1780,8 @@ fn the_run_table_writes_facts_explain_and_end() {
         vec![
             line("agentWindow.facts.running", dur, Some(1_000)),
             line("agentWindow.facts.active", dur, Some(5_000)),
-            line("agentWindow.facts.calls", &[("n", "3")], None),
-            line("agentWindow.facts.kids", &[("n", "1")], None),
+            line("rsTurns.proc.tools", &[("n", "3")], None),
+            line("rsTurns.proc.agents", &[("n", "1")], None),
             line("agentWindow.facts.background", &[], None),
         ]
     );

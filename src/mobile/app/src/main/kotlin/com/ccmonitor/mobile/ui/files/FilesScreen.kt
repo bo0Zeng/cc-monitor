@@ -218,7 +218,7 @@ fun FilesScreen(
 private fun UploadClash(vm: FilesViewModel) {
     val clash by vm.clash.collectAsState()
     clash?.let { (dir, c) ->
-        val title = copyText("rsFilewinBatch.ask.title", "action" to copyText("rsFilewinBatch.verb.upload"), "n" to c.rows.size, "dir" to dir.shown)
+        val title = copyText("rsFilewinBatch.ask.title", "action" to copyText("rsFilewinUpload.label.upload"), "n" to c.rows.size, "dir" to dir.shown)
         ConflictSheet(title, c.said, c.rows, null, vm::answer)
     }
 }
@@ -428,7 +428,7 @@ private fun OfflineBand(vm: FilesViewModel) {
     val offline by vm.offline.collectAsState()
     val line = tokens.borderStrong
     Text(
-        offline ?: copyText("sessionState.unseen.name"),
+        offline ?: copyText("runs.state.unknown"),
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier =
@@ -457,11 +457,11 @@ private fun Toolbar(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.Tabs, copyText("beProfile.slot.tab"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         IconTextButton(Ph.FolderPlus, copyText("rsFilewinWriteops.label.mkdir"), onClick = { onDialog(FilesDialog.Mkdir) })
         IconTextButton(Ph.File, copyText("rsFilewinChrome.command.newFile"), onClick = { onDialog(FilesDialog.Create) })
-        SecondaryButton(onClick = vm::toggleSort) { Text(if (sortBySize) copyText("rsFilewinSource.sort.size") else copyText("rsFilewinSource.sort.name")) }
-        SecondaryButton(onClick = { onOpenTerminal(dir.shown) }) { Text(copyText("rsFilewinShell.frame.terminal")) }
+        SecondaryButton(onClick = vm::toggleSort) { Text(if (sortBySize) copyText("rsFilewinSource.sort.size") else copyText("machineForm.field.name")) }
+        SecondaryButton(onClick = { onOpenTerminal(dir.shown) }) { Text(copyText("mobDrawer.item.terminal")) }
     }
 }
 
@@ -683,12 +683,12 @@ private fun PreviewDialog(
         title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Text(
-                content.ifEmpty { copyText("mobFiles.preview.empty") },
+                content.ifEmpty { copyText("rsFilewinChrome.command.newFile") },
                 style = monoSmall,
                 modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 }
 
@@ -728,7 +728,7 @@ private fun ConfirmSaveDialog(
             val bytes = d.text.toByteArray(Charsets.UTF_8).size
             Text(copyText("mobFiles.overwrite.body", "name" to d.edit.entry.name, "chars" to d.text.length, "bytes" to bytes), style = monoSmall)
         },
-        confirm = copyText("mobFiles.overwrite.ok"),
+        confirm = copyText("rsFilewinBatch.btn.overwrite"),
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         cancel = copyText("mobFiles.overwrite.back"),

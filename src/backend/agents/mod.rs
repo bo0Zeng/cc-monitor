@@ -1009,7 +1009,7 @@ impl StepResultExt for StepResult {
         let text = if self.rejected {
             copy_core::copy_text("stream.step.rejected", &[])
         } else if !self.ok {
-            copy_core::copy_text("stream.step.failed", &[])
+            copy_core::copy_text("runs.state.failed", &[])
         } else if let Some(a) = &self.answer {
             // 提问 / 计划答了什么（卡片底行那一句）。
             match a {
@@ -1046,7 +1046,7 @@ impl StepResultExt for StepResult {
         let dur = copy_core::short_duration(ms);
         let text = if self.rejected {
             return self;
-        } else if !self.ok && self.text.0 == copy_core::copy_text("stream.step.failed", &[]) {
+        } else if !self.ok && self.text.0 == copy_core::copy_text("runs.state.failed", &[]) {
             copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)])
         } else if self.ok && self.text.0.is_empty() {
             dur

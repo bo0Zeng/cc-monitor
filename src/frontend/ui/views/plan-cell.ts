@@ -163,7 +163,7 @@ export class CellDetail {
     const lines = body.split("\n").length;
     if (lines > FOLD_LINES && this.bodyOpen !== cell.id) {
       prose.dataset.folded = "true";
-      const more = link(copyText("plan.cell.expand"), () => {
+      const more = link(copyText("agentWindow.brief.more"), () => {
         this.bodyOpen = cell.id;
         delete prose.dataset.folded;
         more.remove();
@@ -295,7 +295,7 @@ export class CellDetail {
     const tbl = document.createElement("table");
     tbl.className = s.cdTbl;
     const head = tbl.createTHead().insertRow();
-    for (const h of [copyText("plan.file.path"), copyText("plan.file.state"), copyText("plan.file.note"), copyText("plan.file.also")]) {
+    for (const h of [copyText("mobDrawer.item.files"), copyText("plan.file.state"), copyText("plan.file.note"), copyText("plan.file.also")]) {
       const th = document.createElement("th");
       th.textContent = h;
       head.appendChild(th);
@@ -307,12 +307,12 @@ export class CellDetail {
       p.className = s.cdMono;
       p.append(icon("file", "compact"), document.createTextNode(f.path));
       const st = tr.insertCell();
-      const b = span(f.checkText ?? copyText("plan.page.none"), s.cdFileState);
+      const b = span(f.checkText ?? copyText("acct.val.none"), s.cdFileState);
       b.dataset.state = f.stateCode === "ok" ? "ok" : f.stateCode === "empty" ? "warn" : "bad";
       st.appendChild(b);
       tr.insertCell().textContent = f.note ?? "";
       const also = tr.insertCell();
-      if (f.alsoBy.length === 0) also.textContent = copyText("plan.page.none");
+      if (f.alsoBy.length === 0) also.textContent = copyText("acct.val.none");
       else f.alsoBy.forEach((id, i) => {
         if (i > 0) also.appendChild(document.createTextNode(copyText("plan.page.listSep")));
         also.appendChild(link(labelOf(slice, id), () => this.host.select(id)));
@@ -327,7 +327,7 @@ export class CellDetail {
    * 指着它、还没执行的 sets（虚线：来处 · 值（去一笔写 `-值`）· pb 说的为什么）。什么都没记 ⇒ 一句为什么没有。
    */
   private state(slice: PlanSlice, cell: PlanCell): HTMLElement {
-    const sec = section(copyText("plan.cell.state"));
+    const sec = section(copyText("backend.column.status"));
     if (cell.stateLine) sec.appendChild(span(cell.stateLine, s.cdStateLine));
     if (cell.evidencedBy.length > 0) {
       const row = document.createElement("div");

@@ -93,7 +93,7 @@ export class TerminalsView {
   constructor(private readonly host: TerminalsHost) {
     this.root = el("div", s.tvView);
     const bar = el("div", s.tvBar);
-    bar.append(el("span", s.tvTitle, copyText("terminalsView.page.title")));
+    bar.append(el("span", s.tvTitle, copyText("mobDrawer.item.terminal")));
     this.filtersEl = el("div", s.tvFilters);
     this.findBox = el("input", s.tvFind);
     this.findBox.type = "search";
@@ -105,8 +105,8 @@ export class TerminalsView {
       this.filtersEl,
       spacer,
       this.findBox,
-      button({ label: copyText("terminalsView.page.new"), kind: "primary", icon: "plus", onClick: () => this.host.newSession() }),
-      button({ label: copyText("terminalsView.page.back"), kind: "ghost", onClick: () => this.close() }),
+      button({ label: copyText("mobTerms.new.detached"), kind: "primary", icon: "plus", onClick: () => this.host.newSession() }),
+      button({ label: copyText("mobKit.act.back"), kind: "ghost", onClick: () => this.close() }),
     );
     const body = el("div", s.tvMain);
     const left = el("div", s.tvLeft);
@@ -227,10 +227,10 @@ export class TerminalsView {
     const all = this.board.groups.reduce((n, g) => n + g.rows.length, 0);
     if (all === 0 && this.board.groups.every((g) => !g.down)) {
       const e = emptyState({
-        text: copyText("terminalsView.empty.title"),
+        text: copyText("mobTerms.list.empty"),
         hint: copyText("terminalsView.empty.body"),
         icon: "terminal",
-        action: button({ label: copyText("terminalsView.page.new"), kind: "secondary", icon: "plus", onClick: () => this.host.newSession() }),
+        action: button({ label: copyText("mobTerms.new.detached"), kind: "secondary", icon: "plus", onClick: () => this.host.newSession() }),
       });
       e.dataset.boardEmpty = "";
       this.listEl.replaceChildren(e);
@@ -243,12 +243,12 @@ export class TerminalsView {
     for (const g of this.board.groups) {
       const head = el("div", s.tvGroupHead);
       head.append(el("span", s.tvGroupName, g.name), el("span", s.tvGroupSub, g.sub), el("span", s.tvSpacer));
-      head.append(button({ label: copyText("terminalsView.page.new"), kind: "ghost", size: "compact", icon: "plus", onClick: () => this.host.newSessionOn(g.machine) }));
+      head.append(button({ label: copyText("mobTerms.new.detached"), kind: "ghost", size: "compact", icon: "plus", onClick: () => this.host.newSessionOn(g.machine) }));
       out.push(head);
       if (g.down) {
         const d = el("div", s.tvDown);
         d.dataset.down = "";
-        d.append(el("span", "", g.down.said), button({ label: copyText("terminalsView.group.reconnect"), kind: "secondary", size: "compact", onClick: () => this.host.reconnect(g.machine) }));
+        d.append(el("span", "", g.down.said), button({ label: copyText("history.list.reconnect"), kind: "secondary", size: "compact", onClick: () => this.host.reconnect(g.machine) }));
         out.push(d);
       }
       if (!g.complete) out.push(el("div", s.tvPartial, copyText("terminalsView.list.partial")));
@@ -387,7 +387,7 @@ export class TerminalsView {
     if (p.row.can_end === true) {
       acts.push(
         button({
-          label: copyText("terminalsView.face.end"),
+          label: copyText("tabBatch.verb.stop"),
           kind: "ghost",
           size: "compact",
           icon: "stop",

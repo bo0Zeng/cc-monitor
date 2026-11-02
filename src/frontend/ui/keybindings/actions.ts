@@ -83,14 +83,14 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tab.jump-8", label: copyText("keybindingActions.tab.jump8"), category: "Tab", default: "Digit8", available: true, scope: "bare" },
   { id: "tab.jump-9", label: copyText("keybindingActions.tab.jump9"), category: "Tab", default: "Digit9", available: true, scope: "bare" },
   { id: "tab.close-archived", label: copyText("sessionState.closeEnded.shortcut"), category: "Tab", default: "KeyW", available: true, scope: "bare" },
-  { id: "tab.open-cwd", label: copyText("keybindingActions.tab.openCwd"), category: "Tab", default: "KeyE", available: true, scope: "bare" },
-  { id: "tab.pop-out", label: copyText("keybindingActions.tab.openInWindow"), category: "Tab", default: "KeyN", available: true, scope: "bare" },
+  { id: "tab.open-cwd", label: copyText("tabBarView.tab.cwdHint"), category: "Tab", default: "KeyE", available: true, scope: "bare" },
+  { id: "tab.pop-out", label: copyText("history.menu.openWindow"), category: "Tab", default: "KeyN", available: true, scope: "bare" },
   // 在当前标签页上开右键菜单（会话头「更多」是同一份菜单）。菜单键是固定的另一个键。
   { id: "tab.context-menu", label: copyText("keybindingActions.tab.menu"), category: "Tab", default: "Shift+F10", available: true, scope: "nav", also: "ContextMenu" },
   // 跳到下一个需手动的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到。
   { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
   // 会话内查找（大纲在同一块面板里）：只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史页里。
-  { id: "session.find", label: copyText("keybindingActions.session.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },
+  { id: "session.find", label: copyText("sessionHead.act.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },
   // 会话内查找的两个开关：范围「全部 ⇄ 用户」· 含工具输出与思考。只在焦点在查找面板 / 查找条里时由它自己认（`find-strip.ts`，不经全局派发）。
   { id: "session.find-scope-user", label: copyText("keybindingActions.session.findScopeUser"), category: "Tab", default: "Alt+KeyU", available: true, scope: "any" },
   { id: "session.find-tools", label: copyText("keybindingActions.session.findTools"), category: "Tab", default: "Alt+KeyT", available: true, scope: "any" },
@@ -105,33 +105,33 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // 标签页栏里（焦点在栏里时）：挪一格（跨过组边界就进 / 出那个组；组头上 ＝ 整组挪）· 出组 · 与上一个成组 · 改名（标签页上改它的名、组头上改组名）。
   { id: "tabBar.move-up", label: copyText("keybindingActions.tabBar.moveUp"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "bar" },
   { id: "tabBar.move-down", label: copyText("keybindingActions.tabBar.moveDown"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "bar" },
-  { id: "tabBar.leave-group", label: copyText("keybindingActions.tabBar.leaveGroup"), category: "Tab", default: "Alt+ArrowLeft", available: true, scope: "bar" },
+  { id: "tabBar.leave-group", label: copyText("tabMenu.collection.remove"), category: "Tab", default: "Alt+ArrowLeft", available: true, scope: "bar" },
   { id: "tabBar.join-prev", label: copyText("keybindingActions.tabBar.joinPrev"), category: "Tab", default: "Alt+ArrowRight", available: true, scope: "bar" },
-  { id: "tabBar.rename", label: copyText("keybindingActions.tabBar.rename"), category: "Tab", default: "F2", available: true, scope: "bar" },
+  { id: "tabBar.rename", label: copyText("rsFilewinWriteops.label.rename"), category: "Tab", default: "F2", available: true, scope: "bar" },
   // 焦点在主区与标签页栏之间轮（输入框里也能跳出来）。
   { id: "tabBar.focus-cycle", label: copyText("keybindingActions.tabBar.focusCycle"), category: "Tab", default: "F6", available: true, scope: "any" },
 
   // ===== Terminal =====
-  { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true, scope: "bare" },
+  { id: "terminal.bring-front", label: copyText("terminal.head.front"), category: "Term", default: "Backquote", available: true, scope: "bare" },
 
   // ===== App =====
-  { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true, scope: "bare" },
-  { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true, scope: "bare" },
-  { id: "app.toggle-plan", label: copyText("keybindingActions.app.plan"), category: "App", default: "KeyP", available: true, scope: "bare" },
+  { id: "app.open-settings", label: copyText("mobDrawer.settings.aria"), category: "App", default: "Comma", available: true, scope: "bare" },
+  { id: "app.toggle-history", label: copyText("main.cmd.openHistory"), category: "App", default: "KeyH", available: true, scope: "bare" },
+  { id: "app.toggle-plan", label: copyText("plan.page.title"), category: "App", default: "KeyP", available: true, scope: "bare" },
   // 新建会话（同栏顶「＋」：起在此刻那个标签页的那台、那个目录）。带 Ctrl：单键 N 是在新窗口打开。
   { id: "app.new-session", label: copyText("main.cmd.newSession"), category: "App", default: "Ctrl+KeyN", available: true, scope: "any" },
   { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true, scope: "any" },
-  { id: "app.keys", label: copyText("keybindingActions.app.keys"), category: "App", default: "Shift+Slash", available: true, scope: "bare" },
-  { id: "app.minimize", label: copyText("keybindingActions.app.minimize"), category: "App", default: "Ctrl+KeyM", available: true, scope: "any" },
-  { id: "app.toggle-fullscreen", label: copyText("keybindingActions.app.fullscreen"), category: "App", default: "F11", available: true, scope: "any" },
-  { id: "app.zoom-in", label: copyText("keybindingActions.app.zoomIn"), category: "App", default: "Ctrl+Equal", available: true, scope: "any" },
-  { id: "app.zoom-out", label: copyText("keybindingActions.app.zoomOut"), category: "App", default: "Ctrl+Minus", available: true, scope: "any" },
-  { id: "app.zoom-reset", label: copyText("keybindingActions.app.zoomReset"), category: "App", default: "Ctrl+Digit0", available: true, scope: "any" },
+  { id: "app.keys", label: copyText("main.cmd.keys"), category: "App", default: "Shift+Slash", available: true, scope: "bare" },
+  { id: "app.minimize", label: copyText("main.cmd.minimize"), category: "App", default: "Ctrl+KeyM", available: true, scope: "any" },
+  { id: "app.toggle-fullscreen", label: copyText("main.cmd.fullscreen"), category: "App", default: "F11", available: true, scope: "any" },
+  { id: "app.zoom-in", label: copyText("main.cmd.zoomIn"), category: "App", default: "Ctrl+Equal", available: true, scope: "any" },
+  { id: "app.zoom-out", label: copyText("main.cmd.zoomOut"), category: "App", default: "Ctrl+Minus", available: true, scope: "any" },
+  { id: "app.zoom-reset", label: copyText("main.cmd.zoomReset"), category: "App", default: "Ctrl+Digit0", available: true, scope: "any" },
   { id: "app.toggle-tab-bar", label: copyText("keybindingActions.app.toggleTabBar"), category: "App", default: null, available: true, scope: "any" },
-  { id: "app.open-cc-bus", label: copyText("keybindingActions.app.ccBus"), category: "App", default: null, available: true, scope: "any" },
+  { id: "app.open-cc-bus", label: copyText("main.cmd.openCcBus"), category: "App", default: null, available: true, scope: "any" },
   { id: "overlay.close", label: copyText("keybindingActions.app.closeOverlay"), category: "App", default: "Escape", available: true, scope: "any" },
   // 撤销刚才那一步（最近一条还开着的撤销提示）。输入框里的 Ctrl+Z 归输入框。
-  { id: "app.undo", label: copyText("keybindingActions.app.undo"), category: "App", default: "Ctrl+KeyZ", available: true, scope: "idle" },
+  { id: "app.undo", label: copyText("kit.toast.undo"), category: "App", default: "Ctrl+KeyZ", available: true, scope: "idle" },
 
   // ===== 账号 =====
   // 默认不绑：键位表已经很满，这不是高频操作。想要的人自己在设置里绑。
@@ -142,9 +142,9 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "behavior.toggle-bring-monitor", label: copyText("keybindingActions.behavior.autoFront"), category: "Beh", default: null, available: true, scope: "any" },
 
   // ===== Panel =====
-  { id: "panel.toggle-tasks", label: copyText("keybindingActions.panel.tasks"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
-  { id: "panel.toggle-agents", label: copyText("keybindingActions.panel.agents"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
-  { id: "panel.toggle-terminal", label: copyText("keybindingActions.panel.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
+  { id: "panel.toggle-tasks", label: copyText("tasksPanel.page.title"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
+  { id: "panel.toggle-agents", label: copyText("beProfile.slot.agent"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
+  { id: "panel.toggle-terminal", label: copyText("sessionHead.act.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */
@@ -168,12 +168,12 @@ export function groupByCategory(): Map<Category, Action[]> {
 
 /** Category → 表头标签 */
 export const CATEGORY_LABEL: Record<Category, string> = {
-  Tab: copyText("keybindingActions.category.tab"),
-  Term: copyText("keybindingActions.category.terminal"),
+  Tab: copyText("beProfile.slot.tab"),
+  Term: copyText("mobDrawer.item.terminal"),
   App: copyText("keybindingActions.category.app"),
-  Beh: copyText("keybindingActions.category.behavior"),
+  Beh: copyText("settingsPanel.group.behavior"),
   Panel: copyText("keybindingActions.category.panel"),
-  Acct: copyText("keybindingActions.category.account"),
+  Acct: copyText("beProfile.slot.account"),
 };
 
 /**

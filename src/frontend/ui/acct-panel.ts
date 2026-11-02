@@ -73,7 +73,7 @@ export function openAccountPanel(sid: string | null, origin: Machine, host: Acct
   body.className = s.acctPanel;
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
-    title: copyText("acct.panel.title"),
+    title: copyText("beProfile.slot.account"),
     sub: sid === null ? machineLabel(origin) : copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
     body,
     width: 540,
@@ -147,7 +147,7 @@ function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaSlot
     return out;
   }
   const reading = copyText("kit.state.reading");
-  const retryLabel = copyText("acct.now.retry");
+  const retryLabel = copyText("front.act.retry");
   if (quota.state === "pending") {
     out.push(banner("info", reading));
   } else if (quota.state === "failed") {

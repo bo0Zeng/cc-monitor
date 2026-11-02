@@ -73,7 +73,7 @@ pub(crate) struct SetPlan {
 fn more_said(more: u32, whole: bool) -> String {
     match (more, whole) {
         (0, true) => copy_text("beSessionSet.more.full", &[]),
-        (0, false) => copy_text("beSessionSet.more.none", &[]),
+        (0, false) => copy_text("acct.val.none", &[]),
         _ => copy_text("beSessionSet.more.some", &[("n", &more.to_string())]),
     }
 }

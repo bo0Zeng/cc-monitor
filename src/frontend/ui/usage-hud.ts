@@ -109,7 +109,7 @@ export class UsageHud {
       });
     const u = this.usage;
     if (this.unavailable !== null || u === null) {
-      root.appendChild(banner("error", copyText("usageHud.panel.unavailable"), [act(copyText("usageHud.panel.retry"), () => this.host?.retry())]));
+      root.appendChild(banner("error", copyText("usageHud.panel.unavailable"), [act(copyText("front.act.retry"), () => this.host?.retry())]));
       return root;
     }
     const tok = u.promptTokensText;

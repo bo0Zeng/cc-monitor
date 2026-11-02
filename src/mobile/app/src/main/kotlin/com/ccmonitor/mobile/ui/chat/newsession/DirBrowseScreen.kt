@@ -51,7 +51,7 @@ fun DirBrowseScreen(
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss, modifier = Modifier.semantics { contentDescription = copyText("mobKit.act.close") }) { Text(BACK, style = MaterialTheme.typography.titleLarge) }
+                    IconButton(onClick = onDismiss, modifier = Modifier.semantics { contentDescription = copyText("kit.drawer.close") }) { Text(BACK, style = MaterialTheme.typography.titleLarge) }
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 }
@@ -84,7 +84,7 @@ private fun PathBar(
     onUp: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onUp, modifier = Modifier.semantics { contentDescription = copyText("mobNewSession.dir.up") }) { Text(UP, style = MaterialTheme.typography.titleMedium) }
+        IconButton(onClick = onUp, modifier = Modifier.semantics { contentDescription = copyText("rsFilewinChrome.nav.up") }) { Text(UP, style = MaterialTheme.typography.titleMedium) }
         Text(path, style = monoBody, maxLines = 1, overflow = TextOverflow.StartEllipsis)
     }
 }

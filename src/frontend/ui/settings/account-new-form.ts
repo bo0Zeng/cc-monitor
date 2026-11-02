@@ -30,7 +30,7 @@ let formSeq = 0;
 
 /** 命令名那一行：名字是那台后端预演时答的（`aliasNames`），这里只套一句话。 */
 export function aliasHintFor(names: readonly string[]): string {
-  return names.length ? copyText("acctNew.name.commands", { names: names.join(copyText("acctNew.name.commandSep")) }) : "";
+  return names.length ? copyText("acctNew.name.commands", { names: names.join(copyText("plan.page.listSep")) }) : "";
 }
 
 export interface NewAccountForm {
@@ -54,7 +54,7 @@ export function renderNewAccountForm(
   box.className = "acct-new";
   const title = document.createElement("div");
   title.className = "acct-new-title";
-  title.textContent = copyText("acctNew.form.title");
+  title.textContent = copyText("acctPage.head.new");
   box.appendChild(title);
 
   const grid = document.createElement("div");
@@ -78,10 +78,10 @@ export function renderNewAccountForm(
   };
   radios.append(
     radio(group, copyText("acctNew.access.subscription"), true, pick("subscription")),
-    radio(group, copyText("acctNew.access.apikey"), false, pick("apikey")),
+    radio(group, copyText("acctNew.key.label"), false, pick("apikey")),
   );
   accessCol.append(accessLabel, radios);
-  const base = field({ label: copyText("acctNew.base.label"), placeholder: copyText("acctNew.base.example"), help: copyText("acctNew.base.help") });
+  const base = field({ label: copyText("machineForm.field.host"), placeholder: copyText("acctNew.base.example"), help: copyText("acctNew.base.help") });
   const baseIn = base.input as HTMLInputElement;
   baseIn.autocomplete = "off";
   baseIn.dataset.field = "base-url";
@@ -102,7 +102,7 @@ export function renderNewAccountForm(
   const extras = document.createElement("div");
   extras.className = "acct-new-extras";
   let makeDefault = false;
-  const def = checkbox(copyText("acctNew.default.label"), false, (on) => {
+  const def = checkbox(copyText("acctPage.row.setDefault"), false, (on) => {
     makeDefault = on;
     sync();
   });
@@ -126,7 +126,7 @@ export function renderNewAccountForm(
     importToggle.setAttribute("aria-expanded", String(!credCell.hidden));
   });
 
-  const cancel = button({ label: copyText("acctNew.form.cancel") });
+  const cancel = button({ label: copyText("kit.dialog.cancel") });
   const create = button({ label: copyText("acctNew.form.createLogin"), kind: "primary" });
   box.appendChild(buttonRow(cancel, create));
 
@@ -229,7 +229,7 @@ export function renderNewAccountForm(
     focus: () => nameIn.focus(),
     dismiss: async () => {
       if (dirty()) {
-        const ok = await (hooks.confirm ?? confirmDialog)({ title: copyText("acctNew.discard.title"), action: copyText("acctNew.discard.action") });
+        const ok = await (hooks.confirm ?? confirmDialog)({ title: copyText("acctNew.discard.title"), action: copyText("kit.drawer.discard") });
         if (!ok) return false;
       }
       clear();

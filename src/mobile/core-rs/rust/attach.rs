@@ -15,7 +15,7 @@ fn line(phase: &AttachCardPhase) -> Option<String> {
     match phase {
         AttachCardPhase::Queued => Some(copy_text("mobAttach.card.queued", &[])),
         AttachCardPhase::Failed { .. } | AttachCardPhase::Lost => {
-            Some(copy_text("mobAttach.card.failed", &[]))
+            Some(copy_text("runs.state.failed", &[]))
         }
         AttachCardPhase::Refused { said } => Some(said.clone()),
         AttachCardPhase::Moving | AttachCardPhase::Landed => None,
@@ -139,7 +139,7 @@ mod tests {
                 // 传输中只转环，不写进度数字。
                 None,
                 None,
-                Some(copy_text("mobAttach.card.failed", &[])),
+                Some(copy_text("runs.state.failed", &[])),
                 Some("超上限".to_string()),
             ]
         );

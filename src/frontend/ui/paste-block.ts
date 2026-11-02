@@ -120,7 +120,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
 
   const btnRow = document.createElement("div");
   btnRow.className = "settings-row settings-row-end paste-block-actions";
-  const copyBtn = button({ label: copyText("pasteBlock.buildPasteBlock.copy") });
+  const copyBtn = button({ label: copyText("render.codeBlock.copy") });
   copyBtn.classList.add("paste-block-copy");
   btnRow.appendChild(copyBtn);
   root.appendChild(btnRow);
@@ -142,13 +142,13 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
     void writeClipboard(v).then(
       () =>
         toast(
-          copyText("pasteBlock.buildPasteBlock.copied"),
+          copyText("detail.act.copied"),
           copyText("pasteBlock.buildPasteBlock.copiedBody", { target: spec.target, mergeNote: spec.mergeNote, activation: spec.activation }),
           { level: "info" },
         ),
       // **不许吞进 console**（这就是 A3 的缺陷）——用户点了按钮就得知道结果。
       () =>
-        toast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
+        toast(copyText("detail.act.failed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
           level: "error",
         }),
     );

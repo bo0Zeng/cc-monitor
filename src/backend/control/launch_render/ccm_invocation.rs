@@ -104,7 +104,7 @@ impl Refusal {
                     copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)])
                 }
                 IdentifierSlot::CcmSid => {
-                    copy_text("rsCcmInvocation.refusal.idCcmSid", &[("value", value)])
+                    copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)])
                 }
                 IdentifierSlot::Model => {
                     copy_text("rsCcmInvocation.refusal.idModel", &[("value", value)])

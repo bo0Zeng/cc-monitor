@@ -897,7 +897,7 @@ pub fn task_lines(v: &super::progress::View) -> Vec<String> {
         return Vec::new();
     }
     if v.state == super::progress::State::Failed {
-        let sep = copy_text("rsFilewinProgress.detail.sep", &[]);
+        let sep = copy_text("kit.text.sep", &[]);
         return v.detail.split(sep.as_str()).map(str::to_string).collect();
     }
     vec![v.detail.clone()]

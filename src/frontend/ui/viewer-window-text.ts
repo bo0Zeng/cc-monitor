@@ -17,7 +17,7 @@ export function windowStatus(s: ViewerStatus): string {
 export function windowTitle(r: HistoryRow, live: boolean | null): string {
   const title = r.label;
   const state =
-    live === null ? copyText("sessionState.unseen.name") : live ? copyText("history.row.live") : copyText("sessionState.ended.name");
+    live === null ? copyText("runs.state.unknown") : live ? copyText("runs.state.running") : copyText("sessionState.ended.name");
   return r.origin
     ? copyText("viewerWindow.title.remote", { title, state, project: r.projectName, machine: machineName(r.origin) })
     : copyText("viewerWindow.title.local", { title, state, project: r.projectName });

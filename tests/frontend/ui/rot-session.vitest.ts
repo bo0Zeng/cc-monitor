@@ -99,7 +99,7 @@ describe("整屏：提示 · 策略一行 · 顺序（与设置页拆开）", ()
     const n = calls.length;
     btn(m.root, copyText("rot.top.about")).click();
     expect(m.root.textContent).toContain("后面还有一段");
-    btn(m.root, copyText("rot.top.aboutClose")).click();
+    btn(m.root, copyText("kit.dock.close")).click();
     expect(m.root.textContent).not.toContain("后面还有一段");
     expect(calls.length).toBe(n);
   });

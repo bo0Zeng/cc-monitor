@@ -81,11 +81,11 @@ function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRo
       for (const ch of c.choices) {
         const label =
           ch.from !== null
-            ? copyText("cfgPage.mcp.useFrom", { holders: ch.holders.join(copyText("accountsMcp.list.sep")) })
+            ? copyText("cfgPage.mcp.useFrom", { holders: ch.holders.join(copyText("kit.text.sep")) })
             : ch.gone
               ? copyText("cfgPage.mcp.useGone")
               : copyText("cfgPage.mcp.useShared");
-        acts.appendChild(button({ label, size: "compact", onClick: () => void send(() => accountsMcpPick(origin(), c.name, ch.from), () => copyText("cfgPage.mcp.pickFailed")) }));
+        acts.appendChild(button({ label, size: "compact", onClick: () => void send(() => accountsMcpPick(origin(), c.name, ch.from), () => copyText("rsFilewinSelect.refusal.none")) }));
       }
       box.appendChild(acts);
       body.appendChild(box);
@@ -185,7 +185,7 @@ function buildExtRow(origin: () => Machine, machine: () => string, go: (el: HTML
       }
       row.body.appendChild(box);
     };
-    minis(copyText("cfgPage.ext.skills"), skills);
+    minis(copyText("mobPlus.row.skills"), skills);
     minis(copyText("cfgPage.ext.projectMcp"), projMcp);
     const foot = document.createElement("div");
     foot.className = "cfg-foot-row";
@@ -270,7 +270,7 @@ export function buildConfigPage(spec: ConfigPageSpec): HTMLElement {
   const terminal = buildAliasManager(spec);
   const pointers = buildDataPointers(spec, (c) => terminal.setSelfPaste(c));
   root.appendChild(pointers.head);
-  root.append(cap(copyText("cfgPage.cap.terminal")), terminal.element);
+  root.append(cap(copyText("mobDrawer.item.terminal")), terminal.element);
   const go = (el: HTMLElement): void => {
     el.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "ext" } }));
   };

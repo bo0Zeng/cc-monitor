@@ -303,7 +303,7 @@ fn read_manifest(p: &Path) -> Option<(Option<String>, Result<Manifest, Unread>)>
             let path = p.display().to_string();
             let said = e.wrap(|why| {
                 copy_core::copy_text(
-                    "beAcctScan.manifest.unreadable",
+                    "beAccountsQuery.loadManifest.unreadable",
                     &[("path", &path), ("why", why)],
                 )
             });

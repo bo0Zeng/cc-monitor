@@ -107,7 +107,7 @@ function sameLoc(a: ExtLoc, b: ExtLoc): boolean {
 }
 
 function machineName(m: ExtMachine): string {
-  return m.here ? copyText("extPage.machine.here") : m.name;
+  return m.here ? copyText("detail.label.local") : m.name;
 }
 
 /** 这台在通道上叫什么（本机后端那一台 = `LOCAL`）。 */
@@ -205,9 +205,9 @@ export class ExtSection {
     const filter = el("div", "ext-filter");
     const kinds: [KindFilter, string][] = [
       ["all", copyText("extPage.filter.all")],
-      ["skill", copyText("extPage.filter.skill")],
+      ["skill", copyText("mobPlus.row.skills")],
       ["mcp", copyText("extPage.filter.mcp")],
-      ["plugin", copyText("extPage.filter.plugin")],
+      ["plugin", copyText("beExt.kind.plugin")],
     ];
     for (const [k, label] of kinds) {
       const b = button({ label, onClick: () => {
@@ -257,7 +257,7 @@ export class ExtSection {
         this.list = { ...this.list, machines: list.machines };
       }
       this.mcpWire = mcpWire;
-      const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { n: String(list.problems.length), list: list.problems.join(copyText("extPage.list.sep")) }) : "";
+      const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { n: String(list.problems.length), list: list.problems.join(copyText("kit.text.sep")) }) : "";
       this.status.textContent = [problems, synced].filter((x) => x !== "").join(" ");
       if (changed) {
         this.renderTable();
@@ -311,7 +311,7 @@ export class ExtSection {
     }
     // 表头：名字 · 种类 · 做什么 · 每台一列（列头是机器名）；断开的那台整列半透明 ＋ 表上方一条。
     const head = el("div", "ext-row ext-head");
-    head.append(el("span", "", copyText("extPage.table.headName")), el("span", "", copyText("extPage.table.headKind")), el("span", "", copyText("extPage.table.headAbout")));
+    head.append(el("span", "", copyText("machineForm.field.name")), el("span", "", copyText("rsFilewinSource.sort.type")), el("span", "", copyText("extPage.table.headAbout")));
     const cols = el("span", "ext-dots");
     for (const m of list.machines) {
       const c = el("span", m.reachable ? "ext-col one-line" : "ext-col one-line is-offline", machineName(m));
@@ -342,8 +342,8 @@ export class ExtSection {
     }
     if (rows.some((r) => r.kind === "mcp")) {
       for (const [mark, said] of [
-        ["needsLogin", copyText("extPage.legend.needsLogin")],
-        ["failed", copyText("extPage.legend.failed")],
+        ["needsLogin", copyText("acct.tag.login")],
+        ["failed", copyText("beServer.words.cantConnect")],
       ] as const) {
         const item = el("span", "ext-legend-item");
         item.append(dotOf("same", mark), el("span", "", said));
@@ -434,7 +434,7 @@ export class ExtSection {
     head.appendChild(el("span", "ext-kind", r.kindSaid));
     if (r.known !== null) head.appendChild(el("span", "ext-kind", r.known.from));
     head.appendChild(
-      button({ label: copyText("extPage.drawer.close"), onClick: () => {
+      button({ label: copyText("kit.drawer.close"), onClick: () => {
         this.openKey = null;
         this.renderDrawer();
       } }),
@@ -445,7 +445,7 @@ export class ExtSection {
     if (r.about) this.drawer.appendChild(el("p", "ext-drawer-about", r.about));
     if (r.detail.length > 0) {
       const more = el("details", "ext-detail");
-      more.appendChild(el("summary", "", copyText("extPage.drawer.detail")));
+      more.appendChild(el("summary", "", copyText("messages.record.expand")));
       for (const d of r.detail) more.appendChild(el("div", "ext-detail-line", copyText("extPage.drawer.detailLine", { label: d.label, value: d.value })));
       this.drawer.appendChild(more);
     }
@@ -469,7 +469,7 @@ export class ExtSection {
       });
       box.appendChild(input);
       const save = button({ label: copyText("extPage.note.save"), kind: "primary", onClick: () => void this.saveNote(r) });
-      const cancel = button({ label: copyText("extPage.card.cancel"), onClick: () => {
+      const cancel = button({ label: copyText("kit.dialog.cancel"), onClick: () => {
         this.noteDraft = null;
         this.noteError = null;
         this.renderDrawer();
@@ -590,7 +590,7 @@ export class ExtSection {
     if (slot.error) {
       const err = el("div", "ext-error", slot.error.text);
       const again = slot.error.again;
-      if (slot.error.stale && again) err.appendChild(button({ label: copyText("extPage.card.again"), onClick: again }));
+      if (slot.error.stale && again) err.appendChild(button({ label: copyText("accountChip.menu.refresh"), onClick: again }));
       line.appendChild(err);
     }
     if (slot.card) line.appendChild(this.cardOf(r, m, key, slot));
@@ -647,7 +647,7 @@ export class ExtSection {
     }
     if (r.kind === "skill" && p.dir !== null && isLocalOrigin(originOf(m))) {
       const dir = p.dir;
-      const b = button({ label: copyText("extPage.button.reveal"), onClick: () => void revealInFolder(dir) });
+      const b = button({ label: copyText("data.item.reveal"), onClick: () => void revealInFolder(dir) });
       b.dataset.reveal = "";
       row.appendChild(b);
     } else if (r.kind === "skill" && p.dir !== null && m.key !== null) {
@@ -686,7 +686,7 @@ export class ExtSection {
   private cardOf(r: ExtRow, m: ExtMachine, key: string, slot: Slot): HTMLElement {
     const box = el("div", "ext-card");
     const c = slot.card;
-    const cancel = button({ label: copyText("extPage.card.cancel"), onClick: () => this.setSlot(key, {}) });
+    const cancel = button({ label: copyText("kit.dialog.cancel"), onClick: () => this.setSlot(key, {}) });
     if (!c) return box;
     if (c.kind === "remove") {
       const card = c.card;
@@ -699,7 +699,7 @@ export class ExtSection {
       const files = el("ul", "ext-card-files");
       for (const f of card.files) files.appendChild(el("li", "", f));
       box.appendChild(files);
-      const ok = button({ label: copyText("extPage.card.confirmRemove"), kind: "primary", onClick: () =>
+      const ok = button({ label: copyText("extPage.button.uninstall"), kind: "primary", onClick: () =>
           void this.run(r, key, m, "uninstall", async () => {
             const done = await extUninstallApply(originOf(m), card, c.at);
             return done.note ?? copyText("extPage.done.removed", { n: String(done.changed.length) });
@@ -791,7 +791,7 @@ export class ExtSection {
         });
         row.appendChild(input);
         box.appendChild(row);
-        const hint = k.kept.length > 0 ? copyText("extPage.install.kept", { machines: k.kept.join(copyText("extPage.list.sep")), key: k.key }) : copyText("extPage.install.shared");
+        const hint = k.kept.length > 0 ? copyText("extPage.install.kept", { machines: k.kept.join(copyText("kit.text.sep")), key: k.key }) : copyText("extPage.install.shared");
         box.appendChild(el("div", "settings-hint", hint));
       }
       box.appendChild(el("div", "ext-card-title", copyText("extPage.install.files")));
@@ -804,10 +804,10 @@ export class ExtSection {
           const copy = m.detail === null ? null : copyDetailButton(text, m.detail);
           if (copy) line.appendChild(copy);
         } else if (m.card?.unchanged) line.textContent = copyText("extPage.install.filesSame", { machine: m.name });
-        else line.textContent = copyText("extPage.install.filesLine", { machine: m.name, files: m.files.join(copyText("extPage.list.sep")) });
+        else line.textContent = copyText("extPage.install.filesLine", { machine: m.name, files: m.files.join(copyText("kit.text.sep")) });
         box.appendChild(line);
-        for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("extPage.install.machineSaid", { machine: m.name, said: x })));
-        if (m.card?.stop) box.appendChild(el("div", "ext-error", copyText("extPage.install.machineSaid", { machine: m.name, said: m.card.stop })));
+        for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("resync.machines.ok", { machine: m.name, said: x })));
+        if (m.card?.stop) box.appendChild(el("div", "ext-error", copyText("resync.machines.ok", { machine: m.name, said: m.card.stop })));
       }
     }
     for (const [key, res] of inst.results) {

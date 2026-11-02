@@ -220,7 +220,7 @@ impl FileWindow {
                         .as_ref()
                         .map(|p| p.text.trim().to_string())
                         .unwrap_or_default();
-                    copy_text("rsFilewinWriteops.inline.exists", &[("name", &name)]).into()
+                    copy_text("addMachine.err.taken", &[("name", &name)]).into()
                 } else {
                     f
                 };
@@ -370,10 +370,10 @@ impl FileWindow {
         let heads = [
             copy_text("rsFilewinWriteops.chmod.read", &[]),
             copy_text("rsFilewinWriteops.chmod.write", &[]),
-            copy_text("rsFilewinWriteops.chmod.exec", &[]),
+            copy_text("plan.new.line", &[]),
         ];
         let who = [
-            copy_text("rsFilewinWriteops.chmod.owner", &[]),
+            copy_text("rsFilewinProps.label.owner", &[]),
             copy_text("rsFilewinWriteops.chmod.group", &[]),
             copy_text("rsFilewinWriteops.chmod.other", &[]),
         ];
@@ -435,12 +435,9 @@ impl FileWindow {
                 }
             },
             &[
+                (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                 (
-                    copy_text("rsFilewinWriteops.delete.cancel", &[]),
-                    crate::kit::Btn::Plain,
-                ),
-                (
-                    copy_text("rsFilewinWriteops.chmod.go", &[]),
+                    copy_text("beFiles.batch.verbChmod", &[]),
                     crate::kit::Btn::Primary,
                 ),
             ],

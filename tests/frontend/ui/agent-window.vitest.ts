@@ -86,7 +86,7 @@ function say(uuid: string, body: string | Doc): unknown {
 type Bare = Omit<RunInfo, "status_text" | "label_text">;
 
 function frame(runs: Bare[]): void {
-  const dressed: RunInfo[] = runs.map((r) => ({ ...r, status_text: copyText(`runs.state.${r.state}`), label_text: r.label ?? copyText("runs.label.unnamed") }));
+  const dressed: RunInfo[] = runs.map((r) => ({ ...r, status_text: copyText(`runs.state.${r.state}`), label_text: r.label ?? copyText("beProfile.slot.agent") }));
   h.sink?.({ t: "runs", payload: { sid: "s1", runs: dressed, ended: [], groups: { running: [], recent: [], older: [] } } } satisfies FollowEvent);
 }
 

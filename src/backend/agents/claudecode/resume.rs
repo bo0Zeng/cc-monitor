@@ -66,7 +66,7 @@ pub(crate) const MODEL_ALIASES: &[Choice] = &[
 /// 换模型抽屉的「默认」那一项：`/model default` 回到那一家自己的缺省模型（官方别名表里的 `default`）。起会话不交它（不写 `--model` 就是默认）。
 pub(crate) const MODEL_DEFAULT: Choice = Choice {
     value: "default",
-    text: || copy_core::copy_text("beSessionNew.model.default", &[]),
+    text: || copy_core::copy_text("resumeSelect.option.defaultBare", &[]),
 };
 
 /// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成以后新会话的默认。这一行是那一家的事实（`session-open-facts` 不带会话）⇒ 不说改的是哪几个号；读回那一句照这条会话用的号说「各号 / 此号」。

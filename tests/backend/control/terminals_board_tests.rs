@@ -136,7 +136,7 @@ fn a_row_is_written_whole() {
     );
     assert_eq!(
         s.chips,
-        vec![Words(copy_text("beTermBoard.chip.windows", &[("n", "2")]))]
+        vec![Words(copy_text("terminal.tag.windows", &[("n", "2")]))]
     );
     assert_eq!(s.at_text.0, copy_core::short_duration(120_000));
     assert_eq!(s.tags, vec![BoardTag::Session]);
@@ -157,7 +157,7 @@ fn a_row_is_written_whole() {
     );
     assert_eq!(
         shell.chips,
-        vec![Words(copy_text("beTermBoard.chip.background", &[]))]
+        vec![Words(copy_text("terminal.tag.background", &[]))]
     );
     assert_eq!(shell.tags, vec![BoardTag::Bare, BoardTag::Background]);
     assert_eq!(by("cmd").dot, SessionDot::Running);
@@ -212,7 +212,7 @@ fn merge_keeps_machine_order_counts_and_draws_the_silent_one_from_last_time() {
     assert_eq!(
         names,
         vec![
-            copy_text("beTermBoard.group.local", &[]).as_str(),
+            copy_text("detail.label.local", &[]).as_str(),
             "gpu",
             "never"
         ]

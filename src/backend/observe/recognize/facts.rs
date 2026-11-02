@@ -192,7 +192,7 @@ pub(crate) fn line_of(
         A::NeedsYou => {
             let n = f.needs.as_ref();
             let kind = n.map_or_else(
-                || copy_core::copy_text("beSession.activity.needsYou", &[]),
+                || copy_core::copy_text("beSession.needs.unknown", &[]),
                 |n| n.text.0.clone(),
             );
             let line = |w: &str| {
@@ -217,7 +217,7 @@ pub(crate) fn line_of(
                 (t, c, p.what.clone().map(Words))
             }
             None => (
-                Words(copy_core::copy_text("beSession.activity.working", &[])),
+                Words(copy_core::copy_text("backend.status.connected", &[])),
                 None,
                 None,
             ),
@@ -637,7 +637,7 @@ pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
             (StepWait::Unclear, Some(UnclearWhy::Untracked))
         };
         p.text = (p.state == StepWait::Unclear)
-            .then(|| Words(copy_core::copy_text("stream.step.unclear", &[])));
+            .then(|| Words(copy_core::copy_text("runs.state.unknown", &[])));
         p.why_text = p.why.map(|w| {
             Words(match w {
                 UnclearWhy::NoWriter => copy_core::copy_text("stream.step.unclearNoWriter", &[]),
@@ -774,9 +774,9 @@ pub(crate) fn needs_words(kind: NeedsKind) -> Words {
     Words(match kind {
         NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
         NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
-        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.approve", &[]),
         NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
-        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
+        NeedsKind::Worker => copy_core::copy_text("beSession.needs.approve", &[]),
         NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
         NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
         NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
@@ -790,13 +790,13 @@ pub(crate) fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
             Some(t) => copy_core::copy_text("needs.bar.approve", &[("tool", t)]),
             None => return needs_words(kind),
         },
-        NeedsKind::Answer => copy_core::copy_text("needs.bar.answer", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
         NeedsKind::Plan => copy_core::copy_text("needs.bar.plan", &[]),
         NeedsKind::Network => copy_core::copy_text("needs.bar.network", &[]),
         NeedsKind::Worker => copy_core::copy_text("needs.bar.worker", &[]),
         NeedsKind::Goal => copy_core::copy_text("needs.bar.goal", &[]),
-        NeedsKind::Choose => copy_core::copy_text("needs.bar.choose", &[]),
-        NeedsKind::Unknown => copy_core::copy_text("needs.bar.unknown", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
     })
 }
 
@@ -1065,7 +1065,7 @@ impl UsageFact {
         };
         self.limit_from_text = match limit_from {
             LimitFrom::Relay => Some(copy_core::copy_text("beUsage.from.relay", &[])),
-            LimitFrom::Setting => Some(copy_core::copy_text("beUsage.from.setting", &[])),
+            LimitFrom::Setting => Some(copy_core::copy_text("mobDrawer.settings.aria", &[])),
             LimitFrom::Model => Some(copy_core::copy_text("beUsage.from.model", &[])),
             LimitFrom::Observed => Some(copy_core::copy_text("beUsage.from.observed", &[])),
             LimitFrom::Assumed => None,
@@ -1430,9 +1430,7 @@ fn note_quiet(f: &mut SessionFacts, kind: &str, v: &Value) {
         q.kinds.push(t);
     }
     let n = q.count.to_string();
-    let types = q
-        .kinds
-        .join(&copy_core::copy_text("record.unread.quietSep", &[]));
+    let types = q.kinds.join(&copy_core::copy_text("kit.text.sep", &[]));
     q.text = Words(copy_core::copy_text(
         "record.unread.quiet",
         &[("n", &n), ("types", &types)],

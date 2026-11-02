@@ -66,7 +66,7 @@ describe("状态栏「上下文」chip", () => {
     expect([text(hud), intent(hud)]).toEqual([copyText("usageHud.chip.none"), "neutral"]);
     hud.summaryElement.click();
     expect(panel()?.textContent).toContain(copyText("usageHud.panel.unavailable"));
-    [...(panel()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === copyText("usageHud.panel.retry"))?.click();
+    [...(panel()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === copyText("front.act.retry"))?.click();
     expect([retried, panel()]).toEqual([1, null]);
   });
 

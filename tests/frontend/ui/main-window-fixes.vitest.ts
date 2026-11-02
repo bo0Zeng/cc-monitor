@@ -295,7 +295,7 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
       "u",
     );
     const items = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
-    const resume = items.filter((b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.item.resume"));
+    const resume = items.filter((b) => b.querySelector("[data-part=label]")?.textContent === copyText("history.row.resume"));
     expect(resume.length, "恢复那一项还在（置灰、第二行说为什么）").toBe(1);
     expect(resume[0].disabled).toBe(true);
     // 为什么灰 ＝ 脸上那一句（后端写的那台离线那一句，A2-17-3-2），界面不另取字。

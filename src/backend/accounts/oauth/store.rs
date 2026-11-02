@@ -37,7 +37,7 @@ pub(crate) fn read(dir: &Path, face: &LoginFace) -> Read {
 fn read_at(path: &Path) -> Read {
     DOC.read_with(path, |b| match serde_json::from_slice::<Value>(&b) {
         Ok(Value::Object(m)) => Ok(m),
-        Ok(_) => Err(copy_text("beOauthStore.read.notObject", &[]).into()),
+        Ok(_) => Err(copy_text("beOauthStore.read.notJson", &[]).into()),
         // 解析错误的文本可能带着原文片段 ⇒ 只说「不是 JSON」。
         Err(_) => Err(copy_text("beOauthStore.read.notJson", &[]).into()),
     })
@@ -210,7 +210,7 @@ fn write_doc(creds: &AccountCreds, held: &CredsLock, doc: &Map<String, Value>) -
     let body = serde_json::to_vec(&Value::Object(doc.clone())).map_err(|e| {
         Said::with_raw(
             copy_text(
-                "beOauthStore.write.failed",
+                "beOwnState.write.encodeFailed",
                 &[("path", &creds.file().display().to_string())],
             ),
             e,

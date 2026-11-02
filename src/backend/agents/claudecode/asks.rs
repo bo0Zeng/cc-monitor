@@ -308,7 +308,7 @@ fn suggestion_of(s: &Value) -> Option<AskSuggestion> {
     let scope = match s.get("destination").and_then(Value::as_str) {
         Some("session") => copy_text("beAsk.scope.session", &[]),
         Some("localSettings") => copy_text("beAsk.scope.local", &[]),
-        Some("projectSettings") => copy_text("beAsk.scope.project", &[]),
+        Some("projectSettings") => copy_text("beSessionCommands.scope.project", &[]),
         Some("userSettings") => copy_text("beAsk.scope.user", &[]),
         _ => return None,
     };

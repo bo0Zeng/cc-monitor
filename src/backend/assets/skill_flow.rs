@@ -58,7 +58,7 @@ enum Doing {
 }
 
 fn stopped_said(doing: Doing, at: &str, why: &str, done: &[String]) -> String {
-    let list = done.join(&copy_text("beSkillFlow.stopped.listSep", &[]));
+    let list = done.join(&copy_text("kit.text.sep", &[]));
     let done = match (&doing, done.is_empty()) {
         (Doing::Install, true) => copy_text("beSkillFlow.install.noneWritten", &[]),
         (Doing::Install, false) => copy_text("beSkillFlow.install.someWritten", &[("list", &list)]),

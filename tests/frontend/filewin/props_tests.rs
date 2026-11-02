@@ -88,7 +88,7 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
     let lines = w.props.as_ref().unwrap().lines();
     let path_line = lines
         .iter()
-        .find(|(k, _)| *k == copy_text("rsFilewinProps.label.path", &[]))
+        .find(|(k, _)| *k == copy_text("detail.label.path", &[]))
         .unwrap();
     assert!(path_line.1.ends_with("a.txt"), "{lines:?}");
     synth_fs::remove_all(&d);
