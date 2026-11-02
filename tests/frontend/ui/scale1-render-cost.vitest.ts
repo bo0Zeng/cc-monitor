@@ -120,8 +120,8 @@ const EXPECTED_RECORDS = 69;
 /** 每跑一遍语料，各桶应得的样本条数 */
 const EXPECTED_PER_PASS: Readonly<Record<string, number>> = {
   "<2K": 34,
-  "2-8K": 17,
-  "8-32K": 12,
+  "2-8K": 12,
+  "8-32K": 17,
   "32-128K": 6,
   // 空不是漏采 —— 真语料里就没有 >128K 的记录（头注射程边界第 3 条）
   ">128K": 0,
@@ -139,8 +139,8 @@ const PASSES = 8;
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
   "<2K": 272,
-  "2-8K": 136,
-  "8-32K": 96,
+  "2-8K": 96,
+  "8-32K": 136,
   "32-128K": 48,
   ">128K": 0,
 };
