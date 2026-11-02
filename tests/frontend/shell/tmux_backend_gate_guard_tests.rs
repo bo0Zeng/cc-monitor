@@ -230,12 +230,12 @@ fn the_front_end_ends_terminals_only_through_one_module() {
     let root = guard_core::addr::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
-    let needles = ["callTyped(LOCAL_ORIGIN, \"terminals-end\""];
+    let needles = ["callTyped(LOCAL, \"terminals-end\""];
     let gone = [
         "chan.call(origin, \"launch\"",
         "callTyped(origin, \"kill\"",
         "callTyped(origin, \"terminal-end\"",
-        "callTyped(LOCAL_ORIGIN, \"terminal-end\"",
+        "callTyped(LOCAL, \"terminal-end\"",
     ];
     let mut gone_hits: Vec<String> = Vec::new();
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
@@ -275,7 +275,7 @@ fn the_front_end_ends_terminals_only_through_one_module() {
     // 正控 ＋ 恒等：结束 1。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
-        vec![("callTyped(LOCAL_ORIGIN, \"terminals-end\"", 1)],
+        vec![("callTyped(LOCAL, \"terminals-end\"", 1)],
         "`src/frontend/ui/terminal-reads.ts` 里这一条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }
