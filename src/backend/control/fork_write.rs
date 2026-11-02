@@ -19,14 +19,12 @@
 //!
 //! 记录变换住适配层 `agents/claudecode/branch.rs`，经注册表那一格够它（`agents::build_branch_records`）。
 //!
-//! # ★**「找文件」也不在这里了**
+//! # ★**「找文件」也不在这里**
 //!
-//! 定位源文件那一步先前本模块自己有一份，monitor 侧另有一份、而且**收的入参形状都不一样**
-//! （那边收路径、这边收 sid）。`K-R88` 把它收成一份，入参形状统一成 sid；今天住适配层、经注册表那一格够
-//! （`agents::find_session`）。
+//! 定位源文件只有一份，入参是 sid：住适配层、经注册表那一格够（`agents::find_session`）。
 //!
-//! ⇒ 本模块今天只剩：**读 → 调变换 → `O_EXCL` 落盘**。
-//! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：这里收「找」，不搬「写」）——
+//! ⇒ 本模块只做：**读 → 调变换 → `O_EXCL` 落盘**。
+//! 🔴 **写那一半刻意留在这里**（「找」归适配层，「写」不归）——
 //! 写经分叉那只只会新建的手（`NewFile`）。
 
 use crate::platform::fs::{NewFile, NewFileFail};
@@ -196,7 +194,7 @@ fn run_inner(
     source_sid: &str,
     message_uuid: &str,
 ) -> Result<ForkResult, String> {
-    // 🔴 「找文件」**这一句就是全部** —— 本模块只交家目录，每一家在自己的记录根下找（适配层的知识，`K-R88`）。
+    // 🔴 「找文件」**这一句就是全部** —— 本模块只交家目录，每一家在自己的记录根下找（适配层的知识）。
     let source = crate::agents::find_session(agent_home, source_sid)?.file;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);

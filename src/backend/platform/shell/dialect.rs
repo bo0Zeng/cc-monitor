@@ -31,8 +31,8 @@
 //!
 //! # 🔴 PowerShell 那一臂的诚实边界
 //!
-//! 本机没有 `pwsh` / `powershell`，Win11 虚拟机不许碰（未拍）⇒ PowerShell 文本在这里**一次都没被
-//! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
+//! 跑 cargo 的这台没有 `pwsh` / `powershell` ⇒ PowerShell 文本在这里的判据里**一次都没被
+//! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（Windows 真机上
 //! 那一形 `parse-errors=0`）· 黄金串。
 
 use crate::platform::fs::Ro;
@@ -110,7 +110,7 @@ pub struct Call<'a> {
 ///
 /// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
 /// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `Door::peek` / `files-stat`）——
-/// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的。
+/// 这里自己 `is_file()` / `is_dir()` 的话，量的是 monitor 这台的盘，拿去说远端是错的。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
@@ -136,7 +136,7 @@ pub enum Listed {
 pub trait ShellDialect: Sync {
     // 别名块的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
-    /// 落盘前的编码。PowerShell 加 BOM（`K-R132`：PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
+    /// 落盘前的编码。PowerShell 加 BOM（PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
     /// 中文注释会吞掉下一行）；POSIX 一个字节都不加（`.bashrc` 开头多三个字节 ⇒ `sh` 把它当命令）。
     fn encode_for_disk(&self, content: &str) -> String;
 
@@ -162,7 +162,7 @@ pub trait ShellDialect: Sync {
     /// 在终端里敲的那一行：按绝对路径叫 `program`（不靠 `PATH`）、带一个词 `word`（通用层判过合格的 `@名`）。
     fn render_start(&self, program: &str, word: &str) -> String;
 
-    /// 这一行（已去掉行首空白）声明了哪个函数（原住 `assets/aliases/block.rs` 的两份认法，逐字搬来）。
+    /// 这一行（已去掉行首空白）声明了哪个函数（别名块认函数只用这一份认法）。
     fn declared_function(&self, line: &str) -> Option<String>;
 
     /// 名字的合法字符集。
@@ -389,7 +389,7 @@ impl ShellDialect for Posix {
         out
     }
 
-    /// `名字() {` ⇒ `Some("名字")`（原住 `assets/aliases/block.rs` 那两份认法，同一形）。
+    /// `名字() {` ⇒ `Some("名字")`。
     fn declared_function(&self, l: &str) -> Option<String> {
         let (name, rest) = l.split_once("()")?;
         if !rest.trim_start().starts_with('{') {
@@ -451,7 +451,7 @@ const PS_ALIAS_FILE_REL: &str = relay_route_core::PS_ALIASES_REL;
 /// （它的词法器逐字如此）⇒ 值里出现任何一个都得双写，否则串在那里就断了。
 const PS_QUOTES: &[char] = &['\'', '\u{2018}', '\u{2019}', '\u{201a}', '\u{201b}'];
 
-/// 函数体里那几行固定的（与 `src/shared/cc.ps1.tpl` 里的 `cc` 逐字同形：那一形在 `K-R132` 真机上 `parse-errors=0`）。
+/// 函数体里那几行固定的（与 `src/shared/cc.ps1.tpl` 里的 `cc` 逐字同形：那一形在 Windows 真机上 `parse-errors=0`）。
 const PS_PARAM_OPEN: &str = "    [CmdletBinding()] param(";
 const PS_PARAM_ARG: &str =
     "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs";
@@ -503,15 +503,13 @@ impl ShellDialect for PowerShell {
     /// PS 7 两份只在 `Documents/PowerShell` 这个目录在时列（说明装过且至少跑过一次）。
     /// **文件不在也列**：`$PROFILE` 通常要装的时候才建。
     ///
-    /// 🔴 **全仓只有这里答「`$PROFILE` 在哪」**：
-    /// 从前另有四处认法（终端集成的两份发现表、TS 自己换文件名推 AllHosts、数据页探备份目录那张表），
-    /// 其中一份还把 `profile.ps1` 判成「装错了的遗留」而这里把它列成合法候选 —— 同一个事实三种说法。
+    /// 🔴 **全仓只有这里答「`$PROFILE` 在哪」**：另立一份认法就是同一个事实两种说法。
     /// 判据 `dialect_tests.rs::the_profile_location_has_exactly_one_home` 数着这几个文件名 / 目录名只在这里出现。
     ///
     /// 「文档」目录优先问系统（OneDrive 会把它挪走），问到的不在这个 home 底下时退回 `home/Documents`
     /// （判据拿临时目录当 home，结构上碰不到真实家目录）。
     ///
-    /// PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
+    /// PS 7 那两份「目录在才列」交给调用方问那台后端（[`Listed::IfDirExists`]），这里不 `is_dir()`。
     /// 「文档目录在哪」是这台后端问自己的系统（`platform::paths::documents_dir`）—— 这一臂只在说 PowerShell 的
     /// 那台上走得到（不在 Windows 的后端在命令口显式拒，[`super::dialect_here`]），路径按这台的写法拼（`Path::join`）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
