@@ -41,7 +41,7 @@ import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { firstLineOf, sizeText } from "../format";
+import { sizeText } from "../format";
 import { openFileWindow } from "../file-window";
 import { isRemoteOrigin, type Machine } from "../ipc/origin";
 
@@ -477,10 +477,10 @@ function renderBlock(
     case "thinking": {
       // 空串 ＝ 没写进记录 ⇒ 一行不可展开的步骤行（点开是空的，不给点）。
       if (block.text === "") return buildUnrecordedThinking();
-      // 思考是一步（§5.2.3）：「思考」＋ 第一行斜体预览，点开看全文。
+      // 思考是一步（§5.2.3）：「思考」＋ 后端写好的那一行（`preview`）斜体，点开看全文。
       return makeCollapsible(
         "block-thinking",
-        buildThinkingLine(copyText("cards.thinking.title"), firstLineOf(block.text.trim(), 160).line),
+        buildThinkingLine(copyText("cards.thinking.title"), block.preview),
         () => buildThinkingBody(block.text, ctx.origin),
       );
     }

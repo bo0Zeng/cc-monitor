@@ -82,12 +82,7 @@ pub(crate) fn item_of(
 
 /// 说明的第一行（不空的那一行）。
 fn summary_of(description: &str) -> String {
-    description
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .unwrap_or("")
-        .to_string()
+    copy_core::first_line(description).unwrap_or("").to_string()
 }
 
 /// 本体（测试给假的账本 · 判活）。

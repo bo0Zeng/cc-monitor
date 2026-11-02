@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -712,6 +712,17 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gone: ["sayRows", "batchHead", "sayBatch", "sayEnded"],
     needles: [],
   },
+  J42: {
+    what: "一段话截成给人看的一截：截断加省略号 · 首个非空行 · 压空白",
+    // 唯一的家是 `copy-core` 的 `text` 模块（按字留 N 个、截了接一个「…」）；后端写好成品那一截（思考那一行 `preview` · 结果首行 · 摘录 · 原话），界面照抄。
+    //   Rust 侧零手写由 `tests/backend/common/text_home_guard.rs` 钉。
+    homes: ["copy-core::clip", "copy-core::clip_flat", "copy-core::first_line", "copy-core::collapse_ws"],
+    status: "open",
+    defs: ["firstLineOf"],
+    needles: [],
+    owner: "排队那一行（`queue-row.ts`）",
+    why: "排队那一行的头还在界面截：待发那几句只在这一端（还没送到那台），没有后端写好的那一行；名单里那台写好的那几句改照抄之后删 `firstLineOf`",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -989,6 +1000,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     home_short_bytes: NONE,
     // 短写的计数（`2.1M`）：只后端写进成品（额度「1% ≈ 多少」那一格），界面照抄，TS 侧没有孪生。
     count_short: NONE,
+    // 截断 · 首个非空行 · 压空白（`text` 模块）：TS 侧只剩排队那一行的 `firstLineOf`（J42 open）。
+    clip: "J42",
+    clip_flat: "J42",
+    collapse_ws: "J42",
+    first_line: "J42",
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
