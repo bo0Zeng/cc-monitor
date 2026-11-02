@@ -28,10 +28,17 @@
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`）。
 
 use crate::platform::fs::Own;
-use comms_outward::Key;
+use comms_outward::key_from_text;
 use copy_core::copy_text;
 use creds_core::perm::Verdict;
+use creds_core::SecretKey;
 use std::path::{Path, PathBuf};
+
+/// 钥匙明文在宿主这一侧唯一取出来的地方（`SecretKey` 的具名出口，`creds_store_exits` 数着恰好这一处）：
+/// 派生只许直通那一把 · 落盘 · 插进地址 · 交只许直通那一把的串，都经它。门上比对不取明文（`SecretKey::matches`）。
+fn plain(k: &SecretKey) -> &str {
+    k.expose_for_relay_key()
+}
 
 /// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,15 +75,15 @@ const KEY_BYTES: usize = 32;
 const PASS_LABEL: &[u8] = b"ccm-relay/t";
 
 /// 只许直通那一把：`HMAC-SHA256(根钥匙, "ccm-relay/t")` 的 64 位小写十六进制。门上与 `ccm` 插地址同一个函数（纯函数）。
-pub(crate) fn pass_of(full: &Key) -> Key {
-    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, full.expose().as_bytes());
+pub(crate) fn pass_of(full: &SecretKey) -> SecretKey {
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, plain(full).as_bytes());
     let tag = ring::hmac::sign(&k, PASS_LABEL);
     let hex: String = tag.as_ref().iter().map(|b| format!("{b:02x}")).collect();
-    Key::from_text(&hex).expect("HMAC-SHA256 的 32 字节写成 64 位小写十六进制，形状恒对")
+    key_from_text(&hex).expect("HMAC-SHA256 的 32 字节写成 64 位小写十六进制，形状恒对")
 }
 
 /// 根钥匙 ⇒ 那个范围的那一把。
-pub(crate) fn scoped(full: Key, kind: KeyKind) -> Key {
+pub(crate) fn scoped(full: SecretKey, kind: KeyKind) -> SecretKey {
     match kind {
         KeyKind::Full => full,
         KeyKind::Pass => pass_of(&full),
@@ -91,14 +98,14 @@ pub fn key_path(home: &Path) -> PathBuf {
 
 /// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。
 pub fn pass_key_on_disk(home: &Path) -> Option<String> {
-    read_key(&key_path(home)).map(|full| pass_of(&full).expose().to_string())
+    read_key(&key_path(home)).map(|full| plain(&pass_of(&full)).to_string())
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
-pub(crate) fn read_key(path: &Path) -> Option<Key> {
+pub(crate) fn read_key(path: &Path) -> Option<SecretKey> {
     let text = |b: Vec<u8>| String::from_utf8(b).map_err(|e| e.to_string().into());
     match DOC.read_with(path, text) {
-        crate::common::own_state::Read::Present(s) => Key::from_text(&s),
+        crate::common::own_state::Read::Present(s) => key_from_text(&s),
         _ => None,
     }
 }
@@ -113,20 +120,20 @@ const DOC: crate::common::own_state::Doc<String> =
 pub fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
     let kind = KeyKind::for_url(url)?;
     let key = scoped(read_key(&key_path(home))?, kind);
-    relay_route_core::keyed_base_url(url, key.expose())
+    relay_route_core::keyed_base_url(url, plain(&key))
 }
 
 /// 读回盘上那一把，连同按读它的那个句柄量到的权限结论（`creds_core::perm`，凭据文件同一套判法）。不在 / 读不动 / 形状不对 ⇒ `None`。
-fn read_key_checked(path: &Path) -> Option<(Key, Verdict)> {
+fn read_key_checked(path: &Path) -> Option<(SecretKey, Verdict)> {
     let (f, v) = creds_core::perm::open_checked(path).ok()?;
     let s = std::io::read_to_string(f).ok()?;
-    Key::from_text(&s).map(|k| (k, v))
+    key_from_text(&s).map(|k| (k, v))
 }
 
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘（经写句柄，家目录那一根：`~/`[`KEY_FILE_REL`](relay_route_core::KEY_FILE_REL)）。
 /// 钥匙文件的权限结论随钥匙交回：宽了照实说、不拒、不自己改（改了不等于没漏，真要换钥匙会打断所有活会话）。
 /// **本模块唯一的写口**（只在中转绑上口之后调，`relay/listen.rs`）。
-pub(crate) fn ensure_key(own: &Own) -> Result<(Key, Verdict), crate::common::said::Said> {
+pub(crate) fn ensure_key(own: &Own) -> Result<(SecretKey, Verdict), crate::common::said::Said> {
     let file = own.at_home(DOC.rel)?;
     let dir = own.home_dir()?;
     let path = file.as_path();
@@ -154,7 +161,7 @@ pub(crate) fn ensure_key(own: &Own) -> Result<(Key, Verdict), crate::common::sai
     }
     let k = mint()?;
     // 报错里只有路径，**永远没有钥匙本身**。
-    own.write(&file, &held, k.expose().as_bytes())?;
+    own.write(&file, &held, plain(&k).as_bytes())?;
     let verdict = match creds_core::perm::open_checked(path) {
         Ok((_, v)) => v,
         Err(e) => creds_core::perm::open_failed(&e),
@@ -163,7 +170,7 @@ pub(crate) fn ensure_key(own: &Own) -> Result<(Key, Verdict), crate::common::sai
 }
 
 /// 铸一把：OS 密码学随机数（经 `rustls` 已经带进来的 `ring`，不新增依赖）。
-fn mint() -> Result<Key, String> {
+fn mint() -> Result<SecretKey, String> {
     let mut buf = [0u8; KEY_BYTES];
     rustls::crypto::ring::default_provider()
         .secure_random
@@ -173,7 +180,7 @@ fn mint() -> Result<Key, String> {
     for b in buf {
         s.push_str(&format!("{b:02x}"));
     }
-    Key::from_text(&s).ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
+    key_from_text(&s).ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
 }
 
 // 判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）住 `test_support`（本包与上层的判据共用）。

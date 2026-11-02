@@ -12,7 +12,7 @@
 //!
 //! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
-//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
+//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（`SecretKey::matches`，定长比对住 `creds-core`）。
 //!    钥匙只在路径第一段。门上有两把（[`Keys`]）：全权那一把（[`Scope::All`]）与只许直通那一把（[`Scope::Passthrough`]）。
 //!
 //! 过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
@@ -30,42 +30,26 @@
 //! - 文件在中转跑着的时候被人删掉 / 改掉 ⇒ 中转手里那一把与盘上对不上，新会话每一发 403（出声，不静默）；重起中转就好。
 
 use super::http1::RequestHead;
+use creds_core::SecretKey;
 
 /// 门拒绝时回的两个状态行。
 pub const FORBIDDEN: &str = "403 Forbidden";
 pub const MISDIRECTED: &str = "421 Misdirected Request";
 
-/// 一把钥匙。**刻意不派生 `Debug` / `Display`**：值只经 [`Key::expose`] 一处拿得出来，
-/// 谁想把它 `{:?}` 进日志，编译器先拦。
-#[derive(Clone)]
-pub struct Key(String);
-
-impl Key {
-    /// 唯一的取值口：门里比对 · 后端落盘 · 给用户要贴的那一段插钥匙。
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-
-    /// 从一个串认一把钥匙：形状不对就不认（空 / 短 / 非小写十六进制都算不对）。
-    pub fn from_text(s: &str) -> Option<Key> {
-        let t = s.trim();
-        relay_route_core::key_shape_ok(t).then(|| Key(t.to_string()))
-    }
-}
-
-impl std::fmt::Debug for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Key(…)")
-    }
+/// 从一个串认一把钥匙：形状不对就不认（空 / 短 / 非小写十六进制都算不对）。
+/// 装它的是 `creds_core::SecretKey`（遮蔽的 `Debug` · 门上比对只回布尔 · 取明文只经具名的口）；形状闸在门这一侧。
+pub fn key_from_text(s: &str) -> Option<SecretKey> {
+    let t = s.trim();
+    relay_route_core::key_shape_ok(t).then(|| SecretKey::new(t))
 }
 
 /// 门上的两把钥匙。
 #[derive(Clone, Debug)]
 pub struct Keys {
     /// 全权：`/s/` 与 `/t/` 都过。
-    pub full: Key,
+    pub full: SecretKey,
     /// 只许直通：只过 `/t/`（[`scope_refusal`]）。
-    pub pass: Key,
+    pub pass: SecretKey,
 }
 
 /// 过门的是哪一把。
@@ -152,8 +136,8 @@ pub fn admit(head: &RequestHead, keys: &Keys) -> Verdict {
         return Verdict::BadKey;
     }
     // 两把都比（各自定长时间），不按先比中哪把提前收工。
-    let full = tokens_match(seg, keys.full.expose());
-    let pass = tokens_match(seg, keys.pass.expose());
+    let full = keys.full.matches(seg);
+    let pass = keys.pass.matches(seg);
     match (full, pass) {
         (true, _) => Verdict::Pass(rest.to_string(), Scope::All),
         (false, true) => Verdict::Pass(rest.to_string(), Scope::Passthrough),
@@ -185,23 +169,6 @@ fn port_ok(tail: &str) -> bool {
     tail.strip_prefix(':').is_some_and(|p| {
         !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) && p.parse::<u16>().is_ok()
     })
-}
-
-/// 定长时间的字节比对：**跑完全部**，不提前返回。
-///
-/// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
-///
-/// 中转口的门（[`admit`]）与后端控制口比令牌都用这一份 —— 定长比对只许有一个住址。
-pub fn tokens_match(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() || a.is_empty() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 #[cfg(test)]

@@ -13,13 +13,13 @@ use crate::relay::test_support::{seed_test_home, test_key, TEST_KEY};
 fn the_pass_key_is_derived_from_the_root_and_never_stored() {
     let a = test_key();
     let p1 = pass_of(&a);
-    assert_eq!(p1.expose(), pass_of(&a).expose(), "同一把根钥匙派生出两把");
-    assert!(relay_route_core::key_shape_ok(p1.expose()));
-    assert_ne!(p1.expose(), a.expose(), "派生出来的就是根钥匙本身");
-    let b = Key::from_text(&"b".repeat(64)).unwrap();
+    assert_eq!(plain(&p1), plain(&pass_of(&a)), "同一把根钥匙派生出两把");
+    assert!(relay_route_core::key_shape_ok(plain(&p1)));
+    assert_ne!(plain(&p1), plain(&a), "派生出来的就是根钥匙本身");
+    let b = key_from_text(&"b".repeat(64)).unwrap();
     assert_ne!(
-        pass_of(&b).expose(),
-        p1.expose(),
+        plain(&pass_of(&b)),
+        plain(&p1),
         "换了根钥匙，派生的却没变"
     );
     let home = std::env::temp_dir().join(format!("ccm-pass-derive-{}", std::process::id()));
@@ -28,9 +28,9 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
     let url = "http://127.0.0.1:8788/t/codex/_";
     assert_eq!(
         keyed_with_key_on_disk(&home, url).as_deref(),
-        Some(format!("http://127.0.0.1:8788/{}/t/codex/_", p1.expose()).as_str())
+        Some(format!("http://127.0.0.1:8788/{}/t/codex/_", plain(&p1)).as_str())
     );
-    assert_eq!(pass_key_on_disk(&home).as_deref(), Some(p1.expose()));
+    assert_eq!(pass_key_on_disk(&home).as_deref(), Some(plain(&p1)));
     assert!(
         home.join(relay_route_core::KEY_FILE_REL).is_file(),
         "根钥匙不在盘上"
@@ -67,11 +67,11 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         "铸出来的那一份只给本人"
     );
     let on_disk = std::fs::read_to_string(&p).expect("读回");
-    assert_eq!(on_disk, first.expose(), "盘上就是那一把");
+    assert_eq!(on_disk, plain(&first), "盘上就是那一把");
     assert!(
-        relay_route_core::key_shape_ok(first.expose()),
+        relay_route_core::key_shape_ok(plain(&first)),
         "形状：{}",
-        first.expose().len()
+        first.len()
     );
     #[cfg(unix)]
     {
@@ -81,8 +81,8 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     }
     let (again, _) = ensure_key(&own).expect("第二次");
     assert_eq!(
-        again.expose(),
-        first.expose(),
+        plain(&again),
+        plain(&first),
         "重起中转必须读回同一把（端口固定 ⇒ 活会话靠它）"
     );
 
@@ -90,23 +90,23 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         "",
         "abc",
         &"z".repeat(64),
-        &first.expose().to_ascii_uppercase(),
+        &plain(&first).to_ascii_uppercase(),
     ] {
         std::fs::write(&p, junk).expect("写坏文件");
         let (fresh, _) = ensure_key(&own).expect("坏文件 ⇒ 换一把");
         assert!(
-            relay_route_core::key_shape_ok(fresh.expose()),
+            relay_route_core::key_shape_ok(plain(&fresh)),
             "换出来的形状要对"
         );
-        assert_ne!(fresh.expose(), junk, "坏的那一份不许被认下");
-        assert_eq!(std::fs::read_to_string(&p).expect("读回"), fresh.expose());
+        assert_ne!(plain(&fresh), junk, "坏的那一份不许被认下");
+        assert_eq!(std::fs::read_to_string(&p).expect("读回"), plain(&fresh));
     }
     // 两次铸出来的不是同一把（随机数真在转）。
     std::fs::write(&p, "").expect("清空");
     let (a, _) = ensure_key(&own).expect("a");
     std::fs::write(&p, "").expect("清空");
     let (b, _) = ensure_key(&own).expect("b");
-    assert_ne!(a.expose(), b.expose(), "两次铸出同一把 —— 随机源是死的");
+    assert!(!a.same_secret(&b), "两次铸出同一把 —— 随机源是死的");
     // 临时文件都挪走了（本进程那一个临时名不在盘上）。
     let tmp = p
         .parent()
@@ -129,7 +129,7 @@ fn a_too_wide_key_file_is_reported_not_refused_nor_fixed() {
     let p = home.join(".cc-monitor").join("relay-key");
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
     let (again, verdict) = ensure_key(&own).expect("宽了也照样交钥匙");
-    assert_eq!(again.expose(), first.expose(), "宽了不换钥匙");
+    assert!(again.same_secret(&first), "宽了不换钥匙");
     let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
     assert_eq!(mode, 0o644, "不自己改权限");
     let creds_core::perm::Verdict::TooWide { how, fix } = &verdict else {
@@ -177,7 +177,7 @@ fn the_minted_key_length_matches_the_shared_key_shape() {
     );
 }
 
-/// 要求：「读 / 铸钥匙文件那一半只由宿主调（`relay/listen.rs` 绑上口之后 `ensure_key`）…；中转只收宿主交进来的 `Key`」。
+/// 要求：读 / 铸钥匙文件那一半只由宿主调（`relay/listen.rs` 绑上口之后 `ensure_key`）；中转只收宿主交进来的 `Keys`。
 ///
 /// 中转那一份是另一个 crate，够不着本模块（编译器挡着）。后端这一侧：`key` 是 `relay` 的**私有**子模块 ⇒
 /// 只有 `relay/` 那几份够得着它；那几份的生产段里（`key.rs` 自己除外）读盘三件的 `(文件, 名字) → 次数` == 宿主那两处（两向）；
@@ -233,7 +233,7 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
     let want = BTreeMap::from([(("src/backend/relay/listen.rs".to_string(), "ensure_key"), 1)]);
     assert_eq!(
         got, want,
-        "钥匙读盘那一半（读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Key`"
+        "钥匙读盘那一半（读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Keys`"
     );
     let mod_rs = std::fs::read_to_string(guard_core::addr::relay_host_root().join("mod.rs"))
         .expect("读 relay/mod.rs");

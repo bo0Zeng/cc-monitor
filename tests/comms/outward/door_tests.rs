@@ -13,19 +13,12 @@ const TEST_KEY: &str = "7e577e577e577e577e577e577e577e577e577e577e577e577e577e57
 /// 判据用的那把只许直通的钥匙（门只比对、不派生；派生在后端 `relay/key.rs::pass_of`）。
 const TEST_PASS_KEY: &str = "7a557a557a557a557a557a557a557a557a557a557a557a557a557a557a557a55";
 
-impl Key {
-    /// 判据用：[`TEST_KEY`] 那一把。
-    fn for_tests() -> Key {
-        Key(TEST_KEY.to_string())
-    }
-}
-
 impl Keys {
-    /// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`]。
+    /// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`]（经门这一侧的形状闸）。
     fn for_tests() -> Keys {
         Keys {
-            full: Key::for_tests(),
-            pass: Key(TEST_PASS_KEY.to_string()),
+            full: key_from_text(TEST_KEY).expect("夹具钥匙过得了形状闸"),
+            pass: key_from_text(TEST_PASS_KEY).expect("夹具钥匙过得了形状闸"),
         }
     }
 }
@@ -211,10 +204,20 @@ fn the_three_refusals_are_distinct_faces() {
     assert_eq!(Verdict::Pass("/".into(), Scope::All).refusal(), None);
 }
 
-/// `Key` 不许被 `{:?}` 打出值（谁把它塞进日志，打出来的也只有 `Key(…)`）。
+/// 门上那两把不许被 `{:?}` 打出值（谁把 `Keys` 塞进日志，打出来的也只有遮蔽形）。
 #[test]
-fn a_key_never_prints_its_value() {
-    let shown = format!("{:?}", Key::for_tests());
-    assert_eq!(shown, "Key(…)");
-    assert!(!shown.contains(TEST_KEY));
+fn the_keys_never_print_their_values() {
+    let shown = format!("{:?}", Keys::for_tests());
+    assert!(shown.contains("<已遮蔽>"), "{shown}");
+    assert!(!shown.contains(TEST_KEY) && !shown.contains(TEST_PASS_KEY));
+}
+
+/// 形状闸在门这一侧：空 / 短 / 大写 / 非十六进制都不认；首尾空白剥掉之后认。
+#[test]
+fn the_shape_gate_only_admits_lowercase_hex_of_the_right_length() {
+    for bad in ["", "abc", &TEST_KEY.to_ascii_uppercase(), &"z".repeat(64)] {
+        assert!(key_from_text(bad).is_none(), "{bad:?} 不许认");
+    }
+    let k = key_from_text(&format!(" {TEST_KEY}\n")).expect("首尾空白剥掉之后认");
+    assert!(k.matches(TEST_KEY));
 }

@@ -252,8 +252,8 @@ fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         Arc::new(ToStub(base)),
         door::Keys {
-            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
-            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+            full: door::key_from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::key_from_text(POOL_PASS_KEY).expect("直通钥匙"),
         },
         TeeSink::to_port(Arc::new(NoTap)),
         open,
@@ -438,8 +438,8 @@ fn spawn_held_relay(
             release: std::sync::Mutex::new(release_rx),
         }),
         door::Keys {
-            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
-            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+            full: door::key_from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::key_from_text(POOL_PASS_KEY).expect("直通钥匙"),
         },
         TeeSink::to_port(Arc::new(NoTap)),
         open,
@@ -576,8 +576,8 @@ fn a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it() {
             release: std::sync::Mutex::new(mpsc::channel().1),
         }),
         door::Keys {
-            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
-            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+            full: door::key_from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::key_from_text(POOL_PASS_KEY).expect("直通钥匙"),
         },
         TeeSink::to_port(Arc::new(NoTap)),
         Arc::new(|_from, _h, _p, _d| Err(std::io::Error::other("不发上游"))),
