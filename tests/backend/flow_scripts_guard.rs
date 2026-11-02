@@ -1548,6 +1548,25 @@ mod tests {
         .unwrap_or_else(|e| panic!("快检按的槽位默认认不出了：{e}"));
     }
 
+    /// 快检后端那一段只编测试库：带 `--bins` / `--benches` 会让后端主库再按非测试形编一遍、多链 bin 与 bench 两份产物。
+    /// bin 与 bench 编不编得过由 clippy `--all-targets` 守，跑 bench 冒烟档的是门禁与 CI 的 `cargo test --workspace`；
+    /// `--workspace` 不能丢：拆出的几个包各自的库测试靠它跑到。
+    #[test]
+    fn quick_check_backend_segment_builds_only_the_test_libraries() {
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        let body = qc
+            .split_once("backend_step() {")
+            .and_then(|(_, rest)| rest.split_once("\n}\n"))
+            .map(|(b, _)| b)
+            .expect("找不到 backend_step —— 本条要跟着改");
+        // 整行钉住：目标只 `--workspace --lib`，不带 `--bins` · `--benches` · `--all-targets` · `--tests`。
+        guard_core::pin_line(
+            body,
+            r#"out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?"#,
+        )
+        .unwrap_or_else(|e| panic!("快检后端那一段不是只编测试库的那一行：{e}"));
+    }
+
     /// 手机读的仓内路径挑格表漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，改了每一条都得挑上 `mobile`
     /// （`plan.py --cover mobile`；目录或带模板的那几条拿目录下一份新文件当探针）。Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
     /// 手机嵌的 Rust 核心用的 NDK 只钉在一处（`src/mobile/gradle.properties` 的 `ccm.ndkVersion`，Gradle 与门禁 `androidbuild` 读它）；

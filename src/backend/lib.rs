@@ -567,7 +567,7 @@ pub const STREAM_FLAGS: &[&str] = &[wire::cli_words::STREAM_FLAG_EXPLICIT];
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub use common::time::Tz;
-/// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`main.rs::writer_task`）。
+/// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`stream/writer.rs::writer_task`）。
 pub use wire::REPLY_PAGE_BYTES;
 
 /// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
@@ -611,6 +611,12 @@ mod one_clock_guard;
 #[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;
+
+// `main.rs` 起来那一下（读它的正文）：机器表的读法在分流之前装上 · 常驻起来那一段不调换形。
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+#[path = "../../tests/backend/main_startup_tests.rs"]
+mod startup_tests;
 
 // ── 第四面：本机到底缺什么（tmux 可用性） ───────────
 // 它们不是「分派」，是 hello 帧的**内容**。`main_fourth_face_tests` 用 `super::` 引它们。

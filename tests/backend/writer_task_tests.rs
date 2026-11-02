@@ -1,10 +1,11 @@
-//! `main.rs::writer_task` 的第三条来源（tap）排在最后：**tap 灌满时，出方向的内容帧一条不少、顺序不变**。
+//! `stream/writer.rs::writer_task` 的第三条来源（tap）排在最后：**tap 灌满时，出方向的内容帧一条不少、顺序不变**。
 //!
 //! 住址：设计住仓外；要求（「SSE 保快，jsonl 保对」——
 //! SSE 那一路断 / 丢 / 挤都不许碰 jsonl 那条对的路）· 抄流跟不上绝不回推主路。
 
 use super::*;
-use cc_monitor_backend::observe::watcher::{frame_channel, CHANNEL_MAX_BYTES};
+use crate::observe::watcher::{frame_channel, CHANNEL_MAX_BYTES};
+use crate::wire;
 
 /// 判据那一侧的 tap 来源：一条手喂的帧通道（生产是 hub 那条，见 `tap::TapRx`）。
 struct Fed(tokio::sync::mpsc::Receiver<Frame>);
@@ -28,12 +29,12 @@ fn line(seq: u64) -> Frame {
 }
 
 fn tapf(n: u64) -> Frame {
-    Frame::LiveCard(cc_monitor_backend::wire::LiveCard {
+    Frame::LiveCard(crate::wire::LiveCard {
         sid: "sid-w".into(),
         run: None,
         card: 0,
         n,
-        op: cc_monitor_backend::wire::LiveOp::Awaiting,
+        op: crate::wire::LiveOp::Awaiting,
     })
 }
 
@@ -127,7 +128,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
 
 /// 一页分页应答（`data` 里垫到一页那么大）。
 fn page(id: &str) -> Frame {
-    let pad = "p".repeat(cc_monitor_backend::REPLY_PAGE_BYTES);
+    let pad = "p".repeat(crate::REPLY_PAGE_BYTES);
     Frame::Reply(crate::wire::Reply {
         id: id.into(),
         ok: true,
