@@ -49,7 +49,7 @@ export function frontView(r: FrontResult, machine: string): FrontView | null {
     case "said":
       return { title: r.title, body: r.body, hint: r.hint ?? null, tone: shade(r.tone), acts: r.acts };
     case "too-old":
-      return v(copyText("machineState.problem.needsUpdate", { machine }), copyText("front.body.update"), "amber", [{ kind: "update" }]);
+      return v(copyText("front.title.update", { machine }), copyText("front.body.update"), "amber", [{ kind: "update" }]);
     case "timeout":
       return v(copyText("front.title.failed"), copyText("front.body.timeout", { machine }), "red", [{ kind: "retry" }]);
     case "offline":
