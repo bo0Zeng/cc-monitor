@@ -115,7 +115,8 @@ mod sealed {
     ///
     /// # ⚠ 它**认不出**什么（诚实边界 —— 别把这条判据读成「明文不可能泄漏」）
     ///
-    /// 1. **别处再定义第二个装 key 的类型**（本判据只扫本文件的定义面）；
+    /// 1. **别处再定义第二个装 key 的类型**（本判据只扫本文件的定义面；那一形由 guard-core 的
+    ///    `creds_store_exits::only_creds_core_defines_a_type_that_wraps_a_secret_string` 扫各棵源码树兜）；
     /// 2. **把明文 `clone()` 进一个普通 `String` 再打印** ——
     ///    一旦出了 [`SecretKey::expose_for_auth_header`] 那道门，本类型就管不着了。
     ///
@@ -124,7 +125,8 @@ mod sealed {
     /// 但那一处拿到的东西照样能被 `{:?}` 印出来。
     ///
     /// 能 `clone()`：复制出来的还是一把 `SecretKey`（照样遮蔽、照样只经那一道门取明文）。
-    /// 用它的：续成了而写回在等那一家放写锁时，新令牌留在内存里、每一发各交一份（`accounts/oauth/writeback.rs`）。
+    /// 用它的：续成了而写回在等那一家放写锁时，新令牌留在内存里、每一发各交一份（`accounts/oauth/writeback.rs`）；
+    /// 中转口的钥匙在后端宿主那一侧（`relay/key.rs`；门上只拿它做成的比对口）。
     #[derive(Clone)]
     pub struct SecretKey(String);
 
@@ -152,6 +154,11 @@ mod sealed {
         /// 两份秘密是不是同一串（只回一个布尔；续期写回前比「盘上的还是不是发出去那一份」用）。
         pub fn same_secret(&self, other: &SecretKey) -> bool {
             self.0 == other.0
+        }
+
+        /// 递来的一串是不是这一把（只回一个布尔）：定长时间比对（[`super::tokens_match`]），中转口的门比钥匙用。
+        pub fn matches(&self, candidate: &str) -> bool {
+            super::tokens_match(candidate.as_bytes(), self.0.as_bytes())
         }
 
         /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**：`••••••••` ＋ 末四位（遮掉的那一段定长，长度不漏）。
@@ -196,7 +203,29 @@ mod sealed {
         pub(crate) fn expose_for_token_request(&self) -> &str {
             &self.0
         }
+
+        /// **明文的第四个出口：中转口的钥匙在后端宿主那一侧**（`src/backend/relay/key.rs` 一处）。
+        ///
+        /// 那把钥匙要派生只许直通那一把（HMAC 的输入）· 落盘 · 插进给 agent 的地址；这几样都在宿主的钥匙模块里，
+        /// 经那里一个函数取一次。门上比对不取明文（[`SecretKey::matches`]）。
+        pub fn expose_for_relay_key(&self) -> &str {
+            &self.0
+        }
     }
+}
+
+/// 定长时间的字节比对：**跑完全部**，不提前返回。长度不同直接判不等（长度本来就藏不住）；空串不等于任何串。
+///
+/// 中转口的门（经 [`SecretKey::matches`]）比钥匙用这一份 —— 定长比对只许有一个住址。
+fn tokens_match(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() || a.is_empty() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// 类型本身是公开的；**只有它的字段被关在 `sealed` 里**。
