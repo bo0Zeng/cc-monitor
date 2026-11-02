@@ -2264,10 +2264,7 @@ fn land_backup(
             &[("path", &rel.display().to_string())],
         ))
     })?;
-    let ms = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
+    let ms = u128::from(crate::common::time::now_ms());
     let seq = SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let bak_name = crate::platform::fs::side_name::backup(name, ms, seq);
     let bak_rel = rel.with_file_name(bak_name);

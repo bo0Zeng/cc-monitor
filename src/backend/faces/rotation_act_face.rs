@@ -136,7 +136,7 @@ impl crate::wire::typed::Handle for RotationTemp {
         async move {
             let (_files, own) = (needs.0, &needs.1);
 
-            temp_with(&Ctx::here(), own, &req, crate::accounts::quota::now_unix())
+            temp_with(&Ctx::here(), own, &req, crate::common::time::now_secs())
         }
     }
 }
@@ -258,7 +258,7 @@ impl crate::wire::typed::Handle for RotationUseNow {
         async move {
             let (_files, own) = (needs.0, &needs.1);
 
-            use_now_with(&Ctx::here(), own, &req, crate::accounts::quota::now_unix())
+            use_now_with(&Ctx::here(), own, &req, crate::common::time::now_secs())
         }
     }
 }

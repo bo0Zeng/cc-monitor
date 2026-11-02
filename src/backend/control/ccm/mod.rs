@@ -816,7 +816,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                     &nr.sid,
                     route,
                     None,
-                    crate::accounts::quota::now_unix(),
+                    crate::common::time::now_secs(),
                 ) {
                     return die(&copy_text(
                         "beCcm.execute.noRotationUnwritten",
@@ -1229,12 +1229,6 @@ impl Note<'_> {
     };
 }
 
-fn unix_now() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// exec 之前给这条会话留它的上游描述（[`egress::Taken`]，按来处存；中转开上游那一口 · 上游选择按来处读）。
 /// 在 exec 之前写 ⇒ 第一发请求到中转时它已经在盘上。pid 是 ccm 自己的：Unix 上 exec 不换 pid，别处 ccm 等着子进程退。
 /// 写不成：带用户自己的上游地址那一份 ⇒ `Err`（不起：中转找不到描述，agent 就带着用户网关的鉴权发去默认上游）；
@@ -1245,7 +1239,7 @@ fn leave_upstream(t: &egress::Taken, own: &crate::platform::fs::Own) -> Result<(
         egress: t.egress.clone(),
         base: t.base.clone(),
         pid: std::process::id(),
-        at: unix_now(),
+        at: crate::common::time::now_secs(),
     };
     match leave(own, &t.origin, &desc, &crate::platform::proc::pid_alive) {
         Ok(()) => Ok(()),
@@ -1376,7 +1370,7 @@ fn exec_or_spawn(
     own: &crate::platform::fs::Own,
 ) -> i32 {
     let note = |pid: u32| {
-        let now = unix_now();
+        let now = crate::common::time::now_secs();
         if leave.account.is_none()
             && !leave.plugin
             && leave.tab.is_none()
