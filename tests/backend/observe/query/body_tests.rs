@@ -609,7 +609,7 @@ fn back_file(name: &str, body: &str, marker: &str) -> (std::path::PathBuf, u64) 
     (p, at)
 }
 
-/// 同一页里调用与结果隔 90 秒 ⇒ 结果那一格带写好的用时，带耗时那一形清掉；三种成品一个样。
+/// 同一页里调用与结果隔 90 秒 ⇒ 结果那一格带写好的用时（线上只有 `text` 那一句）；三种成品一个样。
 #[test]
 fn a_result_on_the_same_page_as_its_call_carries_the_step_duration() {
     let page = format!("{}\n{}\n", call_line("c1", T0), result_line("c1", T90));
@@ -624,7 +624,7 @@ fn a_result_on_the_same_page_as_its_call_carries_the_step_duration() {
     );
     let c = result_cell(&lines, "c1");
     assert_eq!(c["text"], want.as_str(), "{c}");
-    assert!(c.get("timed").is_none(), "{c}");
+    assert!(c.get("timed").is_none(), "线上不带耗时那一形：{c}");
     let rows = rows_v(&mut rd(&face), 0, page.as_bytes());
     assert_eq!(result_cell(&rows, "c1")["text"], want.as_str());
     let runs = run_rows(&mut rd(&face), 0, page.as_bytes());
@@ -646,7 +646,6 @@ fn a_call_within_one_page_before_the_page_start_still_times_its_result() {
     let (lines, _) = record_lines_of_page(&mut rd(&face).back(&file, 4096), &file, 0, at, page);
     let c = result_cell(&lines, "c2");
     assert_eq!(c["text"], copy_core::short_duration(90_000).as_str(), "{c}");
-    assert!(c.get("timed").is_none(), "{c}");
     let rows = rows_v(&mut rd(&face).back(&file, 4096), at, page);
     assert_eq!(
         result_cell(&rows, "c2")["text"],
@@ -655,7 +654,7 @@ fn a_call_within_one_page_before_the_page_start_still_times_its_result() {
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
 }
 
-/// 调用在一页额度以外 ⇒ 再往前不读：不写用时，带耗时那一形照留。
+/// 调用在一页额度以外 ⇒ 再往前不读：不写用时，照没有用时的那一形（线上也没有带耗时那一形）。
 #[test]
 fn a_call_beyond_one_page_before_the_page_start_leaves_the_result_untimed() {
     let res = result_line("c3", T90);
@@ -669,6 +668,6 @@ fn a_call_beyond_one_page_before_the_page_start_leaves_the_result_untimed() {
     let (lines, _) = record_lines_of_page(&mut rd(&face).back(&file, budget), &file, 0, at, page);
     let c = result_cell(&lines, "c3");
     assert_eq!(c["text"], "", "{c}");
-    assert!(c.get("timed").is_some(), "{c}");
+    assert!(c.get("timed").is_none(), "{c}");
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
 }
