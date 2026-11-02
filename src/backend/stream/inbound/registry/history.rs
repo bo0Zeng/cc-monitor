@@ -42,7 +42,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 🔴 **处理器住顶层 `read_face`，与 `files/` 同一个理由**：入方向不许出现 `observe::`
     //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
     //   `read_face` 只做换壳 —— 查询本体住 `observe/`，`out` 是内存。
-    //   每条有一个派生的 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
+    //   每条有一个派生的 CLI 面（`--history-read` …），子命令闸门（`stream::cli::is_subcommand`）从本表派生认它。
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
