@@ -7,7 +7,7 @@
 //! 写流 · 切流 · 数退避在这里写不出来：手里只有通道里的行与 `InboundClient`（没有写方法），退避是 `resident_client::feed` 私有的。
 //!
 //! 本模块不拨 SSH，也不开任何到远端的字节流：只读本机后端那一条
-//! （它不登记为通信层成员，理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
+//! （它不是通信层成员：它是业务家，公开面上是会话 / tmux 那一族，握手带期限值）。
 
 mod batch;
 mod config;
