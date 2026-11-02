@@ -5,7 +5,9 @@ import katex from "katex";
 import { renderMessage } from "../../../src/frontend/ui/cards";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { enhanceCard, renderMarkdown } from "../../../src/frontend/ui/render";
+import { enhanceCard, mountWhole, renderMarkdown } from "../../../src/frontend/ui/render";
+import type { Doc } from "../../../src/frontend/ui/generated/Doc";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 describe("renderMarkdown 的公式（真 katex，jsdom）", () => {
   const hasKatex = (s: string): boolean => s.includes("katex");
@@ -19,6 +21,46 @@ describe("renderMarkdown 的公式（真 katex，jsdom）", () => {
     const html = renderMarkdown("```\n$$x$$\n```");
     expect(hasKatex(html)).toBe(false);
     expect(html).toContain("$$x$$");
+  });
+});
+
+describe("mountWhole：后端交的整棵树（来话 · 计划卡）照正文卡同一套排", () => {
+  // 树取自 md-core 金样：`\[..\]` · `\(..\)` · 段落紧挨着的 `$$` 三种写法，后端都认成公式。
+  const golden = new Map(
+    (JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/md-core.golden.json"), "utf8")) as { name: string; doc: Doc }[]).map((c) => [c.name, c.doc]),
+  );
+  const doc = (name: string): Doc => {
+    const d = golden.get(name);
+    if (!d) throw new Error(`金样里没有「${name}」`);
+    return d;
+  };
+  it("三种公式写法：急路当场排成 KaTeX，与正文卡排出来的同一份", () => {
+    for (const name of ["行内公式两种写法", "\\[ 块公式", "段落紧挨着的 $$ 块"]) {
+      const el = mountWhole(doc(name));
+      expect(el.querySelectorAll(".katex").length, name).toBeGreaterThan(0);
+      expect(el.querySelector("[data-math-pending]"), name).toBeNull();
+      const prose = renderMessage(
+        { agent: "claude", t: "reply", id: "r", at: "2026-01-01T00:00:00.000Z", blocks: [{ type: "prose", doc: doc(name), bytes: 1 }], autoReply: false, draw: "card", human: false } as never,
+        { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() } as never,
+      );
+      if (prose.kind !== "card") throw new Error(prose.kind);
+      enhanceCard(prose.element);
+      expect(el.outerHTML, name).toBe(prose.element.querySelector(".block-text")?.firstElementChild?.outerHTML);
+    }
+  });
+  it("惰路留占位，enhanceCard 补成同一份", () => {
+    const eager = mountWhole(doc("\\[ 块公式"));
+    const lazy = mountWhole(doc("\\[ 块公式"), true);
+    expect(lazy.querySelector("[data-math-pending]")).not.toBeNull();
+    const host = document.createElement("div");
+    host.append(lazy);
+    enhanceCard(host);
+    expect(lazy.innerHTML).toBe(eager.innerHTML);
+  });
+  it("多段的长树一次排完", () => {
+    const blocks = Array.from({ length: 3 }, (_, i) => ({ t: "p" as const, k: [`第${i}段`] }));
+    const el = mountWhole({ blocks, segs: [1, 2] });
+    expect(el.textContent).toBe("第0段第1段第2段");
   });
 });
 

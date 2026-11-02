@@ -8,10 +8,11 @@
  *
  * 题目 / 选项 / 计划正文是核心从入参里读好的一格（`ToolStep.ask`，各家的格式知识在 `agents/<名>/steps.rs`）：
  * 出口省掉 `tool_use.input` 之后照样建得出来。DOM 惯例同 diff.ts：纯 createElement + textContent，
- * 唯计划正文是 markdown → renderMarkdown（内建 DOMPurify）。没有那一格 throw，由调用方（renderBlock）回退通用折叠卡。
+ * 计划正文是后端解析好的块树，照树排（`md-view`）。没有那一格 throw，由调用方（renderBlock）回退通用折叠卡。
  */
-import { renderMarkdown } from "../render";
+import { mountWhole } from "../render";
 import { copyText } from "../copy-table";
+import type { Doc } from "../generated/Doc";
 import type { StepResult } from "../generated/StepResult";
 import type { StepAsk } from "../generated/StepAsk";
 import type { PlanTitle } from "../generated/PlanTitle";
@@ -24,7 +25,7 @@ import type { AskQuestion } from "../generated/AskQuestion";
  */
 export function buildInteractiveCard(ask: StepAsk | undefined, opts: { lazy?: boolean }): HTMLElement {
   if (ask?.kind === "questions") return buildAskCard(ask.questions);
-  if (ask?.kind === "plan") return buildPlanCard(ask.text, ask.title, opts);
+  if (ask?.kind === "plan") return buildPlanCard(ask.doc, ask.title, opts);
   throw new Error("interactive card: no ask cell");
 }
 
@@ -87,7 +88,7 @@ function buildAskCard(questions: AskQuestion[]): HTMLElement {
 /** 计划卡标题三态（核心写好的，`PlanTitle`）：建卡时记下，答了之后按结果挑一句。 */
 const planTitles = new WeakMap<HTMLElement, PlanTitle>();
 
-function buildPlanCard(plan: string, titles: PlanTitle, opts: { lazy?: boolean }): HTMLElement {
+function buildPlanCard(plan: Doc, titles: PlanTitle, opts: { lazy?: boolean }): HTMLElement {
   const root = document.createElement("div");
   root.className = "block-plan";
 
@@ -99,7 +100,7 @@ function buildPlanCard(plan: string, titles: PlanTitle, opts: { lazy?: boolean }
 
   const body = document.createElement("div");
   body.className = "block-plan-body block-body-md";
-  body.innerHTML = renderMarkdown(plan, { lazy: opts.lazy });
+  body.append(mountWhole(plan, opts.lazy));
   root.appendChild(body);
 
   const wrap = document.createElement("div");

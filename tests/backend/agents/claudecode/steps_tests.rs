@@ -423,7 +423,8 @@ fn questions_and_plans_come_out_as_their_own_cell() {
     assert_eq!(
         p.ask,
         Some(crate::agents::StepAsk::Plan {
-            text: "## 计划\n1. 先做甲".into(),
+            // 计划正文后端解析一次（与助手正文同一个 `md_core::parse`），原文不上线。
+            doc: md_core::parse("## 计划\n1. 先做甲"),
             title: crate::agents::PlanTitle::written(),
         })
     );

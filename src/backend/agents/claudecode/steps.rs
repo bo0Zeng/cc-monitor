@@ -353,7 +353,7 @@ pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
         PLAN_TOOL => text(input, "plan")
             .filter(|p| !p.trim().is_empty())
             .map(|text| StepAsk::Plan {
-                text,
+                doc: md_core::parse(&text),
                 title: crate::agents::PlanTitle::written(),
             }),
         _ => None,

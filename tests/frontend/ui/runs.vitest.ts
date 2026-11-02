@@ -273,7 +273,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onSessionRuns(table([run("w6", "done", "扫目录", "t1")], []));
     const handback = (seq: number, from: string) =>
       userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
-        who: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
+        who: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, doc: { blocks: [{ t: "p", k: ["报告正文"] }], segs: [] } }, text: "报告正文" },
       }) as never;
     tm.onLine(handback(1, "w6"));
     tm.onLine(handback(2, "w9"));
@@ -287,7 +287,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.switchTo(SID);
     const rec = (seq: number, speaker: Record<string, unknown>) =>
       userLine(seq, `u${seq}`, "x", { who: { speaker, text: "x" } }) as never;
-    tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, body: "报告正文" }));
+    tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, doc: { blocks: [{ t: "p", k: ["报告正文"] }], segs: [] } }));
     // 那一行是后端写好的（`row`），界面照抄。
     tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", end: "done", summary: "扫目录", row: "后台任务 扫目录 完成 · 14:02" }));
     tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", end: "done", summary: "别的", row: "后台任务 别的 完成 · 14:03" }));

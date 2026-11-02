@@ -19,6 +19,63 @@ fn the_common_fields_are_camel_case_and_the_kind_is_t() {
     );
 }
 
+/// 来话（agent 交回 · 另一个会话 · 主会话后来的话）的正文在造记录那一下解成树（与助手正文同一个 `md_core::parse`）；
+/// 线上只交树，`body` 原文不上线；没有正文 ⇒ 两格都缺。
+#[test]
+fn incoming_message_bodies_go_out_as_trees() {
+    use cmd_wire::record::{Speaker, UserText};
+    let md = "交回：\\(a+b\\)\n\n- 一\n- 二";
+    let said = |speaker: Speaker| {
+        record(
+            "a".into(),
+            "i".into(),
+            None,
+            Body::Said {
+                who: UserText {
+                    speaker,
+                    text: String::new(),
+                    pasted: Vec::new(),
+                },
+                blocks: Vec::new(),
+                results: Default::default(),
+                cwd: None,
+                attachments: Vec::new(),
+            },
+        )
+    };
+    let speakers = [
+        Speaker::AgentMessage {
+            from: Some("a1".into()),
+            name: None,
+            handback: true,
+            body: Some(md.into()),
+            doc: None,
+        },
+        Speaker::PeerSession {
+            from: None,
+            body: Some(md.into()),
+            doc: None,
+        },
+        Speaker::Coordinator {
+            body: Some(md.into()),
+            doc: None,
+        },
+    ];
+    for sp in speakers {
+        let r = said(sp);
+        let wire = serde_json::to_value(&r).unwrap();
+        let s = &wire["who"]["speaker"];
+        assert_eq!(s["doc"], serde_json::to_value(md_core::parse(md)).unwrap(), "{s}");
+        assert!(s.get("body").is_none(), "原文不上线：{s}");
+    }
+    let none = said(Speaker::Coordinator {
+        body: None,
+        doc: None,
+    });
+    let s = &serde_json::to_value(&none).unwrap()["who"]["speaker"];
+    assert!(s.get("doc").is_none() && s.get("body").is_none(), "{s}");
+}
+
 /// 画成哪一形 · 人说没说：逐种来源与回复的样子（判定只在 [`record`]，两家适配层造记录都经它）。
 #[test]
 fn draw_and_human_are_worked_out_once_from_the_body() {

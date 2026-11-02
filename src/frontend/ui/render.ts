@@ -7,6 +7,8 @@ import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
 import { copyText } from "./copy-table";
 import { fillImage } from "./cards/attach-strip";
+import { mountDoc } from "./md-view";
+import type { Doc } from "./generated/Doc";
 
 /**
  * 两种渲染：
@@ -203,6 +205,16 @@ export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): st
   const m = opts.lazy ? LAZY : EAGER;
   const raw = m.parse(md, { async: false }) as string;
   return DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
+}
+
+/**
+ * 一整棵树排出来（短正文：来话 · 计划卡）：各段一次排完。`lazy` ⇒ 公式与图留着占位，卡进视口时 `enhanceCard` 补；否则当场补。
+ */
+export function mountWhole(doc: Doc, lazy = false): HTMLElement {
+  const view = mountDoc(doc);
+  while (view.buildNext());
+  if (!lazy) enhancePending(view.root);
+  return view.root;
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */

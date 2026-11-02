@@ -258,6 +258,7 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         Some("coordinator") => {
             return UserText::of(Speaker::Coordinator {
                 body: origin_body(f.origin).or_else(|| coordinator_body(&raw)),
+                doc: None,
             })
         }
         Some("auto-continuation") => {
@@ -347,6 +348,7 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
         return Speaker::PeerSession {
             from: field("from").or_else(|| attr(t, "from")),
             body: origin_body(origin).or_else(|| frame_body(t, "cross-session-message")),
+            doc: None,
         };
     }
     Speaker::AgentMessage {
@@ -357,6 +359,7 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
             .and_then(Value::as_bool)
             == Some(true),
         body: origin_body(origin).or_else(|| frame_body(t, "agent-message")),
+        doc: None,
     }
 }
 
@@ -374,17 +377,20 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
             name: None,
             handback: false,
             body: frame_body(body, "agent-message"),
+            doc: None,
         }));
     }
     if framed_by(body, "cross-session-message") {
         return Some(UserText::of(Speaker::PeerSession {
             from: attr(body, "from"),
             body: frame_body(body, "cross-session-message"),
+            doc: None,
         }));
     }
     if t.lines().next().map(str::trim_end) == Some(COORDINATOR_LEAD) {
         return Some(UserText::of(Speaker::Coordinator {
             body: coordinator_body(t),
+            doc: None,
         }));
     }
     if t.starts_with(LIMIT_RESET_LEAD) {

@@ -560,6 +560,26 @@ fn over_cap_evicts_least_recently_used() {
 }
 
 #[test]
+fn tool_result_strips_line_number_prefixes_first() {
+    let src = "1\t# 标题\n2\t\n3\t- 一\n4\t- 二";
+    assert_eq!(tool_result(src), parse("# 标题\n\n- 一\n- 二"));
+    let grep = "src/a.rs:10:# x\nsrc/a.rs:11:y\nsrc/b.rs:3:z";
+    assert_eq!(tool_result(grep), parse("# x\ny\nz"));
+    let colon = "  7:**粗**\n  8:平\n  9:平";
+    assert_eq!(tool_result(colon), parse("**粗**\n平\n平"));
+}
+
+#[test]
+fn tool_result_keeps_text_without_enough_prefixes() {
+    // 带前缀的不到八成 ⇒ 照原文。
+    let mixed = "1\t# x\n正文\n更多\n再多\n5\ty";
+    assert_eq!(tool_result(mixed), parse(mixed));
+    // 不到三行非空 ⇒ 不判。
+    let short = "1\t# x\n2\ty";
+    assert_eq!(tool_result(short), parse(short));
+}
+
+#[test]
 fn segment_computes_only_its_own_blocks() {
     let doc = multi_seg_doc();
     let last = doc.segs.len();

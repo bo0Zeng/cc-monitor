@@ -23,6 +23,44 @@ pub use md::*;
 pub use parse::parse;
 pub use segment::{seg_blocks, segment, SEG_BYTES};
 
+/// 工具结果按 Markdown 读：Read / Grep 那种每行带行号前缀（`<n>\t…` · `<n>:…` · `<路径>:<n>:…`）的，
+/// 非空行至少三行、八成以上带前缀 ⇒ 先剥掉前缀再解析（不剥，行首的 `#` · `-` 认不成结构）；否则照原文解析。
+pub fn tool_result(text: &str) -> Doc {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let filled: Vec<&&str> = lines.iter().filter(|l| !l.trim().is_empty()).collect();
+    let prefixed = filled.iter().filter(|l| unprefixed(l).is_some()).count();
+    if filled.len() < 3 || prefixed * 5 < filled.len() * 4 {
+        return parse(text);
+    }
+    let stripped: Vec<&str> = lines
+        .iter()
+        .map(|l| match l.trim().is_empty() {
+            true => *l,
+            false => unprefixed(l).unwrap_or(l),
+        })
+        .collect();
+    parse(&stripped.join("\n"))
+}
+
+/// 一行去掉行号前缀之后的那截：`<路径>:<n>:`（路径里带 `/` 或 `\`）先认，再认 `空白* <n> (\t|:)`；都不是 ⇒ 没有。
+fn unprefixed(line: &str) -> Option<&str> {
+    let digits_then = |s: &str, ends: &[char]| -> Option<usize> {
+        let n = s.bytes().take_while(u8::is_ascii_digit).count();
+        let c = s[n..].chars().next()?;
+        (n > 0 && ends.contains(&c)).then_some(n + 1)
+    };
+    if let Some(colon) = line.find(':') {
+        let path = &line[..colon];
+        if !path.is_empty() && !path.contains(char::is_whitespace) && path.contains(['/', '\\']) {
+            if let Some(k) = digits_then(&line[colon + 1..], &[':']) {
+                return Some(&line[colon + 1 + k..]);
+            }
+        }
+    }
+    let rest = line.trim_start();
+    digits_then(rest, &['\t', ':']).map(|k| &rest[k..])
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/md-core/md_core_tests.rs"]
 mod tests;

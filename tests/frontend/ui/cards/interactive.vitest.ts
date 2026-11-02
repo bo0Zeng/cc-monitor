@@ -102,8 +102,18 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
     expect(el.querySelector(".block-ask")?.textContent).toContain("改哪一处");
   });
 
+  // 计划正文是后端解析好的树（`md_core::parse`），卡照树排、与回复正文卡同一套（`md-view`）。
+  const PLAN_DOC = { blocks: [{ t: "h" as const, level: 2, k: ["计划"] }, { t: "p" as const, k: ["甲 ", { t: "m" as const, tex: "a+b" }] }], segs: [] };
+  it("★ 计划卡照后端交的树排：标题 · 段落 · 行内公式都在，不再有原文", () => {
+    const el = buildInteractiveCard({ kind: "plan", doc: PLAN_DOC, title: { waiting: "w", approved: "a", kept: "k" } }, opts);
+    const body = el.querySelector(".block-plan-body")!;
+    expect(body.querySelector("h2")?.textContent).toBe("计划");
+    expect(body.querySelector(".katex")).not.toBeNull();
+    expect(body.textContent).toContain("甲");
+  });
+
   const plan = () => {
-    const el = buildInteractiveCard({ kind: "plan", text: "甲", title: { waiting: "w", approved: "a", kept: "k" } }, opts);
+    const el = buildInteractiveCard({ kind: "plan", doc: PLAN_DOC, title: { waiting: "w", approved: "a", kept: "k" } }, opts);
     settleInteractive(el, { ok: true, answer: { kind: "approved" }, text: "" });
     return el;
   };
@@ -127,7 +137,7 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
 
   it("★ 计划卡的标题照核心写的那一句（状态格打头）：等批准 ⇒ 批了换「已批准」那一句 · 没批换「继续规划」那一句；界面不写一个字", () => {
     const title = { waiting: "核心·等批准 · 计划", approved: "核心·已批准 · 计划", kept: "核心·未批准 · 继续规划" };
-    const card = () => buildInteractiveCard({ kind: "plan", text: "甲", title }, opts);
+    const card = () => buildInteractiveCard({ kind: "plan", doc: PLAN_DOC, title }, opts);
     const t = (el: HTMLElement) => el.querySelector(".block-plan-title")?.textContent;
     const a = card();
     expect(t(a), "还没答").toBe(title.waiting);

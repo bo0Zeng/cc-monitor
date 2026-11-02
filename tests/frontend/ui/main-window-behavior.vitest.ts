@@ -672,24 +672,27 @@ describe("粘贴块", () => {
   });
 });
 
-// 不是人说的（事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
+// 不是人说的（事件条）：来源只看后端给的 speaker，正文是后端解析好的树 `speaker.doc`。
 describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并条 · 中断标记", () => {
   const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z", draw = "card"): LineRecord =>
     ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" }, draw, human: false }) as never;
+  const para = (...k: unknown[]) => ({ blocks: [{ t: "p", k }], segs: [] });
 
-  it("★ 交回默认展开、正文是 body、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", () => {
+  it("★ 交回默认展开、正文照树排、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", () => {
     const c = { ...ctx(), runLabelOf: (run: string) => (run === "a7" ? "审面板交互" : undefined) };
-    const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, body: "甲乙丙已查完" }), c);
+    const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, doc: para("甲乙丙", { t: "b", k: ["已查完"] }, " ", { t: "m", tex: "a+b" }) }), c);
     if (r.kind !== "card") throw new Error(r.kind);
     const el = r.element as HTMLDetailsElement;
     expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", copyText("speaker.tag.handback")]);
     expect(el.querySelector(".speaker-body")?.textContent).toContain("甲乙丙已查完");
+    expect(el.querySelector(".speaker-body strong")?.textContent, "照树排：加粗是树上的节点").toBe("已查完");
+    expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull();
     document.body.appendChild(el);
     const got: unknown[] = [];
     document.addEventListener("ccm:reveal-run", (e) => got.push((e as CustomEvent).detail), { once: true });
     el.querySelector<HTMLButtonElement>(".speaker-link")!.click();
     expect(got).toEqual([{ run: "a7" }]);
-    const m = renderMessage(userRec({ kind: "agentMessage", from: "b2", name: "改中转", handback: false, body: "戊" }), c);
+    const m = renderMessage(userRec({ kind: "agentMessage", from: "b2", name: "改中转", handback: false, doc: para("戊") }), c);
     if (m.kind !== "card") throw new Error(m.kind);
     expect([(m.element as HTMLDetailsElement).open, m.element.querySelector(".speaker-title")?.textContent]).toEqual([false, "agent「改中转」"]);
     const i = renderMessage(userRec({ kind: "interrupt" }), c);
