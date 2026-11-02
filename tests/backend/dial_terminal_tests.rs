@@ -1,9 +1,8 @@
-//! 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
-//! 由本机后端渲，monitor 只开终端」。
+//! 远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端渲，monitor 只开终端。
 //!
-//! 期望原样搬自 monitor `tests/frontend/shell/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
-//! 单引号过两层）＋「拒双引号只拦 PowerShell 那条送法」的远端那一半 ＋「同一个载荷只多两层包装」的远端那一半 —— 被测对象搬了家、期望一个字没改；
-//! 新多两格：地址取竞速顺序第一条 · 跳板照这一端的机器表找（查无 / 环 ⇒ `bad_jump`）。
+//! 钉的是 ssh 外壳：基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 · 单引号过两层 ·
+//! 「拒双引号只拦 PowerShell 那条送法」·「同一个载荷只多两层包装」·
+//! 地址取竞速顺序第一条 · 跳板照这一端的机器表找（查无 / 环 ⇒ `bad_jump`）。
 
 use super::*;
 use serde_json::json;
@@ -18,7 +17,7 @@ fn answer(args: &Value) -> Result<Value, Said> {
     answer_at(args, true, &found())
 }
 
-/// 判据照旧按「一台 ＋ 它的跳板」写：两样进这一端的机器表，线上只交那台的名字 ——
+/// 判据按「一台 ＋ 它的跳板」写：两样进这一端的机器表，线上只交那台的名字 ——
 /// 再经 typed 那一处收（同分派），按给定方言渲；回包写成线上那一份。
 fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, Said> {
     let mut wire = args.clone();
@@ -309,8 +308,7 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
     out
 }
 
-/// ★ 要求：「高危四条（… G Windows 开远端会话被自家守卫拒 …）发版前修」。
-/// 后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
+/// ★ Windows 上开远端会话不许被自家守卫拒：后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
 /// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；外层包了 tmux 的那一格真的在人群里。
 /// 守卫不放宽（正控）：同一条路上工作目录带 `"` 的照旧拒。
 #[test]
@@ -358,12 +356,9 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     }
 }
 
-// ── 「在此打开终端」的那一串：原住文件窗口 `tests/frontend/filewin/shell_tests.rs`，随拼法搬来（期望串一个字没改） ──
+// ── 「在此打开终端」的那一串：拼法住本机后端 ──
 
 /// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
-///
-/// 这里原来是一条跨语言对拍：期望串现读旧面板那条判据的三行（TS `buildOpenTerminalCmd` 的黄金样例）；
-/// 那份 TS 实现删了之后那三行的字节原样搬进来当期望（行为零变化）。拼法从文件窗口搬进本机后端，期望照旧。
 #[test]
 fn the_open_terminal_command_keeps_its_three_shapes() {
     const GOLDEN: &[(&str, &str)] = &[
@@ -408,7 +403,7 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
             "那句话没说清是哪个目录：{e:?}"
         );
     }
-    // 〔非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形（原住 `shell_tests` 有损目录那一条里的「开终端」一格）。
+    // 〔非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形。
     assert_eq!(
         command_for_cwd(&json!({ "b16": "2f7372762f64ff" }))
             .map_err(|e| e.said)
