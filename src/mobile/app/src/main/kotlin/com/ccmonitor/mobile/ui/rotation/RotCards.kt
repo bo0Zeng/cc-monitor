@@ -26,7 +26,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -115,7 +114,7 @@ internal fun Cards(
         }
     }
     pruneEdit(view)?.let { e ->
-        TextButton(onClick = { board.edit(e) }, modifier = Modifier.testTag("rot-prune")) { Text(copyText("rot.acct.prune")) }
+        SecondaryButton(onClick = { board.edit(e) }, modifier = Modifier.testTag("rot-prune")) { Text(copyText("rot.acct.prune")) }
     }
     ui.open?.let { a -> EditSheet(ui, view, board, a) }
     if (adding) AddSheet(view, board) { adding = false }
