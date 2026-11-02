@@ -46,29 +46,6 @@ enum Why {
 /// 超过 [`KEY_CHARS`] 个字符的截断。**不含行号**。
 const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/platform/local_tz.rs", "#[cfg(unix)] let link = crate::platform::fs::Ro::read_link(\"/etc/localtime\").ok();", Why::NotAnError, "这台的 /etc/localtime 不是链（没有 · 是一份拷贝）是常态：说不出时区 ⇒ 调用方写「时区不明」"),
-    ("src/backend/platform/watch_file.rs", "let _ = events.send(Some(p));", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜共用）：线程不在了就没人要这一下"),
-    ("src/backend/platform/watch_file.rs", "let _ = self.tx.send(None);", Why::PeerGone, "踢收的线程一下（各号 MCP 同步做完加号 / 建库之后）：线程不在了就没人要这一下"),
-    ("src/backend/host/managed/attach.rs", "let _ = qtx.send(l);", Why::PeerGone, "瘦客户端底行那一句转给接着的那一趟：那一趟已经断开 ⇒ 没人要这一句"),
-    ("src/backend/platform/watch_file.rs", "let _ = self.inner.unwatch(&gone.0);", Why::Reap, "名单里离开的目录卸掉 watch：目录已删时 unwatch 本来就会失败，名单照样摘"),
-    ("src/backend/platform/fs/own.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "后端自有状态文件原子写的旁名（自己建的那一个）：写或换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的旁名"),
-    ("src/backend/history/needs_changed.rs", "let _ = changes().send(sid);", Why::PeerGone, "敲需手动的铃：此刻没有 watcher 在订（一次性子命令 · 判据）⇒ 没人收（下一个连上来的照常重问）"),
-    ("src/backend/dial/opened_windows.rs", "let _ = self.0.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧的窗口标签记录（那个 shell 不在 / 进程号被复用）：删不掉下一次 ↗ 再清，它对不上进程不会被认"),
-    ("src/backend/platform/fs/face.rs", "at::unlink(&to.dir, &to.name, 0).ok();", Why::CleanupAfterFailure, "`link ＋ unlink` 改名时 `unlink` 失败 ⇒ 撤掉刚建的那个名字；主错误（`unlink` 那一下）已在回"),
-    ("src/backend/dial/probe.rs", "let _ = tx.send(Ev::Feed(e));", Why::PeerGone, "测试连接那一台常驻流交来的事转进这一趟：这一趟已经收场（结局出了 · 到点被丢）就没人要这一下"),
-    ("src/backend/platform/signal.rs", "let _ = t.recv().await;", Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（从 `main.rs` 下沉来）"),
-    ("src/backend/platform/signal.rs", "let _ = tokio::signal::ctrl_c().await;", Why::Signal, "从 `main.rs` 下沉来的停机信号监听"),
-    ("src/backend/platform/child.rs", "let _ = r.join();", Why::Reap, "一问一答的子进程收尾：等两条读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
-    ("src/backend/platform/child.rs", "let _ = child.kill();", Why::Reap, "伪终端里起的那一个说不出 pid（杀不准它那一组）⇒ 当场杀掉、收尸、照实报起不来；杀 / 收失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = reader.join();", Why::Reap, "伪终端那一问一答收尾：等读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Out(plain_line(&buf)));", Why::PeerGone, "伪终端读到头时没收尾的那半行：拿着它的那一方已放手 ⇒ 没人收"),
-    ("src/backend/platform/child.rs", "let _ = self.child.wait();", Why::Reap, "长寿子进程放手：杀组之后收尸；收不了也没有更好的补救（组已经杀了）"),
-    ("src/backend/platform/child.rs", "let _ = child.wait();", Why::Reap, "Windows 臂只等直接子进程退出（句柄占着进程号）；退出码由随后那一下 `wait` 取"),
-    ("src/backend/platform/child.rs", "let _ = done_tx.send(status.map(|s| Output { status: s, stdout: o, stderr: e, }));", Why::PeerGone, "发起方过了期限已放手、回了超时，这份结果没人收"),
-    ("src/backend/platform/child.rs", "let _ = ev_tx.send(Ev::GaveUp);", Why::PeerGone, "等待线程已收尾退出 ⇒ 放手那一声没人收"),
-    ("src/backend/platform/child.rs", "let _ = piped_tx.send(Ev::Piped(o, e));", Why::PeerGone, "等待线程已按放手收尾 ⇒ 读完的输出没人收"),
-    ("src/backend/platform/child.rs", "let _ = r.read_to_end(&mut buf);", Why::Drain, "读子进程输出到底；读错只少尾巴几个字节，退出码与超时照旧判"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     // 载荷那一层渲 env 那四行 `let _ = write!(out, "export …")` 摘了：`export` / `unset` 的写法搬进 `platform::shell::posix`
