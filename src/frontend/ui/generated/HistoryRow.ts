@@ -46,4 +46,12 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 /**
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin: Machine, };
+origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+ */
+deleteAsk: Words, };

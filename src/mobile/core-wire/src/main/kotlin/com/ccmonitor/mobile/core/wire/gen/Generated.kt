@@ -9708,6 +9708,8 @@ data class HistoryRow(
     val sectionText: String,
     val spanText: String,
     val origin: String,
+    val reveal: Boolean,
+    val deleteAsk: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9746,9 +9748,11 @@ data class HistoryRow(
             Field("sectionText", { Str }, optional = false, nullable = false),
             Field("spanText", { Str }, optional = false, nullable = false),
             Field("origin", { Str }, optional = false, nullable = false),
+            Field("reveal", { Bool }, optional = false, nullable = false),
+            Field("deleteAsk", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String?, a[17] as ForkedFrom?, a[18] as String, a[19] as String, a[20] as String?, a[21] as String, a[22] as Boolean, a[23] as SessionFace, a[24] as Can, a[25] as String?, a[26] as Boolean?, a[27] as Long, a[28] as String, a[29] as String, a[30] as String, a[31] as String) },
-            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.hidden, v.forkedFromSessionId, v.forkedFromMessageUuid, v.forkedFrom, v.projectDir, v.group, v.lastAccount, v.label, v.untitled, v.face, v.can, v.agentTag, v.context, v.at, v.atText, v.sectionText, v.spanText, v.origin) },
+            { a -> HistoryRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String?, a[17] as ForkedFrom?, a[18] as String, a[19] as String, a[20] as String?, a[21] as String, a[22] as Boolean, a[23] as SessionFace, a[24] as Can, a[25] as String?, a[26] as Boolean?, a[27] as Long, a[28] as String, a[29] as String, a[30] as String, a[31] as String, a[32] as Boolean, a[33] as String) },
+            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.hidden, v.forkedFromSessionId, v.forkedFromMessageUuid, v.forkedFrom, v.projectDir, v.group, v.lastAccount, v.label, v.untitled, v.face, v.can, v.agentTag, v.context, v.at, v.atText, v.sectionText, v.spanText, v.origin, v.reveal, v.deleteAsk) },
         )
     }
 }
@@ -14340,6 +14344,8 @@ data class Merged(
 @Suppress("UNCHECKED_CAST")
 data class MergedRow(
     val origin: String,
+    val reveal: Boolean,
+    val deleteAsk: String,
     val atText: String,
     val spanText: String,
     val label: String,
@@ -14366,6 +14372,8 @@ data class MergedRow(
         val ADAPTER: JsonAdapter<MergedRow> = obj(
             listOf(
             Field("origin", { Str }, optional = false, nullable = false),
+            Field("reveal", { Bool }, optional = false, nullable = false),
+            Field("deleteAsk", { Str }, optional = false, nullable = false),
             Field("atText", { Str }, optional = false, nullable = false),
             Field("spanText", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
@@ -14386,8 +14394,8 @@ data class MergedRow(
             Field("forkedFrom", { opt(ForkedFrom.ADAPTER) }, optional = true, nullable = true),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MergedRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Boolean, a[5] as Hidden?, a[6] as String, a[7] as String, a[8] as String, a[9] as String, a[10] as String, a[11] as String, a[12] as Long, a[13] as List<SearchHit>, a[14] as Int, a[15] as Boolean, a[16] as Boolean, a[17] as Can, a[18] as ForkedFrom?, a[19] as SessionFace) },
-            { v -> arrayOf(v.origin, v.atText, v.spanText, v.label, v.starred, v.hidden, v.agent, v.sessionId, v.projectPath, v.projectName, v.jsonlPath, v.title, v.updatedAt, v.hits, v.moreHits, v.hitsTruncated, v.isBg, v.can, v.forkedFrom, v.face) },
+            { a -> MergedRow(a[0] as String, a[1] as Boolean, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as Boolean, a[7] as Hidden?, a[8] as String, a[9] as String, a[10] as String, a[11] as String, a[12] as String, a[13] as String, a[14] as Long, a[15] as List<SearchHit>, a[16] as Int, a[17] as Boolean, a[18] as Boolean, a[19] as Can, a[20] as ForkedFrom?, a[21] as SessionFace) },
+            { v -> arrayOf(v.origin, v.reveal, v.deleteAsk, v.atText, v.spanText, v.label, v.starred, v.hidden, v.agent, v.sessionId, v.projectPath, v.projectName, v.jsonlPath, v.title, v.updatedAt, v.hits, v.moreHits, v.hitsTruncated, v.isBg, v.can, v.forkedFrom, v.face) },
         )
     }
 }

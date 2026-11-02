@@ -6,6 +6,7 @@ import type { Hidden } from "./Hidden";
 import type { Machine } from "./Machine";
 import type { SearchHit } from "./SearchHit";
 import type { SessionFace } from "./SessionFace";
+import type { Words } from "./Words";
 
 /**
  * 合好的一行：那台答的那一行 ＋ 哪台。
@@ -15,6 +16,15 @@ export type MergedRow = {
  * 哪一台答的这一行（这台逐字 `"<local>"`）。
  */
 origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开：[`merge`] 只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
+ * 手机核心合的那一份不读这一格，不补。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文：同上，[`merge`] 只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
+ */
+deleteAsk: Words, 
 /**
  * 行尾那一格。
  */
