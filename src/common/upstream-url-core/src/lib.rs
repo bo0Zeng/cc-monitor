@@ -128,13 +128,15 @@ fn normalize_prefix(raw: &str) -> Result<String, ShapeIssue> {
     Ok(trimmed.to_string())
 }
 
-/// 这个上游主机是不是**本机回环**（决定明文 http 可不可用）：剥掉方括号，能解析成 IP ⇒ `IpAddr::is_loopback`
-/// （整个 `127/8` 与 `::1` 的任何写法）；否则逐字（忽略大小写）等于 [`LOOPBACK_NAME`] —— 那是约定，不是 DNS 证过的事实。
+/// 这个主机是不是**本机回环**（明文 http 可不可用 · 出网直连都问这一份）：剥掉方括号，能解析成 IP ⇒ 先归一
+/// （IPv4 映射的 IPv6 `::ffff:a.b.c.d` 就是那个 IPv4）再 `IpAddr::is_loopback`（整个 `127/8` 与 `::1` 的任何写法）；
+/// 否则逐字（忽略大小写）等于 [`LOOPBACK_NAME`] —— 那是约定，不是 DNS 证过的事实；`*.localhost` 不算（出网要更宽的那一截住
+/// egress `describe::stays_on_this_machine`，在这一份之上）。
 /// ⚠ 与中转进门的 `Host` 头判定（中转 `outward/door.rs::host_header_is_loopback_literal`，只认三个字面量）是**两个判定**。
 pub fn upstream_is_loopback(host: &str) -> bool {
     let h = host.trim_start_matches('[').trim_end_matches(']');
     match h.parse::<std::net::IpAddr>() {
-        Ok(ip) => ip.is_loopback(),
+        Ok(ip) => ip.to_canonical().is_loopback(),
         Err(_) => h.eq_ignore_ascii_case(LOOPBACK_NAME),
     }
 }

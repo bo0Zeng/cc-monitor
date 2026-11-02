@@ -180,15 +180,18 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
             .status
             .code()
             .map_or_else(|| "-".to_string(), |c| c.to_string());
-        let said: String = String::from_utf8_lossy(&out.stderr)
-            .lines()
-            .chain(String::from_utf8_lossy(&out.stdout).lines())
-            .map(str::trim)
-            .find(|l| !l.is_empty())
-            .unwrap_or("")
-            .chars()
-            .take(200)
-            .collect();
+        // 原话里带 claude 的输出至多这么多个字（截了接「…」）。
+        const SAID_CHARS: usize = 200;
+        let (err, std_out) = (
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout),
+        );
+        let said = copy_core::clip(
+            copy_core::first_line(&err)
+                .or_else(|| copy_core::first_line(&std_out))
+                .unwrap_or(""),
+            SAID_CHARS,
+        );
         return Err(
             crate::wire::spec::fail("failed", copy_text("beQuotaWarm.run.exit", &[]))
                 .and_raw(Some(&format!("exit {code}: {said}"))),

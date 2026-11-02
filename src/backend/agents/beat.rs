@@ -301,12 +301,13 @@ fn intent_in(seg: &str) -> Option<usize> {
 
 /// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。
 pub fn one_line(s: &str) -> Option<String> {
-    let line = s.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let mut out: String = line.chars().take(SAY_CHARS).collect();
-    if line.chars().count() > SAY_CHARS {
-        out.push('…');
-    }
-    Some(out)
+    copy_core::first_line(s).map(|l| copy_core::clip(l, SAY_CHARS))
+}
+
+/// 一段思考的块：收着时那一行（`preview`）与「一行人话」同口径（[`one_line`]）；空正文 ⇒ 空串。两家适配层只经它建。
+pub fn thinking(text: String) -> crate::agents::record::Block {
+    let preview = one_line(&text).unwrap_or_default();
+    crate::agents::record::Block::Thinking { text, preview }
 }
 
 /// 子串在不在：按首字节跳着找，命中首字节再比后面（大工具输出那几行每行要问好几次，逐窗比较太慢）。快路用。

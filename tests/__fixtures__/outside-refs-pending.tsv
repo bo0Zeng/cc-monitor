@@ -1,4 +1,2 @@
-src/common/cmd-wire/src/frame.rs	1
-src/common/guard-core/src/lib.rs	41
+src/common/guard-core/src/lib.rs	2
 tests/common/guard-core/rules/capability_registry_tests.rs	46
-tests/common/relay-route-core/lib_tests.rs	1

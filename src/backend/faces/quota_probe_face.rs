@@ -23,7 +23,7 @@ const PROBE_WITHIN: Deadline = Deadline::secs(30);
 /// 这条命令的总期限（分派那一层装；略长于那一次子进程）。
 pub(crate) const PROBE_CAP: Deadline = Deadline::secs(32);
 
-/// 报错原话里带官方客户端的输出至多这么多个字。
+/// 报错原话里带官方客户端的输出至多这么多个字（截了接「…」）。
 const SAID_CHARS: usize = 200;
 
 fn bad(detail: &str) -> crate::common::said::Said {
@@ -181,15 +181,13 @@ pub(crate) fn answer_probe_with(
     })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
-        let stderr: String = String::from_utf8_lossy(&out.stderr)
-            .lines()
-            .chain(text.lines())
-            .map(str::trim)
-            .find(|l| !l.is_empty())
-            .unwrap_or("")
-            .chars()
-            .take(SAID_CHARS)
-            .collect();
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stderr = copy_core::clip(
+            copy_core::first_line(&err)
+                .or_else(|| copy_core::first_line(&text))
+                .unwrap_or(""),
+            SAID_CHARS,
+        );
         let code = out
             .status
             .code()

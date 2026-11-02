@@ -3,6 +3,7 @@ import type { BlockKind } from "./BlockKind";
 import type { LiveBlock } from "./LiveBlock";
 import type { LivePhase } from "./LivePhase";
 import type { LiveWhy } from "./LiveWhy";
+import type { MdBlock } from "./MdBlock";
 
 /**
  * `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -35,4 +36,4 @@ clipped: boolean,
 /**
  * 各块，按块号。
  */
-blocks: Array<LiveBlock>, } | { "op": "block", i: number, block: BlockKind, tool?: string, } | { "op": "text", i: number, s: string, } | { "op": "awaiting" } | { "op": "close", why: LiveWhy, });
+blocks: Array<LiveBlock>, } | { "op": "block", i: number, block: BlockKind, tool?: string, } | { "op": "text", i: number, keep: number, tail: Array<MdBlock>, } | { "op": "awaiting" } | { "op": "close", why: LiveWhy, });

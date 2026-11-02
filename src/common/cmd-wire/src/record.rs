@@ -231,8 +231,11 @@ pub enum Block {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         bytes: u64,
     },
+    /// 一段思考。空串 ＝ 没写进记录。后端建它时一并写好 `preview`（适配层 `agents::beat::thinking` 一处建）。
     Thinking {
         text: String,
+        /// 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+        preview: String,
     },
     ToolUse {
         id: String,

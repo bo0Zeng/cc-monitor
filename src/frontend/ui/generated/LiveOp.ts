@@ -3,6 +3,7 @@ import type { BlockKind } from "./BlockKind";
 import type { LiveBlock } from "./LiveBlock";
 import type { LivePhase } from "./LivePhase";
 import type { LiveWhy } from "./LiveWhy";
+import type { MdBlock } from "./MdBlock";
 
 /**
  * 活卡的一帧做什么（`op` 是标签）。
@@ -19,4 +20,4 @@ clipped: boolean,
 /**
  * 各块，按块号。
  */
-blocks: Array<LiveBlock>, } | { "op": "block", i: number, block: BlockKind, tool?: string, } | { "op": "text", i: number, s: string, } | { "op": "awaiting" } | { "op": "close", why: LiveWhy, };
+blocks: Array<LiveBlock>, } | { "op": "block", i: number, block: BlockKind, tool?: string, } | { "op": "text", i: number, keep: number, tail: Array<MdBlock>, } | { "op": "awaiting" } | { "op": "close", why: LiveWhy, };

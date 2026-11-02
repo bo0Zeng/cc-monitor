@@ -91,13 +91,13 @@ pub(crate) fn make_snippet(text: &str, needle_lc: &str) -> (String, String, Stri
     match find_ci(text, needle_lc) {
         Some((start, end)) => (
             tail_chars(&text[..start], SNIPPET_CTX),
-            collapse_ws(&text[start..end]),
-            head_chars(&text[end..], SNIPPET_CTX),
+            copy_core::collapse_ws(&text[start..end]),
+            copy_core::clip_flat(&text[end..], SNIPPET_CTX),
         ),
         None => (
             String::new(),
             String::new(),
-            head_chars(text, SNIPPET_CTX * 2),
+            copy_core::clip_flat(text, SNIPPET_CTX * 2),
         ),
     }
 }
@@ -201,43 +201,9 @@ pub(crate) fn tail_chars(s: &str, n: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     let truncated = chars.len() > n;
     let slice: String = chars[chars.len().saturating_sub(n)..].iter().collect();
-    let collapsed = collapse_ws(&slice);
+    let collapsed = copy_core::collapse_ws(&slice);
     if truncated {
         format!("…{collapsed}")
-    } else {
-        collapsed
-    }
-}
-
-/// 取字符串开头 n 个字符（折叠空白），截断时后缀 `…`。
-pub(crate) fn head_chars(s: &str, n: usize) -> String {
-    let mut out = String::new();
-    for (count, ch) in s.chars().enumerate() {
-        if count >= n {
-            out.push('…');
-            break;
-        }
-        out.push(ch);
-    }
-    collapse_ws_keep_ellipsis(&out)
-}
-
-/// 折叠所有空白（含换行）为单空格，trim。
-pub(crate) fn collapse_ws(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// 同 `collapse_ws` 但保留尾部 `…`。
-pub(crate) fn collapse_ws_keep_ellipsis(s: &str) -> String {
-    let has_ellipsis = s.ends_with('…');
-    let core = if has_ellipsis {
-        &s[..s.len() - '…'.len_utf8()]
-    } else {
-        s
-    };
-    let collapsed = collapse_ws(core);
-    if has_ellipsis {
-        format!("{collapsed}…")
     } else {
         collapsed
     }
@@ -251,18 +217,8 @@ pub(crate) fn truncate_plain(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// 按字符截断（换行折成空格，加 `…`，用于标题 excerpt）。
-pub(crate) fn truncate_excerpt(s: &str, n: usize) -> String {
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= n {
-            out.push('…');
-            break;
-        }
-        out.push(if ch == '\n' || ch == '\r' { ' ' } else { ch });
-    }
-    out
-}
+/// 首条人说的话的摘录至多几个字（压过空白，截了接「…」）。
+pub(crate) const EXCERPT_CHARS: usize = 120;
 
 /// 叫一条会话什么时用到的那几样（[`session_label`] 的入参）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -273,7 +229,7 @@ pub(crate) struct LabelFacts {
     pub(crate) bg_name: Option<String>,
     /// 最后一条标题记录（代理起的 · 在代理里改的）。
     pub(crate) title: Option<String>,
-    /// 首条人说的话的摘录（[`truncate_excerpt`] 过的；没有 ⇒ 空串）。
+    /// 首条人说的话的摘录（压过空白、截到 [`EXCERPT_CHARS`] 字；没有 ⇒ 空串）。
     pub(crate) first: String,
     /// 项目目录。
     pub(crate) project_dir: Option<String>,
@@ -316,7 +272,7 @@ pub(crate) fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) 
         }
         Body::Said { who, .. } if facts.first.is_empty() => match who.speech() {
             Some(s) => {
-                facts.first = truncate_excerpt(&s, 120);
+                facts.first = copy_core::clip_flat(&s, EXCERPT_CHARS);
                 true
             }
             None => false,
