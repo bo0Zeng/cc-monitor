@@ -28,7 +28,7 @@ import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { isLive } from "../face-can";
 import { commands } from "../ipc/commands";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation } from "../history-reads";
 import { renameOver } from "../tab-rename";
@@ -55,8 +55,8 @@ type Scope = "all" | "user" | "assistant" | "report";
 /** 记在本机的界面偏好（不是数据）。 */
 interface Prefs {
   view: ViewMode;
-  /** 筛掉的机器（`""` = 本机）。 */
-  off: string[];
+  /** 筛掉的机器（本机逐字 `<local>`）。 */
+  off: Machine[];
   withinDays: 0 | 7 | 30;
   sort: "activity" | "created";
   hidden: boolean;
@@ -102,7 +102,7 @@ export class HistoryView {
   private readonly root: HTMLElement;
   private isOpen = false;
   private prefs: Prefs = loadPrefs();
-  private machines: string[] = [""];
+  private machines: Machine[] = [LOCAL];
   /** 这一列手上的那一窗（还没答过 ⇒ `null`）；本机后端整问没答上 ⇒ `failed` 那一句。 */
   private win: BrowseWindow | null = null;
   private failed: string | null = null;
@@ -169,7 +169,7 @@ export class HistoryView {
     dispatcher.pushOverlay(this.layer);
     // 开页即给焦点（不等远端）。
     this.searchInput.focus();
-    this.machines = ["", ...(await remoteNames().catch(() => [] as string[]))];
+    this.machines = [LOCAL, ...(await remoteNames().catch(() => [] as string[]))];
     // 开页：先答手上的，远端那几台各自同步一次（后端记着副本、不按时间过期，开页与「刷新」才再问那台）。
     this.restart();
     this.refresh(this.remotes());
@@ -191,11 +191,10 @@ export class HistoryView {
    * 那台推了「清单变了」（`changed/history_list`）：开着、那台在这一页上 ⇒ 再问看得见的那一窗（远端那台带它的 `fresh`，本机后端先同步副本）。
    * 改名 · 星标 · 隐藏 · 删了 · 会话起停之后的重问都走这一处（那台的推送叫回来），页里不另问。
    */
-  onListMoved(origin: Origin): void {
+  onListMoved(origin: Machine): void {
     if (!this.isOpen) return;
-    const m = isLocalOrigin(origin) ? "" : origin;
-    if (!this.wanted().includes(m)) return;
-    this.refresh(m ? [m] : []);
+    if (!this.wanted().includes(origin)) return;
+    this.refresh(isRemoteOrigin(origin) ? [origin] : []);
   }
 
   /** Ctrl+F 落在历史页：右边有会话 ⇒ 会话内查找；否则不接（交给主窗口）。 */
@@ -231,12 +230,12 @@ export class HistoryView {
     safeSetJson(LS_KEYS.historyPrefs, this.prefs);
   }
 
-  private wanted(): string[] {
+  private wanted(): Machine[] {
     return this.machines.filter((m) => !this.prefs.off.includes(m));
   }
 
-  private remotes(): string[] {
-    return this.wanted().filter((m) => m !== "");
+  private remotes(): Machine[] {
+    return this.wanted().filter(isRemoteOrigin);
   }
 
   /** 这一问（`fresh` ＝ 先同步的那几台远端）：要哪几台 · 筛排 · 怎么看 · 开合 · 窗口。 */
@@ -246,7 +245,7 @@ export class HistoryView {
       return [k.slice(0, i), k.slice(i + 1)];
     };
     return {
-      here: this.wanted().includes(""),
+      here: this.wanted().includes(LOCAL),
       remotes: this.remotes(),
       fresh,
       ...(this.query ? { query: this.query } : {}),
@@ -256,9 +255,9 @@ export class HistoryView {
       by: this.prefs.view,
       groups: {
         open: this.fold.open,
-        except: [...this.fold.except].map(split).map(([o, key]) => ({ ...(o ? { origin: o } : {}), key })),
+        except: [...this.fold.except].map(split).map(([origin, key]) => ({ origin, key })),
       },
-      forks: [...this.openForks].map(split).map(([o, sid]) => ({ ...(o ? { origin: o } : {}), sid })),
+      forks: [...this.openForks].map(split).map(([origin, sid]) => ({ origin, sid })),
       range: { ...this.want },
     };
   }
@@ -538,12 +537,12 @@ export class HistoryView {
   }
 
   /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）；那台上次没读到 ⇒ 标「离线」。 */
-  private machineCheck(m: string, changed: (refetch: boolean) => void): HTMLElement {
-    const c = checkbox(m ? m : copyText("history.filter.local"), !this.prefs.off.includes(m), (on) => {
+  private machineCheck(m: Machine, changed: (refetch: boolean) => void): HTMLElement {
+    const c = checkbox(isLocalOrigin(m) ? copyText("history.filter.local") : m, !this.prefs.off.includes(m), (on) => {
       this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
       changed(false);
       this.restart();
-      this.refresh(on && m ? [m] : []);
+      this.refresh(on && isRemoteOrigin(m) ? [m] : []);
     });
     const read = this.readOf(m)?.is;
     if (read === "failed" || read === "stale") {
@@ -576,8 +575,8 @@ export class HistoryView {
   }
 
   /** 一台在头里那一格（这一列还没答过 · 那台不在这一问里 ⇒ 缺）。 */
-  private readOf(m: string): HistoryMachine["read"] | undefined {
-    return this.win?.head.machines.find((x) => (x.origin ?? "") === m)?.read;
+  private readOf(m: Machine): HistoryMachine["read"] | undefined {
+    return this.win?.head.machines.find((x) => x.origin === m)?.read;
   }
 
   /** 不动列表的那几块（刷新转圈 · 提示条 · 筛选数）。 */
@@ -596,16 +595,16 @@ export class HistoryView {
     for (const m of this.wanted()) {
       if (this.syncing.has(m)) continue;
       const st = this.readOf(m);
-      const again = (): void => this.refresh(m ? [m] : []);
+      const again = (): void => this.refresh(isRemoteOrigin(m) ? [m] : []);
       if (st?.is === "failed") {
         strips.push(
-          m
+          isRemoteOrigin(m)
             ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: again })
             : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: again }),
         );
       } else if (st?.is === "stale") {
         // 读不到、行照那台上一次的副本出：说清是几时读到的，不冒充读到。
-        strips.push(strip("warn", copyText("history.list.machineStale", { machine: m || copyText("history.filter.local"), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
+        strips.push(strip("warn", copyText("history.list.machineStale", { machine: isLocalOrigin(m) ? copyText("history.filter.local") : m, at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
       } else if (st?.is === "ok" && st.notice) {
         strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: again }));
       }
@@ -659,7 +658,7 @@ export class HistoryView {
   /** 一行都没有：还在读 ⇒ 骨架；带着字或筛选 ⇒「没有匹配」＋［清除筛选］；否则说还没有会话。 */
   private emptyList(loading: boolean): HTMLElement {
     if (loading) {
-      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
+      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => (isLocalOrigin(m) ? copyText("history.filter.local") : m)).join(` ${copyText("cssMarks.sep.dot")} `) }));
       return skeletonRows(6);
     }
     this.listHead.replaceChildren();
@@ -730,7 +729,7 @@ export class HistoryView {
         else this.fold.except.add(gk);
         this.refresh();
       },
-      onNew: () => void openNewSession({ origin: g.origin ?? LOCAL_ORIGIN, cwd: g.projectPath, agent: g.agent }),
+      onNew: () => void openNewSession({ origin: g.origin, cwd: g.projectPath, agent: g.agent }),
       onRetry: () => this.refresh(g.origin ? [g.origin] : []),
     });
   }
@@ -938,7 +937,7 @@ export class HistoryView {
       jsonlPath: r.jsonlPath,
       displayTitle: labelOf(r),
       head: this.headOf(r),
-      origin: r.origin ?? LOCAL_ORIGIN,
+      origin: r.origin,
       agent: r.agent,
       cwd: r.projectPath,
       ...(jumpTo !== undefined ? { scrollTo: { uuid: jumpTo.uuid, line: jumpTo.line } } : {}),
@@ -1017,7 +1016,7 @@ export class HistoryView {
 
   /** ▾ 的项：账号（能选号的那一家才问那台）· 运行于（勾画在那台答的默认上）· 在此目录新建会话；勾一挪，主按钮的悬停跟着改。 */
   private async resumeItems(r: HistoryRow, main: HTMLButtonElement): Promise<MenuItem[]> {
-    const origin = r.origin ?? LOCAL_ORIGIN;
+    const origin = r.origin;
     const [accounts, where] = await Promise.all([
       resumeAccounts(origin, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount }),
       standingOf(origin, r.sessionId),
@@ -1032,7 +1031,7 @@ export class HistoryView {
       onChange: (p) => {
         if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p, machineRun);
       },
-      newInDir: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }),
+      newInDir: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }),
     });
   }
 
@@ -1077,7 +1076,7 @@ export class HistoryView {
     }
     const main = this.shown === rowKey(r) ? this.viewer?.element.querySelector<HTMLButtonElement>(`[data-role="resume"] > button`) : null;
     if (main) setBusy(main, copyText("history.resume.busy"));
-    const origin = r.origin ?? LOCAL_ORIGIN;
+    const origin = r.origin;
     try {
       const req = { what: { kind: "resume" as const, sid: r.sessionId }, ...pickAsk(this.pickOf(r)), local: isLocalOrigin(origin) };
       if (await openSession(origin, req)) this.close();
@@ -1088,7 +1087,7 @@ export class HistoryView {
 
   private openWindow(r: HistoryRow): void {
     void commands
-      .open_session_in_new_window({ sessionId: r.sessionId, origin: r.origin ?? LOCAL_ORIGIN, title: labelOf(r) })
+      .open_session_in_new_window({ sessionId: r.sessionId, origin: r.origin, title: labelOf(r) })
       .catch((e: unknown) => failToast(copyText("tabSessionActions.openInWindow.failed"), e));
   }
 
@@ -1103,7 +1102,7 @@ export class HistoryView {
       { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
       { label: "", divider: true },
       ...(r.origin ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
-      { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }) },
+      { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }) },
       { label: "", divider: true },
       {
         label: copyText("history.menu.delete"),
@@ -1120,7 +1119,7 @@ export class HistoryView {
   private async star(r: HistoryRow): Promise<void> {
     try {
       // 列表跟着那台的推送重问（[`onListMoved`]）。
-      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { starred: !r.starred });
+      await annotate(r.origin, r.sessionId, { starred: !r.starred });
     } catch (e) {
       failToast(copyText("history.star.failed"), e);
     }
@@ -1130,7 +1129,7 @@ export class HistoryView {
     // 隐藏 · 取消隐藏 · 撤销与标签栏同一个口、同一套词：隐藏交 `on`、取消隐藏交 `off`（明说要显示）、
     //   撤销回到隐藏之前那一份单独设置（`undoHide`：原本没有 ⇒ `rule`）。
     const to = !r.hidden;
-    const origin = r.origin ?? LOCAL_ORIGIN;
+    const origin = r.origin;
     try {
       const prev = await setHide(origin, r.sessionId, to ? "on" : "off");
       if (to) undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void setHide(origin, r.sessionId, undoHide(prev)), () => {});
@@ -1143,12 +1142,12 @@ export class HistoryView {
     // 就地改（同标签页栏）：浮在那一行的标题上；那一行此刻不在 ⇒ 浮在整张列表上。
     const el = this.rowEl(rowKey(r));
     const over = el?.querySelector<HTMLElement>(`.${s.hvTitle}`) ?? el ?? this.listEl;
-    renameOver(over, { origin: r.origin ?? LOCAL_ORIGIN, sessionId: r.sessionId, label: r.customTitle ?? r.label }, r.customTitle ?? r.label);
+    renameOver(over, { origin: r.origin, sessionId: r.sessionId, label: r.customTitle ?? r.label }, r.customTitle ?? r.label);
   }
 
   /** 删除只问一次；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */
   private async remove(r: HistoryRow): Promise<void> {
-    if (r.can.delete === "live" || (!r.origin && this.liveInTabs(r.sessionId))) {
+    if (r.can.delete === "live" || (isLocalOrigin(r.origin) && this.liveInTabs(r.sessionId))) {
       toast(copyText("history.delete.liveHint"), "");
       return;
     }
@@ -1160,12 +1159,12 @@ export class HistoryView {
     const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: body.join("\n") });
     if (!ok) return;
     try {
-      await deleteSession(r.origin ?? LOCAL_ORIGIN, r.sessionId);
+      await deleteSession(r.origin, r.sessionId);
     } catch (e) {
       failToast(copyText("history.delete.failed", { label }), e);
       return;
     }
-    void forgetAnnotation(r.origin ?? LOCAL_ORIGIN, r.sessionId);
+    void forgetAnnotation(r.origin, r.sessionId);
     if (this.shown === rowKey(r)) {
       this.disposeViewer();
       this.showPlaceholder();
@@ -1335,7 +1334,7 @@ function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, s
 }
 
 function groupKey(g: HistoryGroup): string {
-  return `${g.origin ?? ""}\u0000${g.key}`;
+  return `${g.origin}\u0000${g.key}`;
 }
 
 /** 内容命中那一行 ⇒ 画它的那一行：名字 · 星标 · 隐藏 · 状态 · 能做什么都是那台在命中行上带来的（界面不拿清单去对）。 */
@@ -1367,6 +1366,6 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     hidden: sh.hidden,
     face: sh.face,
     can: sh.can,
-    ...(sh.origin ? { origin: sh.origin } : {}),
+    origin: sh.origin,
   };
 }

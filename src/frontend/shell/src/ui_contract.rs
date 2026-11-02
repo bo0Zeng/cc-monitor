@@ -61,15 +61,8 @@ pub struct JsonlLinePayload {
     // ⇒ `JSON.parse` 永远给不出 BigInt。
     #[cfg_attr(test, ts(type = "number"))]
     pub seq: u64,
-    /// issue #15：数据来源标签。`None` = 本地（不序列化，前端视为本地，Tab 标题无前缀）；
-    /// `Some(host)` = 远端 SSH 数据源的主机名，前端据此给 Tab 标题加 `[host]` 前缀。
-    // **C01/C02 立的规则**：有 `skip_serializing_if` 就必须配 `ts(optional)`。
-    // 不配的话 ts-rs 生成 `origin: string | null` —— 两处都错：线上是**省略**而不是
-    // 必填，而且**永远不会是 null**（Rust 侧 None 直接不序列化）。
-    // 这一条由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
-    #[cfg_attr(test, ts(optional))]
-    #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
-    pub origin: Option<String>,
+    /// 这一行出自哪台机器（本机逐字 `"<local>"`，远端是那台的名字，总带）：界面据它分流，远端 Tab 标题加 `[host]` 前缀。
+    pub origin: crate::origin::Origin,
     /// 这一行的通用记录 —— 那台后端的成品（`cmd-wire/src/record.rs::Record`，ts-rs 从共享 crate 导出），
     /// monitor **原样转交、一个字段都不读**。
     #[cfg_attr(test, ts(type = "import(\"./LineRecord\").LineRecord"))]
