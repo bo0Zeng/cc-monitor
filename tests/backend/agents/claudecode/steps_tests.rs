@@ -87,7 +87,7 @@ fn a_result_reads_counts_from_the_structured_result() {
         StepResult {
             ok: false,
             exit_code: Some(127),
-            text: Words(copy_core::copy_text("stream.step.failed", &[])),
+            text: Words(copy_core::copy_text("runs.state.failed", &[])),
             preview: Some("Exit code 127".into()),
             chars: Some(32),
             ..Default::default()

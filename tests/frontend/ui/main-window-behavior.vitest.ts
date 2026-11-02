@@ -187,7 +187,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     expect(open(drawer)).toBeNull();
     tasks.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded")]).toEqual(["tasks", "true"]);
-    expect(tabText(drawer)).toEqual([copyText("statusBar.tasks.chip", { done: "0", total: "1" }), "核心·agent 1 · 1 在跑", copyText("terminal.page.title")]);
+    expect(tabText(drawer)).toEqual([copyText("statusBar.tasks.chip", { done: "0", total: "1" }), "核心·agent 1 · 1 在跑", copyText("mobDrawer.item.terminal")]);
     agents.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded"), agents.summaryElement.getAttribute("aria-expanded")]).toEqual(["agents", "false", "true"]);
     agents.summaryElement.click();
@@ -215,7 +215,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     agents.setSession("b", runs([]));
     expect(open(drawer)).toBe("tasks");
     expect(pageOf(drawer)).toBe(copyText("tasksPanel.page.empty"));
-    expect(tabText(drawer)).toEqual([copyText("tasksPanel.page.title"), "agent", copyText("terminal.page.title")]);
+    expect(tabText(drawer)).toEqual([copyText("tasksPanel.page.title"), "agent", copyText("mobDrawer.item.terminal")]);
     esc();
     expect([open(drawer), below.hits]).toEqual([null, 0]);
     dispatcher.popOverlay(below);
@@ -362,7 +362,7 @@ describe("已结束的 tab 在右键菜单里关得掉（窄窗里那颗 × 看�
     (st.tabs.get("b") as Tab).face = goldenFace("ended");
     const menu = (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu;
     const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
-    const close = copyText("tabMenu.item.close");
+    const close = copyText("launch.slot.close");
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "a");
     expect(items().some((b) => b.textContent === close)).toBe(false);
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "b");
@@ -395,7 +395,7 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
     const menu = (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu;
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "u");
     const item = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")].find(
-      (b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.item.close"),
+      (b) => b.querySelector("[data-part=label]")?.textContent === copyText("launch.slot.close"),
     )!;
     expect(item.disabled).toBe(false);
     expect(item.querySelector("[data-part=why]")?.textContent).toBe(copyText("tabMenu.close.unseen", { machine: "pi" }));
@@ -547,16 +547,16 @@ describe("一步还没结果时：照会话事实画", () => {
     paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);
     expect([row.dataset.state, row.querySelector(".step-icon [role=progressbar], .step-icon > span") !== null]).toEqual(["running", true]);
     paintWaiting(row, { state: "awaiting", text: null, whyText: null }, "2m", true);
-    expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", copyText("stream.step.awaiting"), "2m"]);
+    expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", copyText("beSession.needs.approve"), "2m"]);
     expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
     paintWaiting(row, { state: "awaiting", text: null, whyText: null }, null, false);
-    expect(row.querySelector(".step-await")?.textContent).toBe(copyText("stream.step.awaitingYou"));
+    expect(row.querySelector(".step-await")?.textContent).toBe(copyText("tabBar.needs.label"));
     // 状态不明：右侧与悬停照核心写好的那两句（`text` · `whyText`）原样；事实里没有这一步 ⇒ 状态不明（这一判在桌面）。
     paintWaiting(row, { state: "unclear", text: "U-text", whyText: "U-why" }, null, false);
     expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, "U-text", "svg"]);
     expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写的那一句").toBe("U-why");
     paintWaiting(row, null, null, false);
-    expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("stream.step.unclear"), false]);
+    expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("sessionState.unseen.name"), false]);
     settleStepLine(row, undefined, { ok: true } as never, false);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
     paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);

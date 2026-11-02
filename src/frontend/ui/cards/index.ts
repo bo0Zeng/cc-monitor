@@ -414,7 +414,7 @@ function buildUserCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
-  card.appendChild(cardHeader(copyText("cards.user.title"), time));
+  card.appendChild(cardHeader(copyText("machineForm.field.user"), time));
   const body = document.createElement("div");
   body.className = "card-body";
   if (text) fillSaid(body, text, pasted);
@@ -911,8 +911,8 @@ function buildResultBody(
   const btnText = document.createElement("button");
   btnText.type = "button";
   btnText.className = "block-result-mode is-active";
-  btnText.textContent = copyText("cards.result.text");
-  btnText.title = copyText("cards.result.textHint");
+  btnText.textContent = copyText("beFilesKind.label.text");
+  btnText.title = copyText("apiError.card.raw");
 
   const btnMd = document.createElement("button");
   btnMd.type = "button";

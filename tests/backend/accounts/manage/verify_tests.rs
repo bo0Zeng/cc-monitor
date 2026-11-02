@@ -325,10 +325,7 @@ fn unknown_names_are_one_quiet_unclassified_line_not_warnings() {
         "beAcctVerify.global.unclassified",
         &[
             ("n", &names.len().to_string()),
-            (
-                "items",
-                &names.join(&copy_text("beAcctVerify.global.ownCopiesSep", &[])),
-            ),
+            ("items", &names.join(&copy_text("kit.text.sep", &[]))),
         ],
     );
     let said: Vec<&VerifyCheck> = r.checks.iter().filter(|c| c.text == want).collect();

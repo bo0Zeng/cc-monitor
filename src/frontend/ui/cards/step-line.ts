@@ -139,7 +139,7 @@ export function paintWaiting(row: HTMLElement, p: Pick<PendingCall, "state" | "t
   }
   row.querySelector(".step-await")?.remove();
   // 事实里已经没有它（那一轮过去了、被截在上界外）⇒ 状态不明：这一判只在桌面这一侧（核心那一份里没有这一步）。
-  paint(row, state, p ? (p.text ?? "") : copyText("stream.step.unclear"));
+  paint(row, state, p ? (p.text ?? "") : copyText("sessionState.unseen.name"));
   const r = row.querySelector<HTMLElement>(".step-right");
   if (!r) return;
   if (p?.whyText) r.title = p.whyText;
@@ -157,7 +157,7 @@ function markAwaiting(row: HTMLElement, waited: string | null, approve: boolean)
     w.className = "step-await";
     row.insertBefore(w, row.querySelector(".step-right"));
   }
-  w.textContent = approve ? copyText("stream.step.awaiting") : copyText("stream.step.awaitingYou");
+  w.textContent = approve ? copyText("beSession.needs.approve") : copyText("tabBar.needs.label");
   const r = row.querySelector<HTMLElement>(".step-right");
   if (r) r.textContent = waited ?? "";
 }

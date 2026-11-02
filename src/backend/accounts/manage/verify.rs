@@ -44,7 +44,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                copy_text("beAcctVerify.global.badManifest", &[("why", e)]),
+                copy_text("beAcctVerify.global.roots", &[("why", e)]),
             );
             return finish(o);
         }
@@ -128,7 +128,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                copy_text("beAcctVerify.global.unknown", &[("name", x)]),
+                copy_text("beAcctPlan.account.unknown", &[("name", x)]),
             );
         }
     }
@@ -167,7 +167,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 n,
-                copy_text("beAcctVerify.acct.missing", &[("path", c)]),
+                copy_text("beExt.uninstall.notThere", &[("path", c)]),
             );
             continue;
         }
@@ -351,10 +351,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 "beAcctVerify.global.ownCopies",
                 &[
                     ("item", item),
-                    (
-                        "names",
-                        &names.join(&copy_text("beAcctVerify.global.ownCopiesSep", &[])),
-                    ),
+                    ("names", &names.join(&copy_text("kit.text.sep", &[]))),
                 ],
             ),
         );
@@ -409,7 +406,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         }
     }
     if !unclassified.is_empty() {
-        let sep = copy_text("beAcctVerify.global.ownCopiesSep", &[]);
+        let sep = copy_text("kit.text.sep", &[]);
         let list: Vec<&str> = unclassified.iter().map(String::as_str).collect();
         o.push(
             CheckLevel::Ok,
