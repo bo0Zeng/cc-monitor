@@ -244,7 +244,7 @@ pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool, after: After) ->
 /// 列表上那一行的字与记录里那一句是不是同一句：空白压成一个、去掉截短标之后，一方是另一方的开头（屏上 · 摘要都可能截短）。
 pub(crate) fn same_line(shown: &str, said: &str) -> bool {
     let norm = |s: &str| {
-        let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+        let s = copy_core::collapse_ws(s);
         s.trim_end_matches('…')
             .trim_end_matches("...")
             .trim_end()

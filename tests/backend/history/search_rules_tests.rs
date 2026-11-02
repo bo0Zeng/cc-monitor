@@ -57,8 +57,14 @@ fn truncate_helpers() {
     assert_eq!(truncate_plain("hello", 3), "hel");
     assert_eq!(truncate_plain("你好世界", 2), "你好");
     assert_eq!(truncate_plain("hi", 10), "hi");
-    assert_eq!(truncate_excerpt("a\nb", 10), "a b");
-    assert_eq!(truncate_excerpt("abcd", 3), "abc…");
+}
+
+/// 命中点之后那一截先压空白再数字：连串空白不吃掉字数（截了接「…」）。
+#[test]
+fn the_after_part_counts_chars_after_collapsing() {
+    let text = format!("docker{}{}", " \n ".repeat(SNIPPET_CTX), "y".repeat(SNIPPET_CTX * 2));
+    let (_b, _m, after) = make_snippet(&text, "docker");
+    assert_eq!(after, format!("{}…", "y".repeat(SNIPPET_CTX)));
 }
 
 #[test]
@@ -177,19 +183,10 @@ fn heard_takes_agent_titles_and_the_first_said_only() {
 // `history/search_rules.rs`，Claude 记录文本 = 适配层 `agents/claudecode/text.rs`；搜索那一侧（`observe/search_query.rs`）不许自己再有一份，
 // 且必须真的调到家里那一份。monitor 那一侧零处（③）仍住 `tests/frontend/shell/search_kou_jing_guard.rs`。
 
-/// 通用口径的助手（收口前两侧各写一遍的那 12 个里的 8 个）。
-const RULE_HELPERS: &[&str] = &[
-    "make_snippet",
-    "find_ci",
-    "tail_chars",
-    "head_chars",
-    "collapse_ws",
-    "collapse_ws_keep_ellipsis",
-    "truncate_plain",
-    "truncate_excerpt",
-];
+/// 通用口径的助手（截断 · 压空白本身住 `copy-core`，由 `tests/backend/common/text_home_guard.rs` 钉）。
+const RULE_HELPERS: &[&str] = &["make_snippet", "find_ci", "tail_chars", "truncate_plain"];
 
-/// Claude 记录文本的助手（那 12 个里的另 4 个）。
+/// Claude 记录文本的助手。
 const TEXT_HELPERS: &[&str] = &[
     "extract_text_blocks",
     "extract_tool_text",

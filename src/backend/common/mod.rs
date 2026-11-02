@@ -106,3 +106,7 @@ pub mod views;
 #[cfg(test)]
 #[used]
 static TEST_HOME: fn() = test_home::linked;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/common/text_home_guard.rs"]
+mod text_home_guard;

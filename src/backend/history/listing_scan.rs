@@ -111,7 +111,7 @@ impl SessionScan {
         }
         if l.role == Some(LineRole::Said) && self.excerpt.is_empty() {
             if let Some(said) = whole().and_then(|v| crate::agents::human_speech(kind, &v)) {
-                self.excerpt = super::search_rules::truncate_excerpt(&said, 120);
+                self.excerpt = copy_core::clip_flat(&said, super::search_rules::EXCERPT_CHARS);
             }
         }
     }

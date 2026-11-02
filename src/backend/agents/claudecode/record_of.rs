@@ -362,11 +362,11 @@ fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
     Some(match b.get("type").and_then(Value::as_str)? {
         "text" => Block::text(s("text")?),
         // 近来的思考块几乎都只有签名、`thinking` 是空的：空 / 只剩空白 ⇒ `""`（线上约定：空 ＝ 没写进记录，两端照它画、不各自判）。
-        "thinking" => Block::Thinking {
-            text: s("thinking")
+        "thinking" => crate::agents::beat::thinking(
+            s("thinking")
                 .filter(|t| !t.trim().is_empty())
                 .unwrap_or_default(),
-        },
+        ),
         "tool_use" => Block::ToolUse {
             id: s("id")?,
             name: s("name")?,

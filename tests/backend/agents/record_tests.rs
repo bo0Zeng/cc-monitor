@@ -313,9 +313,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         (
             "思考没写进记录（空串）照画",
             reply(
-                vec![Block::Thinking {
-                    text: String::new(),
-                }],
+                vec![crate::agents::beat::thinking(String::new())],
                 &[],
             ),
             Draw::Steps,

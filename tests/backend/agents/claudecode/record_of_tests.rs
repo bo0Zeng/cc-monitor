@@ -309,11 +309,34 @@ fn an_empty_thinking_block_says_it_was_not_recorded() {
     let texts: Vec<&str> = blocks
         .iter()
         .map(|b| match b {
-            Block::Thinking { text } => text.as_str(),
+            Block::Thinking { text, .. } => text.as_str(),
             other => panic!("{other:?}"),
         })
         .collect();
     assert_eq!(texts, ["", "", "  plan it ", ""]);
+}
+
+/// 收着时那一行由后端写好（`preview`）：头一个非空行、去两头空白、至多 160 字（截了接「…」）；没写进记录 ⇒ 空串。
+#[test]
+fn a_thinking_block_carries_its_collapsed_line() {
+    let long = "想".repeat(170);
+    let raw = format!(
+        r#"{{"type":"assistant","uuid":"a-tp","timestamp":"2026-10-09T01:30:02.000Z","message":{{"role":"assistant","model":"model-x","content":[{{"type":"thinking","thinking":"\n  先看一眼  \n再说","signature":"s"}},{{"type":"thinking","thinking":"{long}","signature":"s"}},{{"type":"thinking","thinking":" ","signature":"s"}}]}}}}"#
+    );
+    let Body::Reply { blocks, .. } = one(&raw).unwrap().body else {
+        panic!()
+    };
+    let previews: Vec<String> = blocks
+        .iter()
+        .map(|b| match b {
+            Block::Thinking { preview, .. } => preview.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        previews,
+        ["先看一眼".to_string(), format!("{}…", "想".repeat(160)), String::new()]
+    );
 }
 
 /// 同一形的别人那几种（后台任务收场 · peer 交回）不出卡：它们照旧由自己那一形出（或不出），不当成人说的。

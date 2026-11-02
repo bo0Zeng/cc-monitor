@@ -921,18 +921,15 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
         )
     );
     assert!(e.raw.is_some(), "系统原话丢了");
-    // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
+    // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 按字截到 `SAID_CAP` 字并接 `…`（正好那么多字的不截）。
     assert_eq!(
         said_of(b"  \n"),
         copy_core::copy_static!("beLaunch.said.silent")
     );
-    let long = "错".repeat(SAID_CAP);
-    let s = said_of(long.as_bytes());
-    assert!(
-        s.ends_with('…') && s.len() <= SAID_CAP + '…'.len_utf8(),
-        "{}",
-        s.len()
-    );
+    let exact = "错".repeat(SAID_CAP);
+    assert_eq!(said_of(exact.as_bytes()), exact);
+    let long = "错".repeat(SAID_CAP + 5);
+    assert_eq!(said_of(long.as_bytes()), format!("{exact}…"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

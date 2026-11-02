@@ -428,7 +428,7 @@ pub(crate) fn landing(r: &Returned, t: &Target, cells: &[PlanCell]) -> PlanRetur
 
 /// 送进会话的那一行：只带事实（人 · 编号 标题：原话），收到人的话怎么办 pb 已经教过 agent。原话里的换行与连串空白并成一个空格（一行送出）。
 pub(crate) fn line(id: &str, title: &str, text: &str) -> String {
-    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = copy_core::collapse_ws(text);
     copy_text(
         "bePlan.return.line",
         &[("id", id), ("title", title), ("text", &text)],
