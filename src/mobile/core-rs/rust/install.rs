@@ -12,11 +12,10 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use cmd_wire::phone::{DeployAct, DeployEnd};
-use comms_inward::line::CappedAll;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use deploy_contract::DeployAction;
-use relay_route_core::{Cap, Over};
+use relay_route_core::{Cap, Over, Regular};
 
 use crate::resident::{self, OnEvent};
 
@@ -84,26 +83,20 @@ fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
     read_capped(p, BACKEND_BYTES_CAP)
 }
 
-/// 带上限地整份读一份本机文件，读经 `comms_inward::line::read_capped_all_sync`。只认普通文件（先看类型再打开：
-/// 打开 FIFO 会卡住，设备的长度报 0 会骗过大小检查）；长度已过上限 ⇒ 不读。读不了的那一句只是原因，系统原话进 `raw`。
+/// 带上限地整份读一份本机文件（跟链接），经 `relay_route_core::read_capped_regular`：只认普通文件、长度已过上限 ⇒ 不读。
+/// 读不了的那一句只是原因，系统原话进 `raw`。
 fn read_capped(p: &std::path::Path, cap: Cap) -> Result<Vec<u8>, Said> {
     let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
     let meta = std::fs::metadata(p).map_err(io)?;
-    if !meta.is_file() {
-        return Err(Said::from(copy_text("reason.fs.notRegular", &[])));
-    }
     let c = cap.bytes.to_string();
-    if meta.len() > cap.bytes {
-        let size = meta.len().to_string();
-        return Err(Said::from(copy_text(
+    match relay_route_core::read_capped_regular(&meta, || std::fs::File::open(p), cap).map_err(io)? {
+        Regular::Whole(buf) => Ok(buf),
+        Regular::NotRegular => Err(Said::from(copy_text("reason.fs.notRegular", &[]))),
+        Regular::OverCap(Some(size)) => Err(Said::from(copy_text(
             "beFs.readRegularCapped.tooBigSized",
-            &[("cap", &c), ("size", &size)],
-        )));
-    }
-    let f = std::fs::File::open(p).map_err(io)?;
-    match comms_inward::line::read_capped_all_sync(f, cap).map_err(io)? {
-        CappedAll::All(buf) => Ok(buf),
-        CappedAll::OverCap => Err(Said::from(copy_text(
+            &[("cap", &c), ("size", &size.to_string())],
+        ))),
+        Regular::OverCap(None) => Err(Said::from(copy_text(
             "beFs.readRegularCapped.tooBig",
             &[("cap", &c)],
         ))),
