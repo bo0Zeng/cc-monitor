@@ -926,6 +926,12 @@ pub fn legacy_listen_pid_in(data_home: &std::path::Path) -> Option<std::path::Pa
 /// 〔同上〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
 pub(crate) const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
 
+/// 〔同上〕旧版「谁在听」记录（两行：pid · 程序路径）读多大；超了 ⇒ 日志里说是哪一份，当没有旧的。
+const LEGACY_PID_RECORD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4096,
+    over: relay_route_core::Over::SkipAndSay,
+};
+
 /// 〔升级那一跳，跨过 4.1.x 之后删〕4.1.x 及以前的常驻后端听回环 TCP，「谁在听」记在 `<家>/listen-<口>.pid`。
 /// 新的常驻后端拿到锁之后、接中转之前调它：那一位还在跑 ⇒ 按旧记录核身份、请它收尾、到点强杀（它占着中转口）；
 /// 然后删掉旧记录与旧钥匙文件。回给日志的那一句（没有旧的 ⇒ `None`）。
@@ -935,7 +941,7 @@ pub fn retire_legacy(own: &Own) -> Option<String> {
     let rec = legacy_listen_pid_in(root.as_path())?;
     let rec_own = root.join(&rec.file_name()?.to_string_lossy()).ok()?;
     let token = root.join(LEGACY_LISTEN_TOKEN_NAME).ok()?;
-    let (pid, bin) = crate::platform::fs::Ro::read_to_string(&rec)
+    let (pid, bin) = crate::platform::fs::Ro::read_string_capped(&rec, LEGACY_PID_RECORD_CAP)
         .ok()
         .and_then(|b| parse_owner(&b))?;
     let said = match stop_pid(pid, &bin, STOP_GRACE_MS, KILL_WAIT_MS) {
