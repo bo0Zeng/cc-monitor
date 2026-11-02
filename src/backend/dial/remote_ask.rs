@@ -32,9 +32,10 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
-/// 拉回来那一份（远端 stdout）的上限：取资产目录文件那一格的数（目录本身就这么大封顶）；超了整份不收、回错。
+/// 拉回来那一份（远端 stdout）的上限：与资产目录文件的读上限同一个数（目录本身就这么大封顶；那份文件的名字与上限只住声明表）；
+/// 超了整份不收、回错。
 pub const PULL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
-    bytes: relay_route_core::ASSET_CATALOG_FILE.row.cap.bytes,
+    bytes: 16 * 1024 * 1024,
     over: relay_route_core::Over::Reject,
 };
 
