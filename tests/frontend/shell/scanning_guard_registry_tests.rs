@@ -9,13 +9,10 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 /// 守「只许变短」的是 [`the_pending_ratchet_never_turns_backwards`]：它拿 **git 历史**当权威，
 /// 断「今天的条数不许比它在历史上出现过的**最低档**还高」（不是「清单真的在变短」；挡不住把那条判据本身删掉）。
 const PENDING: &[&str] = &[
-    "tests/frontend/shell/atomic_replace_registry_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs",
-    "tests/frontend/shell/local_read_surface_registry_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
     "tests/backend/assets/aliases/block_tests.rs",
-    "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
     "tests/common/host-core/lib_tests.rs",
@@ -192,8 +189,7 @@ fn test_regions(src: &str) -> String {
 ///    ② 局部缩水（静默跳过一个子目录）⇒ 自检的地板红（`118 < 170`），
 ///    因为自检与 `scan()` **共用同一个 walker 函数**，函数体坏了两边一起坏。
 /// 2. **是不是有登记表只做单向对拍** —— 没有。六个登记表逐个变异验过，
-///    模拟「某个调用点退役了」都会红（`atomic_replace_registry` 逐字
-///    「登记表里的 `config.rs [MoveFileExW]` 已经不在了 —— 删掉这条」）。
+///    模拟「某个调用点退役了」都会红（报的是「登记表里的那一条已经不在了 —— 删掉这条」）。
 ///
 /// ⇒ 于是**第 1 条的安全性整个压在第 2 条上**：反向那半一旦被削成单向，
 /// 「打瞎扫描面」就再没有人接住，而自检那份副本**照样绿**。

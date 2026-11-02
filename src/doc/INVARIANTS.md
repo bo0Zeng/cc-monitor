@@ -31,7 +31,7 @@
 
 **为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
 
-**谁在守**：`write_site_registry_tests.rs::every_write_site_is_declared`（monitor 写盘落点逐个登记，落点类别是闭集 `Lands`，没有「用户文件」一档）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
+**谁在守**：`src/frontend/clippy.toml` 写盘那一组（壳往盘上写只经 `platform/own_fs.rs`，按落点各一组函数，没有「用户文件」一组）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
 ---
 
@@ -86,7 +86,7 @@
 
 **为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）⇒ Windows 上已在的目标就地覆盖写（与 `ReplaceFileW` 保的是同一样：目标文件自己的 ACL）；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
 
-**谁在守**：`tests/backend/files/write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
+**谁在守**：`tests/backend/files/write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `src/frontend/clippy.toml` 写盘那一组（壳里 `rename` 一类只在 `platform/own_fs.rs` 放行；用户文件经后端，或 `host_core` 保留目标 ACL 的那一个替换）。
 
 ---
 
@@ -463,19 +463,19 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ---
 
-## 43. **monitor 侧**的周期性唤醒也要逐条登记 —— 它与 `§41.4` 的范围差写在这里
+## 43. **monitor 侧**的周期性唤醒每一处都要说清 —— 它与 `§41.4` 的范围差写在这里
 
-monitor 生产段每一处会让线程自己醒来的构件都登记在 `rust_timer_registry`，写明类别（ticker / wait-for-condition / throttle / startup-delay），ticker 还要写事件源与谁退役它。它不禁周期行为（界面刷新、重连退避是正当的），要的是节拍不许无声无息地长出来；§41.4 只管后端。
+monitor 生产段每一处会让线程自己醒来的构件（`thread::sleep` · `recv_timeout` · tokio 的 `sleep` · `interval` 一族）都在调用处就地 `#[expect(clippy::disallowed_methods, reason = "…")]`，理由写事件源 · 归谁 · 什么时候能去。它不禁周期行为（界面刷新、重连退避是正当的），要的是节拍不许无声无息地长出来；§41.4 只管后端。
 
-**谁在守**：`tests/frontend/shell/rust_timer_registry_tests.rs`（盘上处数 == 登记条数，两向）。
+**谁在守**：`src/frontend/clippy.toml` 定时器那一组（壳与文件窗口两个包开成 deny，没写放行就编不过 clippy）· `polling_registry_tests.rs::every_shell_shaped_periodic_wake_is_registered`（monitor 拼进命令行里的 shell 循环，零命中）。
 
 ---
 
-## 44. **monitor 侧**起进程的面也要逐条登记 —— 而它**不是**「防写盘」
+## 44. **monitor 侧**起进程只有一条路 —— 而它**不是**「防写盘」
 
-monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`；远端那一侧界面进程一处都不跑（零拨号：问别台一律经本机后端）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
+monitor 生产段起进程只经 `spawn_managed`；远端那一侧界面进程一处都不跑（零拨号：问别台一律经本机后端）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
 
-**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `dial_move_judge.rs::the_monitor_dials_nothing`。
+**谁在守**：`src/frontend/clippy.toml` 起进程那一组（`Command::new` 只在 `spawn_managed` 放行）· `dial_move_judge.rs::the_monitor_dials_nothing`。
 
 ---
 

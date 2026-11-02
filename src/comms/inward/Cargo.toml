@@ -38,5 +38,8 @@ disallowed_methods = "deny"
 # 放行一律 `expect` 带理由（测试段在 `lib.rs` 根上一行放开）。
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
 # 线上类型的 `match` 列全变体：加一个变体时编译器点名每一处。
 wildcard_enum_match_arm = "deny"

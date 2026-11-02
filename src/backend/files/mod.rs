@@ -15,7 +15,15 @@
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
 
 // 包里照旧写 `crate::files::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as files;

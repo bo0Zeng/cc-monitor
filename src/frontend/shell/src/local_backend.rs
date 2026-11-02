@@ -653,7 +653,10 @@ pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
 /// 生产上只有这一个入口（中转在本机常驻后端里，没有另起的中转要一个不接消费者的薄壳）。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "起后端的每一格（二进制 · 参数 · 环境 · 消费者 · 事件回调）各是调用方自己的事实，收成结构体只是换个地方列同样几格"
+)]
 pub fn supervise_with_stdio(
     bin: PathBuf,
     args: Vec<String>,

@@ -24,53 +24,52 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
 ];
 
-/// ★ **前提触发器**：本模块头注说「Rust 那半的家是 `rust_timer_registry`」——
-/// 那句话只在**它真的还在**时成立。
-///
-/// # 为什么这条值得单独存在
-///
-/// 「Rust 侧刻意不在范围内，如实登记为未做」这类指针在写下时是真的，
-/// 那半做掉之后它就烂了 —— 而**没有任何东西会因此变红**。
-///
-/// ★ **一句自称诚实的话烂掉，比一个错数字更贵**：错数字会被人核对，
-/// 而「我如实记了未做」读起来像「这里有人想过了」，下一个人就不会去查。
-/// ⇒ 指针必须有判据看着，跟散文数字一样。
+/// ★ **前提触发器**：本模块头注说「Rust 那半由 `src/frontend/clippy.toml` 的定时器那一组挡」——
+/// 那句话只在名单里真有那一组、壳与文件窗口两个包真把名单开成 deny 时成立。
+/// 一句指向空处的指针读起来像「这里有人想过了」，下一个人就不会去查 ⇒ 指针要有判据看着。
 #[test]
 fn the_other_half_of_the_sweep_still_has_a_home() {
     let root = repo_root();
-    let other = root.join("tests/frontend/shell/rust_timer_registry.rs");
-    let body = fs::read_to_string(&other).unwrap_or_default();
-    // ⚠ `contains_word` 不是 `contains`：变异实测把 `REGISTERED` 改名成 `REGISTERED_X`，
-    // 裸 `contains` **照样绿**（前缀）。「知道有这个坑」不等于不踩：原语在手就别手写匹配。
-    assert!(
-        guard_core::contains_word(&body, "REGISTERED"),
-        "`rust_timer_registry` 不见了（或不再是登记表）。\n\
-             本模块头注逐字说着「Rust 那半的家是它」—— 那句话此刻是假的。\n\
-             ★ 要么把那半的新家写进头注，要么把头注改回「未做」；\n\
-             **不许留着一句指向空处的指针** —— 那比没有注释更坏（skill 铁律 14）。"
-    );
+    let toml = fs::read_to_string(root.join("src/frontend/clippy.toml"))
+        .expect("读不到 src/frontend/clippy.toml");
+    // 名单里那一组：会让线程 / 任务自己醒来的构件。少了一个 ⇒ 那一种周期唤醒在壳里写得出、没人问。
+    for path in [
+        "std::thread::sleep",
+        "std::thread::park_timeout",
+        "std::sync::mpsc::Receiver::recv_timeout",
+        "tokio::time::sleep",
+        "tokio::time::interval",
+    ] {
+        let entry = format!("path = \"{path}\"");
+        assert!(
+            toml.contains(&entry),
+            "`src/frontend/clippy.toml` 的定时器那一组里没有 `{path}` —— 本模块头注说 Rust 那半由它挡，此刻是假的。"
+        );
+    }
+    // 名单只在开成 deny 的包上起作用。
+    for manifest in [
+        "src/frontend/shell/Cargo.toml",
+        "src/frontend/filewin/Cargo.toml",
+    ] {
+        let body = fs::read_to_string(root.join(manifest)).expect("读不到包清单");
+        let lints = body
+            .split("[lints.clippy]")
+            .nth(1)
+            .and_then(|s| s.split("\n[").next())
+            .unwrap_or_default();
+        assert!(
+            guard_core::pin_line(lints, "disallowed_methods = \"deny\"").is_ok(),
+            "`{manifest}` 的 `[lints.clippy]` 没把 `disallowed_methods` 开成 deny ⇒ 名单在那个包上不起作用。"
+        );
+    }
     let me = fs::read_to_string(root.join("tests/frontend/shell/polling_registry.rs"))
         .expect("读不到本文件");
-    // ⚠ **只看头注那半**（`production_source` 把 `#[cfg(test)]` 段剥掉）。
-    // 变异实测：拿整份文件 `contains` 时，**本条自己的代码里就写着这个名字**
-    // （上面那个路径 join、下面那个 `mod` 断言）⇒ 散文里的指针被删光了它照样绿。
-    // 那是「判据匹配到自己」那一族。
+    // 只看头注那半（`production_source` 剥掉 `#[cfg(test)]` 段）：拿整份文件找，本条自己的代码里就写着这个名字。
     let head_note = guard_core::production_source(&me);
-    // 反向：头注真的指过去了才算。只留判据不改散文，读的人还是被那句旧话骗。
     assert!(
-        guard_core::contains_word(&head_note, "rust_timer_registry"),
-        "本模块头注里找不到 `rust_timer_registry` —— 指针被删了而本条还绿着，\n\
-             说明本条钉的是「那半存在」而不是「这里指着它」。两件都要。"
-    );
-    // 那半必须真的被编进来（`mod` 声明），否则它是一份没人跑的死代码。
-    let lib =
-        fs::read_to_string(root.join("src/frontend/shell/src/lib.rs")).expect("读不到 lib.rs");
-    // `find_pinned`：恰好一处 + 两侧有边界。裸 `contains` 会被
-    // `mod rust_timer_registry_v2` 之类喂饱，而那时「那半有人管」已经不成立了。
-    assert!(
-        guard_core::find_pinned(&lib, "mod rust_timer_registry;").is_ok(),
-        "`rust_timer_registry` 没有在 `lib.rs` 里声明 ⇒ 它根本不参与编译与测试，\n\
-             「那半有人管」这句话就成了空头支票。"
+        head_note.contains("src/frontend/clippy.toml"),
+        "本模块头注里找不到 `src/frontend/clippy.toml` —— 指针被删了而本条还绿着，\n\
+             说明本条钉的是「那半有人挡」而不是「这里指着它」。两件都要。"
     );
 }
 
@@ -559,4 +558,124 @@ fn the_files_that_forbid_polling_really_have_none() {
             "`{f}` 的纪律是「不许有周期唤醒」（{why}），却出现了：{hits:?}"
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// **monitor Rust 自己拼出来的 shell 周期唤醒**：clippy 的名单只认 Rust 的调用，认不出拼进命令行里的 `sleep`
+// ═══════════════════════════════════════════════════════════════════════
+
+fn root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// 生产段：用 `guard_core` 剥（连测试段一起剥）。
+fn production(raw: &str) -> String {
+    guard_core::production_code(raw)
+}
+
+/// 递归遍历 `src/`，**不是硬编码文件名单**。
+fn rust_files() -> Vec<(String, String)> {
+    let src = root().join("src");
+    let mut out = Vec::new();
+    // 人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
+    //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
+    let trees =
+        std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
+    for (label, tree) in trees {
+        let mut stack = vec![tree.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&d) else { continue };
+            for e in rd.flatten() {
+                let p: PathBuf = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_some_and(|x| x == "rs") {
+                    let rel = format!(
+                        "{label}/{}",
+                        p.strip_prefix(&tree)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    );
+                    out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// shell 形态的周期唤醒。**只收「只可能是 shell」的写法**。
+fn shell_wake_hits(prod: &str) -> usize {
+    // 判据串运行时拼，免得命中本文件自己的说明。
+    let pats = [
+        format!("while {}", "[ "),
+        format!("while {}", "true"),
+        format!("until{}", " "),
+        format!("sleep{}", " "),
+        format!("us{}", "leep"),
+        format!("$(s{}", "eq "),
+    ];
+    prod.lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            !t.starts_with("//") && pats.iter().any(|p| l.contains(p.as_str()))
+        })
+        .count()
+}
+
+/// ★ 抽取器自检：模式面既没画小也没画大。
+#[test]
+fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
+    // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
+    //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
+    //
+    // 标的按住址读：`find_ci` 住 `src/backend/history/search_rules.rs`；它搬走时本条要跟着改住址，
+    //   不然会以「那个循环不见了」的形态红，报的方向是错的。
+    let anchor = guard_core::addr::repo_src_root().join("backend/history/search_rules.rs");
+    let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
+    assert!(
+        search.contains(&format!("for i in 0{}n", "..")),
+        "`src/backend/history/search_rules.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
+             —— 下面那条反向断言失去了标的"
+    );
+    assert_eq!(
+        shell_wake_hits(&search),
+        0,
+        "模式面把 `search_rules.rs` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
+             （画大了 ⇒ 这张表被噪音填满 ⇒ 与画小了一样失去意义）"
+    );
+}
+
+/// ★★ **两个方向**：每一处 shell 周期唤醒都登记了；登记表里没有已经不存在的。
+///
+/// ⚠ 发现机制是**遍历**（`rust_files()`），不是手写清单 ——
+/// 「一组同类东西都必须满足 X」的判据，清单只能用来**表态**。
+#[test]
+fn every_shell_shaped_periodic_wake_is_registered() {
+    // ★ 反向自检先跑：表空了之后，「扫不到」必须与「扫描器坏了」分得开。
+    //   合成一条 shell 轮询喂给同一把尺子，它必须数出 ≥1。
+    let synthetic = format!(
+        "let s = format!(\"while {} $i -lt 3 ]; do {} 0.5; done\");",
+        "[", "sleep"
+    );
+    assert!(
+        shell_wake_hits(&synthetic) >= 1,
+        "尺子认不出一条摆在面前的 shell 轮询 —— 下面那格是零命中地绿"
+    );
+    let got: Vec<(String, usize)> = rust_files()
+        .into_iter()
+        .filter_map(|(rel, raw)| {
+            let n = shell_wake_hits(&production(&raw));
+            (n > 0).then_some((rel, n))
+        })
+        .collect();
+    assert!(
+        got.is_empty(),
+        "\nmonitor Rust 又**拼出了 shell 周期唤醒**：{got:?}\n\
+             远端那一侧的等待归后端（它有内核事件源）；先问能不能改问后端。"
+    );
 }

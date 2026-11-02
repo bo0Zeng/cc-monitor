@@ -73,3 +73,8 @@ windows = { version = "0.56", optional = true, features = [
 default = []
 # 「把这份文件收窄到只给本人」的能力。**只给会写这份文件的那一侧开。**
 harden = ["dep:windows", "dep:win-path-core", "dep:libc"]
+
+[lints.clippy]
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"

@@ -29,5 +29,8 @@ test-support = []
 [lints.clippy]
 # 出站 TCP 不在这里开（禁的路径与理由住同目录 `clippy.toml`）：去上游经宿主交进来的那一口（后端交的是出网口）。
 disallowed_methods = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
 # 线上类型的 `match` 列全变体：加一个变体时编译器点名每一处。
 wildcard_enum_match_arm = "deny"

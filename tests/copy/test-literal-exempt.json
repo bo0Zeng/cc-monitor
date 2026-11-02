@@ -89,9 +89,6 @@
     "tests/frontend/filewin/source_tests.rs": [
       { "text": "上一级", "use": "非文案" }
     ],
-    "tests/frontend/shell/atomic_replace_registry_tests.rs": [
-      { "text": "用户", "use": "非文案" }
-    ],
     "tests/frontend/shell/capability_registry_tests.rs": [
       { "text": "最小化", "use": "非文案" },
       { "text": "全屏", "use": "非文案" }

@@ -63,10 +63,25 @@ pub enum ConsolePolicy {
     /// 给用户的 claude 会话开一个能敲字的窗口。**别把 `Hidden` 铺到它头上。**
     /// 落点只在 Windows 上（`platform/terminal.rs` 的 Windows 臂）⇒ 别的平台上没人构造它。
     /// 平台 `cfg` 只许住 `platform/`，所以这里不收 `cfg`，只把那一侧的「从未构造」免掉。
-    #[allow(dead_code)]
+    //   `expect` 在 Windows 上会落空（那里造它），而这里不许写平台 `cfg` ⇒ 只这一处写 `allow`，对 `allow_attributes` 就地放行。
+    #[expect(
+        clippy::allow_attributes,
+        reason = "一个平台造、别的平台不造：`expect` 必有一侧落空，这里又不许写平台 cfg"
+    )]
+    #[allow(
+        dead_code,
+        reason = "落点只在 Windows 上（`platform/terminal.rs` 的 Windows 臂）"
+    )]
     NewVisible,
     /// **不表态**：继承宿主今天有什么（Windows 上不设任何 creation flag）。落点同样只在 Windows 上（理由同上）。
-    #[allow(dead_code)]
+    #[expect(
+        clippy::allow_attributes,
+        reason = "一个平台造、别的平台不造：`expect` 必有一侧落空，这里又不许写平台 cfg"
+    )]
+    #[allow(
+        dead_code,
+        reason = "落点只在 Windows 上（`platform/terminal.rs` 的 Windows 臂）"
+    )]
     Inherit,
 }
 

@@ -61,36 +61,15 @@
 //! ⚠ **第 2 层保证的是「没有未分类的调度点」，不是「分类都对」** ——
 //! 分类是人写的，写错了机器看不出来。**比没有强，别读成证明。**
 //!
-//! # monitor 的 Rust 侧：**不在本模块范围内，但已经有人管了**
+//! # monitor 的 Rust 侧：由编译器挡
 //!
-//! 本模块只覆盖 **TS 与 `shared/` 下的 shell**。Rust 那半的家是 **`rust_timer_registry`**（F09 建），
-//! 同一套分类词汇（`ticker` / `wait-for-condition` / `throttle` / `startup-delay`）。
+//! 本模块的登记表只覆盖 **TS 与 `shared/` 下的 shell**。Rust 那半由 `src/frontend/clippy.toml` 的定时器那一组挡
+//! （`thread::sleep` · `park_timeout` · `recv_timeout` · `Condvar::wait_timeout*` · tokio 的 `sleep` · `interval`）：
+//! 壳与文件窗口两个包把 `disallowed_methods` 开成 deny，用一处就在那一处 `#[expect(clippy::disallowed_methods, reason = "…")]`，
+//! reason 写事件源 · 归谁 · 什么时候能去。`the_other_half_of_the_sweep_still_has_a_home` 钉着这句指针。
 //!
-//! ⚠⚠ **这段话此前是一句假陈述**，而且是最难被怀疑的那一种 —— 它原文写着：
-//! 「monitor 的 Rust 侧刻意不在范围内…**如实登记为未做，不假装覆盖了**」。
-//! 那句话在写下时是真的；F09 把那半做掉之后它就烂了，而**没有任何东西会因此变红**。
-//! ★ **一句自称诚实的话烂掉，比一个错数字更贵**：它读起来像是「这里有人想过了」，
-//! 于是下一个人不会去查。（audit-0805 F14 §4 复核时才发现。）
-//! ⇒ 现在由 `the_other_half_of_the_sweep_still_has_a_home` 钉着：
-//! `rust_timer_registry` 一旦消失，这段指针立刻变红。
-//!
-//! 那半一上岗抓到的两个真节拍器（`bind.rs` 扫死 shell 的 10s · `stream_source/` 的 daemonless 2s）今天都退役了：
-//! 前者换成内核的进程退出事件（`pidwatch-core`），后者随 `K35` 整段删掉。今天的清单以 `rust_timer_registry` 那张表为准。
-//!
-//! ⚠⚠ **08-10 订正：那个数今天是 4，不是 2。** devbench F07 把 `recv_timeout` 收进那张表的针
-//! 之后，又上账两条：`watcher.rs` 的 **100ms（10Hz，全仓最快的一处）** 与 `session_map.rs` 的 2s。
-//! ★ **它们在那之前一直在跑** —— 只是那张表的针（当时只有 `sleep`/`interval`）看不见它们，
-//! 而 `src/doc/INVARIANTS.md:1379` 与后端侧 `no_timer_guard` 的扫描面**都早已点名 `recv_timeout`**
-//! ⇒ 缺的不是认知，是针没跟上。这两条的退役各有归属（devbench F11 / F12）。
-//!
-//! ⚠⚠⚠ **上面那句「今天是 4」当天就过期了 —— 08-10 收官时是 3**〔G 审计逮到〕。
-//! devbench **F11 真的把 `watcher.rs` 那条退役了**（两条通道合成一个 `WatchEvent` enum、
-//! 主循环改无超时 `recv()`），于是 4 → 3。
-//! ★ 这条陈账的形状值得记：**A 模块的头注在描述 B 模块的状态，而指针那一侧没有判据。**
-//! F11 只改了 `rust_timer_registry.rs` + `watcher.rs` 两个文件，没人会回来改这里。
-//! ⇒ **别在散文里抄那个数** —— 权威在 `rust_timer_registry::every_ticker_names_its_event_source_and_owner`
-//! 的 `assert_eq!`，它自己会说话（本文件下面那条 `the_other_half_of_the_sweep_still_has_a_home`
-//! 已经在钉「指针目标存在」，但**没钉那个数**）。
+//! 名单只认 Rust 的调用，认不出 monitor 拼进命令行里的 shell 循环（`while [ …` · `sleep 0.5`）：
+//! 那一族由本模块的 `every_shell_shaped_periodic_wake_is_registered` 扫（零命中，带一条合成的正控）。
 
 #[cfg(test)]
 #[path = "polling_registry_tests.rs"]

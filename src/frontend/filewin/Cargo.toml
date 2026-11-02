@@ -130,3 +130,13 @@ guard-core = { path = "../../common/guard-core" }
 win-manifest = { path = "../../common/win-manifest" }
 # 截图那棵合成树的修改时间按本机本地时间钉死（`tests/frontend/filewin/workspace_tests.rs`；`MIT OR Apache-2.0`，已在锁文件里）。
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[lints.clippy]
+# 禁的路径与理由住 `src/frontend/clippy.toml`（与壳共用）；真要用的那一处就地 `expect` 写理由。
+disallowed_methods = "deny"
+# 放行一律 `expect` 带理由（测试段在 `src/lib.rs` 根上一行放开）。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
