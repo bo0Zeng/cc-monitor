@@ -99,8 +99,8 @@ const ACCT_B: &str = "acctB";
 /// ⚠ 它走的是**生产段那条真实的路** `RoutingTable::build` —— 判据不许自己另造一个
 /// 同构的表，那样量的就不是生产段的那一份了。
 fn table_of(rows: &[(&str, &Base, Option<&str>)]) -> RoutingTable {
-    // ⚠ `K-R1`：这个薄封装给每一行填 `AuthStyle::DEFAULT`。
-    //   它**不是**「不关心鉴权头形状」的意思 —— 它是「既有的这些判据量的都是
+    // ⚠ 这个薄封装给每一行填 `AuthStyle::DEFAULT`。
+    //   它**不是**「不关心鉴权头形状」的意思 —— 它是「用它的这些判据量的都是
     //   **默认那条路**」，而默认那条路要求它逐字节不变。
     //   要量非默认形状的判据走 [`table_of_styled`]。
     table_of_styled(
@@ -145,7 +145,7 @@ fn table_under(
 }
 
 /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
-/// （⇒ 走「原样转发」那一支，与 `K-H1` 甲半的既有判据逐字同形）。
+/// （⇒ 走「原样转发」那一支）。
 fn two_accounts_no_key(base: &Base) -> RoutingTable {
     // ⚠ 「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
     //   `/s/agentA/acctA` 与 `/s/agentB/acctB`，所以两行各挂一家。
@@ -177,12 +177,12 @@ const REQUEST_BODY: &str = "{\"m\":1}";
 
 /// 一个最小假上游。**它只监听回环，全程没有一个字节出本机。**
 ///
-/// # `gate`：**每一块**都要等下游确认（回修轮改的）
+/// # `gate`：**每一块**都要等下游确认
 ///
 /// 给了 `gate` 时，假上游发**每一块**之前都先 `recv()` 一次。
 /// ⇒ 中转只要攒住任何一块，下游就再也等不到下一块，测试在读期限上红。
-/// 〔旧版只在**第 1 块之后**卡一次门闩 ⇒ 「第 1 块立刻透、其余攒到流末」那一形
-///  一条判据都撞不上（审计 `K4` 实测 384 全绿）。那正是 `K9` 裁定四要防的形状。〕
+/// 〔只在**第 1 块之后**卡一次门闩的话，「第 1 块立刻透、其余攒到流末」那一形
+///  一条判据都撞不上（实测全绿）—— 那正是「逐块透传绝不缓冲」要防的形状。〕
 struct FakeUpstream {
     addr: SocketAddr,
     seen: Arc<std::sync::Mutex<Vec<String>>>,
@@ -196,11 +196,11 @@ struct FakeUpstream {
     /// ⚠ 它与 `seen` 里那个 `auth=<bool>` **不是同一个量**：那个布尔在
     /// 「原样转发」与「换头」两种形状下**一模一样**，证不了换头真的发生了。
     auth_values: Arc<std::sync::Mutex<Vec<String>>>,
-    /// 上游**真的发出**的 SSE **事件**数（终止块不算）〔回修轮之五 08-25，`阻-4(D3)`〕。
+    /// 上游**真的发出**的 SSE **事件**数（终止块不算）。
     ///
     /// ⚠ 它与 `sent` **不是同一个量**，别拿一个当另一个用：
     /// `sent` 数的是**网线上的块**（含终止块），`events` 数的是**上游发出的 `data:` 事件**。
-    /// `DoD-2㈡` 的「块数对账」用前者，`DoD-3㈠` 的「`event` 数对账」用后者。
+    /// 透传的「块数对账」用前者，tee 的「`event` 数对账」用后者。
     events: Arc<AtomicU64>,
     /// **下游在响应写完之前就走了**、本桩因此丢掉的连接数。
     ///
@@ -236,7 +236,7 @@ impl FakeUpstream {
 
 /// 对端（中转）在这一条连接上**先走了**。
 ///
-/// ★★ `K-R126`：这**是合法的下游行为，不是夹具坏了**。`STUB_LAUNCHER` 只读一行状态行
+/// ★★ 这**是合法的下游行为，不是夹具坏了**。`STUB_LAUNCHER` 只读一行状态行
 /// （`head -n 1`）就退出，`bash` 一退出这条连接就没了 —— 每一发都在造这一形。
 /// 中转那一侧照规矩把它记成 `connection ended: Broken pipe` 并收掉上游那条连接，
 /// **假上游这一侧也必须认得它**，否则就会拿一条正常的客户端行为去炸自己的线程。
@@ -287,9 +287,9 @@ struct StubFault {
 /// 长度行 / 数据 / CRLF 分三次写会让「一块」在网线上散成三段，
 /// 那时「下游读到的块数」就不再是上游发出的块数 ⇒ 对账那条判据要的是 1:1。
 ///
-/// ★ `K-R126` 把 `.expect()` 换成 `?`：**写不出去不是 panic 的理由** ——
+/// ★ 用 `?` 不用 `.expect()`：**写不出去不是 panic 的理由** ——
 /// 收场归调用方那一处统一判（对端走了 ⇒ 丢这一条连接；其余 ⇒ 照旧炸）。
-/// `sent` 只在**真写出去了**之后才 +1，这一条一个字没动。
+/// `sent` 只在**真写出去了**之后才 +1。
 fn send_chunk(s: &mut TcpStream, sent: &AtomicU64, payload: &[u8]) -> std::io::Result<()> {
     let mut frame = format!("{:x}\r\n", payload.len()).into_bytes();
     frame.extend_from_slice(payload);
@@ -330,14 +330,13 @@ fn spawn_fake_upstream_faulted(
         for s in listener.incoming() {
             let Ok(mut s) = s else { continue };
             conn_no += 1;
-            // ★★★ `K-R126` —— **一条连接怎么收场，分两档**。读数住件文件 `§3`。
+            // ★★★ **一条连接怎么收场，分两档**。
             //
-            // 在此之前这里是一串 `.expect(...)`：下游只要在响应写完之前走掉
+            // 这里若是一串 `.expect(...)`：下游只要在响应写完之前走掉
             //（`STUB_LAUNCHER` 的 `head -n 1` **每一发都这样**），
             // 桩这条 accept 线程就 panic ⇒ 连带把 `listener` 一起 drop 掉
-            // ⇒ **同一条判据里后面每一发都是 `Connection refused`**。
-            // 那正是 CI 上连红两趟的根因（run `34939805688` 两趟 attempt 逐字同形：
-            // 桩线程炸在终止块那一写、测试线程红在**第二个账号**上的 502）。
+            // ⇒ **同一条判据里后面每一发都是 `Connection refused`**
+            //（桩线程炸在终止块那一写、测试线程红在**第二个账号**上的 502）。
             //
             // ⚠ **`Broken pipe` 是根、`Connection refused` 是果**，别读反了：
             //   桩不是「还没 listen 上」—— `bind` 在 `spawn` **之前**、
@@ -362,7 +361,7 @@ fn spawn_fake_upstream_faulted(
                     let lower = h.to_ascii_lowercase();
                     if lower.starts_with("authorization:") {
                         auth = true;
-                        // `K-H2a` `KS3`：把**值**也收下来。
+                        // 把**值**也收下来。
                         // 只有 `auth=true` 这个布尔证不了「换头真的发生了」——
                         // 原样转发和换头**在这个布尔上一模一样**。
                         auth_values_c
@@ -374,9 +373,9 @@ fn spawn_fake_upstream_faulted(
                         clen = v.trim().parse().unwrap_or(0);
                     }
                 }
-                // ★ **真的把请求体读进来**（回修轮补的）。不读它有两条后果，本仓都实测过：
+                // ★ **真的把请求体读进来**。不读它有两条后果，本仓都实测过：
                 //   ① 「请求体到不到得了上游」**零判据** —— 把 `read_exact_body(...)` 换成
-                //      `Vec::new()`（请求体整个丢掉）⇒ 384 条全绿（审计 `CG5`）。
+                //      `Vec::new()`（请求体整个丢掉）⇒ 全绿。
                 //   ② 迭代结束 drop 时接收队列里还压着未读数据 ⇒ 内核发 **RST 而不是 FIN**
                 //      ⇒ `pump` 的干净 EOF 路 `Ok(0) => break` 一次都走不到，
                 //         走的全是 `Err(e) => return Err(e)`。
@@ -414,7 +413,7 @@ fn spawn_fake_upstream_faulted(
                         &sent_c,
                         format!("data: {{\"i\":{i}}}\n\n").as_bytes(),
                     )?;
-                    // ★ 事件数**由夹具自己数**（`阻-4(D3)`）：判据拿它当分母，
+                    // ★ 事件数**由夹具自己数**：判据拿它当分母，
                     //   而不是拿 `UPSTREAM_EVENTS` 这个常量 —— 夹具少发了也要看得见。
                     events_c.fetch_add(1, Ordering::SeqCst);
                 }
@@ -424,13 +423,11 @@ fn spawn_fake_upstream_faulted(
                 s.write_all(b"0\r\n\r\n")?;
                 s.flush()?;
                 sent_c.fetch_add(1, Ordering::SeqCst);
-                // ★★ **最后一块也要等下游确认**（回修轮之四 08-25，D2 `重要-1(D2)`）。
+                // ★★ **最后一块也要等下游确认**。
                 //
-                // 先前门闩到终止块**之前**就停了。门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1
-                // 次确认 ⇒ 上游卡住」，而**最后一块没有「第 i+1 块」** ⇒ 中转把终止块攒到流末
-                // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**
-                //（D2 `D2M2` 实测 389 全绿；后来重打 392 全绿）。而判据头注当时逐字写着
-                // 「射程覆盖到最后一块」—— **那句话是假的**。
+                // 门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1 次确认 ⇒ 上游卡住」，
+                // 而**最后一块没有「第 i+1 块」**：门闩停在终止块**之前**的话，中转把终止块攒到流末
+                // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**（实测全绿）。
                 //
                 // 这里再 `recv` 一次、**带上限**，把那一形接住：
                 //   · 中转正常透传 ⇒ 下游立刻确认 ⇒ 这一次 `recv` 立刻返回，什么都不耽误；
@@ -450,7 +447,7 @@ fn spawn_fake_upstream_faulted(
             let outcome = match fault {
                 Some(f) if f.nth == conn_no => Err(std::io::Error::new(
                     f.kind,
-                    "K-R126 判据注入的错 —— 这一行出现在**绿**的一趟里也是对的",
+                    "判据注入的错 —— 这一行出现在**绿**的一趟里也是对的",
                 )),
                 _ => outcome,
             };
@@ -477,7 +474,7 @@ fn spawn_fake_upstream_faulted(
     }
 }
 
-/// 往假上游发一整发、并把响应**整条**读回来。只给 `K-R126` 那两条判据用。
+/// 往假上游发一整发、并把响应**整条**读回来。只给「一条连接怎么收场」那两条判据用。
 fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
     let mut c = TcpStream::connect(addr)
         .unwrap_or_else(|e| panic!("{what}：假上游断开 —— 它的 `listener` 已经不在了（{e:?}）"));
@@ -494,13 +491,12 @@ fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-/// ★★★ `K-R126` 的牙之一 —— **一条连接上「对端走了」，只该丢掉那一条连接，
+/// ★★★ 收场的牙之一 —— **一条连接上「对端走了」，只该丢掉那一条连接，
 /// 不该把假上游的 `listener` 一起带走。**
 ///
-/// # 它钉的是 CI 上连红两趟的那个根因
+/// # 它钉的根因
 ///
-/// `main` 上同一份代码，run `34939805688` 连红两趟、每趟红的不是同一条，
-/// 而**两趟的桩线程都炸在同一处**（终止块那一写，`end: BrokenPipe`）：
+/// 桩线程炸在终止块那一写（`end: BrokenPipe`）时，红的判据每趟不同，根因是同一条链：
 ///   ① 下游（`STUB_LAUNCHER` 的 `head -n 1`）读到状态行就退出 ⇒ 中转写下游 `Broken pipe`；
 ///   ② 中转因此收掉上游那条连接 ⇒ 桩接着写 ⇒ `Broken pipe` ⇒ 桩线程 panic；
 ///   ③ panic 把 `listener` 一起 drop 掉 ⇒ **同一条判据里第二发 `Connection refused`** ⇒ 502。
@@ -551,7 +547,7 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
         );
 
         // ★ 正题：桩**还在 listen**，第二发要走完一整条响应。
-        //   修之前这里就是 CI 上那一发：`Connection refused` ⇒ 502。
+        //   桩被自己炸没的话，这一发就是 `Connection refused` ⇒ 502。
         let second = one_whole_shot(up.addr, "第二发");
         assert!(
             second.starts_with("HTTP/1.1 200"),
@@ -573,7 +569,7 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
     }
 }
 
-/// ★★★ `K-R126` 的牙之二 —— **不是「对端走了」的那些错，响度一分贝都不许降。**
+/// ★★★ 收场的牙之二 ——**不是「对端走了」的那些错，响度一分贝都不许降。**
 ///
 /// 上面那条判据买的是「别把一条正常的客户端行为读成夹具坏了」；
 /// 这一条买的是它的**反面**：修法不许顺手把**别的**错也一起吞掉。
@@ -616,7 +612,7 @@ fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly
     );
 }
 
-/// ★★ **tee 的收集面必须「能等」**〔回修轮之五 08-25，`阻-2(D3)` 的连带〕：
+/// ★★ **tee 的收集面必须「能等」**：
 /// 下游的响应读完了，tee 那几件**未必**已经交到（收尾那一件在转发收工之后才交）。
 /// 判据读完就断言 = 在读一个还没收齐的缓冲区，而「tee 是空的」与「还没收齐」
 /// 在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
@@ -738,25 +734,9 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     // 10 秒对回环来说宽得离谱（这几条判据实测都在 10ms 量级收工）⇒ 它只会把
     // **挂住**换成**红**，不会把真失败盖掉。门闩那条的读期限是兜底的那一个数、闸等两倍。
     //
-    // ⚠⚠ **订正分母**〔回修轮之四 08-25，D2 `重要-4(D2)`〕：先前这里（与件文件 §8.17.4、
-    // 与 `28a73df` 的提交正文）逐字写的是「在 `send_request` 里统一加 10s 读期限
-    //（**一处覆盖全部客户端 socket**）」，还写「既有 **3 条**走得到 `serve()`」。**两个数都错。**
-    // 下面这两个分母是**重打的今天的数**（D2 那天的盘面已经不是今天的盘面了）：
-    //
-    //   · **走得到 `serve()` 的判据 = 6 条**（不是 3 条）。量具：`grep -n 'spawn_relay(' relay/`
-    //     去掉定义行与注释行 ⇒ **5** 处，逐条点名 —— `routes_two_keys…` ·
-    //     `an_unroutable_path…` · `every_chunk_…` · `the_auth_header…` ·
-    //     `the_relay_port_is_not_reachable…`；再加当时一条经 `--relay` 入口的（自带线程 + 5s `recv_timeout`；随那一形删了）。
-    //     **本函数覆盖其中 4 条**（前四条都调它），第 5 条不调本函数、自带 `connect_timeout`。
-    //
-    //   · **测试段客户端 socket 的创建点 = 4 处**（量具 `grep -n 'TcpStream::connect' relay/`
-    //     去掉生产段那一处与注释行）：本处 `:506` ✔10s 读期限 ·
-    //     `both_directions_really_disable_nagle_on_the_socket` 的客户端 ✔10s 读期限 ·
-    //     同一条判据里那个**只做 `getsockopt` 不做 read** 的对照 socket（不需要读期限）·
-    //     `the_relay_port_is_not_reachable…` 的直连 ✔10s `connect_timeout` + 读期限。
-    //     ⇒ **本处覆盖 1/4**，另外三处各自带自己的期限（或根本不读）。
-    //
-    // ⇒ 别再写「一处覆盖全部客户端 socket」：那句话没有分母，而它今天是假的。
+    // ⚠⚠ **分母**：这里的读期限**不覆盖全部客户端 socket** —— 测试段里直接 `TcpStream::connect`
+    // 的别处（`send_raw` · 只做 `getsockopt` 不做 read 的对照 socket · 端口不可达那条的直连）
+    // 各自带自己的期限（或根本不读）。别写「一处覆盖全部客户端 socket」：那句话没有分母。
     c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline（风险 5x：把挂住换成红）");
     let body = REQUEST_BODY;
@@ -821,12 +801,12 @@ fn the_listed_request_headers_ride_the_first_event_with_their_values() {
     );
 }
 
-/// ★ `DoD-1`：按路径前缀分流。上游必须收到**剥掉前缀之后**的真路径，
+/// ★ 按路径前缀分流。上游必须收到**剥掉前缀之后**的真路径，
 /// 两个键各自成行且不交叉，且两次由**同一个中转进程**服务。
 #[test]
 fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     let up = spawn_fake_upstream(None);
-    // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
+    // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走。
     let (relay_addr, _relay, tee) = spawn_relay(up.addr);
     // 流标签取自请求自带的会话标识头（路径里没有会话段）。
     let mut c = send_request(
@@ -872,17 +852,12 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
         "两个键的事件不许交叉（各自一个响应序号）：{events:?}"
     );
 
-    // ★★ `阻-4(D3)`：`DoD-3㈠` acceptor 逐字那半句 ——
-    //    「其后每行可解析且 **`event` 数 == 假上游发出的事件数**」。
+    // ★★ tee 的**`event` 数 == 假上游发出的事件数**。
     //
-    // # 这一格先前**零判据**，而它的逃逸射程是实测出来的
-    //
-    // 上面那几条只断「非空 + 不交叉 + 无第三落点」⇒ **每批少抄若干条没有人发现**：
-    // D3 `MU5`（`splitter.feed(...)` 取完 batch 再 `batch.pop()`，下游字节一个不少）
-    // ⇒ **392 全绿**，非空对照里逐字有「这一批 3 条，丢掉 Some("{\"i\":3}")，剩 2」。
-    // 而「**一条都不抄**」会红（PM 重打：390 passed / 2 failed）——
-    // 那两条红是被「tee 非空」顺带接住的，**不是设计出来的**。
-    // ⇒ 今天补的就是中间那一大段：**数对不上就红**。
+    // 上面那几条只断「非空 + 不交叉 + 无第三落点」⇒ **每批少抄若干条没有人发现**
+    //（`splitter.feed(...)` 取完 batch 再 `batch.pop()`，下游字节一个不少 ⇒ 实测全绿）；
+    // 「**一条都不抄**」只是被「tee 非空」顺带接住，**不是设计出来的**。
+    // ⇒ 这里管中间那一大段：**数对不上就红**。
     //
     // 分母：上游**自己数**的事件数（`up.events()`，夹具在每次 `send_chunk` 事件时 +1），
     // 不是判据里写死的常量 —— 拿常量当期望值，夹具少发了也照样绿。
@@ -910,11 +885,10 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
         let k = events.iter().filter(|e| e.resp == end.resp).count() as u64;
         assert_eq!(end.n, k, "这一趟不该有缺口：{end:?} 而事件 {k} 件");
     }
-    // ★ `阻-2`：请求体必须**逐字节**到得了上游。
+    // ★ 请求体必须**逐字节**到得了上游。
     //
-    // 这一格先前**零判据**：把 `read_exact_body(&mut down_r, n)?` 换成 `Vec::new()`
-    // （请求体整个丢掉）⇒ 384 条判据全绿（审计 `CG5`）。成因是假上游从不读请求体
-    // ⇒ 没有任何一处看得见 body。中转搬的正是 `POST /v1/messages` 的载荷，
+    // 假上游不读请求体的话，没有任何一处看得见 body：把 `read_exact_body(&mut down_r, n)?` 换成 `Vec::new()`
+    // （请求体整个丢掉）⇒ 全绿。中转搬的正是 `POST /v1/messages` 的载荷，
     // 丢了它 claude 当场坏，而门禁全绿。
     //
     // 期望值是**手写字面量**，不是拿被测代码算出来的（否则本断言自证、恒绿）。
@@ -936,12 +910,12 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
 
 /// 发一条**自己拼的**请求（`send_request` 那条固定拼 `Content-Length`，这里要能拼坏的）。
 ///
-/// 返回 `(拿到的字节, 是不是干净收尾)`。**第二个值不是搭头**〔回修轮之五 08-25〕：
+/// 返回 `(拿到的字节, 是不是干净收尾)`。**第二个值不是搭头**：
 /// 拒绝那几支要是没把请求字节排干净，`close` 发的是 **RST**，下游那边的 `read` 拿到
 /// `ConnectionReset` —— 有些内核/时序下**连已经缓冲的那句 503 都会被丢掉**。
 /// ⇒ 「拒绝有声」这条性质要的是「拿到 503 **且** 干净收尾」，两个都要断。
 /// 〔死值验：只断第一个值时，把 `respond_and_drain` 的排整个关掉 ⇒ **0 红 / 405**
-///  —— 那条排就成了一处没人守的代码。补上这一格之后它才有牙（`MU13`）。〕
+///  —— 那条排就成了一处没人守的代码。断了第二个值它才有牙。〕
 fn send_raw(addr: SocketAddr, raw: &str) -> (String, bool) {
     let mut c = TcpStream::connect(addr).expect("connect relay");
     c.set_nodelay(true).expect("nodelay");
@@ -1021,9 +995,9 @@ fn a_body_larger_than_the_cap_is_refused_with_413_and_never_reaches_upstream() {
     );
 }
 
-/// ★ `重要-2(D3)` 的**行为格**：`Content-Length` 读不懂 ⇒ 400，**不许**静默把请求体丢掉。
+/// ★ **行为格**：`Content-Length` 读不懂 ⇒ 400，**不许**静默把请求体丢掉。
 ///
-/// 先前这一形下：上游收到**空请求体**、下游拿到一条**完全正常的 200**、全程零日志零 4xx。
+/// 静默丢掉的那一形下：上游收到**空请求体**、下游拿到一条**完全正常的 200**、全程零日志零 4xx。
 /// 中转搬的正是 `POST /v1/messages` 的载荷 ⇒ 载荷整个消失而客户端毫不知情。
 ///
 /// 非空对照与上一条同族：先打一发正常的，证明这条路与上游的记录面都是活的。
@@ -1140,9 +1114,9 @@ fn spawn_scripted_upstream(script: &'static str) -> SocketAddr {
     addr
 }
 
-/// ★★ `重要-1(D3)`：上游的 **1xx 中间响应**不许被当成最终响应。
+/// ★★ 上游的 **1xx 中间响应**不许被当成最终响应。
 ///
-/// # 先前是什么形状（D3 实测）
+/// # 当成最终响应是什么形状（实测）
 ///
 /// 下游**逐字**拿到
 /// `"HTTP/1.1 100 Continue\r\nConnection: close\r\n\r\nHTTP/1.1 200 OK\r\n…"`
@@ -1186,12 +1160,12 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
     }
 }
 
-/// ★ `INTERIM_RESPONSES_ALLOWED` 那一格〔铁律 15 自查补的：**我自己写的那条上限先前零判据**〕。
+/// ★ `INTERIM_RESPONSES_ALLOWED` 那一格：**上限本身要有判据**。
 ///
 /// 上一条判据只喂到 **2** 个 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
 /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502** ＋ 原因头 `upstream-only-interim`
-/// （中转自己的传输失败；不是超时 ⇒ 502，先前 504）。
+/// （中转自己的传输失败；不是超时 ⇒ 502）。
 ///
 /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
 /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
@@ -1243,13 +1217,13 @@ fn too_many_interim_responses_are_refused_with_502() {
     );
 }
 
-/// ★ `TEE_DECODE_CAP` 那条**接线**〔铁律 15 自查补的：两个上限各自有单元判据，
-/// 而「`handle` 有没有把丢掉的字节接到 tee 上」**先前零判据**〕。今天 tee 只剩 tap 那一形：
+/// ★ `TEE_DECODE_CAP` 那条**接线**〔两个上限各自有单元判据，
+/// 而「`handle` 有没有把丢掉的字节接到 tee 上」只有这一条管〕。tee 只有 tap 那一形：
 /// 丢掉的那一截是**占一个号不发**，看得见的是收尾那一件的总号数比交出的事件多。
 ///
 /// 把 `relay.tee.note_dropped_bytes(view.take_dropped() + splitter.take_dropped());`
 /// 整行换成一个 `let _ = …`，那两条单元判据**照样绿**，而真机后果是 tee 少了一大段
-/// 却**一个字都不说** —— 正是 `DoD-3㈠` 那笔账对不上的成因。
+/// 却**一个字都不说** —— tee 的事件数对账就对不上。
 ///
 /// # 量法与代价
 ///
@@ -1333,7 +1307,7 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
 ///
 /// ㈠ **半开也算在册** —— 一条只发半个请求头、永不发结尾空行的连接，`inflight` 必须涨。
 ///    （那正是 D3 那一形：`半开 64 条 ⇒ 线程 4 → 68`。）
-/// ㈡ **顶到上限 ⇒ 回 503**，不是静默 FIN。先前是 `let _ = …spawn(…)` 把失败整个吞掉。
+/// ㈡ **顶到上限 ⇒ 回 503**，不是静默 FIN（`let _ = …spawn(…)` 那种写法会把失败整个吞掉）。
 /// ㈢ **非空对照**：`上限 - 1` 的时候同一发请求必须拿到 **200** ——
 ///    没有它，「拿到 503」可能只是这条路本来就不通。
 /// ㈣ **计数会还** —— 一条正常连接走完之后 `inflight` 回到原值，否则上限会被慢慢耗光。
@@ -1531,14 +1505,11 @@ impl Drop for RelayChild {
 /// 起一个子进程中转，指向 `up`。**端口给 0**（内核选）——
 /// 判据从子进程 stderr 上那句 `listening on` 里读回真端口，
 /// 这样就没有「先探一个空闲端口再去绑」的竞态。
-/// ⚠⚠ **`K-H2` 改了这个夹具，经过必须写下来**：先前它指到一条**不存在**的路径，
-/// 靠的是「没配凭据 ⇒ 中转是一条全局透传路」——**那条隐式行为已经不存在了**
-/// （见 `render_upstream_request` 头注的订正）。今天不给它一份凭据文件的话，
+/// ⚠⚠ 没配凭据**不是**一条全局透传路：不给它一份凭据文件的话，
 /// 表是空的 ⇒ **每一发都是 404**，而这几条判据要的是一趟**真转发**。
 ///
-/// ⇒ 今天写一份**只有一条空账号**的真文件：`{"accounts":{"acctA":{}}}`
-/// —— keyless、用默认上游（`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 指着假上游），
-/// 正好等价于先前那条隐式透传，但**是显式的一条路**。
+/// ⇒ 写一份**只有一条空账号**的真文件：`{"accounts":{"acctA":{}}}`
+/// —— keyless、用默认上游（`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 指着假上游），**是显式的一条路**。
 fn spawn_relay_child(up: SocketAddr) -> RelayChild {
     // 判据绝不许去碰用户真实的那份凭据文件 ⇒ 自己造一份临时的。
     let dir = tmpdir(&format!("child-{}", up.port()));
@@ -1550,7 +1521,7 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 
 /// 起一个子进程中转，并**指定它从哪儿读凭据**。
 ///
-/// ★ `KS3` 的金丝雀走的就是这条路：真子进程 · 真文件 · 真转发 —— 不是在一个 crate 里自问自答。
+/// ★ 换上去的那把 key 的金丝雀走的就是这条路：真子进程 · 真文件 · 真转发 —— 不是在一个 crate 里自问自答。
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
     // 中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
     //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
@@ -1571,8 +1542,8 @@ fn spawn_relay_child_at(
             "--exact",
             "--ignored",
             // ⚠ **`--nocapture` 是这台子的地基**：不给它，子进程里 libtest 会把
-            //   `eprintln!` 收进自己的捕获（**连 spawn 出来的线程也收**，我实测过，
-            //   读数见件文件 §8.20.1㈡）⇒ 管道上一个字节都读不到，
+            //   `eprintln!` 收进自己的捕获（**连 spawn 出来的线程也收**，实测过）
+            //   ⇒ 管道上一个字节都读不到，
             //   这条「日志里不许有哨兵串」的判据就成了一条**空真**。
             "--nocapture",
             "--test-threads=1",
@@ -1614,13 +1585,13 @@ fn spawn_relay_child_at(
     let err_c = Arc::clone(&err);
     std::thread::spawn(move || {
         for line in BufReader::new(se).lines().map_while(Result::ok) {
-            // ★★ **次序是承重的：先写缓冲，再 `send`**〔`K-R24` 读出来的机制，09-04〕。
+            // ★★ **次序是承重的：先写缓冲，再 `send`**。
             //
             // 反过来（先 `send` 再写缓冲）的话，`rx.recv_timeout` 就是判据的**同步点**，
             // 而它返回的那一刻 banner 这一行**可能还没进 `err`** ⇒ 一条读
             // 「`err` 里有没有 / 有几行 `listening on`」的判据会**间歇性**红，
             // 报文里 `{err:?}` 印出来的正是一个空串。
-            // ⇒ 今天由**构造**兜住：`send` 发生时缓冲里必然已经有它了，
+            // ⇒ 由**构造**兜住：`send` 发生时缓冲里必然已经有它了，
             // 而 `send` 是判据唯一等得到的那个信号。
             // ⚠ 它买的是**这一个**窗口，不是「err 里所有内容都齐了」——
             //   banner **之后**那些行仍然是异步进来的，读它们的判据仍要自己等。
@@ -1651,14 +1622,12 @@ fn spawn_relay_child_at(
     }
 }
 
-/// ★★ `阻-5(D3)`：`DoD-3㈡` acceptor 逐字那半句 ——
-/// 「tee 文件 **+ 中转全部日志/stderr** 里**零出现**该哨兵串」。
+/// ★★ tee **＋ 中转全部日志/stderr** 里**零出现**该哨兵串。
 ///
-/// # 这一格先前**零牙**，而且是被自己那句「怎么让它失败」照出来的
+/// # 为什么 tee 那条不够
 ///
-/// `DoD-3` 逐字写的「怎么让它失败」是「加一行**把 headers 也 dump 一份**」。
-/// D3 与 PM 各自打了这一刀（`eprintln!("[relay] … headers: {{:?}}", head.headers);`）：
-/// **392 全绿**，而同一趟 `--nocapture` 的输出里**逐字**印着
+/// 加一行**把 headers 也 dump 一份**（`eprintln!("[relay] … headers: {{:?}}", head.headers);`）：
+/// 只看 tee 的判据**全绿**，而同一趟 `--nocapture` 的输出里**逐字**印着
 /// `Authorization: Bearer SECRET-TOKEN-DO-NOT-LEAK`。
 /// 成因：`the_auth_header_is_forwarded_but_never_teed` 的采集面**只有 tee sink**，
 /// **一个字都不读 stderr**。
@@ -1667,14 +1636,14 @@ fn spawn_relay_child_at(
 ///
 /// 进程内做不到：libtest 的输出捕获是**跟着 `std::thread::spawn` 传下去**的，
 /// 而 `serve()` 每连接 spawn 一条线程、`handle` 的 `eprintln!` 就在那条线程上。
-/// 我用 `libc::dup2` 把 fd 2 接到管道上量过两趟：默认跑法收到 **0** 字节、
-/// `--nocapture` 收到 **47** 字节（逐字读数见件文件 §8.20.1㈡）。
+/// 用 `libc::dup2` 把 fd 2 接到管道上量过两趟：默认跑法收到 **0** 字节、
+/// `--nocapture` 收到 **47** 字节。
 /// ⇒ 进程内的 fd-2 重定向抓不到那一刀，做出来会是一条**看着很像判据的空判据**。
 ///
 /// # 采集面 = 子进程的 **stderr 全量 + stdout 全量**
 ///
 /// stdout 那一半不是搭头：子进程的 stdout **就是 tee**（生产接线的 tap 口，逐帧写成线上那一形）
-/// ⇒ 这一条同时覆盖了 `DoD-3㈡` 的两半，
+/// ⇒ 这一条同时覆盖了 tee 与日志两半，
 /// 而且是在**真的那根接线**上量的，不是在测试自己造的 `Vec<u8>` sink 上。
 ///
 /// # 三条非空对照（缺一条这里就可能是空真）
@@ -1742,15 +1711,14 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
     );
 }
 
-/// ★★★ **`KS3`：金丝雀走完整路径，四个出口都不许出现它。**
+/// ★★★ **金丝雀走完整路径，四个出口都不许出现它。**
 ///
 /// # 它与隔壁那条哨兵判据**守的是两扇门**，别读成一件事
 ///
 /// `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`
 /// 喂进去的是**客户端发来的**那个头 —— 它证的是「**进来的**东西没被记下来」。
 /// 本条喂的是**中转进程的上游选择从那份文件里读出来、替客户端换上去的那把 key**，
-/// 那是**另一个值、从另一条路进来**。件计划 `§0` 逐字：**判据守的是前门，key 从后门进**，
-/// 而那一形「同时骗过了 PM 与一路审计」。⇒ **两条缺一都不成立。**
+/// 那是**另一个值、从另一条路进来**：**判据守的是前门，key 从后门进**。⇒ **两条缺一都不成立。**
 ///
 /// # 走的是真实的那条路（不是在一个 crate 里自问自答）
 ///
@@ -1764,7 +1732,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 /// ㈡ **回给前端的每一帧**：tee 的 `tap` 帧（在 stdout 里）**加上**回给下游客户端的原始字节。
 /// ㈢ **错误消息**：子进程 stderr 全量收集面 **加上** 两条真实错误响应的响应体
 ///    （404 路由不认 · 400 请求体长度读不懂）。
-///    ⚠ `KS3` 逐字「**这一条不许只测正常流程**」，所以这两发是必须的。
+///    ⚠ **这一条不许只测正常流程**，所以这两发是必须的。
 /// ㈣ **panic 消息**：panic 落的也是子进程 stderr（㈢ 已全量扫）。
 ///    ⚠ **如实说它证到哪儿**：本条**没有构造出一次真 panic**，
 ///    所以㈣是「**如果 panic 了，它的文字也在我扫的那条流上**」，
@@ -1773,9 +1741,9 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 ///
 /// # 它**证不了**什么
 ///
-/// - 上游那一跳之后的事（TLS、真 API）—— `C7` 禁「绝不起真 claude」。
-/// - 上游断开那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**
-///   〔下一条 `each_account_gets_its_own_key_…` 的 ㈢ 补上了；今天那一支回 504，〕。
+/// - 上游那一跳之后的事（TLS、真 API）—— 判据绝不起真 claude。
+/// - 上游断开那条错误支（要一台死掉的上游，得再起一个子进程）：
+///   归下一条 `each_account_gets_its_own_key_…` 的 ㈢（那一支回 504）。
 #[test]
 fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     // 金丝雀取一个**不可能自然出现**的串，且**不含任何路径成分**
@@ -1795,9 +1763,9 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     let relay = spawn_relay_child_with_creds(up.addr, &creds_path);
 
     // ── 正常流程：客户端**一个凭据都不配** ──────────────────────────────
-    // ⚠ `K-H2`：账号段是 `default` —— 这份夹具走的是**顶层一把 key** 那个旧形状
-    //   （`K-H2a` 交付时的样子），它被读成一条 id 逐字是 `default` 的**有名字的行**。
-    //   ⇒ 本条同时是「旧文件升级之后照常能用」的端到端判据。
+    // ⚠ 账号段是 `default` —— 这份夹具走的是**顶层一把 key** 那个形状，
+    //   它被读成一条 id 逐字是 `default` 的**有名字的行**。
+    //   ⇒ 本条同时是「顶层一把 key 的文件照常能用」的端到端判据。
     let mut c = send_request(relay.addr, "/s/claude-code/default/v1/messages", "");
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read");
@@ -1807,7 +1775,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
         "这一趟得真走完一条转发：{downstream:?}"
     );
 
-    // ── 错误路径（`KS3` 逐字：不许只测正常流程）──────────────────────────
+    // ── 错误路径（不许只测正常流程）──────────────────────────
     let (not_found, _) = send_raw(relay.addr, "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/nope HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
     assert!(
         not_found.starts_with("HTTP/1.1 404"),
@@ -1887,7 +1855,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ============================================================ `K-H2` `KH2` / `KH4`
+// ============================================================ 多账号：查不到回 404 · 每行带自己那把 key
 
 /// 起一个中转，**表由调用方给**。tee 丢进黑洞（本族判据量的不是 tee）。
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
@@ -1991,11 +1959,11 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
 
     // ── ㈠ 上游**一次都没被连**（比「没收到鉴权头」强）────────────
     //
-    // ⚠⚠ **顺序是刻意的，经过记下来**：这两条先前是「先断状态码、再断上游」，
-    //    而变异实测发现**两刀都先炸状态码那条** ⇒ 上游那条根本没被求值，
+    // ⚠⚠ **顺序是刻意的**：「先断状态码、再断上游」的话，
+    //    变异**都先炸状态码那条** ⇒ 上游那条根本没被求值，
     //    「它有没有牙」一次都没被证明过。断言是顺序求值的 ——
-    //    **把承重的那条放前面**，两条才各自有各自的死值验。
-    //    （`MU-KH2a` 回落 ⇒ 本条红；`MU-KH2b` 改回 502 ⇒ 本条绿而下面那条红。）
+    //    **把承重的那条放前面**，两条才各自有各自的死值验
+    //    （回落 ⇒ 本条红；改回 502 ⇒ 本条绿而下面那条红）。
     assert_eq!(
         up.seen.lock().expect("lock").len(),
         0,
@@ -2040,23 +2008,22 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
     );
 }
 
-/// ★★★ **`KH4`：金丝雀的多账号版。**配两个账号、两把**不同**的假 key，
+/// ★★★ **金丝雀的多账号版。**配两个账号、两把**不同**的假 key，
 /// 走**真子进程 + 真转发**，断言：
 /// ① 每条路由键收到的是**它自己那把**（**不是另一把**）；
 /// ② 两把 key 都不出现在 stdout（tee）/ 回给下游的字节 / stderr / 错误响应里。
 ///
-/// ★ **①比②更要紧**：② 是 `K-H2a` 已经买到的，① 是这里新增的风险。
+/// ★ **①比②更要紧**：② 单账号那条金丝雀也守着，① 是多账号才有的风险。
 ///
-/// # ⚠ 它顺带补上了 `K-H2a` 留下的**上游断开那一格**
+/// # ⚠ 它顺带管着**上游断开那一格**
 ///
-/// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
-/// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
-/// ⇒ 连上游失败 ⇒ 走「中转传输失败」那一支（之后回 **504**，先前是 502），
+/// 第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
+/// ⇒ 连上游失败 ⇒ 走「中转传输失败」那一支，
 /// 而它的 stderr 那一行（`[relay] upstream failed: …`）也一并进了下面四个出口的扫描面。
 ///
-/// # ⚠ 它**仍然没有**补上的那一格
+/// # ⚠ 它**管不到**的那一格
 ///
-/// **panic 那一格没构造出真 panic** —— 与 `K-H2a` 逐字相同，这里也没有构造它的路子。
+/// **panic 那一格没构造出真 panic** —— 与单账号那条一样，这里也没有构造它的路子。
 /// 下面那条 `!err.contains("panicked at")` 断的是「这一趟没 panic」，
 /// **不是**「panic 了也不泄漏」。后一句今天仍是**判不了**，原样抬进上报口。
 #[test]
@@ -2070,14 +2037,13 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     let dir = tmpdir("canary-multi");
     let creds_path = dir.join("apikey-credentials.json");
 
-    // ★★★ **两个不同的活上游**〔`D1` 阻-2 回修，08-28〕。
+    // ★★★ **两个不同的活上游**。
     //
-    // ⚠⚠ **先前这里只有一个假上游，两条账号都不写 `base_url`** ⇒ 它们**共用同一个端点**
+    // ⚠⚠ 只有一个假上游、两条账号都不写 `base_url` 的话，它们**共用同一个端点**
     //    ⇒「A 的 key 发到了 B 的端点」这一向**恒真、量不到**：不论表怎么错，
     //    字节都落在同一个进程上，两条断言看不出任何差别。
-    // ★ 而**要接的就是第三方 API，每行端点不同才是正常形态** ——
-    //    先前那个夹具用的恰恰是最不正常的那一种。
-    // ⇒ 今天两行各指各的活上游，下面按**哪个上游收到了什么**对账。
+    // ★ 而**要接的就是第三方 API，每行端点不同才是正常形态**。
+    // ⇒ 两行各指各的活上游，下面按**哪个上游收到了什么**对账。
     let up_a = spawn_fake_upstream(None);
     let up_b = spawn_fake_upstream(None);
     let (port_a, port_b) = (up_a.addr.port(), up_b.addr.port());
@@ -2121,9 +2087,8 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
 
     // ── ★★★ ① **每一发都到它自己那个端点，带着它自己那把 key** ──────
     //
-    // ⚠ 这一族有**两个自变量**（端点 · key），先前的夹具只量得到后者。
-    //   今天两行各有各的活上游 ⇒ 「A 的 key 发到了 B 的端点」这一向**量得到了**。
-    //   ⚠⚠ **承重的那条排最前**（已经栽过两次「最后那条从没被求值」）：
+    // ⚠ 这一族有**两个自变量**（端点 · key）：两行各有各的活上游 ⇒ 「A 的 key 发到了 B 的端点」这一向量得到。
+    //   ⚠⚠ **承重的那条排最前**（排在后面的断言可能从没被求值）：
     //   先断**落点**，再断**内容**。
     let auths_a = up_a.auth_values.lock().expect("lock").clone();
     let auths_b = up_b.auth_values.lock().expect("lock").clone();
@@ -2176,7 +2141,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "表里查不到的账号段该回 404：{not_found:?}"
     );
 
-    // ── ㈢ **上游断开那一支**（`K-H2a` 留下的那一格；之后回 504，起 502）──
+    // ── ㈢ **上游断开那一支**（连不进去 ⇒ 502）──
     let (bad_gateway, _) = send_raw(
         relay.addr,
         "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
@@ -2189,8 +2154,8 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
            ② 那条「没人听」的端口上**其实有人听**，而那个人回了 404\n\
               （最坏的一种：它就是中转自己 ⇒ 收到没有 `/s/` 前缀的路径 ⇒ `route::parse` 回 `None`）。\n\
          ⇒ 现打这一趟的三个号，按它们判：dead={dead_port} relay={} a={port_a} b={port_b}。\n\
-           **dead 与其中任何一个相等 = 第 ② 种**（2026-09-22 之前 `a_port_nobody_listens_on`\n\
-           是 `bind(0)` 拿号再放掉，那个号会回到临时端口池 ⇒ 被并行的别人抢走）。\n\
+           **dead 与其中任何一个相等 = 第 ② 种**（`bind(0)` 拿号再放掉的话，\n\
+           那个号会回到临时端口池 ⇒ 被并行的别人抢走）。\n\
            三个都不等 ⇒ 第 ① 种，去看中转子进程 stderr 上有没有「被拒的行」。",
         relay.addr.port()
     );
@@ -2230,16 +2195,13 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
 
     // ── ★★ ② 两把 key，四个出口，一个字节都不许有 ─────────────
     //
-    // ⚠⚠ **② 排在最后是刻意留的，不是漏扫**〔`D2` `§三㈡` 点名要这句话，`C-补` 08-28 补〕。
-    // `D1-M6` 逮到的那一形是「**承重的行为断言排在后面 ⇒ 一次都没被求值 ⇒ 它有没有牙从没被证过**」，
-    // 为它**整份扫过一遍**；这一处是那次扫描里**唯一一处留在原位**的行为断言。理由两条：
+    // ⚠⚠ **② 排在最后是刻意的，不是漏扫**：「承重的行为断言排在后面 ⇒ 一次都没被求值」那一形
+    // 在本文件整份扫过一遍，这一处是**唯一一处留在原位**的行为断言。理由两条：
     //   ① 挪它要先重排 ㈡/㈢ —— 它读的 `not_found` / `bad_gateway` 两个变量在那两段里才拿到；
-    //   ② 件计划 `§1 KH4` 逐字写着「**①比②更要紧**」（① 是这里新增的风险，② 是 `K-H2a` 已经买到的）
-    //      ⇒ ① 排最前**符合它自己的优先级**。
-    // ⇒ 代价照实说：前面几条炸掉时 ② 不被求值（`D1` 五刀里有四刀都在它之前炸）。
-    //   **而这一格已经单独还上了** —— ② 的死值验由 `D1-M5`（把整条上游请求头印进 stderr）承担：
-    //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址：
-    //   `server_tests.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
+    //   ② **①比②更要紧**（见本判据头注）⇒ ① 排最前**符合它自己的优先级**。
+    // ⇒ 代价照实说：前面几条炸掉时 ② 不被求值。
+    //   ② 的死值验另有一刀（把整条上游请求头印进 stderr）：红在
+    //   `the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言（「stderr 里出现了 key」）。
     //   ⇒ **② 有牙，是被那一刀单独证过的，不是靠这里的排序证的。**
     for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
         assert!(
@@ -2274,12 +2236,11 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `KS2` 的行为那一半：**配了 key 就换头，没配就原样转发** —— 两支都要有判据。
+/// 换头的行为那一半：**配了 key 就换头，没配就原样转发** —— 两支都要有判据。
 ///
-/// ⚠⚠ **`K-H2` 之后这两支的意思变了，别按旧的读**：
-/// 「没配」不再是「**这个中转**没配 key」，而是「**这一行**没配 key」——
+/// ⚠⚠ 「没配」说的是「**这一行**没配 key」，不是「**这个中转**没配 key」——
 /// 那是订阅登录那一档的**合法状态**（`table::Row::key` 的头注逐字）。
-/// 「表里根本没有这一行」是**另一件事**，归 `KH2` 的 404，判据在
+/// 「表里根本没有这一行」是**另一件事**，归 404，判据在
 /// `an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream`。
 #[test]
 fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
@@ -2311,23 +2272,21 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     assert!(!without.contains(MINE));
 }
 
-/// ★★★ **`K-R1` 的正主之一**：**鉴权头形状跟着那一行走** ——
+/// ★★★ **非默认行的正主之一**：**鉴权头形状跟着那一行走** ——
 /// 拿 A 风格的行发不出 B 风格的头。
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 `accounts::upstream_select::auth_header_of`（`P16` 之后住上游选择）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::upstream_select::auth_header_of` 里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
-/// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
+/// 而**默认那一行**那几格仍绿 ⇒ 这一改是**单断**，不是目录级塌陷。
 ///
 /// # ⚠ 它证不了什么
 ///
 /// 证不了「某一家上游真的认这个头」—— 那要打真网，这里禁（沙箱默认断网）。
 /// 它证的是「**文件里写什么，线上就发什么**」。
-/// ⚠ **分母**（自查订正，09-04）：初稿在这里写「那正是先前**唯一**没人量过的一格」——
-/// 那是一句没有分母的全称。准确的说法是：**我读过的 `relay/` 那一面里**，
-/// 「换哪个头」此前没有任何判据问过（换头那一行的**值**由 `KS2`/`KS3` 那几条盯着，
-/// 而**头名**是写死的字面量，没人问）。「先前还有多少格没人量过」我没数，也数不出。
+/// ⚠ **分母**：「换哪个头」在中转这一面只有本条问（换头那一行的**值**由换头与金丝雀那几条盯着，
+/// **头名**由本条盯着）。别处还有多少格没人量过，没数，也数不出 —— 别写成没有分母的全称。
 #[test]
 fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     const MINE: &str = "sk-ROW-OWN-KEY";
@@ -2402,15 +2361,15 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
 /// 两端都在上游选择 ⇒ 判据跟着搬到上游选择那侧（`creds_guard`），**正题一个字没松**，
 /// 而且多买了一格：它现在还断言那个集合是**全集**（射程不许缩）。
 ///
-/// ★★★ **`K-R1` 的正主之二**：`base_url` 里那一段路径前缀
+/// ★★★ **非默认行的正主之二**：`base_url` 里那一段路径前缀
 /// **真的到了发给上游的请求行上**。
 ///
-/// # 改前的读数（死值验的另一半）
+/// # 丢了前缀是什么读数（死值验的另一半）
 ///
-/// 改前 `Base` 存不下路径 ⇒ 配 `https://gw/anthropic` 的人，请求实际打到
+/// `Base` 存不下路径的话，配 `https://gw/anthropic` 的人，请求实际打到
 /// `https://gw/v1/messages`（前缀被静默丢掉、不记 `Rejected`、不 `announce`）。
 /// ⇒ 把 `Row::upstream_target` 的返回改成 `rest.to_string()`（形状对、恒答
-/// 「没有前缀」那张脸）= 把改前那一版原样装回来 ⇒ 本条当场红，
+/// 「没有前缀」那张脸）⇒ 本条当场红，
 /// 而没配前缀的那一族判据**仍然全绿**（单断）。
 #[test]
 fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
@@ -2427,7 +2386,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     let with = render("with-prefix", "/v1/messages");
     assert!(
         with.starts_with("POST /anthropic/v1/messages HTTP/1.1\r\n"),
-        "前缀没到请求行上（改前那一版就是这个读数）：{with:?}"
+        "前缀没到请求行上：{with:?}"
     );
     // 查询串跟着走，一个字节不改。
     let q = render("with-prefix", "/v1/messages?beta=true");
@@ -2435,7 +2394,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
         q.starts_with("POST /anthropic/v1/messages?beta=true HTTP/1.1\r\n"),
         "{q:?}"
     );
-    // ★ 非空对照 + 单断：**没配前缀**的那一行与改前逐字节相同。
+    // ★ 非空对照 + 单断：**没配前缀**的那一行一个字节不多。
     let without = render("no-prefix", "/v1/messages");
     assert!(
         without.starts_with("POST /v1/messages HTTP/1.1\r\n"),
@@ -2446,15 +2405,14 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     assert!(!with.contains("Host: gw.example.com/anthropic"), "{with:?}");
 }
 
-/// ★ `重要-4(D3)`：`DoD-1㈢` acceptor 逐字那半句「两次请求由**同一个中转进程**服务
-/// （**进程数 = 1**）」。
+/// ★ 两次请求由**同一个中转进程**服务（**进程数 = 1**）。
 ///
-/// # 先前量的是别的东西
+/// # 为什么 `routes_two_keys…` 不够
 ///
 /// `routes_two_keys…` 断的是两发的响应序号出自同一个 tee —— 那是「同一个 **`Relay` 实例**」。
-/// 全量测试跑在**一个**测试进程里 ⇒ 「进程数 = 1」这句话**没有任何判据在量**。
+/// 全量测试跑在**一个**测试进程里 ⇒ 「进程数 = 1」这句话那里量不到。
 ///
-/// # 今天量的是什么（三格，逐格说它证什么）
+/// # 量的是什么（三格，逐格说它证什么）
 ///
 /// ㈠ **只有一个中转进程**：子进程 stderr 里 `listening on` **恰好 1 行**
 ///    （一个端口只可能有一个监听者，本 crate 不用 `SO_REUSEPORT`）。
@@ -2556,41 +2514,36 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
     );
 }
 
-/// ★★ `DoD-2`：**逐块透传绝不缓冲**（`K9` 裁定四第 2 条逐字：「这是本方案唯一真正的技术点」）。
+/// ★★ **逐块透传绝不缓冲**（中转唯一真正的技术点）。
 ///
-/// # 这条判据先前只守住了**第 1 块** —— 回修轮补的就是这个
+/// # 只守第 1 块是不够的
 ///
-/// 旧版：门闩只卡一次（第 1 块之后），块数那一格是 `assert!(reads >= 1)`。
+/// 门闩只卡一次（第 1 块之后）、块数那一格写成 `assert!(reads >= 1)` 的话，
 /// 那一行**结构性恒真**（`reads += 1` 在循环唯一那个 `break` 之前）⇒ 没有任何生产改动能让它红。
-/// ⇒ 「第 1 块立刻透、其余全部攒到流末、一个字节不丢」那一形 **384 条判据全绿**（审计 `K4` 实测），
+/// ⇒ 「第 1 块立刻透、其余全部攒到流末、一个字节不丢」那一形全绿（实测），
 /// 而它正是要防的形状本身：TUI 出一个 token 然后卡住，直到整条响应结束才一次性吐完。
 ///
-/// # 今天有两条互相独立的判据，任一条都会红
+/// # 两条互相独立的判据，任一条都会红
 ///
 /// ㈠ **逐块门闩（因果证明）**：假上游发**每一块**之前都要等下游确认收到上一块，
 ///    **发完最后一块之后再等一次**（带上限：兜底的数的两倍）。
 ///    ⇒ 中转攒住其中任何一块，下游就再也等不到下一块 ⇒ 读期限到 ⇒ 红。
 ///    比「比较两个时间戳」更不 flaky。
 ///
-///    ⚠ **订正射程**〔回修轮之四 08-25，D2 `重要-1(D2)`〕：先前这里逐字写「而且射程
-///    覆盖到最后一块」，**那句话是假的，而且没有分母**。分母 = 一条响应的全部
-///    **4** 块（夹具自己定义「终止块另算 ⇒ 块数 = `UPSTREAM_EVENTS + 1`」）；
-///    实测攒第 2 块红 · 攒第 3 块红 · **攒第 4 块（终止块）⇒ 全绿**（D2 `D2M2`，
-///    后来在 392 条的盘面上重打，读数同）。成因是门闩的因果链在最后一块上断了：
-///    最后一块没有「第 i+1 块」可等。⇒ 今天在 `spawn_fake_upstream` 里
-///    **发完终止块之后再等一次确认**，射程才真的是 **4/4**；
-///    死值验见件文件 §8.18.7（同一刀今天 1/392 红）。
-/// ㈡ **块数对账**（`DoD-2` acceptor ㈡ 逐字「下游读到的块数 ≈ 上游发出的块数」）：
+///    ⚠ **射程的分母** = 一条响应的全部 **4** 块（夹具自己定义「终止块另算 ⇒ 块数 = `UPSTREAM_EVENTS + 1`」）。
+///    门闩的因果链在最后一块上会断（最后一块没有「第 i+1 块」可等）：不补的话攒第 4 块（终止块）⇒ 全绿（实测）。
+///    ⇒ `spawn_fake_upstream` 里**发完终止块之后再等一次确认**，射程才是 **4/4**（攒终止块那一改本条红）。
+/// ㈡ **块数对账**（下游读到的块数 == 上游发出的块数）：
 ///    上游真的发出的块数（夹具自己数的）必须等于下游自己数到的读次数，
 ///    且 tee 收尾那一件说这一趟是干净收尾（不是以错误断开）。
 ///
 /// # 为什么门闩是**逐块**的，而不是靠「上游 RST 时丢尾巴」
 ///
-/// 基线上假上游**从不读请求体** ⇒ 内核发 RST 不是 FIN ⇒ 先攒后写的实现会在那条
+/// 假上游**不读请求体**的话，内核发 RST 不是 FIN ⇒ 先攒后写的实现会在那条
 /// `Err(e) => return Err(e)` 上把攒着的尾巴丢掉，于是「后续块也要到」那条内容断言碰巧红。
 /// **那是时序巧合，不是判据**：把错误路改成 `Err(_) => break`（照样吐出去、一个字节不丢），
-/// 同一条测试当场全绿。今天假上游**读请求体**（`阻-2`）⇒ 收尾是**干净 EOF**，
-/// 那条巧合的红**没有了**，接住 `K4` 的是上面 ㈠ ㈡ 两条真判据。
+/// 同一条测试当场全绿。假上游**读请求体** ⇒ 收尾是**干净 EOF**，
+/// 没有那条巧合的红，接住「先攒后写」的是上面 ㈠ ㈡ 两条真判据。
 #[test]
 fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     let (gate_tx, gate_rx) = mpsc::channel();
@@ -2622,15 +2575,14 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     let mut seen_chunks: Vec<String> = Vec::new();
     // ㈠ 逐块门闩 + 在下游侧**数**块：读到 EOF 为止。
     //
-    // ⚠ 块数必须是**数出来的**，不是循环次数**构造出来的**。
-    // 〔铁律 15 回打自己 —— 这一格我第一版就写错了：先写成 `for i in 1..=UPSTREAM_EVENTS`
-    //  再在末尾补一次 `body_reads += 1`，于是走到断言那一刻 `body_reads` **恒等于**
-    //  `UPSTREAM_EVENTS + 1`，而它下面那条对账拿它跟同一个常量比 ⇒ **结构性恒真**。
-    //  那正是这里要治的 `assert!(reads >= 1)` **同一种病**，长在治它的代码里。〕
+    // ⚠ 块数必须是**数出来的**，不是循环次数**构造出来的**：
+    //  写成 `for i in 1..=UPSTREAM_EVENTS` 再在末尾补一次 `body_reads += 1` 的话，
+    //  走到断言那一刻 `body_reads` **恒等于** `UPSTREAM_EVENTS + 1`，
+    //  而下面那条对账拿它跟同一个常量比 ⇒ **结构性恒真** —— 与 `assert!(reads >= 1)` 同一种病。
     loop {
         let n = c.read(&mut buf).expect(
             "上游卡在门闩上，只有中转把上一块透出来下游才会有下一块 —— \
-                 读超时说明中转攒住了某一块（DoD-2 红）",
+                 读超时说明中转攒住了某一块（逐块透传红）",
         );
         if n == 0 {
             break;
@@ -2686,9 +2638,9 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
         "这一趟必须以干净 EOF 收尾"
     );
     // ⚠ 这两个时刻**只印不断言**：`t_first` 先量、时钟单调 ⇒ `t_first <= t_last` 恒真，
-    // 断它等于加一条永远不会红的判据（同上，铁律 15 自查逮到的第二处）。
+    // 断它等于加一条永远不会红的判据。
     println!(
-        "[DoD-2] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块",
+        "[逐块透传] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块",
         t_first.expect("首块时刻")
     );
 }
@@ -2741,7 +2693,7 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
     );
 }
 
-/// ★ `DoD-3㈡`（活体）：哨兵头必须**转发得到上游**，却**一个字节都不进 tee / 不进日志**。
+/// ★ 活体：哨兵头必须**转发得到上游**，却**一个字节都不进 tee / 不进日志**。
 #[test]
 fn the_auth_header_is_forwarded_but_never_teed() {
     const SENTINEL: &str = "SECRET-TOKEN-DO-NOT-LEAK";
@@ -2764,9 +2716,8 @@ fn the_auth_header_is_forwarded_but_never_teed() {
     tee.wait_events(UPSTREAM_EVENTS + 1);
     // ★ 活体条件要按**事件**件数，不是按「tee 非空」（收尾那一件总会交 ⇒ 把事件那一路掏空，「非空」照样成立）。
     //
-    // ⚠ 订正一格〔回修轮之五 08-25，`阻-4(D3)`〕：先前这里是 `events >= 1` ——
-    // 那只挡得住「**一条都不抄**」，挡不住「每批少抄若干条」（D3 `MU5` 实测 392 全绿）。
-    // 今天按**上游自己数的事件数**对账，分母同 `routes_two_keys…` 那条。
+    // ⚠ 不写 `events >= 1`：那只挡得住「**一条都不抄**」，挡不住「每批少抄若干条」（实测全绿）。
+    // 按**上游自己数的事件数**对账，分母同 `routes_two_keys…` 那条。
     let events = tee.data();
     let text = format!("{:?}", tee.events());
     let up_events = up.events();
@@ -2790,7 +2741,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     )
     .expect("parse");
     let base = Base::parse("https://api.example.com").expect("base");
-    // 这一行**没配 key** ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
+    // 这一行**没配 key** ⇒ 原样转发那一支。换头那一支见下一条判据。
     let t = table_of(&[("acct", &base, None)]);
     let out = render_via_upstream_selection(&t, "acct", &head, "/v1/x", 3);
     assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
@@ -2805,15 +2756,14 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     assert!(!out.contains("keep-alive"), "逐跳头不转发");
 }
 
-/// ★★ `重要-5` 的**行为格**（回修轮之四 08-25，承接 D2 `重要-1(D2)`）。
+/// ★★ 「关了 Nagle」的**行为格**（本格是这件事唯一的判据）。
 ///
 /// # 为什么源码扫描不够
 ///
-/// 〔那条源码扫描 `nodelay_guard` 已按  退役，本格是「关了 Nagle」唯一的判据〕
-/// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
+/// 源码扫描数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
-/// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
-/// 只留一行 `let _nagle_note = "set_nodelay(true)";` ⇒ **389 条判据全绿** ——
+/// 把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
+/// 只留一行 `let _nagle_note = "set_nodelay(true)";` ⇒ 扫描**全绿**（实测）——
 /// 「恰好两处」与「落点里要有 server.rs」两格**都被那行字符串喂饱了**。
 ///
 /// # 这一条判的是**真的调用**
@@ -2899,7 +2849,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     }
 }
 
-/// ★★ `阻-3(D3)` **后半段**的行为格㈠〔回修轮之六 08-25〕：
+/// ★★ 读写期限的行为格㈠：
 /// 两条 socket 上**真的**装了读写期限 —— `getsockopt` 读回来的，不是数源码。
 ///
 /// # 为什么必须是行为格
@@ -3039,36 +2989,34 @@ fn the_upstream_deadline_is_the_wider_one_because_a_silently_thinking_model_is_n
     );
 }
 
-/// ★ `DoD-4㈡` 行为那半：从**非回环**地址连中转的端口会断开。
+/// ★ 只绑回环的行为那半：从**非回环**地址连中转的端口会断开。
 /// 机器上没有非回环地址时**跳过并出声**，不静默当绿。
 #[test]
 fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _sink) = spawn_relay(up.addr);
     let Some(local) = first_non_loopback_v4() else {
-        // ★★ **直写 handle，不许用 `println!`/`eprintln!`**（回修轮之四 08-25，D2 `重要-5(D2)`）。
+        // ★★ **直写 handle，不许用 `println!`/`eprintln!`**。
         //
-        // 件计划 `DoD-4` 的 acceptor 逐字要「拿不到非回环地址时必须**跳过并出声**
-        //（skip 要印出来），**不许静默当绿**」。而 libtest 的捕获挂在 `print!`/`eprint!`
-        // 这一族**宏**走的 `OUTPUT_CAPTURE` 上 ⇒ 默认跑法下这两样一个字都印不出来，
+        // 拿不到非回环地址时必须**跳过并出声**（skip 要印出来），**不许静默当绿**。
+        // 而 libtest 的捕获挂在 `print!`/`eprint!` 这一族**宏**走的 `OUTPUT_CAPTURE` 上
+        // ⇒ 默认跑法下这两样一个字都印不出来，
         // 这一格在没有非回环地址的机器（某些 CI 容器）上就是**静默的绿**。
         //
-        // 我自己在这个 crate 上重打过（默认 `cargo test`，**不给** `--nocapture`，
-        // 测试**通过**，分母 = 那一趟输出全文的 `grep -c`）：
+        // 实测（默认 `cargo test`，**不给** `--nocapture`，测试**通过**，分母 = 那一趟输出全文的 `grep -c`）：
         //   `println!` 命中 **0** · `eprintln!` 命中 **0** ·
         //   `std::io::stderr().write_all` 命中 **1** · `std::io::stdout().write_all` 命中 **1**。
         // 成因：`stderr()` / `stdout()` 返回的 handle **直接写 fd**，不经过 `OUTPUT_CAPTURE`。
-        // ⇒ 直写 stderr，那句 acceptor 才真的被兑现。
+        // ⇒ 直写 stderr，「跳过并出声」才真的兑现。
         let _ = std::io::stderr().write_all(
-            b"[DoD-4-2] SKIP: no non-loopback IPv4 on this host; this half is not measured here\n",
+            b"[non-loopback] SKIP: no non-loopback IPv4 on this host; this half is not measured here\n",
         );
         return;
     };
     // 连到**本机的非回环地址**上的中转端口 —— 中转只绑了回环，这一发就该断开。
-    // ⚠ 订正〔回修轮之四 08-25〕：先前这行注释写的是「**绑**到那个地址再 connect」，
-    //    而代码从来没绑过源地址，它是把那个地址当**目的地**去连。措辞与实现漂开了。
+    // ⚠ 不绑源地址：那个地址是**目的地**。
     //
-    // ★★ 风险 `5x` 的第 2 个落点（D2 `重要-4(D2)`）：**它缺的不是读期限，是 connect 期限。**
+    // ★★ 「走得到 `serve()` 的判据必须带期限」的第 2 个落点：**它缺的不是读期限，是 connect 期限。**
     // 本条也经 `spawn_relay` 起了 `serve()`，而 `serve()` **永不返回** ⇒ 本条一旦挂住，
     // 整个测试台跟着挂住，`^test result:` 条数掉成 **0** —— 那一屏与「跑完了、没有新红」
     // 几乎分不开。而它**只 connect、不 read** ⇒ `send_request` 里那条 10s 读期限
@@ -3087,9 +3035,8 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
     );
 }
 
-// 这里原是 `--relay` 入口那三条（端口的缺省与覆盖 · 环境变量名 → 配置位的接线 · 起不来就退 2）：
-//   `--relay` 一形删了，那三样代码随之删；进程内那一形的对应格住 `host_tests`（交了认不出的端口 ⇒ 拒而不缺省 ·
-//   端口被占 ⇒ 出声不倒 · 上游配置认不出 ⇒ 绑口之前就失败）。原 ㈢ 那一格（上游选择问的是哪个旋钮）留在下面。
+// 进程内中转的起法住 `host_tests`（交了认不出的端口 ⇒ 拒而不缺省 ·
+//   端口被占 ⇒ 出声不倒 · 上游配置认不出 ⇒ 绑口之前就失败）；上游选择问的是哪个旋钮在下面。
 
 /// 上游选择问的上游旋钮**就是**那一个名字（期望值是手写字面量；被测的是 `Upstreams::from_env` 真的去问了它）。
 #[test]
@@ -3110,11 +3057,11 @@ fn the_upstream_selection_asks_exactly_its_registered_upstream_knob() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// ★★★ `K-H2b` `KH2B1`：**一发真请求**从「起会话那条命令」走到中转、
+// ★★★ **一发真请求**从「起会话那条命令」走到中转、
 //      被按账号路由到上游，并带着**那个账号那一行**的 key
 // ─────────────────────────────────────────────────────────────────────────
 
-/// 桩启动器。**它不是 claude**（红线 `C7`：绝不起真 claude），它只做一件事：
+/// 桩启动器。**它不是 claude**（红线：绝不起真 claude），它只做一件事：
 /// 读 `$ANTHROPIC_BASE_URL`、照它发一发 HTTP、把响应首行印出来。
 ///
 /// ⇒ 这一趟里 **env 是真的、中转是真的（真子进程）、上游是真的**，
@@ -3265,7 +3212,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// ★★★ `K-H2c` `KH2C2`：**写侧产出的那份文件**能让那个账号的会话走到中转
+// ★★★ **写侧产出的那份文件**能让那个账号的会话走到中转
 // ─────────────────────────────────────────────────────────────────────────
 
 /// 照 monitor 写侧那两步造一份凭据文件的内容。
@@ -3434,12 +3381,12 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★★★ `K-H2b` `D1 阻-2`：**配完 key 不用重启中转** —— 那张表不是启动快照。
+/// ★★★ **配完 key 不用重启中转** —— 那张表不是启动快照。
 ///
 /// # 它治的是什么
 ///
-/// 先前 `load_credentials` 只在 `run_with` 里跑一次，而且在**永不返回**的 `serve()` 之前
-/// ⇒ 用户在界面上按下「保存 key」之后，中转进程里的上游选择手上还是启动那一刻的表 ⇒
+/// 表只在起中转时读一次（在**永不返回**的 `serve()` 之前）的话，
+/// 用户在界面上按下「保存 key」之后，中转进程里的上游选择手上还是启动那一刻的表 ⇒
 /// 那个账号**每一发都是 404**。而 404 与「账号 id 打错」**同形**，指不向原因。
 ///
 /// # 这一趟真到什么程度
@@ -3695,7 +3642,7 @@ fn spawn_slamming_upstream() -> SocketAddr {
 /// | 跳 | 怎么造 | 码 · 原因头 |
 /// |---|---|---|
 /// | 建立连接 | 上游指着一个没人听的端口 | 502 · `upstream-connect` |
-/// | 发请求 | 上游接下就关、不读；请求体 32 MiB 写不完 | 502 · `upstream-send`（先前什么都不回） |
+/// | 发请求 | 上游接下就关、不读；请求体 32 MiB 写不完 | 502 · `upstream-send` |
 /// | 没回应就断开 | 上游读完请求一个字节不回就关 | 502 · `upstream-closed` |
 /// | 等响应超时 | 上游读完请求攥着不回，中转的上游期限设 300ms | 504 · `upstream-no-answer` |
 /// | 回的不是 HTTP | 上游回一行垃圾 | 502 · `upstream-not-http` |
@@ -3750,7 +3697,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         "拒绝那一发没说为什么：{miss:?}"
     );
 
-    // ② 发请求：写到一半上游断了（先前这一支一个 HTTP 字节都不回）。
+    // ② 发请求：写到一半上游断了（这一支也要回一条 HTTP，不许一个字节都不回）。
     let up = spawn_slamming_upstream();
     let (relay, _r, _t) = spawn_relay(up);
     let body = "x".repeat(32 * 1024 * 1024);
@@ -3856,7 +3803,7 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "503 Service Unavailable",
         StatusGroup::Busy,
     ),
-    // 上游那侧：不是超时 502 · 超时 504（先前一律 504；502 原先是上游选择的 `/t/` 未登记，改成了 404）。
+    // 上游那侧：不是超时 502 · 超时 504（上游选择的 `/t/` 未登记回 404，不占 502）。
     (
         "comms-outward/server.rs",
         "502 Bad Gateway",

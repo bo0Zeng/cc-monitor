@@ -1,12 +1,12 @@
-//! `K-H2a` 的中转凭据机检：**记日志走白名单**（`KS4`）· 写半边只从一处声明开 · 换头前先丢的头名全集。
+//! 中转凭据机检：**记日志走白名单** · 写半边只从一处声明开 · 换头前先丢的头名全集。
 //!
-//! # 为什么这里没有「明文出口恰好一处」（`KS2`）
+//! # 为什么这里没有「明文出口恰好一处」
 //!
 //! 由类型与三棵树判据接走：`SecretKey` 字段私有、`Debug` 只印遮蔽形、不实现 `Display`；
 //! 落盘与续期两个出口只对 `creds-core` 可见（本 crate 调不到，编译器挡）；
 //! 换头那个出口跨 crate 调，处数由 `creds_store_exits` 照 `INNER_FIELD_USERS` 的 `HandsOut` 扫三棵树数（恰好 1 处）。
 //!
-//! # 为什么 `KS4` 留着（类型挡不住）
+//! # 为什么日志白名单留着（类型挡不住）
 //!
 //! 日志插进去的是任意值：一个 `String` 里装的是不是文件内容、是不是请求头，类型说不出来
 //! ⇒ 只能枚举每一处日志调用、要求每一个被插进去的名字登记理由。
@@ -19,12 +19,12 @@
 //!
 //! 判据与被扫的代码不许在同一个文件：本文件住 `tests/backend/relay/`，不在人群里。
 //!
-//! # `KS4` 为什么是白名单，而本仓别处大量用黑名单
+//! # 日志为什么是白名单，而本仓别处大量用黑名单
 //!
-//! `KS4` 逐字：「只记允许记的那几样（方法 · 路径 · 状态码 · 字节数）。**禁止**
-//! 『记全部头，除了 `Authorization`』这种写法。理由：黑名单必漏
+//! 只记允许记的那几样（方法 · 路径 · 状态码 · 字节数）。**禁止**
+//! 「记全部头，除了 `Authorization`」这种写法。理由：黑名单必漏
 //! （`Proxy-Authorization` · `X-Api-Key` · `Cookie` · 各家自定义），
-//! 而且上游多一种鉴权方式它就自动过期，**没有任何东西会告诉你它过期了**。」
+//! 而且上游多一种鉴权方式它就自动过期，**没有任何东西会说它过期了**。
 //!
 //! 白名单做得成的前提是**人群可枚举**（`structural_scan.rs` 头注逐字论证过这一条，
 //! 而 `platform/fallback_guard.rs` 记着它做不成的那次：人群不同质就只能黑名单）。
@@ -78,7 +78,7 @@ mod tests {
         ("why", "为什么查不出权限 —— 只含平台与构建 feature"),
         (
             "loaded.path.display()",
-            "凭据文件的路径。**`KS9` 的「路径文档化」就落在这一行**：一个「能手编但没人知道在哪」的文件等于不能手编",
+            "凭据文件的路径。**「路径文档化」就落在这一行**：一个「能手编但没人知道在哪」的文件等于不能手编",
         ),
         (
             "store::template()",
@@ -88,27 +88,27 @@ mod tests {
         ("ms[1]", "同上"),
         (
             "rows",
-            "**进得了路由表的账号条数**（`K-H2`）。一个 `usize`，与任何一把 key 无关；\
+            "**进得了路由表的账号条数**。一个 `usize`，与任何一把 key 无关；\
              印它是因为「文件里写了 N 条、只有 M 条能用」这件事必须看得见",
         ),
         (
             "r.id",
-            "一条**进不了表**的账号 id（`K-H2`）。它本来就要出现在 URL 路径里（路由键那一段），\
+            "一条**进不了表**的账号 id。它本来就要出现在 URL 路径里（路由键那一段），\
              不是秘密；且它走 `{:?}` 打印 ⇒ 控制字符被转义，不给「把换行塞进日志」留口子",
         ),
         (
             "r.why",
-            "那一条为什么进不了表（`K-H2`）。**是一个 `&'static str` 固定文案**，\
+            "那一条为什么进不了表。**是一个 `&'static str` 固定文案**，\
              不含文件里的任何内容 —— 这一点由 `table::Rejected::why` 的类型兜着",
         ),
         (
             "note.id",
-            "一条**进了表、但行为与默认不同**的账号 id（`K-R1`）。理由与 `r.id` 逐字同一条：\
+            "一条**进了表、但行为与默认不同**的账号 id。理由与 `r.id` 逐字同一条：\
              它本来就要出现在 URL 路径里，不是秘密；且走 `{:?}` 打印 ⇒ 控制字符被转义",
         ),
         (
             "note.what",
-            "那一条哪里与默认不同（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
+            "那一条哪里与默认不同（带了路径前缀 / 换了鉴权头形状）。\
              **是一个 `&'static str` 固定文案**，由 `table::Note::what` 的类型兜着 ——\
              ⚠ 刻意**不印**那个前缀本身、也不印那个认不出的词：那两样是文件内容",
         ),
@@ -161,8 +161,7 @@ mod tests {
             "起线程失败",
         ),
         (
-            // 先前是 `[relay] upstream connect failed`，只管「断开」一支；
-            //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）与发到一半断了（FIX3）也走这一行 ⇒ 回 502 / 504。
+            // 断开 · 等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）· 发到一半断了，都走这一行 ⇒ 回 502 / 504。
             "comms-outward/server.rs",
             "[relay] upstream failed",
             "上游断开 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
@@ -253,17 +252,16 @@ mod tests {
             "`Hosted` 的说法（`Display`）：进程内中转起不来、后端照常服务",
         ),
         (
-            // ⚠ 它**搬家了**：热重载整块归上游选择，住址从
-            //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
+            // 热重载整块归上游选择。
             "accounts/upstream_select/mod.rs",
             "[apikey] 凭据文件读不成表，**保留上一张表不动**",
-            "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
-             留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
+            "重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
+             留住上一张能用的、只出声。只有「表可重载」才有这一形",
         ),
         (
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials file:",
-            "凭据文件在哪（`KS9` 路径文档化）",
+            "凭据文件在哪（路径文档化）",
         ),
         (
             "accounts/upstream_select/creds.rs",
@@ -279,12 +277,12 @@ mod tests {
         (
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials permissions too wide:",
-            "权限过宽（`KS11`）",
+            "权限过宽",
         ),
         (
             "accounts/upstream_select/creds.rs",
             "[apikey] how to fix:",
-            "怎么修（`KS11` 要求两样都有）",
+            "怎么修（过宽与怎么修两样都要有）",
         ),
         (
             "accounts/upstream_select/creds.rs",
@@ -295,7 +293,7 @@ mod tests {
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
-             `K-H2`：静默丢一行的症状是「我明明配了，请求永远 404」",
+             静默丢一行的症状是「我明明配了，请求永远 404」",
         ),
         (
             "accounts/upstream_select/creds.rs",
@@ -305,13 +303,13 @@ mod tests {
         (
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials: auth_style must be one of:",
-            "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
+            "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来 ——\
              它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
         ),
         (
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials: this account is not on the default path:",
-            "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
+            "一条**进了表、但行为与默认不同**的账号（带了路径前缀 / 换了鉴权头形状）。\
              它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
@@ -329,22 +327,20 @@ mod tests {
 
     /// 日志白名单的人群：**两层都在** —— 中转（`relay/`）与上游选择（`accounts/`）。
     ///
-    /// ⚠ 〔2026-09-24 上游选择搬出 `relay/`〕先前人群是 `relay/` 一棵树，上游选择住在它底下所以顺带被扫。
-    ///   搬走之后只扫 `relay/` 的话，上游选择那 12 行日志会**掉出扫描面** —— 它们记的恰恰是
-    ///   凭据文件那一侧的事，是 `KS4` 最该看着的那一批。⇒ 两棵根明写在这里，
+    /// ⚠ 上游选择不住 `relay/` 底下：只扫 `relay/` 的话，上游选择那几行日志会**掉出扫描面** —— 它们记的恰恰是
+    ///   凭据文件那一侧的事，是日志白名单最该看着的那一批。⇒ 几棵根明写在这里，
     ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
-    // 上游选择的根从 `accounts` 收窄成 `accounts/upstream_select`：`accounts/` 是账号**域**，
-    // 其中 `iso.rs`（账号隔离工具的查询）**不是**中转的上游选择，不进本白名单的人群。
+    // 上游选择的根是 `accounts/upstream_select`，不是整个 `accounts/`：`accounts/` 是账号**域**，
+    // 别的部分不是中转的上游选择，不进本白名单的人群。
     const LOG_ROOTS: &[&str] = &["comms-outward", "relay", "accounts/upstream_select"];
 
-    /// ★★★ **`K-H2a` 裁四那句话的判据** —— 裁四**收窄**之后，本条改钉收窄后的那一句。
+    /// ★★★ **本 crate 开凭据写半边只从一处声明进来。**
     ///
-    /// # 那句话怎么变的
+    /// # 为什么要两条判据
     ///
-    /// 原话：「本 crate 不许打开 `creds-core` 的 `harden` feature」—— 那时「backend 写不了这份文件」
-    /// 是**编译器**兜的（写半边挂在 `harden` 上，不开就不存在）。
     /// 远端那台机器上的 key 只能由那台的后端写（上游选择自己的状态文件）
-    /// ⇒ feature 开了。编译器那一格没了，**两条判据接住**：
+    /// ⇒ 本 crate 开着 `creds-core` 的 `harden` feature（写半边挂在它上面），
+    /// 「backend 写不了这份文件」不再由编译器兜，**两条判据接住**：
     ///
     /// 1. **本条**：`harden` 在本 crate 那份 manifest 里只从**一处声明**进来 —— `creds-core` 那一行
     ///    （不许从 `[features]` 段、`default-features`、第二条重复声明里悄悄多开一路）。
@@ -377,7 +373,7 @@ mod tests {
             lines.len(),
             1,
             "本 crate 的 `Cargo.toml` 里生效的 `{feature}` 出现在 {} 行，应当**恰好 1** 行（`creds-core` 那一行）：{lines:?}\n\
-             ⚠ 裁四收窄后：backend 只有账号域那一份写这份文件；多一处声明 = 多一条没人看着的路。",
+             ⚠ backend 只有账号域那一份写这份文件；多一处声明 = 多一条没人看着的路。",
             lines.len()
         );
         assert!(
@@ -387,7 +383,7 @@ mod tests {
         );
 
         // ★ 非空对照：同一把尺子量 `creds-core` 自己那份 manifest（定义这个 feature 的那一行），**必须数得到**。
-        // 先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
+        // monitor 不读不写这份文件、不开它 ⇒ 对它钉「零处」。
         let read_manifest = |rel: &str| {
             guard_core::strip_hash_comment_lines(
                 &std::fs::read_to_string(guard_core::addr::repo_root().join(rel))
@@ -408,15 +404,14 @@ mod tests {
 
     /// ★★ **焊缝：我可能自己写出来的每一个头名，都在「先丢掉」那个集合里。**
     ///
-    /// 〔`P16` 2026-09-22 从 `server_tests.rs` **搬到这一侧**〕缺这一焊的症状是
+    /// 缺这一焊的症状是
     /// **同名鉴权头出现两次** —— HTTP 允许同名头出现多次，上游谁赢**没有定义**，
     /// 而一把不属于这一行的客户端凭据就这样被多送出去一次。
     ///
     /// # 为什么它今天住上游选择这一侧
     ///
-    /// 焊的两端先前都住中转（`AUTH_HEADER_NAMES` ＋ `auth_header_of`）。`P16` 把映射
-    /// 按 `C2` 搬去上游选择、把名单改成**由映射派生**之后，两端都在上游选择
-    /// ⇒ 判据跟着搬，焊缝不跨层（一条跨层焊缝正是 `D1` 警告的形状）。
+    /// 焊的两端（鉴权头映射 `auth_header_of` ＋ 由映射派生的「先丢掉」名单）都在上游选择
+    /// ⇒ 判据也住这一侧，焊缝不跨层（跨层焊缝两头各自变、没人对得上）。
     ///
     /// # 🔴 它判的是**产物**，不是两个定义 —— 否则它就是恒真
     ///
@@ -604,7 +599,7 @@ mod tests {
         (fmt, out)
     }
 
-    /// ★★ `KS4`：中转记日志走**白名单**。
+    /// ★★ 中转记日志走**白名单**。
     #[test]
     fn every_log_line_in_the_relay_only_carries_registered_fields() {
         let root = guard_core::addr::backend_src_root();
@@ -635,22 +630,14 @@ mod tests {
         let mut found: Vec<(String, String)> = Vec::new();
         let mut bad: Vec<String> = Vec::new();
         for (path, raw) in &files {
-            // ⚠⚠ 先前这里取的是 `file_name()`（**只有文件名**）。
-            //    上游选择搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
-            //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
-            //    ⇒ 改成**相对路径**。这是**收紧**：登记表里那一栏从此
-            //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
-            // 上游选择搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
-            //    `src/backend/`（两棵根都相对它），中转那几行的住址栏因此多了 `relay/` 前缀。
+            // ⚠⚠ 取**模块住址**（相对 `src/backend/`），不取 `file_name()`：只有文件名的话
+            //    `mod.rs` 这种住址**指不准是谁**。登记表里那一栏点得到唯一一份文件，
+            //    一条日志悄悄换个家会当场对不上。
             let name = guard_core::module_address(&root, path); // 按模块住址认
             let prod = production_code(raw);
-            // ⚠⚠ **针不许互相包含** —— 这一行是改过一次的，经过记这里，因为它正是
-            //    本工作区那族病的第一形（**针拼错**），而且是**相等断言逮住的**：
-            //    第一版写的是 `["eprintln!", "println!", "writeln!"]`，
-            //    而 `println!` **是 `eprintln!` 的子串** ⇒ `server.rs` 那 9 处各被数了两遍，
-            //    实测「扫到 26 处，登记表 17 行」（26 = 8 + 9×2）。
-            //    若当初写的是「处数 >= 登记表行数」这种松地板，这一刀**根本不会红**。
-            //    今天只留两根**互不包含**的针：`println!` 顺带认得 `eprintln!`，
+            // ⚠⚠ **针不许互相包含**：`println!` **是 `eprintln!` 的子串**，两根都放进来
+            //    `eprintln!` 那几处就各被数两遍 —— 这是**相等断言**逮得住、松地板（「处数 >= 登记表行数」）逮不住的那种错。
+            //    只留**互不包含**的针：`println!` 顺带认得 `eprintln!`，
             //    `writeln!` 认得 `writeln!`；`print!` / `write!` 同理各认一对。
             //    ⚠ 射程：`tracing::` 那一族**不认**（今天 `relay/` 生产段零命中，如实记）。
             for m in ["print!", "println!", "write!", "writeln!"] {
@@ -678,11 +665,11 @@ mod tests {
         assert!(
             bad.is_empty(),
             "中转日志里插进了**没有登记**的东西：\n  {}\n\n\
-             `KS4` 要的是白名单：只记允许记的那几样（方法 · 路径 · 状态码 · 字节数）。\n\
+             要的是白名单：只记允许记的那几样（方法 · 路径 · 状态码 · 字节数）。\n\
              要加就往 `ALLOWED_LOG_ARGS` 加一行**并写出理由** —— 加不出理由的多半就不该记。\n\
              ⚠ 尤其别写「记全部头，除了 Authorization」：黑名单必漏\n\
              （`Proxy-Authorization` · `X-Api-Key` · `Cookie` · 各家自定义），\n\
-             而且上游多一种鉴权方式它就自动过期，没有任何东西会告诉你它过期了。",
+             而且上游多一种鉴权方式它就自动过期，没有任何东西会说它过期了。",
             bad.join("\n  ")
         );
 
@@ -696,7 +683,7 @@ mod tests {
             LOG_SITES.len(),
             found
         );
-        // ★ 〔上游选择已搬出 `relay/`〕**两层的日志都在扫描面里**：盘上扫到日志的根
+        // ★ **两层的日志都在扫描面里**：盘上扫到日志的根
         //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
         // 根不再都是一段（`accounts/upstream_select` 两段）⇒ 按 `LOG_ROOTS` 认前缀，不按第一段切。
         let root_of = |f: &str| {
@@ -713,7 +700,7 @@ mod tests {
         let want_roots: std::collections::BTreeSet<String> =
             LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
         // 白名单圈的非中转那一棵，**恰好**是上游选择的根（盘上现推，住 `upstream_selection_guard`）——
-        //   不是整个账号域：`accounts/iso.rs`（账号隔离工具的查询）不是中转的上游选择，不进本白名单。
+        //   不是整个账号域：账号域里别的块不是中转的上游选择，不进本白名单。
         let sel_root =
             super::super::upstream_selection_guard::tests::upstream_selection_root_from_disk();
         let non_relay: Vec<&str> = LOG_ROOTS
@@ -725,7 +712,7 @@ mod tests {
             non_relay,
             vec![sel_root.trim_end_matches('/')],
             "中转日志白名单圈的账号那棵（`LOG_ROOTS`）不等于上游选择的根 `{sel_root}` —— \
-             圈大了就把账号域里别的块（iso）也算成了中转的上游选择"
+             圈大了就把账号域里别的块也算成了中转的上游选择"
         );
         assert_eq!(
             on_disk_roots, want_roots,
@@ -737,7 +724,7 @@ mod tests {
         );
         // ★ 〔命名推论〕**前缀按层分，两向**：
         //   住上游选择（`accounts/`）的那几行 ⇔ 前缀是 `[apikey]`；其余（中转）⇔ 前缀是 `[relay]`。
-        //   常驻后端一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
+        //   常驻后端一个进程承载两层，两层共用一个前缀的话，读日志的人判不出是哪一层出的事。
         //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
         //   ⚠ 本条量的是**登记表**；登记表与盘上逐条对上由下面那一段钉着（同一条判据里）。
         let is_upstream_selection = |f: &str| f.starts_with("accounts/upstream_select/");
