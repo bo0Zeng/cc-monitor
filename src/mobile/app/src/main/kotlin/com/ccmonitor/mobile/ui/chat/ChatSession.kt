@@ -4,6 +4,7 @@ import android.util.Base64
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryImage
+import com.ccmonitor.mobile.core.claude.link.ProseHl
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
 import com.ccmonitor.mobile.core.claude.link.SessionInterrupt
@@ -23,8 +24,10 @@ import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
+import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.link.problem
@@ -483,6 +486,12 @@ class ChatSession(
         val r = link.call(HistoryImage.COMMAND, HistoryImage.args(p, img.at, img.n, img.record), ChatReads.READ_MS)
         val data = (r as? Reply.Ok)?.let { HistoryImage.of(it.data) } ?: return null
         return runCatching { Base64.decode(data, Base64.DEFAULT) }.getOrNull()
+    }
+
+    /** 助手正文的一段建好了：问那台要这一段代码的高亮（`prose-hl`）；问不到 · 解不开 ⇒ `null`（照纯字）。 */
+    suspend fun segHl(codes: List<HlCode>): SegHl? {
+        val r = link.call(ProseHl.COMMAND, ProseHl.args(codes), ChatReads.READ_MS)
+        return (r as? Reply.Ok)?.let { ProseHl.of(it.data) }
     }
 
     /** 聊天屏进 / 出：进了名单这条会话的行才上流，退了就停（`stream-watch`）。 */

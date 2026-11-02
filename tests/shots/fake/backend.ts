@@ -38,6 +38,8 @@ export const REAL_OPS = new Set([
   "history-lines",
   // 按引用取回一张图（人贴的图画到那一格才问）：真后端读台架盘上那一行。
   "history-image",
+  // 拉一段正文的代码高亮（建一段时问）：真后端照交上来的代码算。
+  "prose-hl",
   "history-index",
   "history-user-inputs",
   "history-turns",

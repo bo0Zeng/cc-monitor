@@ -16,7 +16,8 @@
  */
 import { makeYieldToMain } from "../yield-to-main";
 import { enhancePending, forgetEnhance, renderMarkdown, renderPlainText } from "../render";
-import { mountDoc } from "../md-view";
+import { mountDoc, type HlPull } from "../md-view";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { docText } from "../height-estimate";
 import type { Doc } from "../generated/Doc";
 import { buildSlashCommandCard } from "./slash";
@@ -470,7 +471,7 @@ function renderBlock(
 ): HTMLElement | null {
   switch (block.type) {
     case "prose":
-      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy);
+      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy, hlFrom(ctx.origin));
     case "text":
       return buildPlainTextBlock(block.text);
     case "thinking": {
@@ -980,15 +981,40 @@ function buildResultBody(
 /** 大 output 阈值（字节估算）—— 超过先只渲染前 N 行 */
 const LARGE_TEXT_BYTES = 200_000;
 
+/** 拉一段高亮的期限：算的是一段（≤ 两万字）的代码，过了就停在纯字。 */
+const HL_BUDGET_MS = 30_000;
+
+/** 问那台后端拉一段的高亮。 */
+function hlFrom(origin: Origin): HlPull {
+  return (codes) => callTyped(origin, "prose-hl", { codes: [...codes] }, budgetWithin(HL_BUDGET_MS));
+}
+
+/** 进了视口（或附近一屏）那一下；环境里没有 IntersectionObserver ⇒ 当场。 */
+function onceVisible(el: HTMLElement): Promise<void> {
+  if (typeof IntersectionObserver === "undefined") return Promise.resolve();
+  return new Promise((resolve) => {
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        resolve();
+      },
+      { rootMargin: "100% 0px" },
+    );
+    io.observe(el);
+  });
+}
+
 /**
  * 一个回复正文块：照后端交的树排（`md-view.ts`），只排第 0 段；树分了段 ⇒ 下面一颗「展开 {全文大小}」，
  * 点了余下的一段一跳地补（不卡输入）。分在哪几块是后端定的（`Doc.segs`）。`size` 是后端交的整块字节数写成的那一格。
  * 急路（实时）当场排公式；惰路（批量重放）留占位，卡进视口由 `enhanceCard` 补。点开补的那几段就在眼前，当场排。
+ * 代码高亮按段问那台后端（`prose-hl`）：急路建好就问；惰路等这块进了视口才问（批量建几百张卡不一齐发）。
  */
-function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined): HTMLElement {
+function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined, pull: HlPull): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
-  const view = mountDoc(doc);
+  const view = mountDoc(doc, lazy ? (codes) => onceVisible(div).then(() => pull(codes)) : pull);
   div.append(view.root);
   if (!lazy) enhancePending(view.root);
   if (view.built() >= view.segCount) return div;

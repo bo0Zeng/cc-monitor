@@ -65,6 +65,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.AlertKind
 import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.MdAlign
@@ -77,8 +78,8 @@ import ru.noties.jlatexmath.JLatexMathDrawable
 //
 // - 两层：[layoutSeg] 把一段的块排成 [MdPiece]（字是 `AnnotatedString`：`SpanStyle` ＋ `LinkAnnotation`），纯函数、JVM 上就测得了；
 //   [MdDocView] 照 [MdPiece] 画（段落 · 标题 · 列表 · 引用 · 提示块 · 代码块 · 表格网格 · 公式 · 脚注）。
-// - 高亮照那一段的 `SegHl`：段里的代码块按先序第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；
-//   类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
+// - 高亮先出字、后上色：一段先照纯字建；那一段的代码块（[codesOf]，先序）交后端 `prose-hl` 拉，拉到了 [MdDocState.paint] 带色重排那一段。
+//   第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
 // - 公式经 JLaTeXMath 画成图；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文）。
 // - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段，[MdDocState.buildNext] 一段段往下接。
 
@@ -201,11 +202,33 @@ fun highlighted(
         }
     }
 
-/** 一份正文的排版状态：建好了哪几段。建出来就有第 0 段；往下接一段调 [buildNext]。 */
+/** 第 i 段里的代码块（顶层与嵌在列表 · 引用 · 提示块 · 脚注里的，先序）：拉高亮交的就是它，回包的 `hl[n]` 对第 n 块。 */
+fun codesOf(
+    doc: Doc,
+    i: Int,
+): List<HlCode> {
+    val out = mutableListOf<HlCode>()
+
+    fun walk(bs: List<MdBlock>) {
+        for (b in bs) {
+            when (b) {
+                is MdBlock.Code -> out += HlCode(lang = b.lang, x = b.x)
+                is MdBlock.List -> b.items.forEach { walk(it.blocks) }
+                is MdBlock.Quote -> walk(b.blocks)
+                is MdBlock.Alert -> walk(b.blocks)
+                is MdBlock.Notes -> b.items.forEach { walk(it.blocks) }
+                is MdBlock.P, is MdBlock.H, is MdBlock.Math, is MdBlock.Table, MdBlock.Rule -> {}
+            }
+        }
+    }
+    walk(segRange(doc, i).map { doc.blocks[it] })
+    return out
+}
+
+/** 一份正文的排版状态：建好了哪几段。建出来就有第 0 段（代码照纯字）；往下接一段调 [buildNext]，拉到一段的高亮调 [paint]。 */
 @Stable
 class MdDocState(
     val doc: Doc,
-    hl0: SegHl?,
     private val style: MdStyle,
 ) {
     val segCount: Int = doc.segs.size + 1
@@ -217,14 +240,22 @@ class MdDocState(
     val built: Int get() = built0.size
 
     init {
-        buildNext(hl0)
+        buildNext()
     }
 
-    /** 建下一段（`hl` 是那一段的高亮）；都建完了 ⇒ false。 */
-    fun buildNext(hl: SegHl?): Boolean {
+    /** 建下一段（代码照纯字）；都建完了 ⇒ false。 */
+    fun buildNext(): Boolean {
         if (built0.size >= segCount) return false
-        built0 += layoutSeg(doc, built0.size, hl, style)
+        built0 += layoutSeg(doc, built0.size, null, style)
         return true
+    }
+
+    /** 第 i 段拉到了高亮：带色重排那一段（还没建的段不动）。 */
+    fun paint(
+        i: Int,
+        hl: SegHl,
+    ) {
+        if (i < built0.size) built0[i] = layoutSeg(doc, i, hl, style)
     }
 }
 
@@ -326,12 +357,9 @@ fun rememberMdStyle(): MdStyle {
 
 /** 一份正文的排版状态（树或主题变了重建，只建第 0 段）。 */
 @Composable
-fun rememberMdDocState(
-    doc: Doc,
-    hl0: SegHl? = null,
-): MdDocState {
+fun rememberMdDocState(doc: Doc): MdDocState {
     val style = rememberMdStyle()
-    return remember(doc, hl0, style) { MdDocState(doc, hl0, style) }
+    return remember(doc, style) { MdDocState(doc, style) }
 }
 
 /** 照 [MdDocState] 里已建的那几段画；字可选、链接可点。 */
