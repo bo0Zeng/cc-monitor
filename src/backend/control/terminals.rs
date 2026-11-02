@@ -19,6 +19,7 @@ use super::terminals_wire::{
     TermState, TerminalCan, TerminalInputReq, TerminalItem, TerminalPreviewReq, TerminalsList,
     TerminalsListReq,
 };
+use crate::common::time::now_secs;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Barred, Who};
 pub(crate) use crate::host::tmux::{
@@ -530,13 +531,6 @@ pub(crate) fn preview_reply(
         captured_at,
         captured_at_text: captured_text.to_string(),
     }
-}
-
-fn now_secs() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 fn not_known(why: &str) -> Said {

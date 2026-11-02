@@ -43,12 +43,12 @@ pub fn stderr_len() -> Option<u64> {
 
 /// 非 unix：没有这一格（见模块头注）。
 #[cfg(not(unix))]
-pub(crate) fn point_stderr_at<F>(_f: &F) -> Result<(), String> {
+pub fn point_stderr_at<F>(_f: &F) -> Result<(), String> {
     Err(copy_text("beStderrFd.point.notUnix", &[]))
 }
 
 /// 非 unix：没有这一格（见模块头注）。
 #[cfg(not(unix))]
-pub(crate) fn stderr_len() -> Option<u64> {
+pub fn stderr_len() -> Option<u64> {
     None
 }

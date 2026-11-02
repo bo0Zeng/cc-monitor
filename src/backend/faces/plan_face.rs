@@ -16,6 +16,7 @@
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
 use crate::common::said::Said;
+use crate::common::time::now_ms;
 use crate::plan::{book, locate, watch, Live, Whose};
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
@@ -25,13 +26,6 @@ use std::path::{Path, PathBuf};
 
 fn bad(what: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
-}
-
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 /// 这台的配置根：默认那一个 ＋ 账号库里每个号的配置目录。
@@ -130,11 +124,7 @@ pub(crate) fn marked(mut doc: wire::PlanRead) -> wire::PlanRead {
 /// [`marked`] ＋ 时刻写成给人看的字（按请求带来的看的那一台的时区）：要交出去的那一份走它。
 pub(crate) fn annotated(doc: wire::PlanRead, tz: &crate::Tz) -> wire::PlanRead {
     let mut doc = marked(doc);
-    crate::plan::product::with_time_texts(
-        &mut doc,
-        i64::try_from(now_ms()).unwrap_or(i64::MAX),
-        tz,
-    );
+    crate::plan::product::with_time_texts(&mut doc, now_ms() as i64, tz);
     doc
 }
 

@@ -2868,7 +2868,11 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLine = { account: string, group: RotGroup, state: string, why?: string, movable: boolean, stay?: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
-type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
+/**
+ * 那一判看的事实摘要（事后核每一次为什么换）；没记 ⇒ 缺。
+ */
+saw?: RotSaw, };
 type RotMark = { glyph?: string, dashed: boolean, tip: string, };
 type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**
@@ -2882,6 +2886,20 @@ type RotRow = { account: string,
  * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
  */
 row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
+type RotSaw = { accounts: Array<RotSawAcct>, 
+/**
+ * 本会话用速：折合输入 token / 分。
+ */
+pace?: number, 
+/**
+ * 本会话用速的起伏（σ/μ）。
+ */
+spread?: number, 
+/**
+ * 本会话上下文（token）。
+ */
+context?: number, };
+type RotSawAcct = { id: string, used5h: number, resets5h?: number, rate5h?: number, others?: number, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**

@@ -53,7 +53,7 @@ pub fn temp_root() -> PathBuf {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn temp_root() -> PathBuf {
+pub fn temp_root() -> PathBuf {
     std::env::temp_dir()
 }
 
@@ -70,7 +70,7 @@ pub fn current_uid() -> u32 {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn current_uid() -> u32 {
+pub fn current_uid() -> u32 {
     0
 }
 
@@ -101,7 +101,7 @@ pub fn account_home() -> Option<PathBuf> {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn account_home() -> Option<PathBuf> {
+pub fn account_home() -> Option<PathBuf> {
     None
 }
 
@@ -121,7 +121,7 @@ pub fn owner_of(p: &Path) -> Option<String> {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn owner_of(_p: &Path) -> Option<String> {
+pub fn owner_of(_p: &Path) -> Option<String> {
     None
 }
 

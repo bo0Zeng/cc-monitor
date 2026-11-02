@@ -120,12 +120,6 @@ fn book() -> std::sync::MutexGuard<'static, Book> {
     .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-}
-
 /// 一条连接（hook 那一头）挂的请求跟着它走：它一丢 ⇒ 它挂的全撤掉（入方向读循环每条连接一份）。
 pub(crate) struct Desk {
     conn: u64,
@@ -206,7 +200,12 @@ fn open_id(
 ) -> (String, tokio::sync::oneshot::Receiver<Option<Value>>) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let id = format!("ask-{}", NEXT.fetch_add(1, Ordering::Relaxed));
-    let product = product_of(&id, &asked, label_of(&asked).as_deref(), now_ms());
+    let product = product_of(
+        &id,
+        &asked,
+        label_of(&asked).as_deref(),
+        crate::common::time::now_ms(),
+    );
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<Value>>();
     let sid = asked.sid.clone();
     {

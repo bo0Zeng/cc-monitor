@@ -108,7 +108,7 @@ pub(super) mod tests {
         "quota/ledger.rs",
         "quota/mod.rs",
         "quota/nodes.rs",
-        // 轮换的基础功能层（纯）：rotation.json 第三版的形 · 一判 · 推演 · 策略代码在沙箱里的调用 · 事实上发不发得出去。不认识上游选择与账号库管理。
+        // 轮换的基础功能层（纯）：rotation.json 第四版的形 · 一判 · 推演 · 策略代码在沙箱里的调用 · 事实上发不发得出去。不认识上游选择与账号库管理。
         "quota/rules/book.rs",
         "quota/rules/code.rs",
         "quota/rules/decide.rs",

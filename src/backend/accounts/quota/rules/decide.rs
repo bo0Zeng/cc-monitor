@@ -203,6 +203,12 @@ fn warm_of(want: &[String], facts: &[Acct], t: u64) -> (Vec<String>, Vec<String>
     (keep, drop)
 }
 
+/// 在用的号是用户手动选的：拖出来的顺序排第一的就是它（「现在用」· 拖到第一格）。
+/// 交给策略的 `pinned` 与 [`choose`] 留不留在用的号都照这一处。
+fn pinned(sigma: &Sigma) -> bool {
+    sigma.temp.first() == Some(&sigma.current)
+}
+
 /// 拼交给策略的 ctx（号照事实的先后）。
 pub(crate) fn ctx_of<'a>(
     sigma: &'a Sigma,
@@ -219,7 +225,7 @@ pub(crate) fn ctx_of<'a>(
         settings,
         memo: sigma.memo.as_ref(),
         me: &sigma.me,
-        pinned: sigma.temp.first() == Some(&sigma.current),
+        pinned: pinned(sigma),
         temp: &sigma.temp,
         accounts: facts
             .iter()
@@ -271,11 +277,13 @@ fn choose(
         me: sigma.me.clone(),
     };
     let mut skipped = Vec::new();
-    // 3：该换了（当前号不在候选里）⇒ 先照用户拖出来的顺序：第一个在候选里的被选中，排在它前面的丢掉。
-    let mut chosen: Option<String> = None;
-    if !cands.iter().any(|a| *a == c) {
+    // 3：在用的号是手动选的、事实上发得出去 ⇒ 留着（策略列不列它、排第几都不看）。
+    // 该换了（手动选的发不出去了 · 不是手动选的又不在候选里）⇒ 先照用户拖出来的顺序：第一个事实上发得出去的被选中（策略列不列它都算），排在它前面的丢掉。
+    let keep = pinned(sigma) && send(c);
+    let mut chosen: Option<String> = keep.then(|| c.to_string());
+    if !keep && !cands.iter().any(|a| *a == c) {
         next.temp.retain(|a| a != c);
-        if let Some(i) = next.temp.iter().position(|a| cands.iter().any(|x| *x == a)) {
+        if let Some(i) = next.temp.iter().position(|a| send(a)) {
             skipped = next.temp[..i].to_vec();
             next.temp.drain(..i);
             chosen = Some(next.temp[0].clone());
@@ -355,7 +363,7 @@ pub(crate) fn turn(
     let mut r = choose(sigma, &v, facts, t, &send);
     let (mut order, mut why, mut wake_at, mut warm) = (v.order, v.why, v.wake_at, v.warm);
     // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次（它约的叫醒跟着新在用号走，不然要等到别的节点才知道几点再判）。
-    // 它此刻就又要换（例：拖出来的顺序选中的号，策略照强制切换要换走）⇒ 同一刻接着换（第 4 步照新的在用号再走一遍），
+    // 它此刻就又要换（例：策略的先后跟着在用的是谁变，对着新换上的号要另一个）⇒ 同一刻接着换（第 4 步照新的在用号再走一遍），
     // 直到它留下；同一刻里一个号只换到一次（策略来回要 ⇒ 停在这一个），至多号数那么多次。
     if strategy_error.is_none() {
         let mut seen = vec![sigma.current.clone()];

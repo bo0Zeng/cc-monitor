@@ -20644,6 +20644,7 @@ data class RotLog(
     val to: String,
     val cause: RotLogCause,
     val why: String? = null,
+    val saw: RotSaw? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20655,9 +20656,10 @@ data class RotLog(
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Str) }, optional = true, nullable = true),
+            Field("saw", { opt(RotSaw.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotLog(a[0] as Long, a[1] as String, a[2] as String, a[3] as RotLogCause, a[4] as String?) },
-            { v -> arrayOf(v.at, v.from, v.to, v.cause, v.why) },
+            { a -> RotLog(a[0] as Long, a[1] as String, a[2] as String, a[3] as RotLogCause, a[4] as String?, a[5] as RotSaw?) },
+            { v -> arrayOf(v.at, v.from, v.to, v.cause, v.why, v.saw) },
         )
     }
 }
@@ -20750,6 +20752,7 @@ data class RotLogRow(
     val to: String,
     val cause: RotLogCause,
     val why: String? = null,
+    val saw: RotSaw? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20762,9 +20765,10 @@ data class RotLogRow(
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Str) }, optional = true, nullable = true),
+            Field("saw", { opt(RotSaw.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotLogRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as RotLogCause, a[5] as String?) },
-            { v -> arrayOf(v.because, v.at, v.from, v.to, v.cause, v.why) },
+            { a -> RotLogRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as RotLogCause, a[5] as String?, a[6] as RotSaw?) },
+            { v -> arrayOf(v.because, v.at, v.from, v.to, v.cause, v.why, v.saw) },
         )
     }
 }
@@ -20895,6 +20899,54 @@ data class RotRow(
             ),
             { a -> RotRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as List<RotCell>, a[5] as List<String>, a[6] as List<RotMark>) },
             { v -> arrayOf(v.account, v.row, v.line, v.hover, v.cells, v.rules, v.marks) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotSaw(
+    val accounts: List<RotSawAcct>,
+    val pace: Double? = null,
+    val spread: Double? = null,
+    val context: Long? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotSaw> = obj(
+            listOf(
+            Field("accounts", { arr(RotSawAcct.ADAPTER) }, optional = false, nullable = false),
+            Field("pace", { opt(Dbl) }, optional = true, nullable = true),
+            Field("spread", { opt(Dbl) }, optional = true, nullable = true),
+            Field("context", { opt(U64) }, optional = true, nullable = true),
+            ),
+            { a -> RotSaw(a[0] as List<RotSawAcct>, a[1] as Double?, a[2] as Double?, a[3] as Long?) },
+            { v -> arrayOf(v.accounts, v.pace, v.spread, v.context) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotSawAcct(
+    val id: String,
+    val used5h: Double,
+    val resets5h: Long? = null,
+    val rate5h: Double? = null,
+    val others: Double? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotSawAcct> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("used5h", { Dbl }, optional = false, nullable = false),
+            Field("resets5h", { opt(U64) }, optional = true, nullable = true),
+            Field("rate5h", { opt(Dbl) }, optional = true, nullable = true),
+            Field("others", { opt(Dbl) }, optional = true, nullable = true),
+            ),
+            { a -> RotSawAcct(a[0] as String, a[1] as Double, a[2] as Long?, a[3] as Double?, a[4] as Double?) },
+            { v -> arrayOf(v.id, v.used5h, v.resets5h, v.rate5h, v.others) },
         )
     }
 }

@@ -2293,6 +2293,8 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.RotPlate::class.java to com.ccmonitor.mobile.core.wire.gen.RotPlate.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotRefused::class.java to com.ccmonitor.mobile.core.wire.gen.RotRefused.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotRow::class.java to com.ccmonitor.mobile.core.wire.gen.RotRow.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.RotSaw::class.java to com.ccmonitor.mobile.core.wire.gen.RotSaw.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.RotSawAcct::class.java to com.ccmonitor.mobile.core.wire.gen.RotSawAcct.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotSeg::class.java to com.ccmonitor.mobile.core.wire.gen.RotSeg.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotStale::class.java to com.ccmonitor.mobile.core.wire.gen.RotStale.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotStrategyError::class.java to com.ccmonitor.mobile.core.wire.gen.RotStrategyError.ADAPTER,
