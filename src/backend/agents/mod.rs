@@ -133,7 +133,7 @@ pub(crate) struct Adapter {
     /// 这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
     /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) records: Option<RecordFace>,
-    /// tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
+    /// tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家。
     /// `None` ＝ 今天没人考据过。收进注册表而不是让调用方直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) processes: Option<&'static [&'static str]>,
     /// 这一家的**起会话事实**（默认启动器 · shell wrapper · resume 字面量 · 嵌套标记）；`None` ＝ 这一家不由我们起。
@@ -271,8 +271,7 @@ pub(crate) fn plugin_envs() -> Vec<&'static str> {
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
-/// 从前住两处（monitor `adapter.rs` · 后端 `control/ccm/`，靠金样 `agent-profile-golden.tsv` 对着）；今天 `ccm` 按注册表读
-/// （[`launch_face_among`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
+/// `ccm` 按注册表读（[`launch_face_among`]），界面与 monitor 读从这里生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
 // 不派生 `PartialEq`：带着一个函数指针（resume 命令形），函数地址相等不是一个有意义的比较。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LaunchFace {
@@ -1512,7 +1511,7 @@ pub(crate) fn sole_kind(has: impl Fn(&Adapter) -> bool) -> Option<&'static str> 
 }
 
 /// 资产面那一家（读 / 装 skill · 用户级 MCP 文件）：注册表里**唯一**声明了资产面的那一家（今天只有 Claude）；两家都声明 ⇒ `None`、照实拒。
-/// 资产域 · 账号库的 MCP 共享 · cc-bus 钩子都问它（原住 `assets/mod.rs`）。
+/// 资产域 · 账号库的 MCP 共享 · cc-bus 钩子都问它。
 /// ⚠ Codex 的 skill 根来了（扩展位置带上程序这一维），改这里：由请求说是哪一家。
 pub(crate) fn asset_kind() -> Option<&'static str> {
     sole_kind(|a| a.assets.is_some())

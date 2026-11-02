@@ -87,7 +87,7 @@ struct Golden {
     /// 中转**回给下游**的全部字节。
     downstream: &'static str,
     /// tee 交出的全部 `tap` 帧（一件一行；`""` = 这一格 tee 一件都不该交）。
-    /// 先前这一栏是 NDJSON 行（独立 `--relay` 的 stdout 那一形），那一形删了；今天钉的是会上 wire 的那一形。
+    /// 钉的是会上 wire 的那一形。
     tee: &'static str,
 }
 
