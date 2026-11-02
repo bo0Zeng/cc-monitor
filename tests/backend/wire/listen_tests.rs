@@ -210,7 +210,7 @@ fn every_file_this_head_note_points_at_really_exists() {
 #[test]
 fn the_two_exit_codes_are_distinct_and_nonzero() {
     assert_ne!(EXIT_ADDR_IN_USE, EXIT_BAD_LISTEN_CONFIG);
-    assert!(EXIT_ADDR_IN_USE > 0 && EXIT_BAD_LISTEN_CONFIG > 0);
+    const { assert!(EXIT_ADDR_IN_USE > 0 && EXIT_BAD_LISTEN_CONFIG > 0) };
 }
 
 /// 多客户：A 与 C 同时连着，A 走了不算「最后一个」；都走了才归零；同一个号走两次不重复扣。

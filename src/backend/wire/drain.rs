@@ -63,6 +63,10 @@ impl Drop for Ticket {
 }
 
 impl Drain {
+    #[expect(
+        clippy::new_without_default,
+        reason = "一个进程只有一个闸（`DRAIN` 静态量，`const` 造）：不给默认值，免得多一条造第二个闸的路"
+    )]
     pub const fn new() -> Self {
         Drain {
             state: Mutex::new(DrainState {

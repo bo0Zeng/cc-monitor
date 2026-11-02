@@ -466,6 +466,13 @@ pub const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec {
 }
 
 /// `N` ＝ 这条命令声明要的能力（帧面硬臂 ⇒ 什么都不要）：只给判据记它要不要文件管理写句柄；生产照 `go` 取能力。
+#[cfg_attr(
+    not(any(test, feature = "test-support")),
+    expect(
+        clippy::extra_unused_type_parameters,
+        reason = "`N` 只给判据记要不要文件管理写句柄（测试档与 `test-support` 才有那一格）；生产编那一份照 `go` 取能力、用不着它"
+    )
+)]
 const fn spec<C: Command, N: Needs>(
     summary: &'static str,
     how: How,

@@ -689,7 +689,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
 /// 每一种帧都填满（可选格全给值），这样「这一格还在不在、是什么类型」才看得见。
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
-    let frames = vec![
+    let frames = [
         Frame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
