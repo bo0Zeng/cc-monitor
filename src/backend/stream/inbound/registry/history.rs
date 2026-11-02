@@ -73,6 +73,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
     // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。同族同档、同一个只读宿主。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryImageCmd>("按引用取回一张图"),
+    // 拉一段正文的代码高亮（树里的代码块不带高亮，两端建一段时交那一段的代码块来问）。算高亮吃 CPU ⇒ 阻塞档。
+    crate::wire::typed::blocking::<crate::faces::prose_hl_face::ProseHlCmd>("拉一段正文的代码高亮"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
         "按字节分页读一份会话",
     ),

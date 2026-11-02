@@ -87,7 +87,7 @@ pub(crate) fn answer_probe(req: &QuotaProbeReq, own: &Own) -> Answer {
         &Ctx::here(),
         own,
         req,
-        crate::accounts::quota::now_unix(),
+        crate::common::time::now_secs(),
         None,
     )
 }

@@ -7,7 +7,7 @@
 //! | C2 | 拨钟那一段只在特性 `shots` 下编：`Cargo.toml` 的 `shots = []` 不在 `default` 里；`common/time.rs` 里 `mod shots_clock` 紧跟在 `#[cfg(feature = "shots")]` 下；台架那个环境变量名只在那一段里出现，生产源码别处不提 |
 //! | C3 | 台架真在编它、真在交时刻：`tests/shots/real/pool.mjs` 按 `--features shots` 编后端、给每台后端设那个环境变量 |
 //! | C4 | 默认构建（本测试这一档）里特性没开；`now()` 就是系统钟 |
-//! | C6 | 「此刻 unix 毫秒 / 秒」只有 `common/time.rs` 的两个读口（`now_ms` · `now_secs`，值域 `u64`）：别处不另定同名读口、不就地把 `now()` 换算成毫秒 / 秒；还没收的照 [`STILL`] 逐份记着 |
+//! | C6 | 「此刻 unix 毫秒 / 秒」只有 `common/time.rs` 的两个读口（`now_ms` · `now_secs`，值域 `u64`）：别处不另定同名读口、不就地把 `now()` 换算成毫秒 / 秒 |
 //!
 //! C2 · C3 读的是源码文本。
 //! 发版 / CI / 门禁里不许点名特性 `shots`，由壳那一侧的 `shots_feature_guard_tests::s3` 一并钉着（它扫的是全仓的工作流与门禁脚本）。
@@ -230,16 +230,6 @@ fn c5_production_code_knows_no_rig_but_the_clock() {
 /// 别处不许另定的「此刻」读口名。
 const READER_NAMES: [&str; 4] = ["now_ms", "now_secs", "now_unix", "unix_now"];
 
-/// 还没收的那几份（相对 `src/backend`）：各自另定了「此刻」读口，或就地把 `now()` 换算成毫秒 / 秒。只许变短，收完一份划掉一行。
-const STILL: &[&str] = &[
-    "accounts/manage/exec.rs",
-    "accounts/manage/mcp_share_exec.rs",
-    "accounts/quota/mod.rs",
-    "control/ccm/mod.rs",
-    "faces/read_face.rs",
-    "files/write.rs",
-];
-
 /// 一份生产源码里 C6 认得出的命中：另定的读口（[`READER_NAMES`]）· 就地换算（`now()` 之后 3 行内接 `UNIX_EPOCH` 再接 `.as_millis()` / `.as_secs()`）。
 /// 做盐的 `.as_nanos()` · `.subsec_nanos()` 不算；别人的 `.now()`（注入的钟）不算。
 fn own_clock_hits(prod: &str) -> Vec<String> {
@@ -277,7 +267,7 @@ fn own_clock_hits(prod: &str) -> Vec<String> {
 }
 
 /// C6 ★ **「此刻」只有两个读口**：`common/time.rs` 的 `now_ms` · `now_secs`（`u64`）。别处另定同名读口、或就地把 `now()` 换算成毫秒 / 秒的，
-/// 按文件归，和 [`STILL`] 两头比：多出来的红（新写了一份），`STILL` 里有、源码里已经没有的也红（收了忘了划掉）。
+/// 按文件归，全后端一处都不许有。
 /// 正控：合成语料里认得出一份私有 `fn now_ms`、一处内联换算；做盐的纳秒 · 注入的钟 `.now()` 不认。
 #[test]
 fn c6_one_pair_of_now_readers() {
@@ -319,20 +309,12 @@ fn c6_one_pair_of_now_readers() {
             found.insert(rel, hits);
         }
     }
-    let still: std::collections::BTreeSet<&str> = STILL.iter().copied().collect();
     let extra: Vec<String> = found
         .iter()
-        .filter(|(rel, _)| !still.contains(rel.as_str()))
         .map(|(rel, hits)| format!("{rel}: {}", hits.join(" · ")))
-        .collect();
-    let gone: Vec<&str> = still
-        .iter()
-        .copied()
-        .filter(|rel| !found.contains_key(*rel))
         .collect();
     assert!(
         extra.is_empty(),
         "「此刻」的读口在 `{CLOCK_FILE}` 之外又写了一份（改调 `common::time::now_ms` / `now_secs`）：{extra:#?}"
     );
-    assert!(gone.is_empty(), "`STILL` 里这几份已经收了，划掉：{gone:?}");
 }

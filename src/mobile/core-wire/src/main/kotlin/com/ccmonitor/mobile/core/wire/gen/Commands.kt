@@ -860,6 +860,11 @@ object Commands {
         const val NAME: String = "profiles-write"
     }
 
+    /** `prose-hl`。 */
+    object ProseHl : Command<com.ccmonitor.mobile.core.wire.gen.ProseHlReq, com.ccmonitor.mobile.core.wire.gen.SegHl>("prose-hl", { com.ccmonitor.mobile.core.wire.gen.ProseHlReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.SegHl.ADAPTER }) {
+        const val NAME: String = "prose-hl"
+    }
+
     /** `pubkey-push`。 */
     object PubkeyPush : Command<com.ccmonitor.mobile.core.wire.gen.PubkeyPushReq, com.ccmonitor.mobile.core.wire.gen.PubkeyPushed>("pubkey-push", { com.ccmonitor.mobile.core.wire.gen.PubkeyPushReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.PubkeyPushed.ADAPTER }) {
         const val NAME: String = "pubkey-push"
@@ -1381,6 +1386,7 @@ object Commands {
             ProfilesRead,
             ProfilesResolve,
             ProfilesWrite,
+            ProseHl,
             PubkeyPush,
             QuotaProbe,
             QuotaRead,
@@ -1857,6 +1863,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.HistoryTailReq::class.java to com.ccmonitor.mobile.core.wire.gen.HistoryTailReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.HistoryTurns::class.java to com.ccmonitor.mobile.core.wire.gen.HistoryTurns.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.HistoryTurnsReq::class.java to com.ccmonitor.mobile.core.wire.gen.HistoryTurnsReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.HlCode::class.java to com.ccmonitor.mobile.core.wire.gen.HlCode.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.HolderWho::class.java to com.ccmonitor.mobile.core.wire.gen.HolderWho.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.HomeReq::class.java to com.ccmonitor.mobile.core.wire.gen.HomeReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.HookState::class.java to com.ccmonitor.mobile.core.wire.gen.HookState.ADAPTER,
@@ -2189,6 +2196,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.ProfilesResolveReq::class.java to com.ccmonitor.mobile.core.wire.gen.ProfilesResolveReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfilesWriteDone::class.java to com.ccmonitor.mobile.core.wire.gen.ProfilesWriteDone.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ProfilesWriteReq::class.java to com.ccmonitor.mobile.core.wire.gen.ProfilesWriteReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.ProseHlReq::class.java to com.ccmonitor.mobile.core.wire.gen.ProseHlReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PsExecPolicy::class.java to com.ccmonitor.mobile.core.wire.gen.PsExecPolicy.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PsHost::class.java to com.ccmonitor.mobile.core.wire.gen.PsHost.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PtyOpts::class.java to com.ccmonitor.mobile.core.wire.gen.PtyOpts.ADAPTER,
