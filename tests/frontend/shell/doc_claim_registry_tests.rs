@@ -1526,13 +1526,17 @@ fn backend_blocks() -> std::collections::BTreeSet<String> {
     let root = repo_root().join("src/backend");
     let mut out = std::collections::BTreeSet::new();
     let prod = guard_core::production_code(&read_repo_file("src/backend/lib.rs"));
-    let lines: Vec<&str> = prod.lines().map(str::trim).collect();
-    for (i, line) in lines.iter().enumerate() {
-        if i > 0 && lines[i - 1].starts_with("#[path") {
+    // 每行按词切：头一个词整词相等才算（`mod` · `#[path`），不按前缀认。
+    let words: Vec<Vec<&str>> = prod
+        .lines()
+        .map(|l| l.split_whitespace().collect())
+        .collect();
+    for (i, w) in words.iter().enumerate() {
+        if i > 0 && words[i - 1].first() == Some(&"#[path") {
             continue;
         }
-        if let Some(rest) = line.strip_prefix("mod ") {
-            let name = rest.split(';').next().unwrap_or("").trim();
+        if let ["mod", rest, ..] = w.as_slice() {
+            let name = rest.trim_end_matches(';');
             if root.join(name).is_dir() {
                 out.insert(format!("{name}/"));
             } else {
