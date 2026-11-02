@@ -55,3 +55,27 @@ describe("① 切 tab 只翻不继承的属性；收起的 tab 用 content-visib
     expect(decls(".session-viewer-stream").get("content-visibility")).toBe("visible");
   });
 });
+
+/**
+ * ② 流里的行不挂 `content-visibility`（也就不要 `contain-intrinsic-size` 兜底）。
+ * WebKit bug 321501：`auto` 的元素从「跳过」翻回「可见」时留着旧的 0 高布局，真滚轮滚过去那一块一直空着，要有东西逼一次排版才出来。
+ * 骨架只建视口那一截（流里常驻二三十个顶层条目），它再省的那一点量不出来：台架 A/B（`webkit.py` · `bench.mjs` 的 `--css` 换成 `visible`）
+ * 两个引擎冷切 · 热切 · 往上滚 · 常驻 Pss 都没变坏。
+ */
+describe("② 流里的行不挂 content-visibility", () => {
+  it("`.stream-content` 与折叠段里的每一行都不声明 content-visibility / contain-intrinsic-size", () => {
+    const rows = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+      m[1].split(",").some((s) => /(^|\s)\.(stream-content|branch-fold-body-inner)\s*>/.test(s.trim())),
+    );
+    nonEmpty(rows);
+    const bad = rows.filter((m) => /(^|;)\s*(content-visibility|contain-intrinsic-size)\s*:/.test(m[2])).map((m) => m[1].trim());
+    expect(bad, "流里的行挂了 content-visibility ⇒ WebKitGTK 上真滚轮滚过去的那一块可能一直空着").toEqual([]);
+  });
+
+  it("流里的单个类（翻页哨兵 · 带「编辑」的那一行 · 系统注入 · 过程行）也不声明它们", () => {
+    for (const sel of [".stream-more-above", ".stream-content > .has-said-edit", ".card-injected", ".stream-content > .proc-line"]) {
+      const d = decls(sel);
+      expect([d.has("content-visibility"), d.has("contain-intrinsic-size")], sel).toEqual([false, false]);
+    }
+  });
+});

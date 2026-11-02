@@ -114,7 +114,7 @@ export function cssDecl(selector: string, prop: string, css = styleSheet()): str
  * 会给后代 `position: fixed` **改包含块**的属性（CSS spec；§13 的「为什么」逐字点了前四个）。
  *
  * `contain` / `content-visibility` 是同一族的第二批（layout containment 同样生成包含块）——
- * 本仓 `.stream-content > *` 就带 `content-visibility: auto`。
+ * 本仓收起的 tab（`.stream`）就带 `content-visibility: hidden`。
  */
 export const CONTAINING_BLOCK_PROPS = [
   "transform",
