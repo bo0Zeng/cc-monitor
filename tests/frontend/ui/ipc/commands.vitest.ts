@@ -711,7 +711,6 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
       "这几处 origin 在类型上装得下 `null`：\n" +
         "本机是一个**具名**的 origin（`LOCAL_ORIGIN` = `\"<local>\"`，住 `backend-policy.ts`，与 Rust 跨语言对拍）；\n" +
         "「是不是本机」只经 `src/frontend/ui/ipc/origin.ts` 判（`isLocalOrigin` / `isRemoteOrigin`），\n" +
-        "Rust 出方向的「缺省 = 本机」只在 `originFromWire` 那一处收成一个表示。\n" +
         "⇒ 出路是把那一处改成 `Origin`，**不是**把它登记进 PENDING。",
     ).toEqual(Object.keys(PENDING).sort());
   });
