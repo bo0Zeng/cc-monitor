@@ -68,12 +68,28 @@ fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() 
     std::fs::remove_dir_all(&base).ok();
 }
 
+/// 状态的读上限（超了拒收＋回错，同声明表的状态行）。
+const fn reject(bytes: u64) -> relay_route_core::Cap {
+    relay_route_core::Cap {
+        bytes,
+        over: relay_route_core::Over::Reject,
+    }
+}
+
+/// 缓存的读上限（超了跳过＋说清，同声明表的缓存行）。
+const fn skip(bytes: u64) -> relay_route_core::Cap {
+    relay_route_core::Cap {
+        bytes,
+        over: relay_route_core::Over::SkipAndSay,
+    }
+}
+
 // 读三态那几条不看版本：用不带版本的两行。
 const STATE: Doc<serde_json::Value> = Doc::of(
-    &relay_route_core::Decl::<relay_route_core::State>::foreign(".cc-monitor/x.json", 16),
+    &relay_route_core::Decl::<relay_route_core::State>::foreign(".cc-monitor/x.json", reject(16)),
 );
 const CACHE: Doc<serde_json::Value> = Doc::of(
-    &relay_route_core::Decl::<relay_route_core::Cache>::foreign(".cc-monitor/x.json", 16),
+    &relay_route_core::Decl::<relay_route_core::Cache>::foreign(".cc-monitor/x.json", skip(16)),
 );
 
 fn stream_json(r: &mut dyn std::io::Read) -> Result<serde_json::Value, Said> {
@@ -152,11 +168,21 @@ fn s7_streamed_read_reads_and_absent_is_absent() {
 // ── 版本：声明从表取（`Doc::of`），读写口自己管 `version` ──
 
 const V_STATE: relay_route_core::Decl<relay_route_core::State> =
-    relay_route_core::Decl::<relay_route_core::State>::json(".cc-monitor/v.json", 2, 2, 1024);
+    relay_route_core::Decl::<relay_route_core::State>::json(
+        ".cc-monitor/v.json",
+        2,
+        2,
+        reject(1024),
+    );
 const V_CACHE: relay_route_core::Decl<relay_route_core::Cache> =
-    relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 2, 1024);
+    relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 2, skip(1024));
 const V_UP: relay_route_core::Decl<relay_route_core::State> =
-    relay_route_core::Decl::<relay_route_core::State>::json(".cc-monitor/v.json", 3, 1, 1024);
+    relay_route_core::Decl::<relay_route_core::State>::json(
+        ".cc-monitor/v.json",
+        3,
+        1,
+        reject(1024),
+    );
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -189,16 +215,8 @@ fn two_to_three(mut v: serde_json::Value) -> Result<serde_json::Value, Said> {
 const UP: Doc<Shape> = upgrade!(V_UP, [one_to_two, two_to_three]);
 
 fn own_in(base: &Path) -> (crate::platform::fs::Own, crate::platform::fs::OwnPath) {
-    let (data, home) = (
-        base.join("data").to_string_lossy().into_owned(),
-        base.to_string_lossy().into_owned(),
-    );
     std::fs::create_dir_all(base.join("data")).expect("data");
-    let own = crate::platform::fs::Own::issue_with(&|k| match k {
-        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
-        "HOME" => Some(home.clone()),
-        _ => None,
-    });
+    let own = crate::platform::fs::Own::issue_roots(base, &base.join("data"));
     let dir = own.path("v").expect("dir");
     own.ensure_dir(&dir).expect("mkdir");
     (own, dir)
@@ -230,7 +248,10 @@ fn v2_a_missing_version_is_one_and_the_version_cell_is_not_handed_to_the_shape()
     let base = sandbox("v2");
     let p = base.join("v.json");
     let one: Doc<Shape> = Doc::of(&relay_route_core::Decl::<relay_route_core::State>::json(
-        "x", 1, 1, 1024,
+        "x",
+        1,
+        1,
+        reject(1024),
     ));
     std::fs::write(&p, b"{\"a\":7}").expect("seed");
     assert!(matches!(one.read(&p), Read::Present(Shape { a: 7 })));
@@ -330,9 +351,14 @@ fn v5_writes_carry_the_version_refuse_a_newer_state_and_keep_an_older_one() {
 #[test]
 fn v6_an_unreadable_state_on_disk_refuses_the_write_with_the_read_sentence() {
     const SMALL_STATE: relay_route_core::Decl<relay_route_core::State> =
-        relay_route_core::Decl::<relay_route_core::State>::json(".cc-monitor/v.json", 1, 1, 64);
+        relay_route_core::Decl::<relay_route_core::State>::json(
+            ".cc-monitor/v.json",
+            1,
+            1,
+            reject(64),
+        );
     const SMALL_CACHE: relay_route_core::Decl<relay_route_core::Cache> =
-        relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 1, 64);
+        relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 1, skip(64));
     let state: Doc<Shape> = Doc::of(&SMALL_STATE);
     let cache: Doc<Shape> = Doc::of(&SMALL_CACHE);
     let base = sandbox("v6");

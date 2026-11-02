@@ -1,6 +1,6 @@
 //! 文件管理那一族里读的那几条（`files-ls` · `-stat` · `-find` …）：入参 · 回包是 `cmd_wire::files` 的类型，本体在 `files/`（只经 [`crate::files::answer`] 那一扇门）。
 //!
-//! 住入方向而不住 `faces/`：文件管理后端只许命令那一层够到（`files/module_boundary_guard.rs` 的门表）。
+//! 住入方向而不住 `faces/`：文件管理那一块是独立的包，它的 `pub` 项只给命令那一层用（谁读哪一项由 `pub_reader_registry` 数着）。
 //! 也不住命令表那一份族文件：那一份还递删会话的窄口（够得到原生那一侧），本体所在的文件要只够得到文件管理那一块。
 
 use crate::common::said::Said;
@@ -435,3 +435,7 @@ impl crate::wire::typed::Handle for FilesGrep {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/stream/files_codes_tests.rs"]
+mod files_codes_tests;

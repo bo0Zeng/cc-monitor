@@ -38,7 +38,7 @@ impl Eq for Resolved {}
 impl Resolved {
     /// 从已解到底的根 `real_root` 往下逐段开 `inner`（只许普通段，每一段都不跟链接、必须是目录），停在那一层，
     /// 最后一段 `name` 不开。只给路径解析调（`common/root_path.rs`）。
-    pub(crate) fn walk(real_root: &Path, inner: &Path, name: &OsStr) -> io::Result<Resolved> {
+    pub fn walk(real_root: &Path, inner: &Path, name: &OsStr) -> io::Result<Resolved> {
         #[cfg(unix)]
         let dir = {
             let mut dir = at::open_dir(None, real_root.as_os_str())?;
@@ -60,20 +60,20 @@ impl Resolved {
     }
 
     /// 担保 `p` 是要动的那一格（按路径开它的上一层）。只许删会话那一道调（构造判据钉）。
-    pub(crate) fn vouch(p: PathBuf) -> io::Result<Resolved> {
+    pub fn vouch(p: PathBuf) -> io::Result<Resolved> {
         let (Some(dir), Some(name)) = (p.parent(), p.file_name()) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
         };
         Resolved::walk(dir, Path::new(""), name)
     }
 
-    pub(crate) fn into_path_buf(self) -> PathBuf {
+    pub fn into_path_buf(self) -> PathBuf {
         self.path
     }
 
     /// 同一层目录里的另一个名字（暂存旁名 · 备份 · `.part` 那几样）：目录句柄不变 ⇒ 仍是已过路径解析的。
     /// `name` 必须恰好是一段普通名字（不含分隔符，不是 `.` / `..`），否则 `None`。
-    pub(crate) fn sibling(&self, name: impl AsRef<OsStr>) -> Option<Resolved> {
+    pub fn sibling(&self, name: impl AsRef<OsStr>) -> Option<Resolved> {
         let name = name.as_ref();
         let mut parts = Path::new(name).components();
         match (parts.next(), parts.next()) {
@@ -128,12 +128,12 @@ pub struct Face(());
 
 impl Face {
     /// 分派那一层造（构造判据钉住只许那两份）。
-    pub(crate) fn issue() -> Face {
+    pub fn issue() -> Face {
         Face(())
     }
 
     /// `O_EXCL` 新建（不跟链接）：已在（含一条链接）⇒ `AlreadyExists`，一个字节不动。
-    pub(crate) fn create_new(&self, at: &Resolved) -> io::Result<FaceFile> {
+    pub fn create_new(&self, at: &Resolved) -> io::Result<FaceFile> {
         #[cfg(unix)]
         {
             let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL;
@@ -146,7 +146,7 @@ impl Face {
     }
 
     /// 就地覆盖写（截断，不跟链接）：只给换内容那一个原语（硬链接 · 属主 · Windows 不许换名上位时）。
-    pub(crate) fn overwrite(&self, at: &Resolved) -> io::Result<FaceFile> {
+    pub fn overwrite(&self, at: &Resolved) -> io::Result<FaceFile> {
         #[cfg(unix)]
         {
             at::open(&at.dir, &at.name, libc::O_WRONLY | libc::O_TRUNC).map(FaceFile)
@@ -158,7 +158,7 @@ impl Face {
     }
 
     /// 建一层目录（已在 ⇒ `AlreadyExists`）。
-    pub(crate) fn make_dir(&self, at: &Resolved) -> io::Result<()> {
+    pub fn make_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::mkdir(&at.dir, &at.name, 0o777)
@@ -170,12 +170,12 @@ impl Face {
     }
 
     /// 上传暂存区那两层：后端自家目录（[`super::own::own_dir`]，同 `Own` 那一份规矩：建的那一下 0700；已在必须是本人的真目录，放宽了收回 0700）。
-    pub(crate) fn own_dir(&self, at: &Resolved) -> Result<(), copy_core::said::Said> {
+    pub fn own_dir(&self, at: &Resolved) -> Result<(), copy_core::said::Said> {
         super::own::own_dir(&at.path)
     }
 
     /// 改名（目标已在会被顶掉，同 `rename(2)`）。
-    pub(crate) fn move_file(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
+    pub fn move_file(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::rename(
@@ -198,7 +198,7 @@ impl Face {
 
     /// 不覆盖改名：`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动；那块盘没有这件原语 ⇒
     /// [`super::noreplace_unsupported`] 认得出的错，调用方自己决定退回什么。
-    pub(crate) fn move_noreplace(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
+    pub fn move_noreplace(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::rename(
@@ -217,7 +217,7 @@ impl Face {
 
     /// 盘不认不覆盖改名时普通文件那一条退路：`link` ＋ `unlink`（`link` 在 `to` 已在时原子失败，NFS 上也成立）；
     /// `unlink` 失败 ⇒ 撤掉刚建的那个名字、回 `unlink` 的错。目录没有这条路（调用方判）。非 unix ⇒ `Unsupported`。
-    pub(crate) fn move_by_link(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
+    pub fn move_by_link(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::link(&from.dir, &from.name, &to.dir, &to.name)?;
@@ -235,7 +235,7 @@ impl Face {
     }
 
     /// 删一份文件（含链接本身，不跟）。
-    pub(crate) fn delete_file(&self, at: &Resolved) -> io::Result<()> {
+    pub fn delete_file(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::unlink(&at.dir, &at.name, 0)
@@ -247,7 +247,7 @@ impl Face {
     }
 
     /// 删一个空目录。
-    pub(crate) fn delete_dir(&self, at: &Resolved) -> io::Result<()> {
+    pub fn delete_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::unlink(&at.dir, &at.name, libc::AT_REMOVEDIR)
@@ -259,7 +259,7 @@ impl Face {
     }
 
     /// 改权限（不跟链接：调用方先把路径解到底，那一格此刻是链接 ⇒ 失败）。
-    pub(crate) fn set_permissions(&self, at: &Resolved, perms: Perms) -> io::Result<()> {
+    pub fn set_permissions(&self, at: &Resolved, perms: Perms) -> io::Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -273,7 +273,7 @@ impl Face {
 
     /// 在 `at` 建一条链接，内容 `target` 原样写（不解、不判，同 `cp -P`）。`at` 已在 ⇒ 系统拒。
     #[cfg(unix)]
-    pub(crate) fn make_link(&self, target: &Path, at: &Resolved) -> io::Result<()> {
+    pub fn make_link(&self, target: &Path, at: &Resolved) -> io::Result<()> {
         at::symlink(target.as_os_str(), &at.dir, &at.name)
     }
 
@@ -296,7 +296,7 @@ impl Face {
     }
 
     /// 把 `at` 那一份文件落盘（不跟链接；暂存件改名上位之前）。
-    pub(crate) fn sync(&self, at: &Resolved) -> io::Result<()> {
+    pub fn sync(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
             at::open(&at.dir, &at.name, libc::O_RDONLY)?.sync_all()
@@ -308,7 +308,7 @@ impl Face {
     }
 
     /// 把 `at` 所在那一层目录落盘（换名上位之后：目录项也要落到盘上）。非 unix 无此事 ⇒ `Ok`。
-    pub(crate) fn sync_dir(&self, at: &Resolved) -> io::Result<()> {
+    pub fn sync_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         at::open(&at.dir, OsStr::new("."), libc::O_RDONLY | libc::O_DIRECTORY)?.sync_all()?;
         let _ = at;
@@ -322,16 +322,16 @@ impl Face {
 pub struct FaceFile(std::fs::File);
 
 impl FaceFile {
-    pub(crate) fn set_permissions(&self, perms: Perms) -> io::Result<()> {
+    pub fn set_permissions(&self, perms: Perms) -> io::Result<()> {
         self.0.set_permissions(perms)
     }
 
-    pub(crate) fn sync_all(&self) -> io::Result<()> {
+    pub fn sync_all(&self) -> io::Result<()> {
         self.0.sync_all()
     }
 
     /// 换成异步的那一份（只会写：下载落点往里写远端读来的字节）。
-    pub(crate) fn into_async(self) -> FaceAsyncFile {
+    pub fn into_async(self) -> FaceAsyncFile {
         FaceAsyncFile(tokio::fs::File::from_std(self.0))
     }
 }
@@ -389,13 +389,13 @@ pub struct NewFile(());
 
 impl NewFile {
     /// 分叉那两条命令在命令表里造（构造判据钉住只许那两处）。
-    pub(crate) fn issue() -> NewFile {
+    pub fn issue() -> NewFile {
         NewFile(())
     }
 
     /// `O_EXCL` 新建 `at` 并写满 `body`：已在 ⇒ `AlreadyExists`，不碰那一份。
     /// 写到一半失败 ⇒ 回那一下的错（半截文件留着，调用方报原因）。
-    pub(crate) fn create(&self, at: &Path, body: &[u8]) -> Result<(), NewFileFail> {
+    pub fn create(&self, at: &Path, body: &[u8]) -> Result<(), NewFileFail> {
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

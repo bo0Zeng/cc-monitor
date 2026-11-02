@@ -65,9 +65,9 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
     const CAP: u64 = 1024 * 1024;
     std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
 
-    let base = crate::alloc_probe::reset_peak();
+    let base = test_meters::alloc_probe::reset_peak();
     let err = Ro::read_regular_capped(&path, CAP).expect_err("8 MiB > cap 1 MiB，必须拒");
-    let grew = crate::alloc_probe::peak_since(base);
+    let grew = test_meters::alloc_probe::peak_since(base);
 
     // 抽取器自检：拒的是**这条路**（早退那条带实际大小），不是别的错。
     assert!(
@@ -97,6 +97,132 @@ fn a_refused_read_says_the_reason_and_keeps_the_os_words_apart() {
     let e = Ro::read_regular_capped(&gone, 8).expect_err("不在的也读成了");
     assert_eq!(e.said, copy_core::io_reason(std::io::ErrorKind::NotFound));
     assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 读动词只收 [`Cap`]：比上限多一个字节 ⇒ 回超出上限那一句（带上限与实际大小）；正好等于上限 ⇒ 照常读回来。
+#[test]
+fn a_capped_read_refuses_one_byte_over_and_keeps_the_exact_cap() {
+    let dir = std::env::temp_dir().join(format!("ccm-capped-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let cap = Cap {
+        bytes: 16,
+        over: Over::Reject,
+    };
+    let over = dir.join("over.json");
+    std::fs::write(&over, vec![b'x'; cap.bytes as usize + 1]).expect("写夹具");
+    let e = Ro::read_capped(&over, cap).expect_err("比上限多一个字节也读成了");
+    assert_eq!(
+        e.said,
+        copy_text(
+            "beFs.readRegularCapped.tooBigSized",
+            &[("cap", "16"), ("size", "17")]
+        )
+    );
+    let e = Ro::read_string_capped(&over, cap).expect_err("读成字符串那一形没收上限");
+    assert!(e.said.contains("17"), "实得：{e}");
+    let e = Ro::read_json(&over, cap).expect_err("读成 JSON 那一形没收上限");
+    assert!(e.said.contains("17"), "实得：{e}");
+
+    let exact = dir.join("exact.json");
+    std::fs::write(&exact, vec![b' '; cap.bytes as usize]).expect("写夹具");
+    assert_eq!(
+        Ro::read_capped(&exact, cap).expect("正好等于上限").len(),
+        16
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 几形读出来的值：字节 · 字符串（不是 UTF-8 ⇒ 读不成，原话进详情）· JSON（剥 BOM 再解；解不开 ⇒「内容无法解析」）。
+#[test]
+fn the_capped_reads_hand_back_bytes_text_and_json() {
+    let dir = std::env::temp_dir().join(format!("ccm-capped-forms-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let cap = Cap {
+        bytes: 64,
+        over: Over::HardError,
+    };
+    let p = dir.join("a.json");
+    std::fs::write(&p, b"\xEF\xBB\xBF{\"a\":1}").expect("写夹具");
+    assert_eq!(
+        Ro::read_json(&p, cap).expect("带 BOM 的 JSON"),
+        serde_json::json!({"a": 1})
+    );
+    std::fs::write(&p, b"{\"a\":1}").expect("写夹具");
+    assert_eq!(
+        Ro::read_string_capped(&p, cap).expect("读成字符串"),
+        "{\"a\":1}"
+    );
+    std::fs::write(&p, b"{oops").expect("写夹具");
+    let e = Ro::read_json(&p, cap).expect_err("坏 JSON 也解成了");
+    assert_eq!(e.said, copy_text("reason.content.unparsable", &[]));
+    std::fs::write(&p, b"\xFF\xFE").expect("写夹具");
+    let e = Ro::read_string_capped(&p, cap).expect_err("不是 UTF-8 也读成了字符串");
+    assert!(e.raw.is_some(), "解码原话没进详情：{e:?}");
+    let e = Ro::read_capped(&dir, cap).expect_err("目录也读成了");
+    assert_eq!(e.said, copy_text("reason.fs.notRegular", &[]));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 不跟链接那一形：最后一段是链接 ⇒ 不读（跟链接那一形照常读到目标）；普通文件照常读，上限照样收。
+#[cfg(unix)]
+#[test]
+fn the_nofollow_capped_read_refuses_a_link_and_still_caps() {
+    let dir = std::env::temp_dir().join(format!("ccm-capped-nofollow-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let cap = Cap {
+        bytes: 8,
+        over: Over::Reject,
+    };
+    let target = dir.join("target");
+    std::fs::write(&target, b"abc").expect("写夹具");
+    let link = dir.join("link");
+    std::os::unix::fs::symlink(&target, &link).expect("建链接");
+    assert_eq!(
+        Ro::read_capped_nofollow(&target, cap).expect("普通文件"),
+        b"abc"
+    );
+    assert!(
+        Ro::read_capped_nofollow(&link, cap).is_err(),
+        "最后一段是链接也读成了"
+    );
+    assert_eq!(Ro::read_capped(&link, cap).expect("跟链接那一形"), b"abc");
+    std::fs::write(&target, vec![b'x'; 9]).expect("写夹具");
+    let e = Ro::read_capped_nofollow(&target, cap).expect_err("不跟链接那一形没收上限");
+    assert!(e.said.contains('9'), "实得：{e}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 拒一份超限的文件之前一个字节都不读（带上限的新动词同一道顺序）。
+#[test]
+fn a_capped_read_refuses_before_reading_anything() {
+    let dir = std::env::temp_dir().join(format!("ccm-capped-order-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let path = dir.join("huge.jsonl");
+    const FILE: usize = 8 * 1024 * 1024;
+    let cap = Cap {
+        bytes: 1024 * 1024,
+        over: Over::Reject,
+    };
+    std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
+    for nofollow in [false, true] {
+        let base = test_meters::alloc_probe::reset_peak();
+        let err = if nofollow {
+            Ro::read_capped_nofollow(&path, cap)
+        } else {
+            Ro::read_capped(&path, cap)
+        }
+        .expect_err("8 MiB > 上限 1 MiB");
+        let grew = test_meters::alloc_probe::peak_since(base);
+        assert!(
+            err.said.contains(&FILE.to_string()),
+            "走的不是先看长度那一条：{err}"
+        );
+        assert!(
+            grew < 256 * 1024,
+            "拒一份 {FILE} 字节的文件时本线程峰值涨了 {grew} 字节（不跟链接：{nofollow}）：先读进内存才拒"
+        );
+    }
     std::fs::remove_dir_all(&dir).ok();
 }
 

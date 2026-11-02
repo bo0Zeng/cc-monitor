@@ -695,8 +695,8 @@ fn seat(name: &str, facts: Vec<Fact>, enabled: bool) -> (MachineState, bool) {
     (product(&e, name, enabled, true), e.listed())
 }
 
-fn face_of(rows: &[(MachineState, bool)]) -> cmd_wire::machine::EmptyFace {
-    empty(&rows.iter().map(|(m, l)| (m, *l)).collect::<Vec<_>>())
+fn face_of(rows: &[(MachineState, bool)]) -> cmd_wire::machine::FleetLines {
+    fleet(&rows.iter().map(|(m, l)| (m, *l)).collect::<Vec<_>>())
 }
 
 fn listed_up() -> Vec<Fact> {
@@ -773,6 +773,35 @@ fn the_empty_line_says_which_machines_are_not_counted() {
         ]
         .join(&copy_text("kit.text.sep", &[]))
     );
+}
+
+/// 机器列表页头那一句与首屏那一句同一处合：全部数每台（停用的也数）；离线照成品的 `offline`、要更新照那一态，停用的都不数；
+/// 没有离线 · 要更新的那一段就不出。
+#[test]
+fn the_count_line_counts_every_machine_and_skips_disabled_ones_for_offline_and_update() {
+    let n = |n: usize| copy_text("machineList.count.all", &[("n", &n.to_string())]);
+    let sep = copy_text("kit.text.sep", &[]);
+    let f = face_of(&[
+        seat("here", listed_up(), true),
+        seat("devbox", vec![down_(Some(Why::Timeout))], true),
+        seat("nas", vec![up(Relation::Older, &[])], true),
+        seat("off", vec![down_(Some(Why::Auth))], false),
+        seat("old-off", vec![up(Relation::Older, &[])], false),
+    ]);
+    assert_eq!(
+        f.count,
+        [
+            n(5),
+            copy_text("machineList.count.off", &[("a", "1")]),
+            copy_text("machineList.count.update", &[("b", "1")]),
+        ]
+        .join(&sep)
+    );
+    let calm = face_of(&[
+        seat("here", listed_up(), true),
+        seat("off", vec![down_(Some(Why::Auth))], false),
+    ]);
+    assert_eq!(calm.count, n(2));
 }
 
 /// 报完了是这一条连接上的事实：又在连 · 断了 ⇒ 作废；连上那一轮不清（那台随后才报完）。

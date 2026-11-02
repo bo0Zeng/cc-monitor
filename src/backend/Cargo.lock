@@ -120,6 +120,95 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backend-common"
+version = "0.0.0"
+dependencies = [
+ "backend-platform",
+ "batch-core",
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "jiff",
+ "relay-route-core",
+ "ring",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "tracing",
+ "tracing-subscriber",
+ "ts-rs",
+ "win-path-core",
+]
+
+[[package]]
+name = "backend-files"
+version = "0.0.0"
+dependencies = [
+ "backend-common",
+ "backend-platform",
+ "batch-core",
+ "cmd-wire",
+ "copy-core",
+ "flate2",
+ "guard-core",
+ "libc",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "ssh-dial",
+ "tar",
+ "test-home",
+ "tokio",
+ "tracing",
+ "win-path-core",
+ "zip",
+]
+
+[[package]]
+name = "backend-platform"
+version = "0.0.0"
+dependencies = [
+ "acct-core",
+ "cmd-wire",
+ "copy-core",
+ "creds-core",
+ "guard-core",
+ "jiff",
+ "libc",
+ "notify",
+ "own-chan",
+ "pidwatch-core",
+ "portable-pty",
+ "relay-route-core",
+ "russh",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "walkdir",
+ "win-path-core",
+]
+
+[[package]]
+name = "backend-plugin"
+version = "0.0.0"
+dependencies = [
+ "backend-platform",
+ "copy-core",
+ "guard-core",
+ "libc",
+ "test-home",
+]
+
+[[package]]
 name = "base16ct"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,6 +377,10 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "backend-common",
+ "backend-files",
+ "backend-platform",
+ "backend-plugin",
  "batch-core",
  "cmd-wire",
  "comms-inward",
@@ -322,6 +415,7 @@ dependencies = [
  "ssh-dial",
  "tar",
  "test-home",
+ "test-meters",
  "tokio",
  "toml_edit",
  "tracing",
@@ -331,7 +425,6 @@ dependencies = [
  "vt100",
  "walkdir",
  "win-path-core",
- "zip",
 ]
 
 [[package]]
@@ -2951,6 +3044,16 @@ version = "0.1.0"
 dependencies = [
  "ctor",
  "libc",
+]
+
+[[package]]
+name = "test-meters"
+version = "0.0.0"
+dependencies = [
+ "guard-core",
+ "test-home",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

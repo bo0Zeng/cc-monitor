@@ -47,24 +47,10 @@ fn rust_files() -> Vec<(String, String)> {
 /// ⚠ 扫描面只有壳那棵树。后端的 `home_dir()` 说的是那台机器上的 home，由后端自己的 `readonly_guard` 管。
 const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     (
-        "footprint_client.rs",
-        "footprint_client_facts",
-        "足迹里 monitor 自己那几行的根（`home` 那一格）",
-        "只读诊断页；只交 monitor 自己进程的几条事实，不 stat",
-    ),
-    (
-        "deploy.rs",
-        "slots_dir",
-        "`~/.cc-monitor/bin/slots/<os>-<arch>`（这一版带着的远端后端字节）",
-        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。每个进程落一次；\
-             写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
-    ),
-    (
-        "proc.rs",
-        "landing_dir",
-        "`~/.cc-monitor/bin/cc-monitor-filewin[.exe]`（文件窗口程序）",
-        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在开窗而 exe 旁边没有它时放；\
-             写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
+        "data_paths.rs",
+        "home",
+        "壳取家目录的唯一住址（`clippy.toml` 取家目录那一组只在这里放行）",
+        "filewin/proc 的 landing_dir · deploy 的 slots_dir · footprint_client 的 footprint_client_facts 都经它",
     ),
     (
         "logging.rs",

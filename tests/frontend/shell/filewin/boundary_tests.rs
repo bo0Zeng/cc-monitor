@@ -386,7 +386,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::Lifetime", Kind::Spawn),
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
-    ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
+    ("spawn_managed::spawn_managed_with", Kind::Spawn),
     // 窗口那份二进制的文件名后缀（`window_bin_name`）：平台原语住壳的平台层。
     ("platform::proc::EXE_SUFFIX", Kind::Spawn),
     // 自带的那份窗口程序：字节 · 放下来 · 放到哪 · 放的时候那两样平台知识（`proc::resolve_window_bin`）。
@@ -400,11 +400,11 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("machine_table::rows_now", Kind::Config),
     // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
     ("machine_table::has", Kind::Config),
-    // 名单里本机那一项的名字：引 monitor 自己那一份哨兵值（不借窗口包的）。
-    ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
+    // 自带那份窗口程序放到哪（`~/.cc-monitor/bin`）：家目录经壳里取家目录的唯一住址。
+    ("data_paths::home", Kind::DataDir),
     // 问主窗所在显示器的工作区，放进种子。
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
     // 类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。

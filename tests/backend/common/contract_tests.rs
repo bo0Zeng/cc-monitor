@@ -1,17 +1,5 @@
+use super::tests::diag;
 use super::*;
-
-/// 判据用：跑 `f`，回它的结果 ＋ 期间契约错记进日志的那几条诊断（句子里不带诊断，判据要分「哪一格错」就读这里）。
-pub(crate) fn diag<T>(f: impl FnOnce() -> T) -> (T, String) {
-    let mut out = None;
-    let lines = crate::stream::run_route::tests::heard(|| out = Some(f()));
-    let said = lines
-        .iter()
-        .filter(|l| l.contains("contract: malformed request:"))
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("\n");
-    (out.expect("f 跑完了"), said)
-}
 
 /// 契约错那一句只说「请求格式不对」：英文诊断不上句子（记一行 warn 日志），任何诊断拆出来都是同一句；
 /// 诊断跟着那一串走、在失败信封那一处（`parts`）拆进原话 —— 复制详情里看得到缺的是什么。

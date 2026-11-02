@@ -282,7 +282,7 @@ pub(crate) fn start(own: Own, files: Files) {
             };
             let mut memos = Memos::default();
             loop {
-                let now = crate::common::time::now_ms();
+                let now = crate::common::time::now_ms() as i64;
                 let wake = pass(&deps, &mut memos, now);
                 if !sleep_until(&rx, wake) {
                     return;
@@ -304,7 +304,9 @@ fn sleep_until(rx: &std::sync::mpsc::Receiver<()>, wake: Option<i64>) -> bool {
     let Some(at) = wake else {
         return rx.recv().is_ok();
     };
-    let ms = at.saturating_sub(crate::common::time::now_ms()).max(0);
+    let ms = at
+        .saturating_sub(crate::common::time::now_ms() as i64)
+        .max(0);
     let wait = std::time::Duration::from_millis(u64::try_from(ms).unwrap_or(0));
     !matches!(rx.recv_timeout(wait), Err(RecvTimeoutError::Disconnected))
 }

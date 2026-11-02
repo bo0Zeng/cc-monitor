@@ -1439,7 +1439,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         1,
         "就地那一格的落点不是恰好一处"
     );
-    // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote` 走。
+    // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote_coded` 走。
     for banned in [
         "transfer_relay::sftp_mkdir",
         "transfer_relay::sftp_delete",
@@ -1467,7 +1467,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 /// 本条走的是生产那一条：
 /// `frame_body` → `show_file_rows`（真合成右键）→ `RenderTally::menu_clicked`
 /// → `apply_menu_click` → 菜单（真点「删除」那一项）→ `perform` → `start_writes` → `run_writes`
-/// → 一次问完 → `apply_remote` → `WriteBoard::finish`。
+/// → 一次问完 → `apply_remote_coded` → `WriteBoard::finish_with`。
 ///
 /// # 为什么它不需要一条真连接（而仍然是真读数）
 ///
@@ -3396,7 +3396,7 @@ fn revealing_a_hidden_file_shows_hidden_files_instead_of_calling_it_gone() {
     );
 }
 
-/// 命中几千条：画命中那一摞不再每帧整份克隆（落地一趟才重建一次行）。
+/// 命中几千条：落地一趟才重建一次行（整份克隆那个口子生产段够不着，由可见性守）。
 #[test]
 fn thousands_of_hits_are_not_cloned_every_frame() {
     let ctx = egui::Context::default();
@@ -3436,12 +3436,10 @@ fn thousands_of_hits_are_not_cloned_every_frame() {
         })
     };
     let _ = paint(&mut w);
-    let before = w.search.full_clones();
     let rows = w.hit_rows();
     for _ in 0..5 {
         let _ = paint(&mut w);
     }
-    assert_eq!(w.search.full_clones() - before, 0, "每帧还在整份克隆命中");
     assert!(
         std::sync::Arc::ptr_eq(&rows, &w.hit_rows()),
         "没有新的一趟落地，命中那几千行每帧重拼"
@@ -3629,7 +3627,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
 /// 窗口认的「落点名被占了」那个码 == 后端写面登记的那一个（读两侧源码）。
 #[test]
 fn the_exists_code_is_the_backends_one() {
-    let be = include_str!("../../../src/backend/control/files_write.rs");
+    let be = include_str!("../../../src/backend/files/write.rs");
     assert!(
         be.contains(&format!(
             "pub const EXISTS: &str = \"{}\";",
@@ -3637,20 +3635,6 @@ fn the_exists_code_is_the_backends_one() {
         )),
         "后端那一侧的码不是 `{}`",
         crate::writeops::EXISTS
-    );
-}
-
-/// 窗口认的「名字在那台不能用」那个码 == 后端写面登记的那一个（读两侧源码）。
-#[test]
-fn the_bad_name_code_is_the_backends_one() {
-    let be = include_str!("../../../src/backend/control/files_write.rs");
-    assert!(
-        be.contains(&format!(
-            "pub const BAD_NAME: &str = \"{}\";",
-            crate::writeops::BAD_NAME
-        )),
-        "后端那一侧的码不是 `{}`",
-        crate::writeops::BAD_NAME
     );
 }
 

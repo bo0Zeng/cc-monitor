@@ -10,7 +10,7 @@ use serde_json::Value;
 
 /// 一份改法。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Plan {
+pub struct Plan {
     /// 合好的整份。
     pub whole: String,
     /// 改动那几行，上下各带一行原文（[`line_diff::numbered`] 那一形：带真行号，正文不截）。
@@ -22,12 +22,12 @@ pub(crate) struct Plan {
 }
 
 /// 把 `path` 那一格设成 `v`（沿途没有的对象一并建）。
-pub(crate) fn set_member(src: &str, path: &[&str], v: &Value) -> Option<Plan> {
+pub fn set_member(src: &str, path: &[&str], v: &Value) -> Option<Plan> {
     edit(src, path, v, false)
 }
 
 /// 往 `path` 那个数组末尾加一项（数组 / 沿途对象没有就建）。
-pub(crate) fn push_item(src: &str, path: &[&str], item: &Value) -> Option<Plan> {
+pub fn push_item(src: &str, path: &[&str], item: &Value) -> Option<Plan> {
     edit(src, path, item, true)
 }
 
@@ -265,7 +265,7 @@ fn skip_value(b: &[u8], i: usize) -> Option<usize> {
 
 /// 原文 ⇒ 合好的整份那一份改法：逐行比（[`line_diff::numbered`]）后只留改动那几行 ＋ 上下各一行原文，以及改动从哪一行之后开始。
 /// 几处改动一次合好之后也走这一口（按原文算 diff）。
-pub(crate) fn plan_of(old: &str, whole: String) -> Plan {
+pub fn plan_of(old: &str, whole: String) -> Plan {
     let (rows, notice) = line_diff::numbered(old, &whole);
     let changed: Vec<usize> = rows
         .iter()

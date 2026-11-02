@@ -915,12 +915,6 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
 
 // ───────────────────────── 帧面 ─────────────────────────
 
-fn now_ms() -> i64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
-}
-
 pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, Said> + Send + 'static,
 ) -> Result<T, Said> {
@@ -967,7 +961,7 @@ pub(crate) async fn answer(
             ann.as_ref().map_err(Clone::clone),
             &ask,
             held.as_ref(),
-            now_ms(),
+            crate::common::time::now_ms() as i64,
             &tz,
         ))
     })

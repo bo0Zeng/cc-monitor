@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""K-R30 · KR30D1 的量具：**真造** `ETXTBSY` 竞态，量「从写 fd 关掉到 exec 成功」那个窗口。
+"""`SPAWN_ETXTBSY_TRIES` 那个数的量具：**真造** `ETXTBSY` 竞态，量「从写 fd 关掉到 exec 成功」那个窗口。
 
 被测对象**不是**本仓任何一行 Rust。被测对象是两样东西：
   ① 内核那条规则本身（`execve` 的目标此刻还被某个 struct file 打开着写 ⇒ `ETXTBSY`）；
@@ -14,9 +14,9 @@
     <某处 fork>                    # 别人（另一个线程 / 另一处 spawn）在这一刻 fork
                                    # 那个孩子攥着继承来的写 fd —— CLOEXEC 要到它 execve 那一刻才生效
     close(fd)                      # 我们自己那把立刻就关（`extract_embedded_to` 的形状）
-    t0 = now()                     # ★ 计时从这里开始 —— 这就是 D1 要的「从写 fd 关掉」
+    t0 = now()                     # ★ 计时从这里开始 —— 「从写 fd 关掉」
     loop { posix_spawn(目标) }      # 立即重试，**两次之间什么都不做**，直到成功
-                                   # ★ 停表 = 第一次 exec 成功 —— 这就是 D1 要的「到 exec 成功」
+                                   # ★ 停表 = 第一次 exec 成功 —— 「到 exec 成功」
 
 ⚠ 内核那一侧的机制（为什么「我自己关了」还不够）：`i_writecount` 是**按一次 open 记的**，
   fork 出去的孩子拿到的是**同一个 struct file 的又一个引用** ⇒ 只有**最后一个**引用被丢掉
@@ -25,7 +25,7 @@
 # 四臂
 
   · 臂 A「写 fd 立刻就关」= **一个持有者都不 fork**，窗口恒等于 0。
-    这一臂就是 `KR30D1` 点名的那个**假窗口**（acceptor 失效口）：它的答案恒是「够」。
+    这一臂就是那个**假窗口**：它的答案恒是「够」。
   · 臂 B「自然泄漏（Python 子进程）」= fork 一个持有者、hold=0，子进程立刻 `execv`。
     ⚠ 它量到的是 **Python 解释器**跑完 fork→execv 那几行的间隔 ⇒ 真机（Rust/C 子进程）那个的**上界**。
   · 臂 B2「自然泄漏（C 级 · posix_spawn）」= 另一个**线程**调 `os.posix_spawn`，
@@ -63,11 +63,11 @@
 
 # 用法
 
-    python3 evidence/K-R30-etxtbsy-window.py [--n 300] [--long-n 100] [--sweep-n 200]
+    python3 evidence/etxtbsy-window.py [--n 300] [--long-n 100] [--sweep-n 200]
                                              [--cost-n 200] [--src <local_backend.rs>]
                                              [--mutate fake-long-window]
 
-`--mutate fake-long-window` 是 `§3` 的 `R30M1` 那一刀：把长窗口对照臂的持有者也改成
+`--mutate fake-long-window` 是 `§3` 的变异格：把长窗口对照臂的持有者也改成
 「写 fd 立刻就关」⇒ 两臂同答「够」，用来实打「尺子瞎了长什么样」。
 """
 
@@ -258,7 +258,7 @@ def measure_budget_cost(target: str, n: int, budget: int) -> dict:
 
     持有者**阻塞在一根管道上**（不烧 CPU），窗口由本函数在打完之后才关掉
     ⇒ 那 `budget` 次**必然全部**撞上 `ETXTBSY`，读到的是纯粹的重试代价。
-    这是 `KR30D3` 要写进出处的那个数。
+    这是 `local_backend.rs` 出处段里写的那个数。
     """
     out: list[float] = []
     all_failed = 0
@@ -372,7 +372,7 @@ def main() -> int:
         "--mutate",
         default="",
         choices=["", "fake-long-window"],
-        help="R30M1：把长窗口对照臂也改成「写 fd 立刻就关」",
+        help="变异格：把长窗口对照臂也改成「写 fd 立刻就关」",
     )
     args = ap.parse_args()
 
@@ -386,7 +386,7 @@ def main() -> int:
     nproc = os.cpu_count() or 1
 
     print("=" * 78)
-    print("K-R30 · KR30D1 —— ETXTBSY 那个窗口的实测")
+    print("ETXTBSY 那个窗口的实测")
     print("=" * 78)
     print(f"· 量于        ：{time.strftime('%Y-%m-%d %H:%M:%S')}（本地钟；时长一律用单调钟 perf_counter）")
     print(f"· 内核        ：{platform.platform()}")
@@ -456,7 +456,7 @@ def main() -> int:
         print(f"── §3 三臂 · 负载 {load_name} ─────────────────────────────────────")
         c_holder = args.mutate != "fake-long-window"
         if args.mutate == "fake-long-window":
-            print("· 臂 C **被 R30M1 切成了假窗口**：一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）")
+            print("· 臂 C **被变异格切成了假窗口**：一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）")
         else:
             print(f"· 臂 C 的 hold = {fmt_us(long_hold)} µs = {ratio:.1f} × C_N(p99)"
                   f"（现算，上限 120000 µs；{'明显长于' if ratio >= 2 else '🔴 只有不到 2 倍，对照力度不足'}）")

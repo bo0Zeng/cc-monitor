@@ -180,10 +180,6 @@ impl FileWindow {
                     find::SearchAction::Retry => {
                         self.fire_search(Some(ctx), false);
                     }
-                    find::SearchAction::RetryMore => {
-                        self.search.retry_more();
-                        self.fire_more(Some(ctx));
-                    }
                     find::SearchAction::CopyPath(path) => {
                         ctx.copy_text(path);
                         self.receipt = Some(copy_text("rsFilewinShell.receipt.pathCopied", &[]));

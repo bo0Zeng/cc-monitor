@@ -66,7 +66,7 @@ pub struct Listed {
     ///
     /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
     /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），[`row_from_ls_entry`] 把它留住 ——
-    /// 写操作（改名 · 删除 · 改权限）就能对乱码名动手（`writeops::rel_json` 发 b16）。
+    /// 写操作（改名 · 删除 · 改权限）就能对乱码名动手（写面的相对段按这几个字节发，`cmd_wire::files::WirePath`）。
     /// ⚠ `serde(default)`：开窗那一跳（`proc::OpenRequest`）两头版本不齐时缺这一格 ⇒ `None`
     /// ⇒ 那一行退回「有损名不许写」，不会拿显示串去寻址。
     #[serde(default)]
@@ -309,11 +309,6 @@ impl RemotePath {
         Self::from_bytes(&parent_bytes(&self.bytes()))
     }
 
-    /// 尾段发出去的那一形。
-    pub fn tail_wire(&self) -> serde_json::Value {
-        wire_bytes(tail_bytes(&self.bytes()))
-    }
-
     /// 底下名叫 `name` 的那一项（按字节拼，[`child_bytes`]）。
     pub fn child(&self, name: &[u8]) -> Self {
         Self::from_bytes(&child_bytes(&self.bytes(), name))
@@ -504,11 +499,7 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 // - **`Row` 持字符串不持字节**，字节走**发出去的那一跳**：
 //   窗口记住当前目录的字节（`FileWindow::cwd_raw`）与行上名字的字节（`Listed::raw_name`），发路径一律经 [`RemotePath`]
 //   （进目录 · 列目录 · 上一级 · 读 / 存文本 · 复制 · 算大小 · 新建 · 写面的根）；显示照旧用有损串。
-//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（SFTP 库寻址不到）。
-
-/// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
-/// （两者刻意不同形，同 `find.rs` 头注那条）。
-pub const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
+//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签。
 
 /// 一趟 `files-ls` 回来的 `entries` 里的**一条** → [`Listed`]。
 ///
@@ -964,10 +955,7 @@ async fn ask_raw(
 ) -> Result<serde_json::Value, batch_core::Rebuff> {
     use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
     let plain = |failed: Failed| batch_core::Rebuff { failed, cut: false };
-    let budget = Budget {
-        until: std::time::Instant::now() + t,
-        cancel,
-    };
+    let budget = Budget::new(std::time::Instant::now() + t, cancel);
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         plain(failed_here(
             copy_text("reason.code.bug", &[]),

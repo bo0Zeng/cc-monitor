@@ -1,4 +1,4 @@
-//! 一段相对路径拆成普通段：本机写面（`root_path::lexical_in_root`）· 远端写围栏（`sftp::fence_lexical`）· 解压条目（`files_extract::entry_rel`）
+//! 一段相对路径拆成普通段：本机写面（`root_path::lexical_in_root`）· 远端写围栏（`sftp::fence_lexical`）· 解压条目（`files::extract::entry_rel`）
 //! 同一道词法判定，都调这里；各自多出来的那一层（远端「只许两个根」、解压「`.` 剥掉」）留在各自那里。
 //! 住拨号核心：后端与手机都链它，本机那两处也在后端里，判定只这一份。
 

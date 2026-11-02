@@ -71,8 +71,7 @@ pub(crate) fn place_slots() {
 /// 那几格落在哪：本机后端落点旁边（`~/.cc-monitor/bin/slots`）。家目录问不到 ⇒ `None`。
 fn slots_dir() -> Option<std::path::PathBuf> {
     let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
-    creds_core::store::home_dir()
-        .map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
+    crate::data_paths::home().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
 }
 
 /// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。
@@ -132,7 +131,7 @@ pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::f
 
 /// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
 fn remote_in_table(origin: &str) -> Result<(), Said> {
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == cmd_wire::LOCAL {
         return Err(Said::of("reason.code.bug", &[]));
     }
     if !crate::machine_table::has(origin) {

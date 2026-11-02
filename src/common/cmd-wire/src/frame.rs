@@ -468,11 +468,11 @@ pub enum Changed {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<crate::machine::MachineState>,
     },
-    /// 这一端的首屏那一句（体 ＝ `machine-read` 回包的 `empty`）。
+    /// 这一端各台合一次写好的那几句：首屏那一句 ＋ 机器列表计数那一句（体 ＝ `machine-read` 回包的 `empty`）。
     Empty {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        body: Option<crate::machine::EmptyFace>,
+        body: Option<crate::machine::FleetLines>,
     },
     /// 某个活会话隐不隐藏变了（`key` ＝ sid）。
     SessionHidden {
@@ -902,7 +902,7 @@ impl Relayed {
 /// 线上整份脸 `face.live.activity` 送它。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionActivity", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionActivity {
     /// 一轮在跑。
@@ -1066,7 +1066,7 @@ pub struct NameFace {
 /// 终端住在哪种宿主里（线上 `host`）。容器那一格（[`SessionContainer`]）与 `terminals-list` 每一行的 `host` 同一套词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireTerminalHost", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalHost {
     Tmux,
@@ -1090,7 +1090,7 @@ impl TerminalHost {
 /// 在 tmux 里的，claude 退了终端还在（「可重连」）；托管的与不在宿主里的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionContainer", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "host", rename_all = "snake_case")]
 pub enum SessionContainer {
     /// 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
@@ -1185,7 +1185,7 @@ pub enum Topic {
     Machines,
     /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）。
     Machine,
-    /// 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）。
+    /// 这一端各台合一次写好的那几句（首屏那一句 ＋ 机器列表计数那一句；`body` ＝ `FleetLines`，各台的成品与报完了没有合的；丢了重问 `machine-read`）。
     Empty,
     /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
     /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。

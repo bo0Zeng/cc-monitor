@@ -236,7 +236,7 @@ fn mint(
     }
     let at = last.map(|d| d.display().to_string()).unwrap_or_default();
     Err(Said::new(
-        crate::control::files_write::EXISTS,
+        crate::files::write::EXISTS,
         copy_text("beFilesWrite.swap.exists", &[("path", &at)]),
     ))
 }
@@ -316,7 +316,14 @@ pub fn commit_here(
 ) -> Result<SessionAttachmentCommitReply, Said> {
     let home = super::home_dir()?;
     let tz = crate::common::time::Tz::here();
-    commit(face, &home, cwd, req, crate::common::time::now_secs(), &tz)
+    commit(
+        face,
+        &home,
+        cwd,
+        req,
+        crate::common::time::now_secs() as i64,
+        &tz,
+    )
 }
 
 /// **撤一份**：删掉那个编号目录（里面的普通文件 · 链接各删掉那一项，再删空目录）。本来就不在 ⇒ `false`。编号不合形 ⇒ `bad_args`。
@@ -391,5 +398,5 @@ pub fn sweep(face: &Face, cwd: &Path, now_secs: u64, keep: &str) -> Vec<String> 
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/control/session_attachment_tests.rs"]
+#[path = "../../../../tests/backend/files/session_attachment_tests.rs"]
 mod tests;

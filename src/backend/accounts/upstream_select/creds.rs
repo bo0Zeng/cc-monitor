@@ -7,7 +7,7 @@
 //! 路径在启动日志里说：装表时把算出来的那条绝对路径印在 stderr 上，文件不在时连模板一起印（backend 没有 `--help`）。
 
 use super::table::{Note, Rejected, WHY_AUTH_STYLE_UNKNOWN};
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 use creds_core::perm::{self, Verdict};
 use creds_core::store::{self, AccountEntry, AuthStyle};
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>) -> Result<PathB
 
 /// 推不出那份文件在哪时要说的那一行（中转装表那一刻；形状同 [`announce`] 里「读不动」那一行）。
 pub(crate) fn announce_unresolved(p: &str, out: &mut dyn std::io::Write) {
-    let _ = writeln!(out, "[apikey] credentials problem: {p}");
+    writeln!(out, "[apikey] credentials problem: {p}").discard(Why::Diag);
 }
 
 /// 读一次。只读 —— 写只在 `file_face` 那一份、只从帧面进来；backend 的 `readonly_guard` 扫的就是这件事。
@@ -118,11 +118,11 @@ pub(crate) fn announce(
     let mut n = 0usize;
     // 本层每一行日志的前缀是 `[apikey]`，不是 `[relay]`：常驻后端一个进程承载两层，读日志的人要分得出是中转还是这张表出事了。
     // ① 路径：总是印，配没配都印。
-    let _ = writeln!(out, "[apikey] credentials file: {}", loaded.path.display());
+    writeln!(out, "[apikey] credentials file: {}", loaded.path.display()).discard(Why::Diag);
     n += 1;
 
     if let Some(p) = &loaded.problem {
-        let _ = writeln!(out, "[apikey] credentials problem: {p}");
+        writeln!(out, "[apikey] credentials problem: {p}").discard(Why::Diag);
         n += 1;
     }
 
@@ -130,23 +130,24 @@ pub(crate) fn announce(
     match &loaded.verdict {
         Verdict::OwnerOnly => {}
         Verdict::TooWide { how, fix } => {
-            let _ = writeln!(out, "[apikey] credentials permissions too wide: {how}");
-            let _ = writeln!(out, "[apikey] how to fix: {fix}");
+            writeln!(out, "[apikey] credentials permissions too wide: {how}").discard(Why::Diag);
+            writeln!(out, "[apikey] how to fix: {fix}").discard(Why::Diag);
             n += 2;
         }
         Verdict::Undetermined { why, .. } => {
-            let _ = writeln!(out, "[apikey] credentials permissions unknown: {why}");
+            writeln!(out, "[apikey] credentials permissions unknown: {why}").discard(Why::Diag);
             n += 1;
         }
     }
 
     // ③ 进不了表的那些行：印账号 id（本来就出现在 URL 路径里，不是秘密）与一句固定文案；id 走 `{:?}` ⇒ 控制字符被转义。
     for r in rejected {
-        let _ = writeln!(
+        writeln!(
             out,
             "[apikey] credentials: this account cannot be used: {:?} - {}",
             r.id, r.why
-        );
+        )
+        .discard(Why::Diag);
         n += 1;
     }
 
@@ -160,39 +161,43 @@ pub(crate) fn announce(
             .map(|s| s.field_value())
             .collect::<Vec<_>>()
             .join(" | ");
-        let _ = writeln!(
+        writeln!(
             out,
             "[apikey] credentials: auth_style must be one of: {legal}"
-        );
+        )
+        .discard(Why::Diag);
         n += 1;
     }
 
     // ③c 进了表、但行为与默认不同的那些行：账号 id（`{:?}`）+ 一句固定文案。不印那个前缀本身 / 那个认不出的词：那是文件内容
     // （`Note::what` 的类型 `&'static str` 兜着「进日志的东西不含文件内容」）。
     for note in notes {
-        let _ = writeln!(
+        writeln!(
             out,
             "[apikey] credentials: this account is not on the default path: {:?} - {}",
             note.id, note.what
-        );
+        )
+        .discard(Why::Diag);
         n += 1;
     }
 
     // ④ 配了没配：只印布尔与行数（进了表的那个数），不印长度、不印掩码、不印任何一个 key。
     if rows > 0 {
-        let _ = writeln!(
+        writeln!(
             out,
             "[apikey] credentials: configured, {rows} account(s) routable"
-        );
+        )
+        .discard(Why::Diag);
     } else {
-        let _ = writeln!(out, "[apikey] credentials: not configured");
+        writeln!(out, "[apikey] credentials: not configured").discard(Why::Diag);
         // 文件不在时连模板一起印，否则「导入」这条要靠猜。
         if loaded.problem.is_none() {
-            let _ = writeln!(
+            writeln!(
                 out,
                 "[apikey] create that file to configure one; it is plain JSON:\n{}",
                 store::template()
-            );
+            )
+            .discard(Why::Diag);
             n += 1;
         }
     }

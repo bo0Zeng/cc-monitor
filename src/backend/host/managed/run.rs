@@ -209,7 +209,7 @@ pub(crate) async fn run(
         id: spec.id.clone(),
         name: spec.name.clone(),
         host_pid: std::process::id(),
-        started_ms: crate::common::time::now_ms(),
+        started_ms: crate::common::time::now_ms() as i64,
         child_pid: term.pid(),
         cwd: spec.cwd.clone(),
         agent: spec.agent.clone(),
@@ -334,13 +334,13 @@ async fn wait_briefly<F: std::future::Future>(f: F, within_ms: u64) {
 /// 接一条连接：登记进账、起读写两个任务；交回写那一半的任务（收尾时等它把 `ended` 写完）。
 fn serve_conn(ctx: &Arc<Ctx>, s: own_chan::Stream) -> tokio::task::JoinHandle<()> {
     let pid = own_chan::peer_pid(&s).ok();
-    let (id, out) = locked(&ctx.hub).connect(pid, crate::common::time::now_ms());
+    let (id, out) = locked(&ctx.hub).connect(pid, crate::common::time::now_ms() as i64);
     let (mut rd, mut wr) = tokio::io::split(s);
     let reader = {
         let ctx = Arc::clone(ctx);
         tokio::spawn(async move {
             while let Ok(Some(f)) = wire::read_frame(&mut rd).await {
-                let eff = locked(&ctx.hub).frame(id, f, crate::common::time::now_ms());
+                let eff = locked(&ctx.hub).frame(id, f, crate::common::time::now_ms() as i64);
                 ctx.apply(eff);
             }
             let eff = locked(&ctx.hub).gone(id);

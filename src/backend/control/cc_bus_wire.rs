@@ -494,7 +494,7 @@ where
 {
     if req.machine.is_local() {
         let r = roster().await;
-        let now = crate::common::time::now_ms();
+        let now = crate::common::time::now_ms() as i64;
         return send_here(own, req, r.as_ref().map_err(String::as_str), now).map_err(refused);
     }
     cc_bus_envelope::check(req).map_err(refused)?;

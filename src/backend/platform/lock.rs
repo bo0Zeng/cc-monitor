@@ -31,7 +31,7 @@ use copy_core::said::Said;
 use std::path::Path;
 
 /// 持着的那把锁。落地即放。
-pub(crate) struct DirLock {
+pub struct DirLock {
     #[cfg(unix)]
     _dir: crate::platform::fs::RoFile,
     #[cfg(windows)]
@@ -46,7 +46,7 @@ fn lock_fail(said: String, raw: &std::io::Error) -> Said {
 /// 拿 `dir` 那把锁（阻塞到拿到为止）。`dir` 必须已经在（调用方先建那一层 —— 建目录是 `Own` 的方法，
 /// 本层不建：`platform/` 在默认层，一个写动词都不许有）。
 #[cfg(unix)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, Said> {
+pub fn hold(dir: &Path) -> Result<DirLock, Said> {
     use std::os::fd::{AsFd as _, AsRawFd as _};
     let f = crate::platform::fs::Ro::open(dir).map_err(|e| {
         lock_fail(

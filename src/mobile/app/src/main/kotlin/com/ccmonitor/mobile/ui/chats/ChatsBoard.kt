@@ -13,7 +13,7 @@ import com.ccmonitor.mobile.core.wire.gen.ColumnFork
 import com.ccmonitor.mobile.core.wire.gen.ColumnHost
 import com.ccmonitor.mobile.core.wire.gen.ColumnLine
 import com.ccmonitor.mobile.core.wire.gen.ColumnRow
-import com.ccmonitor.mobile.core.wire.gen.EmptyFace
+import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.MergedRow
@@ -151,7 +151,7 @@ data class ChatsUi(
     val skeleton: Boolean = true,
     val empty: Empty = Empty.NONE,
     /** [Empty.NO_SESSIONS] 时写的那一句（核心照各台的成品与报完了没有合的，桌面首屏同一份）：各台都报完才是「无会话」。 */
-    val emptyFace: EmptyFace? = null,
+    val fleet: FleetLines? = null,
     /** 搜内容那一份（点了「搜内容「{q}」」之后；换词就收掉）。 */
     val content: ContentUi? = null,
 ) {
@@ -175,7 +175,7 @@ class ChatsBoard(
     private val merge: (String) -> String,
     scope: CoroutineScope? = null,
     /** 首屏那一句（`HostBackends.empty`）；还没交 ⇒ `null`。 */
-    private val empty: Flow<EmptyFace?> = flowOf(null),
+    private val empty: Flow<FleetLines?> = flowOf(null),
 ) : ViewModel() {
     private val scope = scope ?: viewModelScope
     private val filters = MutableStateFlow(Filters())
@@ -347,7 +347,7 @@ internal fun chatsView(
     filters: Filters,
     query: String?,
     /** 首屏那一句（核心交的；还没交 ⇒ `null`：不说「无会话」，照在读画骨架）。 */
-    face: EmptyFace?,
+    face: FleetLines?,
     /** 展开了分叉的那几行（哪台 · 会话 id）。 */
     open: Set<Pair<String, String>> = emptySet(),
 ): ChatsUi {
@@ -386,7 +386,7 @@ internal fun chatsView(
         truncated = parts.any { it.truncated },
         skeleton = none && empty == Empty.NONE,
         empty = empty,
-        emptyFace = face,
+        fleet = face,
     )
 }
 
@@ -397,7 +397,7 @@ private fun emptyOf(
     none: Boolean,
     loading: Boolean,
     asked: Boolean,
-    face: EmptyFace?,
+    face: FleetLines?,
 ): Empty =
     when {
         !none || loading -> Empty.NONE

@@ -1,7 +1,7 @@
-//! [`crate::files::index::testing`] 的体 —— 判据专用的那两个口。
+//! [`crate::files::index::test_support`] 的体 —— 判据专用的那几个口（本包的测试与上层的测试共用，只用本包 `[dependencies]` 里有的 crate）。
 //!
 //! 🔴 **它住这儿而不是生产树里**：要求生产树里只留三行桩
-//! （`#[cfg(test)]` ＋ `#[path]` ＋ `mod X;`），测试体住 `<repo>/tests/`。
+//! （`#[cfg(…)]` ＋ `#[path]` ＋ `mod X;`），测试体住 `<repo>/tests/`。
 //! ⚠ 那条判据的判词值得抄一句：步 7c 之前那棵树上有过 **533** 个测试属性，
 //! 「0 个」那个状态是用**两轮尺子重瞄**换回来的 ⇒ **别把它改松。**
 //!
@@ -57,4 +57,29 @@ pub fn serial() -> impl Drop {
 /// 🔴 **调用方必须先拿 [`serial`]** —— 这个位是进程级的。
 pub fn hold_rebuilding(on: bool) {
     super::REBUILDING.store(on, std::sync::atomic::Ordering::Release);
+}
+
+/// ★ 常驻那一份是**进程级的一个 static** ⇒ 同一进程里并行跑的判据会互相踩。
+///
+/// 🔴 不加这把锁会怎样（这不是假想，是这一族的结构性事实）：`cargo test` 默认多线程，
+/// 两条判据各自 [`super::rebuild_once`] 一棵不同的树 ⇒ 后一条把前一条的索引整份换掉，
+/// 前一条的条目数断言拿到的是**别人那棵树**的数。而那种红是**间歇性**的，
+/// 一次绿一次红，最省事的消法是把断言调松 —— 正是本仓反复治的那条路。
+///
+/// ⇒ 凡是碰常驻那一份的判据，**第一行就拿这把锁**。
+///
+/// ⚠ 它顺手把**两份**常驻状态都清空（索引 ＋ 浏览目录的 overlay）：
+/// 那两份一起构成「后端此刻手上的那份真相」，只清一半会让上一条判据挂的 watch
+/// 在下一条判据的查询里冒出来 —— 那种红同样是间歇性的。
+pub fn resident_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // 中毒了也要能接着跑：一条判据 panic 不该让其余的全部变成「毒锁」红。
+    let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Ok(mut r) = super::RESIDENT.write() {
+        *r = None;
+    }
+    if let Ok(mut w) = crate::files::browse_watch::WATCHED.write() {
+        w.clear();
+    }
+    g
 }

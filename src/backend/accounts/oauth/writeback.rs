@@ -11,6 +11,7 @@
 
 use super::{Renewed, Unusable, WriteBack};
 use crate::agents::LoginFace;
+use copy_core::{Discard, Why};
 use creds_core::SecretKey;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -128,7 +129,8 @@ fn wait_and_write(own: crate::platform::fs::Own, dir: PathBuf, face: LoginFace, 
         "oauth-writeback-ears",
         move |_| {
             if on_event() {
-                let _ = tx.send(());
+                // 等写锁放开的线程已经到期走了（照实报了写回失败）
+                tx.send(()).discard(Why::PeerGone);
             }
         },
     );

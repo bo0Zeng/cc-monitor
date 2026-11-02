@@ -538,7 +538,7 @@ pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
     if sid.is_empty() {
         return None;
     }
-    waiting_said(own, &sid, crate::common::time::now_ms())
+    waiting_said(own, &sid, crate::common::time::now_ms() as i64)
 }
 
 /// 瘦客户端底行「排队 N 条」的耳朵：经 [`crate::platform::watch_file`] 盯 `hosts/<id>/`（打标那一下）与这台的队目录（队动了），

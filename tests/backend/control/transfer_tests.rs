@@ -2,10 +2,7 @@
 //!
 //! 台架：`dial::sftp::rig`（合成 SFTP 服务端，逐条记改动路径与写偏移）＋ 本机临时目录。
 //! 上传 / 下载两份本体的语料是一条 SFTP 会话（`Session::over` —— 生产那一个口），判据直接喂它；
-//! 票表（`Desk`）那一半判记账与帧，不起真 SSH（真 sshd 那一维在 `tests/evidence/SR1b-sftp-loopback.py`）。
-//!
-//! 来历：这几条的形状照 monitor 那一侧 F7c（暂存区那一族）/ 步 24（秤 F4 · 续传）的判据 ——
-//! 传输本体搬过来了，判据跟着搬（monitor 那几份整份删了），被判的是后端这一份实现。
+//! 票表（`Desk`）那一半判记账与帧，不起真 SSH（真 sshd 那一维在 `tests/evidence/sftp-loopback.py`）。
 
 use super::*;
 use crate::dial::sftp::rig::{self, Entry};
@@ -256,7 +253,7 @@ async fn without_the_backend_home_nothing_is_written_and_it_says_so() {
     assert!(fs.lock().unwrap().mutated.is_empty());
 }
 
-/// 键：同一份文件同一个键；长度与字母表 == 提交那一侧认的（`files_commit::is_key`，异源：提交一侧的判定）。
+/// 键：同一份文件同一个键；长度与字母表 == 提交那一侧认的（`files::commit::is_key`，异源：提交一侧的判定）。
 #[test]
 fn the_staging_key_is_deterministic_and_shaped_like_the_commit_side_wants() {
     let a = staging_key("/tmp/x", 10, 7);
@@ -264,12 +261,12 @@ fn the_staging_key_is_deterministic_and_shaped_like_the_commit_side_wants() {
     assert_ne!(a, staging_key("/tmp/x", 11, 7));
     assert_ne!(a, staging_key("/tmp/y", 10, 7));
     assert!(
-        crate::control::files_commit::is_key(&a),
+        crate::files::commit::is_key(&a),
         "键形状提交那一侧不认：{a}"
     );
     // 提交那一侧从同一个键拼出来的暂存件，与这里写的是同一份。
     let home = std::path::Path::new("/home/rig");
-    let theirs = crate::control::files_commit::staged_path(home, &a).expect("键被拒");
+    let theirs = crate::files::commit::staged_path(home, &a).expect("键被拒");
     assert_eq!(theirs, home.join(staging_part(&a)));
 }
 
@@ -541,7 +538,7 @@ async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once()
 
 /// 🔴 **B6**：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
 ///
-/// 从前这一格叫「落点是会话数据 ⇒ 围栏拒」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
+/// 本机文件一律可改、不设数据围栏（用户「文件管理器全部都可以改. 不需要任何围栏」）⇒
 /// 下载落点只过路径解析（绝对路径 · 有文件名 · 父目录在盘上、解开之后落点仍在它底下）。
 #[test]
 fn a_download_onto_a_session_file_is_let_through() {
@@ -728,7 +725,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     assert!(ok);
     let data = data.unwrap();
     let key = data["key"].as_str().unwrap().to_string();
-    assert!(crate::control::files_commit::is_key(&key));
+    assert!(crate::files::commit::is_key(&key));
     let tid = data["id"].as_str().unwrap().to_string();
     assert!(tid.starts_with("xfer-"));
     // 同一份文件第二张票 ⇒ busy。
@@ -749,12 +746,12 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     ));
     // 不是普通文件：一组里那一项没开成（`refused`），不是整条入参不对。
     assert_eq!(code.as_deref(), Some("refused"));
-    // 下载落点过不了路径解析（父目录不在）⇒ refused。从前这里的语料是一份会话文件，今天那一形放行。
+    // 下载落点过不了路径解析（父目录不在）⇒ refused（落点是会话文件的那一形放行，由 `a_download_onto_a_session_file_is_let_through` 判）。
     let a = serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()});
     let (_, code, _) = reply_of(&desk.ask1(TRANSFER_DOWNLOAD, "r5", &a));
     assert_eq!(code.as_deref(), Some("refused"));
-    // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，
-    //   围栏换成「一律拒」本条照绿 —— 那一刀当场没砍中，补这一向）。另起一张台，不动上面那张的册数。
+    // 另一向：一个规整的本机落点 ⇒ 开得出单（只判「踩线 ⇒ refused」的话，
+    //   路径解析换成「一律拒」本条照绿，所以两向都判）。另起一张台，不动上面那张的册数。
     let (tx2, _rx2) = mpsc::channel(8);
     let desk2 = desk_on(tx2);
     let a = serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()});
@@ -1017,13 +1014,13 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
             "尾块对拍该照样放行续传（它看不见中间那一截 —— 本条要证的正是这一格）"
         );
         let home = tmp.path("home");
-        let staging = home.join(crate::control::files_commit::STAGING_DIR);
+        let staging = home.join(crate::files::commit::STAGING_DIR);
         std::fs::create_dir_all(&staging).unwrap();
         let staged_bytes = fs.lock().unwrap().bytes(&part).unwrap();
         std::fs::write(staging.join(format!("{KEY}.part")), &staged_bytes).unwrap();
         let root = tmp.path("dest");
         std::fs::create_dir_all(&root).unwrap();
-        let r = crate::control::files_commit::commit_upload(
+        let r = crate::files::commit::commit_upload(
             &Face::issue(),
             &home,
             KEY,
@@ -1140,7 +1137,7 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
         // 一组一项：那一项的票号与暂存件的键。
         let d = d.get("items").and_then(|i| i.get(0)).unwrap_or(d);
         if let Some(v) = d.get("staged").and_then(serde_json::Value::as_str) {
-            if crate::control::files_commit::is_key(v) {
+            if crate::files::commit::is_key(v) {
                 s = s.replace(v, "<key>");
             }
         }
@@ -1152,7 +1149,7 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
             }
         }
         if let Some(v) = d.get("key").and_then(serde_json::Value::as_str) {
-            if crate::control::files_commit::is_key(v) {
+            if crate::files::commit::is_key(v) {
                 s = s.replace(v, "<key>");
             }
         }

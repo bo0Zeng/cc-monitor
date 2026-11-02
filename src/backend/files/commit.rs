@@ -3,9 +3,9 @@
 //! SFTP 只做传输、只写进我们自己的暂存区（`~/.cc-monitor/staging/<key>.part`，断点续传的本钱也住那儿），
 //! 传完由这里提交 ⇒ 真正落进用户目录的那一下只有后端文件管理这一处。
 //!
-//! 住 `control/` 是层的归属（会改变世界）；它是文件管理后端的成员（`tests/backend/files/module_boundary_guard.rs`）。
-//! 不住 `files/`：那一族整族纯读。写经文件管理面的句柄（`Face`，只收路径解析交回的 `Resolved`，
-//! 借 `files_write` 那一份）；句柄只经命令表文件管理那一族递进来。
+//! 写面的一员（与 [`crate::files::write`] 同住文件管理那一个包）：只引纯工具与平台两层由 Cargo 管，上层够得到的只有本模块的 `pub` 项。
+//! 写经文件管理面的句柄（`Face`，只收路径解析交回的 `Resolved`，
+//! 借 [`crate::files::write`] 那一份）；句柄只经命令表文件管理那一族递进来。
 //!
 //! # 提交的两支（`overwrite` 由调用方显式给，不给默认值）
 //!
@@ -28,8 +28,8 @@
 //!
 //! 文件窗口存一份装不进一条请求行的文本（入方向一行 1 MiB，`stream/inbound/mod.rs::MAX_LINE_BYTES`）时，
 //! 切成几块逐块送进暂存区（`<key>.<seq>.chunk`，`O_EXCL` 新建：一块只写一次），再由 `files-commit-text` 按块号读回、
-//! 拼起来、核总长，交给写面那一份覆盖写（`files_write::overwrite_text`）—— 同一份文件 1 MiB 上下存出同一种结果
-//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；怎么换住 `files_write::replace_contents`）。
+//! 拼起来、核总长，交给写面那一份覆盖写（`write::overwrite_text`）—— 同一份文件 1 MiB 上下存出同一种结果
+//! （同目录暂存旁名 ＋ 换名上位：权限位沿用、链接解到底、不跨盘；怎么换住 `write::replace_contents`）。
 //! 一块一份文件、不往一份上续写：`Face` 没有续写那几种开法（新建只有 `O_EXCL` 一种）。
 //! 块数没有单独的上限：每块至少 1 字节 ⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`。
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
@@ -39,17 +39,17 @@
 //! 目标不由调用方给：会话工作目录下一个新的编号目录（[`session_attachment`]），落那一下就是上传提交这一条（[`commit_upload_at`]）。
 
 use crate::common::said::Said;
-use crate::control::files_write::{
+use crate::files::write::{
     content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
     wire_of, Act, Content, Last, Was, WriteRefusal,
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。值只住契约 crate（`relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
-/// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）同在本 crate，由
+/// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）在上层，由主 crate 的
 /// `dial_sftp_tests::the_declared_write_root_is_exactly_staging` 直接比。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
@@ -228,7 +228,7 @@ pub fn stage_chunk(
     })?;
     if let Err(e) = f.write_all(bytes) {
         drop(f);
-        let _ = face.delete_file(&at);
+        face.delete_file(&at).discard(Why::CleanupAfterFailure); // 删不掉等孤儿扫（7 天）
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesCommit.chunk.writeBroke",
@@ -338,7 +338,7 @@ pub fn drop_chunks(face: &Face, home: &Path, key: &str) {
             continue;
         };
         if Ro::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file()) {
-            let _ = face.delete_file(&at);
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 收拾旧块：删不掉等孤儿扫（7 天）
         }
     }
 }
@@ -440,7 +440,7 @@ fn sweep_after(face: &Face, home: &Path, key: &str) {
     sweep_stale(face, home, now, key);
 }
 
-crate::control::files_write::acts! {
+crate::files::write::acts! {
     FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r, &crate::common::time::Tz::default()).map_err(CommitRefused::flat);
     FilesStageChunkReq => FilesStageChunkReply, |r, f| stage_chunk_of(f, r);
     FilesCommitTextReq => FilesWrittenReply, |r, f| commit_text_of(f, r);
@@ -448,7 +448,7 @@ crate::control::files_write::acts! {
 
 /// 上传提交没成：落点有同名、要问（那一句 ＋ 同名清单，码 `exists`）· 别的（码 ＋ 那一句）。
 #[derive(Debug)]
-pub(crate) enum CommitRefused {
+pub enum CommitRefused {
     Clash(String, cmd_wire::batch::Conflicts),
     Fail(Said),
 }
@@ -461,16 +461,16 @@ impl From<Said> for CommitRefused {
 
 impl CommitRefused {
     /// 只认码与那一句的出口（写面那张分派表 · 资产域的门）：同名照码 `exists` 交那一句。
-    pub(crate) fn flat(self) -> Said {
+    pub fn flat(self) -> Said {
         match self {
-            CommitRefused::Clash(said, _) => Said::new(super::files_write::EXISTS, said),
+            CommitRefused::Clash(said, _) => Said::new(super::write::EXISTS, said),
             CommitRefused::Fail(f) => f,
         }
     }
 }
 
 /// `files-commit-upload`（同名清单里的时刻按 `tz` 写）。
-pub(crate) fn commit_upload_of(
+pub fn commit_upload_of(
     face: &Face,
     req: wire::FilesCommitUploadReq,
     tz: &crate::common::time::Tz,
@@ -493,7 +493,7 @@ pub fn commit_upload_at(
     let root = root_of(&req.root, "root")?;
     // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
     let mut rel = root_of(&req.rel, "rel")?;
-    super::files_write::names_ok(req.single.unwrap_or(false), &rel)?;
+    super::write::names_ok(req.single.unwrap_or(false), &rel)?;
     let on = req.on_exists.unwrap_or_default();
     if on == OnExists::Skip {
         return Err(Said::new(
@@ -505,7 +505,7 @@ pub fn commit_upload_at(
     let clash = |rel: &Path| {
         walk_in_root(Last::Link, &root, rel)
             .ok()
-            .and_then(|d| super::files_batch::look(&d).map(|t| (d, t)))
+            .and_then(|d| super::batch::look(&d).map(|t| (d, t)))
     };
     if let Some((dest, there)) = clash(&rel) {
         match on {
@@ -516,7 +516,7 @@ pub fn commit_upload_at(
                     .find(|r| clash(r).is_none())
                     .ok_or_else(|| {
                         Said::new(
-                            super::files_write::EXISTS,
+                            super::write::EXISTS,
                             copy_text(
                                 "beFilesWrite.swap.exists",
                                 &[("path", &dest.display().to_string())],
@@ -535,7 +535,7 @@ pub fn commit_upload_at(
                 crate::common::contract::malformed("`chunks` given without `bytes`"),
             )
         })?;
-        super::files_upload_chunks::assemble_part(face, home, &req.key, chunks, bytes)
+        super::upload_chunks::assemble_part(face, home, &req.key, chunks, bytes)
             .map_err(refused)?;
     }
     let overwrite = on == OnExists::Overwrite;
@@ -676,7 +676,3 @@ pub fn commit_text_at(
         sha256: wire::Sha256Hex(sha),
     })
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/control/files_commit_tests.rs"]
-mod tests;

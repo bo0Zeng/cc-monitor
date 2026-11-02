@@ -311,6 +311,10 @@ pub fn foreground_settled(hwnd: isize) -> Option<isize> {
     let mut now = None;
     for i in 0..6 {
         if i > 0 {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "↗ 拉前之后核前台：20ms 一步、至多 100ms，对上就停；换前台没有给别的进程订的事件，挂 `EVENT_SYSTEM_FOREGROUND` 要另起消息循环"
+            )]
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         // SAFETY：只读当前前台窗口句柄。

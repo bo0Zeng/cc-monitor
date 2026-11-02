@@ -3968,7 +3968,7 @@ sealed interface Changed {
     }
     @Suppress("UNCHECKED_CAST")
     data class Empty(
-        val body: EmptyFace? = null,
+        val body: FleetLines? = null,
     ) : Changed, Ordered {
         override val topic: String get() = "empty"
         override var wireOrder: IntArray? = null
@@ -4101,9 +4101,9 @@ sealed interface Changed {
                 Variant("empty", Changed.Empty::class.java, obj(
                         listOf(
                         Field("topic", { tag("empty") }, optional = false, nullable = false),
-                        Field("body", { opt(EmptyFace.ADAPTER) }, optional = true, nullable = true),
+                        Field("body", { opt(FleetLines.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Changed.Empty(a[1] as EmptyFace?) },
+                        { a -> Changed.Empty(a[1] as FleetLines?) },
                         { v -> arrayOf("empty", v.body) },
                     )),
                 Variant("session_hidden", Changed.SessionHidden::class.java, obj(
@@ -5641,25 +5641,6 @@ data class ElemKey(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class EmptyFace(
-    val line: String,
-    val hint: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<EmptyFace> = obj(
-            listOf(
-            Field("line", { Str }, optional = false, nullable = false),
-            Field("hint", { Str }, optional = false, nullable = false),
-            ),
-            { a -> EmptyFace(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.line, v.hint) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class Endpoint(
     val host: String,
     val port: Int,
@@ -6353,7 +6334,7 @@ data class Fact(
             Field("w7d", { WinFact.ADAPTER }, optional = false, nullable = false),
             Field("weekly", { opt(Bool) }, optional = true, nullable = true),
             Field("login", { LoginState.ADAPTER }, optional = false, nullable = false),
-            Field("seenAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("seenAt", { opt(U64) }, optional = true, nullable = true),
             Field("blocked", { opt(FactBlocked.ADAPTER) }, optional = true, nullable = true),
             ),
             { a -> Fact(a[0] as String, a[1] as QuotaKind, a[2] as WinFact, a[3] as WinFact, a[4] as Boolean?, a[5] as LoginState, a[6] as Long?, a[7] as FactBlocked?) },
@@ -7335,6 +7316,27 @@ enum class FirstRunStepId(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<FirstRunStepId> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FleetLines(
+    val line: String,
+    val hint: String,
+    val count: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FleetLines> = obj(
+            listOf(
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("hint", { Str }, optional = false, nullable = false),
+            Field("count", { Str }, optional = false, nullable = false),
+            ),
+            { a -> FleetLines(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.line, v.hint, v.count) },
+        )
     }
 }
 
@@ -8719,8 +8721,8 @@ data class Held(
         val ADAPTER: JsonAdapter<Held> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("next", { Lng }, optional = false, nullable = false),
-            Field("next_byte", { Lng }, optional = false, nullable = false),
+            Field("next", { U64 }, optional = false, nullable = false),
+            Field("next_byte", { U64 }, optional = false, nullable = false),
             Field("mark", { Str }, optional = false, nullable = false),
             ),
             { a -> Held(a[0] as String, a[1] as Long, a[2] as Long, a[3] as String) },
@@ -13122,7 +13124,7 @@ data class MachineMenuReq(
 @Suppress("UNCHECKED_CAST")
 data class MachineRead(
     val machines: Map<String, MachineState>,
-    val empty: EmptyFace,
+    val empty: FleetLines,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13130,9 +13132,9 @@ data class MachineRead(
         val ADAPTER: JsonAdapter<MachineRead> = obj(
             listOf(
             Field("machines", { dict(MachineState.ADAPTER) }, optional = false, nullable = false),
-            Field("empty", { EmptyFace.ADAPTER }, optional = false, nullable = false),
+            Field("empty", { FleetLines.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MachineRead(a[0] as Map<String, MachineState>, a[1] as EmptyFace) },
+            { a -> MachineRead(a[0] as Map<String, MachineState>, a[1] as FleetLines) },
             { v -> arrayOf(v.machines, v.empty) },
         )
     }
@@ -20080,7 +20082,7 @@ data class RotAccount(
             Field("w7d", { WinFact.ADAPTER }, optional = false, nullable = false),
             Field("weekly", { opt(Bool) }, optional = true, nullable = true),
             Field("login", { LoginState.ADAPTER }, optional = false, nullable = false),
-            Field("seenAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("seenAt", { opt(U64) }, optional = true, nullable = true),
             Field("blocked", { opt(FactBlocked.ADAPTER) }, optional = true, nullable = true),
             ),
             { a -> RotAccount(a[0] as RotPlate, a[1] as List<String>, a[2] as String, a[3] as QuotaKind, a[4] as WinFact, a[5] as WinFact, a[6] as Boolean?, a[7] as LoginState, a[8] as Long?, a[9] as FactBlocked?) },
@@ -24564,9 +24566,9 @@ data class SshCommand(
 @Suppress("UNCHECKED_CAST")
 data class SshConnection(
     val clientAddr: String,
-    val clientPort: Long,
+    val clientPort: Int,
     val serverAddr: String,
-    val serverPort: Long,
+    val serverPort: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24574,11 +24576,11 @@ data class SshConnection(
         val ADAPTER: JsonAdapter<SshConnection> = obj(
             listOf(
             Field("clientAddr", { Str }, optional = false, nullable = false),
-            Field("clientPort", { Lng }, optional = false, nullable = false),
+            Field("clientPort", { Int32 }, optional = false, nullable = false),
             Field("serverAddr", { Str }, optional = false, nullable = false),
-            Field("serverPort", { Lng }, optional = false, nullable = false),
+            Field("serverPort", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> SshConnection(a[0] as String, a[1] as Long, a[2] as String, a[3] as Long) },
+            { a -> SshConnection(a[0] as String, a[1] as Int, a[2] as String, a[3] as Int) },
             { v -> arrayOf(v.clientAddr, v.clientPort, v.serverAddr, v.serverPort) },
         )
     }
@@ -25578,7 +25580,7 @@ data class Terminal(
         val ADAPTER: JsonAdapter<Terminal> = obj(
             listOf(
             Field("ssh", { opt(SshConnection.ADAPTER) }, optional = false, nullable = true),
-            Field("activity", { opt(Lng) }, optional = false, nullable = true),
+            Field("activity", { opt(U64) }, optional = false, nullable = true),
             Field("window", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> Terminal(a[0] as SshConnection?, a[1] as Long?, a[2] as String?) },

@@ -13,7 +13,7 @@ use russh::keys::agent::client::AgentClient;
 pub(crate) type Agent = ssh_dial::env::AgentClient;
 
 /// 本机的 ssh-agent，交给拨号核心（[`ssh_dial::env::Agent`]）。
-pub(crate) struct LocalAgent;
+pub struct LocalAgent;
 
 impl ssh_dial::env::Agent for LocalAgent {
     fn connect<'a>(

@@ -1,19 +1,17 @@
-//! `D2` 判据的**乙半**（代理这一侧）＋ 它的反向自检。
+//! 拨号住处判据的**后端这一半** ＋ 它的反向自检。
 //!
 //! # 它断的是哪一个性质
 //!
-//! **「与远端跑 SSH 传输层握手」这件事，在本 crate 里只许发生在 `dial/` 底下。**
+//! **「与远端跑 SSH 传输层握手」这件事，在本 crate 里只许发生在拨号核心那个包（`ssh-dial/`）里。**
 //!
-//! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那次已经证过后者会量错集合
-//! （**14 份在往外拨的文件里，11 份的 `russh` 代码态是 0**）。
+//! 🔴 **它断的不是「`russh` 这个词还在不在」**：往外拨的文件多半不直接写 `russh`，按词数会量错集合。
 //! 锚点取的是**真正把字节交给 SSH 状态机的那几个入口**，不是 crate 名、不是函数名。
 //!
-//! # 甲半在哪
+//! # 界面那一半在哪
 //!
-//! 甲半（界面这一侧：backend 那条长连接流不再自己拨号）住
-//! `../../frontend/shell/src/stream_source/` 的测试模块 —— **两侧各扫各的 crate**，
-//! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
-//! 而那张登记表这里不改）。
+//! 界面这一侧（界面进程不拨号）的那一半住 `../../frontend/shell/src/stream_source/`
+//! 的测试模块 —— **两侧各扫各的 crate**，刻意不从这里 `include_str!` 伸到对面去
+//! （那会多一条跨轨编译期边）。
 
 use super::*;
 use ssh_dial::{
@@ -37,8 +35,7 @@ fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
 /// 本判据看不见。它与 `readonly_guard` / `protocol_doc_guard` 头注里那条同族的
 /// 诚实边界是一样的 —— **别读成证明**。
 fn anchors() -> Vec<String> {
-    // 运行时拼：直接写字面量的话，本模块自己就会被下面的扫描命中
-    //（同类自指陷阱本仓在 P4 连踩过七次）。
+    // 运行时拼：直接写字面量的话，本模块自己就会被下面的扫描命中（自指陷阱）。
     [
         ("client::conn", "ect("),
         ("client::conn", "ect_stream("),
@@ -54,15 +51,14 @@ const DIAL_HOME: &str = "ssh-dial/";
 
 /// 语料地板：低于这个字节数就判「语料没喂进来」而不是「一处都没有」。
 ///
-/// 🔴 这条就是 `P6bM4` 的被测对象 —— **喂空输入，它必须自己先红**。
-/// 50_000 → 100_000：真语料长过了地板的 40 倍（约 2 MB），照下面那条判据的说法抬地板。
-/// 100_000 → 200_000：真语料又长到约 4 MB（地板的 40 倍以上），再抬一档。
+/// 🔴 「喂空语料」那条反向自检测的就是它 —— **喂空输入，它必须自己先红**。
+/// 真语料长到地板的 40 倍以上 ⇒ `the_corpus_floor_is_not_far_below_the_real_corpus` 红，照它抬地板。
 const CORPUS_FLOOR_BYTES: usize = 200_000;
 
 /// 乙半判据本体。**纯函数**：语料由调用方给 ⇒ 阳性/阴性两个方向都切得动。
 ///
 /// 返回 `Err(说法)` = 判据红。三种红各有各的话：
-/// ① 语料太小（空转）· ② 一处锚点都没有（拨号根本没搬进来）· ③ 锚点长在 `dial/` 外面。
+/// ① 语料太小（空转）· ② 一处锚点都没有（本 crate 里没有拨号）· ③ 锚点长在 `ssh-dial/` 外面。
 fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
     let bytes: usize = corpus.iter().map(|(_, c)| c.len()).sum();
     if bytes < CORPUS_FLOOR_BYTES {
@@ -96,7 +92,7 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
     if total == 0 {
         return Err(format!(
             "本 crate 生产段里一处拨号锚点都没有（锚点：{pats:?}）——\n\
-                 那意味着代理这一侧根本没在拨号，`K-P6b` 的乙半是空的。"
+                 那意味着后端这一侧根本没在拨号，本判据的后端这一半是空的。"
         ));
     }
     Ok(total)
@@ -105,19 +101,13 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
 /// 本 crate `src/` 递归全部 `.rs` 的**生产段**，相对 `src/` 的路径 + 正文。
 ///
 /// 🔴 **必须走 `guard_core::scan_tree!`**（`scanning_guard_registry` 那条判据钉着）：
-/// 裸 `read_dir` 的扫描型判据会**在自己的登记表 / 注释 / 常量里找到自己** ⇒ 恒绿，
-/// `audit-0805` 实测过五次，五次都不是被判据自己逮到的。
+/// 裸 `read_dir` 的扫描型判据会**在自己的登记表 / 注释 / 常量里找到自己** ⇒ 恒绿。
 ///
-/// ⚠⚠ **那个「代价」今天不存在，而这一段先前把它当现状写着**。
-/// 先前逐字：「`scan_tree!` 按构造摘除调用者自己那一份 —— 也就是 `dial/mod.rs`
-/// 不在它返回的人群里」。两处都假：
-/// ① 自摘那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..`
-///    的折返路径 ⇒ 后缀比不命中）；
-/// ② 今天的调用者是 `tests/backend/dial_tests.rs`，**根本不是** `dial/mod.rs` ——
-///    后者走普通遍历本来就在人群里。
-/// ⇒ 下面那句 `include_str!` 的补回**今天是冗余的**（同一份被数两遍，靠尾部那句
-/// `dedup_by` 收掉），而**刻意不删**：它把「被测那一份一定在人群里」钉成一件
-/// **不依赖扫描面**的事 —— 扫描面哪天被改窄（只扫某个子目录），少扫不会红，而它还在。
+/// `dial/mod.rs` 走普通遍历就在人群里：`scan_tree!` 摘除的是调用者自己那一份，调用者是本文件
+/// （由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中，自摘不生效）。
+/// 下面那句 `include_str!` 的补回因此与遍历重复（同一份数两遍，尾部 `dedup_by` 收掉），**刻意保留**：
+/// 它把「被测那一份一定在人群里」钉成一件**不依赖扫描面**的事 —— 扫描面哪天被改窄（只扫某个子目录），
+/// 少扫不会红，而它还在。
 fn crate_sources() -> Vec<(String, String)> {
     let root = guard_core::addr::backend_src_root();
     let mut out: Vec<(String, String)> = Vec::new();
@@ -126,8 +116,8 @@ fn crate_sources() -> Vec<(String, String)> {
         let rel = guard_core::module_address(&root, &path);
         out.push((rel, guard_core::production_code(&src)));
     }
-    // 被测那一份。它走普通遍历**本来就在**人群里（自摘不生效，理由见本函数头注）；
-    // 这一份是**冗余但刻意保留**的第二个来源，尾部 `dedup_by` 收掉重复。
+    // 被测那一份。它走普通遍历就在人群里（自摘不生效，理由见本函数头注）；
+    // 这一份是刻意保留的第二个来源，尾部 `dedup_by` 收掉重复。
     out.push((
         "dial/mod.rs".to_string(),
         guard_core::production_code(include_str!("../../src/backend/dial/mod.rs")),
@@ -137,13 +127,13 @@ fn crate_sources() -> Vec<(String, String)> {
     out
 }
 
-/// ★ 乙半：**拨号只许住 `dial/`，而且必须真的有一处。**
+/// ★ 后端这一半：**拨号只许住 `ssh-dial/`，而且必须真的有一处。**
 #[test]
 fn the_dial_only_happens_under_dial_home() {
     let corpus = crate_sources();
     assert!(
         corpus.len() >= 37,
-        "只扫到 {} 份源文件 —— 抽取坏了（08-06 实测 37 份）",
+        "只扫到 {} 份源文件 —— 抽取坏了（下限 37 份）",
         corpus.len()
     );
     match dial_locality(&corpus) {
@@ -155,8 +145,8 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ `--dial` 那条老入口**零处**（拨号代理子进程那一形删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
-/// 拨号今天只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），没有一条入方向命令替界面开字节流。
+/// ★ 根入口生产段里没有 `--dial` 子命令：拨号只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），
+/// 没有一条入方向命令替界面开字节流。`is_query_mode` 认一个子命令却没有臂接它 ⇒ 半截入口。
 #[test]
 fn the_old_dial_entry_is_gone() {
     let root_prod = guard_core::production_code(&guard_core::addr::backend_root_source());
@@ -164,8 +154,8 @@ fn the_old_dial_entry_is_gone() {
     assert_eq!(
         root_prod.matches(flag.as_str()).count(),
         0,
-        "`main.rs` / `lib.rs` 生产段里还有 `{flag}` —— 那条老入口删了（SR1a），\
-         留着一半就是 `is_query_mode` 认它、却没有臂接它（v3.4.0 `--account-trust-zero` 那一形）"
+        "`main.rs` / `lib.rs` 生产段里有 `{flag}` —— 拨号不开子命令入口，\
+         留着一半就是 `is_query_mode` 认它、却没有臂接它"
     );
     // 正控：同一把尺子在别的子命令上量得到（不是「这把尺子什么都量不到」）。
     let other = format!("{}{}", "\"--", "resident-ensure\"");
@@ -175,7 +165,7 @@ fn the_old_dial_entry_is_gone() {
     );
 }
 
-/// ★ 反向自检 · **阳性方向**：把一处锚点放到 `dial/` 外面去，判据必须红**并点名**。
+/// ★ 反向自检 · **阳性方向**：把一处锚点放到 `ssh-dial/` 外面去，判据必须红**并点名**。
 ///
 /// 语料是**活体**（真语料 + 一处注入），不是手搓的小串 —— 手搓的小串过不了字节地板，
 /// 于是会以「空转」而不是「越界」红掉，那就测不到该测的那一条。
@@ -200,7 +190,7 @@ fn a_dial_anchor_outside_dial_home_is_caught_and_named() {
     );
 }
 
-/// ★ 反向自检 · **阴性方向**（`P6bM4`）：喂空语料，判据必须**自己先红**。
+/// ★ 反向自检 · **阴性方向**：喂空语料，判据必须**自己先红**。
 ///
 /// 少了这一条，「一处锚点都没有」与「语料压根没喂进来」在终端上同形，
 /// 而后者会让这条判据在**任何**改动下都保持绿。
@@ -236,10 +226,9 @@ fn the_corpus_floor_is_not_far_below_the_real_corpus() {
     );
 }
 
-/// `--dial` 的请求行按**蛇形键**读。这条钉的是两端的字段名对得上。
+/// 拨号请求（`DialRequest`）按**蛇形键**读。这条钉的是两端的字段名对得上。
 ///
-/// ⚠ 它只钉本侧的读法；界面那侧写的是什么，由 `stream_source` 的判据钉。
-/// **两侧各钉一半** —— 与 `build_id_guard` / `protocol_doc_guard` 的分工同形。
+/// ⚠ 它只钉本侧的读法；写请求的那一侧由它自己的判据钉。
 #[test]
 fn the_request_line_is_read_with_snake_case_keys() {
     let raw = r#"{"host":"h","port":22,"user":"u","key_path":"/k","command":"c"}"#;
@@ -289,9 +278,9 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
     let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
     assert_eq!(v["ok"], serde_json::Value::Bool(true));
-    // 结构化的胜者（界面据它记 last-good，不再自己解析地址）。
+    // 结构化的胜者（界面据它记 last-good）。
     assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
-    // 固化指纹那几格（逐地址指纹 · 严格与否）删了：信哪把钥匙只在拨号核心那份库里判。
+    // ack 里没有固化指纹那几格（逐地址指纹 · 严格与否）：信哪把钥匙只在拨号核心那份库里判。
     for gone in [
         "fingerprints",
         "jump_fingerprints",
@@ -301,7 +290,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     ] {
         assert!(v.get(gone).is_none(), "{gone} 还在 ack 里：{v}");
     }
-    // 开通道被回拒那一格（从前只给隧道用）删了：ack 里不再有它。
+    // ack 里没有「开通道被回拒」那一格。
     assert!(v.get("open_refused").is_none());
     // 没拨成的原因码（additive；界面按码说那一句、给修法）。
     assert_eq!(v["reason"], "auth");
@@ -323,9 +312,8 @@ fn stage_labels_map_to_the_closed_reason_set() {
     }
 }
 
-/// （`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。
-/// v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。
-/// 新字段按蛇形键读：`use` / `endpoints` / `jump` / `capture` / `forward` / `stages` / `probe`。
+/// 除 `host` · `port` · `user` · `key_path` · `command` 之外的字段全是可选的：只给这几格的请求照样读得动，用法缺省是长流。
+/// 其余字段按蛇形键读：`use` / `endpoints` / `jump` / `capture` / `forward` / `stages` / `probe`。
 #[test]
 fn a_v2_request_reads_and_a_v1_request_still_reads() {
     let v1 = r#"{"host":"h","port":22,"user":"u","key_path":"/k","command":"c"}"#;
@@ -561,7 +549,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     assert_eq!(String::from_utf8(quiet).unwrap().lines().count(), 1);
 }
 
-/// 〔C2 → COPY〕拨号失败按错误**类型**分阶段标签（不看错误串：串改一个字不该改分类）。
+/// 拨号失败按错误**类型**分阶段标签（不看错误串：串改一个字不该改分类）。
 #[test]
 fn a_dial_error_is_bucketed_into_a_stage_label() {
     use ssh_dial::connect::{stage_of_io, stage_of_russh};
@@ -579,7 +567,7 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
     assert_eq!(stage_of_russh(&russh::Error::Kex), "other");
 }
 
-/// ★ 多开的判准只住一处（`ssh-dial/pool.rs`；，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
+/// ★ 多开的判准只住一处（`ssh-dial/pool.rs`；行为判据在 `dial_pool_tests.rs`，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
 /// 且 `Extra(` 只在 `place` 里造。针运行时拼。
 #[test]
 fn the_multi_open_judge_lives_in_one_function() {
@@ -632,7 +620,7 @@ fn the_multi_open_judge_lives_in_one_function() {
 
 // ═══ capture 那一臂：被丢 ⇒ 远端那条通道被关 ═══════════════════════════════════════
 //
-// 守的要求（住址，纪律 19）：红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// 守的要求：capture 被丢而远端通道不关 ⇒ 它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死；
 // 「**本地撤单**与**对端撤活**是两件事」。
 
 /// 一个记账的「写半边」：被关一次记一次。
@@ -646,7 +634,7 @@ impl super::uses::Closable for CountingHalf {
     }
 }
 
-/// A5 ★ 守着写半边的那一层被丢 ⇒ **恰好**发一次关（行为：替身记账；异源：不看源码）；没被丢之前一次都不发（另一向）。
+/// ★ 守着写半边的那一层被丢 ⇒ **恰好**发一次关（行为：替身记账；异源：不看源码）；没被丢之前一次都不发（另一向）。
 #[tokio::test]
 async fn dropping_the_guard_closes_the_channel_exactly_once() {
     let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -677,7 +665,7 @@ async fn dropping_the_guard_closes_the_channel_exactly_once() {
     );
 }
 
-/// A5 接线（文本，如实登记：按行为量要真 sshd）：开 capture 那一臂拿到通道之后**先 `split`、写半边交给守卫**，
+/// 接线（按文本量：按行为量要真 sshd）：开 capture 那一臂拿到通道之后**先 `split`、写半边交给守卫**，
 /// exec 走守卫里那一半；裸通道（`&channel` / `&mut channel`）在那一臂里零处。收全在开成之后（`Opened::pump` · `uses::capture`
 /// 那两处），只走读半边 —— 这一条由类型钉着（`collect` 只收 `ChannelReadHalf`），不在这里数字面量。
 #[test]
@@ -1053,11 +1041,8 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
         d.contains(crate::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"
     );
-    // 暂存区那一根与提交那一侧（`files_commit`）是同一个串。
-    assert_eq!(
-        sftp::STAGING_ROOT,
-        crate::control::files_commit::STAGING_DIR
-    );
+    // 暂存区那一根与提交那一侧（`files::commit`）是同一个串。
+    assert_eq!(sftp::STAGING_ROOT, crate::files::commit::STAGING_DIR);
 }
 
 /// 私钥框里写的 `~/.ssh/…`：拨号那一层按这台家目录展开再读（不原样交给读文件那一下）；读不出来那一句里的路径照用户写的。

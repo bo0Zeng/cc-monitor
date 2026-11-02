@@ -206,7 +206,7 @@ struct Waiter {
 }
 
 impl InboundClient {
-    /// 记下这条连接通往哪台（只认第一次）：形状对不上那一句按这个名字说。[`LOCAL_ORIGIN`] ⇒ 称「本机」。
+    /// 记下这条连接通往哪台（只认第一次）：形状对不上那一句按这个名字说。[`cmd_wire::LOCAL`] ⇒ 称「本机」。
     pub fn name_machine(&self, origin: &str) {
         self.machine.get_or_init(|| origin.to_string());
     }
@@ -231,7 +231,7 @@ impl InboundClient {
     /// 一句话里怎么称呼这条连接通往的那台：本机说「本机」，远端说它的名字；没登记过（判据里直接造的客户端）⇒「该机」。
     fn machine_said(&self) -> String {
         match self.machine.get() {
-            Some(m) if m == LOCAL_ORIGIN => copy_core::local_machine(),
+            Some(m) if m == cmd_wire::LOCAL => copy_core::local_machine(),
             Some(m) => m.clone(),
             None => copy_core::peer_machine(),
         }
@@ -820,10 +820,6 @@ fn connection_nonce() -> String {
         .unwrap_or(0);
     format!("m{t:x}.{n}")
 }
-
-/// 本机后端在登记表里的 key（远端用那台的名字）。尖括号不是合法的 ssh host 名，撞名要故意才做得到。
-/// 称呼那一句（[`InboundClient::name_machine`]）认它 ⇒ 说「本机」。
-pub const LOCAL_ORIGIN: &str = "<local>";
 
 /// 写任务起在哪：调用方在 tokio 运行时里 ⇒ 就在那一个；不在（monitor 的裸线程 · 同步判据）⇒ 本 crate 的一份兜底运行时（一个 worker，第一次用时建）。
 fn spawn<F>(f: F)

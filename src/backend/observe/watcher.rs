@@ -1572,7 +1572,7 @@ fn watch_loop(
                         own.as_ref(),
                     ) {
                         crate::history::session_queue::moved();
-                        let now = crate::common::time::now_ms();
+                        let now = crate::common::time::now_ms() as i64;
                         for sid in sids {
                             sink.send(Frame::changed(match own.as_ref() {
                                 Some(own) => queue_changed(own, &sid, now),
@@ -1939,6 +1939,10 @@ struct ReaderState {
     asked: std::collections::BTreeSet<String>,
     /// 进程状态文件 · 冻住那几样变过、活会话表还没重造（[`publish_table`]）。
     table_dirty: bool,
+    /// 每条会话一份一步用时的配对表（sid → 表）：[`send_line`] 每行先记调用、再给结果配上。按 sid 记、不放 [`SessionEntry`]：
+    /// 同一 sid 两份进程状态文件共用一份；退休时 entry 先摘、之后才收尾补读，收尾那几行照样配。
+    /// 起步照冷开扫描图的事实种（[`primed`]）；会话退休收尾之后丢掉（[`retire_sid_if_unreferenced`]）。
+    clocks: HashMap<String, crate::observe::recognize::step_clock::StepClock>,
 }
 
 impl ReaderState {
@@ -2226,6 +2230,7 @@ impl ReaderState {
             accts_dir: crate::observe::accounts_query::default_accts_dir(),
             asked: std::collections::BTreeSet::new(),
             table_dirty: true,
+            clocks: HashMap::new(),
         }
     }
 }
@@ -3153,10 +3158,16 @@ fn send_line(
         note_name(session_id, body, state, sink);
     }
     note_path(session_id, path_str, state, sink);
-    let (record, cwd) = match translated {
+    let (mut record, cwd) = match translated {
         Some(t) => (t.record, t.cwd),
         None => (None, None),
     };
+    // 一步用时：这一行的调用记下、这一行的结果配上那条调用的时刻（写字在结果那一格，[`crate::agents::StepResultExt::timed_by`]）。
+    if let Some(r) = record.as_mut() {
+        let clock = state.clocks.entry(session_id.to_string()).or_default();
+        clock.note(r);
+        clock.time(r);
+    }
 
     sink.send(Frame::Line(crate::wire::Line {
         session_id: session_id.to_string(),
@@ -4219,6 +4230,7 @@ fn retire_sid_if_unreferenced(
         return;
     }
     catch_up_session(sid, true, state, sink); // 写端已死：补读 ＋ 收尾残行（D 块）
+    state.clocks.remove(sid);
     state.active_sids.remove(sid);
     state.added.remove(sid);
     state.reading.remove(sid);
@@ -4355,6 +4367,9 @@ pub(crate) struct FileRead {
     /// 读完时行号计数器该是的值（＝ 完整行数）。
     seq: u64,
     chain: Option<crate::agents::mainline::Chain>,
+    /// 读到游标为止还没结果的调用（id · 调用那一条的 `at_ms`，文件序）：照冷开扫描图起步时取图事实里的 `pending`，
+    /// 装回时种进这条会话的配对表（之后实时来的结果配得上）；自己按块数行的那一路不取（续读时表本来就在）。
+    calls: Vec<(String, i64)>,
 }
 
 /// 一条会话预读完交回本线程的（[`primed`] 装回）。
@@ -4441,6 +4456,12 @@ fn prime_file_cursor(
                 tail: map.witness().to_vec(),
                 seq: map.lines(),
                 chain: chain.map(|_| map.chain().clone()),
+                calls: map
+                    .facts
+                    .pending
+                    .iter()
+                    .filter_map(|p| Some((p.id.clone(), p.at_ms?)))
+                    .collect(),
             };
             (read, map.activity())
         });
@@ -4555,6 +4576,7 @@ fn prime_file_cursor(
                 tail,
                 seq: start + n_lines as u64,
                 chain: chain.map(|_| c),
+                calls: Vec::new(),
             }),
             gone: false,
             bytes,
@@ -4599,6 +4621,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         );
     }
     let mut paths = Vec::new();
+    let mut calls = Vec::new();
     for f in files {
         state.prime_bytes += f.bytes;
         let key_str = f.key.to_string_lossy().into_owned();
@@ -4610,11 +4633,17 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
                 if let Some(c) = r.chain {
                     state.branches.insert(f.key.clone(), c);
                 }
+                calls.push(r.calls);
             }
             None if f.gone => forget_cursor(state, &f.key),
             None => {}
         }
         paths.push(f.path);
+    }
+    // 读到游标时还没结果的调用种进这条会话的配对表：记录新的在前 ⇒ 倒着种，满了丢的是最早那份里最早的。
+    let clock = state.clocks.entry(sid.clone()).or_default();
+    for (id, at) in calls.iter().rev().flatten() {
+        clock.seed(id, *at);
     }
     let path = state
         .sessions
