@@ -67,6 +67,7 @@
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use crate::detail::Shell as _;
+use crate::platform::own_fs::OwnBin;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
@@ -476,10 +477,8 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// 生产段两个落点共用的那一跳：起一个进程，并把两件事**分开交回**。
 ///
 /// ⚠ 刻意**不**把配置那一半（`Command` 怎么建、env / stdio 怎么设）搬进来：
-/// 那两处的配置是各自的领地（一处要管子、一处要 `process_group`），
-/// 而且「谁会在用户机器上起进程」那张申报表
-/// （`write_site_registry::tests::SPAWNS`）按**外层函数名**认账 ——
-/// 把建 `Command` 那一行搬走，等于把两条申报从表上抹掉。
+/// 那两处的配置是各自的领地（一处要管子、一处要 `process_group`）；
+/// 起进程的三条策略只在 `spawn_managed` 定，由注入的 `spawn` 带进来。
 ///
 /// # 🔴 两次尝试之间**今天什么都不做**，而这不是疏忽 —— 写清楚，别让下一个人以为是
 ///
@@ -501,8 +500,7 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// （要不要窗口 · 要不要随我死 · 错误往哪去），而那三个答案要落成**平台原语**
 /// （`creation_flags` / `process_group` / Job Object）—— 它们进不了本层
 /// （`platform_home_guard::platform_forms_live_only_at_home` 的禁针，没有例外表）。
-/// ⇒ 本层只知道「起进程这一下由宿主给的这个东西来做」，形状照
-/// [`start_or_extract`] 的 `make_executable: &dyn Fn(...)`。
+/// ⇒ 本层只知道「起进程这一下由宿主给的这个东西来做」（`Command` 由调用方经 `spawn_managed::command` 造好交进来）。
 pub fn spawn_with_etxtbsy_retry(
     cmd: &mut std::process::Command,
     spawn: &crate::spawn_managed::ManagedSpawn,
@@ -677,7 +675,7 @@ pub fn supervise_with_stdio(
             if stopping.load(Ordering::SeqCst) {
                 return;
             }
-            let mut cmd = std::process::Command::new(&bin);
+            let mut cmd = crate::spawn_managed::command(&bin);
             // ★★ **`TMUX` 一律不继承**〔事故订正 08-11〕。
             //
             // 被监护的后端会跑 `tmux ls`。tmux 客户端在 `TMUX` 有值时**按它给的 socket 走，
@@ -904,7 +902,7 @@ pub fn supervise_with_stdio(
 /// （RT1 F2 / WIN1 报备：Windows 发版包里旁边没有 ⇒ 窗口里 `CCM_BACKEND_BIN` 一直不设）。
 /// 今天路径由**宿主**交进来：`local_backend_host::running_backend_bin` —— 常驻那条记在 `DETACHED`
 /// （起的 / 接管的都记着那份二进制），被监护那条记着起它时解析出的那一份（`D11`：后端是给定的，不另找一份）。
-/// 本层不认识宿主的句柄表 ⇒ 注入形，与 [`start_or_extract`] 的 `make_executable` 同一个先例。
+/// 本层不认识宿主的句柄表 ⇒ 注入形，与 [`start_or_extract`] 的 `spawn` 同一个先例。
 pub(crate) fn backend_bin_env_for_window(
     running: Option<std::path::PathBuf>,
 ) -> Option<(&'static str, String)> {
@@ -930,9 +928,9 @@ const STALE_PARTIAL_AGE: std::time::Duration = std::time::Duration::from_secs(24
 /// ⚠ 只认自己这套命名（`.<释放名>.<pid>.partial`）：目录是与远端自部署**共用**的
 /// （`~/.cc-monitor/bin`），乱扫会碰到别人的东西。
 /// ⚠ 删不掉就算了（别的进程占着 / 权限）——**清扫失败绝不能挡住释放**，那是主线动作。
-fn sweep_stale_partials(dir: &std::path::Path, extract_name: &str) {
+fn sweep_stale_partials(bin: &OwnBin, extract_name: &str) {
     let prefix = format!(".{extract_name}.");
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = std::fs::read_dir(bin.dir()) else {
         return; // 目录还不存在（首次释放）——没有残骸可收
     };
     for ent in rd.flatten() {
@@ -950,24 +948,25 @@ fn sweep_stale_partials(dir: &std::path::Path, extract_name: &str) {
             .unwrap_or(false);
         if old {
             // 过期的释放半成品（`STALE_PARTIAL_AGE`）：删不掉下次再清。
-            std::fs::remove_file(ent.path()).discard(Why::CleanupAfterFailure);
+            bin.remove(name).discard(Why::CleanupAfterFailure);
         }
     }
 }
 
 /// 挪开的旧 `ccm`（`.<名>.<pid>.old`，Windows 上正在跑的那份删不掉、只能改名挪开）：下一次放置时收，删不掉就下次再说。
-fn sweep_moved_aside(dir: &Path, name: &str) {
+fn sweep_moved_aside(bin: &OwnBin, name: &str) {
     let prefix = format!(".{name}.");
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = std::fs::read_dir(bin.dir()) else {
         return;
     };
     for ent in rd.flatten() {
         let n = ent.file_name();
-        if n.to_str()
-            .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".old"))
+        if let Some(n) = n
+            .to_str()
+            .filter(|n| n.starts_with(&prefix) && n.ends_with(".old"))
         {
             // 换版时挪开的旧 `ccm`：删不掉下次再清。
-            std::fs::remove_file(ent.path()).discard(Why::CleanupAfterFailure);
+            bin.remove(n).discard(Why::CleanupAfterFailure);
         }
     }
 }
@@ -989,14 +988,15 @@ pub enum Unplaced {
 }
 
 /// 暂存件任何结局下都清（形状 A 的要求 ②）；清不掉出声（超过一天的那份由下一次放置的 [`sweep_stale_partials`] 收）。
-fn drop_partial(tmp: &Path) {
-    match std::fs::remove_file(tmp) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => tracing::warn!(
+fn drop_partial(bin: &OwnBin, tmp: &Path) {
+    let Some(name) = tmp.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    if let Err(e) = bin.remove(name) {
+        tracing::warn!(
             "本机后端的暂存件 {} 清不掉（{e}）—— 留着的那份一天后由下一次放置收掉",
             tmp.display()
-        ),
+        );
     }
 }
 
@@ -1037,19 +1037,9 @@ pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, Said> {
     }
 }
 
-/// 暂存件上位：`rename(tmp → dest)`。Windows 上正在跑的那份删不掉、换不掉，但改得了名 ⇒ 换不上时先把旧的
-/// 挪开（`.<名>.<pid>.old`，下一次放置时由 [`sweep_moved_aside`] 收）再上位；挪也挪不开 ⇒ 回第一次的错。
-/// 往 `~/.cc-monitor/bin` 放程序的两条路（[`extract_embedded_to`] · [`place_local_program`]）共用这一份。
-fn rename_into_place(dir: &Path, name: &str, tmp: &Path, dest: &Path) -> std::io::Result<()> {
-    std::fs::rename(tmp, dest).or_else(|first| {
-        let aside = dir.join(format!(".{name}.{}.old", std::process::id()));
-        std::fs::rename(dest, &aside)
-            .and_then(|_| std::fs::rename(tmp, dest))
-            .map_err(|_| first)
-    })
-}
-
-/// P2z：**单 exe 自释放** ——把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
+/// P2z：**单 exe 自释放** ——把手上这份后端字节放到 `<落点>/ccm(.exe)`（它就是后端本身），返回落点。
+/// 落盘经 `own_fs::OwnBin`（暂存 · 置可执行位 · 上位；Windows 上旧的正在跑 ⇒ 先挪成 `.<名>.<pid>.old` 再上位，
+/// 挪开的下一次放置时由 [`sweep_moved_aside`] 收）。
 ///
 /// 放不放**问手上这份字节自己**（`ask` ⇒ `<暂存件> -- --place-verdict`：表 B 本机那一行 · 盘上那份 vs 它自己的 `BUILD_ID`，
 /// 只升不降 —— 判定住后端 `control/deploy_plan.rs::place_verdict`，本层只照答办）：盘上与手上逐字节相同 ⇒ 直接用、不问（事实）；
@@ -1057,42 +1047,39 @@ fn rename_into_place(dir: &Path, name: &str, tmp: &Path, dest: &Path) -> std::io
 /// `keep` ⇒ 用盘上那份 · 说「不」/ 没问成 ⇒ 不放、盘上那份不动（[`Unplaced::Said`]）。暂存件任何结局下都清。
 /// `build_id` = 这份字节自报的身份（只进日志；判定用的是它自己编进去的那一份）。
 pub fn extract_embedded_to(
-    dir: &Path,
+    bin: &OwnBin,
     build_id: &str,
     bytes: &[u8],
-    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
-    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     ask: PlaceAsk<'_>,
 ) -> Result<PathBuf, Unplaced> {
     let name = local_ccm_entry_name();
-    let dest = dir.join(&name);
-    sweep_moved_aside(dir, &name);
+    let dest = bin.dir().join(&name);
+    sweep_moved_aside(bin, &name);
     if std::fs::read(&dest).is_ok_and(|disk| disk == bytes) {
         return Ok(dest);
     }
-    ensure_dir(dir).map_err(Unplaced::Write)?;
-    // 临时名**带 pid**〔`P2t` 摸底 08-12〕：两个同版本 monitor 同时释放各写各的，`rename` 仍是原子的。
-    let tmp = dir.join(format!(".{name}.{}.partial", std::process::id()));
-    sweep_stale_partials(dir, &name);
-    if let Err(e) = std::fs::write(&tmp, bytes) {
-        drop_partial(&tmp);
-        return Err(Unplaced::Write(Said::with_raw(
+    sweep_stale_partials(bin, &name);
+    // 暂存件 `.<名>.<pid>.partial`〔`P2t` 摸底 08-12：带 pid，两个同版本 monitor 同时释放各写各的，上位仍是原子的〕，
+    // 建目录 · 写满 · 置可执行位都在 `OwnBin::stage` 里；没成那一份由它收。
+    let tmp = bin.stage(&name, bytes).map_err(|e| {
+        Unplaced::Write(Said::with_raw(
             copy_text(
                 "rsLocalBackend.extract.writeFailed",
                 &[
-                    ("tmp", &(tmp.display()).to_string()),
+                    (
+                        "tmp",
+                        &(bin
+                            .dir()
+                            .join(format!(".{name}.{}.partial", std::process::id()))
+                            .display())
+                        .to_string(),
+                    ),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
             &e,
-        )));
-    }
-    // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform::fs::make_executable`）。
-    if let Err(e) = make_executable(&tmp) {
-        drop_partial(&tmp);
-        return Err(Unplaced::Write(e));
-    }
+        ))
+    })?;
     let args = serde_json::json!({
         "dest": dest.to_string_lossy(),
         "machine": copy_text("rsLocalBackend.place.thisMachine", &[]),
@@ -1103,17 +1090,17 @@ pub fn extract_embedded_to(
     {
         Ok(true) => {}
         Ok(false) => {
-            drop_partial(&tmp);
+            drop_partial(bin, &tmp);
             tracing::info!("本机后端 {build_id} 没换上去：盘上那一份不比它旧，用盘上那份");
             return Ok(dest);
         }
         Err(said) => {
-            drop_partial(&tmp);
+            drop_partial(bin, &tmp);
             return Err(Unplaced::Said(said));
         }
     }
-    rename_into_place(dir, &name, &tmp, &dest).map_err(|e| {
-        drop_partial(&tmp);
+    bin.put(&name, &tmp).map_err(|e| {
+        drop_partial(bin, &tmp);
         Unplaced::Write(Said::with_raw(
             copy_text(
                 "rsLocalBackend.extract.renameFailed",
@@ -1124,16 +1111,14 @@ pub fn extract_embedded_to(
             ),
             &e,
         ))
-    })?;
-    Ok(dest)
+    })
 }
 
-/// **把一份没有身份戳的本机程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。调用方：
-/// 文件窗口程序（`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）。
+/// **把一份没有身份戳的本机程序放到 `<落点>/<file>`**（落点由调用方给的句柄定：`~/.cc-monitor/bin`，或它底下的 `slots`）。调用方：
+/// 文件窗口程序（`filewin::proc::resolve_window_bin`，monitor 旁边没有它时）· 这一版带着的那几格后端（`deploy::slot_rows`）。
 ///
-/// 与 [`extract_embedded_to`] 同一套落盘：暂存旁名 `.<file>.<pid>.partial` → 置可执行位（平台知识由宿主注入）
-/// → 上位（[`rename_into_place`]：Windows 上旧的那份正在跑 ⇒ 先挪开再上位，挪开的下次放置时收）。
-/// 半截文件不许被当成可执行的程序起起来。
+/// 与 [`extract_embedded_to`] 同一套落盘（`OwnBin::place`）：暂存旁名 `.<file>.<pid>.partial` → 置可执行位
+/// → 上位（Windows 上旧的那份正在跑 ⇒ 先挪开再上位，挪开的下次放置时收）。半截文件不许被当成可执行的程序起起来。
 ///
 /// # 幂等：盘上那份**逐字节相等**才跳过；不同就换成手上这份
 ///
@@ -1145,17 +1130,13 @@ pub fn extract_embedded_to(
 ///
 /// 不起它、不问它会什么 —— 那是调用方的事；这里只让「去盘上找」那一格有东西可找。
 pub fn place_local_program(
-    dir: &Path,
+    bin: &OwnBin,
     file: &str,
     bytes: &[u8],
-    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
-    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
 ) -> Result<PathBuf, std::io::Error> {
-    // 错交回 `io::Error`：调用方按它的种类取原因词（`copy_core::reason`），原话（带路径）进复制详情。
-    // 宿主注入那两样只回一句话 ⇒ 种类判不出（`Other`）。
-    let dest = dir.join(file);
-    sweep_moved_aside(dir, file);
+    // 错交回 `io::Error`（带落点）：调用方按它的种类取原因词（`copy_core::reason`），原话进复制详情。
+    let dest = bin.dir().join(file);
+    sweep_moved_aside(bin, file);
     if let Ok(m) = std::fs::metadata(&dest) {
         if m.is_file()
             && m.len() == bytes.len() as u64
@@ -1164,17 +1145,8 @@ pub fn place_local_program(
             return Ok(dest);
         }
     }
-    ensure_dir(dir).map_err(Said::into_io)?;
-    let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
-    sweep_stale_partials(dir, file);
-    std::fs::write(&tmp, bytes)
-        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", tmp.display())))?;
-    make_executable(&tmp).map_err(Said::into_io)?;
-    rename_into_place(dir, file, &tmp, &dest).map_err(|e| {
-        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 原子写的临时件
-        std::io::Error::new(e.kind(), format!("{}: {e}", dest.display()))
-    })?;
-    Ok(dest)
+    sweep_stale_partials(bin, file);
+    bin.place(file, bytes)
 }
 
 // ── **本机的 `ccm` 入口** ──────────────────────────────
@@ -1598,7 +1570,7 @@ fn local_stdio_consumer_guarded(
 /// 字节只有一个来源：这一份产物内嵌的那份；exe 旁边不找（size2 10-11，理由住模块头注）。
 ///
 /// `embedded` 由调用方给（宿主经 `byte_table::choose` 按这台机器的 (OS, arch) 取来；取不到时是那句拒绝的话）—— 本模块不认识那张表，
-/// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
+/// 也不认识「当前是什么 arch」，那都是宿主知识。落盘（建目录 · 置可执行位 · 上位）经宿主给的 `OwnBin` 句柄。
 ///
 /// # `embedded` 只有一个来源
 ///
@@ -1615,18 +1587,14 @@ fn local_stdio_consumer_guarded(
 /// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_backend_host.rs`）
 /// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，常驻那条就只能另写一份。**
 pub fn resolve_or_extract(
-    extract_dir: &Path,
+    // 落点（`~/.cc-monitor/bin`）的句柄：建目录 · 写暂存件 · 置可执行位 · 上位都经它。
+    bin: &OwnBin,
     embedded: Result<(&str, &[u8]), String>,
-    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
-    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> Resolved {
-    // 字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
-    //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
-    //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
-    // 字节只有一个来源：这一份产物内嵌的那份（宿主交进来）。**落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
+    let extract_dir = bin.dir();
+    // 字节只有一个来源：这一份产物内嵌的那份（宿主交进来）。**落点恒是 `<落点>/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件。
     //   exe 旁边**不找**（size2 10-11）：安装包不再旁放一份；旧安装包留下的那一份可能是旧版本，认它就会把旧后端放到落点上。
     //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
     let resolved = 'resolve: {
@@ -1640,14 +1608,7 @@ pub fn resolve_or_extract(
                 }
             }
         };
-        match extract_embedded_to(
-            extract_dir,
-            build_id,
-            bytes,
-            make_executable,
-            ensure_dir,
-            ask,
-        ) {
+        match extract_embedded_to(bin, build_id, bytes, ask) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
                 // 🔴 **这一支不许被读成「这份产物没带后端」。**
@@ -1675,11 +1636,9 @@ pub fn resolve_or_extract(
 /// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
 /// （住 [`resolve_or_extract`]，理由在它的头注）。
 pub fn start_or_extract(
-    extract_dir: &Path,
+    // 落点的句柄（同 [`resolve_or_extract`]）。
+    bin_dir: &OwnBin,
     embedded: Result<(&str, &[u8]), String>,
-    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
-    // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
     // 交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
@@ -1687,7 +1646,7 @@ pub fn start_or_extract(
     // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let resolved = resolve_or_extract(extract_dir, embedded, make_executable, ensure_dir, ask);
+    let resolved = resolve_or_extract(bin_dir, embedded, ask);
     let Resolved::Found(bin) = resolved else {
         // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
         return (resolved, None);

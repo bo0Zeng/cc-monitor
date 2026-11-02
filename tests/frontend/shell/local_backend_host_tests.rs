@@ -2211,7 +2211,10 @@ fn a_foreign_build_on_the_port_reads_by_its_order() {
 }
 
 /// 起本机后端的失败分两档：动得了手的（删文件 / 停进程 / 改权限位）把下一步交给本机那一台的状态成品；
-/// 诚实降级（这一份产物里没带本机后端 · 释放内嵌也失败）只进日志。`Failed` 的构造点数钉死：新增一处就回来分档。
+/// 诚实降级（这一份产物里没带本机后端 · 释放内嵌也失败 · 家目录问不到、没有落点可放）只进日志。`Failed` 的构造点数钉死：新增一处就回来分档。
+/// 「家目录问不到」不交下一步（不调 `note_local_refused`）：它不是一台机器上动得了手的那一类（没有文件可删、没有进程可停、
+/// 没有权限位可改），问不到家时数据目录、日志落点一并没有；那一句（「无主目录」）经 `note_never_started` 照「没起来」进本机那一行与死亡账，
+/// 不另起一条要人去做什么的提示。
 #[test]
 fn the_user_actionable_start_failures_all_reach_the_user() {
     let prod = guard_core::production_code(include_str!(
@@ -2224,8 +2227,8 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     );
     assert_eq!(
         prod.matches("StartOutcome::Failed {").count(),
-        5,
-        "`StartOutcome::Failed` 的构造点不是 5 处了 —— 新增一处失败就给它分档：\n\
+        6,
+        "`StartOutcome::Failed` 的构造点不是 6 处了 —— 新增一处失败就给它分档：\n\
              动得了手 ⇒ 调 `note_local_refused` 把下一步交给本机那一行；诚实降级 ⇒ 只进日志。\n\
              改完把这个数改对，别只改数。"
     );
@@ -3614,17 +3617,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
     const OWN_HOME: &str = "后端自家目录";
     const DIR_CREATORS: &[(&str, &str, &str)] = &[
         ("platform/fs.rs", "ensure_private_dir", OWN_HOME),
-        (
-            "logging.rs",
-            "build_rolling_appender",
-            "monitor 数据目录下的 logs（滚动日志）",
-        ),
-        (
-            "lib.rs",
-            "open_log_dir",
-            "monitor 数据目录下的 logs（「打开日志目录」）",
-        ),
-        ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
+        // 数据目录底下那几层（日志 · 握手表 · 数据目录本身）经 `platform::own_fs` 建，它落到上面那一个函数。
         (
             // 原 `utils.rs`：原子写搬进 `host-core`（两个前端共用那一份）。
             "host-core/atomic.rs",
@@ -3633,11 +3626,6 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         ),
         // `config.rs::patch_config_at` 那一行摘了：config.json 的目录改走 `platform::fs::ensure_private_dir`（0700）。
         // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
-        (
-            "local_backend_host.rs",
-            "spawn_detached",
-            "monitor 数据目录下的 logs/backend（交给脱离后端的 stderr 文件）",
-        ),
     ];
     fn creations(rel: &str, prod: &str) -> Vec<(String, String)> {
         let needles = [
@@ -3955,38 +3943,39 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
 }
 
 /// **用户级 PATH 上写的那个目录（后端按落点算），就是本机真放 `ccm` 下去的那个。**
-/// 真落点：`install_local_ccm_entry` 的 `dir` 实参，`local_backend_host.rs` 算的 `extract_dir`；按源码文本对拍（跑起来要一台 Windows）。
-/// 有人改成用一个中间变量拼路径，它会**红**而不是静默放过：「PATH 指向一个空目录」与「根本没补 PATH」在用户终端上是同一个结果。
+/// 真落点：`local_backend_host.rs` 起本机后端时的 `extract_dir` ＝ `own_fs::OwnBin::issue()` 那一层；
+/// 那一层真跑一次（家喂成临时目录）比对后端落点那个常量的目录，加上源码里 `extract_dir` 恰取自那个句柄。
+/// 有人改成另拼一个路径，它会**红**而不是静默放过：「PATH 指向一个空目录」与「根本没补 PATH」在用户终端上是同一个结果。
 #[test]
 fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
     let (dir, _) = relay_route_core::BACKEND_LANDING_REL
         .rsplit_once('/')
         .expect("后端落点的目录");
-    // `.cc-monitor/bin` ⇒ `.join(".cc-monitor").join("bin")` —— 真落点那一行的形状。
-    let want: String = dir
-        .split('/')
-        .map(|seg| format!(".join(\"{seg}\")"))
-        .collect::<Vec<_>>()
-        .join("");
-
-    // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_backend_host.rs` 算的 `extract_dir`。
-    //
-    // ⚠ **比之前先把空白抹掉**：rustfmt 会把 `.join(…)` 链断成几行，按原文 `contains` 会漏掉它。
+    let home = std::env::temp_dir().join(format!("ccm-path-line-{}", std::process::id()));
+    let bin = crate::platform::own_fs::OwnBin::issue_with(&|k| {
+        matches!(k, "HOME" | "USERPROFILE").then(|| home.clone().into_os_string())
+    })
+    .expect("家是绝对路径");
+    let want = dir.split('/').fold(home.clone(), |p, seg| p.join(seg));
+    assert_eq!(
+        bin.dir(),
+        want,
+        "放 ccm 的那一层不是后端落点那个常量的 `{dir}` —— 「PATH 上写的那个目录」与「盘上真放 ccm 的那个目录」分家了。\n\
+             ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
+    );
+    // ⚠ 先把空白抹掉再比：rustfmt 会把链式调用断成几行。
     let squeeze = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-    let want = squeeze(&want);
-    let hosts: [(&str, &str); 1] = [(
-        "local_backend_host.rs",
-        include_str!("../../../src/frontend/shell/src/local_backend_host.rs"),
-    )];
-    for (name, raw) in hosts {
-        let prod = squeeze(&guard_core::production_code(raw));
-        assert!(
-            prod.contains(&want),
-            "`{name}` 的生产段里找不到 `{want}` —— 也就是说\
-                 「PATH 上写的那个目录」与「盘上真放 ccm 的那个目录」已经分家了。\n\
-                 PATH 那一侧现算自后端落点那个常量的 `{dir}`；\
-                 要么那个常量改错了，要么真落点搬了家而这一侧没跟。\n\
-                 ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
+    let prod = squeeze(&guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    )));
+    for needle in [
+        "letSome(bin)=crate::platform::own_fs::OwnBin::issue()else{",
+        "letextract_dir=bin.dir().to_path_buf();",
+    ] {
+        assert_eq!(
+            prod.matches(needle).count(),
+            1,
+            "`local_backend_host.rs` 起本机后端时的落点不再恰取自 `OwnBin::issue()`（`{needle}`）—— 真落点另拼了一份"
         );
     }
 }
