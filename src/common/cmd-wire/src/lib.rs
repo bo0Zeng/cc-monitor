@@ -22,7 +22,7 @@
 //! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
 //! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的入参与回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录；
-//!   记录那一格的认不认得 [`record::mend_records`]）；
+//!   记录那一格认不认得的判法与认不出那一条的句子住 `face_core::record`）；
 //! - [`md`]：助手正文的块树（[`md::Doc`]：后端 `md-core` 解析一次，两端只照它排版）与一段的高亮回包（[`md::SegHl`]）；
 //! - [`open`]：起会话那两条（`session-open` · `session-open-facts`）的入参；
 //! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
@@ -31,7 +31,7 @@
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
-//! - [`search`]：全文搜索那一族（一台的回包 · 几台合好的那一份）与几台合一份那一步（[`search::merge`]，本机后端与手机核心调同一份）；
+//! - [`search`]：全文搜索那一族的线上形（一台的回包 · 几台合好的那一份）；几台合一份那一步住 `face_core::search::merge`（本机后端与手机核心调同一份）；
 //! - [`rewind`]：编辑已发的一句（发送时选怎么退）随那句带的那一份 · 发送那一下的选项（`session-rewind-options`）；
 //! - [`queue`]：会话输入队那三条（`session-queue-*`）的入参与回执 · 一条会话的名单（也是 `changed {session_queue}` 的体）；
 //! - [`tasks`]：`tasks-list` 的回包（一个会话的任务列表，也是 `changed {tasks}` 的体）；

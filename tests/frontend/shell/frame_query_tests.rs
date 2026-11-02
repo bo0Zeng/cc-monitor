@@ -360,10 +360,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
     ),
     // `terminal-unfollow` 不在这里：界面不发它（撤流即可），由 monitor 替界面发 —— 见 [`SENT_BY_MONITOR_ONLY`]。
-    // 问到各台搜一遍、合一份：本机后端自己扇出（别的台经 `--resident-call` 问它的常驻 `history-search`）、合并排序（`cmd_wire::search::merge`）。
+    // 问到各台搜一遍、合一份：本机后端自己扇出（别的台经 `--resident-call` 问它的常驻 `history-search`）、合并排序（`face_core::search::merge`）。
     (
         "history-search-merge",
-        "本机后端问到各台的 `history-search`、合一份：`src/backend/faces/search_face.rs::merge_with`（`cmd_wire::search::merge`）；\
+        "本机后端问到各台的 `history-search`、合一份：`src/backend/faces/search_face.rs::merge_with`（`face_core::search::merge`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。

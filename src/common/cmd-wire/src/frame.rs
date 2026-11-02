@@ -2,7 +2,7 @@
 //!
 //! 一帧一行 JSON，`kind` 是标签、写在最前，其余格平铺；每种帧一个具名结构（变体名就是 `kind` 的驼峰写法）。
 //! 记录那一格（`line.record`）是类型参数 `R`：后端用 [`Record`]；原文照转的一端用 `Box<RawValue>`（不建树）；
-//! 手机用 [`crate::record::OrUnread`]（解不开的那一条成认不出那一条，整帧不失败）。
+//! 手机用 `face_core::record::OrUnread`（解不开的那一条成认不出那一条，整帧不失败）。
 //! TS 名带 `Wire` 前缀的那几样（只进形状指纹，不导出）：界面另有壳给的同名形状。
 //! 体格 `Probe.cell` · `Reply.data` · `Changed.body` 仍是 JSON 值（各自的形状在那条命令 / 那一格的生成类型里）。
 
@@ -57,7 +57,7 @@ pub fn decode<'a, R: Deserialize<'a>>(line: &'a str) -> serde_json::Result<Frame
     }
 }
 
-/// 帧表里 `line` 那一行按它算：记录那一格不进帧的指纹（记录认不认得一条一条判：手机的 [`crate::record::OrUnread`] · 界面认不出那张卡）。
+/// 帧表里 `line` 那一行按它算：记录那一格不进帧的指纹（记录认不认得一条一条判：手机的 `face_core::record::OrUnread` · 界面认不出那张卡）。
 #[cfg(any(test, feature = "ts"))]
 #[derive(ts_rs::TS)]
 #[ts(type = "unknown", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))]

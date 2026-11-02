@@ -4,6 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 码缺着的那一次失败投成应答时补的码（协议文档里的兜底码）：线上那一格的值，全仓只此一处。
+pub const FALLBACK_CODE: &str = "failed";
+
 /// 码给程序认；`said` 是给人看的那一句（不含码与下层原话）；`detail` 是复制详情那几行（时刻 · 机器 · 命令 · 码 · 原话，
 /// 写的那一端排好、读的那一端原样复制；这一侧自己说的、没有详情 ⇒ 空串）；`data` 只给按码定了形的那几个码。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,7 +28,7 @@ impl Failed {
     /// 只有一句话（这一侧说的：没有对端给的码 ⇒ 兜底码；没有详情）。
     pub fn local(said: String) -> Failed {
         Failed {
-            code: copy_core::said::FALLBACK_CODE.to_string(),
+            code: FALLBACK_CODE.to_string(),
             said,
             detail: String::new(),
             data: None,
@@ -35,7 +38,7 @@ impl Failed {
     /// 对端给的码缺着（没走到命令那一层）⇒ 兜底码。
     pub fn code_or_fallback(code: Option<String>) -> String {
         code.filter(|c| !c.is_empty())
-            .unwrap_or_else(|| copy_core::said::FALLBACK_CODE.to_string())
+            .unwrap_or_else(|| FALLBACK_CODE.to_string())
     }
 }
 

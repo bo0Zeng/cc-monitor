@@ -263,10 +263,11 @@ pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec
 }
 
 /// **相邻的认不出那几条并成一条**（适配层每行给一条 `unread`，并是出成品这一遍的事）：`into` 与 `next` 都是 `unread`、
-/// 原因与类型都一样 ⇒ `count` 加上、`text` 照新的数重写（[`crate::agents::record::unread_text`]），回 `true`；否则不动、回 `false`。
+/// 原因与类型都一样 ⇒ `count` 加上、`text` 照新的数重写（[`face_core::record::unread_text`]），回 `true`；否则不动、回 `false`。
 /// 只看通用记录的格，不认哪一家。
 pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
-    use crate::agents::record::{unread_text, Body};
+    use crate::agents::record::Body;
+    use face_core::record::unread_text;
     use serde::Deserialize as _;
     // 先按类别那一格挑（便宜）：两条都是认不出的那一类才解成通用记录看原因与类型（不按键名取字）。
     let is_unread = |v: &Value| v.get("t").and_then(Value::as_str) == Some("unread");

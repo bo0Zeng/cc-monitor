@@ -955,7 +955,7 @@ mod specimens {
             crate::agents::record::UnreadWhy::UnknownType,
             crate::agents::record::UnreadWhy::ParseFailed,
         ] {
-            out.push(rec(Body::unread(why, some("k"), "{}")));
+            out.push(rec(face_core::record::unread_body(why, some("k"), "{}")));
         }
         out.iter().map(node_of).collect()
     }

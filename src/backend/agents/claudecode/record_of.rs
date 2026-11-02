@@ -242,7 +242,7 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
             Some(rec_of(
                 uuid.unwrap_or_default(),
                 timestamp,
-                Body::unread(why, original_type, &raw),
+                crate::agents::record::unread_body(why, original_type, &raw),
             ))
         }
         _ => None,

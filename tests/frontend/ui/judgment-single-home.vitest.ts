@@ -328,11 +328,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
     // 翻 `zero`：界面只问本机后端 `history-search-merge`，它自己问到各台（各台常驻索引保热）、合并排序再答
-    //   （`cmd_wire::search::merge` → `sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
+    //   （`face_core::search::merge` → `cmd_wire::search::sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
     // 通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）；
-    //   排序那一个与合并同住线上形那一份（`cmd-wire/src/search.rs`），口径的家只转出它。
-    homes: ["cmd-wire::sort_by_recency", "cmd-wire::merge", "src/backend/history/search_rules.rs::clamp_limit"],
+    //   排序那一个住线上形那一份（`cmd-wire/src/search.rs`，不写字），合并写结果头那一句住 `face-core/src/search.rs`。
+    homes: ["cmd-wire::sort_by_recency", "face-core::merge", "src/backend/history/search_rules.rs::clamp_limit"],
     status: "zero",
     defs: ["mergeSearchResults"],
     needles: [
@@ -858,8 +858,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     text: NONE,
     prose: NONE,
     tool_result: NONE,
-    // 几台的搜索结果合一份 · 最近优先那一个排序（本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份，TS 侧没有孪生。
-    merge: "J15",
+    // 最近优先那一个排序（合几台结果的 `face_core::search::merge` 调它）：界面只照抄合好的那一份，TS 侧没有孪生。
     sort_by_recency: "J15",
     // `history-search` 入参 `scope` 的那个词（`SearchScope::word`，后端口径那一层读）：界面按生成的 TS 类型发，TS 侧没有孪生。
     word: NONE,
@@ -883,10 +882,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bytes: NONE,
     // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
     key: NONE,
-    // `calls!` 表里每条的名字 · 记录那一格认不认得（手机嵌的 Rust 核心判）。
+    // `calls!` 表里每条的名字 · 哪几条回包的哪一列带记录（形状，判认不认得的是 `face_core::record`）。
     //   界面按生成的 TS 类型收、不另判，TS 侧没有孪生。
     COMMANDS: NONE,
-    mend_records: NONE,
+    records_cell: NONE,
     // 判据用的照类型解再写回（手机生成的类写回要与它逐字节同）；TS 侧没有孪生。
     typed_text: NONE,
     // 拨号那一侧：竞速顺序（没给就只有 host:port）· 「没够着那一台」那几个原因码（ack 带着它，手机照说、不自己判）。界面不拨号，TS 侧没有孪生。
@@ -896,12 +895,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
     of: NONE,
-    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份）。
+    // 认不出的那一条（`record`）的形状：原文摘录的截法 · 认得的那几类（那一句与判法住 `face_core::record`）。
     //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
     EXCERPT_BYTES: NONE,
     excerpt_of: NONE,
-    unread_text: NONE,
-    unread: NONE,
+    BODY_TAGS: NONE,
+    // 线上 `failed` 那一格的兜底码（`Said::code_or_fallback` 引它）：界面照回包里的码判，TS 侧没有孪生。
+    FALLBACK_CODE: NONE,
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
@@ -940,6 +940,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 历史那几行按哪台换说法的两格（`face-core/src/history_asks.rs`）：本机后端写行时算、界面照摆；TS 侧没有孪生。
     reveal_of: NONE,
     delete_ask: NONE,
+    // 认不出的那一条（`face-core/src/record.rs`）：那一句 · 那一形 · 判认不认得 · 回包里记录那一格逐条判（后端适配层与手机核心同一份）；
+    //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
+    unread_text: NONE,
+    unread_body: NONE,
+    of: NONE,
+    mend_records: NONE,
+    // 几台的搜索结果合一份、写结果头那一句（`face-core/src/search.rs`；本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份。
+    merge: "J15",
   },
   "md-core": {
     // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
@@ -999,7 +1007,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 「对象」那一项（只收标识：会话写机器 ＋ 短 sid，不写标题）；界面不写详情。
     target: NONE,
     // 「码 ＋ 一句 ＋ 原话 ＋ data」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
-    FALLBACK_CODE: NONE,
     and_raw: NONE,
     code_or_fallback: NONE,
     coded: NONE,
