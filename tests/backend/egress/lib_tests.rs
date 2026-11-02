@@ -254,6 +254,28 @@ fn a_loopback_destination_never_goes_through_the_proxy() {
     assert!(asks.try_recv().is_err(), "代理不该收到一问");
 }
 
+/// 「留在这台」（`describe::stays_on_this_machine`）＝ 回环那一个事实（`upstream_url_core::upstream_is_loopback`）
+/// 再加 `*.localhost`（RFC 6761 约定解到回环）与尾点：IPv4 映射的回环两份都认；`a.localhost` 回环判法否、这里是。
+#[test]
+fn staying_on_this_machine_is_the_loopback_fact_plus_localhost_names() {
+    let e = Egress::via("http://127.0.0.1:3128", "");
+    // (主机, 回环那一个事实, 留在这台)
+    for (h, fact, stays) in [
+        ("127.0.0.1", true, true),
+        ("::ffff:127.0.0.1", true, true),
+        ("[::ffff:127.0.0.1]", true, true),
+        ("localhost", true, true),
+        ("a.localhost", false, true),
+        ("localhost.", false, true),
+        ("::ffff:10.0.0.1", false, false),
+        ("localhost.evil", false, false),
+    ] {
+        assert_eq!(upstream_url_core::upstream_is_loopback(h), fact, "{h}");
+        assert_eq!(describe::stays_on_this_machine(h), stays, "{h}");
+        assert_eq!(e.hop_for(h) == Hop::Direct, stays, "{h}");
+    }
+}
+
 /// 免代理表：`*` · 名字与它的子域 · IP · CIDR ⇒ 直连；别的照代理。
 #[test]
 fn the_no_proxy_list_sends_matching_destinations_direct() {

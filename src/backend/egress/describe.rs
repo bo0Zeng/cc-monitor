@@ -143,10 +143,10 @@ impl Egress {
 
     /// 到 `host` 怎么走：回环恒直连（代理够不到这台的回环）· 免代理表命中 ⇒ 直连 · 否则照代理那一格。
     pub fn hop_for(&self, host: &str) -> Hop<'_> {
-        let h = bare_host(host);
-        if is_loopback(&h) {
+        if stays_on_this_machine(host) {
             return Hop::Direct;
         }
+        let h = bare_host(host);
         match &self.proxy {
             Setting::Direct => Hop::Direct,
             Setting::Unreadable { from, why } => Hop::Refuse { from, why },
@@ -164,11 +164,11 @@ fn bare_host(host: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn is_loopback(h: &str) -> bool {
-    match h.parse::<IpAddr>() {
-        Ok(ip) => ip.to_canonical().is_loopback(),
-        Err(_) => h == "localhost" || h.ends_with(".localhost"),
-    }
+/// 到 `host` 留在这台（代理够不到这台的回环 ⇒ 恒直连）：回环那一个事实（[`upstream_url_core::upstream_is_loopback`]，
+/// 这里不另判 IP）再宽一截 —— 尾点去掉、`*.localhost` 也算（RFC 6761 约定这一族名字解到回环）。
+pub(crate) fn stays_on_this_machine(host: &str) -> bool {
+    let h = bare_host(host);
+    upstream_url_core::upstream_is_loopback(&h) || h.ends_with(".localhost")
 }
 
 impl NoProxy {

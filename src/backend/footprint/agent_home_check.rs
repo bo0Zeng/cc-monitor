@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AgentHomeCheckReq {
-    /// 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）。
+    /// 要查的目录：绝对路径，或 `~` 打头（`~` · `~/…` · `~\…`，按这台家目录展开）。
     pub(crate) path: String,
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn verdict(dir: &Path) -> Verdict {
     }
 }
 
-/// 帧面入口：`{path}`（绝对路径，或 `~/` 开头按这台家目录展开）⇒ `{state}`。
+/// 帧面入口：`{path}`（绝对路径，或 `~` 打头按这台家目录展开）⇒ `{state}`。
 pub(crate) fn answer_check(req: &AgentHomeCheckReq) -> Result<AgentHomeCheck, Said> {
     answer_check_with(req, crate::platform::paths::home_dir())
 }
@@ -81,17 +81,11 @@ pub(crate) fn answer_check_with(
             malformed("`path` must be a non-empty string"),
         ));
     }
-    let path = if raw == "~" || raw.starts_with("~/") {
-        let home =
-            home.ok_or_else(|| Said::new("bad_args", malformed("home directory unresolvable")))?;
-        if raw == "~" {
-            home
-        } else {
-            home.join(&raw[2..])
-        }
-    } else {
-        PathBuf::from(raw)
-    };
+    // 家目录说不出 ⇒ 原样，落到下面「不是绝对路径」那一条。
+    let path = PathBuf::from(crate::platform::paths::expand_tilde_from(
+        raw,
+        home.as_deref(),
+    ));
     if !path.is_absolute() {
         return Err(Said::new(
             "bad_args",

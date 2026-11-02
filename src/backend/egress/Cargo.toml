@@ -14,17 +14,16 @@ path = "lib.rs"
 [dependencies]
 # 字节上限的类型（`Cap`：数与超了怎么办写在一处）住契约包；它也零依赖，引它不给本包带进第三方包。
 relay-route-core = { path = "../../common/relay-route-core" }
-# 测试档不许出网：真开 TCP 的那个目的地不是回环 ⇒ panic（回环判定只有 `upstream_is_loopback` 那一个家）。只在测试档进来。
-upstream-url-core = { path = "../../common/upstream-url-core", optional = true }
+# 回环那一个事实只有 `upstream_is_loopback` 那一个家：直连判定（`describe::stays_on_this_machine`）与测试档不许出网那一句都问它。零依赖。
+upstream-url-core = { path = "../../common/upstream-url-core" }
 
 [features]
 # 后端 · 拨号核心的测试档经 dev 依赖开它（resolver 2 ⇒ 不并进发布构建）。
-test-support = ["dep:upstream-url-core"]
+test-support = []
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
-upstream-url-core = { path = "../../common/upstream-url-core" }
 
 [lints.clippy]
 # 禁的路径与理由住上一级的 `clippy.toml`（零定时器 · 出站 TCP 只在这里开那两组；开 TCP 的那一处就地放行）。

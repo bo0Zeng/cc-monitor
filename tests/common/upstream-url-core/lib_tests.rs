@@ -40,3 +40,17 @@ fn parse_keeps_the_parts_and_plaintext_is_only_usable_on_loopback() {
         Unusable::Shape(ShapeIssue::BadScheme)
     );
 }
+
+/// 回环是一个事实、只在这里判：IPv4 映射的 IPv6（`::ffff:127.x`）就是那个 IPv4，照它判；
+/// `*.localhost` 只是约定（RFC 6761），这里不算 —— 出网要更宽的那一截住 egress 那一份有名字的判法。
+/// egress 那一份喂同一张表的结论在 `tests/backend/egress/lib_tests.rs`（`stays_on_this_machine`）。
+#[test]
+fn a_v4_mapped_loopback_is_loopback_and_a_localhost_subdomain_is_not() {
+    for yes in ["::ffff:127.0.0.1", "[::ffff:127.0.0.1]", "::ffff:127.1.2.3"] {
+        assert!(upstream_is_loopback(yes), "{yes:?}");
+    }
+    assert!(usable("http://[::ffff:127.0.0.1]:8080").is_ok());
+    for no in ["::ffff:10.0.0.1", "a.localhost"] {
+        assert!(!upstream_is_loopback(no), "{no:?}");
+    }
+}
