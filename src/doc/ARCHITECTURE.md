@@ -367,7 +367,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 ### 3.8 格目录与 `BUILD_ID`
 
-- **身份**：`src/backend/lib.rs` 的 `BUILD_ID` 是这份后端二进制的身份，编进字节里的身份戳（`CC_MONITOR_BUILD_STAMP`）。换不换后端只按它判：桌面按内嵌字节自报的那个 id，手机按自己带的那个，远端那台自报的 `build_id` 对不上就要换。
+- **身份**：`src/backend/common/id.rs` 的 `BUILD_ID` 是这份后端二进制的身份，编进字节里的身份戳（`CC_MONITOR_BUILD_STAMP`，住主 crate `lib.rs`）。换不换后端只按它判：桌面按内嵌字节自报的那个 id，手机按自己带的那个，远端那台自报的 `build_id` 对不上就要换。
 - **什么时候打**：加 / 删命令、改帧形、改冻结格时，合进主线那一刻打新号（`tests/scripts/bump-build-id.sh`：改 `BUILD_ID`，子命令集变了就把指纹历史表里最老那行换掉），再 `tests/scripts/re-embed.sh` 重铺内嵌字节。
 - **格目录**（§2.9）与 `BUILD_ID` 同拍：新格进目录、金样重写、冻结格只许加，判据 `tests/backend/faces/cells_catalog_tests.rs`。
 
