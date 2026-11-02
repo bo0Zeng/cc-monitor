@@ -32,10 +32,10 @@ const WRITE_CALLS: &[&str] = &[
 /// 新落点要在这里登记，就得先说清它落在哪一类不是用户文件的地方。
 #[allow(clippy::type_complexity)]
 const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
-    // ── 这里原来有 `local_backend.rs` 的六行（`extract_embedded_to` 自释放后端 · `place_local_program` 放文件窗口程序 ·
-    //    `rename_into_place` 上位 · `drop_partial` / `sweep_stale_partials` / `sweep_moved_aside` 收暂存件与旧版），
-    //    全是 `~/.cc-monitor/bin/` 底下我们自己的部署物。那几件改经 `platform/own_fs.rs` 的 `OwnBin`（暂存 · 上位 · 删），
-    //    本文件零写盘 ⇒ 摘行；写的是什么、为什么不是安装动作，归下面 `own_fs.rs` 那几行。
+    // ── `local_backend.rs` 往 `~/.cc-monitor/bin/` 放我们自己的部署物（`extract_embedded_to` 自释放后端 ·
+    //    `place_local_program` 放文件窗口程序 · 暂存件上位 · `drop_partial` / `sweep_stale_partials` / `sweep_moved_aside`
+    //    收暂存件与旧版）都经 `platform/own_fs.rs` 的 `OwnBin`（暂存 · 上位 · 删），本文件零写盘；
+    //    写的是什么、为什么不是安装动作，归下面 `own_fs.rs` 那几行。
     // ── 这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
     //    只有后端的文件管理部分写文件，本机也算 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /

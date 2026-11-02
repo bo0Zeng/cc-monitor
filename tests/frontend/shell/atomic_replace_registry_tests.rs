@@ -19,8 +19,8 @@ const RULE: &str = "\
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, &str, &str, &str)] = &[
-    // `local_backend.rs [rename]`（`rename_into_place`：自释放的后端 · 本机 `ccm` 入口 · 文件窗口程序先写暂存件再上位）摘了 ——
-    //   壳自己的部署物改经 `platform/own_fs.rs`（`OwnBin` 上位那一口），这一层不再直接 rename；换名都归下面 `own_fs.rs` 那一行。
+    // 壳自己的部署物（自释放的后端 · 本机 `ccm` 入口 · 文件窗口程序）暂存件上位经 `platform/own_fs.rs` 的 `OwnBin`，
+    //   `local_backend.rs` 不直接 rename；换名都归下面 `own_fs.rs` 那一行。
     // `cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     // `config.rs [rename]`（`patch_config_at`：config.json 临时件上位）同样摘了 —— 改经 `own_fs.rs` 的原子写。
     // `logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
