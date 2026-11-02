@@ -161,7 +161,7 @@ class RecordUnits {
         return r.blocks.mapIndexedNotNull { i, b ->
             val key = "$id#$i"
             when (b) {
-                is Block.Text -> b.text.takeIf { it.isNotBlank() }?.let { RenderUnit.AssistantMarkdown(key, it, id) }
+                is Block.Prose -> b.doc.takeIf { it.blocks.isNotEmpty() }?.let { RenderUnit.AssistantMarkdown(key, it, id) }
                 is Block.Thinking -> RenderUnit.Thinking(key, b.text, id)
                 is Block.ToolUse -> toolCall(r, i, b, results)
                 else -> null

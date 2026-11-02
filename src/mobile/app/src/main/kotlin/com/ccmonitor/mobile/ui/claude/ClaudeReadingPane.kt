@@ -57,7 +57,7 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.StreamItem
-import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
+import com.ccmonitor.mobile.core.claude.model.codeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -91,34 +91,28 @@ fun ClaudeReadingPane(
     said: SaidHooks? = null,
 ) {
     val tokens = LocalAppTokens.current
-    // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
-    ProvideMarkwon {
-        LazyColumn(
-            state = listState,
-            modifier = modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(tokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.md),
-        ) {
-            // key 用 RenderUnit.key（uuid#blockIndex，身份稳定），流式追加不漂移。
-            //
-            // `contentType` 要给：卡片有好几种，不给的话 Compose 会试图把一种卡的组合复用到另一种上。
-            // 更要紧的是它与 `AndroidView` 的 View 复用串联：Markwon 走 `AndroidView`，View 复用只在外层组合被复用时发生；
-            // 没有 contentType 组合就不复用，每滑一屏都在重建 TextView、重跑 Markwon。
-            // 在就地编辑的那一句排第几：它后面的都淡掉（示意从这里往后会退掉）。
-            val editAt = said?.editing?.let { k -> items.indexOfFirst { (it as? StreamItem.Card)?.unit?.key == k } } ?: -1
-            itemsIndexed(items, key = { _, s -> s.key }, contentType = { _, s -> (s as? StreamItem.Card)?.unit?.let { u -> u::class } ?: s::class }) { i, item ->
-                val fade = if (editAt in 0 until i) Modifier.alpha(EDIT_FADE) else Modifier
-                when (item) {
-                    is StreamItem.Process -> Box(fade) { process(item) }
-                    // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
-                    is StreamItem.Card ->
-                        Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
-                            UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge, said)
-                        }
-                }
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(tokens.spacing.md),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+    ) {
+        // key 用 RenderUnit.key（uuid#blockIndex，身份稳定），流式追加不漂移。
+        // `contentType` 要给：卡片有好几种，不给的话 Compose 会试图把一种卡的组合复用到另一种上。
+        // 在就地编辑的那一句排第几：它后面的都淡掉（示意从这里往后会退掉）。
+        val editAt = said?.editing?.let { k -> items.indexOfFirst { (it as? StreamItem.Card)?.unit?.key == k } } ?: -1
+        itemsIndexed(items, key = { _, s -> s.key }, contentType = { _, s -> (s as? StreamItem.Card)?.unit?.let { u -> u::class } ?: s::class }) { i, item ->
+            val fade = if (editAt in 0 until i) Modifier.alpha(EDIT_FADE) else Modifier
+            when (item) {
+                is StreamItem.Process -> Box(fade) { process(item) }
+                // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
+                is StreamItem.Card ->
+                    Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
+                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge, said)
+                    }
             }
-            trailer()
         }
+        trailer()
     }
 }
 
@@ -588,9 +582,9 @@ private fun AssistantMarkdownCard(
     matched: Boolean,
     onCopyCode: (String) -> Unit,
 ) {
-    val codeBlocks = remember(unit.markdown) { extractCodeBlocks(unit.markdown) }
+    val codeBlocks = remember(unit.doc) { unit.doc.codeBlocks() }
     Column(Modifier.fillMaxWidth().matchHighlight(matched)) {
-        MarkdownText(unit.markdown, modifier = Modifier.fillMaxWidth())
+        MarkdownText(unit.doc, modifier = Modifier.fillMaxWidth())
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SecondaryButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
