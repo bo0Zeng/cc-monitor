@@ -1,10 +1,69 @@
+# 中转（`comms-outward`）自己这一份，盖住上一层 `src/comms/clippy.toml`；除出站 TCP 那一组，几组与那一份同组。
+# 几组名单共用 `disallowed_methods` 一个 lint 名：放行只放在最小的作用域上（一条语句，或只做这一件事的小函数），
+#   写 `#[expect(clippy::disallowed_methods, reason = "…")]`，不写 `allow`；放大了，同名的别的组也一起放过。
+# 测试段放开（库根头上那一行 `cfg_attr(test, …)`）。本包不依赖 tokio ⇒ tokio 那几条带 `allow-invalid`（防它长出来）。
+#
 # 出站 TCP 不在中转里开：去上游经宿主交进来的那一口（`upstream::connect`；后端交的是出网口 `egress::open`），
 # 中转自己开一条就绕过了代理。经第三方 crate 间接开的连接认不出。后端那棵另有一份同组的 `clippy.toml`。
-# 测试段放开（库根头上那一行 `cfg_attr(test, …)`）。
+# 定时器：会让线程 / 任务自己醒来的构件；`Instant::now` 不收（量一次等待用，不是自己醒来）。
+# 读盘 · 读环境：钥匙、端口、期限、上游选择都由后端交进来，中转自己不读盘、不读环境。
+# 起进程 · 绑端口：监听口由后端绑好交进来（`Relay::new`），中转不起进程。
+# 期限字面量（`Duration::from_*`）：两个期限值由后端交进来；中转自己定的数逐处放行，reason 写这个数管哪一次等待。
+# 静默丢（`try_send`）：丢只许经 `Gap`（接收方看得见缺了哪一段），发 `Gap` 那一处放行。
 disallowed-methods = [
   { path = "std::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口" },
   { path = "std::net::TcpStream::connect_timeout", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口" },
   { path = "tokio::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
   { path = "tokio::net::TcpSocket::new_v4", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
   { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
+
+  { path = "std::thread::sleep", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::thread::park_timeout", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::Condvar::wait_timeout", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::Condvar::wait_timeout_while", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "tokio::time::sleep", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去", allow-invalid = true },
+  { path = "tokio::time::sleep_until", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去", allow-invalid = true },
+  { path = "tokio::time::interval", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去", allow-invalid = true },
+  { path = "tokio::time::interval_at", reason = "中转的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去", allow-invalid = true },
+
+  { path = "std::fs::read", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::read_to_string", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::read_dir", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::read_link", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::metadata", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::symlink_metadata", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::canonicalize", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::File::open", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "std::fs::OpenOptions::open", reason = "中转不读盘：要的东西都由后端交进来" },
+  { path = "tokio::fs::read", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+  { path = "tokio::fs::read_to_string", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+  { path = "tokio::fs::read_dir", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+  { path = "tokio::fs::metadata", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+  { path = "tokio::fs::File::open", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+  { path = "tokio::fs::OpenOptions::open", reason = "中转不读盘：要的东西都由后端交进来", allow-invalid = true },
+
+  { path = "std::env::var", reason = "中转不读环境：要的值由后端交进来" },
+  { path = "std::env::var_os", reason = "中转不读环境：要的值由后端交进来" },
+  { path = "std::env::vars", reason = "中转不读环境：要的值由后端交进来" },
+  { path = "std::env::vars_os", reason = "中转不读环境：要的值由后端交进来" },
+
+  { path = "std::process::Command::new", reason = "中转不起进程" },
+  { path = "tokio::process::Command::new", reason = "中转不起进程", allow-invalid = true },
+  { path = "std::net::TcpListener::bind", reason = "中转不绑端口：监听口由后端绑好交进来" },
+  { path = "std::net::UdpSocket::bind", reason = "中转不绑端口：监听口由后端绑好交进来" },
+  { path = "std::os::unix::net::UnixListener::bind", reason = "中转不绑端口：监听口由后端绑好交进来" },
+  { path = "tokio::net::TcpListener::bind", reason = "中转不绑端口：监听口由后端绑好交进来", allow-invalid = true },
+  { path = "tokio::net::UdpSocket::bind", reason = "中转不绑端口：监听口由后端绑好交进来", allow-invalid = true },
+  { path = "tokio::net::UnixListener::bind", reason = "中转不绑端口：监听口由后端绑好交进来", allow-invalid = true },
+
+  { path = "std::time::Duration::from_secs", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_millis", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_micros", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_nanos", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_secs_f32", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_secs_f64", reason = "期限由后端交进来；中转自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+
+  { path = "tokio::sync::mpsc::Sender::try_send", reason = "满了就丢、没人知道：丢只许经 `Gap`，发 `Gap` 那一处放行", allow-invalid = true },
+  { path = "std::sync::mpsc::SyncSender::try_send", reason = "满了就丢、没人知道：丢只许经 `Gap`，发 `Gap` 那一处放行" },
 ]
