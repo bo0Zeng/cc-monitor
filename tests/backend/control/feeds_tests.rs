@@ -505,16 +505,16 @@ async fn each_streams_watch_list_for_a_machine_unions_into_that_machines_desk() 
     let from = watch_at(machine, a.0, ask(&["s1", "s2"], &["k1"])).await;
     assert!(from.is_empty(), "那台没接着，却回了从第几行起：{from:?}");
     let _ = watch_at(machine, b.0, ask(&["s2", "s3"], &[])).await;
-    assert_eq!(desk_of(machine).sids(), set(&["s1", "s2", "s3"]));
+    assert_eq!(desk_of(machine).watched(), set(&["s1", "s2", "s3"]));
     assert_eq!(union_of(machine).1, set(&["k1"]));
     drop(a);
     assert_eq!(
-        desk_of(machine).sids(),
+        desk_of(machine).watched(),
         set(&["s2", "s3"]),
         "那条流走了，它报的那几条还在那台的名单里"
     );
     drop(b);
-    assert!(desk_of(machine).sids().is_empty());
+    assert!(desk_of(machine).watched().is_empty());
 }
 
 /// 那台说的一帧会话帧（一行）：宣告 / 离开，脸照后端的构造口造。
