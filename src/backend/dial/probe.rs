@@ -36,8 +36,8 @@ pub(crate) const PROBE_CAP: Deadline = Deadline::secs(15);
 
 /// 测试连接那一行的一段到哪了：还没到 · 过了 · 没过。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum SegMark {
     #[default]
@@ -48,8 +48,8 @@ pub(crate) enum SegMark {
 
 /// 测试连接那一行的四段：解析 · 连接 · 认证 · 就绪。
 #[derive(Debug, Clone, Copy, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct Segs {
     resolve: SegMark,
     connect: SegMark,
@@ -90,8 +90,8 @@ impl Segs {
 
 /// 进度流的一格：写好的那一句 · 语气 · 四段；最后一格带结局。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct ProbeCell {
     /// 握手那一行 · 走到哪一步 · 结局那一句（结局不接下层原话，原话在复制详情）。
     said: Words,
@@ -102,8 +102,8 @@ pub(crate) struct ProbeCell {
 
 /// 测试连接的结局（进度流最后那一格的 `end`）。
 #[derive(Debug, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConnTestResult {
     /// 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），按文案表拼好的一句；没回 hello ⇒ `null`。
@@ -149,8 +149,8 @@ struct Gap {
 
 /// `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项 · 那一句。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 struct GapCount {
     code: String,
     count: usize,
@@ -251,10 +251,10 @@ fn stage_line(st: &ssh_dial::Stage, segs: Segs) -> Option<ProbeCell> {
 
 /// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存；它的跳板照这一端的机器表按名字找）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ProbeReq {
+pub struct ProbeReq {
     /// 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
     pub(crate) ticket: String,
     /// 那台的配置。
@@ -264,7 +264,7 @@ pub(crate) struct ProbeReq {
 
 crate::wire::typed::codes! {
     /// `remote-probe` 的码。
-    pub(crate) enum ProbeErr {
+    pub enum ProbeErr {
         /// 跳板那一台的配置不对。
         BadJump = "bad_jump",
         /// 进度帧发不出去（本连接没了）· 读链路那一侧出错。
@@ -273,7 +273,7 @@ crate::wire::typed::codes! {
 }
 
 /// `remote-probe`（帧面硬臂：进度格走本连接的应答通道；本体真异步，`cancel` 能在 await 点打断）。结局推成最后一格，应答本身不带体。
-pub(crate) struct RemoteProbe;
+pub struct RemoteProbe;
 
 impl crate::wire::typed::Command for RemoteProbe {
     const NAME: &'static str = "remote-probe";
@@ -300,11 +300,11 @@ fn ticket_ok(t: &str) -> Result<String, Said> {
 pub(crate) type StageTx = tokio::sync::mpsc::UnboundedSender<crate::dial::Stage>;
 
 /// 开成的一条长 exec：读那台后端的输出 · 往它写（两头随丢随收）。
-pub(crate) type Pipe = tokio::io::Join<tokio::io::DuplexStream, tokio::io::DuplexStream>;
+pub type Pipe = tokio::io::Join<tokio::io::DuplexStream, tokio::io::DuplexStream>;
 
 /// 拨号那一侧：开一条长 exec（拨号核心报的阶段照序交 `stages`，每过一步 `progress.step()`）· 跑一次收全。
 /// 生产 = [`Real`]（拨号核心）；判据用替身。
-pub(crate) trait Dial: Send + Sync + 'static {
+pub trait Dial: Send + Sync + 'static {
     fn open(
         &self,
         req: crate::dial::DialRequest,
@@ -320,10 +320,10 @@ pub(crate) trait Dial: Send + Sync + 'static {
 /// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），每过一步把攒下的阶段交出去、报一步进展；
 /// 开成之后那条通道接在一对内存管子上对拷（`Opened::pump`，两头的读写端收了它就收）。收全 = `ssh_dial::uses::capture`。
 /// 各台的常驻流（`feeds.rs`）开链路也用它（[`real`]）。
-pub(crate) struct Real;
+pub struct Real;
 
 /// 生产那一侧的拨号（[`Real`]）。
-pub(crate) fn real() -> Real {
+pub fn real() -> Real {
     Real
 }
 
@@ -433,7 +433,7 @@ impl Transport for ProbeLink {
 }
 
 /// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与指纹（同手机那一侧）。
-pub(crate) fn problem_of(f: ssh_dial::DialFail) -> Problem {
+pub fn problem_of(f: ssh_dial::DialFail) -> Problem {
     Problem::new(
         if f.said.is_empty() {
             copy_text("reason.link.lost", &[])
@@ -644,7 +644,7 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
 }
 
 /// 生产的 `remote-probe`：真拨号；进度格进本连接的应答通道。
-pub(crate) async fn answer_probe(
+pub async fn answer_probe(
     req: &ProbeReq,
     until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
