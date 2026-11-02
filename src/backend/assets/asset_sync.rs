@@ -44,7 +44,7 @@ use crate::dial::remote_ask::{Remote, Table, REACH};
 /// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**。
 pub const PUSH_MAX_BYTES: usize = 96 * 1024;
 
-/// 远端后端的两条一次性子命令（与 `lib.rs::SUBCOMMANDS` 同名，判据钉）。
+/// 远端后端的两条一次性子命令（子命令闸门 `stream::cli::is_subcommand` 认的同名那两条，判据钉）。
 pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 

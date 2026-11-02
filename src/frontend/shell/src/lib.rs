@@ -160,7 +160,7 @@ mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 
 mod capability_registry;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/comm_boundary_registry.rs"]
-mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 · X1 · X2 · X4–X6
+mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C3 · X1 · X4
 #[cfg(test)]
 // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
 #[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]

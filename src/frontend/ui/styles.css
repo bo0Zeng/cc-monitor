@@ -1038,15 +1038,6 @@
   background: transparent;
 }
 
-.code-block pre code.hljs {
-  display: block;
-  padding: 14px 16px;
-  overflow-x: auto;
-  background: transparent;
-  font-size: var(--font-size-mono);
-  line-height: var(--line-height-mono);
-}
-
 /* === slash 紧凑卡 === */
 .card-slash {
   background: transparent;
@@ -2135,12 +2126,6 @@
 }
 
 /* 截断时的"显示完整 diff"按钮复用 .block-body-show-full（见上）。 */
-/* 防御：未来若给 diff 行加 hljs 高亮，hljs 主题底色不能盖住 per-line diff 底色
-   （.code-block 的 transparent 覆盖不 scope 到 .block-diff）。 */
-.block-diff-line code.hljs {
-  background: transparent;
-  padding: 0;
-}
 
 /* Agent 折叠卡（嵌入 subagent JSONL） */
 .block-agent-body {

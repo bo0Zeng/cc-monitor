@@ -713,7 +713,7 @@
       }
     },
     "history-list": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
       "sample": {
         "head": {
           "info": {
@@ -758,6 +758,7 @@
             },
             "context": true,
             "customTitle": "customTitle-x",
+            "deleteAsk": "deleteAsk-x",
             "face": {
               "account": "account-x",
               "can": {
@@ -823,6 +824,7 @@
             "projectDir": "projectDir-x",
             "projectName": "projectName-x",
             "projectPath": "projectPath-x",
+            "reveal": true,
             "sectionText": "sectionText-x",
             "sessionId": "sessionId-x",
             "spanText": "spanText-x",

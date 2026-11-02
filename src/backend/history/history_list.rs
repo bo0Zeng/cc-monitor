@@ -534,8 +534,11 @@ fn row_of(
         });
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
+    let can = can_of(&r.agent, &r.life, r.is_bg);
     HistoryRow {
-        can: can_of(&r.agent, &r.life, r.is_bg),
+        reveal: face_core::history_asks::reveal_of(origin, &r.project_path),
+        delete_ask: face_core::history_asks::delete_ask(origin, can.delete),
+        can,
         agent_tag: agent_tag(&r.agent).map(Words::from),
         label: Words(f.label),
         untitled: f.untitled,
@@ -868,6 +871,8 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         section_text: w("s"),
         span_text: w("p"),
         origin: cmd_wire::Machine::named(s("m")),
+        reveal: false,
+        delete_ask: w("d"),
     }];
     let groups = vec![HistoryGroup {
         key: s("agent:/w"),

@@ -105,6 +105,7 @@
         "resume": "switch"
       },
       "customTitle": null,
+      "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
           "close": {
@@ -165,6 +166,7 @@
       "projectDir": "-w-alpha",
       "projectName": "alpha",
       "projectPath": "/w/alpha",
+      "reveal": false,
       "sectionText": "今天",
       "sessionId": "0000aaaa-0000-4000-8000-000000000001",
       "spanText": "00:00–00:00",
@@ -187,6 +189,7 @@
         "resume": "yes"
       },
       "customTitle": null,
+      "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
           "close": {
@@ -245,6 +248,7 @@
       "projectDir": "-w-alpha",
       "projectName": "alpha-二",
       "projectPath": "/w/alpha-二",
+      "reveal": false,
       "sectionText": "今天",
       "sessionId": "0000aaaa-0000-4000-8000-000000000003",
       "spanText": "00:00–00:00",
@@ -268,6 +272,7 @@
       },
       "context": true,
       "customTitle": null,
+      "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
           "close": {
@@ -328,6 +333,7 @@
       "projectDir": "-w-beta",
       "projectName": "beta",
       "projectPath": "/w/beta",
+      "reveal": false,
       "sectionText": "今天",
       "sessionId": "0000aaaa-0000-4000-8000-000000000004",
       "spanText": "00:00–00:00",
@@ -350,6 +356,7 @@
         "resume": "bg"
       },
       "customTitle": null,
+      "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
           "close": {
@@ -412,6 +419,7 @@
       "projectDir": "-w-beta",
       "projectName": "beta",
       "projectPath": "/w/beta",
+      "reveal": false,
       "sectionText": "今天",
       "sessionId": "0000aaaa-0000-4000-8000-000000000005",
       "spanText": "00:00–00:00",
@@ -434,6 +442,7 @@
         "resume": "yes"
       },
       "customTitle": null,
+      "deleteAsk": "删除：dev 上的会话记录 · 不可恢复\n未确认是否在运行",
       "face": {
         "can": {
           "close": {
@@ -495,6 +504,7 @@
       "projectDir": "codex:/w/delta",
       "projectName": "delta",
       "projectPath": "/w/delta",
+      "reveal": false,
       "sectionText": "今天",
       "sessionId": "019a0000-0000-7000-8000-00000000c0de",
       "spanText": "00:00–00:00",

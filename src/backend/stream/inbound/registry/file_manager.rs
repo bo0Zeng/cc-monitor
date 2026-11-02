@@ -55,7 +55,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   由 `inbound_structure_guards` 那两条**互不相交**的相等断言各钉一族。
     //
     // ⚠ **CLI 面是自动来的，不是选的**：`stream::cli::cli_exposed` = 非 `Run::Builtin`
-    //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
+    //   ⇒ 这一条同拍进了子命令闸门（`stream::cli::is_subcommand`，从本表派生）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `files/write.rs` 头注「写怎么被挡住」那一节。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCreate>(

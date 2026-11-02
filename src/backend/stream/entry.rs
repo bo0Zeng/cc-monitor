@@ -34,6 +34,11 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
     tag: control::identity_tag::tag_seen,
 };
 
+/// `ccm -- <词>` 里那个词归不归后端：一次性子命令（闸门 [`cli::is_subcommand`]）∪ 流模式旗标。交给 `control::ccm::route` 那一问就是它。
+pub(crate) fn is_backend_word(w: &str) -> bool {
+    cli::is_subcommand(w) || crate::STREAM_FLAGS.contains(&w)
+}
+
 /// 后端进程的整个身子：装配 → 分流（`ccm` · 一次性子命令 · 流模式）→ 起载体。每条路都在自己的收场处 `exit`。
 pub async fn run() {
     // 远端 musl 版的分配器放回来的空页当场还给系统（不等下一次分配；别的版本什么都不做）。
@@ -79,7 +84,11 @@ pub async fn run() {
     history::listing::install(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
-        match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
+        match control::ccm::route(
+            process_argv.first().map_or("", String::as_str),
+            &rest,
+            is_backend_word,
+        ) {
             // resume 判「在别处跑着」用观测层那一份扫描、选号判「能不能用」用账号清单成品（control 不引用 observe ⇒ 都由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(
                 &ccm_args,

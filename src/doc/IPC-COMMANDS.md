@@ -4908,7 +4908,15 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 /**
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin: Machine, };
+origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+ */
+deleteAsk: Words, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -5151,7 +5159,15 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 /**
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin: Machine, };
+origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+ */
+deleteAsk: Words, };
 type HistoryRowId = { 
 /**
  * 哪台（这台逐字 `"<local>"`）。
@@ -5653,6 +5669,15 @@ type MergedRow = {
  * 哪一台答的这一行（这台逐字 `"<local>"`）。
  */
 origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开：[`merge`] 只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
+ * 手机核心合的那一份不读这一格，不补。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文：同上，[`merge`] 只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
+ */
+deleteAsk: Words, 
 /**
  * 行尾那一格。
  */

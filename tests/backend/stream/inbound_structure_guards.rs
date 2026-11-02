@@ -313,7 +313,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
 }
 
 /// 帧命令名与它们派生出来的 CLI 面里零个带宿主名 `tmux` 的（名字按「终端」叫，宿主只是实现）。
-/// 人群从 `REGISTRY` 现取；正控：同一个找法在真表 `SUBCOMMANDS` 里认得出手写的 `--tmux-notify`（tmux 钩子入口，不由帧命令派生）。
+/// 人群从 `REGISTRY` 现取；正控：同一个找法在子命令全集里认得出手写的 `--tmux-notify`（tmux 钩子入口，不由帧命令派生）。
 #[test]
 fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
     let names_tmux = |s: &str| s.split(['-', '_']).any(|w| w == "tmux");

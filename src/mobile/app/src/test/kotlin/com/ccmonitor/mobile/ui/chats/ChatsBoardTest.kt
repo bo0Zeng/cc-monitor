@@ -56,6 +56,8 @@ class ChatsBoardTest {
         "untitled" to false,
         "spanText" to "09:00",
         "origin" to LOCAL,
+        "reveal" to false,
+        "deleteAsk" to "",
     )
 
     private class Host(
@@ -317,6 +319,8 @@ class ChatsBoardTest {
                             "isBg" to false,
                             "can" to mapOf("resume" to "yes", "accounts" to false, "fork" to false, "delete" to "yes"),
                             "face" to Faces.raw["ended"],
+                            "reveal" to false,
+                            "deleteAsk" to "",
                         )
                     },
             ),

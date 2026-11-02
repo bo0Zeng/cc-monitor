@@ -47,7 +47,10 @@ pub(crate) fn capture_full(
                     Ok(relay_route_core::CappedAll::All(buf)) => (buf, None),
                     Ok(relay_route_core::CappedAll::OverCap) => {
                         std::io::copy(&mut s, &mut std::io::sink()).discard(Why::Drain);
-                        (Vec::new(), Some(format!("output over the {}-byte cap", cap.bytes)))
+                        (
+                            Vec::new(),
+                            Some(format!("output over the {}-byte cap", cap.bytes)),
+                        )
                     }
                     Err(e) => (Vec::new(), Some(e.to_string())),
                 },

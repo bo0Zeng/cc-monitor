@@ -446,7 +446,7 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         ),
         (
             r#"{"type":"user","uuid":"c","timestamp":"t","isMeta":true,"origin":{"kind":"peer","from":"a1","handback":true},"message":{"role":"user","content":"<agent-message from=\"a1\">甲</agent-message>"}}"#,
-            serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true, "body": "甲"}, "text": ""}),
+            serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true}, "text": ""}),
         ),
         (
             r#"{"type":"attachment","uuid":"d","timestamp":"t","parentUuid":"c","attachment":{"type":"queued_command","prompt":"乙","origin":{"kind":"human"}}}"#,

@@ -89,5 +89,6 @@ private fun StringBuilder.node(n: InlNode) {
         is InlNode.Img -> append(n.alt)
         InlNode.Br -> append('\n')
         is InlNode.Fn -> append(n.n)
+        is InlNode.Ref -> append(n.x)
     }
 }

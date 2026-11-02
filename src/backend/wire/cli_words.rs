@@ -1,6 +1,6 @@
 //! CLI 面的**词**：流模式的显式词 · 子命令后面的选项词（与帧面请求信封里同名的那几格同义）· 帧命令名到子命令的拼法。
 //! 收发两头（本进程的 CLI 面 · 问远端那台的一跳 · 起常驻 · 资产同步）都只认这里的字面量；
-//! 哪几个词算选项、哪几个算流旗标那三张表（`crate::SUBCOMMANDS` · `crate::SUBCOMMAND_OPTIONS` · `crate::STREAM_FLAGS`）是进程身份，住根上。
+//! 哪几个词算选项、哪几个算流旗标那两张表（`crate::SUBCOMMAND_OPTIONS` · `crate::STREAM_FLAGS`）是进程身份，住根上；哪几个词算子命令由闸门 `stream::cli::is_subcommand` 答。
 
 /// `--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
 /// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。

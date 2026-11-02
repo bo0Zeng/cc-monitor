@@ -14,7 +14,8 @@ import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
 import { saidOf } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
-import { renderMarkdown } from "../render";
+import { fetchDoc, hlPullOf, mountWhole } from "../render";
+import { refSlots } from "../md-view";
 import type { Origin } from "../ipc/origin";
 import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
@@ -37,11 +38,6 @@ export interface CellDetailHost {
   /** 那台离线那一句（计划页知道那台断了 ⇒ ［问图…］灰、悬停摆它）；连着 / 不知道 ⇒ `null`。缺 ⇒ 当连着。 */
   askOff?(): string | null;
 }
-
-/** 正文里占位的两头（私用区的两个字，渲 md 时原样过）。 */
-const REF_OPEN = String.fromCharCode(0xe000);
-const REF_CLOSE = String.fromCharCode(0xe001);
-const REF_SPLIT = new RegExp(`${REF_OPEN}(\\d+)${REF_CLOSE}`);
 
 /** 正文多于这么多行 ⇒ 先折起。 */
 const FOLD_LINES = 14;
@@ -177,44 +173,32 @@ export class CellDetail {
     return sec;
   }
 
-  /** md 里提到的格：先把 pb 给的那几段换成占位，渲完再把占位换成标题链接（代码里的 pb 本就不算）。 */
+  /**
+   * 正文交后端解析（`md-doc`，带着 pb 给的那几处 `refs`：解成引用节点），回来照树排；每个引用换成那几格的标题链接
+   * （代码里的 pb 本就不算）。没问成 ⇒ 照原文的字。
+   */
   private fillMarkdown(el: HTMLElement, slice: PlanSlice, body: string, refs: readonly PlanRef[]): void {
-    const sorted: PlanRef[] = [];
-    const md = refSpans(body, refs)
-      .map((p) => {
-        if (typeof p === "string") return p;
-        sorted.push(p);
-        return `${REF_OPEN}${sorted.length - 1}${REF_CLOSE}`;
-      })
-      .join("");
-    el.innerHTML = renderMarkdown(md);
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    const hits: Text[] = [];
-    while (walker.nextNode()) if ((walker.currentNode.nodeValue ?? "").includes(REF_OPEN)) hits.push(walker.currentNode as Text);
-    for (const t of hits) {
-      const parts = (t.nodeValue ?? "").split(REF_SPLIT);
-      const frag = document.createDocumentFragment();
-      parts.forEach((p, j) => {
-        if (j % 2 === 0) {
-          if (p) frag.appendChild(document.createTextNode(p));
-        } else {
-          const r = sorted[Number(p)];
-          frag.append(...this.refLinks(slice, r));
-        }
-      });
-      t.replaceWith(frag);
-    }
+    el.textContent = body;
+    const origin = this.host.origin();
+    fetchDoc(origin, body, "prose", refs).then(
+      (doc) => {
+        const root = mountWhole(doc, false, hlPullOf(origin));
+        for (const r of refSlots(root)) r.el.replaceWith(...this.refLinks(slice, r.ids));
+        el.replaceChildren(root);
+      },
+      (e: unknown) => console.warn("[md-doc] 没问成：", e),
+    );
   }
 
   /** 一段话（标题）照位置换链接。 */
   refText(slice: PlanSlice, text: string, refs: readonly PlanRef[]): Node[] {
-    return refSpans(text, refs).flatMap((p) => (typeof p === "string" ? [document.createTextNode(p)] : this.refLinks(slice, p)));
+    return refSpans(text, refs).flatMap((p) => (typeof p === "string" ? [document.createTextNode(p)] : this.refLinks(slice, p.ids)));
   }
 
-  private refLinks(slice: PlanSlice, r: PlanRef): Node[] {
+  private refLinks(slice: PlanSlice, ids: readonly string[]): Node[] {
     const byId = cellIndex(slice);
     const out: Node[] = [];
-    r.ids.forEach((id, k) => {
+    ids.forEach((id, k) => {
       if (k > 0) out.push(document.createTextNode(copyText("plan.page.listSep")));
       const c = byId.get(id);
       const a = document.createElement("button");

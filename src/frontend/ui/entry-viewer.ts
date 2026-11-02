@@ -235,7 +235,7 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   } else {
     out.push(resumeControl(r));
   }
-  if (isLocalOrigin(r.origin) && r.projectPath) {
+  if (r.reveal) {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
   }
   if (live && terminalFrontAvailable()) {

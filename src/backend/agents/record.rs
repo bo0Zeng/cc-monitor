@@ -35,6 +35,7 @@ pub(crate) fn record(
     at: Option<String>,
     body: Body,
 ) -> Record {
+    let body = said_doc(body);
     Record {
         agent,
         id,
@@ -45,6 +46,31 @@ pub(crate) fn record(
         human: human_of(&body),
         body,
     }
+}
+
+/// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）。
+fn said_doc(mut body: Body) -> Body {
+    use cmd_wire::record::Speaker;
+    if let Body::Said { who, .. } = &mut body {
+        if let Speaker::AgentMessage {
+            body: Some(text),
+            doc,
+            ..
+        }
+        | Speaker::PeerSession {
+            body: Some(text),
+            doc,
+            ..
+        }
+        | Speaker::Coordinator {
+            body: Some(text),
+            doc,
+        } = &mut who.speaker
+        {
+            *doc = Some(md_core::parse(text));
+        }
+    }
+    body
 }
 
 /// 人在这条里说了话：人打的字 · 斜杠命令 · `!` 命令。

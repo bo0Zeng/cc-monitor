@@ -4,8 +4,8 @@
  * 一次动作没做成，给人看的那一句由出错那一端写好：通道没成 · 被拒都在 `ChanError.message`（monitor 写；被拒时就是那台后端那一句），
  * 界面原样取（`kit/detail.ts::failSaid` · `saidOf`），不按层、不按码另写。界面只说它自己知道的那一件：回包认不出（[`ReplyUnreadable`]）。
  *
- * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条、
- * `comm_boundary_registry` 的 `X6` 按调用点核期限 —— 那一下必须留在各调用点、操作名写字面量；
+ * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条 ——
+ * 那一下必须留在各调用点、操作名写字面量；
  * 这里的 [`settleTyped`] 只接一个已经发出去的 `Promise`。
  */
 import { copyText } from "./copy-table";

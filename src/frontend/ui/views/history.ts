@@ -1101,7 +1101,7 @@ export class HistoryView {
       { label: copyText("history.menu.rename"), detail: "F2", onClick: () => void this.rename(r) },
       { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
       { label: "", divider: true },
-      ...(isRemoteOrigin(r.origin) ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
+      ...(r.reveal ? [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }] : []),
       { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }) },
       { label: "", divider: true },
       {
@@ -1152,11 +1152,8 @@ export class HistoryView {
       return;
     }
     const label = labelOf(r);
-    const body = [
-      isRemoteOrigin(r.origin) ? copyText("history.delete.bodyRemote", { machine: r.origin }) : copyText("history.delete.body"),
-      r.can.delete === "unsure" ? copyText("history.delete.unsure") : null,
-    ].filter((l): l is string => l !== null);
-    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: body.join("\n") });
+    // 正文那一段（哪台的记录 · 说不清在不在跑多一句）由核心按行写好（`deleteAsk`）。
+    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: r.deleteAsk });
     if (!ok) return;
     try {
       await deleteSession(r.origin, r.sessionId);
@@ -1372,5 +1369,7 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     face: sh.face,
     can: sh.can,
     origin: sh.origin,
+    reveal: sh.reveal,
+    deleteAsk: sh.deleteAsk,
   };
 }

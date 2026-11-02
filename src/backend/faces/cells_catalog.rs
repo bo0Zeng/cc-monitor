@@ -744,12 +744,17 @@ mod specimens {
                 name: some("n"),
                 handback: true,
                 body: some("b"),
+                doc: Some(md_core::parse("b")),
             },
             Speaker::PeerSession {
                 from: some("f"),
                 body: some("b"),
+                doc: Some(md_core::parse("b")),
             },
-            Speaker::Coordinator { body: some("b") },
+            Speaker::Coordinator {
+                body: some("b"),
+                doc: Some(md_core::parse("b")),
+            },
             Speaker::AgentTask,
             Speaker::System { body: some("b") },
             Speaker::compact("ab"),
@@ -906,7 +911,7 @@ mod specimens {
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Plan {
-                                text: s("p"),
+                                doc: md_core::parse("p"),
                                 title: crate::agents::PlanTitle::written(),
                             }),
                         },

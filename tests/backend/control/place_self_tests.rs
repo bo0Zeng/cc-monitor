@@ -139,7 +139,7 @@ fn p4_the_staged_name_routes_to_the_backend() {
     let argv0 = format!("/home/x/{}/{name}", relay_route_core::STAGING_DIR_REL);
     let args: Vec<String> = vec!["--".into(), "--place-self".into()];
     assert_eq!(
-        crate::control::ccm::route(&argv0, &args),
+        crate::control::ccm::route(&argv0, &args, crate::stream::entry::is_backend_word),
         crate::control::ccm::Entry::Backend(vec!["--place-self".into()])
     );
 }

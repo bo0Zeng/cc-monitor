@@ -505,7 +505,7 @@ fn one_push_chunk_fits_under_the_remote_cli_stdin_cap() {
     );
 }
 
-/// 两条一次性子命令与后端真登记的同名（跨半边：这里的常量 ↔ `lib.rs::SUBCOMMANDS` ↔ `inbound::REGISTRY`）。
+/// 两条一次性子命令与后端真登记的同名（跨半边：这里的常量 ↔ 子命令闸门 `stream::cli::is_subcommand` ↔ `inbound::REGISTRY`）。
 #[test]
 fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
     for (flag, cmd) in [

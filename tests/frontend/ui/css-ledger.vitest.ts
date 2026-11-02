@@ -227,13 +227,6 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     kind: "harmless",
     why: "同上：悬停高亮压过内联 tool result 摘要的底色与字色。",
   },
-  {
-    file: "src/frontend/ui/styles.css",
-    later: ".block-diff-line code.hljs",
-    earlier: ".code-block pre code.hljs",
-    kind: "harmless",
-    why: "结构上打不到同一个元素：diff 行不在 `.code-block pre` 里（后一条规则头注逐字：`.code-block` 的 transparent 覆盖不 scope 到 `.block-diff`，所以才单写一条防御）。",
-  },
   // ── src/frontend/ui/styles.css：tab 规则（U4 那一侧，未判）──
   { file: "src/frontend/ui/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   // ── src/frontend/ui/styles/settings.css：〔C §2.2 ·  待拍 2〕ST3 那 15 条逐条判完 ──
@@ -296,7 +289,7 @@ const DANGLING: readonly string[] = [
   "badge-unread", "block-body-json", "block-body-result", "block-text", "cc-bus-check", "cc-bus-controls", "cc-bus-detail", "cc-bus-id", "cc-bus-inbox",
   "cc-bus-list", "cc-bus-meta", "cc-bus-msg-line", "cc-bus-online",
   "cc-bus-origin", "cc-bus-read", "cc-bus-row", "cc-bus-section",
-  "cc-bus-status", "ccm-rc-block", "code-pending", "ctx-limits", "data-claude-dir",
+  "cc-bus-status", "ccm-rc-block", "ctx-limits", "data-claude-dir",
   "data-machine", "data-page", "data-pane", "diag-fallback", "diag-page", "has-unread",
   "history-search", "kind-ls", "machine-aliases", "machine-conn-fp", "machine-conn-toggle", "machine-page",
   "machine-page-local", "machine-page-sections", "machine-part-components", "machine-part-connection", "md", "paste-block-actions",

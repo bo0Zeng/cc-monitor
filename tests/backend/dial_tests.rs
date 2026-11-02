@@ -145,23 +145,18 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ 根入口生产段里没有 `--dial` 子命令：拨号只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），
-/// 没有一条入方向命令替界面开字节流。`is_query_mode` 认一个子命令却没有臂接它 ⇒ 半截入口。
+/// ★ 子命令闸门不认 `--dial`：拨号只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），
+/// 没有一条入方向命令替界面开字节流。闸门认一个子命令却没有臂接它 ⇒ 半截入口。
 #[test]
 fn the_old_dial_entry_is_gone() {
-    let root_prod = guard_core::production_code(&guard_core::addr::backend_root_source());
-    let flag = format!("{}{}", "\"--", "dial\"");
-    assert_eq!(
-        root_prod.matches(flag.as_str()).count(),
-        0,
-        "`main.rs` / `lib.rs` 生产段里有 `{flag}` —— 拨号不开子命令入口，\
-         留着一半就是 `is_query_mode` 认它、却没有臂接它"
-    );
-    // 正控：同一把尺子在别的子命令上量得到（不是「这把尺子什么都量不到」）。
-    let other = format!("{}{}", "\"--", "resident-ensure\"");
     assert!(
-        root_prod.matches(other.as_str()).count() >= 1,
-        "正控 `{other}` 一处都没量到 —— 本条在空转"
+        !crate::stream::cli::is_subcommand("--dial"),
+        "子命令闸门认 `--dial` —— 拨号不开子命令入口"
+    );
+    // 正控：同一个闸门认得出一条真子命令（不是「这一问什么都答不认」）。
+    assert!(
+        crate::stream::cli::is_subcommand("--resident-ensure"),
+        "正控 `--resident-ensure` 闸门不认 —— 本条在空转"
     );
 }
 
