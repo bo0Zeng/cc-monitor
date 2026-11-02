@@ -1,7 +1,7 @@
 //! 托管名单 · 打标那一手：真起托管终端（假子进程：Unix `sh` · Windows `cmd`），沙箱数据目录，不起真 claude。
 
 use super::home;
-use super::run::tests::{hello, read_until_out, sandbox_own, spec_ready, start};
+use super::run::test_support::{hello, read_until_out, sandbox_own, spec_ready, start};
 use super::wire::{write_frame, Frame, Want};
 use super::*;
 use crate::wire::{SessionContainer, TerminalHost};

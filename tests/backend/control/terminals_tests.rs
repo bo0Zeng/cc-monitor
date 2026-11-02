@@ -1188,7 +1188,9 @@ fn hosted_input_turns_into_the_bytes_a_terminal_would_send() {
 /// 伪终端一个字节没多：它回车之后子进程读到的只是它自己那半句。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_but_waits_out_a_half_typed_line() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::{write_frame, Frame, Want, WhoKind};
     let (own, _data) = sandbox_own("term-say");
     let script = "printf 'ready\\r\\n'; read x; printf 'got:%s\\r\\n' \"$x\"; read y; printf 'got2:%s:\\r\\n' \"$y\"; read z";
@@ -1354,7 +1356,9 @@ fn the_desktop_that_did_not_name_itself_sees_its_own_hold_as_mine() {
 /// （子进程读到 `0x1b`），持有者不变；回「送到了」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_interrupt_reaches_a_hosted_terminal_held_elsewhere_with_a_half_typed_line() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::{write_frame, Frame, Want, WhoKind};
     let (own, _data) = sandbox_own("term-int");
     // 子进程逐字节读、按十六进制印出来（原始模式：不等回车）。
@@ -1509,7 +1513,7 @@ fn old_hosted_terminal(
 /// 投递那一句 · 中断这类之后加的动词当场照实回「旧版」，一个都不说给它。私有 tmux socket、沙箱数据目录，不起真 claude。
 #[test]
 fn after_an_upgrade_a_tmux_session_stays_tmux_and_an_old_hosted_terminal_stays_managed() {
-    use crate::host::managed::run::tests::sandbox_own;
+    use crate::host::managed::run::test_support::sandbox_own;
     use crate::wire::TerminalHost;
     let rt = tokio::runtime::Runtime::new().expect("运行时");
     let iso = Iso::new("upgrade");

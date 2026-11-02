@@ -4,71 +4,12 @@
 //! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`ccm_flag_literals_live_only_in_argv_rs` 对 `D1`「一个判定只有一个家」；
 //! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。
 
+use super::test_support::{mixed_to_split, parse};
 use super::*;
-
-/// 没有配置层的那一形（命令行当场给的就是全部）：判据各处喂解析器都经它。
-pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
-    parse_layered(&[], args).map(|(p, _)| p)
-}
 
 /// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `<交给 agent 的…> -- <ccm 的…>` 排列（意图逐词不变）。
 fn parse_mixed(a: &[String]) -> Result<Parsed, Die> {
     parse(&mixed_to_split(a))
-}
-
-/// 〔只给测试〕把旧写法（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成
-/// `<交给 agent 的…> -- <ccm 的…>`。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
-pub(crate) fn mixed_to_split(old: &[String]) -> Vec<String> {
-    const WITH_VALUE: [&str; 9] = [
-        flag::TMUX_BASE,
-        flag::TMUX_SIZE,
-        flag::ACCOUNT,
-        flag::CWD,
-        flag::AGENT,
-        flag::LAUNCHER,
-        flag::ATTACH,
-        flag::CCM_SID,
-        flag::END,
-    ];
-    const BARE: [&str; 9] = [
-        flag::TMUX,
-        flag::HOSTED,
-        flag::DETACH,
-        flag::BASE,
-        flag::CCM_PRINT,
-        flag::CCM_HELP,
-        flag::CCM_VERSION,
-        flag::CCM_PROBE,
-        flag::END,
-    ];
-    let (mut left, mut right) = (Vec::new(), Vec::new());
-    let mut i = 0;
-    while i < old.len() {
-        let a = &old[i];
-        if a == flag::END {
-            left.extend_from_slice(&old[i + 1..]);
-            break;
-        }
-        let key = a.split_once('=').map_or(a.as_str(), |(k, _)| k);
-        if BARE.contains(&key) || (WITH_VALUE.contains(&key) && a.contains('=')) {
-            right.push(a.clone());
-        } else if WITH_VALUE.contains(&key) {
-            right.push(a.clone());
-            if let Some(v) = old.get(i + 1) {
-                right.push(v.clone());
-                i += 1;
-            }
-        } else {
-            left.push(a.clone());
-        }
-        i += 1;
-    }
-    if right.is_empty() && !left.iter().any(|a| a == flag::END) {
-        return left;
-    }
-    left.push(flag::END.to_string());
-    left.extend(right);
-    left
 }
 
 fn v(a: &[&str]) -> Vec<String> {
@@ -280,7 +221,7 @@ fn every_default_lives_only_in_the_defaults_block() {
 /// 🔴 机检：**ccm 的旗标字面量只住 `argv.rs`。**
 ///
 /// 失效方向：「有人再起第二个 argv 解析口、或把某条子命令的行为
-/// 在第二处重写一遍」。判法 = 扫 `ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
+/// 在第二处重写一遍」。判法 = 扫 `host/ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
 /// 全部 `.rs` 的生产段，不许出现 `"--` 打头的字面量（正控：`argv.rs` 自己有）。
 /// 买不到：不经字面量拼出来的旗标名；这两棵目录以外的文件。
 #[test]
@@ -288,7 +229,10 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
     let src = guard_core::addr::backend_src_root();
     let mut others: Vec<(String, String)> = Vec::new();
     for (dir, excluded) in [
-        ("ccm_line", &["src/backend/ccm_line/argv.rs"] as &[&str]),
+        (
+            "host/ccm_line",
+            &["src/backend/host/ccm_line/argv.rs"] as &[&str],
+        ),
         ("control/ccm", &[]),
     ] {
         for (p, raw) in guard_core::scan_tree_excluding(&src.join(dir), &["rs"], excluded) {
@@ -306,7 +250,8 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
         others.len(),
         others.iter().map(|(r, _)| r).collect::<Vec<_>>()
     );
-    let argv = guard_core::production_code(include_str!("../../../src/backend/ccm_line/argv.rs"));
+    let argv =
+        guard_core::production_code(include_str!("../../../src/backend/host/ccm_line/argv.rs"));
     assert!(
         argv.contains("\"--"),
         "正控：`argv.rs` 里一个旗标字面量都没有 —— 认法坏了"
@@ -378,4 +323,17 @@ fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {
         matches!(raw(&["--", "--ccm-tmux", "new"]), Err(super::Die(m)) if m.contains(copy_core::copy_static!("beArgv.parse.newNotFirst"))),
         "`new` 不在右边第一个却被认了 / 没说清为什么"
     );
+}
+
+/// 自己的名字认的是这份二进制的名字（`ccm` · `cc-monitor-backend` · 落盘的 `cc-monitor-backend-<build>`），
+/// 不是编进这一段的那个包叫什么：这一段换了包，认的名字也不跟着变。
+#[test]
+fn own_names_are_the_binary_names_whatever_package_this_code_sits_in() {
+    use crate::ccm_line::is_own_name;
+    for own in ["ccm", "cc-monitor-backend", "cc-monitor-backend-p11b"] {
+        assert!(is_own_name(own), "`{own}` 没认成自己");
+    }
+    for other in ["claude", "backend-host", "cc-monitor"] {
+        assert!(!is_own_name(other), "`{other}` 被认成了自己");
+    }
 }

@@ -131,14 +131,6 @@ fn the_title_is_kept_for_new_clients() {
 }
 
 #[test]
-fn the_scrollback_constant_matches_the_terminal_page_limit() {
-    assert_eq!(
-        SCROLLBACK,
-        crate::control::terminals::MAX_SCROLLBACK as usize
-    );
-}
-
-#[test]
 fn resize_keeps_content_and_reports_the_new_size() {
     let mut s = Screen::new(5, 20);
     s.feed(b"abc");

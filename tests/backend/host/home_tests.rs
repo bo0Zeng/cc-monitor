@@ -3,7 +3,7 @@
 use super::*;
 
 fn left_behind(tag: &str, seed: &[u8]) {
-    let (own, data) = super::super::run::tests::sandbox_own(tag);
+    let (own, data) = super::super::run::test_support::sandbox_own(tag);
     let id = format!("hm-{tag}");
     let dir = data.join(HOSTS).join(&id);
     std::fs::create_dir_all(&dir).expect("建上一个的家");

@@ -1,6 +1,6 @@
 //! 后端替一个前端持有托管终端的输入：真起托管终端（假子进程 `sh`），沙箱数据目录，不起真 claude。
 
-use super::super::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+use super::super::run::test_support::{hello, read_until_out, sandbox_own, spec, start};
 use super::super::wire::{read_frame, write_frame, Ctl, Frame, Want};
 use super::*;
 

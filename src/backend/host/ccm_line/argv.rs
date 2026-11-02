@@ -3,7 +3,7 @@
 //! - 解析只许在这一个文件里：`plan.rs` / `mod.rs` 一律拿 [`Opts`]，不许自己再看一眼 `args`
 //!   （`ccm_flag_literals_live_only_in_argv_rs` 机检）。
 //! - 每个参数的默认值只许写在 [`Defaults`] 里（`every_default_lives_only_in_the_defaults_block` 机检）：两份默认迟早分叉。
-//! - 每个 `--flag` 的字面量只住在 [`flag`] 里；`plan.rs` 拼内层载荷时也从这里取。本文件是本 crate 里唯一允许持有
+//! - 每个 `--flag` 的字面量只住在 [`flag`] 里；`plan.rs` 拼内层载荷时也从这里取。本文件是后端里唯一允许持有
 //!   ccm 旗标字面量的地方（`protocol_doc_guard::TERMINAL_SURFACE_FILES` 登记并机检）。
 
 use copy_core::copy_text;
@@ -12,53 +12,53 @@ use copy_core::copy_text;
 ///
 /// ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
 /// `--ccm-tmux` / `--ccm-agent` 带前缀：claude 自己有 `--tmux` / `--agent`。
-pub(crate) mod flag {
-    pub(crate) const TMUX: &str = "--ccm-tmux";
+pub mod flag {
+    pub const TMUX: &str = "--ccm-tmux";
     /// `--hosted`：放进 cc-monitor 托管的终端（`host/managed`）。不在 tmux 窗格里敲、这台能托管时缺省就是它（`plan::container_host`）。
-    pub(crate) const HOSTED: &str = "--hosted";
-    pub(crate) const TMUX_BASE: &str = "--tmux-base";
-    pub(crate) const TMUX_SIZE: &str = "--tmux-size";
-    pub(crate) const DETACH: &str = "--detach";
-    pub(crate) const ACCOUNT: &str = "--account";
-    pub(crate) const BASE: &str = "--base";
-    pub(crate) const CWD: &str = "--cwd";
+    pub const HOSTED: &str = "--hosted";
+    pub const TMUX_BASE: &str = "--tmux-base";
+    pub const TMUX_SIZE: &str = "--tmux-size";
+    pub const DETACH: &str = "--detach";
+    pub const ACCOUNT: &str = "--account";
+    pub const BASE: &str = "--base";
+    pub const CWD: &str = "--cwd";
     /// `--cwd-if <在哪> <进哪>`：正好在「在哪」那个目录敲 ⇒ 进「进哪」（可写多次，按序第一条对上的算）。
-    pub(crate) const CWD_IF: &str = "--cwd-if";
-    pub(crate) const AGENT: &str = "--ccm-agent";
-    pub(crate) const LAUNCHER: &str = "--launcher";
-    pub(crate) const ATTACH: &str = "--attach";
-    pub(crate) const CCM_PRINT: &str = "--ccm-print";
-    pub(crate) const CCM_HELP: &str = "--ccm-help";
-    pub(crate) const CCM_VERSION: &str = "--ccm-version";
-    pub(crate) const CCM_PROBE: &str = "--ccm-probe";
-    pub(crate) const CCM_SID: &str = "--ccm-sid";
+    pub const CWD_IF: &str = "--cwd-if";
+    pub const AGENT: &str = "--ccm-agent";
+    pub const LAUNCHER: &str = "--launcher";
+    pub const ATTACH: &str = "--attach";
+    pub const CCM_PRINT: &str = "--ccm-print";
+    pub const CCM_HELP: &str = "--ccm-help";
+    pub const CCM_VERSION: &str = "--ccm-version";
+    pub const CCM_PROBE: &str = "--ccm-probe";
+    pub const CCM_SID: &str = "--ccm-sid";
     /// `--tab <show|hide>`：新会话进不进标签页（不给 ⇒ 照这台偏好，判定住 `history/session_hidden.rs`）。claude 没有同名旗标。
-    pub(crate) const TAB: &str = "--tab";
+    pub const TAB: &str = "--tab";
     /// `--tab-from <别名>`：`--tab` 是哪个别名写的（ccm 往 tmux 里那一趟交下去用，那一趟的命令行里已经没有别名了）。
-    pub(crate) const TAB_FROM: &str = "--tab-from";
+    pub const TAB_FROM: &str = "--tab-from";
     /// `--ccm-alias <别名>`：这一发是经哪条别名起的（ccm 往 tmux 里那一趟交下去用，同 `--tab-from`；不进配置）。
-    pub(crate) const CCM_ALIAS: &str = "--ccm-alias";
+    pub const CCM_ALIAS: &str = "--ccm-alias";
     /// `--tab-group <名>`：起出来的会话进哪个标签页组（一组会话那一行没写组名时，组名缺省取别名合下来的它）。claude 没有同名旗标。
-    pub(crate) const TAB_GROUP: &str = "--tab-group";
+    pub const TAB_GROUP: &str = "--tab-group";
     /// `--say <那句>`：开口那句 —— 这一发落在 tmux 里、起新会话时交给 agent 当第一句（`plan::build_among`）。claude 没有同名旗标。
-    pub(crate) const SAY: &str = "--say";
+    pub const SAY: &str = "--say";
     /// `ccm -- --host-run <句柄> [键=值…] -- <命令…>`：托管终端的托管进程（`host/managed/run.rs`）。只许紧跟打头的 `--`，
     /// 由 ccm / 后端起托管终端时自己拼，不进配置。
-    pub(crate) const HOST_RUN: &str = "--host-run";
+    pub const HOST_RUN: &str = "--host-run";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
-    pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
+    pub const ACCOUNT_DIR: &str = "--account-dir";
     /// 这一发不轮换，只用起它的那个号（同 `session-open` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
-    pub(crate) const NO_ROTATION: &str = "--no-rotation";
+    pub const NO_ROTATION: &str = "--no-rotation";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
-    pub(crate) const END: &str = "--";
+    pub const END: &str = "--";
     /// 位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
     /// 起新会话本来就是缺省，写出来是给想说清楚的人与渲染器用的；`ccm new`（没有 `--`）整行交 claude。
-    pub(crate) const NEW: &str = "new";
+    pub const NEW: &str = "new";
 }
 
 /// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）：解析器认右边那个词的同一处（[`right_word`]）。
 /// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）：后端的子命令集合要问这里，这里不许再问回去。
-pub(crate) fn is_ccm_word(word: &str) -> bool {
+pub fn is_ccm_word(word: &str) -> bool {
     right_word(word).is_some()
 }
 
@@ -73,7 +73,7 @@ fn right_word(a: &str) -> Option<&'static str> {
 
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CwdSpec {
+pub enum CwdSpec {
     Auto,
     Explicit(String),
 }
@@ -82,11 +82,11 @@ pub(crate) enum CwdSpec {
 ///
 /// `--account` 不给 ⇒ 落 manifest 的默认账号；成对的另一半：调用方已经选好的号不许被静默换掉
 /// （`plan::account_for` 的继承那一支）。
-pub(crate) struct Defaults;
+pub struct Defaults;
 
 impl Defaults {
     /// 不给 `--agent` ⇒ 注册表里声明默认的那一家（`LaunchFace::is_default`）。
-    pub(crate) fn agent() -> &'static str {
+    pub fn agent() -> &'static str {
         crate::agents::default_kind()
     }
     /// 不给 `--cwd` ⇒ `auto`，而 `auto` 就是恒等：调用方自己的 cwd（`plan::resolve_cwd`；诚实的默认 = 沿用调用者状态）。
@@ -106,54 +106,54 @@ impl Defaults {
     // 工作目录不在这张表里：它的默认是恒等（上面 `CWD`），不替用户挑一个具体目录。
     // 账号库 manifest 的门牌号也不在：它是后端的家那一族（`plan::accts_manifest_under`），不是一个可以换的默认值。
     /// 起 agent 前要 eval 的机器级 env。
-    pub(crate) const ENV: &'static str = "";
+    pub const ENV: &'static str = "";
 }
 
 /// 解析出来的一整套意图。**下游只许读这个结构，不许再看一眼 `args`。**
 #[derive(Debug, Clone)]
-pub(crate) struct Opts {
+pub struct Opts {
     /// `--attach <名>`；空 = 没给（起会话）。
-    pub(crate) attach_name: String,
-    pub(crate) use_tmux: bool,
+    pub attach_name: String,
+    pub use_tmux: bool,
     /// `--hosted`。
-    pub(crate) hosted: bool,
-    pub(crate) tmux_name: String,
-    pub(crate) tmux_base: String,
+    pub hosted: bool,
+    pub tmux_name: String,
+    pub tmux_base: String,
     /// 空串 = **没给** —— 它与「给了一个空值」在本 CLI 上同形（bash 那侧也是）。
-    pub(crate) account: String,
-    pub(crate) use_base: bool,
-    pub(crate) cwd_spec: CwdSpec,
+    pub account: String,
+    pub use_base: bool,
+    pub cwd_spec: CwdSpec,
     /// `--cwd-if` 那几条 `(在哪, 进哪)`，按写的顺序；都没对上 ⇒ [`Opts::cwd_spec`]。
-    pub(crate) cwd_if: Vec<(String, String)>,
-    pub(crate) agent: String,
-    pub(crate) launcher: String,
-    pub(crate) ccm_sid: String,
+    pub cwd_if: Vec<(String, String)>,
+    pub agent: String,
+    pub launcher: String,
+    pub ccm_sid: String,
     /// `--tab`；没给 ⇒ `None`。
-    pub(crate) tab: Option<cmd_wire::session::Tab>,
+    pub tab: Option<cmd_wire::session::Tab>,
     /// `--tab` 是哪个别名写的（合并那一处按来处填 · tmux 里那一趟由 `--tab-from` 交来）；空 ＝ 命令行当场给的 / 没给。
-    pub(crate) tab_from: String,
+    pub tab_from: String,
     /// 这一发经哪条别名起的（合并那一处取最末那一层 · tmux 里那一趟由 `--ccm-alias` 交来）；空 ＝ 不经别名。
-    pub(crate) alias: String,
+    pub alias: String,
     /// `--tab-group`；空 ＝ 没给。
-    pub(crate) tab_group: String,
+    pub tab_group: String,
     /// `--say`；空 ＝ 没给。
-    pub(crate) say: String,
+    pub say: String,
     /// `--account-dir`；空 = 没给。
-    pub(crate) account_dir: String,
+    pub account_dir: String,
     /// `--no-rotation`：这一发不轮换。
-    pub(crate) no_rotation: bool,
-    pub(crate) print: bool,
-    pub(crate) detach: bool,
-    pub(crate) tmux_size: String,
+    pub no_rotation: bool,
+    pub print: bool,
+    pub detach: bool,
+    pub tmux_size: String,
     /// 交给 agent 的那一串，按用户写的顺序（ccm 不认的词全在这里，含 `--resume` / `--model`）。
-    pub(crate) passthru: Vec<String>,
+    pub passthru: Vec<String>,
     /// 透传里 resume 的那条会话（只看不吃：词仍原样在 `passthru` 里）；见 [`resume_sid`]。
-    pub(crate) resumes: Option<String>,
+    pub resumes: Option<String>,
 }
 
 /// 一次**立即结束**的请求：解析期就能答完、不必走计划面。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Early {
+pub enum Early {
     Probe,
     Version,
     Help,
@@ -161,7 +161,7 @@ pub(crate) enum Early {
 
 /// 解析失败 ⇒ 一句人话 + 退出码 2（用法错）。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Die(pub(crate) String);
+pub struct Die(pub String);
 
 fn die<T>(msg: impl Into<String>) -> Result<T, Die> {
     Err(Die(msg.into()))
@@ -170,17 +170,11 @@ fn die<T>(msg: impl Into<String>) -> Result<T, Die> {
 /// `--flag <值>` 这一形：下一个 token 缺席、或它本身像个旗标 ⇒ 多半是漏了参数。
 fn need_val(name: &str, next: Option<&String>) -> Result<String, Die> {
     match next {
-        None => die(copy_text(
-            "beArgv.needVal.missing",
-            &[("name", &name.to_string())],
-        )),
-        Some(v) if v.is_empty() => die(copy_text(
-            "beArgv.needVal.missing",
-            &[("name", &name.to_string())],
-        )),
+        None => die(copy_text("beArgv.needVal.missing", &[("name", name)])),
+        Some(v) if v.is_empty() => die(copy_text("beArgv.needVal.missing", &[("name", name)])),
         Some(v) if v.starts_with('-') => die(copy_text(
             "beArgv.needVal.looksMissing",
-            &[("name", &name.to_string()), ("v", &v.to_string())],
+            &[("name", name), ("v", v.as_str())],
         )),
         Some(v) => Ok(v.clone()),
     }
@@ -188,18 +182,18 @@ fn need_val(name: &str, next: Option<&String>) -> Result<String, Die> {
 
 /// 解析结果：要么立即答（[`Early`]），要么拿到一整套 [`Opts`]。
 #[derive(Debug)]
-pub(crate) enum Parsed {
+pub enum Parsed {
     Early(Early),
     Opts(Box<Opts>),
 }
 
 /// `args` 里**最后一个** `--` 的位置（没有 ⇒ `None`）。左边交 claude、右边归 ccm —— 切法只住这一处。
-pub(crate) fn last_end(args: &[String]) -> Option<usize> {
+pub fn last_end(args: &[String]) -> Option<usize> {
     args.iter().rposition(|a| a == flag::END)
 }
 
 /// 一组没给任何选项时的意图（默认值都取 [`Defaults`]）；`left` 是交给 agent 的那一串。
-pub(crate) fn blank_opts(left: &[String]) -> Opts {
+pub fn blank_opts(left: &[String]) -> Opts {
     Opts {
         attach_name: String::new(),
         use_tmux: Defaults::USE_TMUX,
@@ -229,7 +223,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
 }
 
 /// `--` 右边认得的全部词（[`flag::END`] 不在其中：右边不会再有它）。
-pub(crate) const RIGHT_WORDS: &[&str] = &[
+pub const RIGHT_WORDS: &[&str] = &[
     flag::NEW,
     flag::TMUX,
     flag::HOSTED,
@@ -260,17 +254,17 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
 /// 右边的一组词：一个认得的词连同它吃掉的值。几个词、值从哪来只住 [`word_at`]，含义只住 [`apply_word`] ——
 /// [`parse_layered`] 与别名表单（`assets/aliases/form.rs`）都按这一份走。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Word {
+pub struct Word {
     /// 认得的那个词（[`flag`] 里的常量）。
-    pub(crate) flag: &'static str,
+    pub flag: &'static str,
     /// 它带的值：`--x <值>` / `--x=<值>` 一个，`--cwd-if` 两个，开关没有（`--ccm-tmux=<名>` 的名算一个）。
-    pub(crate) vals: Vec<String>,
+    pub vals: Vec<String>,
     /// 这一组占几个词（原样那几个是 `args[i..i + len]`）。
-    pub(crate) len: usize,
+    pub len: usize,
 }
 
 /// `args[i]` 起的那一组词（`args` 是 `--` 右边那一串）。认不得 / 缺值 ⇒ 与 [`parse_layered`] 同一句。
-pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
+pub fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
     let a = args[i].as_str();
     // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
     let (key, inline) = match a.find('=') {
@@ -279,10 +273,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
     };
     let Some(known) = right_word(a) else {
         // 右边认不得 ⇒ 报错。那一句同时说清后端子命令只能紧跟打头的 `--`：认不认它是不是子命令要问命令表，这一层不问。
-        return die(copy_text(
-            "beArgv.parse.unknownRight",
-            &[("w", &a.to_string())],
-        ));
+        return die(copy_text("beArgv.parse.unknownRight", &[("w", a)]));
     };
     // `--flag <值>` / `--flag=<值>`：值与占几个词。
     let one = || -> Result<(String, usize), Die> {
@@ -330,7 +321,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
 }
 
 /// 一组词落进意图。`at` 是它在右边的位置（`new` 只许打头）。立即结束的那几个 ⇒ `Some`、`o` 不动。
-pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Early>, Die> {
+pub fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Early>, Die> {
     let v = |k: usize| w.vals.get(k).cloned().unwrap_or_default();
     match w.flag {
         flag::NEW if at == 0 => {}
@@ -375,18 +366,13 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         flag::CCM_PROBE => return Ok(Some(Early::Probe)),
         flag::CCM_VERSION => return Ok(Some(Early::Version)),
         flag::CCM_HELP => return Ok(Some(Early::Help)),
-        other => {
-            return die(copy_text(
-                "beArgv.parse.unknownRight",
-                &[("w", &other.to_string())],
-            ))
-        }
+        other => return die(copy_text("beArgv.parse.unknownRight", &[("w", other)])),
     }
     Ok(None)
 }
 
 /// `--tab` 的值那个词（`show` · `hide`）：写进命令行与配置文件都是它。
-pub(crate) fn tab_word(t: cmd_wire::session::Tab) -> &'static str {
+pub fn tab_word(t: cmd_wire::session::Tab) -> &'static str {
     match t {
         cmd_wire::session::Tab::Show => "show",
         cmd_wire::session::Tab::Hide => "hide",
@@ -394,7 +380,7 @@ pub(crate) fn tab_word(t: cmd_wire::session::Tab) -> &'static str {
 }
 
 /// [`tab_word`] 反过来：认不得 ⇒ `None`。
-pub(crate) fn tab_of(word: &str) -> Option<cmd_wire::session::Tab> {
+pub fn tab_of(word: &str) -> Option<cmd_wire::session::Tab> {
     [cmd_wire::session::Tab::Show, cmd_wire::session::Tab::Hide]
         .into_iter()
         .find(|t| tab_word(*t) == word)
@@ -402,18 +388,18 @@ pub(crate) fn tab_of(word: &str) -> Option<cmd_wire::session::Tab> {
 
 /// 一层配置（配置文件里的一段）：名字 ＋ 交给 agent 的词 ＋ ccm 的词（`--` 右边那种写法）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Layer {
-    pub(crate) name: String,
-    pub(crate) agent: Vec<String>,
-    pub(crate) ccm: Vec<String>,
+pub struct Layer {
+    pub name: String,
+    pub agent: Vec<String>,
+    pub ccm: Vec<String>,
 }
 
 /// 合并结果里的一项来自哪一层：`layer` 是那一段的名字，空串 ＝ 命令行当场给的。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Origin {
-    pub(crate) flag: &'static str,
-    pub(crate) vals: Vec<String>,
-    pub(crate) layer: String,
+pub struct Origin {
+    pub flag: &'static str,
+    pub vals: Vec<String>,
+    pub layer: String,
 }
 
 /// 同一格的几个词：后来的一层写了其中任何一个，前面几层写的这一格整格作废。
@@ -438,10 +424,7 @@ fn slot_of(f: &'static str) -> &'static str {
 /// - 其余每一格（[`slot_of`]）：后来的一层写了就整格盖掉前面几层的；开关只能打开（写了就是开）。
 ///
 /// 合并完逐词落意图（[`word_at`] 几个词 ＋ [`apply_word`] 什么意思）＋ [`finish`] 收尾；每一项来自哪一层一并交回（设置窗的合并预览照画）。
-pub(crate) fn parse_layered(
-    layers: &[Layer],
-    args: &[String],
-) -> Result<(Parsed, Vec<Origin>), Die> {
+pub fn parse_layered(layers: &[Layer], args: &[String]) -> Result<(Parsed, Vec<Origin>), Die> {
     let (left, right): (&[String], &[String]) = match last_end(args) {
         Some(k) => (&args[..k], &args[k + 1..]),
         None => (args, &[]),
@@ -565,10 +548,10 @@ pub(crate) fn resume_sid<'a>(passthru: &'a [String], token: &str) -> Option<&'a 
 ///（写了个修饰、看起来生效了、实际被吃掉）。
 fn validate(o: &Opts) -> Result<(), Die> {
     if !o.account.is_empty() && o.use_base {
-        return die(&copy_text("beArgv.validate.accountAndBase", &[]));
+        return die(copy_text("beArgv.validate.accountAndBase", &[]));
     }
     if !o.account_dir.is_empty() && (!o.account.is_empty() || o.use_base) {
-        return die(&copy_text("beArgv.validate.accountDirAndAccount", &[]));
+        return die(copy_text("beArgv.validate.accountDirAndAccount", &[]));
     }
     // 这一家没有账号这一维 ⇒ 选号说不出：明说，不导出一个它不读的变量（`--base` 照收，什么都不做）。
     if (!o.account.is_empty() || !o.account_dir.is_empty())
@@ -580,26 +563,26 @@ fn validate(o: &Opts) -> Result<(), Die> {
         ));
     }
     if o.hosted && o.use_tmux {
-        return die(&copy_text("beArgv.validate.hostedAndTmux", &[]));
+        return die(copy_text("beArgv.validate.hostedAndTmux", &[]));
     }
     if o.detach && !o.use_tmux && !o.hosted {
-        return die(&copy_text("beArgv.validate.detachNeedsTmux", &[]));
+        return die(copy_text("beArgv.validate.detachNeedsTmux", &[]));
     }
     if !o.tmux_size.is_empty() && !o.use_tmux && !o.hosted {
-        return die(&copy_text("beArgv.validate.sizeNeedsTmux", &[]));
+        return die(copy_text("beArgv.validate.sizeNeedsTmux", &[]));
     }
     if !o.tmux_name.is_empty() && !o.tmux_base.is_empty() {
-        return die(&copy_text("beArgv.validate.nameAndBase", &[]));
+        return die(copy_text("beArgv.validate.nameAndBase", &[]));
     }
     if !o.tab_from.is_empty() && o.tab.is_none() {
-        return die(&copy_text("beArgv.validate.tabFromNeedsTab", &[]));
+        return die(copy_text("beArgv.validate.tabFromNeedsTab", &[]));
     }
     check_values(o)
 }
 
 /// 每一格自己的值合不合法（与别的格怎么组合无关）：起会话时 [`validate`] 收尾要过，配置文件逐项读的时候也过这一道
 /// （写错报到那一行，`assets/aliases/profile.rs`）。没给的格不看。
-pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
+pub fn check_values(o: &Opts) -> Result<(), Die> {
     if !o.tmux_size.is_empty() && parse_size(&o.tmux_size).is_none() {
         // 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
         return die(copy_text(
@@ -666,7 +649,7 @@ pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
 }
 
 /// `<宽>x<高>` ⇒ `(宽, 高)`。只认纯十进制、两侧都非空、**有且仅有一个 `x`**。
-pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
+pub fn parse_size(s: &str) -> Option<(String, String)> {
     let (w, h) = s.split_once('x')?;
     if w.is_empty() || h.is_empty() {
         return None;
@@ -677,10 +660,11 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
     Some((w.to_string(), h.to_string()))
 }
 
-#[cfg(test)]
-#[path = "../../../tests/backend/ccm_line/argv_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：旧写法夹具的换排列 `tests::mixed_to_split` 给同族几份单测共用
+/// 判据的共用夹具（没有配置层的解析 · 旧写法的换排列）：本包判据与上层判据（经 `test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/ccm_line/argv_support.rs"]
+pub mod test_support;
 
 #[cfg(test)]
-#[path = "../../../tests/backend/ccm_line/claude_flags_tests.rs"]
-mod claude_flags_tests;
+#[path = "../../../../tests/backend/ccm_line/argv_tests.rs"]
+mod tests;

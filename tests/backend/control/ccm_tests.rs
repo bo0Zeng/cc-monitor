@@ -168,7 +168,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
             "{with_end:?}"
         );
     }
-    let o = match argv::tests::parse(&v(&[
+    let o = match argv::test_support::parse(&v(&[
         "--resume",
         "x",
         "--",
@@ -237,7 +237,8 @@ fn the_version_moved_because_the_implementation_did() {
 /// （那边保证「旗标字面量只住 argv.rs」，这边保证「住在那里的都说得出来」）。
 #[test]
 fn every_flag_we_accept_has_a_usage_line() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/ccm_line/argv.rs"));
+    let src =
+        guard_core::production_code(include_str!("../../../src/backend/host/ccm_line/argv.rs"));
     let mut flags: Vec<String> = Vec::new();
     let mut from = 0usize;
     while let Some(rel) = src[from..].find("\"--") {
@@ -325,8 +326,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) =
-            argv::tests::parse(&argv::tests::mixed_to_split(&args)).expect("该解析得动")
+        let Parsed::Opts(o) = argv::test_support::parse(&argv::test_support::mixed_to_split(&args))
+            .expect("该解析得动")
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
@@ -500,7 +501,9 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::tests::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动") {
+    let o = match argv::test_support::parse(&argv::test_support::mixed_to_split(&a))
+        .expect("该解析得动")
+    {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
@@ -627,7 +630,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
         let got = answer_print(&serde_json::json!({ "args": args }))
             .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let o = match argv::tests::parse(&a).expect("该解析得动") {
+        let o = match argv::test_support::parse(&a).expect("该解析得动") {
             Parsed::Opts(o) => o,
             other => panic!("{other:?}"),
         };
@@ -718,7 +721,7 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(e.code.as_deref(), Some("refused"));
     let said = e.said;
-    let want = match argv::tests::parse(&["--".to_string(), "--detach".to_string()]) {
+    let want = match argv::test_support::parse(&["--".to_string(), "--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
     };
@@ -1109,7 +1112,7 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
             .map(|s| s.to_string())
             .collect();
         let Parsed::Opts(o) =
-            argv::tests::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动")
+            argv::test_support::parse(&argv::test_support::mixed_to_split(&a)).expect("该解析得动")
         else {
             panic!("不该是 Early")
         };

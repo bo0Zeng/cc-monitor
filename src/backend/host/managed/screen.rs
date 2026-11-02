@@ -7,7 +7,7 @@
 //! `vt100` 不记的几样模式（焦点 `?1004` · 同步输出 `?2026` · 光标形状）由 [`Extra`] 记，整屏字节里带上（A3-3-15）。
 
 /// 回滚行数：与终端页往回看的上限（`control::terminals::MAX_SCROLLBACK`）对齐，判据钉两边相等。
-pub(crate) const SCROLLBACK: usize = 2000;
+pub const SCROLLBACK: usize = 2000;
 
 /// DA1 的答：VT220 ＋ ANSI 颜色（与 tmux 答的同形）。
 pub(crate) const DA1_REPLY: &[u8] = b"\x1b[?62;22c";

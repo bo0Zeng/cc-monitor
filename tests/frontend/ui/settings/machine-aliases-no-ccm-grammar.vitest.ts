@@ -7,7 +7,7 @@
  *
  * # 判法
  *
- * 旗标的全集取后端原文（`src/backend/ccm_line/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
+ * 旗标的全集取后端原文（`src/backend/host/ccm_line/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
  * 与被扫的界面文件异源。别名页那两份生产文件（剥注释）里：
  * - 字符串字面量恰是某个旗标、或以「旗标=」打头 ⇒ 命中；
  * - 按空白切一串（`.split(/\s…/)`）⇒ 命中。
@@ -24,12 +24,16 @@ import { stripComments } from "../../../test-support/strip-comments";
 
 const FILES = ["src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/alias-reads.ts", "src/frontend/ui/settings/profiles-list.ts", "src/frontend/ui/profiles-reads.ts"];
 
+/** 后端 ccm 那一行的解析口（宿主口那个包里）与它的旗标表那一段的开头。 */
+const ARGV_RS = "src/backend/host/ccm_line/argv.rs";
+const FLAG_MOD = "pub mod flag {";
+
 /** 后端 `argv.rs::flag` 里每一个常量的值。 */
 function ccmWords(): string[] {
-  const src = readFileSync(resolve(REPO_ROOT, "src/backend/ccm_line/argv.rs"), "utf8");
-  const at = src.indexOf("pub(crate) mod flag {");
+  const src = readFileSync(resolve(REPO_ROOT, ARGV_RS), "utf8");
+  const at = src.indexOf(FLAG_MOD);
   const body = src.slice(at, src.indexOf("\n}\n", at));
-  return [...body.matchAll(/pub\(crate\) const [A-Z_]+: &str = "([^"]*)";/g)].map((m) => m[1]);
+  return [...body.matchAll(/pub(?:\(crate\))? const [A-Z_]+: &str = "([^"]*)";/g)].map((m) => m[1]);
 }
 
 /** 一段（已剥注释的）代码里的命中。 */
@@ -48,9 +52,9 @@ function hits(code: string, words: readonly string[]): string[] {
 describe("别名页零处自己解析 ccm 参数", () => {
   it("旗标全集取自后端原文：恰是那几条常量，含分界 `--` 与位置词 `new`", () => {
     const words = ccmWords();
-    const declared = (readFileSync(resolve(REPO_ROOT, "src/backend/ccm_line/argv.rs"), "utf8").split("pub(crate) mod flag {")[1] ?? "")
+    const declared = (readFileSync(resolve(REPO_ROOT, ARGV_RS), "utf8").split(FLAG_MOD)[1] ?? "")
       .split("\n}\n")[0]
-      .match(/pub\(crate\) const /g)!.length;
+      .match(/pub(?:\(crate\))? const /g)!.length;
     expect(words.length, "抠出来的与声明的条数对不上 —— 抽取坏了").toBe(declared);
     expect(words).toContain("--");
     expect(words).toContain("new");

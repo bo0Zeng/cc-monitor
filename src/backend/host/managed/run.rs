@@ -23,20 +23,20 @@ use tokio::io::AsyncWriteExt;
 pub(crate) const DEFAULT_SIZE: Size = Size { rows: 24, cols: 80 };
 
 /// 托管进程里那个子进程的环境：`CCM_HOST` 让里面的 ccm 写便条时带上宿主（A3-3-4）；终端型号照 tmux 的 `default-terminal` 那一类给。
-pub(crate) const HOST_ENV: &str = "CCM_HOST";
+pub const HOST_ENV: &str = "CCM_HOST";
 const CHILD_ENV: [(&str, &str); 2] = [("TERM", "xterm-256color"), ("COLORTERM", "truecolor")];
 /// 不往下传：里面不是 tmux。
 const CHILD_ENV_REMOVED: [&str; 2] = ["TMUX", "TMUX_PANE"];
 
 /// 起一个托管终端要的那几样。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Spec {
+pub struct Spec {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) size: Size,
     pub(crate) cwd: String,
     pub(crate) agent: String,
-    pub(crate) client: String,
+    pub client: String,
     pub(crate) argv: Vec<String>,
 }
 
@@ -88,7 +88,7 @@ pub(crate) fn size_of(s: &str) -> Option<Size> {
 }
 
 /// 后端词的入口：解参数、跑，交回进程退出码（起不来 2，跑完 0）。
-pub(crate) async fn main(args: &[String], own: &Own) -> i32 {
+pub async fn main(args: &[String], own: &Own) -> i32 {
     let done = match parse(args) {
         Ok(spec) => run(spec, own, |_| {}).await,
         Err(s) => Err(s),
@@ -375,6 +375,15 @@ async fn write_out<W: tokio::io::AsyncWrite + Unpin>(out: &Outbox, wr: &mut W) {
     }
 }
 
+/// 起托管终端的夹具（沙箱数据目录 · 假子进程 · `start` · `hello` · 读到哪一句）：本包判据与上层判据（经 `test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/host/run_support.rs"]
+#[allow(
+    clippy::let_underscore_must_use,
+    reason = "测试档的夹具：只在测试档与上层测试档（`test-support`）编；清上一趟留下的沙箱目录 · 回报绑好的口时丢结果，同各包测试段放开的那一样"
+)]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/host/run_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：起托管终端的夹具（沙箱家 · `start` · `hello`）给名单 · 一生那几份判据共用
+mod tests;
