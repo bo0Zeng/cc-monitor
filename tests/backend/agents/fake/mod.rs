@@ -29,7 +29,14 @@
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
+
+/// 本假 agent 读自己那几份夹具文件（配置 · MCP · 派出记录）的上限：夹具只有几行，超了即拒收。
+pub(crate) const FAKE_FILE_CAP: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::Reject,
+};
 
 /// 本假 agent 在 wire 上的 `agent_kind` 值。
 ///
@@ -103,7 +110,7 @@ pub(crate) const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
 /// `projects[cwd].hasTrustDialogAccepted`）。
 pub(crate) fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
     let p = root.join("fake-config.json");
-    let bytes = Ro::read(&p).map_err(|e| format!("fake_config_unreadable: {e}"))?;
+    let bytes = Ro::read_capped(&p, FAKE_FILE_CAP).map_err(|e| format!("fake_config_unreadable: {e}"))?;
     let v: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("fake_config_invalid: {e}"))?;
     Ok(v.get("trusted")
@@ -276,7 +283,7 @@ fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate
     let mut out = crate::agents::McpRead::default();
     let Some(dir) = project_dir else { return out };
     let file = dir.join(".fake-mcp.json");
-    let Ok(text) = Ro::read_to_string(&file) else {
+    let Ok(text) = Ro::read_string_capped(&file, FAKE_FILE_CAP) else {
         return out;
     };
     match serde_json::from_str::<serde_json::Value>(&text) {
@@ -614,7 +621,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     // 信任经通用层读：那一家说的配置文件名 ＋ 信任那一格（`AccountsFace.trust`），本体是各号同步信任那一份。
     let trusted = face.trust.is_some_and(|cells| {
-        Ro::read(&fixture_home.join(face.config_file))
+        Ro::read_capped(&fixture_home.join(face.config_file), FAKE_FILE_CAP)
             .ok()
             .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
             .is_some_and(|v| {
