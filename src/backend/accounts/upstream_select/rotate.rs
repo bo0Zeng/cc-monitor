@@ -145,9 +145,19 @@ impl Hop {
         self.library_here().unwrap_or_default()
     }
 
-    /// 号表里每个号的路由段（照表里的先后；路由段推不出来的那一行不算）。
+    /// 轮换里的号：号表里每个号的路由段，照表里的先后；路由段推不出来的那一行不算。
+    /// 账号 0（不设配置目录的那一份 `~/.claude`，账号库写清单时合成那一条）不算：它不经选号（`acct_core::account_selectable`），
+    /// 往往与库里某个号是同一份订阅；会话恰好起在它上面时，开会话的号那一条由调用方另拼（[`Self::fact_one`]）。
     fn ids(lib: &AccountBook) -> impl Iterator<Item = String> + '_ {
-        lib.accounts.iter().filter_map(ManifestAccount::route_id)
+        lib.accounts
+            .iter()
+            .filter_map(ManifestAccount::route_id)
+            .filter(|id| id != acct_core::BARE_ACCOUNT)
+    }
+
+    /// 轮换里的号（[`Self::ids`]）：事实 · 新策略的号列表 · 清掉库里没有的号都照它。
+    pub(crate) fn roster(&self) -> Vec<String> {
+        Self::ids(&self.library()).collect()
     }
 
     fn endpoint(&self, face: &LoginFace) -> Option<TokenEndpoint> {

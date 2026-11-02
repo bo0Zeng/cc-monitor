@@ -304,6 +304,10 @@ fn probe_tty_title(tty: &str, marker: &str) -> Option<MarkerHit> {
         if !tty_title(tty, TtyTitle::Set(marker)) {
             break;
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "本机 shell 那一份记录挂上记号标题之后等它传到窗口标题上：50ms 一步、至多 12 步（≤600ms），找到就停；只在 monitor 起来与新记录落地那一下跑。终端标题变更没有给外部订的事件，有了就去掉"
+        )]
         std::thread::sleep(Duration::from_millis(50));
         hit = find_window_by_marker_substr(marker);
         if hit.is_some() {
