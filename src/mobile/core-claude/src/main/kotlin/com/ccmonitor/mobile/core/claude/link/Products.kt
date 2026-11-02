@@ -199,7 +199,7 @@ object HistorySearch {
 }
 
 /**
- * 几台搜内容的结果合成一份：手机逐台直连问完，交嵌的 Rust 核心合（`cmd_wire::search::merge`，本机后端扇出完调的同一份），
+ * 几台搜内容的结果合成一份：手机逐台直连问完，交嵌的 Rust 核心合（`face_core::search::merge`，本机后端扇出完调的同一份），
  * 不交哪一台当信差。每台原样交它的回包（核心按类型解，整数照整数写）。
  */
 object SearchMerge {

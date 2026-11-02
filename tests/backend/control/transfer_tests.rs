@@ -1122,7 +1122,7 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
     assert_eq!(
         (v["code"].as_str(), v["said"].as_str()),
         (
-            Some(copy_core::said::FALLBACK_CODE),
+            Some(cmd_wire::failed::FALLBACK_CODE),
             Some("写入远端失败 · 原因不明")
         )
     );

@@ -6,12 +6,12 @@ workspace = "../../frontend/shell"
 description = "帧命令两端必须对上的那几样：机器名（`Machine`）· 每条 typed 命令的形状指纹表（后端 hello 带出去、客户端拿来比）。后端 · monitor · 以后的 mobcore 链同一份。"
 
 # 同 acct-core 的约束：后端是静态 musl 二进制、刻意不在 monitor 的 workspace 里 ⇒ 这里不许长出平台相关的东西。
+# 只放类型、不写字：不依赖文案表（`copy-core`）—— 照类型写成给人看的字的住 `face-core`，编译器挡住契约里取文。
 [dependencies]
-copy-core = { path = "../copy-core" }
 # 会话 id 的值域（`Sid` 解码就判）：全仓那一份 `session_id_ok`。
 shell-quote-core = { path = "../shell-quote-core" }
 serde = { version = "1", features = ["derive"] }
-# 回包里记录那一格一条一条判认不认得（`record::mend_records`：进来的是一份 JSON 值）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
+# 回包里记录那一格是原样的一团 JSON 值（`record::ReadRow` 等的缺省类型参数）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
 #   （记录那一格是 `RawValue`，同壳的快路）；开在这里而不在测试档 —— 本 crate 也进壳的构建期依赖（经 `deploy-contract`），
 #   只在测试档开会让判据构建与发布构建的特性集分叉。它只多出一个类型，不改解析行为。
 serde_json = { version = "1", features = ["raw_value"] }

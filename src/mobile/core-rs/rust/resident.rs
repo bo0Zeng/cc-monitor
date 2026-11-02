@@ -9,8 +9,8 @@
 
 use cmd_wire::frame::Frame;
 use cmd_wire::phone::{CallEnd, LinkLine};
-use cmd_wire::record::OrUnread;
 use deploy::machine::{fold, product, Entry, Fact};
+use face_core::record::OrUnread;
 use resident_client::book::SessionBook;
 use resident_client::client::CallError;
 use resident_client::feed::{
@@ -638,7 +638,7 @@ pub fn close(h: i64) {
 }
 
 /// 一问一答的结局 ⇒ 交 Kotlin 的那一行（[`CallEnd`]）。
-/// 成了的回包原样交（Kotlin 由 `cmd-wire` 那一份生成的类解那一次），只有记录那一格先一条一条判认不认得（`cmd_wire::record::mend_records`）。
+/// 成了的回包原样交（Kotlin 由 `cmd-wire` 那一份生成的类解那一次），只有记录那一格先一条一条判认不认得（`face_core::record::mend_records`）。
 /// 事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）经通信层那一份分流器说成一句（`route_call_error`），照失败交。
 pub fn reply_json(
     id: i64,
@@ -651,7 +651,7 @@ pub fn reply_json(
     let end = match got {
         Ok(data) => {
             let mut data = data.unwrap_or(serde_json::Value::Null);
-            cmd_wire::record::mend_records(cmd, &mut data);
+            face_core::record::mend_records(cmd, &mut data);
             CallEnd::Ok { call, data }
         }
         Err(CallError::Remote(f)) => CallEnd::Failed {

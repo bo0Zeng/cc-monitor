@@ -4,8 +4,8 @@
 //! 纯数据（后端 · 共享契约 crate 都用这一份）：记日志那一口（成不了应答、只成别处一句时把原话记一行）要日志库，
 //! 住后端 `common/said.rs`，不在这里。
 
-/// 码缺着的那一次失败投成应答时补的码（协议文档里的兜底码）。
-pub const FALLBACK_CODE: &str = "failed";
+// 码缺着的那一次失败投成应答时补的码：线上那一格的值，住两端的契约（`cmd_wire::failed`）。
+use cmd_wire::failed::FALLBACK_CODE;
 
 /// 码 ＋ 那一句 ＋ 下层原话 ＋ `data`。各处只经构造函数造它（[`Said::new`] · `From` · [`Said::with_raw`]），不写结构字面量。
 #[derive(Debug, Clone, PartialEq, Eq)]

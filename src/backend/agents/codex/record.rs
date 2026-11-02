@@ -554,7 +554,7 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
                 Some("response_item") => payload.get("type").and_then(Value::as_str),
                 t => t,
             };
-            Body::unread(
+            crate::agents::record::unread_body(
                 crate::agents::record::UnreadWhy::UnknownType,
                 kind.map(str::to_string),
                 &v.to_string(),

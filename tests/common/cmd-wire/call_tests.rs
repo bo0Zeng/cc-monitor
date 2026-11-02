@@ -530,13 +530,3 @@ fn a_missing_cell_is_refused_and_the_rewrite_is_the_same_bytes() {
         Some(Err(_))
     ));
 }
-
-/// 记录那一格按 `reads` 那一形解：解不开完整记录的那一条成认不出那一条，整份照样解得开。
-#[test]
-fn a_record_the_client_cannot_read_becomes_the_unread_one() {
-    let lines = json!({"from": 0, "next": 1, "eof": true, "end": 9,
-        "lines": [{"session_id": "s", "path": "/p", "seq": 0, "end": 9, "cwd": null,
-            "record": {"agent": "claude", "id": "r1", "t": "future-kind"}}]});
-    let back = round_trip("history-lines", lines).unwrap().unwrap();
-    assert_eq!(back["lines"][0]["record"]["t"], "unread");
-}

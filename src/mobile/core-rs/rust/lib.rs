@@ -387,7 +387,7 @@ pub fn clash_rows_json(data: &str) -> String {
 }
 
 /// 几台的搜内容结果合成一份：`{q, answered: [{origin, reply}]}`（`q` 搜的词；`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
-/// 合的那一步是本机后端扇出完调的同一份（`cmd_wire::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
+/// 合的那一步是本机后端扇出完调的同一份（`face_core::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
 /// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句），别台照合；整份读不动 ⇒ 空串。
 pub fn search_merge_json(data: &str) -> String {
     let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
@@ -413,7 +413,7 @@ pub fn search_merge_json(data: &str) -> String {
             }),
         }
     }
-    serde_json::to_string(&cmd_wire::search::merge(&q, answered, down)).unwrap_or_default()
+    serde_json::to_string(&face_core::search::merge(&q, answered, down)).unwrap_or_default()
 }
 
 /// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`resident_client::column`）；读不动 ⇒ 空串。
@@ -1612,7 +1612,7 @@ mod tests {
         assert!(!super::send_link(id, b"x".to_vec()));
     }
 
-    /// 搜内容几台合一份：手机核心合出的就是 `cmd_wire::search::merge` 那一份（本机后端扇出完调的同一个）；
+    /// 搜内容几台合一份：手机核心合出的就是 `face_core::search::merge` 那一份（本机后端扇出完调的同一个）；
     /// 交进来的是各台真回包的形（金样那一行：`updatedAt` · `face.order` · `hits[].offset` 这类整数格），合完整数格原样是整数；
     /// 某台那一份解不开 ⇒ 那台进 `down`、别台照合。
     #[test]
@@ -1643,7 +1643,7 @@ mod tests {
         ]})
         .to_string();
         let got: Value = serde_json::from_str(&super::search_merge_json(&text)).unwrap();
-        let want = cmd_wire::search::merge(
+        let want = face_core::search::merge(
             "夹具词",
             vec![
                 (

@@ -5702,12 +5702,12 @@ type MergedRow = {
  */
 origin: Machine, 
 /**
- * 这一行的项目目录在问的这一端打得开：[`merge`] 只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
+ * 这一行的项目目录在问的这一端打得开：合的那一步（`face_core::search::merge`）只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
  * 手机核心合的那一份不读这一格，不补。
  */
 reveal: boolean, 
 /**
- * 删除确认的正文：同上，[`merge`] 只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
+ * 删除确认的正文：同上，合的那一步只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
  */
 deleteAsk: Words, 
 /**
@@ -6120,7 +6120,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
@@ -6586,7 +6586,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
@@ -7084,7 +7084,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
@@ -7527,7 +7527,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
@@ -9597,7 +9597,7 @@ error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max
  */
 type: string | null, 
 /**
- * 写好的一句（[`unread_text`]）。
+ * 写好的一句（`face_core::record::unread_text`）。
  */
 text: string, 
 /**
