@@ -71,27 +71,24 @@ fn results(at_ms: Option<i64>, of: &[&str]) -> Record {
     }
 }
 
-/// 那一格的 `(text, timed)`。
-fn cell(r: &Record, id: &str) -> (String, Option<String>) {
+/// 那一格的 `text`。
+fn cell(r: &Record, id: &str) -> String {
     match &r.body {
-        Body::Said { results, .. } => {
-            let c = &results[id];
-            (c.text.0.clone(), c.timed.as_ref().map(|w| w.0.clone()))
-        }
+        Body::Said { results, .. } => results[id].text.0.clone(),
         _ => panic!("不是带结果的那一条"),
     }
 }
 
 const T: i64 = 1_700_000_000_000;
 
-/// ★ 调用 `c1` 在 t，隔 90 秒来了它的结果 ⇒ 那一格写好用时、带耗时那一形清掉。
+/// ★ 调用 `c1` 在 t，隔 90 秒来了它的结果 ⇒ 那一格写好用时。
 #[test]
 fn a_result_ninety_seconds_after_its_call_gets_its_duration_written() {
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c1"]));
     let mut r = results(Some(T + 90_000), &["c1"]);
     clock.time(&mut r);
-    assert_eq!(cell(&r, "c1"), (copy_core::short_duration(90_000), None));
+    assert_eq!(cell(&r, "c1"), copy_core::short_duration(90_000));
     assert_eq!(clock.len(), 0, "配上了就从表里摘掉");
 }
 
@@ -99,7 +96,7 @@ fn a_result_ninety_seconds_after_its_call_gets_its_duration_written() {
 #[test]
 fn a_result_earlier_than_its_call_or_unmatched_is_left_unwritten() {
     let untouched = cell(&results(None, &["c1"]), "c1");
-    assert_eq!(untouched, (String::new(), Some("{dur}".to_string())));
+    assert_eq!(untouched, String::new());
 
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c1"]));
@@ -130,12 +127,8 @@ fn a_full_table_drops_its_oldest_call() {
 
     let mut r = results(Some(T + 60_000), &["c0", "c1"]);
     clock.time(&mut r);
-    assert_eq!(
-        cell(&r, "c0"),
-        (String::new(), Some("{dur}".to_string())),
-        "最早那一条已丢"
-    );
-    assert_eq!(cell(&r, "c1"), (copy_core::short_duration(59_999), None));
+    assert_eq!(cell(&r, "c0"), String::new(), "最早那一条已丢");
+    assert_eq!(cell(&r, "c1"), copy_core::short_duration(59_999));
 }
 
 /// 没时刻的调用不进表（配上了也算不出用时）；同一 id 又记一次 ⇒ 照后一次的时刻。
@@ -149,7 +142,7 @@ fn a_call_without_a_time_is_not_noted_and_a_repeat_takes_the_later_time() {
     assert_eq!(clock.len(), 1);
     let mut r = results(Some(T + 90_000), &["c2"]);
     clock.time(&mut r);
-    assert_eq!(cell(&r, "c2"), (copy_core::short_duration(60_000), None));
+    assert_eq!(cell(&r, "c2"), copy_core::short_duration(60_000));
 }
 
 /// ★ codex 那一家走同一张表：`function_call` 在 t、`function_call_output` 隔 90 秒 ⇒ 结果那一条的 `results.<call_id>` 在，

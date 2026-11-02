@@ -3,9 +3,11 @@
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
+import * as durationFormatModule from "../../../src/frontend/ui/duration-format";
 import { owned } from "../../test-support/owned-tab-manager.ts";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
-import { buildStepLine, durBetween, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
+import { buildStepLine, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
+import * as stepLineModule from "../../../src/frontend/ui/cards/step-line";
 import { applyNotices } from "../../../src/frontend/ui/cards/speaker-bar";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -555,7 +557,7 @@ describe("一步还没结果时：照会话事实画", () => {
     expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停照后端写的那一句").toBe("U-why");
     paintWaiting(row, null, null, false);
     expect([row.querySelector(".step-right")?.textContent, row.querySelector<HTMLElement>(".step-right")?.hasAttribute("title")]).toEqual([copyText("stream.step.unclear"), false]);
-    settleStepLine(row, undefined, { ok: true } as never, false, "1s");
+    settleStepLine(row, undefined, { ok: true } as never, false);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
     paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);
     expect(row.dataset.state, "结果已经到了的那一行不改").toBe("ok");
@@ -601,8 +603,8 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
         { id: "t3", text: "…" },
         { id: "t4", text: "Exit code 1", error: true },
       ]) as object),
-      // 右侧那一句是核心写的（`text`；带耗时那一形 `timed` 里留 `{dur}`）：这里照抄、只填用时。
-      results: { t1: { ok: true, lines: 3, text: "", timed: "{dur}" }, t2: { ok: true, added: 38, removed: 6, text: "+38 −6" }, t3: { ok: true, lines: 212, text: "L212" }, t4: { ok: false, text: "F", timed: "F · {dur}" } },
+      // 右侧那一句是核心写的（`text`，用时也是核心配好写进去的）：这里照抄。
+      results: { t1: { ok: true, lines: 3, text: "1m" }, t2: { ok: true, added: 38, removed: 6, text: "+38 −6" }, t3: { ok: true, lines: 212, text: "L212" }, t4: { ok: false, text: "F · 1m" } },
     } as unknown as LineRecord;
     renderMessage(res, c);
     expect([0, 1, 2, 3].map((i) => [line(i).dataset.state, line(i).querySelector(".step-right")?.textContent])).toEqual([
@@ -635,15 +637,18 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
   });
 
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 steps ⇒ 工具名 ＋ 入参一句兜底", () => {
-    // 右侧那一句都是核心写的：认不出的工具那一句（`step.text`）· 结果那一句（`text`；带耗时那一形 `timed` 由这里填用时）。
-    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: true, text: "" }, "10s")).toBe("UNK");
+    // 右侧那一句都是核心写的：认不出的工具那一句（`step.text`）· 结果那一句（`text`，用时由核心配好写进去）。
+    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: true, text: "" })).toBe("UNK");
     expect(stateOf({ tool: "mcp__x", known: false } as never, { ok: true, text: "" }, false)).toBe("unknown");
     expect(stateOf(undefined, { ok: false, rejected: true, text: "R" }, true)).toBe("rejected");
-    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: false, rejected: true, text: "R" }, "10s"), "没成的照结果那一句").toBe("R");
-    expect(stepRight(undefined, { ok: false, text: "F", timed: "F · {dur}" }, "41s")).toBe("F · 41s");
-    expect(stepRight(undefined, { ok: false, text: "F", timed: "F · {dur}" }, null), "说不出用时 ⇒ 不带耗时那一形").toBe("F");
-    // 两条记录之间多久：那一个读口写（短时长，同金样）；缺一头 · 倒着 ⇒ 不写。
-    expect([durBetween(0, 300), durBetween(0, 41_000), durBetween(0, 182_000), durBetween(undefined, 5), durBetween(9, 1)]).toEqual(["<1s", "41s", "3m", null, null]);
+    expect(stepRight({ tool: "mcp__x", known: false, text: "UNK" } as never, { ok: false, rejected: true, text: "R" }), "没成的照结果那一句").toBe("R");
+    // ★ 结果那一格只给 `text` ⇒ 右侧照 `text`；还没结果 ⇒ 不写（界面不再自己算两条记录之间的用时）。
+    expect(stepRight(undefined, { ok: false, text: "F · 41s" })).toBe("F · 41s");
+    expect(stepRight(undefined, { ok: true, text: "" })).toBe("");
+    expect(stepRight(undefined, undefined)).toBe("");
+    // ★ 一步用时只在后端配：这里不再有自己算用时的读口。
+    expect(Object.keys(stepLineModule)).not.toContain("durBetween");
+    expect(Object.keys(durationFormatModule)).not.toContain("spanNow");
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
   });
 });

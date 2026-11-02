@@ -88,10 +88,6 @@ fn a_result_reads_counts_from_the_structured_result() {
             ok: false,
             exit_code: Some(127),
             text: Words(copy_core::copy_text("stream.step.failed", &[])),
-            timed: Some(Words(copy_core::copy_text(
-                "stream.step.failedFor",
-                &[("dur", "{dur}")]
-            ))),
             preview: Some("Exit code 127".into()),
             chars: Some(32),
             ..Default::default()
@@ -304,23 +300,20 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
 }
 
 /// ★★ 过程那一行右侧那一句由核心写（`StepResult::written`）：改动 `+a −r` · 读了几行只给读文件那一类 · 几个文件 ·
-/// 失败（带耗时那一形留 `{dur}`）· 未批准；都说不上 ⇒ 空串 ＋ 只有耗时那一形。
+/// 失败 · 未批准；都说不上 ⇒ 空串（配上用时之后由 `timed_by` 写）。
 #[test]
 fn the_right_hand_sentence_is_written_by_the_core() {
     let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
-    let t = |r: &StepResult| (r.text.0.clone(), r.timed.as_ref().map(|w| w.0.clone()));
+    let t = |r: &StepResult| r.text.0.clone();
     let lines = |n: &str| copy_core::copy_text("stream.step.lines", &[("n", n)]);
     // 读文件：读了几行。
     let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
-    assert_eq!(t(&r), (lines("12"), None));
-    // 命令输出几行、搜索命中几行：数照记（`lines`），右侧不说行数，只出耗时那一形。
+    assert_eq!(t(&r), lines("12"));
+    // 命令输出几行、搜索命中几行：数照记（`lines`），右侧不说行数。
     let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
-    assert_eq!(
-        (r.lines, t(&r)),
-        (Some(2), (String::new(), Some("{dur}".to_string())))
-    );
+    assert_eq!((r.lines, t(&r)), (Some(2), String::new()));
     let r = result_of(&ok("…"), Some(&json!({"numLines": 5, "mode": "content"})));
-    assert_eq!(t(&r).0, String::new(), "搜索命中几行不说成读了几行");
+    assert_eq!(t(&r), String::new(), "搜索命中几行不说成读了几行");
     // 改动：`+a −r`（为零的那一半不写）。
     let r = result_of(
         &ok("…"),
@@ -328,7 +321,7 @@ fn the_right_hand_sentence_is_written_by_the_core() {
             &json!({"filePath": "/w/a", "structuredPatch": [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 2, "lines": ["-a", "+b", "+c"]}]}),
         ),
     );
-    assert_eq!(t(&r), ("+2 −1".to_string(), None));
+    assert_eq!(t(&r), "+2 −1");
     assert_eq!(
         r.patch.as_ref().map(|d| d.stat.0.as_str()),
         Some("+2 −1"),
@@ -337,42 +330,50 @@ fn the_right_hand_sentence_is_written_by_the_core() {
     // 几个文件。
     let r = result_of(&ok("…"), Some(&json!({"numFiles": 4, "filenames": []})));
     assert_eq!(
-        t(&r).0,
+        t(&r),
         copy_core::copy_text("stream.step.files", &[("n", "4")])
     );
     // 未批准。
     let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true, "content": "User rejected tool use"});
     assert_eq!(
         t(&result_of(&rej, None)),
-        (copy_core::copy_text("stream.step.rejected", &[]), None)
+        copy_core::copy_text("stream.step.rejected", &[])
     );
 }
 
-/// ★★ 配上了调用的时刻 ⇒ 带耗时那一形填好用时、成了 `text`，`timed` 清掉（`timed_by`，唯一一处）；
-/// 配不上 · 本来就没有带耗时那一形 ⇒ 不动。
+/// ★★ 配上了调用的时刻 ⇒ 失败 · 都说不上的那一步把用时写进 `text`（`timed_by`，唯一一处），再配一次不再改；
+/// 配不上 · 别的那几形（读了几行 · 未批准）⇒ 不动。
 #[test]
 fn a_matched_duration_is_written_into_the_sentence_once() {
     use crate::agents::StepResultExt;
     let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
-    let t = |r: &StepResult| (r.text.0.clone(), r.timed.as_ref().map(|w| w.0.clone()));
+    let t = |r: &StepResult| r.text.0.clone();
     let dur = copy_core::short_duration(90_000);
     // 都说不上的那一步：只剩用时。
     let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
-    assert_eq!(t(&r.clone().timed_by(Some(90_000))), (dur.clone(), None));
+    assert_eq!(t(&r.clone().timed_by(Some(90_000))), dur);
+    assert_eq!(
+        t(&r.clone().timed_by(Some(90_000)).timed_by(Some(5_000))),
+        dur,
+        "写过一次就不再改"
+    );
     // 配不上：照没有用时的那一形，不猜。
     assert_eq!(t(&r.clone().timed_by(None)), t(&r));
     // 失败：「失败」那一句带上用时。
     let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 1", "is_error": true});
     let r = result_of(&err, None);
+    let failed_for = copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)]);
+    assert_eq!(t(&r.clone().timed_by(Some(90_000))), failed_for);
     assert_eq!(
-        t(&r.timed_by(Some(90_000))),
-        (
-            copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)]),
-            None
-        )
+        t(&r.timed_by(Some(90_000)).timed_by(Some(5_000))),
+        failed_for,
+        "写过一次就不再改"
     );
-    // 没有带耗时那一形（读了几行）：配上了也不动。
+    // 没有带耗时那一形（读了几行 · 未批准）：配上了也不动。
     let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
+    assert_eq!(t(&r.clone().timed_by(Some(90_000))), t(&r));
+    let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true, "content": "User rejected tool use"});
+    let r = result_of(&rej, None);
     assert_eq!(t(&r.clone().timed_by(Some(90_000))), t(&r));
 }
 

@@ -566,13 +566,10 @@ pub struct StepResult {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub patch: Option<LineDiff>,
     /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
-    /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+    /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串。配上了调用的时刻 ⇒ 失败 · 都说不上的那一步
+    /// 带上一步用时（`StepResultExt::timed_by` 写）；配不上 ⇒ 照没有用时的那一形。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub text: Words,
-    /// 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
-    pub timed: Option<Words>,
     /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
