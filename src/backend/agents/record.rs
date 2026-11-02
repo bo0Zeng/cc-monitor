@@ -12,8 +12,8 @@
 //! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 类别）；认不出那一行的一句住 `face_core::record`（手机解不开的那一条也写这一句），摘录的截法跟形状一起住 `cmd-wire`。
 
 pub use cmd_wire::record::excerpt_of;
-pub use face_core::record::unread_body;
 pub use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
+pub use face_core::record::unread_body;
 
 pub use cmd_wire::record::Draw;
 

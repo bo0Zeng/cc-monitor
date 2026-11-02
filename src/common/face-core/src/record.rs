@@ -67,12 +67,9 @@ impl OrUnread {
             _ => UnreadWhy::UnknownType,
         };
         let text = raw.to_string();
-        let id = s("id").filter(|i| !i.is_empty()).unwrap_or_else(|| {
-            format!(
-                "unread:{:016x}",
-                cmd_wire::fnv::fnv1a64(text.as_bytes())
-            )
-        });
+        let id = s("id")
+            .filter(|i| !i.is_empty())
+            .unwrap_or_else(|| format!("unread:{:016x}", cmd_wire::fnv::fnv1a64(text.as_bytes())));
         Self(Record {
             agent: s("agent").unwrap_or_default().into(),
             id,

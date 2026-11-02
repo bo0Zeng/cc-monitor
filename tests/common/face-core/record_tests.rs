@@ -32,7 +32,13 @@ fn unread_parts(r: &OrUnread) -> (UnreadWhy, Option<String>, String, String, u32
             excerpt,
             count,
             ..
-        } => (*why, kind.clone(), text.0.clone(), excerpt.0.clone(), *count),
+        } => (
+            *why,
+            kind.clone(),
+            text.0.clone(),
+            excerpt.0.clone(),
+            *count,
+        ),
         other => panic!("不是认不出那一条：{other:?}"),
     }
 }
@@ -136,11 +142,11 @@ fn only_the_record_cell_of_the_three_record_replies_is_mended() {
     let good = json!({"agent": "claude", "id": "t1", "draw": "card", "human": false,
         "t": "title", "text": "标题", "by": "agent"});
     let mut lines = json!({"from": 0, "next": 1, "eof": true, "end": 9,
-        "lines": [
-            {"session_id": "s", "path": "/p", "seq": 0, "end": 9, "cwd": null,
-                "record": {"agent": "claude", "id": "r1", "t": "future-kind"}},
-            {"session_id": "s", "path": "/p", "seq": 1, "end": 9, "cwd": null, "record": good.clone()}
-        ]});
+    "lines": [
+        {"session_id": "s", "path": "/p", "seq": 0, "end": 9, "cwd": null,
+            "record": {"agent": "claude", "id": "r1", "t": "future-kind"}},
+        {"session_id": "s", "path": "/p", "seq": 1, "end": 9, "cwd": null, "record": good.clone()}
+    ]});
     mend_records("history-lines", &mut lines);
     assert_eq!(lines["lines"][0]["record"]["t"], "unread");
     assert_eq!(lines["lines"][0]["record"]["type"], "future-kind");
@@ -181,10 +187,7 @@ fn the_record_replies_match_the_cross_language_golden() {
     const REL: &str = "tests/__fixtures__/wire-replies.golden.json";
     let golden: serde_json::Value = serde_json::from_str(&read(REL)).expect("金样不是 JSON");
     let cases = golden["cases"].as_object().expect("金样没有 cases");
-    let mine: Vec<&String> = cases
-        .keys()
-        .filter(|k| records_cell(k).is_some())
-        .collect();
+    let mine: Vec<&String> = cases.keys().filter(|k| records_cell(k).is_some()).collect();
     assert_eq!(
         mine,
         ["history-lines", "history-read", "history-tail"],

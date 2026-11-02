@@ -9,8 +9,8 @@
 
 use cmd_wire::frame::Frame;
 use cmd_wire::phone::{CallEnd, LinkLine};
-use face_core::record::OrUnread;
 use deploy::machine::{fold, product, Entry, Fact};
+use face_core::record::OrUnread;
 use resident_client::book::SessionBook;
 use resident_client::client::CallError;
 use resident_client::feed::{
