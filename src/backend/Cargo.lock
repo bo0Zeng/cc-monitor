@@ -1083,6 +1083,7 @@ dependencies = [
  "cmd-wire",
  "copy-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1794,6 +1795,7 @@ dependencies = [
  "copy-core",
  "deploy",
  "deploy-contract",
+ "face-core",
  "guard-core",
  "jni",
  "pick-core",

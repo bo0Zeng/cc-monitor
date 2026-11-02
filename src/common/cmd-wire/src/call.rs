@@ -27,8 +27,6 @@ use crate::queue::{
     SessionQueueReadReq,
 };
 use crate::quota::{QuotaRead, QuotaReadReq};
-#[cfg(any(test, feature = "ts"))]
-use crate::record::OrUnread;
 use crate::record::{HistoryLines, HistoryLinesReq, HistoryRead, HistoryReadReq};
 use crate::rewind::{RewindOptions, SessionRewindOptionsReq};
 use crate::rotation::*;
@@ -55,11 +53,12 @@ pub trait Call: Serialize {
     type Reply: Serialize + serde::de::DeserializeOwned;
 }
 
-/// 一行：`入参 => 名字, 回包;`。回包里记录那一格是原样的一团（`Value`）的那几条再写一格 `reads <类型>`：
-/// 客户端按完整记录解的那一形（解不开的那一条成认不出那一条，[`crate::record::OrUnread`]），判据照它解。
+/// 一行：`入参 => 名字, 回包;`。
 /// 表还出两样（判据 · 导出 TS 那一档）：表里每条的名字 `COMMANDS` · 照类型解再写回的 `typed_text`（手机生成的 Kotlin 类写回要与它逐字节同）。
+/// 回包里记录那一格是原样的一团（`Value`）的那几条（[`crate::record::records_cell`]）：客户端按完整记录解的那一形不在本 crate，
+/// 照那一形解再写回的对拍住 `face-core` 的 `record` 判据。
 macro_rules! calls {
-    ($($req:ty => $name:literal, $reply:ty $(, reads $read:ty)?;)*) => {
+    ($($req:ty => $name:literal, $reply:ty;)*) => {
         $(impl Call for $req {
             const NAME: &'static str = $name;
             type Reply = $reply;
@@ -69,7 +68,7 @@ macro_rules! calls {
         #[cfg(any(test, feature = "ts"))]
         pub const COMMANDS: &[&str] = &[$($name),*];
 
-        /// `cmd` 的回包按表里的类型（写了 `reads` ⇒ 那一形）解、再照类型写成一行（格按类型的顺序）。
+        /// `cmd` 的回包按表里的类型解、再照类型写成一行（格按类型的顺序）。
         /// 解得开 ⇒ `Some(Ok(那一行))`；形状对不上 ⇒ `Some(Err(serde 那一句))`；表里没有这条 ⇒ `None`。
         #[cfg(any(test, feature = "ts"))]
         pub fn typed_text(cmd: &str, data: serde_json::Value) -> Option<Result<String, String>> {
@@ -78,21 +77,10 @@ macro_rules! calls {
                 serde_json::to_string(&typed).map_err(|e| e.to_string())
             }
             $(if cmd == $name {
-                return Some(text::<reads!($reply $(, $read)?)>(data));
+                return Some(text::<$reply>(data));
             })*
             None
         }
-    };
-}
-
-/// 客户端解回包用的那一形：写了 `reads` ⇒ 它，否则就是回包类型。
-#[cfg(any(test, feature = "ts"))]
-macro_rules! reads {
-    ($reply:ty) => {
-        $reply
-    };
-    ($reply:ty, $read:ty) => {
-        $read
     };
 }
 
@@ -136,10 +124,10 @@ calls! {
     MachineReadReq => "machine-read", MachineRead;
     MachineWakeReq => "machine-wake", MachineState;
     MachineStopReq => "machine-stop", MachineStopped;
-    // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `record::mend_records` · 壳搬成品）。
-    HistoryReadReq => "history-read", HistoryRead, reads HistoryRead<OrUnread>;
-    HistoryTailReq => "history-tail", HistoryTail, reads HistoryTail<OrUnread>;
-    HistoryLinesReq => "history-lines", HistoryLines, reads HistoryLines<OrUnread>;
+    // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `face_core::record::mend_records` · 壳搬成品）。
+    HistoryReadReq => "history-read", HistoryRead;
+    HistoryTailReq => "history-tail", HistoryTail;
+    HistoryLinesReq => "history-lines", HistoryLines;
     // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
     TransferUploadAsk => "transfer-upload", TransferOpened;
     TransferUploadReq => "transfer-upload", TransferOpened;

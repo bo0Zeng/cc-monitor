@@ -995,7 +995,17 @@ impl Body {
 }
 
 /// `t` 的闭集（[`Body`] 各支的标签；判据逐支核过）：解不开的那一条按它分「没见过的类」与「形状变了」。
-const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "unread"];
+pub const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "unread"];
+
+/// 回包里带记录的那几条命令，各自哪一列的行带 `record` 那一格（`history-read` · `history-tail` 的 `rows`，`history-lines` 的 `lines`）；
+/// 别的命令 ⇒ 缺。
+pub fn records_cell(cmd: &str) -> Option<&'static str> {
+    match cmd {
+        "history-read" | "history-tail" => Some("rows"),
+        "history-lines" => Some("lines"),
+        _ => None,
+    }
+}
 
 /// 客户端解记录那一层：[`Record`] 外面包一层，解得开 ⇒ 那一条原样；解不开 ⇒ 认不出那一支（[`Body::unread`]，带原样的类名与摘录），
 /// 不让整份回包 / 整帧失败（后端照原样的一团写记录，记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出）。
