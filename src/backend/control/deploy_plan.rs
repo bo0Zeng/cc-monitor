@@ -25,7 +25,9 @@
 //!
 //! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，照计划放。
 
+use crate::control::place_self::BACKEND_BYTES_CAP;
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 
 /// 装 · 卸那两条的入参与回包住 cmd-wire（名字与回包挂在入参上，monitor 照同一份发、照同一份解）。
 pub(crate) use cmd_wire::deploy::{
@@ -104,7 +106,12 @@ pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, S
         let Ok(key) = deploy_contract::key_of(os, arch) else {
             continue;
         };
-        let Ok(bytes) = Ro::read(&path) else {
+        // 读不了的那一格不列；超上限那一档在读里 `warn!` 是哪一份。
+        let listed = Cap {
+            over: Over::SkipAndSay,
+            ..BACKEND_BYTES_CAP
+        };
+        let Ok(bytes) = Ro::read_capped(&path, listed) else {
             continue;
         };
         if let RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(&bytes, MARKS) {
@@ -146,9 +153,9 @@ fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Said> {
     Ok(slots)
 }
 
-/// 读一格字节（本机文件）。
+/// 读一格字节（本机文件）。超上限 ⇒ 拒收，那一句原样进错误（`deploy::Load` 收的是 `io::Error`）。
 fn load(p: &std::path::Path) -> std::io::Result<Vec<u8>> {
-    Ro::read(p)
+    Ro::read_capped(p, BACKEND_BYTES_CAP).map_err(|s| std::io::Error::other(s.logged()))
 }
 
 /// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。
@@ -364,10 +371,12 @@ pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
     if req.machine.is_empty() {
         return Err(bad("missing `machine` (non-empty string)"));
     }
-    let disk = match Ro::read(&req.dest) {
-        Ok(b) => Ok(Some(b)),
+    let disk = match Ro::metadata(&req.dest) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
+        Ok(_) => Ro::read_capped(&req.dest, BACKEND_BYTES_CAP)
+            .map(Some)
+            .map_err(|s| s.logged()),
     };
     Ok(
         match place_verdict(

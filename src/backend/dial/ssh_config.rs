@@ -9,6 +9,7 @@
 use crate::platform::child::{Child, Deadline};
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use serde::Serialize;
 
 /// 命令级错误：`(code, message)`。
@@ -242,13 +243,19 @@ pub(crate) fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<Imp
     out
 }
 
-/// 读 `~/.ssh/config` 列别名。文件不在 / 读不了 ⇒ 空（没有 config 是正常的）。
+/// 读 `~/.ssh/config` 的上限（手写的配置远小于它）；超了 ⇒ 日志里说是哪一份，当没有 config（列空）。
+const SSH_CONFIG_CAP: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::SkipAndSay,
+};
+
+/// 读 `~/.ssh/config` 列别名。文件不在 / 读不了 / 超上限 ⇒ 空（没有 config 是正常的）。
 pub(crate) fn list_aliases() -> Vec<String> {
     let Some(path) = crate::platform::paths::home_dir().map(|h| h.join(".ssh").join("config"))
     else {
         return Vec::new();
     };
-    Ro::read_to_string(path)
+    Ro::read_string_capped(path, SSH_CONFIG_CAP)
         .map(|c| parse_host_aliases(&c))
         .unwrap_or_default()
 }
