@@ -20270,6 +20270,9 @@ sealed interface RotEdit {
     data class Set(
         val value: RotEditSetValue,
     ) : RotEdit
+    data class Reset(
+        val value: RotEditResetValue,
+    ) : RotEdit
     data class Seg(
         val value: RotEditSegValue,
     ) : RotEdit
@@ -20285,17 +20288,22 @@ sealed interface RotEdit {
     data class Remove(
         val value: RotEditRemoveValue,
     ) : RotEdit
+    data class Prune(
+        val value: RotEditPruneValue,
+    ) : RotEdit
 
     companion object {
         val ADAPTER: JsonAdapter<RotEdit> =
             external<RotEdit>(
                 listOf(
                 Ext("set", RotEdit.Set::class.java, { RotEditSetValue.ADAPTER }, { RotEdit.Set(it as RotEditSetValue) }, { (it as RotEdit.Set).value }),
+                Ext("reset", RotEdit.Reset::class.java, { RotEditResetValue.ADAPTER }, { RotEdit.Reset(it as RotEditResetValue) }, { (it as RotEdit.Reset).value }),
                 Ext("seg", RotEdit.Seg::class.java, { RotEditSegValue.ADAPTER }, { RotEdit.Seg(it as RotEditSegValue) }, { (it as RotEdit.Seg).value }),
                 Ext("same", RotEdit.Same::class.java, { RotEditSameValue.ADAPTER }, { RotEdit.Same(it as RotEditSameValue) }, { (it as RotEdit.Same).value }),
                 Ext("move", RotEdit.Move::class.java, { RotEditMoveValue.ADAPTER }, { RotEdit.Move(it as RotEditMoveValue) }, { (it as RotEdit.Move).value }),
                 Ext("add", RotEdit.Add::class.java, { RotEditAddValue.ADAPTER }, { RotEdit.Add(it as RotEditAddValue) }, { (it as RotEdit.Add).value }),
                 Ext("remove", RotEdit.Remove::class.java, { RotEditRemoveValue.ADAPTER }, { RotEdit.Remove(it as RotEditRemoveValue) }, { (it as RotEdit.Remove).value }),
+                Ext("prune", RotEdit.Prune::class.java, { RotEditPruneValue.ADAPTER }, { RotEdit.Prune(it as RotEditPruneValue) }, { (it as RotEdit.Prune).value }),
                 ),
             )
     }
@@ -20337,6 +20345,10 @@ data class RotEditMoveValue(
     }
 }
 
+data object RotEditPruneValue {
+    val ADAPTER: JsonAdapter<RotEditPruneValue> = obj(emptyList(), { RotEditPruneValue }, { emptyArray() })
+}
+
 @Suppress("UNCHECKED_CAST")
 data class RotEditRemoveValue(
     val row: Long,
@@ -20350,6 +20362,25 @@ data class RotEditRemoveValue(
             ),
             { a -> RotEditRemoveValue(a[0] as Long) },
             { v -> arrayOf(v.row) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotEditResetValue(
+    val key: String,
+    val row: Long? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotEditResetValue> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("row", { opt(Lng) }, optional = true, nullable = true),
+            ),
+            { a -> RotEditResetValue(a[0] as String, a[1] as Long?) },
+            { v -> arrayOf(v.key, v.row) },
         )
     }
 }
