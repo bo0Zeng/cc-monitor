@@ -5,6 +5,7 @@
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。
@@ -161,8 +162,7 @@ pub(crate) fn shared_root_in(home: &Path) -> std::path::PathBuf {
 
 /// 一份 `.claude.json` 里登录的是哪个邮箱（`oauthAccount.emailAddress`）。只取这一格；读不了 / 没有 ⇒ `None`。
 pub(crate) fn oauth_email_in(p: &Path) -> Option<String> {
-    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
-    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let v = Ro::read_json(p, CONFIG_CAP).ok()?;
     v.get("oauthAccount")?
         .get("emailAddress")?
         .as_str()
@@ -178,8 +178,7 @@ pub(crate) fn identity_file(config_dir: &Path, base_home: Option<&Path>) -> std:
 /// 那份文件里的账号身份：`oauthAccount.accountUuid`（请求体 `metadata.user_id` 里 `account_uuid` 那一格的值）。
 /// 读不了 / 没有 / 不像一个 id ⇒ `None`。
 pub(crate) fn identity_in(p: &Path) -> Option<String> {
-    let bytes = Ro::read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
-    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let v = Ro::read_json(p, CONFIG_CAP).ok()?;
     v.get("oauthAccount")?
         .get("accountUuid")?
         .as_str()
@@ -332,10 +331,16 @@ pub(crate) fn rewrite_identity(body: &[u8], uuid: &str) -> IdentityCell {
     IdentityCell::Rewritten(out)
 }
 
-/// 读取上限。这份文件会被 MCP 配置撑大，给 32MB。
-/// 安全：`read_regular_capped` 的 `is_file` 挡 FIFO/设备（审计实测 symlink→`/dev/zero`
-/// 6 秒涨 11GB），`take` 限量。
-pub(crate) const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
+/// 读这份配置的上限。这份文件会被 MCP 配置撑大，给 32MB。
+/// 安全：`Ro::read_capped` 的 `is_file` 挡 FIFO/设备（审计实测 symlink→`/dev/zero`
+/// 6 秒涨 11GB），`take` 限量。超了那一份跳过（读的那一口 `warn!` 带路径）：身份 · 邮箱当读不出，资产目录记进 `problems`。
+pub(crate) const CONFIG_CAP: Cap = Cap {
+    bytes: 32 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
+
+/// 同一个数的裸字节形：`mcp.rs` 那一处读的助手收裸数。
+pub(crate) const MAX_CONFIG_BYTES: u64 = CONFIG_CAP.bytes;
 
 /// 某个根目录下的配置文件路径。
 pub(crate) fn config_path_in(root: &std::path::Path) -> std::path::PathBuf {
