@@ -12,8 +12,6 @@ src/backend/relay/listen.rs	1
 src/backend/relay/mod.rs	2
 src/common/cmd-wire/src/frame.rs	1
 src/common/guard-core/src/lib.rs	41
-src/doc/INVARIANTS.md	2
-src/doc/IPC-PROTOCOL.md	1
 tests/backend/agent_boundary_guard.rs	4
 tests/backend/agent_locality_guard.rs	2
 tests/backend/agents/codex/record_tests.rs	1
@@ -21,8 +19,6 @@ tests/backend/agents/fake_tests.rs	1
 tests/backend/agents_tests.rs	5
 tests/backend/common/session_snapshot_tests.rs	3
 tests/backend/control/fork_write_tests.rs	1
-tests/backend/dial_terminal_tests.rs	2
-tests/backend/dial_tests.rs	5
 tests/backend/files/answer_tests.rs	1
 tests/backend/files/commit_tests.rs	3
 tests/backend/files/index_tests.rs	1
