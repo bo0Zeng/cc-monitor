@@ -18,9 +18,9 @@
 
 use crate::platform::own_fs::OwnState;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use host_core::Capped;
 use relay_route_core::{Cap, Over};
-use copy_core::said::Said;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,11 +62,7 @@ pub fn load(own: &OwnState) -> AutoLaunchConfig {
     match host_core::read_capped(&file, MAX) {
         Ok(Capped::Whole(s)) => serde_json::from_str(&s).unwrap_or_default(),
         Ok(Capped::TooBig) => {
-            tracing::warn!(
-                "{} 超过读上限 {} 字节，照缺省起",
-                file.display(),
-                MAX.bytes
-            );
+            tracing::warn!("{} 超过读上限 {} 字节，照缺省起", file.display(), MAX.bytes);
             AutoLaunchConfig::default()
         }
         Ok(Capped::Absent) | Err(_) => AutoLaunchConfig::default(),

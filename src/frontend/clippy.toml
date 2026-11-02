@@ -32,6 +32,14 @@ disallowed-methods = [
   { path = "std::fs::File::create", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
   { path = "std::fs::OpenOptions::new", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
   { path = "std::fs::DirBuilder::new", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  # 读那一组：整读一份文件只经 `host_core::read_capped` / `read_capped_bytes`（读上限是调用方声明的 `Cap`：字节数与超了怎么办写在一处）；
+  #   读一行只经有上限的读行（同步那一份 `shell/src/local_backend.rs::read_capped_line_sync`，异步那一份住 `comms_inward::line`）。
+  { path = "std::fs::read", reason = "整读一份文件只经 `host_core::read_capped_bytes`（带 `Cap`）" },
+  { path = "std::fs::read_to_string", reason = "整读一份文件只经 `host_core::read_capped`（带 `Cap`）" },
+  { path = "tokio::io::AsyncReadExt::read_to_end", reason = "整读只经带 `Cap` 的读（`host_core::read_capped*`）" },
+  { path = "tokio::io::AsyncReadExt::read_to_string", reason = "整读只经带 `Cap` 的读（`host_core::read_capped*`）" },
+  { path = "tokio::io::AsyncBufReadExt::read_line", reason = "读一行只经 `comms_inward::line::read_capped_line`（带 `Cap`）" },
+  { path = "tokio::io::AsyncBufReadExt::read_until", reason = "读一行只经 `comms_inward::line::read_capped_line`（带 `Cap`）" },
   # 起进程那一组：壳起外部进程只经 `shell/src/spawn_managed.rs`（那一处定环境 · 句柄 · 窗口三条策略）。
   { path = "std::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },
   { path = "tokio::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },

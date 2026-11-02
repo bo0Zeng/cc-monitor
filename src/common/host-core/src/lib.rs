@@ -14,9 +14,9 @@ mod clock;
 mod geometry;
 
 pub use atomic::{atomic_write_json, read_capped, read_capped_bytes, Capped};
+pub use clock::{local_offset_at, viewer_tz, TZ_ROOM};
 /// 读上限那个类型（住 `relay_route_core`）：文件窗口包只依赖本包、不依赖 `relay-route-core`，声明它自己的读上限从这里拿。
 pub use relay_route_core::{Cap, Over};
-pub use clock::{local_offset_at, viewer_tz, TZ_ROOM};
 
 /// 这一份编给的系统与架构（「复制详情」里写「本机」那一行用）。平台形态只许住宿主原语与 `platform/`。
 pub const OS: &str = std::env::consts::OS;
