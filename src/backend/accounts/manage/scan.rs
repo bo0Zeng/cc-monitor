@@ -4,13 +4,20 @@
 use super::model::Manifest;
 use crate::common::said::IntoNote as _;
 use crate::platform::acct_view::{self, Item};
+use relay_route_core::{Cap, Over};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-/// 清单读取上限（账号数有限，几 MB 足矣）。
-const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
-/// 一份撤销清单的读取上限。
-const MAX_UNDO_BYTES: u64 = 4 * 1024 * 1024;
+/// 清单读取上限（账号数有限，几 MB 足矣）：读的是这台自己的账号库，超了就读不动、如实报。
+const MAX_MANIFEST_BYTES: Cap = Cap {
+    bytes: 8 * 1024 * 1024,
+    over: Over::HardError,
+};
+/// 一份撤销清单的读取上限：超了这一份备份不能用来回滚，照实记一行、跳过。
+const MAX_UNDO_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 
 /// 备份目录名的前缀（`<账号库>/.backup-<时间戳>`）。
 pub(crate) const BACKUP_PREFIX: &str = ".backup-";
@@ -307,7 +314,7 @@ fn read_manifest(p: &Path) -> Option<(Option<String>, Result<Manifest, Unread>)>
 
 /// 清单全文（在却读不动 ⇒ `Err`，调用方把它记进快照、由用的那一步报出来）。
 pub(crate) fn manifest_text_at(p: &Path) -> Result<String, crate::common::said::Said> {
-    let bytes = crate::platform::fs::Ro::read_regular_capped(p, MAX_MANIFEST_BYTES)?;
+    let bytes = crate::platform::fs::Ro::read_capped(p, MAX_MANIFEST_BYTES)?;
     String::from_utf8(bytes).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_core::copy_text("reason.content.unparsable", &[]),
@@ -342,10 +349,7 @@ fn backups_in(accts: &str, st: &DirState) -> Vec<Backup> {
         .map(|(n, _)| {
             let path = join(accts, n);
             let undo_path = join(&path, UNDO_NAME);
-            let undo = match crate::platform::fs::Ro::read_regular_capped(
-                Path::new(&undo_path),
-                MAX_UNDO_BYTES,
-            ) {
+            let undo = match crate::platform::fs::Ro::read_capped(Path::new(&undo_path), MAX_UNDO_BYTES) {
                 Ok(b) => String::from_utf8(b).ok(),
                 Err(e) => {
                     tracing::warn!("备份 {path} 的撤销清单读不了，这一份不能用来回滚：{e}");
