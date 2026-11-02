@@ -149,7 +149,7 @@ impl Home {
         rotation::face_change(&ctx.hop.store, &self.own(), |b| {
             f(b.sessions
                 .get_mut(sid)
-                .and_then(|s| s.uses.as_mut())
+                .and_then(|s| s.uses.as_mut().map(std::sync::Arc::make_mut))
                 .expect("会话载入了一份"))
         })
         .expect("w");

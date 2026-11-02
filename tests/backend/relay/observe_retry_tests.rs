@@ -1377,7 +1377,11 @@ fn a_session_started_inside_another_opens_the_default_config() {
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
     let setup = home.setup();
     crate::accounts::quota::rotation::face_change(&setup.book, &home.own(), |b| {
-        if let Some(c) = b.sessions.get_mut("s-owner").and_then(|s| s.uses.as_mut()) {
+        if let Some(c) = b
+            .sessions
+            .get_mut("s-owner")
+            .and_then(|s| s.uses.as_mut().map(std::sync::Arc::make_mut))
+        {
             c.id = "other".into();
         }
     })
@@ -1386,7 +1390,7 @@ fn a_session_started_inside_another_opens_the_default_config() {
     let kid = setup.book.now().sessions["s-kid"]
         .uses
         .clone()
-        .map(|c| c.id);
+        .map(|c| c.id.clone());
     assert_eq!(kid.unwrap_or_default(), setup.for_new_id());
 }
 
