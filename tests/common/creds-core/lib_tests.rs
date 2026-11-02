@@ -129,6 +129,11 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
         "两份比一下是不是同一串，只回一个布尔（续期写回前的比对）；它交不出任何内容",
     ),
     (
+        "matches",
+        Handling::ReadsOnly,
+        "递来的一串是不是这一把，定长时间比、只回一个布尔（中转口的门比钥匙）；它交不出任何内容",
+    ),
+    (
         "masked",
         Handling::Derives,
         "派生出遮蔽形。**它交出去的不是明文** —— 短到看不出前后缀的整条遮掉，\
@@ -148,6 +153,11 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
         "expose_for_token_request",
         Handling::HandsOut("src/common/creds-core/src/token.rs"),
         "唯一的**续期请求体**出口（订阅号续登录令牌：刷新令牌原样进那一发的请求体）",
+    ),
+    (
+        "expose_for_relay_key",
+        Handling::HandsOut("src/backend/relay/key.rs"),
+        "唯一的**中转口钥匙**出口：宿主那一侧派生只许直通那一把 · 落盘 · 插进地址（门上比对走 `matches`，不取明文）",
     ),
 ];
 
@@ -204,6 +214,10 @@ const SEALED_FNS: &[(&str, &str)] = &[
     ("masked", "从明文派生出遮蔽形"),
     ("same_secret", "比两份是不是同一串，只回一个布尔"),
     (
+        "matches",
+        "比递来的一串是不是这一把（定长时间），只回一个布尔",
+    ),
+    (
         "expose_for_auth_header",
         "**出口**：上游选择算鉴权头的值（中转只拿算好的头材料）",
     ),
@@ -212,6 +226,7 @@ const SEALED_FNS: &[(&str, &str)] = &[
         "expose_for_token_request",
         "**出口**：续登录令牌那一发的请求体",
     ),
+    ("expose_for_relay_key", "**出口**：中转口的钥匙在宿主那一侧"),
 ];
 
 /// ★★★ **`K18` 的正主：边界由编译器守，本条只守登记表。**
@@ -392,7 +407,7 @@ fn every_fn_touching_the_inner_field_is_classified() {
         "人群与登记表条数不等"
     );
 
-    // ③ `HandsOut` 有几条、叫什么，由 `the_plaintext_has_exactly_three_named_exits` 照源码里交出内层字段的处数钉。
+    // ③ `HandsOut` 有几条、叫什么，由 `the_plaintext_has_exactly_four_named_exits` 照源码里交出内层字段的处数钉。
     // ④ 每一行都要写得出理由（空理由 = 「谁红了就加一行」的症状）。
 
     // ⑤ 结构性纵深：块里**任何 fn 都不许有 `&mut` 出参**。
@@ -549,18 +564,18 @@ fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
     }
 }
 
-/// ★★ **`KS2` 的「全断」那一格**：明文的出口**恰好三个**，而且都得具名
-/// （第三个是订阅号续登录令牌那一发的请求体，理由写在 `SecretKey::expose_for_token_request` 头注里）。
+/// ★★ **`KS2` 的「全断」那一格**：明文的出口**恰好四个**，而且都得具名
+/// （第三个是订阅号续登录令牌那一发的请求体，第四个是中转口的钥匙在宿主那一侧，理由各写在那个出口的头注里）。
 ///
 /// 上面 `secret_key_has_no_printing_shortcut` 守的是「不许有顺手打印的路」，
-/// 本条守的是另一件事：**不许有第三个出口**。两条缺一都不成立 ——
+/// 本条守的是另一件事：**不许有登记之外的出口**。两条缺一都不成立 ——
 /// 只有前者 ⇒ 加一个 `pub fn raw(&self) -> &str` 照样绿；
 /// 只有后者 ⇒ `derive(Debug)` 照样把明文印出去。
 ///
 /// 量法：在 `impl SecretKey` 的**函数体窗口**里数「返回内层字段」的写法。
 /// ⚠ 窗口是**花括号配平切出来的 impl 块**，不是 `[\s\S]*?`（`KP4` 那两个价钱之一）。
 #[test]
-fn the_plaintext_has_exactly_three_named_exits() {
+fn the_plaintext_has_exactly_four_named_exits() {
     let prod = production();
     let at = guard_core::find_pinned(&prod, "impl SecretKey {")
         .expect("切不出 `impl SecretKey` —— 本条按红处理，不是绿");
@@ -579,15 +594,16 @@ fn the_plaintext_has_exactly_three_named_exits() {
     // 「把内层字段原样交出去」的唯一写法。
     let exits = block.matches("&self.0").count();
     assert_eq!(
-        exits, 3,
-        "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **3** 处：\n\
+        exits, 4,
+        "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **4** 处：\n\
              · `expose_for_auth_header` —— 上游选择算鉴权头的值、交中转写进上游请求（只在后端生产段）\n\
              · `expose_for_persisting`  —— 把它写回那份文件（只在 creds-core 生产段）\n\
              · `expose_for_token_request` —— 续登录令牌那一发的请求体（只在 creds-core 生产段）\n\
+             · `expose_for_relay_key` —— 中转口的钥匙：派生 · 落盘 · 插地址（只在后端 `relay/key.rs`）\n\
              多一处 ⇒ **必须先在件计划里说清那一处是什么**（`KS2` 逐字：\
              加行是收紧、动断言是放宽，不许在实现里顺手把断言改大）"
     );
-    // 登记的 `HandsOut` 恰好是这三处，名字都得真在（否则上面那个 3 可能来自匿名写法）。
+    // 登记的 `HandsOut` 恰好是这几处，名字都得真在（否则上面那个 3 可能来自匿名写法）。
     let named = hands_out_names();
     assert_eq!(
         named.len(),
@@ -653,4 +669,21 @@ fn is_configured_looks_at_presence_not_at_content() {
     assert!(!SecretKey::new("").is_configured());
     assert!(!SecretKey::new("  \t\n ").is_configured());
     assert!(SecretKey::new("x").is_configured());
+}
+
+/// 门上比钥匙那一口：同一串才算、差一个字节 / 长一截 / 短一截都不算；空串谁都不等（空钥匙不开门）。
+#[test]
+fn matches_admits_only_the_exact_string_and_never_the_empty_one() {
+    let k = SecretKey::new("fake-relay-key-0001");
+    assert!(k.matches("fake-relay-key-0001"));
+    for other in [
+        "fake-relay-key-0002",
+        "fake-relay-key-000",
+        "fake-relay-key-00010",
+        "FAKE-RELAY-KEY-0001",
+        "",
+    ] {
+        assert!(!k.matches(other), "{other:?} 不许算对上");
+    }
+    assert!(!SecretKey::new("").matches(""), "空钥匙配空串也不许算对上");
 }

@@ -13,19 +13,12 @@ const TEST_KEY: &str = "7e577e577e577e577e577e577e577e577e577e577e577e577e577e57
 /// 判据用的那把只许直通的钥匙（门只比对、不派生；派生在后端 `relay/key.rs::pass_of`）。
 const TEST_PASS_KEY: &str = "7a557a557a557a557a557a557a557a557a557a557a557a557a557a557a557a55";
 
-impl Key {
-    /// 判据用：[`TEST_KEY`] 那一把。
-    fn for_tests() -> Key {
-        Key(TEST_KEY.to_string())
-    }
-}
-
 impl Keys {
-    /// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`]。
+    /// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`] 的比对口（门只认比对口；定长比对在宿主那一侧的钥匙类型里，不归本层测）。
     fn for_tests() -> Keys {
         Keys {
-            full: Key::for_tests(),
-            pass: Key(TEST_PASS_KEY.to_string()),
+            full: Box::new(|s| s == TEST_KEY),
+            pass: Box::new(|s| s == TEST_PASS_KEY),
         }
     }
 }
@@ -211,10 +204,35 @@ fn the_three_refusals_are_distinct_faces() {
     assert_eq!(Verdict::Pass("/".into(), Scope::All).refusal(), None);
 }
 
-/// `Key` 不许被 `{:?}` 打出值（谁把它塞进日志，打出来的也只有 `Key(…)`）。
+/// 形状闸在门这一侧：路径第一段长得不像钥匙（短 / 大写 / 非十六进制）⇒ `BadKey`，比对口一次都不问；
+/// 形状对的才交给比对口（这里的比对口来者都认，好让「闸没拦」看得见）。
 #[test]
-fn a_key_never_prints_its_value() {
-    let shown = format!("{:?}", Key::for_tests());
-    assert_eq!(shown, "Key(…)");
-    assert!(!shown.contains(TEST_KEY));
+fn the_shape_gate_runs_before_the_key_checks() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let asked = Arc::new(AtomicUsize::new(0));
+    let (a, b) = (asked.clone(), asked.clone());
+    let yes = Keys {
+        full: Box::new(move |_| {
+            a.fetch_add(1, Ordering::SeqCst);
+            true
+        }),
+        pass: Box::new(move |_| {
+            b.fetch_add(1, Ordering::SeqCst);
+            true
+        }),
+    };
+    for seg in ["abc", &TEST_KEY.to_ascii_uppercase(), &"z".repeat(64)] {
+        assert_eq!(
+            admit(&req(&format!("/{seg}/s/a/b/c/v1"), LOOP), &yes),
+            Verdict::BadKey,
+            "{seg:?} 形状不对，不许过门"
+        );
+    }
+    assert_eq!(asked.load(Ordering::SeqCst), 0, "形状不对的段交给了比对口");
+    assert_eq!(
+        admit(&req(&format!("/{TEST_KEY}/s/a/b/c/v1"), LOOP), &yes),
+        Verdict::Pass("/s/a/b/c/v1".into(), Scope::All)
+    );
+    assert_eq!(asked.load(Ordering::SeqCst), 2, "形状对的段两把都要问");
 }

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// **刻意不进 shellcheck 的脚本**（路径, 为什么）。
 ///

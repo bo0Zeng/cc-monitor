@@ -219,12 +219,12 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
         Ok(m) => m.get(&name.to_ascii_lowercase()).map(|target| {
             copy_text(
                 "rsShellDialect.ps.nameTakenBuiltinAlias",
-                &[("name", &name.to_string()), ("target", target)],
+                &[("name", name), ("target", target)],
             )
         }),
         Err(_) => Some(copy_text(
             "rsShellDialect.ps.builtinAliasUnknown",
-            &[("name", &name.to_string())],
+            &[("name", name)],
         )),
     }
 }
@@ -421,16 +421,13 @@ impl ShellDialect for Posix {
         {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
-                &[("name", &name.to_string())],
+                &[("name", name)],
             ));
         }
         on_path(name, false).map(|cand| {
             copy_text(
                 "rsShellDialect.posix.nameTakenPath",
-                &[
-                    ("name", &name.to_string()),
-                    ("cand", &(cand.display()).to_string()),
-                ],
+                &[("name", name), ("cand", &(cand.display()).to_string())],
             )
         })
     }
@@ -636,7 +633,7 @@ impl ShellDialect for PowerShell {
         if ours {
             return Some(copy_text(
                 "rsShellDialect.ps.nameTakenIntegration",
-                &[("name", &name.to_string())],
+                &[("name", name)],
             ));
         }
         // 这台不说 PowerShell ⇒ 没有内建别名可撞（这一臂在命令口已被 `dialect_here` 拒，判据直调方言时走到这里）。
@@ -648,10 +645,7 @@ impl ShellDialect for PowerShell {
         on_path(name, true).map(|cand| {
             copy_text(
                 "rsShellDialect.ps.nameTakenPath",
-                &[
-                    ("name", &name.to_string()),
-                    ("cand", &(cand.display()).to_string()),
-                ],
+                &[("name", name), ("cand", &(cand.display()).to_string())],
             )
         })
     }

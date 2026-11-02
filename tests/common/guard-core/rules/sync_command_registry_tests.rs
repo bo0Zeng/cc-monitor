@@ -503,7 +503,7 @@ fn analyze(files: &[(String, String)]) -> Analysis {
 
 /// 真仓：`src/frontend/shell/src/**.rs` 全部（相对路径，`/` 分隔）。
 fn this_crate() -> Vec<(String, String)> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let root = guard_core::addr::shell_src_root();
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, text)| {

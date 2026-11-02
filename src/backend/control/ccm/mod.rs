@@ -61,7 +61,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 ///
 /// # 加 / 删一个 token 之前：谁在数它
 ///
-/// - `tests/frontend/shell/plugin_class_registry.rs` —— 数**个数**：加 token ⇒ 那个数跟着改，否则当场红。
+/// - `tests/common/guard-core/rules/plugin_class_registry.rs` —— 数**个数**：加 token ⇒ 那个数跟着改，否则当场红。
 /// - `src/backend/control/launch_render/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。

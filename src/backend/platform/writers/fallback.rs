@@ -15,17 +15,15 @@ pub fn absolute(root: &Path) -> std::path::PathBuf {
 }
 
 /// 见模块头注：判不了。
-pub fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
-    let _ = wanted;
+pub fn writers_of(_wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
     None
 }
 
 /// 见模块头注：不挂。
 pub fn watch_opens(
     root: &Path,
-    on_batch: impl FnMut(OpenBatch) -> bool + Send + 'static,
+    _on_batch: impl FnMut(OpenBatch) -> bool + Send + 'static,
 ) -> Option<OpenEar> {
-    let _ = on_batch;
     tracing::error!(
         "本平台认不出谁开着哪份文件写（{}）—— 靠「开着即活」判活的会话不宣告",
         root.display()

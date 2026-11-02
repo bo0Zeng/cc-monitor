@@ -154,9 +154,10 @@ mod imp {
     #[link(name = "kernel32")]
     extern "system" {
         fn CreateSymbolicLinkW(link: *const u16, target: *const u16, flags: u32) -> u8;
-        fn GetCurrentProcess() -> isize;
-        fn CloseHandle(h: isize) -> i32;
+        fn GetCurrentProcess() -> RawHandle;
     }
+    use crate::platform::win_proc::CloseHandle;
+    use std::os::windows::io::RawHandle;
 
     #[link(name = "advapi32")]
     extern "system" {
@@ -169,10 +170,10 @@ mod imp {
             data: *mut core::ffi::c_void,
             len: *mut u32,
         ) -> i32;
-        fn OpenProcessToken(process: isize, access: u32, token: *mut isize) -> i32;
+        fn OpenProcessToken(process: RawHandle, access: u32, token: *mut RawHandle) -> i32;
         fn LookupPrivilegeValueW(system: *const u16, name: *const u16, luid: *mut u64) -> i32;
         fn GetTokenInformation(
-            token: isize,
+            token: RawHandle,
             class: u32,
             info: *mut core::ffi::c_void,
             len: u32,
@@ -252,7 +253,7 @@ mod imp {
         if unsafe { LookupPrivilegeValueW(std::ptr::null(), name.as_ptr(), &mut want) } == 0 {
             return false;
         }
-        let mut tok: isize = 0;
+        let mut tok: RawHandle = std::ptr::null_mut();
         // SAFETY：当前进程的伪句柄不用关；`tok` 由系统填、下面关掉。
         if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) } == 0 {
             return false;
@@ -287,7 +288,7 @@ mod imp {
         }
         // TOKEN_PRIVILEGES：u32 个数，接着每项 12 字节（LUID 低 u32 · 高 i32 · 属性 u32）。
         let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-        buf[4..].chunks_exact(12).take(count).any(|e| {
+        buf[4..].as_chunks::<12>().0.iter().take(count).any(|e| {
             let low = u64::from(u32::from_le_bytes([e[0], e[1], e[2], e[3]]));
             let high = u64::from(u32::from_le_bytes([e[4], e[5], e[6], e[7]]));
             (high << 32 | low) == want
