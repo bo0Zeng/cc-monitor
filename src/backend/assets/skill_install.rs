@@ -25,11 +25,9 @@ use crate::assets::hub_wire::{
 use crate::assets::mcp_sync::{self, Facts, State};
 use crate::common::said::IntoNote as _;
 
-// 上限与目录摘要同两个数（`asset_catalog::SKILL_MAX_FILES` / `SKILL_MAX_FILE_BYTES`，不另起一份）：
+// 上限与目录摘要同两个数（`asset_catalog::SKILL_MAX_FILES` / `SKILL_FILE_CAP`，不另起一份）：
 // 文件数超了整趟拒（装一半的 skill 比不装更坏）；单个文件超了那一个 `text = null` ＋ `why`（装不过去，说出来）。
-use crate::assets::asset_catalog::{
-    SKILL_MAX_FILES as MAX_FILES, SKILL_MAX_FILE_BYTES as MAX_FILE_BYTES,
-};
+use crate::assets::asset_catalog::{SKILL_FILE_CAP as FILE_CAP, SKILL_MAX_FILES as MAX_FILES};
 /// 一个文件里最多标这么多条绝对路径（再多就是噪音；`abs-path` 那几条已经足够让人去看）。
 const MAX_PATHS_PER_FILE: usize = 8;
 
@@ -84,7 +82,7 @@ fn skill_dir(
 
 /// 读一个文件：`(原文, 读不出原文的原因)`，两者恰有一个。
 fn read_text(p: &Path) -> (Option<String>, Option<String>) {
-    match crate::platform::fs::Ro::read_regular_capped(p, MAX_FILE_BYTES) {
+    match crate::platform::fs::Ro::read_capped(p, FILE_CAP) {
         Ok(b) if b.contains(&0) => (None, Some(copy_text("beSkillInstall.text.binary", &[]))),
         Ok(b) => match String::from_utf8(b) {
             Ok(t) => (Some(t), None),
