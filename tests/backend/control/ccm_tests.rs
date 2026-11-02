@@ -70,6 +70,7 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
 #[test]
 fn routing_reads_the_name_it_was_called_by_then_the_argv() {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let route = |a0: &str, args: &[String]| route(a0, args, crate::stream::entry::is_backend_word);
     for me in [
         "ccm",
         "/x/ccm",

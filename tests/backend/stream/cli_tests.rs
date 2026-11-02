@@ -65,21 +65,15 @@ fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
     assert!(!is_subcommand("--some-future-flag"));
 }
 
-/// ccm 那一侧认后端词（`ccm_line::is_backend_word`）问的就是闸门：子命令 ∪ 流旗标，不认的词不认、ccm 自己的词不认。
+/// 入口交给 ccm 分流的那一问（`stream::entry::is_backend_word`）就是闸门：子命令 ∪ 流旗标，不认的词不认、ccm 自己的词不认。
 /// 认不认一个词要先问 ccm 认不认（派生的名字不许占 ccm 的词），ccm 那一问不许再绕回来问后端：一个没人认的词得当场答出来。
 #[test]
 fn the_ccm_side_asks_the_gate_for_backend_words() {
-    use crate::ccm_line::{argv, is_backend_word};
+    use crate::ccm_line::argv;
+    use crate::stream::entry::is_backend_word;
     for t in subcommands().iter().chain(crate::STREAM_FLAGS) {
         assert!(is_backend_word(t), "`{t}` 是后端的词，ccm 那一侧不认");
         assert!(!argv::is_ccm_word(t), "`{t}` 同时是 ccm 的词");
-    }
-    // `lib.rs::SUBCOMMANDS` 删之前（它住的那份文件在别的路手里）：表里每一条闸门都认，上面那一圈管另一向。
-    for w in crate::SUBCOMMANDS {
-        assert!(
-            is_subcommand(w),
-            "`{w}` 在 `lib.rs::SUBCOMMANDS` 里，闸门不认"
-        );
     }
     for w in ["--some-future-flag", "--ccm-nope=1", "bare"] {
         assert!(
