@@ -6,7 +6,7 @@
  *
  * | 检法 | 管哪几条规矩 |
  * |---|---|
- * | J1 字符 × 档 | C-Y2 · C-W1 · C-W2 · C-W10 · C-W12 · C-W16 · C-L2 · C-Y4 |
+ * | J1 字符 × 档 | C-Y2 · C-W1 · C-W2 · C-W21 · C-W10 · C-W12 · C-W16 · C-L2 · C-Y4 |
  * | J2 词 × 档 | C-P2 · C-T1 · C-Y3 · C-W5 · C-W7（禁词那半）· C-W9 · C-W17 · C-W19 · C-W20 |
  * | J3 状态 / 失败句 | C-W3 · C-W7（「失败」一行至多一次那半）· C-W8 · C-W14 |
  * | J4 按档限长 | C-L1 · C-W4 · C-W15 |
@@ -138,6 +138,7 @@ const CHAR_ROWS: Row[] = [
     },
   },
   { rule: "C-W2", on: "zh", find: re(/\S·|·\S/, "「·」两边没各空一格") },
+  { rule: "C-W21", on: "speech", cliExempt: true, find: re(/[，；]/, "用「，」「；」连句") },
   { rule: "C-W10", on: "speech", cliExempt: true, find: re(/。/, "有句号") },
   { rule: "C-W10", on: "speech", kinds: kinds(...NARROW, "error"), find: re(/：/, (e) => `${e.kind} 档有冒号`) },
   { rule: "C-W10", on: "speech", find: re(/[！!]/, "有感叹号") },

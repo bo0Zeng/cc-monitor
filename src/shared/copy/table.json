@@ -228,7 +228,7 @@
     "rsToolRegistry.tools.accountsWhat": {
       "kind": "body",
       "role": "说明",
-      "zh": "后端在该机上建的账号库；每号一个配置目录 · 共享的东西链回 ~/.claude",
+      "zh": "后端在该机上建的账号库\n每号一个配置目录 · 共享的东西链回 ~/.claude",
       "args": []
     },
     "rsToolRegistry.tools.accountsVaultNote": {
@@ -402,7 +402,7 @@
     "beAcctPlan.remove.backupKeeps": {
       "kind": "body",
       "role": "说明",
-      "zh": "此号凭据在备份目录留一份；回滚要用 · 不需要时可手动删除",
+      "zh": "此号凭据在备份目录留一份\n还原时用 · 不需要时可手动删除",
       "args": []
     },
     "beAcctPlan.remove.default": {
@@ -438,7 +438,7 @@
     "beAcctPlan.repair.liftBusy": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 有会话在跑 · {item} 本轮不挪，会话停止后再修",
+      "zh": "{name} 有会话在运行 · {item} 本轮不挪 · 会话停止后再修",
       "args": ["name", "item"]
     },
     "beAcctPlan.repair.skipMissing": {
@@ -468,7 +468,7 @@
     "beAcctPlan.step.isolate": {
       "kind": "body",
       "role": "说明",
-      "zh": "复制成自己的一份 {at}（取自 {from}，共享库那份留着）",
+      "zh": "复制成自己的一份 {at} · 取自 {from} · 共享库那份保留",
       "args": ["at", "from"]
     },
     "beAcctPlan.step.link": {
@@ -582,7 +582,7 @@
     "beAcctVerify.global.ownCopies": {
       "kind": "body",
       "role": "说明",
-      "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
+      "zh": "{item} 该各号共用 · {names} 各有一份自己的 · 未合并\n要共用 · 先把内容并进共享库里的 {item} · 删掉号里的 · 再点「修复」",
       "args": ["item", "names"]
     },
     "beAcctVerify.global.unclassified": {
@@ -679,7 +679,7 @@
     "beAcctVerify.global.residueInPlace": {
       "kind": "body",
       "role": "说明",
-      "zh": "共享库里有 {item}，有账号的目录就是共享库，不算问题",
+      "zh": "共享库里有 {item} · 有账号的目录就是共享库 · 不算问题",
       "args": ["item"]
     },
     "beAcctVerify.global.roots": {
@@ -715,7 +715,7 @@
     "beAcctVerify.iso.tooFew": {
       "kind": "body",
       "role": "说明",
-      "zh": "知道邮箱的账号不到两个，无法比较是否隔离开",
+      "zh": "已知邮箱的账号不到两个 · 无法比较是否隔离",
       "args": []
     },
     "beAcctWire.cred.outsideHome": {
@@ -787,7 +787,7 @@
     "beAssetCatalog.digest.lenOnly": {
       "kind": "body",
       "role": "说明",
-      "zh": "{rel} 无法读取内容，只按长度算：{why}",
+      "zh": "{rel} 无法读取内容 · 只按长度算 · {why}",
       "args": ["rel", "why"]
     },
     "beAssetCatalog.write.noHome": {
@@ -1057,7 +1057,7 @@
     "beCcBus.envelope.tooLong": {
       "kind": "error",
       "role": "命令行",
-      "zh": "未发送 · 正文超过 1200 字节 · 写成文件，给路径",
+      "zh": "未发送 · 正文超过 1200 字节 · 写成文件后发路径",
       "args": []
     },
     "beCcBus.envelope.notSameGroup": {
@@ -1265,7 +1265,7 @@
     "beSessionRestart.live.afterStop": {
       "kind": "error",
       "role": "报错",
-      "zh": "旧进程已停；另有进程在写此会话（pid {pids}），未起新的",
+      "zh": "未重启 · 原会话已停止 · 会话另在别处运行 · pid {pids}",
       "args": ["pids"]
     },
     "beKill.run.failed": {
@@ -1369,27 +1369,32 @@
     "credsStore.template.note": {
       "kind": "body",
       "role": "说明",
-      "zh": "第三方 API key 填进 {keyField}；可直接用编辑器改 · 下次读取即生效 · 也可整份换成另一份 JSON · 其余键程序不动",
-      "args": ["keyField"]
+      "zh": "第三方 API key 填进 {keyField} · 可直接用编辑器改 · 下次读取即生效 · 也可整份换成另一份 JSON · 其余键程序不动",
+      "args": ["keyField"],
+      "waive": {
+        "C-L1": "写进凭据 JSON 模板 _note 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完"
+      }
     },
     "credsStore.template.noteAccounts": {
       "kind": "body",
       "role": "说明",
-      "zh": "多账号写进 {accountsField}；每条一个 id（只许字母、数字、- 和 _） · 可带 {keyField}、base_url、auth_style · base_url 留空用默认上游，写全路径也认 · {keyField} 留空就转发客户端自己的鉴权头 · 例：{example}",
+      "zh": "多账号写进 {accountsField} · 每条一个 id（只许字母、数字、- 和 _） · 可带 {keyField}、base_url、auth_style · base_url 留空用默认上游 · 写全路径也认 · {keyField} 留空就转发客户端自己的鉴权头 · 例：{example}",
       "args": ["accountsField", "keyField", "example"],
       "waive": {
         "C-W4": "写进凭据 JSON 模板 _note_accounts 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完",
-        "C-W15": "写进凭据 JSON 模板 _note_accounts 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完"
+        "C-W15": "写进凭据 JSON 模板 _note_accounts 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完",
+        "C-L1": "写进凭据 JSON 模板 _note_accounts 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完"
       }
     },
     "credsStore.template.noteAuthStyle": {
       "kind": "body",
       "role": "说明",
-      "zh": "auth_style 是这把 key 交给上游时用的鉴权头；留空用默认 · 写入无法识别的词不当默认，后端起来时报出并列出认得的几个值 · 本地部署不校验凭据的，选不发鉴权头的值",
+      "zh": "auth_style 是这把 key 交给上游时用的鉴权头 · 留空用默认 · 填入无法识别的值时不按默认处理 · 后端启动时报出并列出可用的值 · 本地部署不校验凭据时选不发鉴权头的值",
       "args": [],
       "waive": {
         "C-W4": "写进凭据 JSON 模板 _note_auth_style 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完",
-        "C-W15": "写进凭据 JSON 模板 _note_auth_style 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完"
+        "C-W15": "写进凭据 JSON 模板 _note_auth_style 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完",
+        "C-L1": "写进凭据 JSON 模板 _note_auth_style 字段的值（文件内容，不进界面）；JSON 字符串里换行会显示成 \\n，只能一行写完"
       }
     },
     "rsRemoteResident.stop.unknownAnswer": {
@@ -1790,7 +1795,7 @@
     "beRewind.no.notStopped": {
       "kind": "error",
       "role": "原因格",
-      "zh": "回退结果未知\n已按打断，本轮未停止",
+      "zh": "回退结果未知\n已按打断 · 本轮未停止",
       "args": []
     },
     "beRewind.unsure.notSent": {
@@ -2877,7 +2882,7 @@
     "cards.diff.coarse": {
       "kind": "body",
       "role": "片段",
-      "zh": "改前 {old} 行 · 改后 {new} 行 · 超出逐行比对上限，按整段删增显示",
+      "zh": "改前 {old} 行 · 改后 {new} 行 · 超出逐行比对上限 · 按整段删增显示",
       "args": ["old", "new"]
     },
     "cards.command.note": {
@@ -3493,13 +3498,14 @@
     "beEmpty.hint.pending": {
       "kind": "body",
       "role": "空态",
-      "zh": "{names} 还在连，会话连上后出现",
-      "args": ["names"]
+      "zh": "{names} 连接中 · 会话连上后出现",
+      "args": ["names"],
+      "limited": ["连接"]
     },
     "beEmpty.hint.out": {
       "kind": "body",
       "role": "空态",
-      "zh": "{names}，会话未计入",
+      "zh": "{names} · 会话未计入",
       "args": ["names"]
     },
     "beEmpty.hint.outOne": {
@@ -3811,7 +3817,7 @@
     "tabMenu.autoAnswer.tip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "只答提问 · 等满没人答就替人答一句；批准与计划照常等人",
+      "zh": "只答提问 · 等满无人答时代答一句 · 批准与计划照常等人",
       "args": []
     },
     "tabMenu.autoAnswer.failed": {
@@ -4001,7 +4007,7 @@
     "front.hint.severalElevated": {
       "kind": "body",
       "role": "说明",
-      "zh": "以普通权限开终端，或以管理员身份运行 cc-monitor",
+      "zh": "以普通权限开终端 · 或以管理员身份运行 cc-monitor",
       "args": []
     },
     "front.body.severalForeign": {
@@ -5094,14 +5100,14 @@
     "machineAliases.access.uninstallSub": {
       "kind": "body",
       "role": "说明",
-      "zh": "卸载后新开的终端不认 ccm 与别名 · 清单保留，可再接上",
+      "zh": "卸载后新开的终端不认 ccm 与别名 · 清单保留 · 可再装回",
       "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.access.uninstallSubWindow": {
       "kind": "body",
       "role": "说明",
-      "zh": "卸载后新开的窗口不认 ccm 与别名 · 清单保留，可再接上",
+      "zh": "卸载后新开的窗口不认 ccm 与别名 · 清单保留 · 可再装回",
       "args": [],
       "limited": ["ccm"]
     },
@@ -6938,7 +6944,7 @@
     "remote.info.remote": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端模式：cc-monitor 通过 SSH 连到远端主机；远端会话与本机会话一起显示\n远端标签页标题带 [机器名] 前缀\n默认关闭 · 关闭或机器列表为空时一切走本地\n启用或修改任意远端设置后需重启 cc-monitor 才生效\n某台配置不完整（缺主机、用户或后端路径）时后端跳过该台",
+      "zh": "远端模式：cc-monitor 通过 SSH 连到远端主机\n远端会话与本机会话一起显示\n远端标签页标题带 [机器名] 前缀\n默认关闭 · 关闭或机器列表为空时一切走本地\n启用或修改任意远端设置后需重启 cc-monitor 才生效\n某台配置不完整（缺主机、用户或后端路径）时后端跳过该台",
       "args": [],
       "limited": ["SSH"]
     },
@@ -7014,7 +7020,7 @@
     "diagnostics.page.sub": {
       "kind": "body",
       "role": "说明",
-      "zh": "诊断信息：版本 · 各机器状态 · 未识别数据 · 日志位置；不含会话内容与 key",
+      "zh": "诊断信息：版本 · 各机器状态 · 未识别数据 · 日志位置\n不含会话内容与 key",
       "args": []
     },
     "diagnostics.copy.button": {
@@ -7176,17 +7182,21 @@
     "data.note.classes": {
       "kind": "body",
       "role": "说明",
-      "zh": "标「可重建」的删除后下次用到时重建；标「删除即丢失」的是手动设过的东西",
+      "zh": "标「可重建」的删除后下次用到时重建 · 标「删除即丢失」的是手动设过的东西",
       "args": [],
       "waive": {
-        "C-W13": "「」里是本页条目上的分类标签（data.class.*）"
+        "C-W13": "「」里是本页条目上的分类标签（data.class.*）",
+        "C-L1": "与 data.note.* 几段依次拼成设置「文件与数据」里的一段说明，界面上整段流排不分行"
       }
     },
     "data.note.howToClear": {
       "kind": "body",
       "role": "说明",
-      "zh": "这些数据；要彻底清除（星标、颜色配置、界面缓存等）就手动删除上面的目录；",
-      "args": []
+      "zh": "这些数据 · 要彻底清除（星标、颜色配置、界面缓存等）需手动删除上面的目录 · ",
+      "args": [],
+      "waive": {
+        "C-L1": "与 data.note.* 几段依次拼成设置「文件与数据」里的一段说明，界面上整段流排不分行"
+      }
     },
     "data.note.notCleared": {
       "kind": "body",
@@ -7756,7 +7766,7 @@
     "rsFilewinShell.edit.tooBig": {
       "kind": "error",
       "role": "报错",
-      "zh": "改完 {n} 字节，超过上限 {limit}，无法存回",
+      "zh": "改后 {n} 字节 · 超过上限 {limit} · 无法存回",
       "args": ["n", "limit"]
     },
     "rsFilewinShell.edit.noRuntime": {
@@ -9008,7 +9018,7 @@
     "rsConfigSurface.scope.projectNotChecked": {
       "kind": "error",
       "role": "报错",
-      "zh": "本页不猜项目目录 · 未查；若钩子定义在项目级 · 上面两行的未装结论可能有误",
+      "zh": "项目级未查 · 本页不猜项目目录\n钩子定义在项目级时 · 上面两行的未装结论不作数",
       "args": [],
       "limited": ["hook"]
     },
@@ -9027,7 +9037,7 @@
     "rsConfigSurface.scope.userLocalNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "优先级高于上一行；此处定义的钩子同样生效",
+      "zh": "优先级高于上一行 · 此处定义的钩子同样生效",
       "args": [],
       "limited": ["hook"]
     },
@@ -9040,7 +9050,7 @@
     "rsConfigSurface.scope.userNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "钩子诊断读的就是此份；是否已装以 cc-bus 钩子页为准",
+      "zh": "钩子诊断读的就是此份 · 是否已装以 cc-bus 钩子页为准",
       "args": [],
       "limited": ["hook"]
     },
@@ -9107,7 +9117,7 @@
     "rsConfigSurface.unmanaged.promptEffect": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
+      "zh": "cc-monitor 不装它 · 只查它在不在 · 缺失时此行提示 · 装上即可",
       "args": []
     },
     "rsConfigSurface.unmanaged.promptSource": {
@@ -9125,7 +9135,7 @@
     "rsConfigSurface.unmanaged.appInstallsSource": {
       "kind": "body",
       "role": "说明",
-      "zh": "安装信息缺失，这是程序内部错误",
+      "zh": "安装信息缺失 · 程序出错",
       "args": []
     },
     "rsConfigSurface.row.declMismatch": {
@@ -9143,19 +9153,19 @@
     "rsConfigSurface.effect.ownedFile": {
       "kind": "body",
       "role": "说明",
-      "zh": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "zh": "整个文件归 cc-monitor · 部署时整体覆盖",
       "args": []
     },
     "rsConfigSurface.effect.fencedBlock": {
       "kind": "body",
       "role": "说明",
-      "zh": "插入或更新一段带标记的内容；卸载时只删此段",
+      "zh": "插入或更新一段带标记的内容 · 卸载时只删此段",
       "args": []
     },
     "rsConfigSurface.effect.readOnly": {
       "kind": "body",
       "role": "说明",
-      "zh": "只读（诊断用），cc-monitor 不写",
+      "zh": "只读 · 诊断用 · cc-monitor 不写",
       "args": []
     },
     "rsConfigSurface.host.projectDir": {
@@ -9210,7 +9220,7 @@
     "rsConfigSurface.observe.profileWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "路径由 PowerShell 决定；准确状态见「本机 → 终端 → 别名」\n该页读 $PROFILE 并查 cc-monitor 加的段",
+      "zh": "路径由 PowerShell 决定 · 准确状态见「本机 → 终端 → 别名」\n该页读 $PROFILE 并查 cc-monitor 加的段",
       "args": [],
       "limited": ["PowerShell"]
     },
@@ -9236,9 +9246,9 @@
     "rsConfigSurface.observe.eitherUndetermined": {
       "kind": "error",
       "role": "报错",
-      "zh": "{why}；且它装在运行 Claude Code 的机器上 · 可能在远端 · 本页不连 SSH",
+      "zh": "{why}\n它装在运行 Claude Code 的机器上 · 在远端时本页不查",
       "args": ["why"],
-      "limited": ["SSH", "Claude Code"]
+      "limited": ["Claude Code"]
     },
     "rsConfigSurface.observe.eitherPresent": {
       "kind": "body",
@@ -9249,9 +9259,9 @@
     "rsConfigSurface.observe.eitherAbsent": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机未找到 {target}；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查",
+      "zh": "本机未找到 {target}\n它装在运行 Claude Code 的机器上 · 远端状态到该机页面查",
       "args": ["target"],
-      "limited": ["SSH", "Claude Code"]
+      "limited": ["Claude Code"]
     },
     "rsConfigSurface.observe.globCount": {
       "kind": "body",
@@ -9268,31 +9278,31 @@
     "rsConfigSurface.observe.fileSize": {
       "kind": "body",
       "role": "说明",
-      "zh": "文件，{bytes} 字节",
+      "zh": "文件 · {bytes} 字节",
       "args": ["bytes"]
     },
     "rsConfigSurface.observe.dirUnlistable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "目录存在但无法列出内容 · 可能无权限",
+      "zh": "目录存在 · 无法列出内容",
       "args": []
     },
     "rsConfigSurface.observe.dirCount": {
       "kind": "body",
       "role": "片段",
-      "zh": "目录，{count} 项",
+      "zh": "目录 · {count} 项",
       "args": ["count"]
     },
     "rsConfigSurface.home.multiStar": {
       "kind": "error",
       "role": "报错",
-      "zh": "只支持一个 *，实得 {declared}",
+      "zh": "只支持一个 * · 实得 {declared}",
       "args": ["declared"]
     },
     "rsConfigSurface.home.globNotLast": {
       "kind": "error",
       "role": "报错",
-      "zh": "glob 只允许在最后一段，实得 {declared}",
+      "zh": "glob 只允许在最后一段 · 实得 {declared}",
       "args": ["declared"]
     },
     "rsConfigSurface.home.empty": {
@@ -9304,26 +9314,26 @@
     "rsConfigSurface.home.notTilde": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机路径必须以 ~/ 开头，实得 {declared}",
+      "zh": "本机路径必须以 ~/ 开头 · 实得 {declared}",
       "args": ["declared"]
     },
     "rsConfigSurface.declared.projectMismatch": {
       "kind": "error",
       "role": "报错",
-      "zh": "应在项目目录下，登记的路径却是 {declared}，不是相对路径",
+      "zh": "应在项目目录下 · 登记的路径 {declared} 不是相对路径",
       "args": ["declared"]
     },
     "rsConfigSurface.declared.profileMismatch": {
       "kind": "error",
       "role": "报错",
-      "zh": "安装位置是 PowerShell 配置文件，登记的路径却是 {declared}（应为 \"$PROFILE\"）",
+      "zh": "安装位置是 PowerShell 配置文件 · 登记的路径是 {declared} · 应为 \"$PROFILE\"",
       "args": ["declared"],
       "limited": ["PowerShell"]
     },
     "rsConfigSurface.declared.badChar": {
       "kind": "error",
       "role": "报错",
-      "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）；说明写在备注里 · 路径栏只放路径",
+      "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）\n说明写在备注里 · 路径栏只放路径",
       "args": ["bad", "declared"]
     },
     "beMcp.mark.login": {
@@ -9705,7 +9715,7 @@
     "rsChanWire.segment.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "一段声称 {n} 字节，超过上限 {cap}",
+      "zh": "一段声称 {n} 字节 · 超过上限 {cap}",
       "args": ["n", "cap"]
     },
     "rsChanSaid.hop.expired": {
@@ -11634,7 +11644,7 @@
     "rsToolRegistry.environment.managedWhy": {
       "kind": "body",
       "role": "说明",
-      "zh": "谁来装看它装到哪台机器；此处能装的由 cc-monitor 装",
+      "zh": "谁来装看它装到哪台机器 · 此处能装的由 cc-monitor 装",
       "args": []
     },
     "rsToolRegistry.env.mcpServerWhy": {
@@ -11646,7 +11656,7 @@
     "rsToolRegistry.env.mcpServerCannotProbe": {
       "kind": "body",
       "role": "说明",
-      "zh": "名字由项目 .mcp.json 里的 command 决定 · 本页不猜是哪个项目；要查就先选定项目再看该配置",
+      "zh": "名字由项目 .mcp.json 里的 command 决定 · 本页不猜是哪个项目\n要查先选定项目再看该配置",
       "args": []
     },
     "rsToolRegistry.env.mcpServerName": {
@@ -11780,14 +11790,14 @@
     "rsToolRegistry.tools.powershellNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "Windows 客户端侧，具体路径由 PowerShell 决定",
+      "zh": "Windows 客户端侧 · 具体路径由 PowerShell 决定",
       "args": [],
       "limited": ["PowerShell"]
     },
     "rsToolRegistry.tools.powershellWhat": {
       "kind": "body",
       "role": "说明",
-      "zh": "现场生成的那段 PowerShell 代码块，合进用户的 $PROFILE",
+      "zh": "现场生成的 PowerShell 代码块 · 合进用户的 $PROFILE",
       "args": [],
       "limited": ["PowerShell"]
     },
@@ -11801,7 +11811,7 @@
     "rsToolRegistry.tools.posixAliasesNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机的 shell rc · 具体哪一份在界面上选；本机与远端装进 rc 的是同一份内容",
+      "zh": "本机的 shell rc · 具体哪一份在界面上选\n本机与远端装进 rc 的是同一份内容",
       "args": []
     },
     "rsToolRegistry.tools.posixAliasesRcWhat": {
@@ -11813,7 +11823,7 @@
     "rsToolRegistry.tools.posixAliasesWhat": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 带着的别名脚本，合进界面上选的那份 rc",
+      "zh": "cc-monitor 带着的别名脚本 · 合进界面上选的那份 rc",
       "args": []
     },
     "rsToolRegistry.tools.posixAliasesName": {
@@ -11888,7 +11898,7 @@
     "rsToolRegistry.tools.ccBusHooksNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "只碰 hooks 段，而且 cc-monitor 不写，只生成待贴文本",
+      "zh": "只涉及 hooks 段 · cc-monitor 不写 · 只生成待贴文本",
       "args": []
     },
     "rsToolRegistry.tools.ccBusDirNote": {
@@ -12715,7 +12725,7 @@
     "bePlan.command.humanOnly": {
       "kind": "error",
       "role": "报错",
-      "zh": "pb {verb} 是用户命令，只许人发起 · 调用方带着 agent 身份，未起 pb",
+      "zh": "pb {verb} 是用户命令 · 只许人发起 · 发起方带 agent 身份 · 未启动 pb",
       "args": ["verb"]
     },
     "bePlan.command.noSlice": {
@@ -12787,7 +12797,7 @@
     "bePlan.face.pbDirGone": {
       "kind": "error",
       "role": "报错",
-      "zh": "未找到 planned-build\n设置里填的 pb 路径 {dir} 下没有它 · 改填，或清空改用已装的插件",
+      "zh": "未找到 planned-build\n设置里填的 pb 路径 {dir} 下没有它 · 改填 · 或清空以改用已装的插件",
       "args": ["dir"]
     },
     "bePlan.pbDir.missing": {
@@ -12871,13 +12881,13 @@
     "sessionState.planReturn.ended": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话已结束 · 复制此行，恢复会话后贴入",
+      "zh": "会话已结束 · 复制此行 · 恢复会话后贴入",
       "args": []
     },
     "sessionState.planReturn.resume": {
       "kind": "body",
       "role": "说明",
-      "zh": "{session} 已结束 · 送出时先恢复它，此行当它的第一句",
+      "zh": "{session} 已结束 · 送出时先恢复 · 此行作为第一句",
       "args": ["session"]
     },
     "bePlan.return.unknown": {
@@ -13180,7 +13190,7 @@
     "beHistoryAnnotations.readForWrite.notObject": {
       "kind": "error",
       "role": "报错",
-      "zh": "星标和改名的记录文件 {path} 的顶层不是对象，没有覆盖它",
+      "zh": "星标和改名的记录文件 {path} 顶层不是对象 · 未覆盖",
       "args": ["path"]
     },
     "beHistoryAnnotations.parse.unparsable": {
@@ -14811,7 +14821,7 @@
     "beAsk.choice.allowAlways": {
       "kind": "action",
       "role": "按钮",
-      "zh": "允许，且{rule}",
+      "zh": "允许 · {rule}",
       "args": ["rule"]
     },
     "beAsk.choice.deny": {
@@ -14877,43 +14887,43 @@
     "beAsk.planKeep.note": {
       "kind": "body",
       "role": "片段",
-      "zh": "继续规划，先不要动手",
+      "zh": "继续规划 · 先不动手",
       "args": []
     },
     "beAsk.manual.offLauncher": {
       "kind": "body",
       "role": "说明",
-      "zh": "由自定义启动器起，答题口未接上 · 只能在终端里答",
+      "zh": "由自定义启动器启动 · 答题口未接上 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offPolicy": {
       "kind": "body",
       "role": "说明",
-      "zh": "组织策略不许加载插件，答题口未接上 · 只能在终端里答",
+      "zh": "组织策略不许加载插件 · 答题口未接上 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offVersion": {
       "kind": "body",
       "role": "说明",
-      "zh": "claude 版本低于 2.1.280 或无法识别版本，答题口未接上 · 只能在终端里答",
+      "zh": "claude 版本低于 2.1.280 或无法识别版本 · 答题口未接上 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offEnvLost": {
       "kind": "body",
       "role": "说明",
-      "zh": "启动器未传递环境，答题口未接上 · 只能在终端里答",
+      "zh": "启动器未传递环境 · 答题口未接上 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offElsewhere": {
       "kind": "body",
       "role": "说明",
-      "zh": "别处起的会话，未挂答题口 · 只能在终端里答",
+      "zh": "别处启动的会话 · 未挂答题口 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offSettings": {
       "kind": "body",
       "role": "说明",
-      "zh": "自带的会话级设置{why}，答题口未接上 · 只能在终端里答",
+      "zh": "自带的会话级设置{why} · 答题口未接上 · 只能在终端里答",
       "args": ["why"]
     },
     "beAsk.manual.offUnknown": {
@@ -14955,7 +14965,7 @@
     "beAsk.auto.answered": {
       "kind": "body",
       "role": "说明",
-      "zh": "{dur}没人答，已自动答：{say}",
+      "zh": "{dur}无人答 · 已自动答：{say}",
       "args": ["dur", "say"]
     },
     "beAsk.auto.off": {
@@ -14967,7 +14977,7 @@
     "beAsk.auto.say": {
       "kind": "body",
       "role": "片段",
-      "zh": "不要卡着：有推荐就按推荐，没有就选最合适的，继续",
+      "zh": "有推荐项选推荐项 · 没有就选最合适的 · 然后继续",
       "args": []
     },
     "beAsk.answer.notFound": {
@@ -15147,7 +15157,7 @@
     "beTransfer.land.copyPrefixShort": {
       "kind": "error",
       "role": "报错",
-      "zh": "接着下载时只抄回 {got} 字节，应有 {n} 字节",
+      "zh": "续传时只复制回 {got} 字节 · 应有 {n} 字节",
       "args": ["got", "n"]
     },
     "beTransfer.land.commitFailed": {
@@ -15320,7 +15330,7 @@
     "attach.chip.removeHint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "移除附件；已传完的在会话所在机器上一并删除",
+      "zh": "移除附件 · 已传完的在会话所在机器上一并删除",
       "args": []
     },
     "attach.add.aria": {
@@ -15332,7 +15342,7 @@
     "attach.add.hint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "选文件附上（可多选）；也可拖到消息流上或在输入框里粘贴",
+      "zh": "选文件附上（可多选） · 也可拖到消息流上或在输入框里粘贴",
       "args": []
     },
     "attach.drop.title": {
@@ -15428,7 +15438,7 @@
     "beFilesCommit.upload.corruptKept": {
       "kind": "body",
       "role": "说明",
-      "zh": "坏的临时文件没删掉，下次上传会先核对，不一致就从头来",
+      "zh": "损坏的临时文件未删除 · 下次上传先核对 · 不一致则从头传",
       "args": []
     },
     "beFilesCommit.upload.stagedMissing": {
@@ -17322,7 +17332,7 @@
     "rsDataPaths.backend.accounts": {
       "kind": "body",
       "role": "说明",
-      "zh": "多账号的账号库：账号清单，和每个号一份登录凭据",
+      "zh": "多账号的账号库：账号清单 · 每号一份登录凭据",
       "args": []
     },
     "rsDataPaths.backend.accountsMcp": {
@@ -18499,7 +18509,7 @@
     "beCcm.plugin.writeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "答题插件无法写入，此会话只能在终端里答 · {path} · {why}",
+      "zh": "答题插件无法写入 · 此会话只能在终端里答 · {path} · {why}",
       "args": ["path", "why"]
     },
     "rsToolRegistry.tools.answerPluginNote": {
@@ -18984,7 +18994,7 @@
     "rsFilewinShell.search.hintContent": {
       "kind": "control",
       "role": "标签",
-      "zh": "搜文件内容，回车",
+      "zh": "搜文件内容 · 回车",
       "args": []
     },
     "rsFilewinGrep.summary.running": {
@@ -20476,7 +20486,7 @@
     "saidEdit.bar.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "发送后回退到此句之前，之后的内容不再保留",
+      "zh": "发送后回退到此句之前 · 之后的内容不再保留",
       "args": []
     },
     "saidEdit.bar.keys": {
@@ -20796,7 +20806,7 @@
     "addMachine.ssh.partial": {
       "kind": "body",
       "role": "说明",
-      "zh": "有的别名超过时限未读出，不在下面；关掉再打开此框会重读",
+      "zh": "部分别名超时未读出 · 不在下面 · 关掉再打开此框会刷新",
       "args": []
     },
     "addMachine.ssh.inList": {
@@ -22681,7 +22691,7 @@
     "beProfile.name.own": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{name}」是 ccm 自己的名字，不能当配置名",
+      "zh": "「{name}」是 ccm 自己的名字 · 不能当配置名",
       "args": ["name"],
       "limited": ["ccm"]
     },
@@ -22718,13 +22728,13 @@
     "beProfile.value.from": {
       "kind": "error",
       "role": "报错",
-      "zh": "from 要写一个配置名，用引号括起来",
+      "zh": "from 要写一个配置名 · 用引号括起来",
       "args": []
     },
     "beProfile.value.args": {
       "kind": "error",
       "role": "报错",
-      "zh": "args 要写字符串数组，是交给 agent 的那几个词",
+      "zh": "args 要写字符串数组 · 每项是交给 agent 的一个参数",
       "args": []
     },
     "beProfile.slot.tmux": {
@@ -22905,13 +22915,13 @@
     "beProfile.file.topLevel": {
       "kind": "error",
       "role": "报错",
-      "zh": "{key} 要写进某一段 [名字] 里，顶层只放段",
+      "zh": "{key} 要写进某一段 [名字] 里 · 顶层只放段",
       "args": ["key"]
     },
     "beProfile.name.reserved": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{name}」留给一组会话 [set.\"组名\"]，不能当配置名",
+      "zh": "「{name}」留给一组会话 [set.\"组名\"] · 不能当配置名",
       "args": ["name"]
     },
     "beProfile.set.shape": {
@@ -23032,7 +23042,7 @@
     "beProfile.install.basedOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 还被 {children} 基于着，不能删；先把它们改成基于别的、或一起删掉",
+      "zh": "{children} 基于 {name} · 无法删除 · 先把它们改成基于别的或一起删除",
       "args": ["children", "name"]
     },
     "rsDataPaths.backend.profiles": {
@@ -24143,7 +24153,7 @@
     "plan.sub.docsOnlyHint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "pb 只管图，{path} 由外面改、pb 不守 · 接过仓库之后照规则守",
+      "zh": "pb 只管图 · {path} 由外面改、pb 不守 · 接过仓库之后照规则守",
       "args": ["path"]
     },
     "plan.auto.label": {
@@ -24167,7 +24177,7 @@
     "plan.auto.what": {
       "kind": "body",
       "role": "悬停",
-      "zh": "开着时每一轮结束 agent 自己约下一次；要看着它就关",
+      "zh": "开着时每一轮结束 agent 自己约下一次 · 要看着它就关",
       "args": []
     },
     "plan.auto.failed": {
@@ -24365,7 +24375,7 @@
     "plan.return.lineNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "只带事实；收到人话怎么做，pb 已教过 agent",
+      "zh": "只带事实 · 收到人话怎么做由 pb 告诉 agent",
       "args": []
     },
     "plan.return.send": {
@@ -24377,7 +24387,7 @@
     "plan.return.autoSwitched": {
       "kind": "body",
       "role": "说明",
-      "zh": "默认项无法送达，改选上一级",
+      "zh": "默认项无法送达 · 改选上一级",
       "args": []
     },
     "plan.return.copyLine": {
@@ -24497,7 +24507,7 @@
     "plan.fresh.hint": {
       "kind": "body",
       "role": "空态",
-      "zh": "新会话开口说下方交接说明以认领 project，图随之出现",
+      "zh": "新会话发出下方交接说明以认领 project · 图随之出现",
       "args": []
     },
     "plan.fresh.newSession": {
@@ -24827,7 +24837,7 @@
     "plan.new.workspaceHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "向上未找到工作区时，此目录成为工作区根",
+      "zh": "向上未找到工作区时此目录成为工作区根",
       "args": []
     },
     "plan.new.known": {
@@ -24953,7 +24963,7 @@
     "plan.state.inner": {
       "kind": "body",
       "role": "片段",
-      "zh": "有能力 · 模块子节点的，已签收由 pb 照底下的加上",
+      "zh": "有能力或模块子节点的 · 已签收由 pb 照底下的加上",
       "args": []
     },
     "plan.state.none": {
@@ -26675,7 +26685,7 @@
     "beRotation.edit.noName": {
       "kind": "error",
       "role": "报错",
-      "zh": "名字要 1–32 个字，只用字母、数字、空格和 - _ · ( ) +",
+      "zh": "名字要 1–32 个字 · 只用字母、数字、空格和 - _ · ( ) +",
       "args": []
     },
     "beRotation.edit.notListed": {
@@ -27083,7 +27093,8 @@
       "args": ["name", "line", "why"],
       "waive": {
         "C-W10": "用户定的句子（轮换的提示表）",
-        "C-W11": "用户定的句子（轮换的提示表）"
+        "C-W11": "用户定的句子（轮换的提示表）",
+        "C-W21": "用户定的句子（轮换的提示表）"
       }
     },
     "beRotation.why.divZero": {
@@ -27310,7 +27321,7 @@
     "rot.ask.createNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "名字就是文件名；每号切入 · 切出都是「默认」，上限 90%；建好后下拉里多一项",
+      "zh": "名字就是文件名\n每号切入 · 切出都是「默认」 · 上限 90% · 建好后下拉里多一项",
       "args": []
     },
     "rot.fail.create": {
