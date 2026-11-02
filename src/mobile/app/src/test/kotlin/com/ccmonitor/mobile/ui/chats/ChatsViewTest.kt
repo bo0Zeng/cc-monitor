@@ -75,6 +75,8 @@ class ChatsViewTest {
         spanText = "09:0$sid",
         forkedFromSessionId = parent,
         origin = LOCAL,
+        reveal = false,
+        deleteAsk = "",
     )
 
     private fun group(
