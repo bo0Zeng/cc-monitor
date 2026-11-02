@@ -69,7 +69,7 @@ import { SessionFindPanel } from "../../../src/frontend/ui/views/session-find";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { GroupBook } from "../../../src/frontend/ui/group-book";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { announced, goldenFace } from "../../test-support/session-faces";
@@ -95,7 +95,7 @@ function makeTabs(sids: readonly string[]): TabManager {
   const root = document.createElement("div");
   document.body.append(bar, root);
   const tm = owned(announced(new TabManager(bar, root)));
-  for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, `/p/${sid}.jsonl`, LOCAL_ORIGIN);
+  for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, `/p/${sid}.jsonl`, LOCAL);
   return tm;
 }
 
@@ -328,9 +328,9 @@ describe("旧的分组三格等每台自己那条流都报完了才迁（组员�
         return (op === "make" ? { is: "made", ...rec } : op === "move" ? { is: "moved", sid: "x", groups: ["g-new"] } : cmd === "groups-read" ? { groups: [], pinned: [], machines: [] } : { entry: {}, prev: null }) as never;
       }, 60_000);
       const tm = makeTabs(["a"]);
-      tm.setMachines([LOCAL_ORIGIN, GPU]);
+      tm.setMachines([LOCAL, GPU]);
       tm.attachGroups(book);
-      tm.markOriginSeen(LOCAL_ORIGIN);
+      tm.markOriginSeen(LOCAL);
       tm.markAllListed(); // 壳那一刻（在本机那条流上到的）
       await new Promise((r) => setTimeout(r, 0));
       expect(calls.filter((c) => c[1] !== "groups-read"), "gpu 那条流还没报完：不迁").toEqual([]);
@@ -339,8 +339,8 @@ describe("旧的分组三格等每台自己那条流都报完了才迁（组员�
       await vi.waitFor(() => expect(calls.filter((c) => (c[2] as { op?: string }).op === "move")).toHaveLength(2), UNTIL_CEILING);
       await vi.waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === "patch_config" && JSON.stringify(a).includes("tabCollections"))).toBe(true), UNTIL_CEILING);
       expect(calls.filter((c) => c[1] !== "groups-read")).toEqual([
-        [LOCAL_ORIGIN, "groups-write", { op: "make", name: "训练" }],
-        [LOCAL_ORIGIN, "groups-write", { op: "move", sid: "a", join: rec }],
+        [LOCAL, "groups-write", { op: "make", name: "训练" }],
+        [LOCAL, "groups-write", { op: "move", sid: "a", join: rec }],
         ["gpu", "groups-write", { op: "move", sid: "t1", join: rec }],
       ]);
     } finally {
@@ -392,7 +392,7 @@ describe("子 agent 的时间线：读失败一次不丢之前显示过的", () 
       if (call === 2) throw new Error("瞬时失败");
       return page(from, from === 0 ? 3 : 2) as never;
     };
-    const t = new RunTimeline({ origin: LOCAL_ORIGIN, parent: "x", which: { run: "r" }, load, render: renderNum });
+    const t = new RunTimeline({ origin: LOCAL, parent: "x", which: { run: "r" }, load, render: renderNum });
     await t.refresh();
     await t.refresh();
     expect(nums(t.body)).toEqual(["0", "1", "2"]);
@@ -408,7 +408,7 @@ describe("子 agent 的时间线：回退掉的那几条按那份记录的主线
     const asked: string[] = [];
     const load = async (from: number) => page(from, from === 0 ? 4 : 1) as never;
     const t = new RunTimeline({
-      origin: LOCAL_ORIGIN,
+      origin: LOCAL,
       parent: "x",
       which: { run: "r" },
       load,

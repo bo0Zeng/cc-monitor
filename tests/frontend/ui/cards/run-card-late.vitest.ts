@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../../src/frontend/ui/generated/RunInfo";
 import { buildAgentCard, markRunCard } from "../../../../src/frontend/ui/cards/subagent";
@@ -14,7 +14,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 describe("派出卡建出来就交给上下文标运行状态", () => {
   it("卡型是 agent 的那次调用 ⇒ 建卡时报一声（调用 id ＋ 那张卡）", () => {
     const onRunCard = vi.fn();
-    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), runCards: new Map(), lazy: false, onRunCard };
+    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), runCards: new Map(), lazy: false, onRunCard };
     const rec = {
       agent: "claude",
       t: "reply",

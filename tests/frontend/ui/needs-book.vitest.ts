@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { NeedsMerged } from "../../../src/frontend/ui/generated/NeedsMerged";
 
 const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [] };
@@ -24,7 +24,7 @@ describe("NeedsBook 读失败退避再问", () => {
       return { ...EMPTY, total: 2 };
     });
     const book = new NeedsBook(merge);
-    await book.refresh(LOCAL_ORIGIN);
+    await book.refresh(LOCAL);
     expect(merge).toHaveBeenCalledTimes(1);
     expect(book.total()).toBe(0);
     await vi.advanceTimersByTimeAsync(1_000);
@@ -39,7 +39,7 @@ describe("NeedsBook 读失败退避再问", () => {
       throw new Error("本机后端没合成");
     });
     const book = new NeedsBook(merge);
-    await book.refresh(LOCAL_ORIGIN);
+    await book.refresh(LOCAL);
     const at: number[] = [];
     let t = 0;
     for (let i = 0; i < 8; i++) {

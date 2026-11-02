@@ -9,8 +9,8 @@ import { setCurrentMachine, subscribeMachine } from "../machine-context";
 import { remoteNames } from "../remote-config";
 // 查在线 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, readInbox, readRoster, type BusList } from "../cc-bus-control";
-// 本机 ＝ `LOCAL_ORIGIN`（与 Rust 侧逐字相同，跨语言钉住）。
-import { LOCAL_ORIGIN } from "../backend-policy";
+// 本机 ＝ `LOCAL`（只住 `cmd-wire`，界面从生成物出）。
+import { LOCAL } from "../ipc/origin";
 
 import { copyText } from "../copy-table";
 import { button } from "../kit/button";
@@ -87,7 +87,7 @@ export class CcBusSection {
     // 本机追加在末尾：`select` 默认第一项，配了远端的人打开面板照旧先看远端。
     {
       const opt = document.createElement("option");
-      opt.value = LOCAL_ORIGIN;
+      opt.value = LOCAL;
       opt.textContent = copyText("ccBus.machine.local");
       this.originSel.appendChild(opt);
     }

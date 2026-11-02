@@ -3,7 +3,7 @@
  * 不在的目录照收的话，重启后会被悄悄忽略、退回默认目录，输入框却还显示着它；没有 `projects/` 的目录读不出一条会话。
  */
 import { budgetWithin, callTyped, unreadableSaid } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../backend-policy";
+import { LOCAL } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { saidOf } from "../kit/detail";
 
@@ -14,7 +14,7 @@ const CHECK_BUDGET_MS = 10_000;
 export async function claudeDirProblem(dir: string): Promise<string | null> {
   let state: string;
   try {
-    ({ state } = await callTyped(LOCAL_ORIGIN, "agent-home-check", { path: dir }, budgetWithin(CHECK_BUDGET_MS)));
+    ({ state } = await callTyped(LOCAL, "agent-home-check", { path: dir }, budgetWithin(CHECK_BUDGET_MS)));
   } catch (e) {
     return copyText("settingsPanel.claudeDir.uncheckable", { path: dir, said: saidOf(e) });
   }
@@ -30,6 +30,6 @@ export async function claudeDirProblem(dir: string): Promise<string | null> {
     default:
       // 回包形状由握手指纹核过；这一格仍不当能用（码不认识 ⇒ 说认不出）。
       console.warn(`claude-dir-check state unknown: ${state}`);
-      return copyText("settingsPanel.claudeDir.uncheckable", { path: dir, said: unreadableSaid(LOCAL_ORIGIN) });
+      return copyText("settingsPanel.claudeDir.uncheckable", { path: dir, said: unreadableSaid(LOCAL) });
   }
 }

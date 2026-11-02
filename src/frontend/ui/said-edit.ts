@@ -20,7 +20,7 @@ import { saidOf } from "./kit/detail";
 import { imeComposing } from "./keybindings/ime";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { PutEnd } from "./session-queue";
 import type { Rewind } from "./generated/Rewind";
 import type { RewindOptions } from "./generated/RewindOptions";
@@ -28,7 +28,7 @@ import s from "./said-edit.module.css";
 
 /** 被编辑的那一句：哪台 · 哪条会话 · 记录里那一行的 id（即 `uuid`）· 原文。 */
 export interface SaidAt {
-  origin: Origin;
+  origin: Machine;
   sid: string;
   id: string;
   text: string;
@@ -36,8 +36,8 @@ export interface SaidAt {
 
 /** 编辑器要的两口：问选项（退到 `to` 那一句之前）· 把改好的那一句（带 `rewind`）交给输入队那一份待发。 */
 export interface SaidEditIo {
-  options(origin: Origin, sid: string, to: string): Promise<RewindOptions>;
-  send(origin: Origin, sid: string, text: string, rewind: Rewind): Promise<PutEnd>;
+  options(origin: Machine, sid: string, to: string): Promise<RewindOptions>;
+  send(origin: Machine, sid: string, text: string, rewind: Rewind): Promise<PutEnd>;
 }
 
 /** 卡上「编辑」点了往上冒的事件（`detail.at` 是那一句）。 */

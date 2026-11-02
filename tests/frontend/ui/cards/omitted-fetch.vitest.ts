@@ -2,7 +2,7 @@
 // 取回还没落、又收起再展开（或一次点开来了两个 toggle）⇒ 不再发第二问、不画两份；取失败 ⇒ 下次展开再取。
 import { describe, it, expect, vi } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { RecordAt } from "../../../../src/frontend/ui/cards/index";
 
@@ -20,7 +20,7 @@ const full = { ...folded, blocks: [{ type: "tool_use", id: "t1", name: "Grep", i
 function rig(fullRecord: (from: RecordAt) => Promise<LineRecord | null>) {
   const ctx = {
     parentPath: "/p/s.jsonl",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

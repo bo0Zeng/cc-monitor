@@ -22,7 +22,7 @@ import {
   startMany,
 } from "../../../src/frontend/ui/tab-batch-run";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { getBehavior } from "../../../src/frontend/ui/behavior";
 import { openTerminal } from "../../../src/frontend/ui/terminal-open";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
@@ -85,17 +85,17 @@ describe("批量停：交本机后端一条（`sessions-batch`），按台扇出
   const merged = { results: [], said: "S", failed: false, lines: [], copyDetail: "" };
   it("★ 两台四个 tab ⇒ 只发一发、发给本机、items 是选中的全部（照选中的先后，不先筛）；回包原样交回", async () => {
     backend(() => merged);
-    const out = await stopMany([tab("a", LOCAL_ORIGIN), tab("c", "r1"), tab("b", LOCAL_ORIGIN), tab("d", "r1")]);
+    const out = await stopMany([tab("a", LOCAL), tab("c", "r1"), tab("b", LOCAL), tab("d", "r1")]);
     expect(calls).toEqual([
       [
-        LOCAL_ORIGIN,
+        LOCAL,
         "sessions-batch",
         {
           op: "stop",
           items: [
-            { machine: LOCAL_ORIGIN, sid: "a" },
+            { machine: LOCAL, sid: "a" },
             { machine: "r1", sid: "c" },
-            { machine: LOCAL_ORIGIN, sid: "b" },
+            { machine: LOCAL, sid: "b" },
             { machine: "r1", sid: "d" },
           ],
         },
@@ -107,7 +107,7 @@ describe("批量停：交本机后端一条（`sessions-batch`），按台扇出
     backend(() => {
       throw NO_CHANNEL;
     });
-    await expect(stopMany([tab("a", LOCAL_ORIGIN)])).rejects.toBeDefined();
+    await expect(stopMany([tab("a", LOCAL)])).rejects.toBeDefined();
   });
 });
 
@@ -116,17 +116,17 @@ describe("批量起：交本机后端一条（`sessions-batch`，`start`），�
 
   it("★ 两台四个 tab ⇒ 只发一发、发给本机、items 是选中的全部（照选中的先后）；回包原样交回、tmux 那一种一个窗口都不开", async () => {
     backend(() => reply());
-    const out = await startMany([tab("a", LOCAL_ORIGIN), tab("c", "r1"), tab("b", LOCAL_ORIGIN), tab("d", "r1")], "tmux");
+    const out = await startMany([tab("a", LOCAL), tab("c", "r1"), tab("b", LOCAL), tab("d", "r1")], "tmux");
     expect(calls).toEqual([
       [
-        LOCAL_ORIGIN,
+        LOCAL,
         "sessions-batch",
         {
           op: { start: { run: "tmux" } },
           items: [
-            { machine: LOCAL_ORIGIN, sid: "a" },
+            { machine: LOCAL, sid: "a" },
             { machine: "r1", sid: "c" },
-            { machine: LOCAL_ORIGIN, sid: "b" },
+            { machine: LOCAL, sid: "b" },
             { machine: "r1", sid: "d" },
           ],
         },

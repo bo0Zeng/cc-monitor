@@ -15,7 +15,7 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
 import { ChanError } from "../../comms/inward/chan";
 import { detailOf, saidOf } from "./kit/detail";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { AttachItem } from "./generated/AttachItem";
 import type { AttachVerdict } from "./generated/AttachVerdict";
 import type { FileClass } from "./generated/FileClass";
@@ -266,7 +266,7 @@ const STEP_BUDGET_MS = 30_000;
 const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 
 /** 生产那一份：经通道问会话那台（本机远端同一条路）。 */
-export function channelIo(origin: Origin): AttachIo {
+export function channelIo(origin: Machine): AttachIo {
   return {
     check: async (sid, items) =>
       (await settleTyped(origin, "session-attachment-check", callTyped(origin, "session-attachment-check", { sid, items }, budgetWithin(STEP_BUDGET_MS)))).items,

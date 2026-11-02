@@ -38,12 +38,12 @@ import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { machineName } from "../control-said";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { saidOf } from "../kit/detail";
 
 /** 一趟读回来的那一台（都是那台后端的成品；读不到的那一格是 `null`）。 */
 interface Facts {
-  origin: Origin;
+  origin: Machine;
   state: AccountsState;
   quota: QuotaRead | null;
   verify: VerifyReport | null;
@@ -66,13 +66,13 @@ export class AccountsSection {
   private readonly formSlot: HTMLElement;
   private readonly body: HTMLElement;
   private readonly confirm: ConfirmFn;
-  private origin: Origin = LOCAL_ORIGIN;
+  private origin: Machine = LOCAL;
   /** 每趟重读一个号；晚到的那一趟作废。 */
   private seq = 0;
   /** 展开着的行（按「机器 ＋ 号」记，重读后不收起）。 */
   private readonly open = new Set<string>();
   /** 这次窗口里修复过的机器（警告条 ⋯ 里才有「恢复到修复之前」）。 */
-  private readonly repaired = new Set<Origin>();
+  private readonly repaired = new Set<Machine>();
   private form: NewAccountForm | null = null;
   private facts: Facts | null = null;
   private subscribed = false;
@@ -136,7 +136,7 @@ export class AccountsSection {
     if (this.subscribed) return;
     this.subscribed = true;
     // 机器表读不到：只订本机。
-    const origins: Origin[] = [LOCAL_ORIGIN, ...(await readRemoteConfig()).hosts.map((r) => r.name)];
+    const origins: Machine[] = [LOCAL, ...(await readRemoteConfig()).hosts.map((r) => r.name)];
     try {
       await subscribeTopics(origins, ["accounts", "quota"], (origin) => {
         if (origin === this.origin) void this.reload(true);
@@ -146,7 +146,7 @@ export class AccountsSection {
     }
   }
 
-  private key(name: string, origin: Origin = this.origin): string {
+  private key(name: string, origin: Machine = this.origin): string {
     return `${origin}\u0000${name}`;
   }
 
@@ -170,7 +170,7 @@ export class AccountsSection {
     this.paint(facts);
   }
 
-  private async read(origin: Origin): Promise<Facts> {
+  private async read(origin: Machine): Promise<Facts> {
     const empty = new Map<string, string[]>();
     if (!isLocalOrigin(origin)) {
       // 机器表每一趟都问（表是本机后端的）；表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。
@@ -258,7 +258,7 @@ export class AccountsSection {
   }
 
   /** 没启用多账号：名字框 ＋［启用］；点了先列要做的几步（那台预演）再确认。 */
-  private enableCard(origin: Origin): HTMLElement {
+  private enableCard(origin: Machine): HTMLElement {
     const box = document.createElement("div");
     box.className = "acct-box acct-enable";
     const t = document.createElement("div");
@@ -324,7 +324,7 @@ export class AccountsSection {
     return banner("warn", more ? `${text}${copyText("kit.text.sep")}${more}` : text, actions);
   }
 
-  private async repair(origin: Origin, machine: string): Promise<void> {
+  private async repair(origin: Machine, machine: string): Promise<void> {
     try {
       const plan = await accountsRepair(origin, { dryRun: true });
       if (plan.steps.length === 0) {
@@ -347,7 +347,7 @@ export class AccountsSection {
     await this.reload(true);
   }
 
-  private async rollback(origin: Origin): Promise<void> {
+  private async rollback(origin: Machine): Promise<void> {
     const machine = machineName(origin);
     try {
       const plan = await accountsRollback(origin, { dryRun: true });
@@ -362,7 +362,7 @@ export class AccountsSection {
   }
 
   /** 表下一行「共用 MCP：别名与配置文件」：点了切到同一台的「别名与配置文件」栏。 */
-  private mcpLine(origin: Origin): HTMLElement {
+  private mcpLine(origin: Machine): HTMLElement {
     const line = document.createElement("div");
     line.className = "acct-mcp-line";
     const t = document.createElement("span");
@@ -575,7 +575,7 @@ export class AccountsSection {
   }
 
   /** API key 那一格：［更换…］就地展开 地址 ＋ key；保存失败错误句落在框下、填的不丢。key 只显示那台写完回的掩码（末四位）。 */
-  private keyEditor(origin: Origin, a: Account, readonly: boolean): HTMLElement {
+  private keyEditor(origin: Machine, a: Account, readonly: boolean): HTMLElement {
     const box = document.createElement("div");
     box.className = "acct-key";
     const shown = mono("");
@@ -637,7 +637,7 @@ export class AccountsSection {
 
   // ───────────────────────────── 动作 ─────────────────────────────
 
-  private async setDefault(origin: Origin, a: Account): Promise<void> {
+  private async setDefault(origin: Machine, a: Account): Promise<void> {
     try {
       await accountsSetDefault(origin, a.name);
       toast(copyText("acctPage.default.done", { name: a.name }), "");
@@ -681,11 +681,11 @@ export class AccountsSection {
   }
 
   /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标照这一行拼：那一家 ＋ 号名）。登成了那一行随推送自己变。 */
-  private signIn(origin: Origin, a: Account): void {
+  private signIn(origin: Machine, a: Account): void {
     openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true) });
   }
 
-  private async reveal(origin: Origin, dir: string): Promise<void> {
+  private async reveal(origin: Machine, dir: string): Promise<void> {
     try {
       await openOnMachine(origin, { dir });
     } catch (e) {
@@ -719,7 +719,7 @@ export class AccountsSection {
   }
 
   /** 建好：订阅号开登录抽屉（登成了后端推一帧、行自己变「已登录」）；API 号 key 没存上 ⇒ 那一行展开。 */
-  private async create(origin: Origin, req: NewAccountRequest): Promise<void> {
+  private async create(origin: Machine, req: NewAccountRequest): Promise<void> {
     const machine = machineName(origin);
     let change;
     try {
@@ -765,7 +765,7 @@ function mono(t: string): HTMLElement {
   return e;
 }
 
-function revealLabel(origin: Origin): string {
+function revealLabel(origin: Machine): string {
   return isLocalOrigin(origin) ? copyText("acctPage.menu.revealLocal") : copyText("acctPage.menu.revealRemote");
 }
 

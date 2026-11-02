@@ -13,7 +13,7 @@
  */
 import type { Budget } from "../../comms/inward/chan";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { ExtBring } from "./generated/ExtBring";
 import type { ExtKnown } from "./generated/ExtKnown";
 import type { ExtCard } from "./generated/ExtCard";
@@ -44,7 +44,7 @@ const WRITE_BUDGET_MS = 120_000;
 
 /** 那张表。`visit` = 这一问算「来看了一次」（页面每次变可见时的第一问）。 */
 export function extList(visit: boolean): Promise<ExtList> {
-  return askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-list", { visit }, budget), LIST_BUDGET_MS);
+  return askTyped((budget) => callTyped(LOCAL, "ext-list", { visit }, budget), LIST_BUDGET_MS);
 }
 
 /** 「装到 N 台」那一张卡（本机后端当枢纽，向各台问完并好）：落点交集 · 共用的那一处 · 并好的要填格 · 各台的卡（那台没拼成 ⇒ `card` 为 `null`、`error` 是那台说的那一句）。 */
@@ -60,7 +60,7 @@ function askTyped<T>(go: (budget: Budget) => Promise<T>, ms: number): Promise<T>
 
 /** 「装到 N 台」那一张卡：勾上的几台（`null` = 本机后端自己）＋ 用户选的那一处（没选 ⇒ 后端建议）。 */
 export function extHubPreview(kind: ExtKind, name: string, to: (string | null)[], place: ExtLoc | null): Promise<ExtManyCard> {
-  return askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-hub-preview", { kind, name, to, place }, budget), WRITE_BUDGET_MS);
+  return askTyped((budget) => callTyped(LOCAL, "ext-hub-preview", { kind, name, to, place }, budget), WRITE_BUDGET_MS);
 }
 
 /** 装到那几台：卡上那一处 ＋ 各台卡上的记号原样交回；`fill` 只填一次。 */
@@ -68,23 +68,23 @@ export function extHubApply(kind: ExtKind, name: string, card: ExtManyCard, fill
   const tokens: Record<string, ExtTokens> = {};
   for (const m of card.machines) if (m.card) tokens[m.to ?? ""] = m.card.tokens;
   const to = card.machines.map((m) => m.to);
-  return askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-hub-apply", { kind, name, to, place: card.place, tokens, fill }, budget), WRITE_BUDGET_MS);
+  return askTyped((budget) => callTyped(LOCAL, "ext-hub-apply", { kind, name, to, place: card.place, tokens, fill }, budget), WRITE_BUDGET_MS);
 }
 
 /** 卸之前那张卡（问被卸的那一台）。 */
-export function extUninstallPreview(on: Origin, kind: ExtKind, name: string, at: ExtLoc): Promise<ExtUninstallCard> {
+export function extUninstallPreview(on: Machine, kind: ExtKind, name: string, at: ExtLoc): Promise<ExtUninstallCard> {
   return askTyped((budget) => callTyped(on, "ext-uninstall-preview", { kind, name, at }, budget), WRITE_BUDGET_MS);
 }
 
 /** 卸：卡上的记号原样交回。 */
-export function extUninstallApply(on: Origin, card: ExtUninstallCard, at: ExtLoc): Promise<ExtDone> {
+export function extUninstallApply(on: Machine, card: ExtUninstallCard, at: ExtLoc): Promise<ExtDone> {
   const args = { kind: card.kind, name: card.name, at, token: card.token };
   return askTyped((budget) => callTyped(on, "ext-uninstall-apply", args, budget), WRITE_BUDGET_MS);
 }
 
 /** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）：回现在生效的那一份（清掉了 ⇒ `null`）。 */
 export async function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
-  const got = await askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-note-set", { kind, name, text }, budget), LIST_BUDGET_MS);
+  const got = await askTyped((budget) => callTyped(LOCAL, "ext-note-set", { kind, name, text }, budget), LIST_BUDGET_MS);
   return got.note;
 }
 

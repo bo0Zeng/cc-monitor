@@ -11,7 +11,7 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast
 import { failToast, toast } from "../../../src/frontend/ui/kit/toast";
 import { LaunchSlots, SLOT_MISS_MS, type SlotActs, type SlotSpec } from "../../../src/frontend/ui/launch-slot";
 import type { ArriveSaid } from "../../../src/frontend/ui/session-open";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { endConfirm } from "../../../src/frontend/ui/end-confirm";
 import type { TerminalsEndReply } from "../../../src/frontend/ui/generated/TerminalsEndReply";
@@ -106,7 +106,7 @@ describe("报到之前", () => {
   });
 
   it("本机起的不出机器那一枚", () => {
-    make().add({ ...SPEC, origin: LOCAL_ORIGIN });
+    make().add({ ...SPEC, origin: LOCAL });
     expect(rows()[0].querySelector(".tab-machine")).toBeNull();
   });
 });
@@ -165,7 +165,7 @@ describe("没见到", () => {
   });
 
   it("本机起的：没有［在终端里打开］（本机没有接回终端那条路）", async () => {
-    make().add({ ...SPEC, origin: LOCAL_ORIGIN });
+    make().add({ ...SPEC, origin: LOCAL });
     await missWith(SAID, "%7");
     expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `screen:${copyText("launch.slot.screen")}`, `end:${copyText("tabMenu.kill.label")}`, `close:${copyText("launch.slot.close")}`]);
   });

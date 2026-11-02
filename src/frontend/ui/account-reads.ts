@@ -6,7 +6,7 @@
  * 入参 · 回包按生成类型问（`callTyped`，形状由握手指纹管）；规则留在 `accounts.ts`（纯），这里只管「去问、收」。
  */
 import { appStore, putIn } from "./app-store";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import type { AccountsState } from "./accounts";
@@ -23,7 +23,7 @@ import { saidOf } from "./kit/detail";
  * 住 `ipc/chan-caller.ts::saidFrom`，不在账号面再写一份）＋ 本机后端记着的那台上次那一份（`last`，只给「画上次的」用）；
  * 「不可用」不是错误（前端据此降级，不弹错）。
  */
-export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
+export async function fetchAccounts(origin: Machine): Promise<AccountsState> {
   let state: AccountsState;
   try {
     const got = await callTyped(origin, "accounts-list", { agent: launchAgentId() }, budgetWithin(ACCOUNTS_BUDGET_MS));
@@ -47,7 +47,7 @@ export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
 }
 
 /** 本机后端记着的那台上次那一份（没有 / 存档不是这一版 ⇒ `null`；本机那台不记）。 */
-async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
+async function recallLast(origin: Machine): Promise<AccountsState["last"]> {
   const seen = await recallSeen(origin, "accounts");
   if (seen === null) return null;
   if (seen.state === "unreadable") {

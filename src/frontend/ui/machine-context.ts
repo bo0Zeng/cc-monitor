@@ -1,25 +1,25 @@
 /**
  * 「当前在看哪台机器」的单一事实来源：设置里按机器的那几块都订这一处（各自存一份的话，在「账号」切到 devbox，
- * 转头看别处还停在上一台）。值是一个 origin：本机 ＝ `LOCAL_ORIGIN`，其余是那台远端的 origin（与 `remote-config.ts::hostKey` 同口径）。
- * 空白名不是任何一台机器 ⇒ `set` 收到它什么都不做（不许「没说」被当成本机，与 Rust `Origin::route` 同一条）。
+ * 转头看别处还停在上一台）。值是一个 origin：本机 ＝ `LOCAL`，其余是那台远端的 origin（与 `remote-config.ts::hostKey` 同口径）。
+ * 空白名不是任何一台机器 ⇒ `set` 收到它什么都不做（不许「没说」被当成本机，与 Rust `Machine::route` 同一条）。
  * 不持久化（会话内导航状态；存下来会停在一台可能已删的机器上）；同值不通知（每次通知都是一次 ssh 往返，同值广播就是变相轮询）。
  */
 
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 // 值与订阅住 `app-store.ts` 那一格（唯一的 pub-sub）；本文件只剩「空白名不是任何一台」这道门。
 import { appStore } from "./app-store";
 
-type Listener = (origin: Origin) => void;
+type Listener = (origin: Machine) => void;
 
-/** 当前机器（本机 = `LOCAL_ORIGIN`）。 */
-export function getCurrentMachine(): Origin {
+/** 当前机器（本机 = `LOCAL`）。 */
+export function getCurrentMachine(): Machine {
   return appStore.machine.get();
 }
 
 /**
  * 切到某台机器。**值没变就什么都不做**（见文件头注：同值广播 = 变相轮询；`Slice.set` 自己挡）。
  */
-export function setCurrentMachine(origin: Origin): void {
+export function setCurrentMachine(origin: Machine): void {
   if (origin.trim() === "") return; // 空白名不是任何一台机器（见头注）
   appStore.machine.set(origin);
 }
@@ -31,5 +31,5 @@ export function subscribeMachine(fn: Listener): () => void {
 
 /** 仅供测试：把 store 还原成初始状态（本机 + 无订阅者）。 */
 export function __resetMachineContextForTests(): void {
-  appStore.machine.__resetForTests(LOCAL_ORIGIN);
+  appStore.machine.__resetForTests(LOCAL);
 }

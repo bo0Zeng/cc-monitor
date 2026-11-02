@@ -12,7 +12,7 @@ import { copyText } from "./copy-table";
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, machineName, offlineSaid, ReplyUnreadable } from "./ipc/chan-caller";
 import { failToast, type ToastAction } from "./kit/toast";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 export { machineName, offlineSaid };
 
@@ -31,7 +31,7 @@ export class ControlError extends Error {
 }
 
 /** 应答形状不对 ⇒ 抛（哪一格不对只进日志；那句话不猜版本）。 */
-export function unreadable(origin: Origin, op: string, what: string): ReplyUnreadable {
+export function unreadable(origin: Machine, op: string, what: string): ReplyUnreadable {
   return new ReplyUnreadable(origin, `${op} reply ${what}`);
 }
 
@@ -40,7 +40,7 @@ export function unreadable(origin: Origin, op: string, what: string): ReplyUnrea
  * 失败 ⇒ 原样抛（通道上的是 `ChanError`，那一句 monitor 写好；结果未知那一形另带［刷新］）；回的不是 JSON ⇒ 说「读不懂」。
  * `refused`：被拒那一句前面要接上界面才知道的主语时（「刷新被拒 · {said}」那一形）给；只换被拒那一形的那一句，详情照带。
  */
-export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T>, refused?: (said: string) => string): Promise<T> {
+export async function settleTyped<T>(origin: Machine, op: string, sent: Promise<T>, refused?: (said: string) => string): Promise<T> {
   try {
     return await sent;
   } catch (e) {
@@ -55,7 +55,7 @@ export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T
 }
 
 /** 结果未知 ⇒［刷新］：让那台对齐一次，列表照它补齐，看得出那一下做成了没有。 */
-function refreshAction(origin: Origin): ToastAction {
+function refreshAction(origin: Machine): ToastAction {
   return {
     label: copyText("control.channel.refresh"),
     run: () => void resync(origin).catch((e: unknown) => failToast(copyText("resync.retry.failed"), e)),
@@ -79,7 +79,7 @@ export interface Resynced {
  * **手动对齐**：问那台机器的后端 `resync`（本机与远端同一条）；给了 `sid` 就只对那一个会话。失败 ⇒ 抛（那一句 monitor 写好；被拒前面接「刷新被拒」）。
  * 住这一层：结果未知那一句的［刷新］就是它（落点与按钮见 `resync.ts`）。
  */
-export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
+export async function resync(origin: Machine, sid?: string): Promise<Resynced> {
   const budget = budgetWithin(RESYNC_BUDGET_MS);
   const req = sid === undefined ? {} : { sid };
   // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
@@ -96,7 +96,7 @@ export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
  * `origin` 那台握手时说过做不到 `op` ⇒ 界面置灰时说的那一句；做得到 / 没把握 ⇒ `null`。
  * 事实只住 monitor 那份 `Offer`（本侧拿的是拷贝，`chan.cachedOffer`）；还没问过那台 ⇒ 去问（不等），这一回照常画。
  */
-export function unavailableSaid(origin: Origin, op: string): string | null {
+export function unavailableSaid(origin: Machine, op: string): string | null {
   const offer = chan.cachedOffer(origin);
   if (offer === undefined) void chan.offer(origin);
   return offer?.unavailable.find(([o]) => o === op)?.[2] ?? null;

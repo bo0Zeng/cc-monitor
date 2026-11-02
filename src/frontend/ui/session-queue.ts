@@ -7,11 +7,10 @@
  * **队的名单只照会话那台那一份画**：那台推 `changed {session_queue, key: sid}` 带整份名单（`session-queue-read` 的回包），
  * 没带 ⇒ 重问；撤（`session-queue-cancel`）回撤完的整份。这一端不各自记队。
  */
-import { LOCAL_ORIGIN } from "./backend-policy";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { QueueCancelled } from "./generated/QueueCancelled";
 import type { QueuePut } from "./generated/QueuePut";
 import type { QueueList } from "./generated/QueueList";
@@ -22,9 +21,9 @@ import { saidOf } from "./kit/detail";
 import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
 
 /** 读一条会话此刻的名单（`session-queue-read`）。 */
-export type QueueReadFn = (origin: Origin, sid: string) => Promise<QueueList>;
+export type QueueReadFn = (origin: Machine, sid: string) => Promise<QueueList>;
 /** 撤一条（`session-queue-cancel`），回撤完的整份名单。 */
-export type QueueCancelFn = (origin: Origin, sid: string, id: string) => Promise<QueueCancelled>;
+export type QueueCancelFn = (origin: Machine, sid: string, id: string) => Promise<QueueCancelled>;
 
 /** 那台推来的一批 `changed {session_queue}`：带了名单的 ⇒ `got`；没带的 ⇒ `ask`（重问）；`all` ⇒ 期间可能漏了，看着的那几条都重问。 */
 export interface QueueMoved {
@@ -34,19 +33,19 @@ export interface QueueMoved {
 }
 
 /** 订那台的 `changed {session_queue}`；回的函数退订。 */
-export type QueueWatchFn = (origin: Origin, on: (m: QueueMoved) => void) => () => void;
+export type QueueWatchFn = (origin: Machine, on: (m: QueueMoved) => void) => () => void;
 
 /** 读名单 · 撤的期限。 */
 const QUEUE_BUDGET_MS = 10_000;
 
-export const CHANNEL_READ: QueueReadFn = (origin, sid) => callTyped(origin, "session-queue-read", { machine: LOCAL_ORIGIN, sid }, budgetWithin(QUEUE_BUDGET_MS));
+export const CHANNEL_READ: QueueReadFn = (origin, sid) => callTyped(origin, "session-queue-read", { machine: LOCAL, sid }, budgetWithin(QUEUE_BUDGET_MS));
 
 /** 编辑已发的一句、发送那一下问会话那台：退到 `to` 那一句之前给哪几项（`session-rewind-options`）。 */
-export const CHANNEL_REWIND_OPTIONS = (origin: Origin, sid: string, to: string): Promise<RewindOptions> =>
-  callTyped(origin, "session-rewind-options", { machine: LOCAL_ORIGIN, sid, to }, budgetWithin(QUEUE_BUDGET_MS));
+export const CHANNEL_REWIND_OPTIONS = (origin: Machine, sid: string, to: string): Promise<RewindOptions> =>
+  callTyped(origin, "session-rewind-options", { machine: LOCAL, sid, to }, budgetWithin(QUEUE_BUDGET_MS));
 
 export const CHANNEL_CANCEL: QueueCancelFn = (origin, sid, id) =>
-  callTyped(origin, "session-queue-cancel", { machine: LOCAL_ORIGIN, sid, id }, budgetWithin(QUEUE_BUDGET_MS));
+  callTyped(origin, "session-queue-cancel", { machine: LOCAL, sid, id }, budgetWithin(QUEUE_BUDGET_MS));
 
 export const CHANNEL_WATCH: QueueWatchFn = (origin, on) => {
   let stop: (() => void) | null = null;
@@ -72,7 +71,7 @@ export const CHANNEL_WATCH: QueueWatchFn = (origin, on) => {
 };
 
 /** 待发在本地存储里那一格的键：那台 ＋ 会话。 */
-export const pendingKey = (origin: Origin, sid: string): string => `${origin}\u0000${sid}`;
+export const pendingKey = (origin: Machine, sid: string): string => `${origin}\u0000${sid}`;
 
 const isOutgoing = (o: unknown): o is Outgoing => {
   const v = o as Partial<Outgoing> | null;
@@ -97,7 +96,7 @@ export function savePending(m: ReadonlyMap<string, readonly Outgoing[]>): void {
 }
 
 /** 投一句要的那一口（缺省走通道；测试换成假的）。 */
-export type QueuePutFn = (origin: Origin, req: SessionQueuePutReq) => Promise<QueuePut>;
+export type QueuePutFn = (origin: Machine, req: SessionQueuePutReq) => Promise<QueuePut>;
 
 /** 投一句的期限。 */
 const PUT_BUDGET_MS = 20_000;
@@ -129,10 +128,10 @@ export function outgoing(sid: string, text: string, attachments: string[], rewin
 export type PutEnd = { at: "receipt"; said: string } | { at: "refused"; said: string } | { at: "none"; said: string };
 
 /** 交那一句（同一个编号交几次都只进一条）。 */
-export async function putOnce(put: QueuePutFn, origin: Origin, o: Outgoing): Promise<PutEnd> {
+export async function putOnce(put: QueuePutFn, origin: Machine, o: Outgoing): Promise<PutEnd> {
   const req: SessionQueuePutReq = {
     // 问的就是交过去的那一台自己（那台眼里的本机）。
-    machine: LOCAL_ORIGIN,
+    machine: LOCAL,
     sid: o.sid,
     id: o.id,
     end: END,

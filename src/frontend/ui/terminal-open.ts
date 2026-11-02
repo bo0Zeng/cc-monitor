@@ -13,7 +13,7 @@ import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { TerminalSshReq } from "./generated/TerminalSshReq";
 import type { SshCommand } from "./generated/SshCommand";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { toast, type ToastAction } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
 import { detailOf, failSaid, saidOf } from "./kit/detail";
@@ -25,7 +25,7 @@ const RENDER_BUDGET_MS = 10_000;
 /** 本机后端那一问（`terminal-ssh`）⇒ 前奏 · 那一行（开窗跑两段接起来的；开不了窗复制的只有那一行）。问不到 ⇒ 抛一句人话。 */
 async function lineOf(req: TerminalSshReq): Promise<SshCommand> {
   try {
-    return await callTyped(LOCAL_ORIGIN, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
+    return await callTyped(LOCAL, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
   } catch (e) {
     throw new Error(saidOf(e));
   }
@@ -96,7 +96,7 @@ export async function openLocalTerminal(cmd: string, cwd: string | null): Promis
  * 那条 ssh 一退就删，↗ 先照它在本机找；开不了窗时复制出去的只有那一行。
  */
 export async function openTerminal(
-  origin: Origin,
+  origin: Machine,
   command: string,
   sid: string | null = null,
 ): Promise<void> {
@@ -109,6 +109,6 @@ export async function openTerminal(
 }
 
 /** 在用户面前这台机器上开一个终端，进 `origin` 那台的登录 shell（本机 ⇒ 本机 shell；那一行是本机后端 `terminal-ssh` 渲的）。 */
-export async function openLoginShell(origin: Origin): Promise<void> {
+export async function openLoginShell(origin: Machine): Promise<void> {
   await openWindow(await lineOf({ machine: origin }));
 }

@@ -10,7 +10,7 @@ import { emit } from "@tauri-apps/api/event";
 import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
 import { readPrefs, setPrefs } from "../machine-prefs";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 import { sayFailure, sayWithDetail } from "../kit/detail";
 
@@ -44,9 +44,9 @@ export class ContextLimitsSection {
   private readonly box: HTMLTextAreaElement;
   private readonly status: HTMLElement;
   private open = false;
-  private readonly origin: Origin;
+  private readonly origin: Machine;
 
-  constructor(origin: Origin) {
+  constructor(origin: Machine) {
     this.origin = origin;
     const body = document.createElement("div");
     body.className = "ctx-limits-body";

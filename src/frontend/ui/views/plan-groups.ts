@@ -4,7 +4,7 @@
  */
 import { attachTooltip } from "../kit/tooltip";
 import type { PlanBlock, PlanList } from "../plan-reads";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import s from "./plan.module.css";
 
 /** 块表「组」那一格：照后端写的字；组模块没答 ⇒ 警示色、悬停是那一句。 */
@@ -28,9 +28,9 @@ export function blocksOfGroup<B extends Pick<PlanBlock, "groups">>(blocks: reado
 
 /** 组员接手的块在哪一片：照各台 `plan-list` 的 `bySession`，组员的先后里头一个接了块的那一片（只认同一台的）。 */
 export function sliceForGroup(
-  lists: ReadonlyMap<Origin, PlanList>,
-  members: readonly { origin: Origin; sid: string }[],
-): { origin: Origin; workspace: string; name: string } | null {
+  lists: ReadonlyMap<Machine, PlanList>,
+  members: readonly { origin: Machine; sid: string }[],
+): { origin: Machine; workspace: string; name: string } | null {
   for (const m of members) {
     for (const ws of lists.get(m.origin)?.workspaces ?? []) {
       const b = ws.bySession[m.sid];

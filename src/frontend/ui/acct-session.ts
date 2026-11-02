@@ -9,7 +9,7 @@
  */
 import { appStore, type SessionRotationEntry } from "./app-store";
 import { copyText } from "./copy-table";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
@@ -19,7 +19,7 @@ import s from "./acct-session.module.css";
 
 export interface AcctSessionHost {
   streamContentOf(sid: string): HTMLElement | null;
-  openPanel(sid: string, origin: Origin): void;
+  openPanel(sid: string, origin: Machine): void;
 }
 
 /** 每个会话见过的最新一条换号记录的时刻（第一次见到的那一份只记下，不回填）。 */

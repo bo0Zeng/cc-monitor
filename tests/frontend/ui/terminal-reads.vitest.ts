@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn(), undoToast: vi.fn(), recentToasts: vi.fn(() => []) }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { previewShot, releaseInput, rowsOf, sendToTerminal, sentOf, shotOf, takeInput } from "../../../src/frontend/ui/terminal-reads";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
@@ -129,10 +129,10 @@ describe("抓一屏：发出去", () => {
   it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问", async () => {
     answer({ "terminal-preview": { ok: PREVIEW.reply } });
     await previewShot("devbox", { sid: "sid-a" });
-    await previewShot(LOCAL_ORIGIN, { terminal: "tmux-1" });
+    await previewShot(LOCAL, { terminal: "tmux-1" });
     expect(sentCalls()).toEqual([
       ["devbox", "terminal-preview", { sid: "sid-a", color: true }],
-      [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: true }],
+      [LOCAL, "terminal-preview", { terminal: "tmux-1", color: true }],
     ]);
   });
 });
@@ -146,7 +146,7 @@ describe("抓一屏：失败怎么说", () => {
       { err: { Ours: "Cancelled" }, body: [], said: "壳·已取消", detail: "" },
     ]) {
       answer({ "terminal-preview": { fail } });
-      expect(await saidBy(LOCAL_ORIGIN)).toBe(fail.said);
+      expect(await saidBy(LOCAL)).toBe(fail.said);
     }
   });
 
@@ -183,9 +183,9 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
     const reply = { results: [], said: "S-合好的那一句", failed: true, lines: ["S-行"], copyDetail: "S-详情" };
     answer({ "terminals-end": { ok: reply } });
     const pick = (origin: string, terminal: string, title: string) => ({ origin, row: { terminal, title } as BoardRow });
-    await endRows([pick("devbox", "m-7f3a", "甲"), pick(LOCAL_ORIGIN, "tmux-1", "乙")], async () => true);
+    await endRows([pick("devbox", "m-7f3a", "甲"), pick(LOCAL, "tmux-1", "乙")], async () => true);
     expect(sentCalls()).toEqual([
-      [LOCAL_ORIGIN, "terminals-end", { items: [{ machine: "devbox", terminal: "m-7f3a" }, { machine: LOCAL_ORIGIN, terminal: "tmux-1" }] }],
+      [LOCAL, "terminals-end", { items: [{ machine: "devbox", terminal: "m-7f3a" }, { machine: LOCAL, terminal: "tmux-1" }] }],
     ]);
     expect(vi.mocked(failToast)).not.toHaveBeenCalled();
     expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe("S-合好的那一句");

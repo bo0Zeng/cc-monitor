@@ -3,7 +3,7 @@
  * 结束几行：交本机后端一条 `terminals-end`（按名单里的句柄，跨几台也只这一发；两种宿主同一条，有没有会话都一样），回包照摆。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import { settleTyped } from "./control-said";
 import { copyText } from "./copy-table";
 import { endTerminals } from "./terminal-reads";
@@ -17,14 +17,14 @@ import type { BoardRow } from "./generated/BoardRow";
 const BOARD_BUDGET_MS = 20_000;
 
 /** 问这几台、合一份（同抽屉终端页那一问，不自报前端）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
-export async function readBoard(machines: readonly Origin[]): Promise<TerminalsBoard> {
+export async function readBoard(machines: readonly Machine[]): Promise<TerminalsBoard> {
   const req = { machines: [...machines] };
-  return settleTyped(LOCAL_ORIGIN, "terminals-board", callTyped(LOCAL_ORIGIN, "terminals-board", req, budgetWithin(BOARD_BUDGET_MS)));
+  return settleTyped(LOCAL, "terminals-board", callTyped(LOCAL, "terminals-board", req, budgetWithin(BOARD_BUDGET_MS)));
 }
 
 /** 名单里的一行连它在哪台。 */
 export interface BoardPick {
-  origin: Origin;
+  origin: Machine;
   row: BoardRow;
 }
 

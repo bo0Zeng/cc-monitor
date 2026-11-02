@@ -13,18 +13,18 @@ import {
   subscribeMachine,
   __resetMachineContextForTests,
 } from "../../../src/frontend/ui/machine-context";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 beforeEach(() => __resetMachineContextForTests());
 
 describe("machine-context", () => {
-  // 本机是具名的 `LOCAL_ORIGIN`，不再是 `null`。
-  it("初始是本机（`LOCAL_ORIGIN`）", () => {
-    expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
+  // 本机是具名的 `LOCAL`，不再是 `null`。
+  it("初始是本机（`LOCAL`）", () => {
+    expect(getCurrentMachine()).toBe(LOCAL);
   });
 
   // 上一版「空串归一成 null（= 本机）」：那是「没说」被当成本机 —— 步 2 治的正是这个
-  //   （Rust `Origin::route` 同样拒空白名）。现在空白名什么都不改。
+  //   （Rust `Machine::route` 同样拒空白名）。现在空白名什么都不改。
   it("设了就读得到；空白名不是任何一台机器 ⇒ 不切", () => {
     setCurrentMachine("devbox");
     expect(getCurrentMachine()).toBe("devbox");
@@ -39,8 +39,8 @@ describe("machine-context", () => {
     subscribeMachine((o) => seen.push(o));
     setCurrentMachine("devbox");
     setCurrentMachine("nano");
-    setCurrentMachine(LOCAL_ORIGIN);
-    expect(seen).toEqual(["devbox", "nano", LOCAL_ORIGIN]);
+    setCurrentMachine(LOCAL);
+    expect(seen).toEqual(["devbox", "nano", LOCAL]);
   });
 
   it("★ 同值重复设置**不通知**（每次通知都是一次 ssh 往返）", () => {
@@ -51,7 +51,7 @@ describe("machine-context", () => {
     setCurrentMachine("devbox");
     expect(fn).toHaveBeenCalledTimes(1);
     // 切回本机通知一次；随后的空白名不是任何一台机器 ⇒ 不通知
-    setCurrentMachine(LOCAL_ORIGIN);
+    setCurrentMachine(LOCAL);
     setCurrentMachine("");
     expect(fn).toHaveBeenCalledTimes(2);
   });

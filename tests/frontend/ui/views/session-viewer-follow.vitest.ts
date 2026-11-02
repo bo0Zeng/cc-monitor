@@ -39,7 +39,7 @@ vi.mock("../../../../src/frontend/ui/record-reads", async (orig) => {
 import { installViewerRig, userLine, assistantLine, viewerRig, type RigPayload } from "../../../test-support/session-viewer-rig";
 import { SessionViewer, type ViewerOptions } from "../../../../src/frontend/ui/views/session-viewer";
 import { readLines } from "../../../../src/frontend/ui/record-reads";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
@@ -53,7 +53,7 @@ async function mount(lines: RigPayload[], over: Partial<ViewerOptions> = {}): Pr
   viewerRig.chunk = lines;
   const v = new SessionViewer();
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true, ...over });
+  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
   return v;
 }
 
@@ -81,7 +81,7 @@ describe("查看器跟着长", () => {
     await mount([userLine(1, "u1", "a")]);
     expect(follow.calls).toEqual([]);
     await mount([userLine(1, "u1", "a")], { follow: { sid: "s1", live: true } });
-    expect(follow.calls).toEqual([{ origin: LOCAL_ORIGIN, sid: "s1" }]);
+    expect(follow.calls).toEqual([{ origin: LOCAL, sid: "s1" }]);
     expect(follow.order, "先订、再读").toEqual(["read", "subscribe", "read"]);
   });
 
@@ -98,7 +98,7 @@ describe("查看器跟着长", () => {
     viewerRig.chunk = [userLine(1, "u1", "a")];
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    const done = v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true, follow: { sid: "s1", live: true } });
+    const done = v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, follow: { sid: "s1", live: true } });
     await vi.waitFor(() => expect(follow.sink).not.toBeNull(), UNTIL_CEILING);
     emit({ t: "lines", lines: [userLine(1, "u1", "a"), assistantLine(2, "a2", "b")] });
     expect(cards(v)).toEqual([]);
@@ -124,7 +124,7 @@ describe("查看器跟着长", () => {
     vi.mocked(readLines).mockResolvedValueOnce({ from: 2, next: 3, eof: true, payloads: [assistantLine(2, "a2", "b")] } as never);
     emit({ t: "sight", seen: true });
     await vi.waitFor(() => expect(cards(v)).toEqual(["u1", "a2"]), UNTIL_CEILING);
-    expect(vi.mocked(readLines).mock.calls[0].slice(0, 3)).toEqual([LOCAL_ORIGIN, "/p/s1.jsonl", 2]);
+    expect(vi.mocked(readLines).mock.calls[0].slice(0, 3)).toEqual([LOCAL, "/p/s1.jsonl", 2]);
     expect(status(v)).toBe(copyText("sessionViewer.status.live"));
     emit({ t: "live", live: false });
     expect(onLive).toHaveBeenCalledWith(false);
@@ -144,7 +144,7 @@ describe("查看器跟着长", () => {
   it("换会话 / 收起 ⇒ 撤掉那一条订阅；换了之后迟到的行不认", async () => {
     const v = await mount([userLine(1, "u1", "a")], { follow: { sid: "s1", live: true } });
     const old = follow.sink!;
-    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
     expect(follow.stopped).toBe(1);
     old({ t: "lines", lines: [assistantLine(9, "late", "x")] });
     expect(cards(v)).not.toContain("late");

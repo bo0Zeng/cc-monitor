@@ -34,7 +34,7 @@ import type { MenuItem } from "../../../src/frontend/ui/kit/menu";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 import { closePopover } from "../../../src/frontend/ui/kit/popover";
 import { undoToast } from "../../../src/frontend/ui/kit/toast";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -46,7 +46,7 @@ dispatcher.start(); // Esc 走弹层栈（window 上那一个监听）
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, labelProject: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
-    origin: LOCAL_ORIGIN, activity: null, forkedFromSessionId: null, writers: [], unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, activity: null, forkedFromSessionId: null, writers: [], unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 

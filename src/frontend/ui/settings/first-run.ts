@@ -5,7 +5,7 @@
 import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { LOCAL } from "../ipc/origin";
 import type { SettingsTarget } from "../open-settings";
 import { readReadiness, skipStart, type Readiness, type ReadinessStep } from "./readiness-reads";
 import { failToast } from "../kit/toast";
@@ -81,11 +81,11 @@ export class FirstRun {
     if (id === "terminal") {
       name.textContent = copyText("firstRun.terminal.name");
       hint.textContent = copyText("firstRun.terminal.hint");
-      act = { label: copyText("firstRun.terminal.action"), run: () => this.host.go({ machine: LOCAL_ORIGIN, tab: "config", anchor: "connect-terminal" }), primary: true };
+      act = { label: copyText("firstRun.terminal.action"), run: () => this.host.go({ machine: LOCAL, tab: "config", anchor: "connect-terminal" }), primary: true };
     } else if (id === "named") {
       name.textContent = copyText("firstRun.named.name");
       hint.textContent = copyText("firstRun.named.hint");
-      act = { label: copyText("firstRun.named.action"), run: () => this.host.go({ machine: LOCAL_ORIGIN, tab: "acct" }), primary: false };
+      act = { label: copyText("firstRun.named.action"), run: () => this.host.go({ machine: LOCAL, tab: "acct" }), primary: false };
     } else {
       name.textContent = copyText("firstRun.remote.name");
       hint.textContent = copyText("firstRun.remote.hint");

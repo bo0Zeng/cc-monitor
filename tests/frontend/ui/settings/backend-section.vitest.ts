@@ -116,7 +116,7 @@ import { srcDirOf } from "../../../test-support/repo-root";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
 // 「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 import { nonEmpty } from "../../../test-support/non-empty";
@@ -226,7 +226,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
-    expect(rows.map((r) => r.dataset.origin)).toEqual([LOCAL_ORIGIN, "甲机"]);
+    expect(rows.map((r) => r.dataset.origin)).toEqual([LOCAL, "甲机"]);
   });
 
   it("每台机各查各的状态", async () => {
@@ -236,7 +236,7 @@ describe("P2s backend 开关区", () => {
     const asked = calls
       .filter((c) => c.name === "backend_status")
       .map((c) => (c.args as { origin: string }).origin);
-    expect(asked.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
+    expect(asked.sort()).toEqual([LOCAL, "甲机"].sort());
     expect(s.element.querySelector(".backend-row-state")?.textContent).toContain(copyText("backend.status.connected"));
   });
 
@@ -353,7 +353,7 @@ describe("P2s backend 开关区", () => {
       .filter((c) => c.name === "backend_exit_policy")
       .map((c) => (c.args as { origin: string }).origin);
     expect(asked.sort(), "每台机都该各问各的").toEqual(
-      [LOCAL_ORIGIN, "甲机"].sort(),
+      [LOCAL, "甲机"].sort(),
     );
   });
 
@@ -406,7 +406,7 @@ describe("P2s backend 开关区", () => {
     expect(
       sets.map((c) => c.args),
       "改勾没交后端写",
-    ).toEqual([{ origin: LOCAL_ORIGIN, kill: true }]);
+    ).toEqual([{ origin: LOCAL, kill: true }]);
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
     ).toBe(EXIT_KILLS);
@@ -596,7 +596,7 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     });
     await flush();
     await flush();
-    const localStop = stopOf(s, LOCAL_ORIGIN);
+    const localStop = stopOf(s, LOCAL);
     expect(localStop, "本机那一行的「停」找不到 —— 下面整段空转").toBeTruthy();
     // 答否 ⇒ 问了、说了几条、没停。
     localStop!.click();
@@ -662,7 +662,7 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     const s = new BackendSection({ headless: true, confirm: () => true, interrupts: () => Promise.resolve(null) });
     await flush();
     await flush();
-    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL_ORIGIN}"]`);
+    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL}"]`);
     const said = () => r?.querySelector<HTMLElement>("[data-stop-said]")?.textContent ?? null;
     const stop = [...(r?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
       (x) => x.textContent === zh("backend.buildCells.stop"),

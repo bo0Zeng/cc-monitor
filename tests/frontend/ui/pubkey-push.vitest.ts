@@ -21,7 +21,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => ({
 
 import golden from "../../__fixtures__/pubkey-push.golden.json";
 import { pushPublicKey } from "../../../src/frontend/ui/pubkey-push";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 beforeEach(() => {
   sent.length = 0;
@@ -34,7 +34,7 @@ describe("MIG-3b 续 公钥推送走通道、本机后端办", () => {
     const r = await pushPublicKey(machine, null);
     expect(r).toEqual(golden.product);
     expect(sent).toHaveLength(1);
-    expect(sent[0].origin).toBe(LOCAL_ORIGIN);
+    expect(sent[0].origin).toBe(LOCAL);
     expect(sent[0].op).toBe("pubkey-push");
     expect(Object.keys(sent[0].body as object).sort()).toEqual(Object.keys(golden.request).sort());
     expect((sent[0].body as { machine: unknown }).machine).toEqual(machine);

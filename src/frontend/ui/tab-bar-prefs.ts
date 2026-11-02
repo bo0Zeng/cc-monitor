@@ -21,7 +21,7 @@ import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { GroupBook } from "./group-book";
 import type { GroupCount } from "./generated/GroupCount";
 import type { HereGroup } from "./generated/HereGroup";
@@ -43,7 +43,7 @@ export interface TabBarPrefsHost {
   createSkeletonTab(
     sessionId: string,
     projectDir: string | null,
-    origin: Origin,
+    origin: Machine,
     background: boolean,
   ): void;
   /** 复活出来的固定 tab 空态里那颗「Resume 这个会话」（与右键菜单的 Resume 同一个动作）。 */
@@ -60,7 +60,7 @@ export interface GroupSnapshot {
 }
 
 /** 一条会话在账上的键（同一个 sid 在两台上是两条）。 */
-function keyOf(origin: Origin, sid: string): string {
+function keyOf(origin: Machine, sid: string): string {
   return `${origin}\n${sid}`;
 }
 
@@ -91,7 +91,7 @@ export class TabBarPrefs {
   private book: GroupBook | null = null;
   /** 最近一份账里：会话 ⇒ 画在哪一组 · 固定的那几条（带复活那几格）。 */
   private placed = new Map<string, string>();
-  private pinRows = new Map<string, { origin: Origin; sid: string; facts: MemberFacts }>();
+  private pinRows = new Map<string, { origin: Machine; sid: string; facts: MemberFacts }>();
   /** 每组的整份记录（id · 名字 · 时刻）：进组时随 `move` 抄进组员那一台。照账上的那一份，加上这一趟刚起的。 */
   private records = new Map<string, HereGroup>();
   /** 这扇窗这一趟建的组（占位 id 与本机回的 id）：撤销只撤掉它们，别处建的组不碰。 */
@@ -161,7 +161,7 @@ export class TabBarPrefs {
   }
 
   /** 固定了却没有标签：照那台给的那几格造灰标签（只造一次；关掉的 ⇒ 账上已取消固定，不会再来）。 */
-  revivePinned(p: { origin: Origin; sid: string; facts: MemberFacts }): void {
+  revivePinned(p: { origin: Machine; sid: string; facts: MemberFacts }): void {
     if (this.store.tabs.has(p.sid) || this.revived.has(p.sid)) return;
     this.revived.add(p.sid);
     this.host.createSkeletonTab(p.sid, p.facts.cwd, p.origin, p.facts.bg);
@@ -350,9 +350,9 @@ export class TabBarPrefs {
   }
 
   /** 组 `gid` 的组员在哪几台（账上的 ＋ 栏里画在它里面的），照先见的先后：改名 · 解散发给这几片。 */
-  private machinesOf(gid: string): Origin[] {
-    const out: Origin[] = [];
-    const add = (o: Origin): void => {
+  private machinesOf(gid: string): Machine[] {
+    const out: Machine[] = [];
+    const add = (o: Machine): void => {
       if (!out.includes(o)) out.push(o);
     };
     for (const g of this.book?.read()?.groups ?? []) if (g.id === gid) for (const m of g.members) add(m.origin);
@@ -430,7 +430,7 @@ export class TabBarPrefs {
   }
 
   /** 固定 · 取消固定：会话那台一条注解。回「那台收下了没有」（没收下 ⇒ 已说过、账重读）。 */
-  private pin(origin: Origin, sid: string, on: boolean): Promise<boolean> {
+  private pin(origin: Machine, sid: string, on: boolean): Promise<boolean> {
     if (!this.book) return Promise.resolve(true);
     return this.book.pin(origin, sid, on).then(
       () => true,

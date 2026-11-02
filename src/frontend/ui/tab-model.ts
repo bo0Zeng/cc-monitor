@@ -17,7 +17,7 @@ import type { TurnFold } from "./turn-fold";
 import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
 import type { RecordAt, ToolResultBlock, ToolUseSeen } from "./cards/index";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { SessionFace } from "./generated/SessionFace";
 import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
@@ -57,10 +57,10 @@ export interface Tab {
   /** 此刻持着这条会话的活进程 pid（后端会话事实的 `writers`，到了才有）。不止一个 ⇒ 几个进程在同时写这条会话。 */
   writers: number[];
   /**
-   * 数据来源：本机 = `LOCAL_ORIGIN`（标题无前缀）；远端 = 那台的名字（标题加 `[origin]` 前缀）。
+   * 数据来源：本机 = `LOCAL`（标题无前缀）；远端 = 那台的名字（标题加 `[origin]` 前缀）。
    * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。
    */
-  origin: Origin;
+  origin: Machine;
   /**
    * 此刻的整份脸（那台后端判好的点 · 字 · 序 · 能做什么，会话三帧带来；同一 sid 后到的覆盖先到的）。
    * `null` ＝ 一张都还没收到（恢复的标签页、重放还没到）⇒ 不画点；那台看不见时那一张也是后端造的（随「说不清」那一格来）。

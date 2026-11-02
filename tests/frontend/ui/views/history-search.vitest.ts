@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { searchArgs, searchAllMachines, type FullTextQuery } from "../../../../src/frontend/ui/views/history-search";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { Merged } from "../../../../src/frontend/ui/generated/Merged";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../../test-support/chan-fake";
 
@@ -46,15 +46,15 @@ describe("只问本机后端一次", () => {
     const calls = rig(["pi", "down"], () => Promise.resolve(chanReply(MERGED)));
     const got = await searchAllMachines({ ...Q, includeTools: true });
     const asked = calls();
-    expect(asked.map((a) => [a.origin, a.op])).toEqual([[LOCAL_ORIGIN, "history-search-merge"]]);
-    expect(chanArgsJson(asked[0])).toEqual({ machines: [LOCAL_ORIGIN, "pi", "down"], search: { query: "kw", limit: 300, include_tools: true } });
+    expect(asked.map((a) => [a.origin, a.op])).toEqual([[LOCAL, "history-search-merge"]]);
+    expect(chanArgsJson(asked[0])).toEqual({ machines: [LOCAL, "pi", "down"], search: { query: "kw", limit: 300, include_tools: true } });
     expect(got).toEqual(MERGED);
   });
 
   it("没配远端 ⇒ 只交本机；本机后端问不到 ⇒ 整次失败（不装作「没结果」）", async () => {
     const calls = rig([], () => Promise.resolve(chanReply({ ...MERGED, down: [] })));
     await searchAllMachines(Q);
-    expect((chanArgsJson(calls()[0]) as { machines: string[] }).machines).toEqual([LOCAL_ORIGIN]);
+    expect((chanArgsJson(calls()[0]) as { machines: string[] }).machines).toEqual([LOCAL]);
     rig(["pi"], () => Promise.reject(NO_CHANNEL));
     await expect(searchAllMachines(Q)).rejects.toBeTruthy();
   });

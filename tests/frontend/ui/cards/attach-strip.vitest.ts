@@ -11,7 +11,7 @@ import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { enhanceCard } from "../../../../src/frontend/ui/render";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -30,7 +30,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const ctx = (lazy = false) => ({
   parentPath: "/p/s.jsonl",
-  origin: LOCAL_ORIGIN,
+  origin: LOCAL,
   toolUseNames: new Map(),
   toolUseElements: new Map(),
   pendingToolResults: new Map(),

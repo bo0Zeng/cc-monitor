@@ -9,7 +9,7 @@
  */
 import { copyText } from "../copy-table";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { saidOf } from "../kit/detail";
 import type { Attachment } from "../generated/Attachment";
 import type { Block } from "../generated/Block";
@@ -29,7 +29,7 @@ export interface ImageLoad {
  * **按引用取回一张图**（`history-image`）：哪台 · 哪份记录 · 那一条的 `id` · 那一块的 `at` · `n`，回能放进 `<img src>` 的地址。
  * 取不到 ⇒ 抛（那一句是后端 / 那一跳写的）。
  */
-export async function fetchImage(origin: Origin, jsonlPath: string, id: string, { at, n }: ImageRef): Promise<string> {
+export async function fetchImage(origin: Machine, jsonlPath: string, id: string, { at, n }: ImageRef): Promise<string> {
   try {
     const got = await callTyped(origin, "history-image", { path: jsonlPath, at, n, id }, budgetWithin(IMAGE_BUDGET_MS));
     return `data:${got.mediaType};base64,${got.data}`;

@@ -77,7 +77,7 @@ vi.mock("../../../src/frontend/ui/views/session-viewer", () => ({
 }));
 
 import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -97,7 +97,7 @@ describe("查看窗的机器名照成品", () => {
   });
 
   it("本机叫成品那个名字，不是「机器不明」", () => {
-    expect(machineName(LOCAL_ORIGIN)).toBe("台架本机");
+    expect(machineName(LOCAL)).toBe("台架本机");
   });
 
   it("系统标题里远端那台叫成品那个名字，不叫键", () => {

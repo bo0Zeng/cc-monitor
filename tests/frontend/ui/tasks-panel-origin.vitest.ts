@@ -1,7 +1,7 @@
 /**
  * 任务面板按 origin 问那台机器的后端。
  *
- * 三件事：① 调用带着 origin（本机逐字 `LOCAL_ORIGIN`，Tab 那一格还是 `null` 时就地换）·
+ * 三件事：① 调用带着 origin（本机逐字 `LOCAL`，Tab 那一格还是 `null` 时就地换）·
  * ② 远端 tab 被切到 / 面板展开的那一刻现问一次（本机不问 —— 本机有 watcher 推送）·
  * ③ 慢的那次回来不许盖掉后发的那次，也不许盖到已经切走的 tab 上。
  * 夹具只造结构（占位字段），不采任何真会话正文。
@@ -26,7 +26,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
 }));
 
 import { TasksPanel, fetchSessionTasks, originOfSession } from "../../../src/frontend/ui/tasks-panel";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 
 function task(id: string, status = "pending"): TaskEntry {
@@ -51,15 +51,15 @@ describe("LOC1a：任务快照经通道问 `tasks-list`", () => {
 });
 
 describe("RM1b：调用带着 origin", () => {
-  it("本机 tab（那一格还是 null）⇒ 逐字送 LOCAL_ORIGIN；远端 ⇒ 送那台的名字", async () => {
+  it("本机 tab（那一格还是 null）⇒ 逐字送 LOCAL；远端 ⇒ 送那台的名字", async () => {
     getSessionTasks.mockResolvedValue([task("1")]);
-    await fetchSessionTasks("sid-local", LOCAL_ORIGIN);
+    await fetchSessionTasks("sid-local", LOCAL);
     await fetchSessionTasks("sid-remote", "devbox");
     expect(getSessionTasks.mock.calls.map((c) => c[0])).toEqual([
-      { origin: LOCAL_ORIGIN, sessionId: "sid-local" },
+      { origin: LOCAL, sessionId: "sid-local" },
       { origin: "devbox", sessionId: "sid-remote" },
     ]);
-    expect(originOfSession("sid-local")).toBe(LOCAL_ORIGIN);
+    expect(originOfSession("sid-local")).toBe(LOCAL);
     expect(originOfSession("sid-remote")).toBe("devbox");
     // 反向：从没问过的 sid 不猜成本机。
     expect(originOfSession("never-seen")).toBeUndefined();
@@ -75,7 +75,7 @@ describe("RM1b：远端现问，本机不问", () => {
   it("切到远端 tab ⇒ 现问一次并换上；切到本机 tab ⇒ 一次都不问", async () => {
     getSessionTasks.mockResolvedValue([]);
     await fetchSessionTasks("r1", "devbox");
-    await fetchSessionTasks("l1", LOCAL_ORIGIN);
+    await fetchSessionTasks("l1", LOCAL);
     getSessionTasks.mockReset();
 
     const p = new TasksPanel();
@@ -111,7 +111,7 @@ describe("RM1b：远端现问，本机不问", () => {
   it("★ 回来时已经切走（切到一个不必问的本机 tab）⇒ 不许盖到新 tab 上", async () => {
     getSessionTasks.mockResolvedValue([]);
     await fetchSessionTasks("ra", "devbox");
-    await fetchSessionTasks("la", LOCAL_ORIGIN);
+    await fetchSessionTasks("la", LOCAL);
     const p = new TasksPanel();
 
     let releaseA!: (v: TaskEntry[]) => void;
@@ -154,7 +154,7 @@ describe("RM1b：远端现问，本机不问", () => {
 describe("重画不丢焦点（kit place）", () => {
   it("★ 焦点在某一行上，推来的新快照换了次序 ⇒ 还是那个节点、焦点还在它上", async () => {
     getSessionTasks.mockResolvedValue([]);
-    await fetchSessionTasks("lf", LOCAL_ORIGIN);
+    await fetchSessionTasks("lf", LOCAL);
     const p = new TasksPanel();
     document.body.replaceChildren(p.pageElement);
     p.setSession("lf", [task("1"), task("2"), task("3")]);

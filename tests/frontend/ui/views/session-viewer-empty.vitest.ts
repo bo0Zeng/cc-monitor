@@ -19,7 +19,7 @@ vi.mock("../../../../src/frontend/ui/events", () => ({
 
 import { installViewerRig, line, userLine, viewerRig, type RigPayload } from "../../../test-support/session-viewer-rig";
 import { SessionViewer, type ViewerOptions } from "../../../../src/frontend/ui/views/session-viewer";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const empty = (v: SessionViewer): HTMLElement | null => v.element.querySelector<HTMLElement>('[data-role="empty"]');
@@ -32,7 +32,7 @@ async function mount(lines: RigPayload[], over: Partial<ViewerOptions> = {}): Pr
   viewerRig.chunk = lines;
   const v = new SessionViewer();
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true, ...over });
+  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
   return v;
 }
 

@@ -12,14 +12,14 @@ vi.mock("../../../src/frontend/ui/copy-table", () => ({
 
 import { NeedsBook, planCellIn } from "../../../src/frontend/ui/needs-book";
 import { planRows, renderNeedsPanel, type PanelFacts } from "../../../src/frontend/ui/needs-panel";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { NeedsMerged } from "../../../src/frontend/ui/generated/NeedsMerged";
 
 const merged: NeedsMerged = {
   items: [
-    { origin: LOCAL_ORIGIN, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A2-1", label: "A2-1 编码探测" } } },
-    { origin: LOCAL_ORIGIN, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger" } },
-    { origin: LOCAL_ORIGIN, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A3", label: "A3 导出" } } },
+    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A2-1", label: "A2-1 编码探测" } } },
+    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger" } },
+    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A3", label: "A3 导出" } } },
   ],
   total: 3,
   unreadable: [],
@@ -28,7 +28,7 @@ const merged: NeedsMerged = {
 
 async function book(): Promise<NeedsBook> {
   const b = new NeedsBook(async () => merged);
-  await b.refresh(LOCAL_ORIGIN);
+  await b.refresh(LOCAL);
   return b;
 }
 

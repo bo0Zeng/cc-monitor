@@ -20,7 +20,7 @@ import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-ba
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL, type Machine } from "../../../src/frontend/ui/ipc/origin";
 import { liveFace } from "../../test-support/session-faces";
 import type { ManualItem } from "../../../src/frontend/ui/login-reads";
 import { fakeNeedsBook, listOf, manualItem, sessionItem, type NeedsRead } from "../../test-support/needs-fake";
@@ -43,7 +43,7 @@ const waiting = {
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, labelProject: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
-    origin: LOCAL_ORIGIN, forkedFromSessionId: null, writers: [], unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, forkedFromSessionId: null, writers: [], unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 
@@ -93,13 +93,13 @@ beforeEach(() => {
 
 describe("入口的数 ＝ 两份清单相加", () => {
   it("★ n ＝ 合好的总数（会话 ＋ 会话外，各台加起来）；只有会话外的也出入口；读回来之前照上一份", async () => {
-    const r = rig([tab("a", waiting), tab("b")], { [LOCAL_ORIGIN]: machine(["a"], [acctItem("t1"), mcpItem("s1")]), "gpu-01": machine([], [acctItem("t2")]) });
-    await r.book.refreshAll([LOCAL_ORIGIN, "gpu-01" as Origin]);
+    const r = rig([tab("a", waiting), tab("b")], { [LOCAL]: machine(["a"], [acctItem("t1"), mcpItem("s1")]), "gpu-01": machine([], [acctItem("t2")]) });
+    await r.book.refreshAll([LOCAL, "gpu-01" as Machine]);
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("4");
     expect(r.view.needsCountNow()).toBe(4);
-    const only = rig([tab("a")], { [LOCAL_ORIGIN]: machine([], [acctItem("t1")]) });
+    const only = rig([tab("a")], { [LOCAL]: machine([], [acctItem("t1")]) });
     expect(only.strip.style.display, "还没读回来：没有就不出").toBe("none");
-    await only.book.refresh(LOCAL_ORIGIN);
+    await only.book.refresh(LOCAL);
     expect(only.strip.style.display).toBe("");
     expect(only.strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
   });
@@ -113,9 +113,9 @@ describe("浮层", () => {
       ask: { id: "ask-1", kind: "approve", tool: "Bash", run: { id: "a1", text: "核心·agent「Audit」 · Explore" }, what: "核心·sed -n 1,40p", detail: "", choices: [], questions: [], sinceMs: 0 },
     } as Needs;
     const r = rig([tab("a", { ...waiting, needs: fromAgent }), tab("b", waiting)], {
-      [LOCAL_ORIGIN]: listOf([sessionItem("a", fromAgent), sessionItem("b", waiting.needs)]),
+      [LOCAL]: listOf([sessionItem("a", fromAgent), sessionItem("b", waiting.needs)]),
     });
-    await r.book.refresh(LOCAL_ORIGIN);
+    await r.book.refresh(LOCAL);
     r.strip.click();
     const [a, b] = rows();
     expect(a.querySelector("[data-part=by]")?.textContent).toBe("核心·agent「Audit」 · Explore");
@@ -124,8 +124,8 @@ describe("浮层", () => {
   });
 
   it("★ 点入口开浮层（不跳）：会话行 · 分隔线 · 会话外每一项（said ＋ 机器名 ＋［登录…］）；开的那一下各台重问一次", async () => {
-    const r = rig([tab("a", waiting)], { [LOCAL_ORIGIN]: machine(["a"], [acctItem("t1")]), "gpu-01": machine([], [mcpItem("s1")]) });
-    await r.book.refreshAll([LOCAL_ORIGIN, "gpu-01" as Origin]);
+    const r = rig([tab("a", waiting)], { [LOCAL]: machine(["a"], [acctItem("t1")]), "gpu-01": machine([], [mcpItem("s1")]) });
+    await r.book.refreshAll([LOCAL, "gpu-01" as Machine]);
     r.asked.length = 0;
     r.strip.click();
     expect(r.host.answerAt, "点入口只开浮层").not.toHaveBeenCalled();
@@ -137,21 +137,21 @@ describe("浮层", () => {
     expect(m2.textContent).toContain("gpu-01");
     expect(m1.querySelector('[data-action="manual-login"]')?.textContent).toBe(copyText("newSession.account.login"));
     await settle();
-    expect(r.asked.sort(), "开浮层 ⇒ 问过的每台重问").toEqual([LOCAL_ORIGIN, "gpu-01"].sort());
+    expect(r.asked.sort(), "开浮层 ⇒ 问过的每台重问").toEqual([LOCAL, "gpu-01"].sort());
   });
 
   it("★ 点会话行 ⇒ 切过去、浮层收起；点会话外那一行 · 它的［登录…］⇒ 开登录抽屉（交那一项与它那台）", async () => {
     const it1 = acctItem("t1");
     const it2 = mcpItem("s1");
-    const r = rig([tab("a", waiting)], { [LOCAL_ORIGIN]: machine(["a"], [it1]), "gpu-01": machine([], [it2]) });
-    await r.book.refreshAll([LOCAL_ORIGIN, "gpu-01" as Origin]);
+    const r = rig([tab("a", waiting)], { [LOCAL]: machine(["a"], [it1]), "gpu-01": machine([], [it2]) });
+    await r.book.refreshAll([LOCAL, "gpu-01" as Machine]);
     r.strip.click();
     rows()[0].click();
     expect(r.host.answerAt).toHaveBeenCalledWith("a");
     expect(panel(), "点完收起").toBeNull();
     r.strip.click();
     rows()[1].click();
-    expect(r.login).toHaveBeenLastCalledWith(LOCAL_ORIGIN, it1);
+    expect(r.login).toHaveBeenLastCalledWith(LOCAL, it1);
     expect(panel()).toBeNull();
     r.strip.click();
     rows()[2].querySelector<HTMLElement>('[data-action="manual-login"]')!.click();
@@ -160,8 +160,8 @@ describe("浮层", () => {
   });
 
   it("★ fix 为空：第二行写后端给的 why，不画按钮，那一行点不了", async () => {
-    const r = rig([], { [LOCAL_ORIGIN]: machine([], [mcpItem("s1", false), acctItem("t1")]) });
-    await r.book.refresh(LOCAL_ORIGIN);
+    const r = rig([], { [LOCAL]: machine([], [mcpItem("s1", false), acctItem("t1")]) });
+    await r.book.refresh(LOCAL);
     r.strip.click();
     const inert = panel()!.querySelector<HTMLElement>('[data-inert="true"]')!;
     expect(inert.textContent).toContain("核心·不支持在 app 里登录");
@@ -173,8 +173,8 @@ describe("浮层", () => {
 
   it("★ 权限太宽的秘密文件：第一行 said、第二行机器名 ＋ 怎么修（why），警示图标，不画按钮、点不了；计进入口的数", async () => {
     const file: ManualItem = { kind: "secretFile", said: "核心·钥匙文件 /h/k：太宽", fix: null, why: "核心·只给本人" };
-    const r = rig([], { [LOCAL_ORIGIN]: machine([], [file]) });
-    await r.book.refresh(LOCAL_ORIGIN);
+    const r = rig([], { [LOCAL]: machine([], [file]) });
+    await r.book.refresh(LOCAL);
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
     r.strip.click();
     const inert = panel()!.querySelector<HTMLElement>('[data-inert="true"]')!;
@@ -189,8 +189,8 @@ describe("浮层", () => {
   });
 
   it("★ 一台断开 ⇒ 底部「{machine} 离线 · 未计入」，不计数；回了话、清单无法读取 ⇒ 入口不带数字、虚线框，底部那一句、原话在悬停里", async () => {
-    const r = rig([tab("a", waiting)], { [LOCAL_ORIGIN]: machine(["a"], [acctItem("t1")]), devbox: { t: "offline" } });
-    await r.book.refreshAll([LOCAL_ORIGIN, "devbox" as Origin]);
+    const r = rig([tab("a", waiting)], { [LOCAL]: machine(["a"], [acctItem("t1")]), devbox: { t: "offline" } });
+    await r.book.refreshAll([LOCAL, "devbox" as Machine]);
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("2");
     r.strip.click();
     expect(panel()!.querySelector('[data-note="offline"]')?.textContent).toBe(copyText("needs.panel.offline", { machine: "devbox" }));
@@ -199,7 +199,7 @@ describe("浮层", () => {
     expect(panel()!.querySelector<HTMLElement>('[data-note="offline"]')?.title, "后端那一句原样在悬停里").toBe(said);
     r.strip.click();
     r.answers["gpu-01"] = machine([], [], "核心·账号库无法解析");
-    await r.book.refresh("gpu-01" as Origin);
+    await r.book.refresh("gpu-01" as Machine);
     expect(r.strip.classList.contains("is-unknown")).toBe(true);
     expect(r.strip.querySelector(".tab-needs-count")?.textContent, "数说不准 ⇒ 不带数字").toBe("");
     r.strip.click();
@@ -210,11 +210,11 @@ describe("浮层", () => {
   });
 
   it("★ 最后一项刚解决、浮层开着 ⇒「无需手动事项」、入口去掉数字、不自己关；关了入口才消失", async () => {
-    const r = rig([], { [LOCAL_ORIGIN]: machine([], [acctItem("t1")]) });
-    await r.book.refresh(LOCAL_ORIGIN);
+    const r = rig([], { [LOCAL]: machine([], [acctItem("t1")]) });
+    await r.book.refresh(LOCAL);
     r.strip.click();
-    r.answers[LOCAL_ORIGIN] = machine([], []);
-    await r.book.refresh(LOCAL_ORIGIN);
+    r.answers[LOCAL] = machine([], []);
+    await r.book.refresh(LOCAL);
     expect(panel()?.textContent).toBe(copyText("needs.panel.empty"));
     expect(r.strip.style.display).toBe("");
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("");
@@ -225,8 +225,8 @@ describe("浮层", () => {
 
   it("↑↓ 选行 · Enter ＝ 点（Esc 是浮层那一套的弹层栈，kit 判据管）", async () => {
     const it1 = acctItem("t1");
-    const r = rig([tab("a", waiting)], { [LOCAL_ORIGIN]: machine(["a"], [it1]) });
-    await r.book.refresh(LOCAL_ORIGIN);
+    const r = rig([tab("a", waiting)], { [LOCAL]: machine(["a"], [it1]) });
+    await r.book.refresh(LOCAL);
     r.strip.click();
     const p = panel()!;
     expect(document.activeElement).toBe(p);
@@ -234,7 +234,7 @@ describe("浮层", () => {
     p.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
     expect(rows()[1].getAttribute("aria-selected")).toBe("true");
     p.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    expect(r.login).toHaveBeenCalledWith(LOCAL_ORIGIN, it1);
+    expect(r.login).toHaveBeenCalledWith(LOCAL, it1);
   });
 });
 

@@ -16,7 +16,7 @@ import { selectableAccounts } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import { fiveHourCell, accountLabel } from "./acct-words";
 import { lookupAgentProfile } from "./agent-profile";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { Launch } from "./generated/Launch";
 import type { AccountAsk } from "./generated/AccountAsk";
 import { chosenAccount } from "./launch-account";
@@ -42,7 +42,7 @@ export interface ResumeAccount {
 }
 
 /** 账号组的事实：`list` 那台可选的号 · `none` 这一家没有账号这一维（灰着一行说）· `off` 那台没开多账号 / 读不到（这一组不出）。 */
-export type ResumeAccounts = { kind: "list"; items: ResumeAccount[]; /** 号在哪一台（头像照那台账号库的号色画）；缺 ⇒ 本机。 */ origin?: Origin } | { kind: "none"; agentName: string } | { kind: "off" };
+export type ResumeAccounts = { kind: "list"; items: ResumeAccount[]; /** 号在哪一台（头像照那台账号库的号色画）；缺 ⇒ 本机。 */ origin?: Machine } | { kind: "none"; agentName: string } | { kind: "off" };
 
 export interface ResumeMenuSpec {
   accounts: ResumeAccounts;
@@ -102,7 +102,7 @@ export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?:
  * 可选的号一个也没有 / 那台没开多账号 ⇒ `off`；`5h N%` 读额度账（那台还没读过 ⇒ 先读一次）。
  */
 export async function resumeAccounts(
-  origin: Origin,
+  origin: Machine,
   agent: string,
   facts: { hasAccounts: boolean; agentName: string; last?: string },
 ): Promise<ResumeAccounts> {

@@ -9,7 +9,7 @@
  * - 判定全在后端；这里不判「能不能换 / 该不该换 / 是哪个号 / 跟默认号一不一样」。
  */
 import { appStore, putIn } from "./app-store";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import { readQuota, tookQuota } from "./quota-reads";
 import { readSessionView } from "./rotation-view-reads";
@@ -17,10 +17,10 @@ import { readSessionAccount } from "./session-account-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
 
 /** 每台此刻有 tab 的会话。 */
-const known = new Map<Origin, Set<string>>();
+const known = new Map<Machine, Set<string>>();
 
 /** 问一次那台的额度账。整问失败 ⇒ 那一格记下出错那一层写好的那一句与复制详情（界面照它说，不自己补一句）。 */
-export async function refreshQuota(origin: Origin): Promise<void> {
+export async function refreshQuota(origin: Machine): Promise<void> {
   try {
     putIn(appStore.quota, origin, await readQuota(origin));
   } catch (e) {
@@ -29,13 +29,13 @@ export async function refreshQuota(origin: Origin): Promise<void> {
 }
 
 /** 那台的额度账这一份没收成（问失败 · 推来的读不出）⇒ 那一格记下出错那一层写好的那一句与复制详情。 */
-function quotaFailed(origin: Origin, e: unknown): void {
+function quotaFailed(origin: Machine, e: unknown): void {
   console.warn(`[acct] quota-read [${origin}] 失败：`, e);
   putIn(appStore.quota, origin, { state: "failed", said: saidOf(e), detail: detailOf(e) });
 }
 
 /** 一批会话各问一次 `rotation-view`（逐个；一个失败不挡别的，那一格照旧）。 */
-async function refreshRotations(origin: Origin, sids: readonly string[]): Promise<void> {
+async function refreshRotations(origin: Machine, sids: readonly string[]): Promise<void> {
   await Promise.all(
     sids.map(async (sid) => {
       try {
@@ -48,7 +48,7 @@ async function refreshRotations(origin: Origin, sids: readonly string[]): Promis
 }
 
 /** 一批会话各问一次 `session-account`（逐个；一个失败不挡别的，那一格照旧）。 */
-async function refreshAccounts(origin: Origin, sids: readonly string[]): Promise<void> {
+async function refreshAccounts(origin: Machine, sids: readonly string[]): Promise<void> {
   await Promise.all(
     sids.map(async (sid) => {
       try {
@@ -61,15 +61,15 @@ async function refreshAccounts(origin: Origin, sids: readonly string[]): Promise
 }
 
 /** 一批会话的轮换与号各问一次。 */
-export async function refreshSessions(origin: Origin, sids: readonly string[]): Promise<void> {
+export async function refreshSessions(origin: Machine, sids: readonly string[]): Promise<void> {
   await Promise.all([refreshRotations(origin, sids), refreshAccounts(origin, sids)]);
 }
 
 /**
  * tab 集合变了 ⇒ 新出现的会话问一次；那台第一次出现 ⇒ 额度账也问一次。已经问过的不重问（之后靠推送）。
  */
-export function syncSessions(tabs: readonly { sessionId: string; origin: Origin }[]): void {
-  const fresh = new Map<Origin, string[]>();
+export function syncSessions(tabs: readonly { sessionId: string; origin: Machine }[]): void {
+  const fresh = new Map<Machine, string[]>();
   for (const t of tabs) {
     let set = known.get(t.origin);
     if (!set) {
@@ -85,7 +85,7 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
 }
 
 /** 那台有 tab 的会话的号全部重问；不给 ⇒ 各台。 */
-function reaskAccounts(origin?: Origin): void {
+function reaskAccounts(origin?: Machine): void {
   for (const [o, sids] of known) if (origin === undefined || o === origin) void refreshAccounts(o, [...sids]);
 }
 
@@ -93,7 +93,7 @@ function reaskAccounts(origin?: Origin): void {
  * 那台推来额度 / 会话轮换 / 策略目录变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_strategies`）。
  * 额度帧里带了成品（同一条命令的回包，形状由指纹核过）⇒ 直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
  */
-export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
+export function onQuotaChanged(origin: Machine, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
   if (topic === "quota") {
     const p = pushedProducts(change, "quota");
     const q = p.got.get(null);
@@ -117,6 +117,6 @@ export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "ro
 }
 
 /** 那台账号清单变了（连上 · 默认号换了 · 清单动了；`changed/accounts`）⇒ 那台有 tab 的会话的号重问；不给 ⇒ 各台。 */
-export function onAccountsChanged(origin?: Origin): void {
+export function onAccountsChanged(origin?: Machine): void {
   reaskAccounts(origin);
 }

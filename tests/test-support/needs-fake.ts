@@ -16,7 +16,7 @@ import type { NeedsList } from "../../src/frontend/ui/generated/NeedsList";
 import type { NeedsMerged } from "../../src/frontend/ui/generated/NeedsMerged";
 import type { Needs } from "../../src/frontend/ui/generated/Needs";
 import type { ManualItem } from "../../src/frontend/ui/generated/ManualItem";
-import type { Origin } from "../../src/frontend/ui/ipc/origin";
+import type { Machine } from "../../src/frontend/ui/ipc/origin";
 import { liveFace } from "./session-faces";
 import { REPO_ROOT } from "./repo-root";
 
@@ -80,11 +80,11 @@ export function recordedMerge(asked: readonly string[], answers: Record<string, 
  * 一本账 ＋ 记下每一问问了哪几台（`asked` 摊平）。`reply` 给了 ⇒ 这一问不查金样、照它回（测试自己摆的整份回包，
  * 收到的是答了的那几台各自的整份）。
  */
-export function fakeNeedsBook(answers: Record<string, NeedsRead>, reply?: (m: { origin: Origin; list: NeedsList }[]) => NeedsMerged) {
+export function fakeNeedsBook(answers: Record<string, NeedsRead>, reply?: (m: { origin: Machine; list: NeedsList }[]) => NeedsMerged) {
   const asked: string[] = [];
   const book = new NeedsBook((machines) => {
     asked.push(...machines);
-    const got: { origin: Origin; list: NeedsList }[] = [];
+    const got: { origin: Machine; list: NeedsList }[] = [];
     for (const o of machines) {
       const a = answers[o] ?? listOf([]);
       if (a.t === "ok") got.push({ origin: o, list: a.list });

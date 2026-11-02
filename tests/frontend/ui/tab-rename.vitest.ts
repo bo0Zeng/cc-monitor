@@ -23,7 +23,7 @@ import { TabStore } from "../../../src/frontend/ui/tab-store";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { annotate } from "../../../src/frontend/ui/history-reads";
 import { askText } from "../../../src/frontend/ui/kit/dialog";
@@ -50,7 +50,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     group: null,
     hidden: null,
     lineage: NO_LINEAGE,
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
@@ -142,9 +142,9 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     editor()!.value = "  ";
     key(editor()!, "Enter");
     await settle();
-    expect(annotate).toHaveBeenCalledWith(LOCAL_ORIGIN, "a", { customTitle: "" });
+    expect(annotate).toHaveBeenCalledWith(LOCAL, "a", { customTitle: "" });
     vi.mocked(undoToast).mock.calls[0][1]();
-    expect(annotate).toHaveBeenLastCalledWith(LOCAL_ORIGIN, "a", { customTitle: "" });
+    expect(annotate).toHaveBeenLastCalledWith(LOCAL, "a", { customTitle: "" });
   });
 
   it("Esc ⇒ 取消、不交；失焦 ⇒ 定；与此刻的名相同 ⇒ 不交", async () => {
@@ -163,7 +163,7 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     editor()!.value = "失焦定";
     editor()!.dispatchEvent(new FocusEvent("blur"));
     await settle();
-    expect(annotate).toHaveBeenCalledWith(LOCAL_ORIGIN, "a", { customTitle: "失焦定" });
+    expect(annotate).toHaveBeenCalledWith(LOCAL, "a", { customTitle: "失焦定" });
   });
 
   it("右键菜单「改标题」走同一个口（栏上就地改）", () => {
@@ -206,7 +206,7 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     ed.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await settle();
     expect(askText).not.toHaveBeenCalled();
-    expect(annotate).toHaveBeenCalledWith(LOCAL_ORIGIN, "z", { customTitle: "修登录" });
+    expect(annotate).toHaveBeenCalledWith(LOCAL, "z", { customTitle: "修登录" });
     head.remove();
   });
 });

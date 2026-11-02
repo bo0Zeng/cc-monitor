@@ -45,7 +45,7 @@ import {
   buildStepsCard,
 } from "../../../src/frontend/ui/cards/index";
 import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 export interface CorpusItem {
   /** 稳定 id：同一份语料在两侧必须产出同一串，否则对不上号 */
@@ -84,7 +84,7 @@ function freshCtx(): RenderContext {
     parentPath: "/tmp/scale2/session.jsonl",
     // 语料是 claude 会话：卡头那一家的短名（会话是哪一家由宿主交进来）。
     speaker: "Claude",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

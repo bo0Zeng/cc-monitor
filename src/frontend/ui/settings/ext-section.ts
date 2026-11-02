@@ -22,7 +22,7 @@ import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import { el } from "../kit/el";
 import { icon, type IconName } from "../kit/icon";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { syncAssets } from "../assets-sync-reads";
 import { openFileWindow } from "../file-window";
 import { revealInFolder } from "../reveal-in-folder";
@@ -110,9 +110,9 @@ function machineName(m: ExtMachine): string {
   return m.here ? copyText("extPage.machine.here") : m.name;
 }
 
-/** 这台在通道上叫什么（本机后端那一台 = `LOCAL_ORIGIN`）。 */
-function originOf(m: ExtMachine): Origin {
-  return m.here || m.key === null ? LOCAL_ORIGIN : m.key;
+/** 这台在通道上叫什么（本机后端那一台 = `LOCAL`）。 */
+function originOf(m: ExtMachine): Machine {
+  return m.here || m.key === null ? LOCAL : m.key;
 }
 
 /** 抽屉里一台机器那一行的键（临时状态按它记）。 */
@@ -235,8 +235,8 @@ export class ExtSection {
     void this.reload(true, null);
   }
 
-  /** 重读那张表；`sync` = 先让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟。 */
-  private async reload(visit: boolean, sync: Origin | null): Promise<void> {
+  /** 重读那张表；`sync` = 先让本机后端对那台（`LOCAL` = 各台）同步一趟。 */
+  private async reload(visit: boolean, sync: Machine | null): Promise<void> {
     const my = ++this.seq;
     if (!this.list) this.status.textContent = copyText("kit.state.reading");
     try {
@@ -265,7 +265,7 @@ export class ExtSection {
       } else if (mcpChanged) {
         this.repaintMcp();
       }
-      if (visit) void this.reload(false, LOCAL_ORIGIN);
+      if (visit) void this.reload(false, LOCAL);
     } catch (e) {
       if (my !== this.seq) return;
       sayFailure(this.status, copyText("extPage.status.failed"), e);
@@ -286,9 +286,9 @@ export class ExtSection {
     return mcpOf(own)?.entries.find((e) => e.name === r.name) ?? null;
   }
 
-  /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。
+  /** 让本机后端对那台（`LOCAL` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。
    * 每台那一格是后端写好的那一句（原话它记进日志，不随应答来）；整趟没成那一句是通道那一层的（{@link syncAssets}）。 */
-  private async syncOnce(on: Origin): Promise<string> {
+  private async syncOnce(on: Machine): Promise<string> {
     try {
       const s = await syncAssets(on);
       return s.synced
@@ -495,7 +495,7 @@ export class ExtSection {
       await extNoteSet(r.kind, r.name, text);
       this.noteDraft = null;
       this.noteError = null;
-      await this.reload(false, LOCAL_ORIGIN);
+      await this.reload(false, LOCAL);
     } catch (e) {
       this.noteError = copyText("extPage.note.failed", { said: e instanceof Error ? e.message : String(e) });
       this.renderDrawer();
@@ -848,7 +848,7 @@ export class ExtSection {
       inst.error = e instanceof Error ? e.message : String(e);
     }
     inst.busy = false;
-    await this.reload(false, LOCAL_ORIGIN);
+    await this.reload(false, LOCAL);
     await this.refreshCard(r);
     if (r.known?.hooks && this.list) for (const m of this.list.machines) if (m.reachable) void this.readHooks(m);
   }

@@ -13,7 +13,7 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
 import { GridMonitorView, type GridSource } from "../../../../src/frontend/ui/views/grid-monitor";
 import type { GridSessionSnapshot, SessionPeek } from "../../../../src/frontend/ui/session-status";
 import type { MonitorBoard } from "../../../../src/frontend/ui/generated/MonitorBoard";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { machineName } from "../../../../src/frontend/ui/control-said";
 import { goldenFace, liveFace } from "../../../test-support/session-faces";
 import type { SessionFace } from "../../../../src/frontend/ui/generated/SessionFace";
@@ -24,7 +24,7 @@ const ordered = (f: SessionFace, order: number): SessionFace => ({ ...f, order }
 const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
   title: "t",
-  origin: LOCAL_ORIGIN,
+  origin: LOCAL,
   cwd: null,
   face: liveFace("working"),
   needs: null,
@@ -83,7 +83,7 @@ describe("F91 GridMonitorView", () => {
   it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", async () => {
     document.body.replaceChildren();
     const source = fixed([
-      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, running: "核心·在跑 2", face: liveFace("working") }),
+      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL, running: "核心·在跑 2", face: liveFace("working") }),
       snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
     ]);
     const view = new GridMonitorView(source);
@@ -93,7 +93,7 @@ describe("F91 GridMonitorView", () => {
     expect(pushOverlay).toHaveBeenCalledWith(view);
     expect(document.querySelector(".grid-monitor-summary")?.textContent).toBe("核心·汇总 2");
     const groupTitles = [...document.querySelectorAll(".grid-monitor-group-title")].map((e) => e.textContent);
-    expect(groupTitles).toEqual([`核心·${LOCAL_ORIGIN}（1）`, "核心·pi（1）"]);
+    expect(groupTitles).toEqual([`核心·${LOCAL}（1）`, "核心·pi（1）"]);
     let cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
     expect(cells.length).toBe(2);
     expect(document.querySelector(".badge-waiting")?.textContent).toBe("核心·等批准");
@@ -112,7 +112,7 @@ describe("F91 GridMonitorView", () => {
     expect(peek?.classList.contains("is-empty")).toBe(false);
     expect(document.querySelector(".grid-monitor-peek-title")?.textContent).toBe("本地会话");
     // 本机远端一律写那台的名字（同一个名字来处）
-    expect(document.querySelector(".grid-monitor-peek-origin")?.textContent).toBe(machineName(LOCAL_ORIGIN));
+    expect(document.querySelector(".grid-monitor-peek-origin")?.textContent).toBe(machineName(LOCAL));
     cells[1].click();
     expect(document.querySelector(".grid-monitor-peek-origin")?.textContent).toBe(machineName("pi"));
     view.close();
@@ -425,7 +425,7 @@ describe("监控板照后端成品摆", () => {
     const view = new GridMonitorView({
       snapshotSessions: () => sessions,
       switchTo: vi.fn(),
-      board: async () => ({ summary: "", groups: [{ machine: LOCAL_ORIGIN, title: "本机·1", sids: ["l1"] }] }),
+      board: async () => ({ summary: "", groups: [{ machine: LOCAL, title: "本机·1", sids: ["l1"] }] }),
       peekSession: () => ({
         model: null,
         recentFiles: [],
@@ -453,7 +453,7 @@ describe("监控板照后端成品摆", () => {
     const view = new GridMonitorView({
       snapshotSessions: () => sessions,
       switchTo: vi.fn(),
-      board: async () => ({ summary: "", groups: [{ machine: LOCAL_ORIGIN, title: "本机·1", sids: ["l1"] }] }),
+      board: async () => ({ summary: "", groups: [{ machine: LOCAL, title: "本机·1", sids: ["l1"] }] }),
       peekSession: () => ({ model: null, recentFiles: [], summary: "核心·agent 14", more: "核心·+4", agents }),
     });
     await openSettled(view);

@@ -17,7 +17,7 @@ import { countBadge } from "../kit/badge";
 import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { machineName } from "../ipc/chan-caller";
 import { readRemoteConfig } from "../remote-config";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
@@ -50,13 +50,13 @@ export interface DataPageHost {
 /** 一台这一趟的结果：读到 · 读不到（那一句 ＋ 本机后端记着的上次那一份，没有 ⇒ `null`）。 */
 type Reading = { ok: true; report: DataReport } | { ok: false; why: string; last: Awaited<ReturnType<typeof recallDataReport>> };
 
-interface Machine {
-  origin: Origin;
+interface MachineEntry {
+  origin: Machine;
   /** 叫什么：每次读都现问（那台的成品可能晚到，先叫「机器不明」、到了就换），不抄一份。 */
   readonly name: string;
 }
 
-const machineOf = (origin: Origin): Machine => ({
+const machineOf = (origin: Machine): MachineEntry => ({
   origin,
   get name() {
     return machineName(origin);
@@ -79,20 +79,20 @@ export class DataPage {
   /** 「cc-monitor 的文件」段头 ＋ 那台后端家里那一块（照那台 `data-report` 的 `own` 排，本机远端都是）。 */
   private readonly ownFiles: HTMLElement;
   private readonly ownBody: HTMLElement;
-  private machines: Machine[] = [machineOf(LOCAL_ORIGIN)];
-  private readings = new Map<Origin, Reading>();
+  private machines: MachineEntry[] = [machineOf(LOCAL)];
+  private readings = new Map<Machine, Reading>();
   /** 读成的那几台合起来的件数（本机后端合的；没合成 ⇒ `null`，顶上不出数）。 */
   private total: ChoreCounts | null = null;
-  private picked: Origin = LOCAL_ORIGIN;
+  private picked: Machine = LOCAL;
   /** 点过复制、那台还没认出已做的那几件（界面只多记这一样）。键 ＝ 机器 ＋ 件。 */
   private readonly copied = new Set<string>();
   /** 展开着的那几件（重画不收起）。 */
   private readonly openRows = new Set<string>();
   /** 上一趟每件的态（认出「已做」那一句按它比）。 */
   private readonly lastState = new Map<string, ChoreState>();
-  private readonly recognized = new Map<Origin, string[]>();
+  private readonly recognized = new Map<Machine, string[]>();
   /** 带进来的「滚到那台」还没落（那一段还没画出来）。 */
-  private pendingFocus: Origin | null = null;
+  private pendingFocus: Machine | null = null;
   private generation = 0;
 
   constructor(host: DataPageHost) {
@@ -194,7 +194,7 @@ export class DataPage {
     const gen = ++this.generation;
     try {
       const hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
-      this.machines = [LOCAL_ORIGIN, ...hosts].map(machineOf);
+      this.machines = [LOCAL, ...hosts].map(machineOf);
     } catch {
       // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。
     }
@@ -250,12 +250,12 @@ export class DataPage {
 
   // ── 待办 ──────────────────────────────────────────────────────────────
 
-  private key(origin: Origin, id: string): string {
+  private key(origin: Machine, id: string): string {
     return `${origin}\u0000${id}`;
   }
 
   /** 这一趟新认出「已做」的那几件（上一趟没做 / 过期，这一趟已做）：段头下一行说一句。 */
-  private noteRecognized(origin: Origin, r: Reading): void {
+  private noteRecognized(origin: Machine, r: Reading): void {
     if (!r.ok) return;
     const names: string[] = [];
     for (const c of r.report.todo) {
@@ -284,7 +284,7 @@ export class DataPage {
     head.appendChild(button({ label: copyText("dataPage.chores.recheck"), icon: "refresh", kind: "ghost", size: "compact", onClick: () => void this.refresh() }));
     pane.appendChild(head);
     // 照各台成品的先后键排（同一档照机器表）；没读成的那几台排最后。
-    const rank = (m: Machine): number => {
+    const rank = (m: MachineEntry): number => {
       const r = this.readings.get(m.origin);
       return r?.ok ? r.report.rank : Number.MAX_SAFE_INTEGER;
     };
@@ -292,7 +292,7 @@ export class DataPage {
     for (const m of order) pane.appendChild(this.machineSection(m));
   }
 
-  private machineSection(m: Machine): HTMLElement {
+  private machineSection(m: MachineEntry): HTMLElement {
     const sec = document.createElement("section");
     sec.className = "data-machine";
     sec.dataset.machine = m.origin;
@@ -352,7 +352,7 @@ export class DataPage {
     return sec;
   }
 
-  private row(origin: Origin, c: Chore): HTMLElement {
+  private row(origin: Machine, c: Chore): HTMLElement {
     const k = this.key(origin, c.id);
     return choreRow(c, {
       open: this.openRows.has(k),
@@ -370,7 +370,7 @@ export class DataPage {
     });
   }
 
-  private async copyFor(origin: Origin, text: string, ids: string[]): Promise<void> {
+  private async copyFor(origin: Machine, text: string, ids: string[]): Promise<void> {
     try {
       await writeClipboard(text);
     } catch (e) {
@@ -381,7 +381,7 @@ export class DataPage {
     this.paintChores();
   }
 
-  private go(origin: Origin, c: Chore): void {
+  private go(origin: Machine, c: Chore): void {
     if (c.action === "how" && c.howUrl) {
       void openUrl(c.howUrl);
       return;
@@ -391,7 +391,7 @@ export class DataPage {
     this.host.goTo(g.page === "machine" ? { machine: origin, tab: g.tab, anchor: g.anchor } : { page: g.page, anchor: g.anchor });
   }
 
-  private async openFile(origin: Origin, path: string): Promise<void> {
+  private async openFile(origin: Machine, path: string): Promise<void> {
     try {
       await openOnMachine(origin, { revealFile: path });
     } catch (e) {
@@ -399,7 +399,7 @@ export class DataPage {
     }
   }
 
-  private async decline(origin: Origin, c: Chore, yes: boolean): Promise<void> {
+  private async decline(origin: Machine, c: Chore, yes: boolean): Promise<void> {
     try {
       await markChore(origin, { op: yes ? "decline" : "undecline", id: c.id });
     } catch (e) {

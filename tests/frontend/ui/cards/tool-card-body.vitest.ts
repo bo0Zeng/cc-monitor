@@ -2,7 +2,7 @@
 // 没有那一格 ⇒ 收着那一行只写工具名、展开照原文画入参。
 import { describe, it, expect } from "vitest";
 import { renderMessage, type RenderContext } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { ToolStep } from "../../../../src/frontend/ui/generated/ToolStep";
 import type { LineDiffRow } from "../../../../src/frontend/ui/generated/LineDiffRow";
@@ -13,9 +13,9 @@ const row = (kind: LineDiffRow["kind"], text: string): LineDiffRow => ({ kind, t
 const lineDiff = (rows: LineDiffRow[]): LineDiff => ({ rows, shown: rows.length, truncated: false, added: 0, removed: 0, stat: "" });
 const drawn = (d: HTMLElement): string[] =>
   [...d.querySelectorAll(".block-diff-line")].map((l) => `${l.querySelector(".block-diff-gutter")?.textContent}${l.querySelector(".block-diff-code")?.textContent}`);
-const newCtx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() });
+const newCtx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() });
 
-function opened(input: unknown, step: ToolStep | undefined, origin: string = LOCAL_ORIGIN, given = newCtx()): HTMLDetailsElement {
+function opened(input: unknown, step: ToolStep | undefined, origin: string = LOCAL, given = newCtx()): HTMLDetailsElement {
   const rec = {
     agent: "claude",
     t: "reply",
@@ -66,7 +66,7 @@ describe("工具卡展开照 `steps[id]` 画", () => {
 
   it("★ 结果带着行差 ⇒ 改画结果那一份（已画了调用那一份的当场换掉）", () => {
     const ctx = newCtx();
-    const d = opened({}, step({ body: { kind: "changes", diff: lineDiff([row("add", "FROM-CALL")]) } }), LOCAL_ORIGIN, ctx);
+    const d = opened({}, step({ body: { kind: "changes", diff: lineDiff([row("add", "FROM-CALL")]) } }), LOCAL, ctx);
     expect(drawn(d)).toEqual(["+FROM-CALL"]);
     const said = {
       agent: "claude",

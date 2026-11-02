@@ -12,18 +12,18 @@ import { segmented } from "../kit/tabs";
 import { saidOf } from "../kit/detail";
 import { copyText } from "../copy-table";
 import { machineName } from "../control-said";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import type { PlanCmdReply, PlanNewForm } from "../plan-reads";
 import s from "./plan-new.module.css";
 
 /** 框要的几样（计划页给）：有哪几台 · 一台的目录（已有的工作区 · 会话的工作目录）· 问 · 敲 · 成了之后。 */
 export interface NewPlanHost {
-  machines: () => readonly Origin[];
-  dirs: (origin: Origin) => { known: readonly string[]; cwds: readonly string[] };
-  ask: (origin: Origin, dir: string, path: string, domain: string | null) => Promise<PlanNewForm>;
-  create: (origin: Origin, dir: string, path: string, domain: string | null) => Promise<PlanCmdReply>;
+  machines: () => readonly Machine[];
+  dirs: (origin: Machine) => { known: readonly string[]; cwds: readonly string[] };
+  ask: (origin: Machine, dir: string, path: string, domain: string | null) => Promise<PlanNewForm>;
+  create: (origin: Machine, dir: string, path: string, domain: string | null) => Promise<PlanCmdReply>;
   /** 成了：哪台 · 那一片落在的工作区根 · 片名 · toast 那一句。 */
-  done: (origin: Origin, root: string, slice: string, said: string) => void;
+  done: (origin: Machine, root: string, slice: string, said: string) => void;
 }
 
 /** 一行：标签在上 · 那一格 · 底下一句（可缺）。 */
@@ -62,7 +62,7 @@ function dirOptions(d: { known: readonly string[]; cwds: readonly string[] }, ex
 }
 
 /** 开框（`at` ＝ 预填的那台与目录）。 */
-export function openNewPlan(host: NewPlanHost, at: { origin: Origin; dir: string }): void {
+export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: string }): void {
   let origin = at.origin;
   let dir = at.dir;
   let domain: string | null = null;

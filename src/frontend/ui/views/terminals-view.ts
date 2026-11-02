@@ -16,7 +16,7 @@ import { emptyState } from "../kit/empty";
 import { saidOf } from "../kit/detail";
 import { skeletonRows } from "../kit/skeleton";
 import { statusDot, setDot } from "../kit/status-dot";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import type { Watched } from "../terminal-page";
 import type { BoardPick } from "../terminals-board-reads";
 import type { TerminalsBoard } from "../generated/TerminalsBoard";
@@ -30,21 +30,21 @@ export type { BoardPick };
 /** 视图要的读写与出口（缺省由 `main.ts` 接；测试换成假的）。 */
 export interface TerminalsHost {
   /** 要问的那几台。 */
-  machines(): Origin[];
-  read(machines: readonly Origin[]): Promise<TerminalsBoard>;
+  machines(): Machine[];
+  read(machines: readonly Machine[]): Promise<TerminalsBoard>;
   /** 终端面部件那个元素（挂进右边）。 */
   face(): HTMLElement;
   /** 终端面改看这一个（`null` ＝ 没选）。 */
   watch(w: Watched | null): void;
   /** 结束这几行（确认 · 交哪条命令都在宿主）。 */
   end(items: BoardPick[]): Promise<void>;
-  reconnect(origin: Origin): void;
-  goSession(origin: Origin, sid: string): void;
+  reconnect(origin: Machine): void;
+  goSession(origin: Machine, sid: string): void;
   openWindow(pick: BoardPick): void;
   /** 起新会话（框里照常挑台）。 */
   newSession(): void;
   /** 在这一台起新会话。 */
-  newSessionOn(origin: Origin): void;
+  newSessionOn(origin: Machine): void;
 }
 
 /** 一行在页上的那几样（原地改字用）。 */
@@ -62,7 +62,7 @@ interface RowView {
 const POKE_MS = 300;
 
 /** 键 ⇒ 在哪台（多选结束要交）。 */
-const keyOf = (origin: Origin, row: BoardRow): string => `${origin}\u0000${row.key}`;
+const keyOf = (origin: Machine, row: BoardRow): string => `${origin}\u0000${row.key}`;
 
 export class TerminalsView {
   private readonly root: HTMLElement;
@@ -80,7 +80,7 @@ export class TerminalsView {
   private failed: string | null = null;
   private filter: BoardTag = "all";
   /** 每台此刻摆的先后（行键）：重新打开 · 换筛选才照后端那份重排。 */
-  private order = new Map<Origin, string[]>();
+  private order = new Map<Machine, string[]>();
   private rows = new Map<string, RowView>();
   private selected = new Set<string>();
   private current: string | null = null;

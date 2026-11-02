@@ -11,7 +11,7 @@
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
 import { askEnd, sayReply } from "./end-confirm";
-import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
 import { button } from "./kit/button";
 import { tag } from "./kit/badge";
 import { icon } from "./kit/icon";
@@ -32,10 +32,10 @@ export type { SlotSpec };
 
 /** 问那台的一件事与动手的两件（缺省走通道；测试换成假的）。 */
 export interface SlotActs {
-  arrive(origin: Origin, ask: ArriveAsk, within: number): Promise<ArriveSaid>;
-  attach(origin: Origin, tmuxName: string): void;
+  arrive(origin: Machine, ask: ArriveAsk, within: number): Promise<ArriveSaid>;
+  attach(origin: Machine, tmuxName: string): void;
   /** 结束名单里的那个终端（句柄）：交本机后端一项的那一批，回合好的回包。 */
-  end(origin: Origin, terminal: string): Promise<TerminalsEndReply>;
+  end(origin: Machine, terminal: string): Promise<TerminalsEndReply>;
   confirm: ConfirmFn;
 }
 
@@ -164,7 +164,7 @@ export class LaunchSlots {
   }
 
   /** 正看着的那个占位起在的那个终端（没报到、问到了它还在才有）：抽屉的终端页看它。 */
-  watched(): { origin: Origin; terminal: string; name: string; title: string } | null {
+  watched(): { origin: Machine; terminal: string; name: string; title: string } | null {
     const sl = this.showing === null ? undefined : this.slots.get(this.showing);
     const terminal = sl?.missed?.terminal;
     if (!sl || terminal === null || terminal === undefined || sl.spec.tmuxName === null) return null;

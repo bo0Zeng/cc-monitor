@@ -94,7 +94,7 @@ vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { recallDataReport } from "../../../../src/frontend/ui/settings/data-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { noteMachine } from "../../../../src/frontend/ui/ipc/chan-caller";
 
 const settle = async () => {
@@ -184,16 +184,16 @@ describe("上次值", () => {
 
 describe("待办", () => {
   it("★ 每台一段、照成品画要装两档；连不上的那台说离线未检查；角标 ＝ 读到的各台 counts 交本机后端合的 badge", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     answers.set("devbox", report({ counts: counts({ badge: 2 }), todo: [] }));
     const { page, badge } = mount();
     page.loadNow();
     // 机器表那一问的替身头一回要现载夹具模块（`config-patch-fake`），几拍空转等不到 ⇒ 等到那一问落下。
     await vi.waitFor(() => expect(merges.asked.length).toBeGreaterThan(0), { timeout: WALL_CEILING_MS });
     await settle();
-    expect(merges.asked, "一趟只问本机后端一次、交机器表那几台").toEqual([[LOCAL_ORIGIN, "devbox", "gpu"]]);
+    expect(merges.asked, "一趟只问本机后端一次、交机器表那几台").toEqual([[LOCAL, "devbox", "gpu"]]);
     expect(badge.at(-1)).toBe(3);
-    const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"]`)!;
+    const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL}"]`)!;
     expect([...local.querySelectorAll<HTMLElement>("[data-chore]")].map((r) => r.dataset.chore)).toEqual(["install:claude-cli", "install:git"]);
     expect(local.textContent).toContain(copyText("dataPage.install.kind"));
     expect(local.textContent).toContain(copyText("dataPage.install.kindOptional"));
@@ -203,13 +203,13 @@ describe("待办", () => {
   });
 
   it("★ 几台照各台成品的先后键排（读不成的排最后）；顶上那一行照本机后端合的那一份画、段头照那台的 counts，界面不数", async () => {
-    answers.set(LOCAL_ORIGIN, report({ rank: 2, counts: counts() }));
+    answers.set(LOCAL, report({ rank: 2, counts: counts() }));
     answers.set("devbox", report({ rank: 1, counts: counts({ open: 5, optional: 5 }) }));
     merges.reply = counts({ badge: 4, open: 9, must: 3, decide: 1, done: 2 });
     const { page, badge } = mount();
     page.loadNow();
     await settle();
-    expect([...page.element.querySelectorAll<HTMLElement>(".data-machine")].map((e) => e.dataset.machine)).toEqual(["devbox", LOCAL_ORIGIN, "gpu"]);
+    expect([...page.element.querySelectorAll<HTMLElement>(".data-machine")].map((e) => e.dataset.machine)).toEqual(["devbox", LOCAL, "gpu"]);
     const top = page.element.querySelector<HTMLElement>(".data-summary")!;
     expect(top.textContent).toContain(copyText("dataPage.chores.open", { n: 9 }));
     expect([...top.querySelectorAll<HTMLElement>("[data-kind]:not(button)")].map((t) => [t.dataset.kind, t.textContent])).toEqual([
@@ -223,7 +223,7 @@ describe("待办", () => {
   });
 
   it("［安装方法］开的是那份成品给的链接；没有链接的那件不摆这颗", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     const { page } = mount();
     page.loadNow();
     await settle();
@@ -236,7 +236,7 @@ describe("待办", () => {
   it("★ 复制 ⇒ 剪贴板是那一件交来的整份、那件标「已复制 · 等你贴」；整份盖两件 ⇒ 两件一起标；那台认出已做 ⇒ 段头说一句、收进「已做的 N」", async () => {
     const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "为什么", steps: ["打开 f"], diff: { rows: [{ kind: "ctx", text: "{", oldNo: 3, newNo: 3 }, { kind: "add", text: "K=SECRET", newNo: 4 }], shown: 2, truncated: false, added: 1, removed: 0, stat: "+1" } });
     const hooks = chore({ id: "cc-bus-hooks", name: "收信", copy: "h", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "w" });
-    answers.set(LOCAL_ORIGIN, report({ todo: [relay, hooks] }));
+    answers.set(LOCAL, report({ todo: [relay, hooks] }));
     const { page } = mount();
     page.loadNow();
     await settle();
@@ -249,16 +249,16 @@ describe("待办", () => {
     expect(clipFake.written).toEqual(["{SECRET}"]);
     expect(row("relay").textContent).toContain(copyText("dataPage.state.copied"));
     expect(row("cc-bus-hooks").textContent).toContain(copyText("dataPage.state.copied"));
-    answers.set(LOCAL_ORIGIN, report({ todo: [{ ...relay, state: "done" }, hooks] }));
+    answers.set(LOCAL, report({ todo: [{ ...relay, state: "done" }, hooks] }));
     page.loadNow();
     await settle();
-    const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"]`)!;
+    const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL}"]`)!;
     expect(local.textContent).toContain(copyText("dataPage.chores.recognized", { names: "实时显示" }));
     expect(local.textContent).toContain(copyText("dataPage.chores.doneN", { n: 1 }));
   });
 
   it("★ 可选的［不用了］⇒ 交那台记下（chores-mark decline）再重读；不做的那件［还是要做］⇒ undecline；要做的没有［不用了］", async () => {
-    answers.set(LOCAL_ORIGIN, report({ todo: [chore({ id: "dead:/h/.bashrc", why: "w" }), chore({ id: "stale-ccm", kind: "must", action: "copyCommand", copy: "rm x", why: "w" })] }));
+    answers.set(LOCAL, report({ todo: [chore({ id: "dead:/h/.bashrc", why: "w" }), chore({ id: "stale-ccm", kind: "must", action: "copyCommand", copy: "rm x", why: "w" })] }));
     const { page } = mount();
     page.loadNow();
     await settle();
@@ -267,30 +267,30 @@ describe("待办", () => {
     expect([...row("stale-ccm").querySelectorAll("button")].some((b) => b.textContent === copyText("dataPage.chore.decline"))).toBe(false);
     [...row("dead:/h/.bashrc").querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.chore.decline"))!.click();
     await settle();
-    expect(marks).toEqual([{ origin: LOCAL_ORIGIN, args: { op: "decline", id: "dead:/h/.bashrc" } }]);
-    answers.set(LOCAL_ORIGIN, report({ todo: [chore({ id: "dead:/h/.bashrc", state: "declined" })] }));
+    expect(marks).toEqual([{ origin: LOCAL, args: { op: "decline", id: "dead:/h/.bashrc" } }]);
+    answers.set(LOCAL, report({ todo: [chore({ id: "dead:/h/.bashrc", state: "declined" })] }));
     page.loadNow();
     await settle();
-    page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"] [aria-expanded]`)!.click();
+    page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL}"] [aria-expanded]`)!.click();
     [...row("dead:/h/.bashrc").querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.chore.undecline"))!.click();
     await settle();
-    expect(marks.at(-1)).toEqual({ origin: LOCAL_ORIGIN, args: { op: "undecline", id: "dead:/h/.bashrc" } });
+    expect(marks.at(-1)).toEqual({ origin: LOCAL, args: { op: "undecline", id: "dead:/h/.bashrc" } });
   });
 
   it("［去定…］带上那台去别名页那一项；［先装 cc-bus］去扩展页", async () => {
-    answers.set(LOCAL_ORIGIN, report({ todo: [chore({ id: "clash:cc", kind: "decide", action: "decide", go: { page: "machine", tab: "config", anchor: "clash" } }), chore({ id: "cc-bus-hooks", state: "blocked", action: "installFirst", go: { page: "ext" } })] }));
+    answers.set(LOCAL, report({ todo: [chore({ id: "clash:cc", kind: "decide", action: "decide", go: { page: "machine", tab: "config", anchor: "clash" } }), chore({ id: "cc-bus-hooks", state: "blocked", action: "installFirst", go: { page: "ext" } })] }));
     const { page, went } = mount();
     page.loadNow();
     await settle();
     page.element.querySelector<HTMLElement>('[data-chore="clash:cc"] button')!.click();
     page.element.querySelector<HTMLElement>('[data-chore="cc-bus-hooks"] button')!.click();
-    expect(went).toEqual([{ machine: LOCAL_ORIGIN, tab: "config", anchor: "clash" }, { page: "ext", anchor: undefined }]);
+    expect(went).toEqual([{ machine: LOCAL, tab: "config", anchor: "clash" }, { page: "ext", anchor: undefined }]);
   });
 });
 
 describe("cc-monitor 放了什么", () => {
   it("★ 改过你的文件：路径 ＋ 改了什么 · 撤回在哪；［前往］带上那台去那一栏那一节", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     answers.set("devbox", report());
     const { page, went } = mount();
     page.openTab("placed");
@@ -305,7 +305,7 @@ describe("cc-monitor 放了什么", () => {
   });
 
   it("本机那两块只在本机 chip 上出现；连不上的那台给一条离线条 ＋［重试］", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     const { page } = mount();
     page.openTab("placed");
     page.loadNow();
@@ -322,20 +322,20 @@ describe("cc-monitor 放了什么", () => {
   });
 
   it("★ 机器名在画的那一刻取：那台的成品晚到（先画成「机器不明」）⇒ 下一次画换成成品里的名字", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     const { page } = mount();
     page.openTab("placed");
     page.loadNow();
     await settle();
     const chips = () => [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].map((b) => b.textContent);
     expect(chips()[0]).toBe(copyText("control.machine.unsure"));
-    noteMachine(LOCAL_ORIGIN, { name: "workstation", offlineSaid: "" });
+    noteMachine(LOCAL, { name: "workstation", offlineSaid: "" });
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
     expect(chips()[0]).toBe("workstation");
   });
 
   it("★ 远端那台的「cc-monitor 的文件」照那台 own 排：名字 · 是什么 · 删了会怎样 · 大小；不在的不给打开；打开 ＝ 在文件窗口里打开那一样", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     answers.set("devbox", report({ home: "/home/u", own: [...report().own, { id: "fresh", what: "编的一句：界面照抄", path: "~/.cc-monitor/fresh", dir: true, class: "cache", exists: false, size: null }] }));
     const { page } = mount();
     page.openTab("placed");
@@ -360,7 +360,7 @@ describe("cc-monitor 放了什么", () => {
   });
 
   it("★ 本机那一块「cc-monitor 的文件」也照本机后端 data-report 的 own 排（与远端同一套行）；打开 ＝ 本机打开 · 在文件夹中显示；不在的两颗都不给", async () => {
-    answers.set(LOCAL_ORIGIN, report({ home: "/l", own: [...report().own, { id: "fresh", what: "编的一句：本机也照抄", path: "~/.cc-monitor/fresh.json", dir: false, class: "cache", exists: true, size: 7 }] }));
+    answers.set(LOCAL, report({ home: "/l", own: [...report().own, { id: "fresh", what: "编的一句：本机也照抄", path: "~/.cc-monitor/fresh.json", dir: false, class: "cache", exists: true, size: 7 }] }));
     const own = document.createElement("div");
     own.dataset.host = "monitor-own";
     const page = new DataPage({ claudeDir: document.createElement("div"), ownFiles: own, goTo: () => {}, setBadge: () => {} });
@@ -390,13 +390,13 @@ describe("cc-monitor 放了什么", () => {
   });
 
   it("★ 连不上的那台：本机后端记着上次读成的那一份 ⇒ 照上次的画 ＋ 警告条说多旧（跨重启：上次值不住界面）", async () => {
-    answers.set(LOCAL_ORIGIN, report());
+    answers.set(LOCAL, report());
     answers.set("devbox", report({ changedFiles: [{ path: "~/.zshrc", what: "上次那一份", undo: null }] }));
     const first = mount();
     first.page.loadNow();
     await settle();
     expect(seen.get("devbox")?.data, "读成了那台 ⇒ 交本机后端记下").toBeTruthy();
-    expect(seen.has(LOCAL_ORIGIN), "本机那台不记").toBe(false);
+    expect(seen.has(LOCAL), "本机那台不记").toBe(false);
     // 「重启」：那台这回断开。
     answers.delete("devbox");
     document.body.replaceChildren();

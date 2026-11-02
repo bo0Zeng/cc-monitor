@@ -16,13 +16,13 @@
  * 宿主（`tab-stream-view.ts`）：一行新记录到了且不在批期 ⇒ 要；批结束 ⇒ 凡是「没要过或又长了」的 tab 都要
  * （不只 active：分叉 `↳` 在 tab 栏上、监控板每格都显示 context% 与 agent 数）。
  */
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { readSessionFacts, type FactsResult, type SessionFacts } from "../session-reads";
 import type { OutlineFailure } from "../session-reads";
 import { MAX_TRANSIENT_FAILURES } from "./outline-source";
 
 /** 这份事实问的是哪台机器上的哪份会话（上限表住那台的偏好，不随请求交）。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
-export type FactsWhere = () => { origin: Origin; jsonlPath: string } | null;
+export type FactsWhere = () => { origin: Machine; jsonlPath: string } | null;
 
 /** 事实到了 / 可不可用变了 —— 宿主据此落到 tab 上、刷界面。 */
 export interface FactsSink {

@@ -11,7 +11,7 @@
  * 入参 · 回包都是后端类型生成的（`generated/`）；回包形状由握手时的形状指纹管，这里不逐格判。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL } from "./ipc/origin";
 import type { ForwardRow } from "./generated/ForwardRow";
 import { saidOf } from "./kit/detail";
 
@@ -39,7 +39,7 @@ function said(e: unknown): Error {
 /** 起一条转发，回它的号（只交那台的名字：怎么拨照本机后端的机器表，流起没起来都一样）。口绑不上 / 断开 ⇒ 抛那句原话。 */
 export async function startForward(spec: ForwardSpec): Promise<string> {
   try {
-    const { id } = await callTyped(LOCAL_ORIGIN, "forward-start", { ...spec }, budgetWithin(FORWARD_START_BUDGET_MS));
+    const { id } = await callTyped(LOCAL, "forward-start", { ...spec }, budgetWithin(FORWARD_START_BUDGET_MS));
     return id;
   } catch (e) {
     throw said(e);
@@ -49,7 +49,7 @@ export async function startForward(spec: ForwardSpec): Promise<string> {
 /** 停一条转发。 */
 export async function stopForward(id: string): Promise<void> {
   try {
-    await callTyped(LOCAL_ORIGIN, "forward-stop", { id }, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
+    await callTyped(LOCAL, "forward-stop", { id }, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
   } catch (e) {
     throw said(e);
   }
@@ -58,7 +58,7 @@ export async function stopForward(id: string): Promise<void> {
 /** 列当前所有转发。 */
 export async function listForwards(): Promise<ForwardStatus[]> {
   try {
-    const { forwards } = await callTyped(LOCAL_ORIGIN, "forward-list", {}, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
+    const { forwards } = await callTyped(LOCAL, "forward-list", {}, budgetWithin(FORWARD_LEDGER_BUDGET_MS));
     return forwards;
   } catch (e) {
     throw said(e);

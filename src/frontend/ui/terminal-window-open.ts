@@ -2,10 +2,10 @@
  * 开一扇只装终端面的窗（「终端」视图上「新窗口」）：一个终端一扇（窗口名由壳按「那台 ＋ 句柄」定，已开着就拉前）。
  */
 import { commands } from "./ipc/commands";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 export interface OpenTerminalWindow {
-  origin: Origin;
+  origin: Machine;
   /** 名单里的句柄。 */
   terminal: string;
   /** tmux 会话名。 */

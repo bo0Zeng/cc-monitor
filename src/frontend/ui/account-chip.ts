@@ -10,7 +10,7 @@ import { fetchAccounts } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
 import { accountAvatarEl } from "./account-color";
 import { failToast } from "./kit/toast";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { appStore, quotaReadOf } from "./app-store";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
@@ -48,9 +48,9 @@ export interface AccountChipDeps {
   /** 打开设置窗口的账号组。 */
   openSettings: () => void;
   /** 点按钮：开 / 关「账号」面板（没有当前会话 ⇒ `sid` 为 `null`、那台是本机）。 */
-  togglePanel?: (sid: string | null, origin: Origin) => void;
+  togglePanel?: (sid: string | null, origin: Machine) => void;
   /** 切完当前账号后回调：让 main.ts 立刻重问那几台的默认号（徽章「不一致」照它比）。 */
-  onDefaultChanged?: (origin: Origin) => void;
+  onDefaultChanged?: (origin: Machine) => void;
 }
 
 export class AccountChip {
@@ -62,10 +62,10 @@ export class AccountChip {
   /** 本会话那一形：`[⇄] [头像] 名 窗口 用量 [↻重置]`（无会话时藏着）。 */
   private sessionEl: HTMLElement;
   /** 此刻的当前会话（`null` ＝ 没有 tab ⇒ 按钮退成「默认 work」）。 */
-  private active: { sid: string; origin: Origin } | null = null;
+  private active: { sid: string; origin: Machine } | null = null;
   private chipModel: SessionAccountReply | null = null;
   /** 没有会话时 chip 看的那台：本机。 */
-  private readonly origin: Origin = LOCAL_ORIGIN;
+  private readonly origin: Machine = LOCAL;
   /** `refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
   private bound = false;
   /** 读 store 里 chip 绑的那一台（`account-reads.ts` 每取回一次写进去），不自己存一份。本机那一档 not-ready ⇒ `null`（整个隐藏）。 */
@@ -112,7 +112,7 @@ export class AccountChip {
   }
 
   /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
-  setActive(a: { sid: string; origin: Origin } | null): void {
+  setActive(a: { sid: string; origin: Machine } | null): void {
     if (this.active?.sid === a?.sid && this.active?.origin === a?.origin) return;
     this.active = a;
     this.paint();
@@ -228,13 +228,13 @@ export class AccountChip {
   /**
    * 「新会话默认」那个下拉锚到别处（账号面板底栏）：那台是 chip 绑的这台 ⇒ 同一份；别的台 ⇒ 现取那台的账号清单。
    */
-  async openDefaultMenu(anchor: HTMLElement, origin: Origin): Promise<void> {
+  async openDefaultMenu(anchor: HTMLElement, origin: Machine): Promise<void> {
     if (origin !== this.origin) await fetchAccounts(origin);
     await this.toggleMenu(anchor, origin);
   }
 
   /** 那台的新会话默认是哪个号（面板底栏那颗按钮上的字）；store 里还没有那台 ⇒ 现取一次（取回来面板随 store 重画）、这一次 `null`。 */
-  defaultOf(origin: Origin): string | null {
+  defaultOf(origin: Machine): string | null {
     if (!appStore.accounts.get().has(origin)) {
       void fetchAccounts(origin);
       return null;
@@ -243,7 +243,7 @@ export class AccountChip {
     return st && deriveUi(st).kind === "ready" ? (defaultAccount(st)?.name ?? null) : null;
   }
 
-  private async toggleMenu(anchor: HTMLElement = this.element, origin: Origin = this.origin): Promise<void> {
+  private async toggleMenu(anchor: HTMLElement = this.element, origin: Machine = this.origin): Promise<void> {
     if (menuAnchoredOn(anchor)) {
       closeMenu();
       return;
@@ -282,7 +282,7 @@ export class AccountChip {
    * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 徽章（那台后端写好的 `badge`，`accounts_query::badge_of`）；
    * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
    */
-  private accountItem(a: Account, isCurrent: boolean, origin: Origin): MenuItem {
+  private accountItem(a: Account, isCurrent: boolean, origin: Machine): MenuItem {
     const selectable = a.selectable;
     const badge = a.badge;
     // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
@@ -313,9 +313,9 @@ export class AccountChip {
 
   /**
    * 同步快照当前 ready 账号（供 Ctrl+K 命令同步读）；非 ready ⇒ null。门与 [`toggleMenu`] 同源（[`accountPickerState`]）。
-   * 快照来自本机那一半时 `origin` 是 `LOCAL_ORIGIN`（消费方不读它，留着让人看得出是哪一半）。
+   * 快照来自本机那一半时 `origin` 是 `LOCAL`（消费方不读它，留着让人看得出是哪一半）。
    */
-  snapshotReady(): { origin: Origin; accounts: Account[]; defaultName: string | null } | null {
+  snapshotReady(): { origin: Machine; accounts: Account[]; defaultName: string | null } | null {
     const st = this.accountPickerState();
     if (!st) return null;
     const ui = deriveUi(st);
@@ -330,7 +330,7 @@ export class AccountChip {
     if (a?.selectable) await this.selectDefault(a);
   }
 
-  private async selectDefault(a: Account, origin: Origin = this.origin): Promise<void> {
+  private async selectDefault(a: Account, origin: Machine = this.origin): Promise<void> {
     this.closeMenu();
     try {
       await accountsSetDefault(origin, a.name);
