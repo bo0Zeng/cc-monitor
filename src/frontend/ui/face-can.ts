@@ -6,7 +6,7 @@
  * 不画点，几个短名一律答「不能」。界面不自己拼脸。
  */
 import type { SessionFace } from "./generated/SessionFace";
-import type { WireSessionActivity } from "./generated/WireSessionActivity";
+import type { SessionActivity } from "./generated/SessionActivity";
 import { copyText } from "./copy-table";
 import { terminalFrontAvailable } from "./terminal-front";
 
@@ -18,7 +18,7 @@ export const isLive = (f: Face): boolean => f?.life.is === "live";
 /** 那台说不清活不活（判不了 · 那台看不见）。 */
 export const isUnclear = (f: Face): boolean => f?.life.is === "unclear";
 /** 进程在 ⇒ 那台判出的在干什么（判不出 ⇒ 没有）；进程不在 ⇒ 没有。 */
-export const activityOf = (f: Face): WireSessionActivity | undefined => (f?.life.is === "live" ? f.life.activity : undefined);
+export const activityOf = (f: Face): SessionActivity | undefined => (f?.life.is === "live" ? f.life.activity : undefined);
 /** 还有终端可去（拉前 · 停 · 终端页 · 自动跟随 · 后台物化）。 */
 export const hasTerminal = (f: Face): boolean => f?.can.term.can === "yes";
 /**

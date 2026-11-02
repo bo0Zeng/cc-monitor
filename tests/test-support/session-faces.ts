@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SessionFace } from "../../src/frontend/ui/generated/SessionFace";
-import type { WireSessionActivity } from "../../src/frontend/ui/generated/WireSessionActivity";
+import type { SessionActivity } from "../../src/frontend/ui/generated/SessionActivity";
 import type { TabManager } from "../../src/frontend/ui/tabs";
 import type { TabStore } from "../../src/frontend/ui/tab-store";
 import { REPO_ROOT } from "./repo-root";
@@ -35,7 +35,7 @@ export function allFaces(): Array<[FaceKey, SessionFace]> {
   return (Object.keys(GOLDEN) as FaceKey[]).map((k) => [k, goldenFace(k)]);
 }
 
-const LIVE_KEY: Record<WireSessionActivity, FaceKey> = {
+const LIVE_KEY: Record<SessionActivity, FaceKey> = {
   working: "live-working-plain",
   needs_you: "live-needs-you-tmux",
   idle: "live-idle",
@@ -46,7 +46,7 @@ const LIVE_KEY: Record<WireSessionActivity, FaceKey> = {
  * 活着、在干那一态的那一张（`null` ＝ 判不出在干什么）；`tmux` 给了 ⇒ 终端那一格照它（在 tmux 里 ⇒ `tmux`，否则 `direct`），
  * 在 tmux 里的结束得了（`can.end` 同 `SessionFace::of` 那一判）。
  */
-export function liveFace(activity: WireSessionActivity | null, tmux?: boolean): SessionFace {
+export function liveFace(activity: SessionActivity | null, tmux?: boolean): SessionFace {
   const f = goldenFace(activity === null ? "live-unclear" : LIVE_KEY[activity]);
   if (tmux !== undefined) f.can.term = { can: "yes", host: tmux ? "tmux" : "direct" };
   if (tmux === true) f.can.end = { can: "yes" };
