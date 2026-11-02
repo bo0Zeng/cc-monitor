@@ -1453,6 +1453,11 @@ fn the_board_says_which_cells_can_go_back_to_default() {
     );
     assert!(!at(0, "in", None).1, "没设的那一格不出");
     assert!(!at(0, "caps", Some("5h")).1);
-    let smart = v.board.all.iter().find(|c| c.key == "smart").expect("smart");
+    let smart = v
+        .board
+        .all
+        .iter()
+        .find(|c| c.key == "smart")
+        .expect("smart");
     assert_eq!((smart.from, smart.reset), (form::RotFrom::Own, true));
 }
