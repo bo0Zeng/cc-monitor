@@ -32,7 +32,7 @@ pub(crate) fn ask_with(
     // 开口那句只跟 tmux（`session-open` 的 `prompt` 只随 `run: tmux`）：这台没有 ⇒ 不开框；探不出 ⇒ 照做，起的那一步再说。
     if tmux == Some(false) {
         return Err(crate::wire::spec::fail(
-            crate::NO_TMUX,
+            crate::wire::NO_TMUX,
             copy_text("bePlan.ask.noTmux", &[]),
         ));
     }

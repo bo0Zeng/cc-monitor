@@ -1,5 +1,6 @@
-use super::{unavailable_from, unavailable_here, NO_TMUX};
 use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
+use crate::stream::inbound::{unavailable_from, unavailable_here, unix_mode_unavailable};
+use crate::wire::{NO_TMUX, NO_UNIX_MODE};
 
 /// ★ 红线之一：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
 ///
@@ -24,20 +25,15 @@ fn production_hello_fills_unavailable_from_this_machine() {
 /// 两侧异源：左边是 `unix_mode_unavailable` 的产出，右边是本条手写的名单。
 #[test]
 fn the_unix_mode_axis_lists_exactly_the_commands_that_declare_it() {
-    let got: Vec<(String, String)> = super::unix_mode_unavailable(false)
+    let got: Vec<(String, String)> = unix_mode_unavailable(false)
         .into_iter()
         .map(|u| (u.command, u.code))
         .collect();
-    assert_eq!(
-        got,
-        [("files-chmod".to_string(), super::NO_UNIX_MODE.to_string())]
-    );
-    assert!(super::unix_mode_unavailable(true).is_empty());
+    assert_eq!(got, [("files-chmod".to_string(), NO_UNIX_MODE.to_string())]);
+    assert!(unix_mode_unavailable(true).is_empty());
     // 这份二进制是 unix ⇒ 生产那一格里没有这一维。
     assert!(
-        !unavailable_here()
-            .iter()
-            .any(|u| u.code == super::NO_UNIX_MODE),
+        !unavailable_here().iter().any(|u| u.code == NO_UNIX_MODE),
         "unix 上的 hello 说了没有 unix 权限位"
     );
 }

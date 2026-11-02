@@ -79,3 +79,8 @@ pub(crate) mod transfer_copy; // 两台之间复制一组（经本机中转，�
 #[cfg(test)]
 #[path = "../../../tests/backend/control/said_tests.rs"]
 mod said_tests;
+
+// 监听口拒绝理由闭集那一条（要问本层小中继的 `relay_refusal`；帧面零件那个包够不到这里）。
+#[cfg(test)]
+#[path = "../../../tests/backend/wire/listen_on_control_tests.rs"]
+mod listen_on_control_tests;

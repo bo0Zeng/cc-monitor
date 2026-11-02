@@ -285,7 +285,7 @@ pub(super) mod tests {
     }
 
     /// `word` 在 `text` 里作为**完整标识符**出现几次。
-    /// 后端顶层模块名（`lib.rs` 生产段里的 `mod <名>;`，`#[path]` 挂进来的判据不算）。
+    /// 后端顶层模块名（`lib.rs` 生产段里的 `mod <名>;` · 拆成包的那几层挂回来的 `use backend_<包> as <名>;`，`#[path]` 挂进来的判据不算）。
     fn top_level_modules() -> BTreeSet<String> {
         let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
@@ -295,7 +295,13 @@ pub(super) mod tests {
             .iter()
             .enumerate()
             .filter(|(i, _)| *i == 0 || !lines[i - 1].starts_with("#[path"))
-            .filter_map(|(_, l)| l.strip_prefix("mod "))
+            .filter_map(|(_, l)| {
+                l.strip_prefix("mod ").or_else(|| {
+                    l.strip_prefix("use backend_")
+                        .and_then(|r| r.split_once(" as "))
+                        .map(|(_, name)| name)
+                })
+            })
             .filter_map(|r| r.split(';').next())
             .map(|n| n.trim().to_string())
             .collect()

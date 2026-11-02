@@ -124,7 +124,10 @@ pub use wire::b64_encode; // bench `s7_history_read` 读它（crate 外读者）
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_tests.rs"]
 mod test_home_tests; // `src/common/test-home` 自己的行为（换家 · 摘会话变量 · 临时目录照旧）：子进程那几条要真测试二进制
-mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸
+use backend_wire as wire; // 帧面的协议零件：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸（独立的包 `backend-wire`：只引 agents · relay · 纯工具 · 平台四层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/wire.rs"]
+mod cross_wire; // 帧面零件判据里引到上层的那几条（那一层是独立的包、够不到上层）
 
 /// 🔴 **这一份后端二进制自己带着的身份**（`<开>` ＋ `common::id::BUILD_ID` ＋ `<关>`，拼法 [`common::id::build_stamp`]）。
 ///
@@ -158,8 +161,6 @@ mod target_parity_guard;
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub(crate) use common::time::Tz;
-/// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`stream/writer.rs::writer_task`）。
-pub(crate) use wire::REPLY_PAGE_BYTES;
 
 /// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
 pub(crate) fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
@@ -180,91 +181,6 @@ mod one_clock_guard;
 #[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;
-
-// ── 第四面：本机到底缺什么（tmux 可用性） ───────────
-// 它们不是「分派」，是 hello 帧的**内容**。`main_fourth_face_tests` 用 `super::` 引它们。
-/// 命令级 code —— **「这台机器上没有 tmux」**。
-///
-/// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个源头**：真相是
-/// `inbound::REGISTRY` 里各条命令自己登记的 `codes`，本常量只拿它去**查那张表**。
-/// 查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
-/// 谁把那边的拼写改了，这边不会静默跟丢。
-pub(crate) const NO_TMUX: &str = "no_tmux";
-
-/// 命令级 code —— **「这个平台没有 unix 权限位」**。
-///
-/// 只有 `files-chmod` 声明它（`files/write.rs::change_mode_reporting` 在非 unix 上回它）。
-/// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
-/// `hello.unavailable` 经 [`unix_mode_unavailable`] 读它。
-pub(crate) const NO_UNIX_MODE: &str = "no_unix_mode";
-
-/// unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
-/// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 `inbound::REGISTRY` 的 `codes` 现推。
-pub(crate) fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
-    if unix_mode_bits {
-        return Vec::new();
-    }
-    stream::inbound::REGISTRY
-        .iter()
-        .filter(|s| s.codes.contains(&NO_UNIX_MODE))
-        .map(|s| wire::Unavailable {
-            command: s.name.to_string(),
-            code: NO_UNIX_MODE.to_string(),
-        })
-        .collect()
-}
-
-/// 这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
-///
-/// # 这里为什么没有一张手写的「命令 → 它依赖什么」表
-///
-/// 那件事 `inbound::REGISTRY` 已经说过了：**谁会回 `no_tmux`，谁就依赖 tmux**。
-/// 再手写一张 = 第二份真相，而两份真相里迟早有一份是旧的（本工作区最贵的那一类病）。
-/// ⇒ 直接从 `codes` 派生。副作用正是要的：以后**新加**一条会回 `no_tmux` 的命令，
-/// 它自动进这张表，没有人需要记得来改这里。
-///
-/// # `tmux` 的三态各自落在哪（🔴 这一格是本函数唯一容易假绿的地方）
-///
-/// · `Some(false)`（**确证没有**）⇒ 列进表；
-/// · `Some(true)` ⇒ 不列；
-/// · `None`（**判不出来**）⇒ **不列**。
-///
-/// 「不知道」有两条压法，两条都坏、但坏得不一样：压成**做不到** ⇒ 客户端灰掉按钮 ⇒
-/// **能用的功能从界面上消失，而这种消失没有任何回音**（用户只会以为它不支持）；
-/// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
-/// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
-/// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
-pub(crate) fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
-    let mut out = Vec::new();
-    if tmux == Some(false) {
-        for spec in stream::inbound::REGISTRY {
-            if spec.codes.contains(&NO_TMUX) {
-                out.push(wire::Unavailable {
-                    command: spec.name.to_string(),
-                    code: NO_TMUX.to_string(),
-                });
-            }
-        }
-    }
-    out
-}
-
-/// 生产入口 —— hello 那一帧填的就是它（真填：`stream/entry.rs::build_hello`）。
-/// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
-///
-/// 🔴 **这一趟探测的结果会被用很久。**
-/// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
-/// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
-/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
-/// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
-pub(crate) fn unavailable_here() -> Vec<wire::Unavailable> {
-    let mut out = unavailable_from(platform::tmux::tmux_present(
-        platform::tmux::TMUX_PLATFORM,
-        std::env::var_os("PATH").as_deref(),
-    ));
-    out.extend(unix_mode_unavailable(cfg!(unix)));
-    out
-}
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
 #[cfg(test)]

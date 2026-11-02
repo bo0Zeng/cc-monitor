@@ -270,7 +270,8 @@ mod tests {
         );
     }
 
-    /// 后端顶层模块名（`lib.rs` 生产段里的 `mod <名>;`，`#[path]` 挂进来的判据不算），从源码现取。
+    /// 后端顶层模块名（`lib.rs` 生产段里的 `mod <名>;` · 拆成包的那几层挂回来的 `use backend_<包> as <名>;`，
+    /// `#[path]` 挂进来的判据不算），从源码现取。
     fn top_modules() -> Vec<String> {
         let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
@@ -280,7 +281,13 @@ mod tests {
             .iter()
             .enumerate()
             .filter(|(i, _)| *i == 0 || !lines[i - 1].starts_with("#[path"))
-            .filter_map(|(_, l)| l.strip_prefix("mod "))
+            .filter_map(|(_, l)| {
+                l.strip_prefix("mod ").or_else(|| {
+                    l.strip_prefix("use backend_")
+                        .and_then(|r| r.split_once(" as "))
+                        .map(|(_, name)| name)
+                })
+            })
             .filter_map(|r| r.split(';').next())
             .map(|n| n.trim().to_string())
             .collect()
@@ -884,11 +891,8 @@ mod tests {
             rings(&graph(&[("a", "b"), ("b", "a"), ("c", "d")])),
             vec![vec!["a", "b"]]
         );
-        // 根上转出：`crate::REPLY_PAGE_BYTES` 记到它住的那个模块头上（此刻 lib.rs 里就有这一行）。
+        // 根上转出：`crate::Tz` 记到它住的那个模块头上（此刻 lib.rs 里就有这一行）。
         let via = root_reexports(&top_modules());
-        assert_eq!(
-            via.get("REPLY_PAGE_BYTES").map(String::as_str),
-            Some("wire")
-        );
+        assert_eq!(via.get("Tz").map(String::as_str), Some("common"));
     }
 }

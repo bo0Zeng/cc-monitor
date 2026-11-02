@@ -230,7 +230,7 @@ fn a_route_name_is_not_taken_as_an_agent() {
             serde_json::json!({ "source": "", "agent": route }),
         ),
     ] {
-        let fail = crate::wire::typed::tests::ask(cmd, args).expect_err(cmd);
+        let fail = crate::cross_wire::typed_tests::ask(cmd, args).expect_err(cmd);
         assert_eq!(
             fail.code.as_deref(),
             Some("bad_args"),

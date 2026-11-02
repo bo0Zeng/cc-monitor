@@ -30,7 +30,7 @@ use relay_route_core::{Cap, Over};
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。
 pub const ENV_RESIDENT: &str = crate::platform::child_env::RESIDENT;
 
-/// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
+/// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（常驻那一侧经这里读，同中转宿主的 `ENV_PORT`）。
 pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;
 
 /// 目录独占锁抢不到（已有一个常驻后端在听）的退出码。**与「起不来」区分开**：
@@ -60,24 +60,24 @@ pub const REFUSE_UNREACHABLE: &str = "unreachable";
 /// `--resident-call` 那一行 stdin：问哪条帧命令 ＋ 它的入参。发的一方（`remote_ask::ask_resident`）与收的一方（`control/resident.rs::call`）同一个类型。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ResidentCall {
-    pub(crate) cmd: String,
+pub struct ResidentCall {
+    pub cmd: String,
     #[serde(default)]
-    pub(crate) args: serde_json::Value,
+    pub args: serde_json::Value,
 }
 
 /// `--resident-call` 的码：这台没有常驻在听 ⇒ 照实失败（不在这台起一个冷进程顶上）。
-pub(crate) const CALL_ABSENT: &str = "resident_absent";
+pub const CALL_ABSENT: &str = "resident_absent";
 /// `--resident-call` 的码：等到期限，常驻还没回。
-pub(crate) const CALL_TIMED_OUT: &str = "timed_out";
+pub const CALL_TIMED_OUT: &str = "timed_out";
 
 /// 那一台（`machine` ＝ 给人看的称呼）的常驻没在跑。
-pub(crate) fn call_absent(machine: &str) -> String {
+pub fn call_absent(machine: &str) -> String {
     copy_core::copy_text("beResident.call.absent", &[("machine", machine)])
 }
 
 /// 那一台的常驻在期限 `after` 内没回。
-pub(crate) fn call_timed_out(machine: &str, after: crate::platform::child::Deadline) -> String {
+pub fn call_timed_out(machine: &str, after: crate::platform::child::Deadline) -> String {
     copy_core::copy_text(
         "beResident.call.timedOut",
         &[
