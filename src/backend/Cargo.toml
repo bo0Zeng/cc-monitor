@@ -82,29 +82,28 @@ path = "../../tests/benches/s7_history_read.rs"
 harness = false
 test = true
 
-[lints.clippy]
-# 「现在」只有一处（禁的路径与理由住 `clippy.toml`）：别处直接问系统钟 ⇒ clippy 红。
-disallowed_methods = "deny"
-
-[lints.rust]
-# 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。
-duplicate_macro_attributes = "deny"
+[lints]
+workspace = true
 
 [features]
 # 截图台架那一档（`tests/shots/real/pool.mjs` 编）：「现在」从台架交的时刻接着走（`common::time::shots_clock`）。
+# 拨钟那一段住 `backend-common`，这里只转给它。
 # 发版 / CI / 门禁里不许开（判据 `one_clock_guard` · 壳那一侧 `shots_feature_guard_tests::s3`）。
-shots = []
+shots = ["backend-common/shots"]
 
 [dependencies]
-# Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
-# local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
-# tokio 1.52.x, notify 8.2.x, walkdir 2.5.x,
-# tracing 0.1.x). Keep this list minimal.
-#
-# `rustls` / `webpki-roots` 也在 `../frontend/shell/Cargo.lock` 里：中转 crate `comms-outward` 是那个 workspace 的成员，
-# 两份锁解出同一个版本（`cargo tree -d` 两边都只有一份）。一台从没下过它们的机器，第一次构建仍要联网。
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# 第三方 crate 一律 `<名>.workspace = true`：版本与缺省 feature 只住本文件末尾的 `[workspace.dependencies]`
+# （判据 `readonly_guard::g6_dependency_signoff`）。仓内 crate 照写 `path`。
+serde.workspace = true
+serde_json.workspace = true
+# 本 crate 里平台原语那一层（唯一许平台原语与平台 cfg 的地方）。
+backend-platform = { path = "platform" }
+# 两边都要、又不含平台原语的纯工具那一层（只引平台层）。
+backend-common = { path = "common" }
+# 插件通用调用口（只引平台层）。
+backend-plugin = { path = "plugin" }
+# 文件管理那一块（只读族 ＋ 写面；只引纯工具与平台两层）。
+backend-files = { path = "files" }
 # 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
 comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
@@ -142,9 +141,11 @@ pidwatch-core = { path = "../common/pidwatch-core" }
 copy-core = { path = "../common/copy-core" }
 # 一组一条命令的结局那一句（`said_of`）：与文件窗口 · 手机嵌的核心同一份。
 batch-core = { path = "../common/batch-core" }
+# 助手正文的 Markdown 解析成块树（`md_core::parse`，出 `cmd_wire::md` 的 `Doc`）：两家适配层翻译助手正文时调它，两端只照树排版。
+md-core = { path = "../common/md-core" }
 # 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
 # `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
-rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
+rhai.workspace = true
 # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `deploy` crate。
 deploy-contract = { path = "../common/deploy-contract" }
 # 拨号核心（竞速 · 跳板 · 鉴权 · 复用 · 用法 · SFTP 客户端）：手机同一份；本后端经 `dial/mod.rs::host` 装上自己那一套。
@@ -158,37 +159,16 @@ egress = { path = "egress" }
 resident-client = { path = "../comms/resident-client" }
 # 通道那一句（离线那一句只由连接层写：`chan::said::offline`）。
 comms-inward = { path = "../comms/inward" }
-tokio = { version = "1", features = [
-    "rt-multi-thread",
-    "macros",
-    "io-util",
-    # io-std gates tokio::io::stdout(); io-util alone is not enough.
-    "io-std",
-    # 常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
-    # `net` 带进来的 `socket2` **是纯 Rust**（本 crate 的 lock 现打 `socket2 0.6.3`，
-    # 它的 `dependencies` 只有 `libc` 与 `windows-sys` ⇒ 纯 FFI 绑定，没有 `cc` 构建脚本，
-    # **不新增一棵 C 构建树**），`mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
-    # ⚠ 这一格说的是「**多这一个 feature 不新增 C 构建树**」，**不是**「依赖树零 C」：
-    #   后端要的是「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
-    #   本 crate 的依赖树本来就有 C（`ring`），同结论写在本表末尾 `russh` 那段的 `①`。
-    # ⚠ 为什么不沿用 `relay/` 那份 `std::net::TcpListener`（blocking）：
-    # 常驻这条路要把 socket 的读写两半**原样喂给今天 stdin/stdout 的位置**
-    # （`inbound::spawn<R: AsyncRead>` · `writer_task<W: AsyncWrite>` 本来就是泛型），
-    # 而 `std` 的 socket 变不成 `AsyncRead`/`AsyncWrite`。
-    "net",
-    "sync",
-    "signal",
-    "fs",
-    "time",
-] }
+# feature 集与为什么开 `net` 写在 `[workspace.dependencies]` 那一行。
+tokio.workspace = true
 # 本 crate 直接用 libc 的那几处（flock · 信号 · malloc_trim …）。**已是 tokio 在 unix 上的传递依赖**
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 不引入任何 feature。
-libc = "0.2"
+libc.workspace = true
 # 伪终端（`platform/child.rs::converse_in_terminal`：要终端才肯问的官方子命令，如 `claude mcp login`）。三个系统一套。
-portable-pty = "0.9"
+portable-pty.workspace = true
 # 托管终端的屏（`host/managed/screen.rs`）：伪终端输出照它算成一屏 ＋ 回滚，整屏字节 · 抓屏 · 瘦客户端本地画都从它出。MIT。
-vt100 = "=0.16.2"
+vt100.workspace = true
 # **backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
 #
 # ⚠ 「backend 侧」不是「本仓」：`ring` 在 monitor 的依赖图里也有。两个词分清楚：
@@ -205,11 +185,11 @@ vt100 = "=0.16.2"
 # 选 `rustls` 而不是 `ureq`/`hyper`：后两者是 HTTP 客户端/框架，会把「一个块」变成一层框架。
 # crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring` 是 monitor 侧 `russh` 已经在用的那一棵，
 # 复用它省掉 aws-lc-rs 那棵**另外**要现下载现编的 C 构建树。
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls.workspace = true
 # CAS 的摘要形 `expect: {"sha256": …}`（编辑器存盘 · 上传提交，`files/mod.rs::content_sha256`）。
 # **零新包**：`ring 0.17.14` 本来就在本 crate 的 lock 里、发出去的二进制已经链接它（上面 `rustls` 的 provider · `russh`），
 # 这一行只是把它从间接依赖提成直接依赖（版本跟 lock 里那一份）。
-ring = "0.17"
+ring.workspace = true
 # ── `--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
@@ -228,7 +208,7 @@ ring = "0.17"
 #   ② musl 交叉编译：沙箱门禁只做本机 gnu 构建、不做交叉编译（门禁全绿证不出 musl 编得过）；
 #      0.65 这一版本机 `cargo zigbuild --target x86_64-unknown-linux-musl` 现打编过。
 # ─────────────────────────────────────────────────────────────────────────
-russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh.workspace = true
 # ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
 #
 # 🔴 **它只服务 `src/backend/ssh-dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
@@ -239,24 +219,18 @@ russh = { version = "0.65", default-features = false, features = ["ring", "flate
 # ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `ssh-dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
 # 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
 # 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
-russh-sftp = "3"
-notify = "8.2"
-walkdir = "2.5"
-# ── 解压（`control/files_extract.rs`）──
-# 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
-# `flate2` 锁里早就有（russh 那棵，`miniz_oxide` 后端）⇒ 这里只把它从间接变直接；`tar` 关掉缺省的 `xattr`（不还原扩展属性）；
-# `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2` ＋ 它要的 `flate2`）。
-# 签字行住 `readonly_guard::g6_dependency_signoff`。只读包、写盘一个字节都不经它们（逐条目自己过路径解析再落）。
-flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
-tar = { version = "0.4", default-features = false }
-zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+russh-sftp.workspace = true
+notify.workspace = true
+walkdir.workspace = true
+# 帧流压缩（`wire/listen.rs` 的 deflate；解压包那一支住文件管理那一块）。签字行住 `readonly_guard::g6_dependency_signoff`。
+flate2.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 # 配置文件（`~/.cc-monitor/profiles.toml`）的读与按条目改：保留用户手写的注释与排版（`assets/profiles`）。
-toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+toml_edit.workspace = true
 # 时刻按看的人那一台的时区写（请求信封 `tz` 是 IANA 名）：时区库随二进制带（`tzdb-bundle-always`），
 # 不读这台的 `/usr/share/zoneinfo`、Windows 上也是同一份 ⇒ 远端后端按看的那一台的钟写字、夏令时按那一刻算。纯 Rust、无构建脚本。
-jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff.workspace = true
 
 # ── 远端 musl 版的全局分配器：mimalloc（`main.rs` 那一处 `#[global_allocator]`，判据 `allocator_guard`）──
 # musl 自带的分配器放掉的内存不还给系统：680 MB 合成世界里热完全文搜索索引就常驻 350–490 MB（glibc 同一世界 117 MB），
@@ -268,7 +242,7 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bun
 # 空闲常驻每次多出 18–44 MB、每次不一样。设选项来不及（arena 在 `main` 之前第一次分配时就 mmap 了）⇒ 编进去。
 # 判据 `freed_memory_tests::the_heap_takes_no_huge_pages`。
 [target.'cfg(target_env = "musl")'.dependencies]
-mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
+mimalloc.workspace = true
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
@@ -288,13 +262,23 @@ guard-core = { path = "../common/guard-core" }
 acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # 判据里异源算 sha256（夹具的摘要 · 传输与写盘的整份摘要对拍）。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11`（不新增包）。
-sha2 = "0.11"
+sha2.workspace = true
+# 解压与文件管理帧面的判据手铺 tar 包。
+tar.workspace = true
 # 〔C01 同一条理由〕记录解释进了后端（`agents/claudecode/schema.rs`）⇒ 界面收到的记录的线上形状从这里导出
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
-ts-rs = "12.0.1"
+ts-rs.workspace = true
 # 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
-tokio = { version = "1", features = ["test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
+# 平台层只给测试用的那几样（判据看要起的命令 · 私有 tmux server · 起子进程前那一道落到空 socket 目录）＋ 它那几个线上类型的 TS 派生。
+backend-platform = { path = "platform", features = ["test-support", "ts"] }
+# 纯工具那一层只给测试用的那几样（契约错的诊断 · 整份读按块的夹具 · 脚本化的会话快照）＋ 它那几个线上类型的 TS 派生。
+backend-common = { path = "common", features = ["test-support", "ts"] }
+# 量具（线程级内存 · 金样 · 听 `tracing` 说了什么）：只在 dev 侧的包。
+test-meters = { path = "test-meters" }
+# 文件管理那一块只给测试用的那几样（读族按能力名问的夹具 · 常驻索引的串行锁 · 写面判据够到的那几样）。
+backend-files = { path = "files", features = ["test-support"] }
 
 # 发布档按速度编：后端在 monitor 里内嵌三份（本机一份 · 远端两份）。
 # · opt-level 3 而不是 "s"：一份 587 MB 记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；
@@ -312,8 +296,77 @@ strip = true
 # 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
+members = [".", "platform", "common", "plugin", "files", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
+
+# 两条 lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。
+[workspace.lints.clippy]
+# 「现在」只有一处（禁的路径与理由住 `clippy.toml`）：别处直接问系统钟 ⇒ clippy 红。
+disallowed_methods = "deny"
+
+[workspace.lints.rust]
+# 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。
+duplicate_macro_attributes = "deny"
+
+# ── 第三方依赖的版本与缺省 feature 只住这里 ──
+# 主 crate 与 `backend-*` · `test-meters` 各段一律写 `<名>.workspace = true`（要多开 feature 写 `features = [...]` 叠加）；
+# 各成员为什么要它写在它那一行旁边。仓内 crate 不进这一段，照写 `path`。
+# 拨号核心 · 部署 · 出网口 · 手机核心这四份清单手机那一侧也单读，照旧自己写版本（与这里对齐）。
+# 判据：`readonly_guard::g6_dependency_signoff`（签字 · 两向相等 · 成员清单只许 `.workspace = true`）。
+#
+# Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
+# local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
+# tokio 1.52.x, notify 8.2.x, walkdir 2.5.x,
+# tracing 0.1.x). Keep this list minimal.
+#
+# `rustls` / `webpki-roots` 也在 `../frontend/shell/Cargo.lock` 里：中转 crate `comms-outward` 是那个 workspace 的成员，
+# 两份锁解出同一个版本（`cargo tree -d` 两边都只有一份）。一台从没下过它们的机器，第一次构建仍要联网。
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "io-util",
+    # io-std gates tokio::io::stdout(); io-util alone is not enough.
+    "io-std",
+    # 常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
+    # `net` 带进来的 `socket2` **是纯 Rust**（本 crate 的 lock 现打 `socket2 0.6.3`，
+    # 它的 `dependencies` 只有 `libc` 与 `windows-sys` ⇒ 纯 FFI 绑定，没有 `cc` 构建脚本，
+    # **不新增一棵 C 构建树**），`mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
+    # ⚠ 这一格说的是「**多这一个 feature 不新增 C 构建树**」，**不是**「依赖树零 C」：
+    #   后端要的是「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
+    #   本 crate 的依赖树本来就有 C（`ring`），同结论写在主 crate `russh` 那段的 `①`。
+    # ⚠ 为什么不沿用 `relay/` 那份 `std::net::TcpListener`（blocking）：
+    # 常驻这条路要把 socket 的读写两半**原样喂给今天 stdin/stdout 的位置**
+    # （`inbound::spawn<R: AsyncRead>` · `writer_task<W: AsyncWrite>` 本来就是泛型），
+    # 而 `std` 的 socket 变不成 `AsyncRead`/`AsyncWrite`。
+    "net",
+    "sync",
+    "signal",
+    "fs",
+    "time",
+] }
+libc = "0.2"
+portable-pty = "0.9"
+vt100 = "=0.16.2"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+ring = "0.17"
+russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "3"
+notify = "8.2"
+walkdir = "2.5"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = { version = "0.4", default-features = false }
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
+sha2 = "0.11"
+ts-rs = "12.0.1"
 
 # ── 测试档（dev 与继承它的 test）里给沙箱的策略引擎开优化：轮换一致性的推演（s22 · s26 · s36）跑在 Rhai 上，
 #    依赖不开优化时后端那个测试二进制的墙钟就是它们（10-15 量过：89–93 s → 30–36 s；冷编多一成）。只给这几样，

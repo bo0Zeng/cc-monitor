@@ -203,6 +203,8 @@ export function rustFloatFields() {
         // 紧挨着它的那几行属性里的 `ts(rename = "…")`（导出名与 Rust 名不同）。
         const before = text.slice(Math.max(0, m.index - 800), m.index);
         const attrs = before.slice(Math.max(before.lastIndexOf("}\n"), before.lastIndexOf(";\n")) + 1);
+        // 只认导出到线上的类型（派生了 `TS`）：别处同名、不上线的类型（如落盘声明的 `Doc<T>`）不许盖掉线上那一份的格宽。
+        if (!/\bTS\b/.test(attrs)) continue;
         const rn = attrs.match(/ts\([^)]*rename\s*=\s*"(\w+)"/);
         const x = { ts: rn ? rn[1] : m[1], floats: new Set(), flat: [] };
         for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?f(?:32|64)\b/g)) {

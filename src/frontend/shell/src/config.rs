@@ -39,6 +39,7 @@
 use crate::detail::Shell as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -70,7 +71,7 @@ pub(crate) fn load_config_at(path: &Path) -> Result<Value, Said> {
 /// 读 `config.json` 的原文，上限照声明表：不在 ⇒ `None`；读不出来（超了上限 · 盘上那一步）⇒ 那一句，原话进复制详情。
 /// 读设置与写口现读都经它（同一句「读取设置失败 · 原因」）。
 fn read_config_text(path: &Path) -> Result<Option<String>, Said> {
-    let cap = relay_route_core::CONFIG_FILE.row.cap;
+    let cap = relay_route_core::CONFIG_FILE.row.cap.bytes;
     let (why, raw) = match host_core::read_capped(path, cap) {
         Ok(host_core::Capped::Text(raw)) => return Ok(Some(raw)),
         Ok(host_core::Capped::Absent) => return Ok(None),
@@ -266,7 +267,7 @@ pub(crate) fn patch_config_at(
         })?;
     // 标准库的换名在 Windows 上就是覆盖已在的目标，长路径前缀它自己补。
     std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
+        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 原子写的临时件
         ConfigWriteError::Io(Said::with_raw(
             copy_text(
                 "reason.fs.writeFailed",

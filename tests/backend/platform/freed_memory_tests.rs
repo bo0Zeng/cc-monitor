@@ -9,7 +9,7 @@ use super::*;
 use std::alloc::{GlobalAlloc, Layout};
 
 const CHILD_MARK: &str = "CCM_FREED_MEMORY_CHILD";
-const CHILD_TEST: &str = "platform::proc::freed_memory_tests::child_gives_freed_pages_back";
+const CHILD_TEST: &str = "proc::freed_memory_tests::child_gives_freed_pages_back";
 /// 子进程走哪种形状：`one`（一条线程）· `threads`（[`THREADS`] 条线程各分一批、交叉着放，放完闲着）。
 const CHILD_MODE: &str = "CCM_FREED_MEMORY_MODE";
 const THREADS: usize = 4;

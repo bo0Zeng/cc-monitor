@@ -290,7 +290,7 @@ pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
 ///
 /// 符号链接那一步：父目录已存在时用它的真身再查一次前缀 —— 挡掉 `~/link -> /etc` 这种逃逸（`install` 会跟着链接写过去）。
 /// 围栏住那台机器的后端 ⇒ `canonicalize` 量的就是**那台自己的盘**，本机远端同一道。
-/// 写口 `files_write::walk_in_root` 那一道另外也在。
+/// 写口 `files::write::walk_in_root` 那一道另外也在。
 pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     let expanded = fence_lexical(home, raw)?;
     let (at, home_p) = (Path::new(&expanded), Path::new(home));

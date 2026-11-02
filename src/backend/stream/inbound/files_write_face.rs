@@ -1,22 +1,22 @@
-//! 文件管理那一族里写的那几条（写面 · 上传提交 · 解压）：入参 · 回包是 `cmd_wire::files` 的类型，本体在 `control/files_write` ·
-//! `files_commit` · `files_extract`（每条一个收入参类型、出回包类型的函数）。写经分派那一层递进来的 `Face`（`typed::Facing` 那一档）。
+//! 文件管理那一族里写的那几条（写面 · 上传提交 · 解压）：入参 · 回包是 `cmd_wire::files` 的类型，本体在 `files/write.rs` ·
+//! `files/commit.rs` · `files/extract.rs`（每条一个收入参类型、出回包类型的函数）。写经分派那一层递进来的 `Face`（`typed::Facing` 那一档）。
 //!
 //! 不住命令表那一份族文件：同读的那一份（`files_face.rs`）的理由，族文件只放登记那几行。
 
 use crate::common::said::Said;
-use crate::control::files_commit::session_attachment as sa;
+use crate::files::commit::session_attachment as sa;
 use crate::platform::fs::Face;
 use crate::wire::typed::{self, codes, Codes, Command};
 use cmd_wire::batch::{BatchReply, Conflicts, FilesBatchStopReply, FilesBatchStopReq};
 use cmd_wire::files as wire;
 
 /// 写的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。
-fn ask<A: crate::control::files_write::Act, E: Codes>(
+fn ask<A: crate::files::write::Act, E: Codes>(
     req: A,
     face: &Face,
     fallback: fn(String) -> E,
 ) -> Result<A::Reply, E> {
-    crate::control::files_write::answer(req, face).map_err(|f| {
+    crate::files::write::answer(req, face).map_err(|f| {
         typed::of_fail(
             {
                 let code = f.code_or_fallback().to_string();
@@ -29,8 +29,8 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 
 /// 资产域那扇门（`doors::LocalFiles`）问写的那几样：同一个本体，写句柄经分派那一层（`spec::with_face`）领一份、只活这一问；
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
-pub(crate) fn in_process<A: crate::control::files_write::Act>(req: A) -> Result<A::Reply, Said> {
-    crate::wire::spec::with_face(|face| crate::control::files_write::answer(req, face))
+pub(crate) fn in_process<A: crate::files::write::Act>(req: A) -> Result<A::Reply, Said> {
+    crate::wire::spec::with_face(|face| crate::files::write::answer(req, face))
         .map_err(|f| crate::common::door::said_of(f.code_or_fallback(), &f.said))
 }
 
@@ -253,8 +253,8 @@ impl crate::wire::typed::Handle for FilesCopy {
             let cx = &cx;
             let face = &needs;
 
-            use crate::control::files_batch::CopyRefused;
-            crate::control::files_batch::copy(face, req, &cx.tz).map_err(|e| match e {
+            use crate::files::batch::CopyRefused;
+            crate::files::batch::copy(face, req, &cx.tz).map_err(|e| match e {
                 CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
                 CopyRefused::Fail(f) => typed::of_fail(
                     {
@@ -483,8 +483,8 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
         let (cx, needs) = cx.split();
         async move {
             let face = &needs;
-            use crate::control::files_commit::CommitRefused;
-            crate::control::files_commit::commit_upload_of(face, req, &cx.tz).map_err(|e| match e {
+            use crate::files::commit::CommitRefused;
+            crate::files::commit::commit_upload_of(face, req, &cx.tz).map_err(|e| match e {
                 CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
                 CommitRefused::Fail(f) => typed::of_fail(
                     {
@@ -498,7 +498,7 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
     }
 }
 
-// ── 聊天附件（本体在 `control/files_commit/session_attachment.rs`）────────────
+// ── 聊天附件（本体在 `files/commit/session_attachment.rs`）────────────
 //
 // 入参交会话 id：那台按会话记录读它的项目目录（会话起在哪，同 `session-say` 恢复那一支读的那一格），读不出 ⇒ `no_session`。
 
@@ -657,3 +657,12 @@ impl crate::wire::typed::Handle for SessionAttachmentDrop {
         }
     }
 }
+
+// 写面与上传提交的行为判据：问法走命令那一层的解码（`wire::typed::take`）与门、删会话递适配层的窄口 ⇒ 挂在这里。
+#[cfg(test)]
+#[path = "../../../../tests/backend/files/write_tests.rs"]
+pub(crate) mod write_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/files/commit_tests.rs"]
+mod commit_tests;

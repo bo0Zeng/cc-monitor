@@ -121,9 +121,9 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         ),
     ];
     for (name, src) in &homes {
-        // `backend-policy.ts` 的退出行为取文口搬走后只剩 `LOCAL_ORIGIN`（剥完 ~430 字节）⇒ 地板 500 → 300。
+        // `backend-policy.ts` 只剩本机那个常量与它的头注（剥完 ~300 字节）⇒ 地板 200：只防「读空了 / 读错了文件」。
         assert!(
-            src.len() > 300,
+            src.len() > 200,
             "{name} 只读到 {} 字节 —— 人群坏了",
             src.len()
         );
@@ -425,7 +425,7 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
             rec.line
         );
         assert!(
-            rec.line.contains(crate::inbound_client::LOCAL_ORIGIN),
+            rec.line.contains(cmd_wire::LOCAL),
             "那一行没说是哪台机：{}",
             rec.line
         );
@@ -558,8 +558,8 @@ fn the_production_sink_really_hands_the_line_to_the_log() {
             "{why}\n\
                  ⇒ `MonitorLog` 不再把那一行交给日志了。\n\
                  那本账**真的会被写下来**靠的就是这一行：真正碰盘的是\n\
-                 `logging.rs::build_rolling_appender`（`write_site_registry::WRITE_SITES` 里\n\
-                 已登记的那条），而时刻由 `fmt` 的默认 timer 打（带日期）。\n\
+                 `logging.rs::build_rolling_appender`（monitor 自己的滚动日志，日志目录经\n\
+                 `platform::own_fs` 建），而时刻由 `fmt` 的默认 timer 打（带日期）。\n\
                  换成一个不打时刻的落点，账上就再问不出「它上一次崩在哪一天」——\n\
                  `~/.cc-monitor/bin/wrap.log` 那两行就是那个样子。"
         )
@@ -974,60 +974,37 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
     );
 }
 
-// ── 两个同名 `LOCAL_ORIGIN` 的钉子 ⇒ 合了 ──────
-//
-// ⚠ **这一段原本是两条，删掉了一条 —— 那条是我重复造的。**
-//   跨语言那条（Rust `inbound_client::LOCAL_ORIGIN` ↔ TS `backend-policy.ts`）
-//   **仓里本来就有**：`tests/frontend/shell/inbound_client_tests.rs::
-//   the_local_origin_is_the_same_string_on_both_sides`。
-//   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
-//   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
-//
-// 剩下那一条钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
-// ——合并是一次设计变更，回去看」。它守的是「合并之前别顺手改」，不是「永远不合」。
-// C4b 读了（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
-// 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。
-// ⇒ 本条改成钉**合了之后**的形状；TS 那一侧按语法树的零命中住 `tests/frontend/ui/ipc/commands.vitest.ts`（「本机只有一个表示」）。
+// ── 账号面没有自己的本机表示 ──────
 
-/// 账号面**不再有自己的本机表示**：`accounts.ts` 生产段里零处 `LOCAL_ORIGIN` 声明、零处 `"__local__"`；
-/// 本机那个值的家恰好一个（`backend-policy.ts` 的 `LOCAL_ORIGIN = "<local>"`，正控）。
+/// 账号面**没有自己的本机表示**：`accounts.ts` 生产段里零处 `"<local>"` 抄写、零处 `"__local__"`；
+/// 本机那个值的家是 `cmd_wire::LOCAL`（正控：值是 `<local>`）。
 ///
-/// 与 TS 那条（`commands.vitest.ts`，按语法树扫全树的字符串字面量）**异源**：本条按文本读两份指名的文件，
-/// 专钉「账号面那一份不许再声明一个同名常量」—— 换个值再声明一次，TS 那条的字面量扫描认不出它的用意。
+/// 与 TS 那条（`commands.vitest.ts`，按语法树扫全树的字符串字面量）**异源**：本条按文本读指名的那一份。
 #[test]
 fn the_account_face_has_no_local_origin_of_its_own() {
-    let policy = include_str!("../../../src/frontend/ui/backend-policy.ts");
     let accounts = include_str!("../../../src/frontend/ui/accounts.ts");
-    let needle = "export const LOCAL_ORIGIN = ";
     let prod = |src: &str| guard_core::strip_comment_lines(src);
-    // 正控：本机那个值恰好一个家，值是 `<local>`。
-    let policy_prod = prod(policy);
-    assert_eq!(
-        policy_prod.matches(needle).count(),
-        1,
-        "`backend-policy.ts` 里 `{needle}` 应恰好 1 处 —— 抽取器坏了，或本机那个值的家挪了"
-    );
-    let value = policy_prod
-        .split_once(needle)
-        .and_then(|(_, rest)| rest.split_once(';'))
-        .map(|(v, _)| v.trim().trim_matches('"').to_string())
-        .expect("抠不出值");
-    assert_eq!(value, "<local>", "backend origin 的哨兵值变了");
-    // 账号面：零声明、零旧值。
+    // 正控：本机那个值的家，值是 `<local>`。
+    assert_eq!(cmd_wire::LOCAL, "<local>", "backend origin 的哨兵值变了");
+    let lit = format!("\"{}\"", cmd_wire::LOCAL);
+    // 账号面：零抄写、零旧值。
     let accounts_prod = prod(accounts);
-    assert_eq!(
-        accounts_prod.matches(needle).count(),
-        0,
-        "`accounts.ts` 又声明了一个自己的 `LOCAL_ORIGIN` —— 账号缓存键与 `AccountsState.origin` 用 `ipc/origin.ts` 那一个"
+    assert!(
+        !accounts_prod.contains(&lit),
+        "`accounts.ts` 生产段里抄了一份 {lit} —— 账号缓存键与 `AccountsState.origin` 用 `ipc/origin.ts` 转出的 `LOCAL`"
     );
     assert!(
         !accounts_prod.contains("\"__local__\""),
         "`accounts.ts` 生产段里又出现了 `\"__local__\"` —— 那是已退役的第二种本机写法"
     );
-    // 阴性对照：剥法真的在跑（注释里讲历史不算）。
+    // 阴性对照：剥法真的在跑（注释里讲历史不算），抄写也真的认得出。
     assert!(
         !prod("// 旧写法 \"__local__\"\n").contains("__local__"),
         "剥注释没剥掉 —— 上面那条零命中可能是空转"
+    );
+    assert!(
+        prod("const k = \"<local>\";\n").contains(&lit),
+        "抄写认不出 —— 上面那条零命中可能是空转"
     );
 }
 
@@ -1203,11 +1180,8 @@ fn the_status_command_hands_the_panel_the_finished_face() {
     };
     let mut sink = CapturingSink::default();
     let _ = record_death(&ledger, &ev, &mut sink).expect("要记一笔");
-    let st = crate::backend_control::backend_status_now(
-        crate::inbound_client::LOCAL_ORIGIN.into(),
-        &ledger,
-    )
-    .expect("查状态");
+    let st = crate::backend_control::backend_status_now(cmd_wire::LOCAL.into(), &ledger)
+        .expect("查状态");
     let got = serde_json::to_value(&st.health).expect("成品序列化不了");
     let want = serde_json::to_value(health_face(&ledger.health())).expect("成品序列化不了");
     assert_eq!(

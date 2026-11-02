@@ -452,7 +452,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
 /// 读那一口报「超出上限」、写口拒写且盘上字节不变。表里改上限，这里的边界跟着变（期望只从表取，不另写数）。
 #[test]
 fn the_config_read_cap_comes_from_the_declaration_table() {
-    let cap = relay_route_core::CONFIG_FILE.row.cap as usize;
+    let cap = relay_route_core::CONFIG_FILE.row.cap.bytes as usize;
     // 一份合法 JSON 对象，整份恰好 `n` 字节。
     let sized = |n: usize| {
         let shell = r#"{"pad":""}"#.len();

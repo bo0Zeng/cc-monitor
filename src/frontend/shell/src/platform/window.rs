@@ -71,6 +71,10 @@ pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
             std::thread::spawn(move || {
                 let mut last = resize_gen.load(Ordering::SeqCst);
                 loop {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "WebView2 最大化 / 全屏后内容错位修复的去抖：60ms 一步、两次读到同一代 resize 就停；resize 事件没有「停了」那一下"
+                    )]
                     std::thread::sleep(Duration::from_millis(60));
                     let now = resize_gen.load(Ordering::SeqCst);
                     if now == last {
@@ -193,6 +197,8 @@ pub fn desktop_fixes(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<taur
 /// （HWND.0 = isize）；用 `as isize` cast 跨版本兼容。
 #[cfg(windows)]
 pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
+    use crate::detail::Shell as _;
+    use copy_core::{Discard, Why};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -229,9 +235,11 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
             // 1. ShowWindow 先做：可能 minimize 状态
             if IsIconic(h).as_bool() {
                 tracing::info!("bring_monitor_to_front: window iconic, SW_RESTORE");
-                let _ = ShowWindow(h, SW_RESTORE);
+                ShowWindow(h, SW_RESTORE)
+                    .ok()
+                    .discard(Why::WindowBestEffort);
             } else {
-                let _ = ShowWindow(h, SW_SHOW);
+                ShowWindow(h, SW_SHOW).ok().discard(Why::WindowBestEffort);
             }
 
             // 2. 模拟 Alt 按键（down 阶段，up 在末尾）
@@ -252,9 +260,11 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
                 && AttachThreadInput(fg_thread, cur_thread, true).as_bool();
 
             // 4. TOPMOST 强制 Z 序拉顶 + BringWindowToTop
-            let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            let _ = BringWindowToTop(h);
+            SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+                .discard(Why::WindowBestEffort);
+            SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+                .discard(Why::WindowBestEffort);
+            BringWindowToTop(h).discard(Why::WindowBestEffort);
 
             // 5. SetForegroundWindow 真正抢焦
             let ok = SetForegroundWindow(h).as_bool();
@@ -266,7 +276,9 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 
             // 6. detach + Alt 释放
             if attached {
-                let _ = AttachThreadInput(fg_thread, cur_thread, false);
+                AttachThreadInput(fg_thread, cur_thread, false)
+                    .ok()
+                    .discard(Why::WindowBestEffort);
             }
             keybd_event(
                 VK_MENU.0 as u8,
@@ -294,11 +306,12 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 
 #[cfg(not(windows))]
 pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
+    use copy_core::{Discard, Why};
     let win = app
         .get_webview_window("main")
         .ok_or_else(|| front_failed("main window not found"))?;
-    let _ = win.unminimize();
-    let _ = win.show();
+    win.unminimize().discard(Why::WindowBestEffort);
+    win.show().discard(Why::WindowBestEffort);
     win.set_focus()
         .map_err(|e| front_failed(format!("set_focus: {e}")))
 }

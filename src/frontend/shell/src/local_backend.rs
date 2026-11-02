@@ -69,6 +69,7 @@
 use crate::detail::Shell as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -253,7 +254,7 @@ impl SuperviseHandle {
         self.stopping.store(true, Ordering::SeqCst);
         if let Ok(mut g) = self.child.lock() {
             if let Some(c) = g.as_mut() {
-                let _ = c.kill();
+                c.kill().discard(Why::Reap);
             }
         }
     }
@@ -402,7 +403,7 @@ pub enum SpawnFailure {
 /// # 这个数的**出处**（沙箱实测）
 ///
 /// 〔出处〕上面几节是**理由**，不是读数。读数是这样打出来的：
-/// 量具 `tests/evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
+/// 量具 `tests/evidence/etxtbsy-window.py`（读数落在同名 `.out`）。
 /// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
 /// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
 /// 量「从关掉写 fd 到 exec 成功」。容器内 · Linux 7.0.0-30 · glibc 2.39 · nproc 16 ·
@@ -754,8 +755,8 @@ pub fn supervise_with_stdio(
             if stopping.load(Ordering::SeqCst) {
                 if let Ok(mut g) = child.lock() {
                     if let Some(c) = g.as_mut() {
-                        let _ = c.kill();
-                        let _ = c.wait();
+                        c.kill().discard(Why::Reap);
+                        c.wait().discard(Why::Reap);
                     }
                     *g = None;
                 }
@@ -787,7 +788,7 @@ pub fn supervise_with_stdio(
                 // ⚠ 这一支**没有消费者** ⇒ 「它说过话没有」一次都没被观测过。
                 //   如实报 `NoConsumer`，不拿「观测到它没说话」去顶（见 `StreamWitness` 头注）。
                 (_, Some(mut o), _) => {
-                    let _ = std::io::copy(&mut o, &mut std::io::sink());
+                    std::io::copy(&mut o, &mut std::io::sink()).discard(Why::Drain);
                     ConsumerReport {
                         exit: ConsumerExit::Eof,
                         witness: StreamWitness::NoConsumer,
@@ -827,7 +828,7 @@ pub fn supervise_with_stdio(
                 let mut g = child.lock().unwrap_or_else(|e| e.into_inner());
                 if exit_reason == ConsumerExit::Early {
                     if let Some(c) = g.as_mut() {
-                        let _ = c.kill();
+                        c.kill().discard(Why::Reap);
                     }
                 }
                 g.take()
@@ -949,7 +950,8 @@ fn sweep_stale_partials(dir: &std::path::Path, extract_name: &str) {
             .map(|age| age >= STALE_PARTIAL_AGE)
             .unwrap_or(false);
         if old {
-            let _ = std::fs::remove_file(ent.path());
+            // 过期的释放半成品（`STALE_PARTIAL_AGE`）：删不掉下次再清。
+            std::fs::remove_file(ent.path()).discard(Why::CleanupAfterFailure);
         }
     }
 }
@@ -965,7 +967,8 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
         if n.to_str()
             .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".old"))
         {
-            let _ = std::fs::remove_file(ent.path());
+            // 换版时挪开的旧 `ccm`：删不掉下次再清。
+            std::fs::remove_file(ent.path()).discard(Why::CleanupAfterFailure);
         }
     }
 }
@@ -1169,7 +1172,7 @@ pub fn place_local_program(
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", tmp.display())))?;
     make_executable(&tmp).map_err(Said::into_io)?;
     rename_into_place(dir, file, &tmp, &dest).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
+        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 原子写的临时件
         std::io::Error::new(e.kind(), format!("{}: {e}", dest.display()))
     })?;
     Ok(dest)

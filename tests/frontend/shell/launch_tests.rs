@@ -21,14 +21,14 @@ const LAUNCH_SRC: &str = concat!(
 /// 「给窗口设 env」这件事**没有集中落点**：本文件有三个各自 spawn 的开窗点
 /// （POSIX 一个、Windows 的 `wt.exe` 与 conhost 兜底各一个）。**新加第四个而忘了带 env**，
 /// 后果是那条路上的 `ccm resume` **静默地**永远走本地 —— 与名字打错同一族的静默失败。
-/// ⇒ 用「`Command::new(` 的总数」当触发器：多一个就红，逼人回来看这条。
+/// ⇒ 用「`spawn_managed_with(` 的总数」当触发器（壳里起进程只经它）：多一个就红，逼人回来看这条。
 ///
 /// ⚠ **别手搓剥测试的尺子**：用 `guard_core::production_code`（仓里已有那把）。
 #[test]
 fn every_terminal_window_backend_opens_carries_the_backend_path() {
     let src = LAUNCH_SRC;
     let prod = guard_core::production_code(src);
-    let spawns = prod.matches("Command::new(").count();
+    let spawns = prod.matches("spawn_managed_with(").count();
     // ⚠ 钉**真正的动作** `.env(k, v)`，不是 helper 的调用次数：
     //    Windows 那个函数**只调一次 helper**，把结果给两个 spawn 点共用
     //    ⇒ 按 helper 数写地板会写成 3，实测 2（第一版就这么错的，被本条自己逮住）。
@@ -44,7 +44,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
     // 没有不带 env 的 `where.exe` 探测（找 ssh 客户端在本机后端，只查文件）⇒ 差额为零。
     assert_eq!(
         spawns, 3,
-        "`launch.rs` 生产代码里的 `Command::new(` 从 3 变成了 {spawns}。\n\
+        "开窗那两份生产代码里的 `spawn_managed_with(` 从 3 变成了 {spawns}。\n\
              若新增的是**开终端窗口**，它必须也带上 `backend_bin_env_for_window(...)` 的 env，\n\
              否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）。"
     );
@@ -776,7 +776,7 @@ fn relay_probe_prefix(url: &str) -> String {
 // `ETXTBSY` 的定义就是「execve 的目标文件此刻正被某个进程打开着写」。
 // 本进程自己那把写句柄在 `install_fake_terminal` 里**确定性地关掉了**（见那里）。
 // 剩下的唯一来路是**别的线程**：这个测试二进制的生产段里有 40+ 处真起进程的调用点
-//（`write_site_registry` 那张 `SPAWNS` 表逐条登记着），起进程要么 fork 要么 posix-spawn，
+//（都经 `spawn_managed`），起进程要么 fork 要么 posix-spawn，
 // 两者都把父进程此刻打开的 fd **复制一份给子进程**，而 close-on-exec 要到子进程
 // **exec 那一刻**才生效 ⇒ 「fork 之后、exec 之前」那段窗口里，那个子进程就是
 // **一个握着我们这个文件写 fd 的进程**。我们此刻 execve 它 = `ETXTBSY`。

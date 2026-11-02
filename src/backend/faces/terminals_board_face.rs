@@ -85,7 +85,7 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
             }),
         })
     };
-    let now = u64::try_from(crate::common::time::now_secs()).unwrap_or(0);
+    let now = crate::common::time::now_secs();
     Ok(b::rows_here(
         &list,
         &session,
@@ -152,7 +152,7 @@ impl crate::wire::typed::Handle for TerminalsBoardCmd {
             )
             .await
             .map_err(BoardErr::BadArgs)?;
-            let now = crate::common::time::now_secs();
+            let now = crate::common::time::now_secs() as i64;
             let at = crate::common::time::fmt_at(now, now, &cx.tz);
             let got = got
                 .into_iter()

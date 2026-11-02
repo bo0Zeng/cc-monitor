@@ -376,7 +376,7 @@ impl crate::wire::typed::Handle for GroupsReadCmd {
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
                 &KEPT,
-                crate::common::time::now_ms(),
+                crate::common::time::now_ms() as i64,
             )
             .await
         }
@@ -400,7 +400,7 @@ pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead,
         &crate::dial::remote_ask::REACH,
         &crate::dial::remote_ask::DialRemote,
         &KEPT,
-        crate::common::time::now_ms(),
+        crate::common::time::now_ms() as i64,
     )
     .await
     .map_err(|e| format!("{e:?}"))
@@ -1013,7 +1013,7 @@ impl crate::wire::typed::Handle for GroupsWriteCmd {
         async move {
             send_with(
                 req,
-                |r| write_at(&own, r, crate::common::time::now_ms()),
+                |r| write_at(&own, r, crate::common::time::now_ms() as i64),
                 &cx.tz,
                 cx.until,
                 &crate::dial::remote_ask::REACH,

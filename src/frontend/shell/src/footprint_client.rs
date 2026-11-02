@@ -13,7 +13,7 @@ use std::path::PathBuf;
 #[tauri::command]
 pub fn footprint_client_facts() -> Result<Value, cmd_wire::failed::Failed> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
-        facts(creds_core::store::home_dir(), std::env::var("PATH").ok())
+        facts(crate::data_paths::home(), std::env::var("PATH").ok())
     })();
     r.map_err(|s| s.named("footprint_client_facts"))
 }

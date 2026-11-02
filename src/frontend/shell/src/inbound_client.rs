@@ -39,7 +39,7 @@ fn slot() -> &'static Mutex<Option<Arc<InboundClient>>> {
 /// 登记本机这条连接的客户端（重连 ⇒ 换掉旧的）。
 pub fn register(client: Arc<InboundClient>) {
     // 记下它通往哪台：形状对不上那一句按这个名字说；看的这一台的时区，每条请求信封都带。
-    client.name_machine(LOCAL_ORIGIN);
+    client.name_machine(cmd_wire::LOCAL);
     client.set_viewer_tz(host_core::viewer_tz());
     // **先放锁再 shutdown** —— 与 `unregister` 对称。
     let old = lock(slot()).replace(client);
@@ -147,8 +147,6 @@ pub fn build_of(machine: &cmd_wire::Machine) -> Option<String> {
     lock(reached_book()).get(machine).map(|r| r.build.clone())
 }
 
-// 本机后端的名字（`LOCAL_ORIGIN`）住 `resident-client`（称呼那一句认它），上面整份转用。
-
 /// **测试期本机那一格的独占锁**。
 ///
 /// 那一格是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在本机那一格上起真 backend
@@ -164,3 +162,7 @@ pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/inbound_client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/local_address_tests.rs"]
+mod local_address_tests;

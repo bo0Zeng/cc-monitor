@@ -316,35 +316,38 @@ pub(crate) fn launch_local_posix_via(
     cwd: Option<&str>,
     term: &[String],
 ) -> Result<(), LaunchErr> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
-    use std::process::{Command, Stdio};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
+    use copy_core::{Discard, Why};
+    use std::process::Stdio;
 
     let (program, args) = local_posix_spawn_plan(cmd, term).map_err(LaunchErr::Plan)?;
-    let mut builder = Command::new(&program);
-    builder.args(&args);
-    // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
-    if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
-        builder.current_dir(d);
-    }
     // 后端把后端路径交给它亲手开的这个窗口（窗口里那次 `ccm` 据此找到本机后端）。local_backend 不在就不设。
-    if let Some((k, v)) = crate::local_backend::backend_bin_env_for_window(
+    let backend_env = crate::local_backend::backend_bin_env_for_window(
         crate::local_backend_host::running_backend_bin(),
-    ) {
-        builder.env(k, v);
-    }
-    builder.stdin(Stdio::null()).stdout(Stdio::null());
+    );
     // `Hidden`：POSIX 上没有控制台窗口这回事，窗口是终端程序自己开的 · `Detached`：别跟着 monitor 的进程组收信号 ·
     // `Null`：说话的是它开出来的那个窗口。
-    let mut child = spawn_managed_cmd(
-        &mut builder,
+    let mut child = spawn_managed_with(
+        &program,
         ConsolePolicy::Hidden,
         Lifetime::Detached,
         StderrSink::Null,
+        |builder| {
+            builder.args(&args);
+            // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
+            if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
+                builder.current_dir(d);
+            }
+            if let Some((k, v)) = backend_env {
+                builder.env(k, v);
+            }
+            builder.stdin(Stdio::null()).stdout(Stdio::null());
+        },
     )
     .map_err(LaunchErr::Spawn)?;
     // `process_group` 不改父子关系 ⇒ 收尸线程（终端程序多半很快把窗口交给自己的服务进程就退）。
     std::thread::spawn(move || {
-        let _ = child.wait();
+        child.wait().discard(Why::Reap);
     });
     tracing::info!("launch: 已开终端窗口（{program}）");
     Ok(())
@@ -365,7 +368,7 @@ pub(crate) fn launch_local_posix_via(
 /// ⇒ 本函数体在**文本**这一层原样在场。
 /// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path`
 /// （普通 `#[test]`，在 `cargo` 门里跑）用**三条等号断言**钉着本函数体里的构造
-/// （`Command::new(` · `.env(k, v)` · `backend_bin_env_for_window(`）：把 Plan B 那句
+/// （`spawn_managed_with(` · `.env(k, v)` · `backend_bin_env_for_window(`）：把 Plan B 那句
 /// `builder.env(k, v)` 换成 `let _ = backend_env;`（开窗点漏了带 env）⇒ 它红。
 ///
 /// ## ② 量**行为**的那一类：在本机上**造不出来**
@@ -389,8 +392,7 @@ pub(crate) fn launch_local_posix_via(
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte` 钉着。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), Said> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
-    use std::process::Command;
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
 
     // 仅当是本地存在的目录才作为起始目录（远端路径/无效路径一律忽略）。
     let start_dir = local_cwd.filter(|c| std::path::Path::new(c).is_dir());
@@ -420,11 +422,6 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     let backend_env = crate::local_backend::backend_bin_env_for_window(
         crate::local_backend_host::running_backend_bin(),
     );
-    let mut wt = Command::new("wt.exe");
-    wt.args(&wt_args);
-    if let Some((k, v)) = backend_env.clone() {
-        wt.env(k, v);
-    }
     // ★★ 三条策略。**Plan A 与 Plan B 只有第一格不同，而那是照着盘面写的：**
     //   · `Inherit`（本处，Plan A）—— 🔴 `wt.exe` 今天**一个 creation flag 都没带**，
     //     而且它多半只是把请求转交给**已在跑的** Windows Terminal 进程（这一格的诚实边界
@@ -434,11 +431,17 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     //   · `Detached` —— 用户的终端**不该随 monitor 一起死**：关掉界面不等于关掉他正在
     //     敲字的那个会话 ⇒ 绝不能进 `JobKillOnClose` 那个 Job。
     //   · `Inherit` —— 窗口里的话说给用户听，不该灌进我们的滚动日志。
-    if spawn_managed_cmd(
-        &mut wt,
+    if spawn_managed_with(
+        "wt.exe",
         ConsolePolicy::Inherit,
         Lifetime::Detached,
         StderrSink::Inherit,
+        |wt| {
+            wt.args(&wt_args);
+            if let Some((k, v)) = backend_env.clone() {
+                wt.env(k, v);
+            }
+        },
     )
     .is_ok()
     {
@@ -447,24 +450,25 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     }
 
     // Plan B：powershell.exe + CREATE_NEW_CONSOLE，conhost 兜底。
-    let mut builder = Command::new("powershell.exe");
-    builder.args(ps_args);
-    // F06b-1d（C9）：同上。这一格是**真新起的进程**，env 一定继承。
-    if let Some((k, v)) = backend_env {
-        builder.env(k, v);
-    }
-    if let Some(d) = start_dir {
-        builder.current_dir(d);
-    }
     // ★★ 第一格与 Plan A 不同，也是照着盘面写的：`creation_flags(CREATE_NEW_CONSOLE)`
     // 就是 `ConsolePolicy::NewVisible`。**全仓唯一一处 `NewVisible`，而且是刻意的** ——
     // 别把 `launch.rs` 的 `CREATE_NEW_CONSOLE` 一起改掉：这正说明为什么要
     // 唯一出口 + 显式声明，而不是全局加一个 flag。后两格与 Plan A 相同。
-    spawn_managed_cmd(
-        &mut builder,
+    spawn_managed_with(
+        "powershell.exe",
         ConsolePolicy::NewVisible,
         Lifetime::Detached,
         StderrSink::Inherit,
+        |builder| {
+            builder.args(ps_args);
+            // F06b-1d（C9）：同上。这一格是**真新起的进程**，env 一定继承。
+            if let Some((k, v)) = backend_env {
+                builder.env(k, v);
+            }
+            if let Some(d) = start_dir {
+                builder.current_dir(d);
+            }
+        },
     )
     .map_err(|e| {
         Said::with_raw(

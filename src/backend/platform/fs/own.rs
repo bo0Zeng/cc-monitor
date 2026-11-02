@@ -34,7 +34,7 @@ const HOME_DIR_NAME: &str = ".cc-monitor";
 
 /// 数据目录底下的一条路径。只能由 [`Own::root`] / [`Own::path`] / [`OwnPath::join`] 拼出来。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OwnPath(PathBuf);
+pub struct OwnPath(PathBuf);
 
 /// 持着的那个目录的跨进程锁。原子写要它，而且要的是**那份文件所在目录**的这一把。
 /// 两种拿法：等到拿到为止（[`Own::lock`]，`platform::lock`）· 拿不到就算（[`Own::try_lock`]，常驻后端抢门牌那一把，随进程活着）。
@@ -60,12 +60,12 @@ fn relative_ok(rel: &str) -> bool {
 }
 
 impl OwnPath {
-    pub(crate) fn as_path(&self) -> &Path {
+    pub fn as_path(&self) -> &Path {
         &self.0
     }
 
     /// 往下拼一段相对名；不是相对名（空 · 绝对 · 含 `..`）⇒ 拒。
-    pub(crate) fn join(&self, rel: &str) -> Result<OwnPath, Said> {
+    pub fn join(&self, rel: &str) -> Result<OwnPath, Said> {
         if !relative_ok(rel) {
             return Err(copy_text("beOwnState.path.notRelative", &[("rel", rel)]).into());
         }
@@ -92,12 +92,12 @@ impl Own {
     }
 
     /// 数据目录本身；这台没有家目录 ⇒ `None`。
-    pub(crate) fn root(&self) -> Option<OwnPath> {
+    pub fn root(&self) -> Option<OwnPath> {
         self.data.clone().map(OwnPath)
     }
 
     /// 数据目录底下的 `rel`。没有家目录 ⇒ 拒（`beOwnState.path.noHome`）；`rel` 不是相对名 ⇒ 拒。
-    pub(crate) fn path(&self, rel: &str) -> Result<OwnPath, Said> {
+    pub fn path(&self, rel: &str) -> Result<OwnPath, Said> {
         self.root()
             .ok_or_else(|| Said::from(copy_text("beOwnState.path.noHome", &[])))?
             .join(rel)
@@ -105,7 +105,7 @@ impl Own {
 
     /// 家目录底下的 `rel`（`relay_route_core` 那张表的写法）：必须以 `.cc-monitor` 那一段打头、往下全是普通名字。
     /// 家目录那一层本身不给（`.cc-monitor` 之外一个字节都写不到）。没有家目录 ⇒ 拒。
-    pub(crate) fn at_home(&self, rel: &str) -> Result<OwnPath, Said> {
+    pub fn at_home(&self, rel: &str) -> Result<OwnPath, Said> {
         let home = self
             .home
             .as_ref()
@@ -118,22 +118,22 @@ impl Own {
     }
 
     /// 家目录底下后端那一层本身（`~/.cc-monitor`）。
-    pub(crate) fn home_dir(&self) -> Result<OwnPath, Said> {
+    pub fn home_dir(&self) -> Result<OwnPath, Said> {
         self.at_home(HOME_DIR_NAME)
     }
 
     /// 建**一层**目录，建的那一下就是 0700；已在的不动；父目录不在 ⇒ 照实报错。
-    pub(crate) fn ensure_dir(&self, dir: &OwnPath) -> std::io::Result<()> {
+    pub fn ensure_dir(&self, dir: &OwnPath) -> std::io::Result<()> {
         create_dir_private(dir.as_path())
     }
 
     /// 后端自家目录那一层（[`own_dir`]：建的那一下 0700；已在 ⇒ 必须是本人的真目录，放宽了收回 0700，不合 ⇒ 拒、出声）。
-    pub(crate) fn own_dir(&self, dir: &OwnPath) -> Result<(), Said> {
+    pub fn own_dir(&self, dir: &OwnPath) -> Result<(), Said> {
         own_dir(dir.as_path())
     }
 
     /// 拿 `dir` 的跨进程锁（阻塞到拿到为止；`dir` 要先在）。
-    pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, Said> {
+    pub fn lock(&self, dir: &OwnPath) -> Result<OwnLock, Said> {
         Ok(OwnLock {
             dir: dir.0.clone(),
             _held: Held::Waited {
@@ -144,7 +144,7 @@ impl Own {
 
     /// 试拿 `dir` 的独占锁、不等：别人持着 ⇒ `Ok(None)`。常驻后端抢门牌用（拿到的那一把随进程活着）。
     /// 本平台没有这一形 ⇒ `Err`（`Unsupported`）。
-    pub(crate) fn try_lock(&self, dir: &OwnPath) -> std::io::Result<Option<OwnLock>> {
+    pub fn try_lock(&self, dir: &OwnPath) -> std::io::Result<Option<OwnLock>> {
         Ok(own_chan::try_hold(dir.as_path())?.map(|h| OwnLock {
             dir: dir.0.clone(),
             _held: Held::Tried { _lock: h },
@@ -152,12 +152,12 @@ impl Own {
     }
 
     /// 整份原子写 `body`。`held` 必须是 `path` 所在那个目录的锁，不是 ⇒ 拒、一个字节不落。
-    pub(crate) fn write(&self, path: &OwnPath, held: &OwnLock, body: &[u8]) -> Result<(), Said> {
+    pub fn write(&self, path: &OwnPath, held: &OwnLock, body: &[u8]) -> Result<(), Said> {
         self.write_streamed(path, held, |f| f.write_all(body))
     }
 
     /// 同 [`Self::write`]，正文由 `fill` 流式往里写（大的缓存文件不先攒成整份；骨架落盘 `observe/skeleton.rs`）。
-    pub(crate) fn write_streamed(
+    pub fn write_streamed(
         &self,
         path: &OwnPath,
         held: &OwnLock,
@@ -175,13 +175,13 @@ impl Own {
 
     /// 删一份文件（不删目录）。方法名刻意不叫 `remove_file` / `rename`：那两个方法形是远端写那一层动词网的锚点
     /// （`readonly_guard::remote_write_layer`），本机这一层同名会被认成第二份远端写。
-    pub(crate) fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
+    pub fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
         std::fs::remove_file(&path.0)
     }
 
     /// 收掉一个自家目录：里面那一层的文件（套接字 · 事实文件 · 旁名）删掉，再删目录本身；不往下钻（里面有子目录 ⇒ 删目录那一下照实报错）。
     /// `held` 必须是这个目录自己的锁（托管终端收尾时攥着的那一把），不是 ⇒ 拒、一个字节不动。
-    pub(crate) fn clear_dir(&self, dir: &OwnPath, held: &OwnLock) -> std::io::Result<()> {
+    pub fn clear_dir(&self, dir: &OwnPath, held: &OwnLock) -> std::io::Result<()> {
         if held.dir != dir.0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
@@ -200,7 +200,7 @@ impl Own {
     /// 把暂存区里的一份（`~/.cc-monitor/staging/<name>`，`name` 只许一段名字）原子换进后端落点（`~/.cc-monitor/bin/ccm`）：
     /// 落点那层目录不在就建（0700），再 `rename(2)` 盖掉旧的（同在 `~/.cc-monitor` 下 ⇒ 同一块盘，落点在换的全程都在）。
     /// Windows 远端不承诺 ⇒ `Unsupported`。
-    pub(crate) fn place_staged(&self, name: &str) -> std::io::Result<()> {
+    pub fn place_staged(&self, name: &str) -> std::io::Result<()> {
         if cfg!(windows) {
             return Err(std::io::ErrorKind::Unsupported.into());
         }
@@ -225,7 +225,7 @@ impl Own {
 
 impl Own {
     /// 删掉后端落点那一份（`~/.cc-monitor/bin/ccm`；是链接就删链接本身，不跟）：删了 ⇒ `true`，本来不在 ⇒ `false`。卸载那一趟用。
-    pub(crate) fn clear_landing(&self) -> std::io::Result<bool> {
+    pub fn clear_landing(&self) -> std::io::Result<bool> {
         let landing = self
             .at_home(relay_route_core::BACKEND_LANDING_REL)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
@@ -248,7 +248,7 @@ impl Own {
 
     /// 把一份被盖掉的后端字节整份原子写进留存区的 `name`（一段名字；已在 ⇒ 盖掉；0600，修改时间就是留下的那一刻）。
     /// 留存区那层目录照自家目录建 / 核（[`Self::own_dir`]）；落点那层 `bin` 要先在。
-    pub(crate) fn keep_backend(&self, name: &str, bytes: &[u8]) -> Result<(), Said> {
+    pub fn keep_backend(&self, name: &str, bytes: &[u8]) -> Result<(), Said> {
         if !one_name(name) {
             return Err(copy_text("beOwnState.path.notRelative", &[("rel", name)]).into());
         }
@@ -259,7 +259,7 @@ impl Own {
     }
 
     /// 留存区里那几份：`(名字, 修改时间)`；留存区不在 · 列不出 ⇒ 空。只认普通文件。
-    pub(crate) fn kept_backends(&self) -> Vec<(String, std::time::SystemTime)> {
+    pub fn kept_backends(&self) -> Vec<(String, std::time::SystemTime)> {
         let Ok(dir) = self.kept_dir() else {
             return Vec::new();
         };
@@ -276,7 +276,7 @@ impl Own {
     }
 
     /// 删留存区里的一份（`name` 只许一段名字）。
-    pub(crate) fn drop_kept_backend(&self, name: &str) -> std::io::Result<()> {
+    pub fn drop_kept_backend(&self, name: &str) -> std::io::Result<()> {
         if !one_name(name) {
             return Err(std::io::ErrorKind::InvalidInput.into());
         }
@@ -291,7 +291,7 @@ impl Own {
 /// （续期：配置目录里一把 · 旁边一把；整份写：配置目录里一把；续某一条 MCP 登录：配置目录里按那一条起名的一把）。
 /// 能写的只有这几处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删那几把锁目录。配置目录本身与里面别的文件一个都碰不到。
 /// 只能由 [`Own::account_creds`] 造（写自家状态的句柄才铸得出它）；名字由登记那一家的那一形给（一段名字，不许带分隔符）。
-pub(crate) struct AccountCreds {
+pub struct AccountCreds {
     dir: PathBuf,
     file: PathBuf,
     inside: PathBuf,
@@ -300,13 +300,13 @@ pub(crate) struct AccountCreds {
 }
 
 /// 配置目录的跨进程锁（[`AccountCreds::lock`]）：写那份凭据要它。
-pub(crate) struct CredsLock {
+pub struct CredsLock {
     _held: crate::platform::lock::DirLock,
 }
 
 /// 那几把锁目录里的哪一把。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RenewLock {
+pub enum RenewLock {
     /// 配置目录里那一把续期锁（`<目录>/<inside>`）。
     Inside,
     /// 配置目录旁边那一把续期锁（`<目录><beside>`）。
@@ -326,7 +326,7 @@ fn one_name(n: &str) -> bool {
 impl Own {
     /// 铸一个号的凭据窄句柄：`dir` 是那个号的配置目录，`file` / `inside` / `write` 是那一家登记的凭据文件名与里面那几把锁的名字
     /// （一段名字），`beside` 是旁边那把锁接在目录名后面的后缀（不许带分隔符）。名字不合 ⇒ 拒。
-    pub(crate) fn account_creds(
+    pub fn account_creds(
         &self,
         dir: &Path,
         file: &str,
@@ -361,12 +361,12 @@ impl Own {
 
 impl AccountCreds {
     /// 那份凭据文件（读用）。
-    pub(crate) fn file(&self) -> &Path {
+    pub fn file(&self) -> &Path {
         &self.file
     }
 
     /// 那一把锁目录在哪（读它的修改时刻用；没登记 · 名字不是一段名字 ⇒ `None`）。
-    pub(crate) fn lock_path(&self, which: &RenewLock) -> Option<PathBuf> {
+    pub fn lock_path(&self, which: &RenewLock) -> Option<PathBuf> {
         match which {
             RenewLock::Inside => Some(self.inside.clone()),
             RenewLock::Beside => self.beside.clone(),
@@ -376,14 +376,14 @@ impl AccountCreds {
     }
 
     /// 拿配置目录的跨进程锁（阻塞到拿到为止）。
-    pub(crate) fn lock(&self) -> Result<CredsLock, Said> {
+    pub fn lock(&self) -> Result<CredsLock, Said> {
         Ok(CredsLock {
             _held: hold(&self.dir)?,
         })
     }
 
     /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；名字不是一段名字 ⇒ `Err`。
-    pub(crate) fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
+    pub fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
         if let RenewLock::OneLogin(n) = which {
             if !one_name(n) {
                 return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
@@ -400,7 +400,7 @@ impl AccountCreds {
     }
 
     /// 删那一把锁目录（只删空目录）。
-    pub(crate) fn drop_lock(&self, which: &RenewLock) -> std::io::Result<()> {
+    pub fn drop_lock(&self, which: &RenewLock) -> std::io::Result<()> {
         match self.lock_path(which) {
             Some(p) => std::fs::remove_dir(p),
             None => Ok(()),
@@ -408,7 +408,7 @@ impl AccountCreds {
     }
 
     /// 整份原子写那份凭据（出生即只给本人）。`held` 是配置目录那一把（[`AccountCreds::lock`]）。
-    pub(crate) fn write(&self, _held: &CredsLock, body: &[u8]) -> Result<(), Said> {
+    pub fn write(&self, _held: &CredsLock, body: &[u8]) -> Result<(), Said> {
         atomic_write(&self.file, body)
     }
 }
@@ -424,7 +424,7 @@ pub struct DiagLog {
 
 /// 新建出来的当前那份：只会写、只交得出 fd（给 fd 2 指过去用）。
 #[derive(Debug)]
-pub(crate) struct DiagFile(std::fs::File);
+pub struct DiagFile(std::fs::File);
 
 impl DiagLog {
     /// 认下交来的那一份（旧的那份落在同目录：`stderr.log` ⇒ `stderr.old.log`）。
@@ -434,17 +434,17 @@ impl DiagLog {
     }
 
     /// 当前那份。
-    pub(crate) fn cur(&self) -> &Path {
+    pub fn cur(&self) -> &Path {
         &self.cur
     }
 
     /// 旧的那份。
-    pub(crate) fn old(&self) -> &Path {
+    pub fn old(&self) -> &Path {
         &self.old
     }
 
     /// 当前那份原子挪成旧的：挪了 ⇒ `true`；当前那份不在 ⇒ `false`。
-    pub(crate) fn roll(&self) -> std::io::Result<bool> {
+    pub fn roll(&self) -> std::io::Result<bool> {
         match std::fs::rename(&self.cur, &self.old) {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -470,28 +470,14 @@ impl DiagLog {
     }
 
     /// `O_EXCL` 新建当前那份（已在 ⇒ 照实报错，不截断；只给本人）。
-    pub(crate) fn create(&self) -> std::io::Result<DiagFile> {
+    pub fn create(&self) -> std::io::Result<DiagFile> {
         self.open_cur(true, false)
     }
 
     /// 只追加一整行（`O_APPEND`，不在就新建、只给本人；目录不在 ⇒ `Err`，不替它建）。
-    pub(crate) fn append_line(&self, line: &[u8]) -> std::io::Result<()> {
+    pub fn append_line(&self, line: &[u8]) -> std::io::Result<()> {
         let mut f = self.open_cur(false, true)?;
         f.write_all(line)
-    }
-}
-
-/// 判据的「fd 2」替身要的两样（生产里 fd 2 那一份由 `platform::stderr_fd` 量、指，不经它们）。
-#[cfg(test)]
-impl DiagFile {
-    /// 此刻多长（问不到 ⇒ `None`）。
-    pub(crate) fn len(&self) -> Option<u64> {
-        self.0.metadata().ok().map(|m| m.len())
-    }
-
-    /// 同一份再开一个把手（同一个打开文件描述）。
-    pub(crate) fn try_clone(&self) -> std::io::Result<DiagFile> {
-        self.0.try_clone().map(DiagFile)
     }
 }
 
@@ -512,7 +498,7 @@ impl std::os::fd::AsFd for DiagFile {
 }
 
 /// 后端自家目录**建的那一下**给的权限位：只给本人（远端 SFTP 部署建目录用同一个数）。
-pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
+pub const PRIVATE_DIR_MODE: u32 = 0o700;
 
 /// 建**一层**目录、建的那一下就是 0700（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）；已在的不动。
 /// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 与 [`own_dir`] 的本体。
@@ -588,7 +574,7 @@ pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
 
 /// `at` 在不在这台的后端自家目录（`<家>/.cc-monitor`，家解开再比；`at` 由调用方解开）底下、且那个目录是本人的真目录（不是链接）。
 /// 答不出家在哪 · 那一层不在 / 是链接 ⇒ `false`。文件管理面新建的东西收不收紧按它判。
-pub(crate) fn inside_own_dir(at: &Path) -> bool {
+pub fn inside_own_dir(at: &Path) -> bool {
     let Some(home) = crate::platform::paths::home_dir() else {
         return false;
     };
@@ -675,10 +661,11 @@ fn atomic_write_with(
     result
 }
 
+// 判据用的几种造法（临时家目录 · 只给数据目录 · 两个根各一处）：本包的判据与上层的测试档共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/platform/fs/own_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/fs/own_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/platform/fs/own_bytes_golden.rs"]
-mod bytes_golden;

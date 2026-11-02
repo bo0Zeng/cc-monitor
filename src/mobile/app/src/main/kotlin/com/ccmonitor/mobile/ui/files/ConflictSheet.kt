@@ -34,7 +34,7 @@ import com.ccmonitor.mobile.core.wire.gen.Decide
 
 /**
  * 同名那一问（底部抽屉，问一次；上传 · 复制到 · 下载同一张）：标题 · 那一句（有的话）· 每项名字与那一行的说明（核心写好）。
- * 整组按钮只画清单里有一项给了的答（取消 · 跳过同名 · 保留两份 · 覆盖危险色）；不止一项 ⇒ ［逐项选］展开，每行照它自己给的答选，
+ * 整组按钮只画清单里有一项给了的答（取消 · 跳过同名 · 保留两份 · 覆盖危险色；字由核心写在每行的 choices 上）；不止一项 ⇒ ［逐项选］展开，每行照它自己给的答选，
  * 没点的那几项照跳过，按 [go]（那个动作）交。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,11 +62,11 @@ fun ConflictSheet(
                         Text(c.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
                         if (each) {
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-                                c.answers.forEach { a ->
+                                c.choices.forEach { o ->
                                     FilterChip(
-                                        selected = (picks[c.key] ?: Decide.SKIP) == a,
-                                        onClick = { picks[c.key] = a },
-                                        label = { Text(pickText(a)) },
+                                        selected = (picks[c.key] ?: Decide.SKIP) == o.decide,
+                                        onClick = { picks[c.key] = o.decide },
+                                        label = { Text(o.pick) },
                                     )
                                 }
                             }
@@ -84,29 +84,12 @@ fun ConflictSheet(
                 if (each) {
                     SecondaryButton(onClick = { onAnswer(BatchAnswer.Each(picks.toMap())) }) { Text(go.orEmpty()) }
                 } else {
-                    // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；清单里没有一项给的答不画。
-                    WHOLE.filter { a -> rows.any { a in it.answers } }.forEach { a ->
-                        SecondaryButton(onClick = { onAnswer(BatchAnswer.All(a)) }, danger = a == Decide.OVERWRITE) { Text(wholeText(a)) }
+                    // 字与先后照核心（每行的 choices 已按跳过 · 保留两份 · 覆盖排好）；清单里没有一项给的答不画。
+                    rows.flatMap { it.choices }.distinctBy { it.decide }.forEach { o ->
+                        SecondaryButton(onClick = { onAnswer(BatchAnswer.All(o.decide)) }, danger = o.decide == Decide.OVERWRITE) { Text(o.label) }
                     }
                 }
             }
         }
     }
 }
-
-/** 整组那几颗的先后（跳过在前、覆盖在最后）。 */
-private val WHOLE = listOf(Decide.SKIP, Decide.KEEP_BOTH, Decide.OVERWRITE)
-
-private fun wholeText(a: Decide): String =
-    when (a) {
-        Decide.SKIP -> copyText("rsFilewinBatch.btn.skip")
-        Decide.OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
-        Decide.KEEP_BOTH -> copyText("rsFilewinBatch.btn.keepBoth")
-    }
-
-private fun pickText(a: Decide): String =
-    when (a) {
-        Decide.SKIP -> copyText("rsFilewinBatch.pick.skip")
-        Decide.OVERWRITE -> copyText("rsFilewinBatch.pick.overwrite")
-        Decide.KEEP_BOTH -> copyText("rsFilewinBatch.pick.keepBoth")
-    }

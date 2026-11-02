@@ -4,7 +4,7 @@
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient` ＋ **真的**本机吸收点
 //! （`stream_source::route`），登记成本机那条流；对面是一个会说传输四条的小假后端
 //! （记下每条请求，按用例的剧本回应答、塞帧）。后端那一半的真实现另有 `tests/backend/control/transfer_tests.rs`，
-//! 两半接在一起的真进程读数见 `tests/evidence/SR1b-sftp-loopback.py`。
+//! 两半接在一起的真进程读数见 `tests/evidence/sftp-loopback.py`。
 //!
 //! ⚠ 本机那条流是进程内全局登记 ⇒ 本文件的用例一律先拿 `local_origin_test_lock`。
 

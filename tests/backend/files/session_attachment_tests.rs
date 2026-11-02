@@ -1,9 +1,9 @@
-//! `control/files_commit/session_attachment.rs` 的行为判据 —— 聊天附件的落 · 撤 · 清 · 开传前那一问。
+//! `files/commit/session_attachment.rs` 的行为判据 —— 聊天附件的落 · 撤 · 清 · 开传前那一问。
 //! 全部在本机临时目录上真跑（一个假的 `home` 带暂存区 ＋ 一个会话工作目录）。
 
 use super::*;
 use crate::common::staging::PART_SUFFIX;
-use crate::control::files_commit::STAGING_DIR;
+use crate::files::commit::STAGING_DIR;
 use crate::platform::fs::Face;
 use cmd_wire::files::{Sha256Expect, Sha256Hex};
 
@@ -29,7 +29,7 @@ const KEY: &str = "0123456789abcdef0123456789abcdef";
 const AT: i64 = 1_792_769_340;
 
 fn sha(b: &[u8]) -> String {
-    crate::control::files_write::content_sha256(b)
+    crate::files::write::content_sha256(b)
 }
 
 fn stage(home: &Path, key: &str, bytes: &[u8]) {

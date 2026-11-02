@@ -66,7 +66,7 @@ pub struct Listed {
     ///
     /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
     /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），[`row_from_ls_entry`] 把它留住 ——
-    /// 写操作（改名 · 删除 · 改权限）就能对乱码名动手（`writeops::rel_json` 发 b16）。
+    /// 写操作（改名 · 删除 · 改权限）就能对乱码名动手（写面的相对段按这几个字节发，`cmd_wire::files::WirePath`）。
     /// ⚠ `serde(default)`：开窗那一跳（`proc::OpenRequest`）两头版本不齐时缺这一格 ⇒ `None`
     /// ⇒ 那一行退回「有损名不许写」，不会拿显示串去寻址。
     #[serde(default)]
@@ -181,7 +181,7 @@ impl Source {
     /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的，
     /// 而这一个是**寻址用的**。两者今天由同一个 `origin_label()` 喂
     /// （本机那一侧退役之前不是这样：那时 `label` 回的是「本机」两个中文字，
-    /// 而寻址要的是 `origin::LOCAL` 那个 `"<local>"`）。
+    /// 而寻址要的是 `cmd_wire::LOCAL`）。
     /// ⇒ **仍然不合并**：它们回的是同一个串是**今天的实况**，不是契约。
     ///
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
@@ -189,7 +189,7 @@ impl Source {
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
     /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `stream_source` 的 `on_attached` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
-    /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
+    /// origin，而且不报错」。
     pub fn origin(&self) -> Origin {
         Origin::named(self.0.clone())
     }
@@ -307,11 +307,6 @@ impl RemotePath {
     /// 上一级（按字节切）。
     pub fn parent(&self) -> Self {
         Self::from_bytes(&parent_bytes(&self.bytes()))
-    }
-
-    /// 尾段发出去的那一形。
-    pub fn tail_wire(&self) -> serde_json::Value {
-        wire_bytes(tail_bytes(&self.bytes()))
     }
 
     /// 底下名叫 `name` 的那一项（按字节拼，[`child_bytes`]）。
@@ -504,11 +499,7 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 // - **`Row` 持字符串不持字节**，字节走**发出去的那一跳**：
 //   窗口记住当前目录的字节（`FileWindow::cwd_raw`）与行上名字的字节（`Listed::raw_name`），发路径一律经 [`RemotePath`]
 //   （进目录 · 列目录 · 上一级 · 读 / 存文本 · 复制 · 算大小 · 新建 · 写面的根）；显示照旧用有损串。
-//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（SFTP 库寻址不到）。
-
-/// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
-/// （两者刻意不同形，同 `find.rs` 头注那条）。
-pub const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
+//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签。
 
 /// 一趟 `files-ls` 回来的 `entries` 里的**一条** → [`Listed`]。
 ///
@@ -964,10 +955,7 @@ async fn ask_raw(
 ) -> Result<serde_json::Value, batch_core::Rebuff> {
     use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
     let plain = |failed: Failed| batch_core::Rebuff { failed, cut: false };
-    let budget = Budget {
-        until: std::time::Instant::now() + t,
-        cancel,
-    };
+    let budget = Budget::new(std::time::Instant::now() + t, cancel);
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         plain(failed_here(
             copy_text("reason.code.bug", &[]),

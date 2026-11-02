@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 /// 一趟扫完本机进程表：`wanted` 认的文件此刻各被哪些进程开着写。`/proc` 读不了 ⇒ `None`（判不了）。
 /// 别人的进程读不了它的 fd 表 ⇒ 跳过（同一个用户的 agent 进程总读得到）。
-pub(crate) fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
+pub fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
     let procs = Ro::read_dir("/proc").ok()?;
     let mut out: Writers = HashMap::new();
     for ent in procs.flatten() {
@@ -75,7 +75,7 @@ const TREE_MASK: u32 = libc::IN_CREATE
 const WAIT_MASK: u32 = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_ONLYDIR;
 
 /// 一道活着的耳朵。一丢 ⇒ 收的线程跟着退出（经停机那根管子叫醒它，不靠超时）。
-pub(crate) struct OpenEar {
+pub struct OpenEar {
     stop: OwnedFd,
 }
 
@@ -97,7 +97,7 @@ impl Drop for OpenEar {
 /// 盯 `root` 这棵树（含之后长出来的子目录；根还不在 ⇒ 等它出现）里文件的新建 · 打开 · 写完关闭：
 /// 每醒一次交一批（见模块头注），`on_batch` 回 `false` ⇒ 不再听（接的那一头没了）。
 /// 新长出来的目录挂上时，里面已有的文件当作「打开了」报一次（挂上之前写进去的那一下听不见）。挂不上 ⇒ `None`。
-pub(crate) fn watch_opens(
+pub fn watch_opens(
     root: &Path,
     mut on_batch: impl FnMut(OpenBatch) -> bool + Send + 'static,
 ) -> Option<OpenEar> {
@@ -172,7 +172,7 @@ pub(crate) fn watch_opens(
 }
 
 /// 根规范化成绝对路径：在的那一截照 `canonicalize`，还不在的那一截原样接上（readlink 出来的路径与它可比）。
-pub(crate) fn absolute(root: &Path) -> PathBuf {
+pub fn absolute(root: &Path) -> PathBuf {
     let mut missing = Vec::new();
     let mut at = root.to_path_buf();
     loop {

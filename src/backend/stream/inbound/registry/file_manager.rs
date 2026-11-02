@@ -42,7 +42,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ── 把那份零消费者的写原语接上 ──
     //
     // 🔴 **这一条是本族第一条会往盘上写的命令，而它不花用户那句「允许」**：
-    //   `control/files_write.rs` 09-19 那时在 `readonly_guard` 的写白名单上（今天写经 `Face`），
+    //   `files/write.rs` 09-19 那时在 `readonly_guard` 的写白名单上（今天写经 `Face`），
     //   射程逐字是「`O_EXCL` 新建一份**此前不存在**的文件；不删、不改名、不覆盖、不建目录」
     //   ⇒ 接上它**没有放宽任何一层判据**（`readonly_guard` 一行没动）。
     //   它此前的形状与 `files.ls` 同一形：**能力在那儿，没人接**（那份文件头注逐字
@@ -57,14 +57,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ **CLI 面是自动来的，不是选的**：`stream::cli::cli_exposed` = 非 `Run::Builtin`
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
-    //   别族拿不到它。理由整段在 `control/files_write` 头注「写怎么被挡住」那一节。
+    //   别族拿不到它。理由整段在 `files/write.rs` 头注「写怎么被挡住」那一节。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCreate>(
         "在文件管理目标根底下新建一份此前不存在的文件",
     ),
     // ── 改动既有数据的那五条 ──────────
     //
     // 🔴 **这五条才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
-    //   处理器同住 `control/files_write.rs`，写都经分派递进来的 `Face`（`Facing` 那一档只许本族用）。
+    //   处理器同住 `files/write.rs`，写都经分派递进来的 `Face`（`Facing` 那一档只许本族用）。
     //   ⚠ 本段五条与上面 `files-create` 的 `run` 逐字同形（名字从 `r.cmd` 来）。
     // ⚠ 全在阻塞档：同步文件系统 I/O（外加围栏那几次 `canonicalize`），开跑之后打不断
     //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
@@ -78,14 +78,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 写面第七条：同根内复制。与上面五条同住一个模块、
     //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给 `Face` 添动词**：由 `O_EXCL` 新建 ＋
-    //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
+    //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `files/write.rs::copy_entry`）。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>("同根内复制一组"),
     // 撤一组（复制 · 删除 · 改权限那三条带票的那一组）：只立旗，不碰盘。
     typed::asynchronous::<crate::stream::inbound::files_write_face::FilesBatchStop>(
         "撤一组复制 · 删除 · 改权限",
     ),
     // 解压：处理器住
-    //   `control/files_extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。
+    //   `files/extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesExtract>("解压到一个新目录"),
     typed::blocking::<crate::stream::inbound::files_write_face::FilesWriteText>(
         "覆盖写一份已经在的普通文件",
@@ -100,9 +100,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //
     // 🔴 SFTP 缩成只做传输之后，上传只写暂存区（`~/.cc-monitor/staging/<key>.part`）；
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
-    //   处理器住 `control/files_commit.rs`，写经 `Face`。阻塞档：同步文件系统 I/O（路径解析的 `canonicalize` ＋ 改名）。
+    //   处理器住 `files/commit.rs`，写经 `Face`。阻塞档：同步文件系统 I/O（路径解析的 `canonicalize` ＋ 改名）。
     // ── 存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
-    //   同住 `control/files_commit.rs`，阻塞档理由同上一条。
+    //   同住 `files/commit.rs`，阻塞档理由同上一条。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesStageChunk>(
         "存盘的一块进暂存区",
     ),
@@ -112,7 +112,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
         "把暂存区里一份传完的上传件挪进目标",
     ),
-    // ── 聊天附件：落点固定在会话工作目录下 `.ccm-attach/`（本体住 `control/files_commit/session_attachment.rs`，阻塞档理由同上传提交）──
+    // ── 聊天附件：落点固定在会话工作目录下 `.ccm-attach/`（本体住 `files/commit/session_attachment.rs`，阻塞档理由同上传提交）──
     typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachmentCheck>(
         "开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写）",
     ),

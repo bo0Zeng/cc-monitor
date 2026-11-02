@@ -36,23 +36,23 @@ use std::time::{Duration, Instant};
 
 /// 一次 [`Child::run`] 的期限。只由 [`Deadline::secs`] / [`Deadline::millis`] 造，只在本模块里换成时长。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Deadline(Duration);
+pub struct Deadline(Duration);
 
 impl Deadline {
     #[allow(
         clippy::disallowed_methods,
         reason = "起子进程原语的期限类型 `Deadline` 唯一造时长的地方：`Deadline` 只交给 `Child::run` 那一次有界等待，模块外拿不到它的时长（没有取值口），拿去做节拍做不到"
     )]
-    pub(crate) const fn millis(n: u64) -> Deadline {
+    pub const fn millis(n: u64) -> Deadline {
         Deadline(Duration::from_millis(n))
     }
 
-    pub(crate) const fn secs(n: u64) -> Deadline {
+    pub const fn secs(n: u64) -> Deadline {
         Deadline::millis(n * 1000)
     }
 
     /// 按上限 `cap` 与发起方截止时刻取小的那个（已过 ⇒ 零）：[`Budget::capped`] 与 [`bounded`] 同一个算法。
-    pub(crate) fn within(cap: Deadline, until: Option<Until>) -> Deadline {
+    pub fn within(cap: Deadline, until: Option<Until>) -> Deadline {
         match until {
             Some(Until(t)) => Deadline(cap.0.min(t.saturating_duration_since(now()))),
             None => cap,
@@ -60,12 +60,12 @@ impl Deadline {
     }
 
     /// 交给下一跳的期限口（`--within-ms` · 请求信封 `within_ms`）的毫秒数：发起方的期限原样往下带，不在这里造新的。
-    pub(crate) fn as_ms(self) -> u64 {
+    pub fn as_ms(self) -> u64 {
         u64::try_from(self.0.as_millis()).unwrap_or(u64::MAX)
     }
 
     /// 给文案用的秒数（向上取整）。
-    pub(crate) fn shown_secs(self) -> u64 {
+    pub fn shown_secs(self) -> u64 {
         u64::try_from(self.0.as_millis().div_ceil(1000)).unwrap_or(u64::MAX)
     }
 }
@@ -75,7 +75,7 @@ impl Deadline {
 /// 挂在执行这条命令的线程上（阻塞档一条命令占一根线程），**只由分派那一层装**（[`Budget::capped`]），命令本身不装；
 /// 守卫掉了就还原成装之前的样子（线程池复用这根线程跑下一条命令时不残留）。嵌套只收紧、不放宽。
 #[must_use] // 总期限只在守卫活着时有效
-pub(crate) struct Budget {
+pub struct Budget {
     prev: Option<Span>,
     /// 不许跨线程交出去（还原的是装它的那根线程）。
     _here: PhantomData<*const ()>,
@@ -94,23 +94,23 @@ thread_local! {
 
 /// 发起方给的截止时刻：分派那一层收到请求时把「发起方期限 − 余量」换成的绝对时刻（之后只收紧、不重新计时）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Until(Instant);
+pub struct Until(Instant);
 
 impl Until {
     /// 从现在起 `d`；远到钟面装不下 ⇒ `None`（等于没给）。
-    pub(crate) fn after(d: Deadline) -> Option<Until> {
+    pub fn after(d: Deadline) -> Option<Until> {
         now().checked_add(d.0).map(Until)
     }
 
     /// 到那一刻还剩几毫秒（已过 ⇒ 0）。
-    pub(crate) fn left_ms(self) -> u64 {
+    pub fn left_ms(self) -> u64 {
         u64::try_from(self.0.saturating_duration_since(now()).as_millis()).unwrap_or(u64::MAX)
     }
 }
 
 impl Budget {
     /// 按上限 `cap` 装；发起方给了截止时刻 ⇒ 取上限与「到那一刻还剩多少」里小的那个（已过 ⇒ 零：一发都不起）。
-    pub(crate) fn capped(cap: Deadline, until: Option<Until>) -> Budget {
+    pub fn capped(cap: Deadline, until: Option<Until>) -> Budget {
         Budget::start(Deadline::within(cap, until))
     }
 
@@ -158,10 +158,7 @@ impl Span {
     clippy::disallowed_methods,
     reason = "异步档命令的总期限（`child::bounded`）：发起方给的截止时刻与后端登记的上限里早的那个，只交给这一次有界等待，不驱动循环"
 )]
-pub(crate) async fn bounded<F: std::future::Future>(
-    total: Deadline,
-    f: F,
-) -> Result<F::Output, Deadline> {
+pub async fn bounded<F: std::future::Future>(total: Deadline, f: F) -> Result<F::Output, Deadline> {
     tokio::time::timeout(total.0, f).await.map_err(|_| total)
 }
 
@@ -179,7 +176,7 @@ const DRAIN_AFTER_KILL: Deadline = Deadline::millis(1_000);
 
 /// 起不成 / 等不到。
 #[derive(Debug)]
-pub(crate) enum ChildFail {
+pub enum ChildFail {
     /// 程序不在（`ENOENT` 一类）。
     NotFound(std::io::Error),
     /// 到了期限仍没结束：整组已杀、直接子进程已收。
@@ -215,12 +212,12 @@ impl ChildFail {
         }
     }
 
-    pub(crate) fn is_timed_out(&self) -> bool {
+    pub fn is_timed_out(&self) -> bool {
         matches!(self, ChildFail::TimedOut { .. })
     }
 
     /// 阻塞档命令把这次失败交成命令级的码 ＋ 话：超时 ⇒ [`TIMED_OUT`] ＋ 原语的话；其余 ⇒ `other` ＋ 调用方的话。
-    pub(crate) fn into_cmd_err(
+    pub fn into_cmd_err(
         self,
         other: &str,
         said: impl FnOnce(&ChildFail) -> String,
@@ -235,7 +232,7 @@ impl ChildFail {
 impl ChildFail {
     /// 同 [`ChildFail::into_cmd_err`]，但句子里只给原因词（`said` 拿到的是 [`copy_core::spawn_reason`] 那一词），
     /// 系统原话另带（进复制详情）。超时那一档照旧：原语那句就是成品，没有原话。
-    pub(crate) fn into_cmd_said(
+    pub fn into_cmd_said(
         self,
         other: &'static str,
         said: impl FnOnce(&str) -> String,
@@ -253,14 +250,17 @@ impl ChildFail {
 }
 
 /// 命令级码：这条命令起的子进程过了期限没结束（已杀整组）。
-pub(crate) const TIMED_OUT: &str = "child_timed_out";
+pub const TIMED_OUT: &str = "child_timed_out";
 
-/// 起子进程前最后一道：生产构建里是空的；测试构建换成 `tests/` 那一份（裸名 `tmux` 落到本进程自己的空 socket 目录）。
-#[cfg_attr(test, path = "../../../tests/backend/platform/child_tmux_fence.rs")]
+/// 起子进程前最后一道：生产构建里是空的；测试构建（连上层的测试档，经 `test-support`）换成 `tests/` 那一份（裸名 `tmux` 落到本进程自己的空 socket 目录）。
+#[cfg_attr(
+    any(test, feature = "test-support"),
+    path = "../../../tests/backend/platform/child_tmux_fence.rs"
+)]
 mod tmux_fence;
 
 /// 要起的那个子进程（程序 · argv · 显式环境）。stdin 默认是空设备；[`Child::stdin_bytes`] 给了 ⇒ [`Child::run`] 把那几个字节喂进去、写完就关。
-pub(crate) struct Child {
+pub struct Child {
     program: OsString,
     args: Vec<OsString>,
     /// `Some(键)` ⇒ 先清空，只从宿主继承这几键（自有格列了也不继承）。
@@ -275,7 +275,7 @@ pub(crate) struct Child {
 }
 
 impl Child {
-    pub(crate) fn new(program: impl AsRef<OsStr>) -> Child {
+    pub fn new(program: impl AsRef<OsStr>) -> Child {
         Child {
             program: program.as_ref().to_os_string(),
             args: Vec::new(),
@@ -288,23 +288,23 @@ impl Child {
     }
 
     /// [`Child::run`] 把这几个字节喂进它的 stdin（另一条线写，写完就关：大过管道缓冲也不与读输出互等）。
-    pub(crate) fn stdin_bytes(mut self, bytes: Vec<u8>) -> Child {
+    pub fn stdin_bytes(mut self, bytes: Vec<u8>) -> Child {
         self.stdin = Some(bytes);
         self
     }
 
     /// 在这个目录里起它。
-    pub(crate) fn current_dir(mut self, dir: impl AsRef<std::path::Path>) -> Child {
+    pub fn current_dir(mut self, dir: impl AsRef<std::path::Path>) -> Child {
         self.cwd = Some(dir.as_ref().to_path_buf());
         self
     }
 
-    pub(crate) fn arg(mut self, a: impl AsRef<OsStr>) -> Child {
+    pub fn arg(mut self, a: impl AsRef<OsStr>) -> Child {
         self.args.push(a.as_ref().to_os_string());
         self
     }
 
-    pub(crate) fn args<I, S>(mut self, it: I) -> Child
+    pub fn args<I, S>(mut self, it: I) -> Child
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -315,7 +315,7 @@ impl Child {
     }
 
     /// 显式交一格环境。自有格（[`OWN_ENVS`]）不收：那一类只经 [`Child::pass_own`]。
-    pub(crate) fn env(mut self, k: impl AsRef<OsStr>, v: impl AsRef<OsStr>) -> Child {
+    pub fn env(mut self, k: impl AsRef<OsStr>, v: impl AsRef<OsStr>) -> Child {
         let k = k.as_ref();
         if is_own(k) {
             debug_assert!(false, "自有环境 {k:?} 只经 pass_own 交");
@@ -327,13 +327,13 @@ impl Child {
         self
     }
 
-    pub(crate) fn env_remove(mut self, k: impl AsRef<OsStr>) -> Child {
+    pub fn env_remove(mut self, k: impl AsRef<OsStr>) -> Child {
         self.envs.push((k.as_ref().to_os_string(), None));
         self
     }
 
     /// 显式往下交一格**自有**环境（只有起常驻后端那一处要）。`key` 必须在 [`OWN_ENVS`] 里。
-    pub(crate) fn pass_own(mut self, key: &str, value: impl AsRef<OsStr>) -> Child {
+    pub fn pass_own(mut self, key: &str, value: impl AsRef<OsStr>) -> Child {
         if !OWN_ENVS.contains(&key) {
             debug_assert!(false, "{key} 不是自有环境");
             tracing::warn!("起 {:?}：{key} 不是自有环境，pass_own 忽略", self.program);
@@ -345,7 +345,7 @@ impl Child {
     }
 
     /// 清空环境，只从宿主继承 `keys` 里的这几键（自有格列了也不继承）。显式交的照旧排在后面。
-    pub(crate) fn inherit_only(mut self, keys: &[&'static str]) -> Child {
+    pub fn inherit_only(mut self, keys: &[&'static str]) -> Child {
         self.inherit_only = Some(keys.to_vec());
         self
     }
@@ -365,8 +365,8 @@ impl Child {
     }
 
     /// 判据看要起的那条命令（程序 · argv · 环境）。
-    #[cfg(test)]
-    pub(crate) fn built(&self) -> Command {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn built(&self) -> Command {
         self.command()
     }
 
@@ -417,7 +417,7 @@ impl Child {
         clippy::disallowed_methods,
         reason = "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志；起子进程原语（`Child::run`）等子进程结束的一次有界等待：阻塞档命令起的 tmux / ssh / PowerShell 卡住时，没有它整条命令（或 watcher 的事件循环）就一直挂着"
     )]
-    pub(crate) fn run(self, within: Deadline) -> Result<Output, ChildFail> {
+    pub fn run(self, within: Deadline) -> Result<Output, ChildFail> {
         let program = self.label();
         let (within, said) = match Span::here() {
             None => (within, within),
@@ -519,7 +519,7 @@ impl Child {
     }
 
     /// 脱离起（自成进程组，stdio 全空；Windows 另不要控制台、脱离起它的那个 Job），不等；回它的 pid。
-    pub(crate) fn detach(self) -> Result<u32, ChildFail> {
+    pub fn detach(self) -> Result<u32, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -532,19 +532,19 @@ impl Child {
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
     /// 起不来 ⇒ `Err`（调用方用自己的主语说）。stdio 照旧继承。
     /// `started(pid)`：将要跑这个程序的那个进程的 pid —— POSIX 是自己（exec 之前调），Windows 是起好的子进程（等它之前调）。
-    pub(crate) fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
+    pub fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         os::exec_replace(self.command(), started)
     }
 }
 
 /// 跑着的程序文件能不能被覆盖 · 删掉：Windows 上不能（系统攥着它的映像），Unix 上能（换的是目录项，跑着的那一份照跑）。
 /// 托管进程从按版本的副本跑就看它（`host/managed/bin.rs`）。
-pub(crate) const RUNNING_PROGRAM_IS_LOCKED: bool = cfg!(windows);
+pub const RUNNING_PROGRAM_IS_LOCKED: bool = cfg!(windows);
 
 /// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退），
 /// 拿着它的那一方可以先关（[`Streaming::close_stdin`]）请它自己退。
 /// **放手即收**：`Drop` ⇒ 杀整组（Windows：终止 Job）、收尸。没有期限 —— 它活多久由拿着它的那一方定，不是节拍。
-pub(crate) struct Streaming {
+pub struct Streaming {
     child: std::process::Child,
     group: os::Group,
     stdin: Option<std::process::ChildStdin>,
@@ -552,13 +552,13 @@ pub(crate) struct Streaming {
 
 impl Streaming {
     /// 它的输出流（只给一次）。读到头 ＝ 它退了。
-    pub(crate) fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
+    pub fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
         self.child.stdout.take()
     }
 
     /// 关掉它的 stdin（再调什么也不做）：读到 stdin 头就自己收尾的程序据此自己退，它的输出随之读到头。
     /// 之后照旧放手即杀组收尸（它已经退了时组里没人，收尸之前组号仍被它占着、不会落到别的组上）。
-    pub(crate) fn close_stdin(&mut self) {
+    pub fn close_stdin(&mut self) {
         self.stdin = None;
     }
 }
@@ -578,7 +578,7 @@ impl Drop for Streaming {
 impl Child {
     /// 起一个长寿子进程、读它的输出流（stderr 丢掉、stdin 开着不写）；自成进程组（Windows：一个 Job）。
     /// 回来的 [`Streaming`] 一放手就杀组收尸。
-    pub(crate) fn stream(self) -> Result<Streaming, ChildFail> {
+    pub fn stream(self) -> Result<Streaming, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -920,7 +920,7 @@ mod tests;
 
 /// [`Child::converse`] 起的那个子进程说了什么（逐行；两条输出并成一条通道，各行带是哪一条）· 它退了。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Heard {
+pub enum Heard {
     /// stdout 的一行（去掉行尾）。
     Out(String),
     /// stderr 的一行（去掉行尾）。
@@ -931,7 +931,7 @@ pub(crate) enum Heard {
 
 /// 一问一答的子进程（官方登录那一类：打印一段、等 stdin 一行、再打印结局）：stdin 能写一行；两条输出逐行进 [`Conversation::heard`]。
 /// **放手即收**：`Drop` ⇒ 它还没退就杀整组（Windows：终止 Job）。收尸在等待线程里，与杀组互斥（同 [`Child::run`]）。没有期限 —— 活多久由拿着它的那一方定。
-pub(crate) struct Conversation {
+pub struct Conversation {
     stdin: Option<Box<dyn std::io::Write + Send>>,
     /// 放手时收的那一整棵（Unix：自成一组 —— 管道那一种 `process_group(0)`、终端那一种是会话首进程，组号即 pid；
     /// Windows：设了「关句柄即杀」的 Job，见 `os::Group`）。
@@ -947,7 +947,7 @@ unsafe impl Send for Conversation {}
 
 impl Conversation {
     /// 往它的 stdin 写一行（自带换行）。它已经关了 stdin / 退了 ⇒ 那一句系统报错。
-    pub(crate) fn say(&mut self, line: &str) -> std::io::Result<()> {
+    pub fn say(&mut self, line: &str) -> std::io::Result<()> {
         use std::io::Write;
         let w = self
             .stdin
@@ -959,7 +959,7 @@ impl Conversation {
     }
 
     /// 它说的话（只给一次：交给读它的那一方）。
-    pub(crate) fn take_heard(&mut self) -> Option<mpsc::Receiver<Heard>> {
+    pub fn take_heard(&mut self) -> Option<mpsc::Receiver<Heard>> {
         self.heard.take()
     }
 }
@@ -987,7 +987,7 @@ fn read_lines(r: impl Read, tx: mpsc::Sender<Heard>, wrap: fn(String) -> Heard) 
 
 impl Child {
     /// 起一个一问一答的子进程（自成进程组；stdin · stdout · stderr 三条都接上）。见 [`Conversation`]。
-    pub(crate) fn converse(self) -> Result<Conversation, ChildFail> {
+    pub fn converse(self) -> Result<Conversation, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1044,7 +1044,7 @@ impl Child {
     /// 同 [`Child::converse`]，但起在一个伪终端里（stdin · stdout · stderr 都是那个终端：要终端才肯问的官方子命令，
     /// 如 `claude mcp login`）。输出逐行交成 [`Heard::Out`]，只留人看得见的字（[`plain_line`]）；[`Conversation::say`] 以回车收尾。
     /// 环境与 [`Child::run`] 同一套（自有格 · 内部格照摘）；程序照交给它的 `PATH` 找。
-    pub(crate) fn converse_in_terminal(self) -> Result<Conversation, ChildFail> {
+    pub fn converse_in_terminal(self) -> Result<Conversation, ChildFail> {
         let (master, mut child) = self.spawn_in_pty(TERMINAL_SIZE)?;
         let reader = master.try_clone_reader().map_err(pty_fail)?;
         let writer = master.take_writer().map_err(pty_fail)?;
@@ -1096,7 +1096,7 @@ impl Child {
     /// 托管终端那一形（`host/managed/run.rs`）：起在一个伪终端里、长寿、不读不判它说什么 —— 主端的读写原样交出去，
     /// 改尺寸 · 挂断 · 等它退经 [`Terminal`] / [`TerminalChild`]。它是那个伪终端的会话首进程（伪终端库替它 `setsid`），
     /// 组号 ＝ 它的 pid。环境同 [`Child::run`] 那一套。
-    pub(crate) fn in_terminal(
+    pub fn in_terminal(
         self,
         rows: u16,
         cols: u16,
@@ -1183,7 +1183,7 @@ type PtyPair = (
 );
 
 /// 托管终端的伪终端那一侧（[`Child::in_terminal`]）：改尺寸 · 挂断。
-pub(crate) struct Terminal {
+pub struct Terminal {
     master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
     group: os::Group,
     pid: Option<u32>,
@@ -1197,12 +1197,12 @@ unsafe impl Sync for Terminal {}
 
 impl Terminal {
     /// 子进程的 pid（Windows 上伪终端库给得出就有）。
-    pub(crate) fn pid(&self) -> Option<u32> {
+    pub fn pid(&self) -> Option<u32> {
         self.pid
     }
 
     /// 改伪终端尺寸（里面的程序收到 SIGWINCH）。
-    pub(crate) fn resize(&self, rows: u16, cols: u16) -> std::io::Result<()> {
+    pub fn resize(&self, rows: u16, cols: u16) -> std::io::Result<()> {
         self.master
             .lock()
             .unwrap_or_else(|p| p.into_inner())
@@ -1216,7 +1216,7 @@ impl Terminal {
     }
 
     /// 给它那一组发 SIGHUP（终端关了）；已收尸 ⇒ 什么都不做（组号可能已不归它）。
-    pub(crate) fn hangup(&self) {
+    pub fn hangup(&self) {
         let r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
         if !*r {
             self.group.hangup();
@@ -1225,13 +1225,13 @@ impl Terminal {
 }
 
 /// 伪终端主端的读写：读 ＝ 里面的程序写出来的，写 ＝ 送进去的键。
-pub(crate) struct TerminalIo {
-    pub(crate) reader: Box<dyn Read + Send>,
-    pub(crate) writer: Box<dyn std::io::Write + Send>,
+pub struct TerminalIo {
+    pub reader: Box<dyn Read + Send>,
+    pub writer: Box<dyn std::io::Write + Send>,
 }
 
 /// 等托管终端里的子进程退出。
-pub(crate) struct TerminalChild {
+pub struct TerminalChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     /// 等它退那一下按 pid 不收尸地等（只 Unix 用；Windows 上句柄占着进程）。
     pid: Option<u32>,
@@ -1240,7 +1240,7 @@ pub(crate) struct TerminalChild {
 
 impl TerminalChild {
     /// 等它退（阻塞）：交回退出码（被信号杀的 ⇒ 伪终端库给的那个数）。
-    pub(crate) fn wait(mut self) -> Option<i32> {
+    pub fn wait(mut self) -> Option<i32> {
         reap_terminal_child(&mut self.child, self.pid, &self.reaped)
             .ok()
             .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))

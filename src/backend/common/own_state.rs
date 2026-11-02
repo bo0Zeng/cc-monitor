@@ -26,9 +26,9 @@ pub(crate) use relay_route_core::Kind;
 pub(crate) type Step = fn(serde_json::Value) -> Result<serde_json::Value, Said>;
 
 /// 一份落盘文件的声明。`T` 是读成的那一形。
-pub(crate) struct Doc<T> {
+pub struct Doc<T> {
     /// 落点（家目录底下 `.cc-monitor/` 那一层起；一类多份的写成那一类的样子，如 `…/<pid>.json`；不住那一层的写成它住哪）。
-    pub(crate) rel: &'static str,
+    pub rel: &'static str,
     /// 读上限（字节）：超了当读不出来。
     pub(crate) cap: u64,
     pub(crate) kind: Kind,
@@ -40,24 +40,25 @@ pub(crate) struct Doc<T> {
 }
 
 /// 挂升级步：`upgrade!(声明, [第 floor 版 ⇒ 下一版, …])`。只收状态（缓存挂不上，编不过）；步数要等于 `version - floor`。
+/// 包根导出（`crate::common::upgrade!`）：上层的状态文件也挂升级步；调用处要能写 `relay_route_core::…`。
+#[macro_export]
 macro_rules! upgrade {
     ($decl:expr, [$($step:expr),+ $(,)?]) => {
-        $crate::common::own_state::Doc::upgraded(
+        $crate::own_state::Doc::upgraded(
             relay_route_core::upgradable(&$decl),
             &[$($step),+],
         )
     };
 }
-pub(crate) use upgrade;
 
 impl<T> Doc<T> {
     /// 从声明表的一行取。读得懂的不止这一版（下限低于版本）⇒ 要挂升级步，用 [`upgrade!`]。
-    pub(crate) const fn of<K: Class>(d: &Decl<K>) -> Self {
+    pub const fn of<K: Class>(d: &Decl<K>) -> Self {
         Self::upgraded_any(d, &[])
     }
 
     /// [`upgrade!`] 展开成它（种类的闸在 `relay_route_core::upgradable`）。
-    pub(crate) const fn upgraded<K: Upgradable>(d: &Decl<K>, steps: &'static [Step]) -> Self {
+    pub const fn upgraded<K: Upgradable>(d: &Decl<K>, steps: &'static [Step]) -> Self {
         Self::upgraded_any(d, steps)
     }
 
@@ -69,7 +70,7 @@ impl<T> Doc<T> {
         assert!(steps.len() == span, "升级步数要等于 version - floor");
         Doc {
             rel: d.row.rel,
-            cap: d.row.cap,
+            cap: d.row.cap.bytes,
             kind: d.row.kind,
             format: d.row.format,
             steps,
@@ -78,7 +79,7 @@ impl<T> Doc<T> {
     }
 
     /// 声明的版本（格式是 JSON 的那几份；别的在编译期就拒）。流式读写的那几份大缓存自己核这一格，值只从这里来。
-    pub(crate) const fn version(&self) -> u32 {
+    pub const fn version(&self) -> u32 {
         match self.format {
             Format::Json { version, .. } => version,
             Format::Foreign => panic!("只有 JSON 那几份有版本"),
@@ -86,7 +87,7 @@ impl<T> Doc<T> {
     }
 
     /// 读整份字节、由 `decode` 解成 `T`（JSON 之外的格式 · 解之前要先动一下原文的）。
-    pub(crate) fn read_with(
+    pub fn read_with(
         &self,
         path: &Path,
         decode: impl FnOnce(Vec<u8>) -> Result<T, Said>,
@@ -98,7 +99,7 @@ impl<T> Doc<T> {
     }
 
     /// 流式读（大的缓存不先攒成整份）：`decode` 从限量的读者里读。读成哪一形由 `decode` 定（一类多份、各份形状不同的那几处）。
-    pub(crate) fn read_stream<U>(
+    pub fn read_stream<U>(
         &self,
         path: &Path,
         decode: impl FnOnce(&mut dyn std::io::Read) -> Result<U, Said>,
@@ -115,7 +116,7 @@ impl<T> Doc<T> {
     }
 
     /// 按 JSON 读成另一形（换形那几处读原文 `Value`；读上限 · 哪一种 · 版本照这份声明）。
-    pub(crate) fn read_as<U: serde::de::DeserializeOwned>(&self, path: &Path) -> Read<U> {
+    pub fn read_as<U: serde::de::DeserializeOwned>(&self, path: &Path) -> Read<U> {
         self.kind_of::<U>().read(path)
     }
 
@@ -183,7 +184,7 @@ impl<T> Doc<T> {
 
 impl<T: serde::de::DeserializeOwned> Doc<T> {
     /// 读整份并按 JSON 解成 `T`（JSON 那几份照版本，见模块头）。
-    pub(crate) fn read(&self, path: &Path) -> Read<T> {
+    pub fn read(&self, path: &Path) -> Read<T> {
         let got = match self.format {
             Format::Json { version, floor } => read_json::<serde_json::Value>(path, self.cap)
                 .and_then(|v| self.current(path, v, version, floor))
@@ -200,18 +201,12 @@ impl<T: serde::de::DeserializeOwned> Doc<T> {
 impl<T: serde::Serialize> Doc<T> {
     /// 整份写进 `dir` 底下这份（名字是落点的最后一截），`held` 是 `dir` 的锁。从表取的 JSON：顶层带 `version`；
     /// 盘上那一份是状态且比声明新 · 在却读不懂 ⇒ 拒、一个字节不动；比声明老 ⇒ 原文先照字节留成 `<名>.v<N>`（已有不动）。
-    pub(crate) fn write(
-        &self,
-        own: &Own,
-        dir: &OwnPath,
-        held: &OwnLock,
-        v: &T,
-    ) -> Result<(), Said> {
+    pub fn write(&self, own: &Own, dir: &OwnPath, held: &OwnLock, v: &T) -> Result<(), Said> {
         self.write_named(own, dir, relay_route_core::file_name_of(self.rel), held, v)
     }
 
     /// 同 [`Doc::write`]，文件名另给：一类多份的那几样（落点只写得出那一类的样子，如 `…/<sid>.json`）。
-    pub(crate) fn write_named(
+    pub fn write_named(
         &self,
         own: &Own,
         dir: &OwnPath,
@@ -343,7 +338,7 @@ pub enum Read<T> {
 
 impl<T> Read<T> {
     /// 读得到时换个形状；另两态原样。
-    pub(crate) fn and_then<U>(self, f: impl FnOnce(T) -> Read<U>) -> Read<U> {
+    pub fn and_then<U>(self, f: impl FnOnce(T) -> Read<U>) -> Read<U> {
         match self {
             Read::Absent => Read::Absent,
             Read::Present(t) => f(t),
@@ -417,7 +412,7 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path, cap: u64) -> Read<T> {
 }
 
 /// 整份写成紧凑 JSON、收尾一个换行：交回要写的那一份字节（经 `Own::write` 落盘）。
-pub(crate) fn json_body<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Result<Vec<u8>, Said> {
+pub fn json_body<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Result<Vec<u8>, Said> {
     let mut body = serde_json::to_vec(v).map_err(|e| {
         Said::with_raw(
             copy_text(

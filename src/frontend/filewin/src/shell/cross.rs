@@ -38,7 +38,7 @@ impl FileWindow {
         let machine = self
             .machines
             .iter()
-            .find(|m| **m != here && m.as_str() != crate::cross_copy::LOCAL_ORIGIN)
+            .find(|m| **m != here && m.as_str() != cmd_wire::LOCAL)
             .cloned()
             .unwrap_or_default();
         self.cross_prompt = Some(crate::cross_copy::CrossPrompt {
@@ -124,7 +124,7 @@ impl FileWindow {
         let machines: Vec<String> = self
             .machines
             .iter()
-            .filter(|m| **m != here && m.as_str() != crate::cross_copy::LOCAL_ORIGIN)
+            .filter(|m| **m != here && m.as_str() != cmd_wire::LOCAL)
             .map(|m| crate::cross_copy::shown_machine(m))
             .collect();
         let err = self.prompt_failure();

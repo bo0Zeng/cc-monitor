@@ -12,6 +12,12 @@
 use super::*;
 use cmd_wire::files::{from_hex, to_hex};
 
+/// 线上那一形 → 本机路径（落点字节照本机规矩换回路径）。
+fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
+    let b = crate::find::decode_path(v)?;
+    Some(crate::platform::path_from_bytes(&b))
+}
+
 #[test]
 #[cfg(unix)]
 fn a_kept_lossy_name_lands_as_its_raw_bytes_on_unix_and_a_renamed_one_as_typed() {

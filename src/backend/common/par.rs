@@ -4,7 +4,7 @@
 /// 〔perfC〕一串互不相干的活分给至多 [`PAR_WORKERS`] 条线程做（每条从同一个计数器领下一件），结果**按原序**交回 ——
 /// 与单线程逐件做逐字相同。历史清单按记录目录扫、全文搜索一批批带常驻装不下的那几份，同这一套（只此一处）。
 /// 某一件 panic ⇒ 原样抛到调用方（不悄悄少一件）。
-pub(crate) fn par_in_order<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
+pub fn par_in_order<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
     let workers = here().min(items.len());
     if workers <= 1 {
         return items.into_iter().map(f).collect();
@@ -52,7 +52,7 @@ const PAR_WORKERS: usize = 8;
 
 /// 〔perfC4〕[`par_in_order`] 起几条线程（只此一处算）：min([`PAR_WORKERS`], 这台机器可用的并行数)，至少一条；
 /// 问不出可用数 ⇒ 一条。远端可能是一两核的小机器 ⇒ 不按上限起满。
-pub(crate) fn par_workers(available: Option<usize>) -> usize {
+pub fn par_workers(available: Option<usize>) -> usize {
     available.unwrap_or(1).clamp(1, PAR_WORKERS)
 }
 
@@ -61,11 +61,12 @@ pub(crate) fn par_workers(available: Option<usize>) -> usize {
 // 线程只阻塞在任务队列上（`recv()`，无期限）：没有任务就一直睡在内核里，不定时、不自己醒（`no_timer_guard` 登记了这一处）。
 // 池子丢了 ⇒ 队列的发送端没了 ⇒ 各线程的 `recv()` 回错、退出。线程数照 [`par_workers`]（只此一处算）。
 
+use copy_core::{Discard, Why};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 /// 一个有上限的线程池：`n` 条线程，各自从同一条队列里取任务跑。
-pub(crate) struct Pool<J> {
+pub struct Pool<J> {
     tx: mpsc::Sender<J>,
     load: Arc<Load>,
     n: usize,
@@ -73,24 +74,24 @@ pub(crate) struct Pool<J> {
 
 /// 此刻在跑几份 · 同时在跑最多到过几份（判据读它：不许超过线程数）。
 #[derive(Default)]
-pub(crate) struct Load {
+pub struct Load {
     running: AtomicUsize,
     high: AtomicUsize,
 }
 
 impl Load {
-    pub(crate) fn running(&self) -> usize {
+    pub fn running(&self) -> usize {
         self.running.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn high(&self) -> usize {
+    pub fn high(&self) -> usize {
         self.high.load(Ordering::SeqCst)
     }
 }
 
 impl<J: Send + 'static> Pool<J> {
     /// 起 [`par_workers`] 条线程（这台机器的并行数，至多 [`PAR_WORKERS`]），每条名叫 `name`；`work` 在线程里跑每一份任务。
-    pub(crate) fn new(name: &str, work: impl Fn(J) + Send + Sync + 'static) -> Self {
+    pub fn new(name: &str, work: impl Fn(J) + Send + Sync + 'static) -> Self {
         let n = here();
         let (tx, rx) = mpsc::channel::<J>();
         let rx = Arc::new(Mutex::new(rx));
@@ -107,16 +108,17 @@ impl<J: Send + 'static> Pool<J> {
     }
 
     /// 排一份任务（池子的线程都忙 ⇒ 排着，先来先跑）。
-    pub(crate) fn submit(&self, job: J) {
-        let _ = self.tx.send(job);
+    pub fn submit(&self, job: J) {
+        // 池子的线程都退了（只在进程收尾时）：交它的那一方也在收尾
+        self.tx.send(job).discard(Why::PeerGone);
     }
 
     /// 几条线程（同时在跑的上限）。
-    pub(crate) fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.n
     }
 
-    pub(crate) fn load(&self) -> Arc<Load> {
+    pub fn load(&self) -> Arc<Load> {
         self.load.clone()
     }
 }

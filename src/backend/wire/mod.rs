@@ -12,7 +12,7 @@ pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的�
 pub(crate) mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
-pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
+pub mod listen; // 常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
 pub(crate) mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
 pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
 pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；`main` 装 `stream::topic_body`）
@@ -26,13 +26,13 @@ pub use topic::TopicExt;
 
 /// 线上那一格一生（[`cmd_wire::frame::Life`]）：这一层的 [`Life`] 是造脸的入参，名字让给它。
 pub use cmd_wire::frame::Life as WireLife;
-/// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
-/// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
-pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
+// 帧的线上形住 `cmd-wire`（`cmd_wire::frame`，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
+// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
+pub use cmd_wire::frame::{Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
@@ -725,14 +725,14 @@ pub use b64::{b64_decode, b64_encode};
 /// 「这条流在看哪几个会话」那一问（`stream-watch`，attach 行的 `watch` 同形）的入参与应答：住 `cmd-wire`（客户端同一份）。
 pub use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
 
-/// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
+/// **入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
 /// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000,"tz":"Asia/Shanghai","view":{"omit":{"record":["blocks[type=tool_use].input"]}}}
 /// ```
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
-/// backend 自己发号的话，重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
+/// backend 自己发号的话，重连后号段会撞（会变的东西不当持久键）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {
     /// 客户端发号的不透明串，应答原样回显；同一时刻在跑的命令里不许重复。
@@ -784,21 +784,17 @@ pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
     Ok(s)
 }
 
-/// U6b-3：**Hello 已经写出并 flush 的见证。**
+/// **Hello 已经写出并 flush 的见证。**
 ///
 /// # 为什么要一个类型
 ///
-/// 「入方向 reader 必须在 Hello flush 之后才起」是**时序约束**。U6b-1 用一条比较
-/// `main.rs` 里两个字符串字节位置的机检来钉它 —— D 审计用一次**普通的函数抽取**就绕过了：
-/// 把 `inbound::spawn(` 的调用点包进 `fn start_inbound(...)` 放到文件后段，
-/// 位置比较看到的就是「reader 在后面」，而实际调用早在 Hello 之前。全量 211 passed。
+/// 「入方向 reader 必须在 Hello flush 之后才起」是**时序约束**。按源码里字符串的字节位置判先后，
+/// 对**控制流**与**函数边界**都是瞎的：把 `inbound::spawn(` 的调用点包进一个函数放到文件后段，
+/// 位置看着在后，实际调用早在 Hello 之前。
 ///
-/// 判据是「两个字符串的字节位置」，对**控制流**与**函数边界**都是瞎的。
-///
-/// 结论是审计给的：**别再往判据上加正则，让违规不可表示。**
+/// 所以不在判据上加正则，让违规不可表示：
 /// 拿不到 `HelloFlushed` 就调不了 `inbound::spawn`，而它**只能由真的写完并 flush 了一帧
 /// 才能产出**（构造函数私有，唯一出口是 [`write_and_flush_hello`]）。
-/// ⇒ 那条机检可以整条删掉。
 pub struct HelloFlushed(());
 
 impl HelloFlushed {
@@ -838,8 +834,7 @@ pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
 /// until the reader restarts it ([`SeqCounter::restart`]: the file was
 /// re-read from byte 0 ⇒ seq is again the line number in the file as it is now).
 ///
-/// 从前这里写「逐字移植自 monitor 那份 jsonl 读者的 seq 语义」—— 那份读者 CF1 删了，
-/// 今天全仓 seq 只有这一个生成器（本机会话也走本机后端的 `line` 帧）。
+/// 全仓 seq 只有这一个生成器（本机会话也走本机后端的 `line` 帧）。
 #[derive(Debug)]
 pub struct SeqCounter {
     next: HashMap<String, u64>,

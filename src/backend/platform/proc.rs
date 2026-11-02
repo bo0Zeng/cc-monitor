@@ -17,7 +17,7 @@ use crate::platform::fs::Ro;
 /// （与 Linux 同契约：`/proc/<pid>` 对别的用户的进程照样存在 —— 这里问的是存在性，不是权限）；
 /// 开得到句柄但这一刻问不出退出码 ⇒ 按「读不到不判死」算在（`liveness.rs` 那条纪律）；
 /// 其余开不出来 ⇒ 不在。
-pub(crate) fn pid_alive(pid: u32) -> bool {
+pub fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         std::path::Path::new(&format!("/proc/{pid}")).exists()
@@ -50,7 +50,7 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
 /// Only called from the Linux branch of [`proc_starttime`] (and by unit tests on
 /// every platform); on a non-Linux build the function body is unreferenced.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
+pub fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
     /// 0-based index of `starttime` (field 22) within the tokens that follow the
     /// closing paren of `comm` (field 3 = `state` is token 0).
     const STARTTIME_IDX_AFTER_COMM: usize = 22 - 3;
@@ -80,7 +80,7 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// exec 窗口还有一形不走支四：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是父进程的环境。生产调用方读的都是
 /// 自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（`identity_tag_tests::spawn_settled_sleep`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum EnvRead {
+pub enum EnvRead {
     /// 读到了这个键，且值非空。
     Value(String),
     /// 环境**读得到**，而这个键不作数：没有这个键 / 它的值是空串（两支合并，见类型头注）。
@@ -96,7 +96,7 @@ pub(crate) enum EnvRead {
 /// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants` 按这串字面数「backend 真读几个键」。
 ///
 /// `warn!` 在这里而不在调用方：只有这里知道刚才走的是哪一支。
-pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
+pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
     #[cfg(target_os = "linux")]
     {
         let bytes = match Ro::read(format!("/proc/{pid}/environ")) {
@@ -149,7 +149,7 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 /// 所以 `watcher.rs::add_time_verdict` 的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上按构造不会命中
 /// （claude 在 Windows 上写的是 .NET 本地 ticks），落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向。
 /// 其余平台：`None`。`proc_cmdline` 在 Windows 上仍是 `None`（要读 PEB）。
-pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
+pub fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -169,7 +169,7 @@ pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
 /// 这个进程的父进程号（读不到 · 这个平台不知道 ⇒ `None`）。agent 自问（`history/session_self.rs`）往上找会话用。
 ///
 /// Linux：`/proc/<pid>/stat` 第 4 栏（名字里的括号照 [`super::linux_tables::parse_stat`] 那一处跳过）。Windows：进程快照里那一格（`win_tables::parent_of`）。
-pub(crate) fn parent_of(pid: u32) -> Option<u32> {
+pub fn parent_of(pid: u32) -> Option<u32> {
     #[cfg(target_os = "linux")]
     {
         let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -189,7 +189,7 @@ pub(crate) fn parent_of(pid: u32) -> Option<u32> {
 /// 这个进程**此刻**有没有控制终端（`/proc/<pid>/stat` 第 7 栏 `tty_nr` 非零）。`None` = 读不到 / 这个平台不知道。
 ///
 /// 会话首领退出、终端被挂断时内核把整组进程的控制终端清掉 ⇒ 这一格从此是 0。
-pub(crate) fn has_controlling_tty(pid: u32) -> Option<bool> {
+pub fn has_controlling_tty(pid: u32) -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
         let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -216,7 +216,7 @@ pub(crate) fn parse_tty_nr_from_stat(stat: &str) -> Option<i64> {
 
 /// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) fn parse_btime(proc_stat: &str) -> Option<u64> {
+pub fn parse_btime(proc_stat: &str) -> Option<u64> {
     proc_stat.lines().find_map(|l| {
         l.strip_prefix("btime ")
             .and_then(|v| v.trim().parse::<u64>().ok())
@@ -227,7 +227,7 @@ pub(crate) fn parse_btime(proc_stat: &str) -> Option<u64> {
 /// constant 100 on every mainstream Linux arch (independent of the kernel's
 /// internal HZ) — hardcoding avoids a libc dependency for sysconf(_SC_CLK_TCK).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) const USER_HZ: u64 = 100;
+pub const USER_HZ: u64 = 100;
 
 /// Starttime ticks → wall-clock epoch seconds: `/proc/stat` btime + ticks/USER_HZ.
 ///
@@ -238,7 +238,7 @@ pub(crate) const USER_HZ: u64 = 100;
 /// Session-add is rare; one small /proc read is free.
 ///
 /// Windows：`ticks` 是 [`proc_starttime`] 那一臂交的 FILETIME 原值 ⇒ 纯换算（[`unix_secs_from_filetime`]），不读任何东西、不碰时区。
-pub(crate) fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
+pub fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         let btime = Ro::read_to_string("/proc/stat")
@@ -275,7 +275,7 @@ pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
 }
 
 /// `pid` 此刻跑的二进制路径（Linux `/proc/<pid>/exe`；别的平台答不上 ⇒ `None`，调用方不杀）。
-pub(crate) fn exe_of(pid: u32) -> Option<String> {
+pub fn exe_of(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
         Ro::read_link(format!("/proc/{pid}/exe"))
@@ -291,7 +291,7 @@ pub(crate) fn exe_of(pid: u32) -> Option<String> {
 
 /// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.
 /// None when unreadable (vanished PID, permissions) → check skipped.
-pub(crate) fn proc_cmdline(pid: u32) -> Option<String> {
+pub fn proc_cmdline(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
         let bytes = Ro::read(format!("/proc/{pid}/cmdline")).ok()?;
@@ -315,7 +315,7 @@ pub(crate) fn proc_cmdline(pid: u32) -> Option<String> {
 ///
 /// Wires the real `/proc` reads into the pure `liveness::is_same_live_process` decision
 /// （那个函数住 `platform/liveness.rs`；这里不写 intra-doc 链接）。
-pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
+pub fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
     let exists = pid_alive(pid);
     // Only read the current start if the PID exists (a read on a vanished PID is
     // pointless and would just be `None` anyway).
@@ -331,7 +331,7 @@ pub(crate) const TRIM_AFTER_BYTES: u64 = 16 << 20;
 /// glibc 的 `malloc` 放掉的空洞只在堆顶时才自己还 ⇒ 一问含工具的搜索读过几百 MB、只留下 128 MB 的常驻之后，
 /// 进程 RSS 停在那一问的高水位（680 MB 合成世界实测 ~570 MB → 调它之后 ~280 MB）。
 /// 远端 musl 版（mimalloc）不用这一下：空页一放就还（[`return_freed_pages_at_once`]）。Windows 的系统堆没有这一招 ⇒ 不做。
-pub(crate) fn return_freed_memory(read: u64) -> bool {
+pub fn return_freed_memory(read: u64) -> bool {
     if read < TRIM_AFTER_BYTES {
         return false;
     }
@@ -453,7 +453,7 @@ pub fn raise_open_files_limit() -> OpenFiles {
 }
 
 /// 这个错是不是「fd 用尽」：本进程的（`EMFILE`）或整台的（`ENFILE`）；Windows 上是套接字用尽（`WSAEMFILE`）。
-pub(crate) fn out_of_fds(e: &std::io::Error) -> bool {
+pub fn out_of_fds(e: &std::io::Error) -> bool {
     #[cfg(unix)]
     {
         matches!(e.raw_os_error(), Some(libc::EMFILE | libc::ENFILE))
@@ -477,7 +477,7 @@ mod fd_limit_tests;
 
 /// 把**调用它的这条线程**降到低优先级（后台一次性热缓存用：不跟前台的帧命令抢 CPU）。
 /// 回真 ＝ 降成了；降不了 / 这一平台不支持 ⇒ 假（照常跑，只是不让）。它之后由这条线程起的线程随它（Linux 按线程记 nice）。
-pub(crate) fn lower_this_thread() -> bool {
+pub fn lower_this_thread() -> bool {
     #[cfg(target_os = "linux")]
     {
         // Linux 上 nice 值按线程记：`setpriority(PRIO_PROCESS, 线程号)` 只动这一条。
@@ -503,4 +503,4 @@ pub(crate) fn lower_this_thread() -> bool {
 
 /// [`lower_this_thread`] 在 Linux 上给的 nice 值。
 #[cfg(target_os = "linux")]
-pub(crate) const BACKGROUND_NICE: libc::c_int = 10;
+pub const BACKGROUND_NICE: libc::c_int = 10;

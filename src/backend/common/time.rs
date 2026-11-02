@@ -3,7 +3,7 @@
 //! 给人看的时刻一律按**看的那一台**的时区（[`Tz`]，请求带来的），不按这台后端自己的钟。
 
 /// 公历 (年, 月, 日) ⇒ 自 1970-01-01 起第几天。
-pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let (m, d) = (i64::from(m), i64::from(d));
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -14,14 +14,14 @@ pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
 }
 
 /// 自 1970-01-01 起第几天 ⇒ 公历 (年, 月, 日)。换算只住 `copy_core::civil_from_days` 一份。
-pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let (y, m, d) = copy_core::civil_from_days(z);
     // 月 ∈ 1..=12、日 ∈ 1..=31，转窄不丢。
     (y, m as u32, d as u32)
 }
 
 /// `YYYY-MM-DDTHH:MM:SS(.f{1,})?Z` ⇒ 自 1970 起的毫秒（UTC）。小数秒取前 3 位、不足右补 0；太短或某格不是数字 ⇒ `None`。
-pub(crate) fn parse_iso8601_ms(s: &str) -> Option<i64> {
+pub fn parse_iso8601_ms(s: &str) -> Option<i64> {
     if s.len() < 19 {
         return None;
     }
@@ -164,13 +164,13 @@ const AT_OPEN: &str = "⟦at:";
 const AT_CLOSE: char = '⟧';
 
 /// 时刻 `t`（unix 秒）的空位。
-pub(crate) fn at_slot(t: i64) -> String {
+pub fn at_slot(t: i64) -> String {
     format!("{AT_OPEN}{t}{AT_CLOSE}")
 }
 
 /// 把一段字里的时刻空位（[`at_slot`]）按看的那一台的时区填好（带偏移，`copy_core::detail::stamp`）；没有空位 ⇒ 原样。
 /// 填进去的只有数字 · `-` · `:` · `+` · 空格，放进 JSON 串里不用转义（流的写者对整行调它）。
-pub(crate) fn fill_at<'a>(s: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
+pub fn fill_at<'a>(s: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
     if !s.contains(AT_OPEN) {
         return std::borrow::Cow::Borrowed(s);
     }
@@ -199,7 +199,7 @@ pub(crate) fn fill_at<'a>(s: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
 
 /// 一个时刻（unix 秒）按此刻与看的那一台的时区写给人看：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
 /// 界面与终端要显示的时刻都由后端经它写好再交出去（界面零换算）。
-pub(crate) fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
+pub fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
     let local = tz.local(t);
     let day = local.div_euclid(DAY);
     let today = tz.local(now).div_euclid(DAY);
@@ -225,14 +225,14 @@ pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
 /// 成品写时刻字的那一把钟：此刻 ＋ 看的那一台的时区（[`Tz`]：应答按请求信封的 `tz`，推送帧按连接的 `tz`，缺了按 UTC）。
 /// 有类型的成品逐格按它写 `…Text` / `…RelText`（同 [`with_texts`] 一个写法）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TextClock {
-    pub(crate) now: i64,
+pub struct TextClock {
+    pub now: i64,
     pub(crate) tz: Tz,
 }
 
 impl TextClock {
     /// 此刻 `now`（unix 秒）按看的那一台的时区。
-    pub(crate) fn new(now: u64, tz: &Tz) -> Self {
+    pub fn new(now: u64, tz: &Tz) -> Self {
         TextClock {
             now: i64::try_from(now).unwrap_or(i64::MAX),
             tz: tz.clone(),
@@ -240,7 +240,7 @@ impl TextClock {
     }
 
     /// 那一刻写给人看的样子（[`fmt_at`]）。
-    pub(crate) fn text(&self, t: u64) -> crate::common::cells::Words {
+    pub fn text(&self, t: u64) -> crate::common::cells::Words {
         crate::common::cells::Words(fmt_at(
             i64::try_from(t).unwrap_or(i64::MAX),
             self.now,
@@ -249,13 +249,13 @@ impl TextClock {
     }
 
     /// 那一刻距今（[`fmt_rel`]；已过 ⇒ `None`）。
-    pub(crate) fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
+    pub fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
         fmt_rel(i64::try_from(t).unwrap_or(i64::MAX), self.now).map(crate::common::cells::Words)
     }
 }
 
 /// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。
-pub(crate) fn hm(local: i64) -> String {
+pub fn hm(local: i64) -> String {
     let secs = local.rem_euclid(DAY);
     format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60)
 }
@@ -272,24 +272,24 @@ pub(crate) fn hms(local: i64) -> String {
 }
 
 /// 秒时刻 ⇒ 看的那一台钟上的 `HH:MM:SS`。
-pub(crate) fn secs_hms(t: i64, tz: &Tz) -> String {
+pub fn secs_hms(t: i64, tz: &Tz) -> String {
     hms(tz.local(t))
 }
 
 /// 记录里写着的 ISO 时刻 ⇒ 看的那一台钟上的 `HH:MM`（记录卡 · 轮次起止 · 分叉那一轮）。解不出 ⇒ `None`。
-pub(crate) fn iso_hm(iso: &str, tz: &Tz) -> Option<String> {
+pub fn iso_hm(iso: &str, tz: &Tz) -> Option<String> {
     parse_iso8601_ms(iso).map(|ms| ms_hm(ms, tz))
 }
 
 /// 毫秒时刻 ⇒ 看的那一台钟上的 `HH:MM`（子运行开始 · 终端快照那几处）。
-pub(crate) fn ms_hm(ms: i64, tz: &Tz) -> String {
+pub fn ms_hm(ms: i64, tz: &Tz) -> String {
     hm(tz.local(ms.div_euclid(1_000)))
 }
 
 /// **此刻**：后端各处取当前墙钟只走这一个（`clippy.toml` 的 `disallowed-methods`：别处直接问系统钟 clippy 红）。
 /// 正式构建里它就是系统钟；只有带特性 `shots` 编的后端（截图台架）认台架交来的起点时刻、从那一刻接着走（[`shots_clock`]）。
 #[allow(clippy::disallowed_methods)] // 唯一那一处
-pub(crate) fn now() -> std::time::SystemTime {
+pub fn now() -> std::time::SystemTime {
     #[cfg(feature = "shots")]
     if let Some(t) = shots_clock::now() {
         return t;
@@ -330,16 +330,17 @@ mod shots_clock {
     }
 }
 
-/// 此刻（unix 毫秒）。
-pub(crate) fn now_ms() -> i64 {
+/// 此刻（unix 毫秒）：「此刻」的两个读口之一（另一个是 [`now_secs`]），别处不另写换算（`one_clock_guard` C6）。
+/// 早于纪元 ⇒ `0`；放不进 `u64` ⇒ `u64::MAX`。要 `i64` 的读者在调用处写 `as i64`（`u64` 毫秒到 2.9 亿年都放得进 `i64`）。
+pub fn now_ms() -> u64 {
     now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// 此刻（unix 秒）。
-pub(crate) fn now_secs() -> i64 {
-    now_ms().div_euclid(1_000)
+/// 此刻（unix 秒，向下取整）。
+pub fn now_secs() -> u64 {
+    now_ms() / 1_000
 }
 
 /// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：
@@ -358,8 +359,8 @@ pub(crate) fn mtime_texts(local: i64, today: i64) -> (String, String) {
 }
 
 /// [`mtime_texts`] 按此刻与看的那一台的时区（`files-ls` · `files-stat` 回包那一下）。
-pub(crate) fn mtime_texts_now(secs: u64, tz: &Tz) -> (String, String) {
-    let today = tz.local(now_secs()).div_euclid(DAY);
+pub fn mtime_texts_now(secs: u64, tz: &Tz) -> (String, String) {
+    let today = tz.local(now_secs() as i64).div_euclid(DAY);
     mtime_texts(tz.local(i64::try_from(secs).unwrap_or(i64::MAX)), today)
 }
 
@@ -449,22 +450,25 @@ pub(crate) fn hit_time(at: i64, now: i64) -> String {
 }
 
 /// 会话内查找命中的时刻按此刻与看的那一台的时区写（[`hit_time`]）；读不出（`0`）⇒ 空串。
-pub(crate) fn hit_text(ts_ms: i64, tz: &Tz) -> String {
+pub fn hit_text(ts_ms: i64, tz: &Tz) -> String {
     if ts_ms <= 0 {
         return String::new();
     }
-    hit_time(tz.local(ts_ms.div_euclid(1_000)), tz.local(now_secs()))
+    hit_time(
+        tz.local(ts_ms.div_euclid(1_000)),
+        tz.local(now_secs() as i64),
+    )
 }
 
 /// 历史页行尾那一格（一行的 `at` · 一组的最近活动同一个写法）：毫秒，按看的那一台的时区。
-pub(crate) fn history_at_text(at: i64, now_ms: i64, tz: &Tz) -> crate::common::cells::Words {
+pub fn history_at_text(at: i64, now_ms: i64, tz: &Tz) -> crate::common::cells::Words {
     let l = |ms: i64| tz.local(ms.div_euclid(1_000));
     crate::common::cells::Words(row_time(l(at), l(now_ms)))
 }
 
 /// **历史页一行的三格**：`at` ⇒ 行尾那一格 ＋ 分段头；`from` → `to` ⇒ 内容头那一段。
 /// 时刻是毫秒；按看的那一台的时区排（偏移按各自那一刻）。
-pub(crate) fn history_times(
+pub fn history_times(
     at: i64,
     from: i64,
     to: i64,

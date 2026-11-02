@@ -105,14 +105,14 @@ fn the_device_of_two_paths_on_one_filesystem_is_the_same() {
 fn the_command_face_answers_exactly_the_declared_fields() {
     let base = temp_root("face");
     let t = plant(&base);
-    let v = crate::files::tests::answer_wire(
+    let v = crate::files::test_support::answer_wire(
         "files-size",
         &serde_json::json!({ "path": t.to_string_lossy() }),
         &Default::default(),
     )
     .expect("一趟干净的算大小被拒了");
     assert_eq!(v["bytes"], 3 + 5 + 7 + 11);
-    let e = crate::files::tests::answer_wire(
+    let e = crate::files::test_support::answer_wire(
         "files-size",
         &serde_json::json!({ "path": base.join("没有").to_string_lossy() }),
         &Default::default(),
@@ -129,11 +129,14 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         e.raw.as_deref().is_some_and(|r| !r.is_empty()),
         "系统原话丢了：{e:?}"
     );
-    let e =
-        crate::files::tests::answer_wire("files-size", &serde_json::json!({}), &Default::default())
-            .expect_err("没给 path 竟然收了");
+    let e = crate::files::test_support::answer_wire(
+        "files-size",
+        &serde_json::json!({}),
+        &Default::default(),
+    )
+    .expect_err("没给 path 竟然收了");
     assert_eq!(e.code_or_fallback(), "bad_args");
-    let e = crate::files::tests::answer_wire(
+    let e = crate::files::test_support::answer_wire(
         "files-size",
         &serde_json::json!({ "path": "" }),
         &Default::default(),
@@ -179,7 +182,7 @@ fn stat_reports_the_owner_and_where_a_link_points() {
     std::fs::write(base.join("a.bin"), b"abc").expect("铺");
     std::os::unix::fs::symlink("a.bin", base.join("ln")).expect("铺链接");
     let stat = |name: &str| {
-        crate::files::tests::answer_wire(
+        crate::files::test_support::answer_wire(
             "files-stat",
             &serde_json::json!({ "path": base.join(name).to_string_lossy() }),
             &Default::default(),

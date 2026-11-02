@@ -468,11 +468,11 @@ pub enum Changed {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<crate::machine::MachineState>,
     },
-    /// 这一端的首屏那一句（体 ＝ `machine-read` 回包的 `empty`）。
+    /// 这一端各台合一次写好的那几句：首屏那一句 ＋ 机器列表计数那一句（体 ＝ `machine-read` 回包的 `empty`）。
     Empty {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        body: Option<crate::machine::EmptyFace>,
+        body: Option<crate::machine::FleetLines>,
     },
     /// 某个活会话隐不隐藏变了（`key` ＝ sid）。
     SessionHidden {
@@ -754,6 +754,18 @@ pub struct RunGroups {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub older_text: Option<Words>,
+    /// 监控板格子上 agent 那一枚（「在跑 · agent n」，n 是在跑那一组的个数），两端照抄；没有在跑的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub running_text: Option<Words>,
+    /// 监控板 peek 列的那几个（三组序：在跑 ++ 最近 ++ 更早，取前几个，几个由后端定）；表是空的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub peek: Option<Vec<String>>,
+    /// peek 没列的余下几个那一截（「+n」）；都列下了 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub peek_more_text: Option<Words>,
 }
 
 /// 写好的一截字。随时钟变的那一截是会走的钟：`text` 里的 `{dur}` 是空位，出口照（此刻 − `from`）用共用的时长格式填；
@@ -1173,7 +1185,7 @@ pub enum Topic {
     Machines,
     /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）。
     Machine,
-    /// 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）。
+    /// 这一端各台合一次写好的那几句（首屏那一句 ＋ 机器列表计数那一句；`body` ＝ `FleetLines`，各台的成品与报完了没有合的；丢了重问 `machine-read`）。
     Empty,
     /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
     /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。

@@ -38,6 +38,8 @@ pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
 pub(crate) const ERROR_CHARS: usize = 2000;
 /// 列表里「最近结束」那一组至多几个（在跑的不限：同一时刻在跑的本来就有限）。
 pub(crate) const RECENT_ENDED: usize = 5;
+/// 监控板 peek 至多列几个子运行（余下的只给个数那一截）。
+pub(crate) const PEEK_SHOWN: usize = 8;
 
 /// 自 1970 起的毫秒（线上那三个时刻）。
 fn ms(t: SystemTime) -> Option<u64> {
@@ -1271,6 +1273,28 @@ fn groups_of(runs: &[RunInfo]) -> RunGroups {
         Words(copy_text(
             "agentsPanel.group.older",
             &[("n", &g.older.len().to_string())],
+        ))
+    });
+    g.running_text = (!g.running.is_empty()).then(|| {
+        Words(copy_text(
+            "runs.badge.running",
+            &[("running", &g.running.len().to_string())],
+        ))
+    });
+    let listed = g.running.len() + g.recent.len() + g.older.len();
+    let shown: Vec<String> = g
+        .running
+        .iter()
+        .chain(&g.recent)
+        .chain(&g.older)
+        .take(PEEK_SHOWN)
+        .cloned()
+        .collect();
+    g.peek = (!shown.is_empty()).then_some(shown);
+    g.peek_more_text = (listed > PEEK_SHOWN).then(|| {
+        Words(copy_text(
+            "runs.peek.more",
+            &[("more", &(listed - PEEK_SHOWN).to_string())],
         ))
     });
     g

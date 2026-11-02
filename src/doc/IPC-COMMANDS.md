@@ -281,6 +281,9 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `recent` | [string] |  |
 | `older` | [string] |  |
 | `older_text` | Words? | 更早那一组的组头字（「更早 ×n」），两端照抄；那一组空 ⇒ 不上线 |
+| `running_text` | Words? | 监控板格子上 agent 那一枚（「在跑 · agent n」，n 是在跑那一组的个数），两端照抄；没有在跑的 ⇒ 不上线 |
+| `peek` | [string]? | 监控板 peek 列的那几个（三组序：在跑 ++ 最近 ++ 更早，取前几个，几个由后端定）；表是空的 ⇒ 不上线 |
+| `peek_more_text` | Words? | peek 没列的余下几个那一截（「+n」）；都列下了 ⇒ 不上线 |
 
 #### `RunLine`
 
@@ -453,7 +456,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
-- `empty` —— 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
+- `empty` —— 这一端各台合一次写好的那几句（首屏那一句 ＋ 机器列表计数那一句；`body` ＝ `FleetLines`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
@@ -8347,6 +8350,7 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AutoChoice = { min: number, text: Words, };
 type BgTask = { 
 /**
  * 起它的那次工具调用 id。
@@ -8501,6 +8505,11 @@ answerOff: Words | null,
  * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
 autoAnswer: number | null, 
+/**
+ * 那一格可选的几档（档位与字一起，`control::asks::auto_choices` 写；此刻那一格不在几档里 ⇒ 多列一项）。菜单照列，勾在 `min == autoAnswer` 那一项。
+ * 不累加，每次现给。
+ */
+autoAnswerChoices: Array<AutoChoice>, 
 /**
  * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
  */
@@ -14661,18 +14670,22 @@ removed: boolean, said: string, };
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
-type EmptyFace = { 
+type FleetLines = { 
 /**
- * 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+ * 首屏大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
  */
 line: string, 
 /**
- * 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+ * 首屏下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
  */
-hint: string, };
+hint: string, 
+/**
+ * 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
+ */
+count: string, };
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };
+type MachineRead = { machines: { [key in string]: MachineState }, empty: FleetLines, };
 type MachineReadReq = Record<symbol, never>;
 type MachineStage = "deploy" | "attach";
 type MachineState = { 

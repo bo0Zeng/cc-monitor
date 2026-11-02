@@ -4,6 +4,9 @@
 //! Wayland 会话里别的程序的窗口这一族一个都看不见 —— 每一问都答「没有」，由 `bind.rs` 按 [`display_session`] 照实说。
 //! 判定不在这里（「翻译官只翻译事实的读法」）：哪个标题算我们的窗口 · 一条绑定还作不作数 · 拉不动说哪句，都在 `bind.rs`。
 
+#[cfg(windows)]
+use copy_core::{Discard, Why};
+
 /// 这台此刻是哪一种桌面会话（↗ 走哪条路由 `bind.rs` 据此定）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DisplaySession {
@@ -148,7 +151,8 @@ pub fn first_visible_window(needle: &str, matches: fn(&str, &str) -> bool) -> Op
             return BOOL(1);
         }
         let mut owner_pid: u32 = 0;
-        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };
+        // 要的是出参里的属主 pid；回的线程 id 用不上（不是 `Result`）。
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };
         FOUND.with(|f| {
             *f.borrow_mut() = Some(MarkerHit {
                 hwnd: hwnd.0,
@@ -160,7 +164,8 @@ pub fn first_visible_window(needle: &str, matches: fn(&str, &str) -> bool) -> Op
     }
 
     unsafe {
-        let _ = EnumWindows(Some(cb), LPARAM(0));
+        // 回调里自己收结果；回调提前停时它回 Err 是约定。
+        EnumWindows(Some(cb), LPARAM(0)).discard(Why::NotAnError);
     }
 
     FOUND.with(|f| f.borrow_mut().take())
@@ -205,7 +210,7 @@ pub fn visible_top_windows_of(pid: u32) -> Vec<isize> {
             return BOOL(1);
         }
         let mut owner: u32 = 0;
-        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) }; // 同上：要的是出参里的属主 pid
         if owner as isize == lp.0 {
             HITS.with(|h| h.borrow_mut().push(hwnd.0));
         }
@@ -214,7 +219,8 @@ pub fn visible_top_windows_of(pid: u32) -> Vec<isize> {
 
     HITS.with(|h| h.borrow_mut().clear());
     unsafe {
-        let _ = EnumWindows(Some(cb), LPARAM(pid as isize));
+        // 回调从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说。
+        EnumWindows(Some(cb), LPARAM(pid as isize)).discard(Why::NotAnError);
     }
     HITS.with(|h| std::mem::take(&mut *h.borrow_mut()))
 }
@@ -261,7 +267,7 @@ pub fn owner_pid(hwnd: isize) -> u32 {
     let hwnd = HWND(hwnd);
     let mut cur_owner: u32 = 0;
     unsafe {
-        let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));
+        GetWindowThreadProcessId(hwnd, Some(&mut cur_owner)); // 同上：要的是出参里的属主 pid
     }
     cur_owner
 }
@@ -290,7 +296,9 @@ pub fn bring_to_front(hwnd: isize) -> bool {
     unsafe {
         let h = HWND(hwnd);
         if IsIconic(h).as_bool() {
-            let _ = ShowWindow(h, SW_RESTORE);
+            ShowWindow(h, SW_RESTORE)
+                .ok()
+                .discard(Why::WindowBestEffort);
         }
         SetForegroundWindow(h).as_bool()
     }
@@ -303,6 +311,10 @@ pub fn foreground_settled(hwnd: isize) -> Option<isize> {
     let mut now = None;
     for i in 0..6 {
         if i > 0 {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "↗ 拉前之后核前台：20ms 一步、至多 100ms，对上就停；换前台没有给别的进程订的事件，挂 `EVENT_SYSTEM_FOREGROUND` 要另起消息循环"
+            )]
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         // SAFETY：只读当前前台窗口句柄。

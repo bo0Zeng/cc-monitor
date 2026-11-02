@@ -6,7 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.LocalSaves
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
-import com.ccmonitor.mobile.core.wire.gen.EmptyFace
+import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,10 +46,10 @@ class HostBackends(
     /** 此刻起着的那几条（按台；跨会话的需手动板对每一条各问一份，不为它另连）。 */
     val feeds: StateFlow<Map<String, ResidentFeed>> = feedsFlow.asStateFlow()
 
-    private val emptyFlow = MutableStateFlow<EmptyFace?>(null)
+    private val fleetFlow = MutableStateFlow<FleetLines?>(null)
 
     /** 首屏那一句（核心照手上看着的每台合的，哪一条流交的都是整份；还没交 ⇒ `null`）：会话列表空着时照摆。 */
-    val empty: StateFlow<EmptyFace?> = emptyFlow.asStateFlow()
+    val empty: StateFlow<FleetLines?> = fleetFlow.asStateFlow()
 
     init {
         scope.launch { connector.dialing.collect { ids -> ids.forEach { of(it).ensure() } } }
@@ -84,7 +84,7 @@ class HostBackends(
             kept = keptOf(hostId),
             saves = saves,
             onBreak = ::onBreak,
-            onEmpty = { emptyFlow.value = it },
+            onFleet = { fleetFlow.value = it },
         ).also { f -> scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } } }
     }
 

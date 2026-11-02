@@ -12,9 +12,9 @@
 //! 交给 `cmd.exe` / PowerShell 是另一种语言 ⇒ 诚实地说「本平台没有这一格」，由调用方决定怎么降级。
 
 use crate::platform::child::Child;
-pub(crate) mod dialect;
-pub(crate) mod posix;
-pub(crate) mod powershell;
+pub mod dialect;
+pub mod posix;
+pub mod powershell;
 
 /// 备一条 `sh -c <脚本>`。**非 unix 上回 `None`** —— 那里没有 `sh`。
 ///
@@ -22,7 +22,7 @@ pub(crate) mod powershell;
 /// 它还要往上挂环境变量（`UTF8_CLIENT_ENV` 那一族）与决定怎么读回来。
 ///
 /// ⚠ 本函数**不判脚本内容**：脚本是不是 POSIX 语法、跑不跑得动，那是调用方的事。
-pub(crate) fn posix_shell(script: &str) -> Option<Child> {
+pub fn posix_shell(script: &str) -> Option<Child> {
     #[cfg(unix)]
     {
         Some(Child::new("sh").arg("-c").arg(script))
@@ -48,7 +48,7 @@ pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
 /// **按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
 /// 问法与防法见 [`fresh_terminal_path`]；问不出来 ⇒ `None`（调用方不许当成「没有」）。
 /// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
-pub(crate) fn session_shell_path() -> Option<String> {
+pub fn session_shell_path() -> Option<String> {
     #[cfg(unix)]
     {
         static ONE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
@@ -66,7 +66,7 @@ pub(crate) fn session_shell_path() -> Option<String> {
 /// 期限到了整组杀（后端没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）。
 /// Windows：新开的终端读注册表里机器级 ＋ 用户级（本进程继承的是起它那一刻的那一份）。
 /// 没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`。
-pub(crate) fn fresh_terminal_path() -> Option<String> {
+pub fn fresh_terminal_path() -> Option<String> {
     #[cfg(unix)]
     {
         let shell = std::env::var("SHELL")
@@ -86,7 +86,7 @@ pub(crate) fn fresh_terminal_path() -> Option<String> {
 
 /// 在起会话那个 shell 里敲裸名字 `prog`，`PATH` 上会起来的是哪个文件、该怎么起它（[`find_session_command`] 的答案）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SessionCommand {
+pub enum SessionCommand {
     /// `PATH` 问不出 / 空 —— 判不了，调用方不许当成「没有」。
     Unknown,
     /// 查了，没有。
@@ -103,7 +103,7 @@ pub(crate) enum SessionCommand {
 
 /// 一种装法的壳怎么起。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StartBy {
+pub enum StartBy {
     /// 直接起那个文件。`.cmd` / `.bat` 也走这一形：起进程原语（std）认得这两种后缀、自己经 `cmd.exe /c` 起并按它的规矩转义参数。
     Itself,
     /// `powershell.exe -NoProfile -File <文件>`（执行策略照这台的，不绕过）。
@@ -119,7 +119,7 @@ pub(crate) enum StartBy {
 ///   **原名不算**：npm 全局目录里那份不带后缀的是给 Git Bash 的 sh 壳，PowerShell 起不了它。
 ///
 /// 平台是入参（不碰 `cfg!`），`is_file` 是注入的（同名的目录不算）：Linux 上的判据能把 Windows 那一形当夹具跑。
-pub(crate) fn find_session_command(
+pub fn find_session_command(
     prog: &str,
     path_env: Option<&str>,
     windows: bool,
@@ -174,17 +174,17 @@ pub(crate) fn find_session_command(
 
 /// 后端**自己**起一个 agent 程序（登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AgentLaunch {
-    pub(crate) program: std::ffi::OsString,
-    pub(crate) lead: Vec<std::ffi::OsString>,
-    pub(crate) path: Option<String>,
+pub struct AgentLaunch {
+    pub program: std::ffi::OsString,
+    pub lead: Vec<std::ffi::OsString>,
+    pub path: Option<String>,
 }
 
 /// 后端自己起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序：照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找，
 /// 子进程也拿那一份（npm 装的那一形靠它找 `node`）。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
 /// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按后端生命周期缓存）。
 /// 找不到 ⇒ `Err(查过哪一份 PATH、几个目录)`，不说「未装」（它可能装了、只是不在这一份上）。
-pub(crate) fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, String> {
+pub fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, String> {
     let asked = match given {
         Some(_) => None,
         None => session_shell_path(),
@@ -232,7 +232,7 @@ pub(crate) fn agent_launch_in(
 ///
 /// `policy` 只在脚本那一形才问：问一趟要起一个 PowerShell，不便宜 ⇒ 足迹与起新会话框不问，真要起的那一刻（`ccm`）才问；
 /// 问不到 ⇒ `None`，照起（起不来时 PowerShell 自己报）。
-pub(crate) fn script_refused_by_policy(
+pub fn script_refused_by_policy(
     found: &SessionCommand,
     policy: &dyn Fn() -> Option<String>,
 ) -> Option<String> {
@@ -250,7 +250,7 @@ pub(crate) fn script_refused_by_policy(
 
 /// `PATH` 切成目录（Windows 的 `;` 与盘符冒号走 `std::env::split_paths`；空项不算）。后端里切 `PATH` 只此一处：
 /// 找命令一律经 [`find_session_command`]；别处只许拿它数一数查过几个目录（找不到时那句话里说）。
-pub(crate) fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
+pub fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
     std::env::split_paths(path_env)
         .filter(|d| !d.as_os_str().is_empty())
         .collect()
@@ -293,12 +293,12 @@ pub(crate) fn parse_marked_path(out: &str) -> Option<String> {
 }
 
 /// 这台的哪一代 PowerShell：两代各读各的 profile 目录、各有一份执行策略（线上名 `powershell` / `pwsh`）。
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
-pub(crate) enum PsHost {
+pub enum PsHost {
     /// Windows 自带的 5.1。
     #[serde(rename = "powershell")]
     Desktop,
@@ -329,7 +329,7 @@ fn powershell_command(host: PsHost, script: &str) -> Child {
 }
 
 /// 这台 shell 里进 `dir` 那一行（Windows 上 PowerShell，别处 POSIX）；不跟别的命令。
-pub(crate) fn enter_dir_line(dir: &str) -> String {
+pub fn enter_dir_line(dir: &str) -> String {
     let here = if speaks_powershell() {
         dialect::Shell::PowerShell
     } else {
@@ -350,13 +350,13 @@ pub(crate) fn enter_dir_line_in(shell: dialect::Shell, dir: &str) -> String {
 
 /// 这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
 /// 「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端）：PowerShell ⇔ 这台是 Windows。
-pub(crate) fn speaks_powershell() -> bool {
+pub fn speaks_powershell() -> bool {
     cfg!(windows)
 }
 
 /// 这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
 /// （本机起会话的渲染按它挑写法，`control/launch_render/mod.rs` 的 `Host`）。
-pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
+pub const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/shell_tests.rs"]

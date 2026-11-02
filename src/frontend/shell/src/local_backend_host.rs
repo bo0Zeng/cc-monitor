@@ -27,6 +27,7 @@ use crate::detail::Shell as _;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
 ///
@@ -753,7 +754,7 @@ fn attach_stream(
     crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
-        crate::inbound_client::LOCAL_ORIGIN
+        cmd_wire::LOCAL
     );
     crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
     crate::machine_table::refresh();
@@ -768,7 +769,7 @@ fn attach_stream(
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
         // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
         let mut unread = crate::stream_source::UnreadNotes::new(
-            crate::inbound_client::LOCAL_ORIGIN,
+            cmd_wire::LOCAL,
             copy_text("rsLocalBackendHost.local.machine", &[]),
         );
         loop {
@@ -1508,11 +1509,16 @@ fn start_supervised<R>(
         };
         events(e);
         if let Some(how) = how {
-            let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);
+            // 告诉起它的那一趟别再等：那一趟已经等到握手回去了，就没人要这一声。
+            ended_tx
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .send(how)
+                .discard(Why::PeerGone);
         }
     }));
     let spoke = wait_listening(
-        std::path::Path::new(crate::inbound_client::LOCAL_ORIGIN),
+        std::path::Path::new(cmd_wire::LOCAL),
         || Ok(crate::inbound_client::local_client().map(|_| ())),
         || match ended.try_recv() {
             Ok(how) => Some(how),

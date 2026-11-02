@@ -25,12 +25,13 @@ pub(crate) fn capture_full(
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
     input: Option<Vec<u8>>,
 ) -> Result<Captured, CaptureFail> {
+    use copy_core::{Discard, Why};
     use std::io::{Read, Write};
     let mut child = spawn().map_err(|e| CaptureFail::Spawn(e.to_string()))?;
     // 入参另起一条线程写：对面不读 stdin 就先退出时，写端会断，这里不许因此挂住（写错不采信，等它的退出码说话）。
     let writer = match (child.stdin.take(), input) {
         (Some(mut w), Some(bytes)) => Some(std::thread::spawn(move || {
-            let _ = w.write_all(&bytes);
+            w.write_all(&bytes).discard(Why::DeadLink);
         })),
         _ => None,
     };
@@ -73,11 +74,11 @@ pub(crate) fn capture_full(
     };
     if timed_out {
         // 杀掉它，读线程随管道关闭而结束 —— 否则那条线程会跟着挂死的子进程一起留下。
-        let _ = child.kill();
-        let _ = child.wait();
+        child.kill().discard(Why::Reap);
+        child.wait().discard(Why::Reap);
     }
     if let Some(w) = writer {
-        let _ = w.join();
+        w.join().discard(Why::Signal);
     }
     let (stdout, out_err) = out.join().unwrap_or_default();
     let (stderr, err_err) = err.join().unwrap_or_default();
@@ -118,22 +119,23 @@ pub(crate) fn ask_once(
     args: &serde_json::Value,
     timeout: std::time::Duration,
 ) -> Result<serde_json::Value, OnceErr> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
     let flag = format!("--{cmd}");
     let got = capture_full(
         timeout,
         &|| {
-            let mut c = std::process::Command::new(bin);
-            // 后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
-            c.args(["--", flag.as_str()])
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped());
             // 三条策略：不闪窗口（Windows 上问的是控制台子系统的 `ccm.exe`）· 超时收整棵 · stderr 是答话的一半（错信封）⇒ 接出来。
-            spawn_managed_cmd(
-                &mut c,
+            spawn_managed_with(
+                bin,
                 ConsolePolicy::Hidden,
                 Lifetime::JobKillOnClose,
                 StderrSink::Captured,
+                |c| {
+                    // 后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
+                    c.args(["--", flag.as_str()])
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped());
+                },
             )
         },
         Some(args.to_string().into_bytes()),
