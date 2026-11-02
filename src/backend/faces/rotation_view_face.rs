@@ -371,9 +371,9 @@ pub(crate) fn lines_of(
                 },
                 RotGroup::Next => copy_text("beRotation.line.spare", &[]),
                 RotGroup::Out => {
-                    blocked(a).unwrap_or_else(|| copy_text("beRotation.line.out", &[]))
+                    blocked(a).unwrap_or_else(|| copy_text("rot.order.groupOut", &[]))
                 }
-                RotGroup::Off => copy_text("beRotation.line.off", &[]),
+                RotGroup::Off => copy_text("rot.order.groupOff", &[]),
             };
             let stay = match group {
                 RotGroup::Out => Some(copy_text("beRotation.edit.unusable", &[("acct", a)])),
@@ -812,8 +812,8 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
     };
     if c.kind == form::Kind::DaySegments {
         let win = |w: &str| match w {
-            "5h" => copy_text("rot.win.fiveHour", &[]),
-            "7d" => copy_text("rot.win.sevenDay", &[]),
+            "5h" => copy_text("acct.slot.fiveHour", &[]),
+            "7d" => copy_text("acct.slot.sevenDay", &[]),
             _ => copy_text("rot.win.other", &[("w", w)]),
         };
         let first = c.windows.first().map(|w| win(w)).unwrap_or_default();
@@ -856,8 +856,8 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
 fn rule_of(c: &RotCell) -> String {
     let sep = copy_text("kit.text.sep", &[]);
     let v = match c.kind {
-        form::Kind::Toggle if c.v == Value::Bool(true) => copy_text("rot.order.on", &[]),
-        form::Kind::Toggle => copy_text("rot.order.off", &[]),
+        form::Kind::Toggle if c.v == Value::Bool(true) => copy_text("beProfile.val.on", &[]),
+        form::Kind::Toggle => copy_text("beAsk.auto.off", &[]),
         form::Kind::OneOf => c
             .choices
             .iter()
@@ -934,7 +934,7 @@ fn board_of(
                 let mut line = copy_text("rot.acct.line", &[("u5", &u5), ("u7", &u7)]);
                 if let Some(at) = &f.w5h.resets_text {
                     line.push_str(&copy_text("kit.text.sep", &[]));
-                    line.push_str(&copy_text("rot.acct.reset", &[("at", at)]));
+                    line.push_str(&copy_text("acct.reset.at", &[("at", at)]));
                 }
                 let hover = copy_text("rot.card.hover", &[("u5", &u5), ("u7", &u7)]);
                 let (line, hover) = if here {

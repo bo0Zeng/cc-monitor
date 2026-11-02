@@ -102,8 +102,8 @@ impl Verb {
             Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
             Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
             Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
-            Verb::Download | Verb::Pull => copy_text("beFiles.batch.verbDownload", &[]),
-            Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
+            Verb::Download | Verb::Pull => copy_text("rsFilewinDownload.label.download", &[]),
+            Verb::Upload => copy_text("rsFilewinUpload.label.upload", &[]),
         }
     }
 }
@@ -214,11 +214,11 @@ pub fn choices(answers: &[Decide]) -> Vec<ClashChoice> {
                 ),
                 Decide::KeepBoth => (
                     copy_text("rsFilewinBatch.btn.keepBoth", &[]),
-                    copy_text("rsFilewinBatch.pick.keepBoth", &[]),
+                    copy_text("rsFilewinBatch.btn.keepBoth", &[]),
                 ),
                 Decide::Overwrite => (
                     copy_text("rsFilewinBatch.btn.overwrite", &[]),
-                    copy_text("rsFilewinBatch.pick.overwrite", &[]),
+                    copy_text("rsFilewinBatch.btn.overwrite", &[]),
                 ),
             };
             ClashChoice {
@@ -332,7 +332,7 @@ pub fn title_of(p: &Plan) -> String {
             &[("action", &action), ("n", &n), ("dir", dir)],
         ),
         None => copy_text(
-            "rsFilewinBatch.row.title",
+            "beFiles.batch.head",
             &[("action", &action), ("n", &n)],
         ),
     }
@@ -514,7 +514,7 @@ pub fn conflict_meta(c: &Conflict) -> String {
             .flatten()
             .cloned()
             .collect::<Vec<_>>()
-            .join(&copy_text("rsFilewinCopy.batch.listSep", &[]))
+            .join(&copy_text("kit.text.sep", &[]))
     };
     copy_text(
         "rsFilewinBatch.meta.vs",

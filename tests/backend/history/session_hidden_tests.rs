@@ -43,7 +43,7 @@ fn tier_1_the_single_hide_beats_every_rule() {
         judge(&on),
         Some(Hidden {
             by: HiddenBy::Own,
-            said: copy_text("beSession.hidden.self", &[])
+            said: copy_text("history.row.hidden", &[])
         })
     );
     // 点了「取消隐藏」：下面四档都说隐藏也不隐藏。

@@ -352,7 +352,7 @@ fn the_plan_carries_the_written_lines_the_ui_shows_as_is() {
     );
     assert_eq!(full.more_said, t("beSessionSet.more.full", &[]));
     assert_eq!(full.start_said, t("beSessionSet.more.full", &[]));
-    assert_eq!(full.rows[0].more_said, t("beSessionSet.more.none", &[]));
+    assert_eq!(full.rows[0].more_said, t("acct.val.none", &[]));
     assert_eq!(
         full.short,
         t("beSessionSet.short.all", &[("dirs", "1"), ("n", "1")]),

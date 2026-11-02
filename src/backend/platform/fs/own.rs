@@ -625,7 +625,7 @@ fn atomic_write_with(
         let w = why(&e);
         Said::with_raw(
             copy_text(
-                "beOwnState.write.tmpCreateFailed",
+                "beOwnState.write.tmpWriteFailed",
                 &[("tmp", &tmp_s), ("why", &w)],
             ),
             &e,

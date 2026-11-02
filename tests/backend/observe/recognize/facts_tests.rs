@@ -1049,13 +1049,13 @@ fn needs_carries_its_words_and_tone() {
             vec![call("AskUserQuestion")],
             None,
             NeedsKind::Answer,
-            "beSession.needs.answer",
+            "needs.bar.answer",
         ),
         (
             vec![call("ExitPlanMode")],
             None,
             NeedsKind::Plan,
-            "beSession.needs.plan",
+            "beSession.needs.approve",
         ),
         (
             vec![call("Bash")],
@@ -1067,7 +1067,7 @@ fn needs_carries_its_words_and_tone() {
             vec![],
             Some(W::Worker),
             NeedsKind::Worker,
-            "beSession.needs.worker",
+            "beSession.needs.approve",
         ),
         (
             vec![],
@@ -1079,9 +1079,9 @@ fn needs_carries_its_words_and_tone() {
             vec![],
             Some(W::Dialog),
             NeedsKind::Choose,
-            "beSession.needs.choose",
+            "needs.bar.choose",
         ),
-        (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
+        (vec![], None, NeedsKind::Unknown, "tabBar.needs.label"),
     ];
     for (pending, w, kind, key) in cases {
         let n = needs_of(tree(), &pending, Some(&wait(w))).unwrap();
@@ -1748,7 +1748,7 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         (Some(W::Worker), "needs.bar.worker"),
         (Some(W::Goal), "needs.bar.goal"),
         (Some(W::Dialog), "needs.bar.choose"),
-        (None, "needs.bar.unknown"),
+        (None, "tabBar.needs.label"),
     ] {
         let n = needs_of(tree(), &[], Some(&wait(w))).unwrap();
         assert_eq!(n.head.0, copy_core::copy_text(key, &[]), "{w:?}");

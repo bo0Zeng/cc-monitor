@@ -536,7 +536,7 @@ impl Preview {
                 }
             }
             None => {
-                ui.strong(&copy_text("rsFilewinPreview.ui.title", &[]));
+                ui.strong(&copy_text("rsFilewinWorkspace.label.preview", &[]));
             }
         }
         match &self.view {

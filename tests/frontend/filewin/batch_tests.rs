@@ -134,7 +134,7 @@ async fn a_clash_is_asked_once_from_the_conflicts_and_skip_is_the_default() {
         copy_text("rsFilewinBatch.ask.dirNoMerge", &[])
     );
     // 两头的大小与时刻照抄后端写好的字（按看的那一台的钟），窗口不换算、不另写。
-    let sep = copy_text("rsFilewinCopy.batch.listSep", &[]);
+    let sep = copy_text("kit.text.sep", &[]);
     assert_eq!(
         conflict_row(&c[0]).meta,
         copy_text(

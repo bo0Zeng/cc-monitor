@@ -378,7 +378,7 @@ impl FileWindow {
             },
             &[
                 (
-                    copy_text("rsFilewinShell.copyUi.cancel", &[]),
+                    copy_text("kit.dialog.cancel", &[]),
                     crate::kit::Btn::Plain,
                 ),
                 (

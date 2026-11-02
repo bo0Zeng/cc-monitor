@@ -703,7 +703,7 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
         (api.account.as_str(), api.group, api.movable),
         ("api", RotGroup::Off, false)
     );
-    assert_eq!(api.state, copy_text("beRotation.line.off", &[]));
+    assert_eq!(api.state, copy_text("rot.order.groupOff", &[]));
     assert_eq!(
         api.stay.as_deref(),
         Some(copy_text("beRotation.edit.offNow", &[("acct", "api")]).as_str())

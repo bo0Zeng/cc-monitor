@@ -85,7 +85,7 @@ async fn an_overflow_on_the_local_stream_is_said() {
             &[
                 (
                     "host",
-                    &copy_core::copy_text("rsLocalBackend.place.thisMachine", &[])
+                    &copy_core::copy_text("detail.label.local", &[])
                 ),
                 ("said", "那台写的一句")
             ]

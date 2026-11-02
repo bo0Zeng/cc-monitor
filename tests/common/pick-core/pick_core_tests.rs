@@ -117,7 +117,7 @@ fn the_phone_gets_its_bar_and_more_with_why_for_the_grey_ones() {
         )
     );
     let many = menu(&[dir("docs"), file("a.txt", C::Text, &g), dir("src")]);
-    let sep = copy_text("rsFilewinCopy.batch.listSep", &[]);
+    let sep = copy_text("kit.text.sep", &[]);
     assert_eq!(
         many.bar[0].why,
         Some(copy_text(
@@ -232,7 +232,7 @@ fn the_phone_greys_what_the_machine_cannot_do_now() {
         unavailable: vec![],
     };
     let m = phone_menu(&[file("a", C::Text, &g), file("b", C::Text, &g)], &off);
-    let ro = copy_text("rsFilewinChrome.link.readOnly", &[]);
+    let ro = copy_text("acctPage.offline.hover", &[]);
     for e in m.bar.iter().chain(&m.more) {
         let want = (e.id != "selectAll").then(|| ro.clone());
         assert_eq!((e.id, e.why.clone()), (e.id, want));
@@ -370,7 +370,7 @@ fn a_cut_to_the_monitor_is_said_as_such_on_every_write() {
     assert_eq!(write_refused(None), None);
     assert_eq!(
         write_refused(Some(Cut::Machine)),
-        Some(copy_text("rsFilewinChrome.link.readOnly", &[]))
+        Some(copy_text("acctPage.offline.hover", &[]))
     );
     let monitor = Some(copy_text("rsFilewinChrome.link.severedReadOnly", &[]));
     assert_eq!(write_refused(Some(Cut::Monitor)), monitor);

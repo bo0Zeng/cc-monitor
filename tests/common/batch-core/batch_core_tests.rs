@@ -256,7 +256,7 @@ fn the_clash_choices_carry_their_own_words_in_one_order() {
     );
     assert_eq!(
         three[1].pick,
-        copy_text("rsFilewinBatch.pick.keepBoth", &[])
+        copy_text("rsFilewinBatch.btn.keepBoth", &[])
     );
     assert_ne!(
         three[0].label, three[0].pick,

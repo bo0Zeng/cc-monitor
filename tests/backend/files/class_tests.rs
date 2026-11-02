@@ -49,7 +49,7 @@ fn the_type_column_text_is_written_here() {
     );
     assert_eq!(
         t("d", true, false, false, false),
-        copy_text("beFilesKind.label.folder", &[])
+        copy_text("gridMonitor.fact.dir", &[])
     );
     assert_eq!(
         t("x.pdf", false, false, false, false),
@@ -59,7 +59,7 @@ fn the_type_column_text_is_written_here() {
         t("l", false, true, true, false),
         copy_text(
             "beFilesKind.type.linkTo",
-            &[("kind", &copy_text("beFilesKind.label.folder", &[]))]
+            &[("kind", &copy_text("gridMonitor.fact.dir", &[]))]
         )
     );
     assert_eq!(

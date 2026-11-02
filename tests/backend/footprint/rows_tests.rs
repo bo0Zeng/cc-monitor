@@ -810,7 +810,7 @@ fn host_labels_are_distinct_and_truthful() {
     );
     // 而 Either 必须**明说**两端皆可（那是它存在的理由）
     assert!(
-        host_label(Either).contains(copy_core::copy_static!("rsConfigSurface.host.client"))
+        host_label(Either).contains(copy_core::copy_static!("detail.label.local"))
             && host_label(Either).contains(copy_core::copy_static!("rsConfigSurface.host.remote"))
     );
 }
@@ -1351,7 +1351,7 @@ fn rows_carry_the_host_label() {
     let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
     assert_eq!(
         ps.host_label,
-        copy_core::copy_static!("rsConfigSurface.host.client")
+        copy_core::copy_static!("detail.label.local")
     );
     let ccm = rows
         .iter()

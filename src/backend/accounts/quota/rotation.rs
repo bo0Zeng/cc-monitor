@@ -278,7 +278,7 @@ fn write_locked<R>(own: &Own, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book
         Disk::Absent => Book::fresh(),
         Disk::Now(b) => b,
         Disk::Unreadable(e) => {
-            return Err(e.wrap(|said| copy_text("beRotation.write.unreadable", &[("said", said)])))
+            return Err(e.wrap(|said| copy_text("beLineage.write.unreadable", &[("said", said)])))
         }
     };
     let mut after = before.clone();

@@ -301,7 +301,7 @@ impl Unplaced {
                 ],
             ),
             U::PeerOld => lay(
-                copy_text("front.title.update", &[("machine", machine)]),
+                copy_text("machineState.problem.needsUpdate", &[("machine", machine)]),
                 copy_text("front.body.update", &[]),
                 None,
                 Tone::Warn,

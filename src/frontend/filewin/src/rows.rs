@@ -296,7 +296,7 @@ fn tail_row(ui: &mut Ui, tail: HitTail, tally: &mut HitTally) {
                             .color(p.error_text),
                     );
                     if ui
-                        .button(copy_text("rsFilewinFind.action.retry", &[]))
+                        .button(copy_text("front.act.retry", &[]))
                         .clicked()
                     {
                         tally.retry_more = true;
@@ -512,7 +512,7 @@ impl Columns {
 /// 列名。
 pub fn column_label(by: SortBy) -> String {
     match by {
-        SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
+        SortBy::Name => copy_text("machineForm.field.name", &[]),
         SortBy::Mtime => copy_text("rsFilewinSource.sort.mtime", &[]),
         SortBy::Size => copy_text("rsFilewinSource.sort.size", &[]),
         SortBy::Type => copy_text("rsFilewinSource.sort.type", &[]),
@@ -1003,7 +1003,7 @@ fn paint_one_row(
         let mut t = r.name.clone();
         if !folded.is_empty() {
             t.push('\n');
-            t.push_str(&folded.join(&copy_text("rsFilewinRows.tip.sep", &[])));
+            t.push_str(&folded.join(&copy_text("kit.text.sep", &[])));
         }
         tips.push((name_c, t));
     }

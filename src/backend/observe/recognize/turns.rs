@@ -476,7 +476,7 @@ pub(crate) fn dress_live(row: &mut TurnRow, needs: Option<&Needs>, live: bool) {
                 "rsTurns.proc.awaitAnswer",
                 &[("step", n.what.as_deref().unwrap_or(&step))],
             ),
-            _ => copy_text("rsTurns.proc.awaitYou", &[]),
+            _ => copy_text("tabBar.needs.label", &[]),
         };
         fold.parts.push(Part {
             text,

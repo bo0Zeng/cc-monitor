@@ -134,7 +134,7 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_later_answers_are_g
     assert!(pending(sid).is_empty());
     assert_eq!(
         answer_of(sid, &a.id, "allow").unwrap(),
-        gone(&copy_text("beAsk.answer.closed", &[]))
+        gone(&copy_text("askBlock.gone.elsewhere", &[]))
     );
     assert_eq!(
         answer_of(sid, "ask-nope", "allow")
@@ -152,7 +152,7 @@ fn a_dead_receiver_is_gone_not_answered() {
     let a = pending(sid).pop().unwrap();
     assert_eq!(
         answer_of(sid, &a.id, "allow").unwrap(),
-        gone(&copy_text("beAsk.answer.closed", &[]))
+        gone(&copy_text("askBlock.gone.elsewhere", &[]))
     );
 }
 

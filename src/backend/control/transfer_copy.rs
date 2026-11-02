@@ -418,7 +418,7 @@ impl Wired {
         let from_s = open_for_transfer(&fd).await.map_err(unreach)?;
         let to_s = open_for_transfer(&td).await.map_err(unreach)?;
         let home = crate::platform::paths::home_dir()
-            .ok_or_else(|| CopyErr::Unreachable(copy_text("beTransferCopy.local.noHome", &[])))?;
+            .ok_or_else(|| CopyErr::Unreachable(copy_text("rsFilewinProc.bin.noHome", &[])))?;
         let remote = Box::new(crate::dial::remote_ask::DialRemote);
         Wired::over(face, from_s, to_s, to_dial, tz, &home, remote).await
     }

@@ -194,8 +194,8 @@ fn row<'a>(rows: &'a [(String, String, Source)], label_key: &str) -> &'a (String
 fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     // 什么都没给：目录是调用方当前目录 ⇒ 继承；启动器 · 在哪起 ⇒ 默认；没有账号库也没继承号 ⇒ 不指定 · 默认。
     let bare = rows_of(&[], &["--"], &env());
-    assert_eq!(row(&bare, "beCcm.item.cwd").1, "/here");
-    assert_eq!(row(&bare, "beCcm.item.cwd").2, Source::Inherit);
+    assert_eq!(row(&bare, "newSession.label.cwd").1, "/here");
+    assert_eq!(row(&bare, "newSession.label.cwd").2, Source::Inherit);
     assert_eq!(row(&bare, "beProfile.slot.launcher").2, Source::Default);
     assert_eq!(
         row(&bare, "beProfile.slot.tmux").1,
@@ -203,10 +203,10 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     );
     assert_eq!(row(&bare, "beProfile.slot.tmux").2, Source::Default);
     assert_eq!(
-        row(&bare, "beProfile.slot.account").1,
+        row(&bare, "newSession.label.account").1,
         copy_core::copy_text("beCcm.value.noAccount", &[])
     );
-    assert_eq!(row(&bare, "beProfile.slot.account").2, Source::Default);
+    assert_eq!(row(&bare, "newSession.label.account").2, Source::Default);
     // 命令行给的 ⇒ 命令行。
     let flags = rows_of(
         &[],
@@ -221,19 +221,19 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
         ],
         &env(),
     );
-    assert_eq!(row(&flags, "beCcm.item.cwd").2, Source::Flag);
+    assert_eq!(row(&flags, "newSession.label.cwd").2, Source::Flag);
     assert_eq!(row(&flags, "beProfile.slot.launcher").1, "mycc");
     assert_eq!(row(&flags, "beProfile.slot.launcher").2, Source::Flag);
-    assert_eq!(row(&flags, "beProfile.slot.account").1, "/acct/x");
-    assert_eq!(row(&flags, "beProfile.slot.account").2, Source::Flag);
+    assert_eq!(row(&flags, "newSession.label.account").1, "/acct/x");
+    assert_eq!(row(&flags, "newSession.label.account").2, Source::Flag);
     // 别名里写的 ⇒ 别名 <那一段>；命令行当场给的盖过它 ⇒ 命令行。
     let alias = rows_of(
         &[("cct", &["--cwd", "/a", "--ccm-tmux=t1"])],
         &["--", "--launcher", "x"],
         &env(),
     );
-    assert_eq!(row(&alias, "beCcm.item.cwd").1, "/a");
-    assert_eq!(row(&alias, "beCcm.item.cwd").2, Source::Alias("cct".into()));
+    assert_eq!(row(&alias, "newSession.label.cwd").1, "/a");
+    assert_eq!(row(&alias, "newSession.label.cwd").2, Source::Alias("cct".into()));
     assert_eq!(row(&alias, "beProfile.slot.tmux").1, "t1");
     assert_eq!(
         row(&alias, "beProfile.slot.tmux").2,
@@ -242,8 +242,8 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     let over = rows_of(&[("cct", &["--cwd", "/a"])], &["--", "--cwd", "/b"], &env());
     assert_eq!(
         (
-            row(&over, "beCcm.item.cwd").1.as_str(),
-            &row(&over, "beCcm.item.cwd").2
+            row(&over, "newSession.label.cwd").1.as_str(),
+            &row(&over, "newSession.label.cwd").2
         ),
         ("/b", &Source::Flag)
     );
@@ -252,8 +252,8 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     e.inherited_config_dir = Some("/acct/b".into());
     e.inherited_parent = Some(("CLAUDE_CODE_SESSION_ID".into(), "s-parent".into()));
     let kid = rows_of(&[], &["--"], &e);
-    assert_eq!(row(&kid, "beProfile.slot.account").1, "/acct/b");
-    assert_eq!(row(&kid, "beProfile.slot.account").2, Source::Inherit);
+    assert_eq!(row(&kid, "newSession.label.account").1, "/acct/b");
+    assert_eq!(row(&kid, "newSession.label.account").2, Source::Inherit);
     assert_eq!(row(&kid, "beCcm.item.parent").1, "s-parent");
     assert_eq!(row(&kid, "beCcm.item.parent").2, Source::Inherit);
     assert!(
@@ -287,17 +287,17 @@ fn the_from_section_is_comment_lines_only() {
     };
     let want = [
         format!("# {}\n", c("beCcm.print.from")),
-        row(c("beCcm.item.cwd"), "/p", "beCcm.from.flag"),
+        row(c("newSession.label.cwd"), "/p", "beCcm.from.flag"),
         row(
-            c("beProfile.slot.account"),
+            c("newSession.label.account"),
             &c("beCcm.value.noAccount"),
-            "beCcm.from.default",
+            "resumeSelect.option.defaultBare",
         ),
-        row(c("beProfile.slot.launcher"), "claude", "beCcm.from.default"),
+        row(c("beProfile.slot.launcher"), "claude", "resumeSelect.option.defaultBare"),
         row(
             c("beProfile.slot.tmux"),
             &c("beCcm.value.here"),
-            "beCcm.from.default",
+            "resumeSelect.option.defaultBare",
         ),
     ]
     .concat();

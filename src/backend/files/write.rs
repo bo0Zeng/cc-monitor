@@ -2408,7 +2408,7 @@ pub fn delete_session_with(
     face.delete_file(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.session.deleteFailed",
+                "beFilesWrite.delete.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("why", &io_reason(e.kind())),

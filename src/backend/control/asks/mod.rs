@@ -519,7 +519,7 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Said> {
                     .get(sid)
                     .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
             )),
-            Some(Settled::Closed) => Ok(gone(copy_text("beAsk.answer.closed", &[]))),
+            Some(Settled::Closed) => Ok(gone(copy_text("askBlock.gone.elsewhere", &[]))),
             None => Err(Said::new(
                 "not_found",
                 copy_text("beAsk.answer.notFound", &[]),
@@ -563,7 +563,7 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Said> {
             said: None,
         }
     } else {
-        gone(copy_text("beAsk.answer.closed", &[]))
+        gone(copy_text("askBlock.gone.elsewhere", &[]))
     })
 }
 

@@ -118,7 +118,7 @@ where
 /// 给人看的那台的名字（`null` = 本机后端这一台）。
 fn machine_name(m: Option<&str>) -> String {
     m.map(str::to_string)
-        .unwrap_or_else(|| copy_text("beExt.machine.here", &[]))
+        .unwrap_or_else(|| copy_text("detail.label.local", &[]))
 }
 
 /// `scope` 的两头：只认形状。项目目录是不是绝对路径由它所属的那台判（来源 / 被写那台的内层命令各判各的），
@@ -558,7 +558,7 @@ pub(crate) fn plan_many(
                 .map(|i| {
                     let m = &list.machines[i];
                     if m.here {
-                        copy_text("beExt.machine.here", &[])
+                        copy_text("detail.label.local", &[])
                     } else {
                         m.name.clone()
                     }

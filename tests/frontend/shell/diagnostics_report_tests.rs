@@ -53,7 +53,7 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
                     "keys",
                     &format!(
                         "resumeCommandLocal{}x",
-                        copy_core::copy_static!("rsDiagReport.text.keySep")
+                        copy_core::copy_static!("plan.page.listSep")
                     ),
                 ),
             ],
@@ -106,7 +106,7 @@ fn 没写日志文件与没有认不出的键各有一句() {
             "rsDiagReport.text.config",
             &[
                 ("n", "0"),
-                ("keys", copy_core::copy_static!("rsDiagReport.text.none"))
+                ("keys", copy_core::copy_static!("acct.val.none"))
             ],
         )),
         "{}",

@@ -63,7 +63,7 @@ pub enum Cmd {
 
 /// 「更多」那一颗的悬停说明。
 pub static MORE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.more", &[]));
+    std::sync::LazyLock::new(|| copy_text("history.row.more", &[]));
 
 /// 窗口宽度档（按缩放之后的逻辑宽度算）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,7 +257,7 @@ impl FileWindow {
                                 .size(16.0)
                                 .color(p.text2),
                         ))
-                        .on_hover_text(copy_text("rsFilewinChrome.nav.refresh", &[]))
+                        .on_hover_text(copy_text("accountChip.menu.refresh", &[]))
                         .clicked()
                     {
                         nav = Some(Nav::Refresh);
@@ -755,13 +755,13 @@ pub struct ViewState {
 
 /// 命令栏上那几颗的字 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
 pub static TERMINAL_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinShell.frame.terminal", &[]));
+    std::sync::LazyLock::new(|| copy_text("mobDrawer.item.terminal", &[]));
 pub static HIDDEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.hidden", &[]));
 pub static NEW_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.new", &[]));
+    std::sync::LazyLock::new(|| copy_text("mobTerms.new.detached", &[]));
 pub static NEW_FOLDER_ITEM: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.newFolder", &[]));
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.delete.rowDir", &[]));
 pub static NEW_FILE_ITEM: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.newFile", &[]));
 pub static SIDEBAR_LABEL: std::sync::LazyLock<String> =
@@ -997,7 +997,7 @@ impl Workspace {
                     } else {
                         comms_inward::chan::said::offline(&machine)
                     };
-                    (text, vec![copy_text("rsFilewinChrome.link.retry", &[])])
+                    (text, vec![copy_text("history.list.reconnect", &[])])
                 }
             };
             let mut hit = None;
@@ -1076,7 +1076,7 @@ impl Workspace {
                                 .add(
                                     egui::Button::new(
                                         egui::RichText::new(copy_text(
-                                            "rsFilewinChrome.status.zoom",
+                                            "acct.val.pct",
                                             &[("pct", &format!("{:.0}", zoom * 100.0))],
                                         ))
                                         .small(),
@@ -1097,7 +1097,7 @@ impl Workspace {
                                     &[("n", &n.to_string())],
                                 )
                             } else {
-                                copy_text("rsFilewinChrome.status.progress", &[])
+                                copy_text("rsFilewinProgress.head.title", &[])
                             };
                             let open = self.progress.is_open();
                             let frac = (n > 0).then(|| self.progress.overall()).flatten();
@@ -1377,7 +1377,7 @@ impl Workspace {
             return false;
         };
         let Some(theme) = self.theme.clone() else {
-            self.set_notice(copy_text("rsFilewinChrome.other.noTheme", &[]));
+            self.set_notice(copy_text("rsFilewinEntry.other.badArgs", &[]));
             return false;
         };
         let slot = self.other.clone();

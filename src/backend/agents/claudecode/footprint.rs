@@ -158,7 +158,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 TouchedFile {
                     path: "~/.cc-monitor/rotation.json",
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.rotationNote", &[]))),
+                    note: Some(Text(|| copy_text("rsDataPaths.backend.rotation", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。
@@ -166,7 +166,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     path: "~/.cc-monitor/launch-accounts.json",
                     host: HostScope::Either,
                     note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.launchAccountsNote", &[])
+                        copy_text("rsDataPaths.backend.launchAccounts", &[])
                     })),
                     effect: TouchEffect::OwnedFile,
                 },
@@ -174,7 +174,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     path: "~/.cc-monitor/launch-pending",
                     host: HostScope::Either,
                     note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.launchNotesNote", &[])
+                        copy_text("rsDataPaths.backend.launchNotes", &[])
                     })),
                     effect: TouchEffect::OwnedFile,
                 },

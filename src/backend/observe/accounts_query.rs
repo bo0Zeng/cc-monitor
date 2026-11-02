@@ -423,7 +423,7 @@ pub(crate) fn badge_of(
     }
     if !auth_ready {
         return b(
-            copy_text("accounts.badge.notSignedIn", &[]),
+            copy_text("acct.tag.login", &[]),
             true,
             copy_text("accounts.badge.notSignedInHint", &[]),
         );

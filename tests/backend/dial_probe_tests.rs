@@ -409,7 +409,7 @@ async fn a_passed_login_lights_three_segments() {
     assert_eq!(
         cells,
         vec![
-            step(&copy_text("beProbe.stage.authOk", &[]), "now", SSH_UP),
+            step(&copy_text("accounts.badge.signedIn", &[]), "now", SSH_UP),
             step(&copy_text("beProbe.stage.ready", &[]), "now", SSH_UP),
         ]
     );

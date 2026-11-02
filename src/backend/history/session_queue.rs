@@ -175,7 +175,7 @@ impl Book {
             let said = if self.sent.iter().any(|s| s == &req.id) {
                 copy_text("beQueue.said.sent", &[])
             } else {
-                copy_text("beQueue.said.cancelled", &[])
+                copy_text("reason.op.cancelled", &[])
             };
             return Ok(QueuePut {
                 outcome: QueuePutOutcome::Seen,
@@ -242,7 +242,7 @@ impl Book {
                 .why
                 .clone()
                 .unwrap_or_else(|| copy_text("beQueue.said.undelivered", &[])),
-            _ => copy_text("beQueue.said.held", &[]),
+            _ => copy_text("mobAttach.card.queued", &[]),
         };
         (place, said)
     }

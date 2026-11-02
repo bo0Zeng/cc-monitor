@@ -715,7 +715,7 @@ fn write_merged(
         // 读不懂的那份不覆盖：那一句说清是哪份、没覆盖，读不懂的原因（已带原因词）与原话照它的。
         Read::Unreadable(e) => {
             return Err(
-                e.wrap(|said| copy_text("beQuotaLedger.write.unreadable", &[("said", said)]))
+                e.wrap(|said| copy_text("beLineage.write.unreadable", &[("said", said)]))
             )
         }
     };

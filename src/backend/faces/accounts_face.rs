@@ -559,7 +559,7 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
                     "beAcctFace.mcp.synced",
                     &[(
                         "accounts",
-                        &v.changed.join(&copy_text("beAcctFace.mcp.listSep", &[])),
+                        &v.changed.join(&copy_text("kit.text.sep", &[])),
                     )],
                 ));
             }
@@ -570,7 +570,7 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
                     "beAcctFace.mcp.conflicts",
                     &[(
                         "names",
-                        &names.join(&copy_text("beAcctFace.mcp.listSep", &[])),
+                        &names.join(&copy_text("kit.text.sep", &[])),
                     )],
                 ));
             }

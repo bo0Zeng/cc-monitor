@@ -79,7 +79,7 @@ impl Props {
     pub fn lines(&self) -> Vec<(String, String)> {
         let st = self.state.lock().unwrap().clone();
         let mut out = vec![(
-            copy_text("rsFilewinProps.label.kind", &[]),
+            copy_text("rsFilewinSource.sort.type", &[]),
             self.row.type_text.clone(),
         )];
         let unknown = || copy_text("rsFilewinProps.value.unknown", &[]);
@@ -93,7 +93,7 @@ impl Props {
                 out.push((copy_text("rsFilewinProps.label.path", &[]), s.path.clone()));
                 if !self.row.is_dir {
                     out.push((
-                        copy_text("rsFilewinProps.label.size", &[]),
+                        copy_text("rsFilewinSource.sort.size", &[]),
                         copy_text(
                             "rsFilewinProps.value.size",
                             &[
@@ -104,11 +104,11 @@ impl Props {
                     ));
                 }
                 out.push((
-                    copy_text("rsFilewinProps.label.mtime", &[]),
+                    copy_text("rsFilewinSource.sort.mtime", &[]),
                     s.mtime_full.clone().unwrap_or_else(unknown),
                 ));
                 out.push((
-                    copy_text("rsFilewinProps.label.mode", &[]),
+                    copy_text("rsFilewinWriteops.label.chmod", &[]),
                     s.mode.map(mode_text).unwrap_or_else(unknown),
                 ));
                 out.push((
@@ -188,7 +188,7 @@ impl FileWindow {
                     });
             },
             &[(
-                copy_text("rsFilewinProps.box.close", &[]),
+                copy_text("kit.drawer.close", &[]),
                 super::kit::Btn::Primary,
             )],
             0,

@@ -210,7 +210,7 @@ fn the_local_row_comes_from_this_backend() {
     );
     let want = product(
         &e,
-        &copy_core::copy_text("remote.cards.local", &[]),
+        &copy_core::copy_text("detail.label.local", &[]),
         true,
         true,
     );

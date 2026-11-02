@@ -836,7 +836,7 @@ fn write_said(v: &mut PlanRead) {
     };
     let whole = v.stale.as_ref().map(|st| {
         strip(
-            copy_text("plan.strip.unreadable", &[("reason", &reason(st))]),
+            copy_text("plan.strip.sliceUnreadable", &[("reason", &reason(st))]),
             st,
         )
     });

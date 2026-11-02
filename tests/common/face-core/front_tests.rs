@@ -305,7 +305,7 @@ fn why_there_is_no_chain_with_that_machines_name() {
     assert_eq!(
         f(Unplaced::PeerOld),
         face(
-            &copy_text("front.title.update", &[("machine", m)]),
+            &copy_text("machineState.problem.needsUpdate", &[("machine", m)]),
             &t("front.body.update"),
             None,
             Tone::Warn,

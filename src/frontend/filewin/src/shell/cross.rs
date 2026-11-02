@@ -29,7 +29,7 @@ impl FileWindow {
         let name = match rows.as_slice() {
             [r] => r.name.clone(),
             _ => copy_text(
-                "rsFilewinBatch.label.nItems",
+                "rsFilewinChrome.status.count",
                 &[("n", &rows.len().to_string())],
             ),
         };
@@ -58,7 +58,7 @@ impl FileWindow {
             return false;
         };
         if p.machine.trim().is_empty() {
-            *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]).into());
+            *self.say_slot() = Some(copy_text("addMachine.err.none", &[]).into());
             return false;
         }
         // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 框留着、出声：落点要一条绝对路径）。
@@ -194,7 +194,7 @@ impl FileWindow {
             },
             &[
                 (
-                    copy_text("rsFilewinShell.copyUi.cancel", &[]),
+                    copy_text("kit.dialog.cancel", &[]),
                     crate::kit::Btn::Plain,
                 ),
                 (

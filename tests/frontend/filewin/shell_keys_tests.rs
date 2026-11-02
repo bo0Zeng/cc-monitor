@@ -712,7 +712,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
     use copy_core::copy_static as c;
     let big = 8 * 1024 * 1024 + 1;
     let lossy = "\u{FFFD}x";
-    let delete = copy_core::copy_text("rsFilewinSelect.menu.delete", &[]);
+    let delete = copy_core::copy_text("history.menu.delete", &[]);
     let delete2 = copy_core::copy_text("rsFilewinSelect.menu.deleteMany", &[("n", "2")]);
     let chmod = copy_core::copy_text("rsFilewinSelect.menu.chmod", &[]);
     let (delete, delete2, chmod) = (delete.as_str(), delete2.as_str(), chmod.as_str());
@@ -731,7 +731,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
         "Delete",
     ];
     let a_dir = vec![
-        c!("rsFilewinSelect.label.open"),
+        c!("mobTerms.row.attach"),
         "Enter",
         c!("rsFilewinCopy.label.copy"),
         c!("rsFilewinSize.label.size"),
@@ -763,7 +763,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![],
             "logo.png",
             vec![
-                c!("rsFilewinImgview.label.view"),
+                c!("tabBatch.result.view"),
                 "Enter",
                 c!("rsFilewinDownload.label.download"),
                 "Ctrl+D",
@@ -880,7 +880,7 @@ fn a_right_click_on_the_blank_part_of_the_list_opens_the_menu_for_this_directory
     let painted = d.frame(&mut w, Vec::new());
     let got = menu_texts(&d, &w, &painted);
     let mut want: Vec<String> = [
-        copy_core::copy_static!("rsFilewinSelect.menu.newFolder"),
+        copy_core::copy_static!("rsFilewinWriteops.inline.newDir"),
         "Ctrl+Shift+N",
         copy_core::copy_static!("rsFilewinSelect.menu.newFile"),
         crate::upload::UPLOAD_LABEL.as_str(),
@@ -896,7 +896,7 @@ fn a_right_click_on_the_blank_part_of_the_list_opens_the_menu_for_this_directory
     click_menu_item(
         &mut d,
         &mut w,
-        copy_core::copy_static!("rsFilewinSelect.menu.newFolder"),
+        copy_core::copy_static!("rsFilewinWriteops.inline.newDir"),
     );
     assert!(w.menu().is_none(), "点了一项菜单还摆着");
     assert!(w.write_prompt().is_some(), "点了「新建文件夹」什么都没发生");
@@ -949,7 +949,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             },
         ),
         (
-            copy_core::copy_static!("rsFilewinSelect.menu.delete"),
+            copy_core::copy_static!("history.menu.delete"),
             |w| {
                 // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
                 let e = w
@@ -979,7 +979,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     click_menu_item(
         &mut d,
         &mut w,
-        copy_core::copy_static!("rsFilewinSelect.label.open"),
+        copy_core::copy_static!("mobTerms.row.attach"),
     );
     assert_eq!(w.cwd, "/srv/data/sub");
 }
@@ -1346,7 +1346,7 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         let p = w.write_prompt.as_mut().expect("框没摆出来");
         assert_eq!(
             p.heading(),
-            copy_core::copy_text("rsFilewinWriteops.heading.chmodMany", &[("n", "3")])
+            copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "3")])
         );
         p.text = "640".into();
     }

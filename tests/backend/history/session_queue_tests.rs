@@ -330,7 +330,7 @@ fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
         (again("a").outcome, again("a").said),
         (O::Seen, copy_text("beQueue.said.sent", &[]))
     );
-    assert_eq!(again("b").said, copy_text("beQueue.said.cancelled", &[]));
+    assert_eq!(again("b").said, copy_text("reason.op.cancelled", &[]));
     for i in 0..SENT_KEEP + 3 {
         let id = format!("m{i}");
         put(&o, &req(&id, "desk", None, T0), T0).unwrap();
@@ -364,7 +364,7 @@ fn each_item_carries_the_owner_written_words() {
         vec![
             (place(1), copy_text("beQueue.from.phone", &[])),
             (place(2), copy_text("beQueue.from.desktop", &[])),
-            (copy_text("beQueue.said.held", &[]), "cc-bus".to_string()),
+            (copy_text("mobAttach.card.queued", &[]), "cc-bus".to_string()),
         ]
     );
     let after = cancel(&o, &sid(), "a", T0 + 4).unwrap().queue;

@@ -88,9 +88,9 @@ fn row_of(
                 SessionDot::Running
             };
             let name = if dot == SessionDot::Idle {
-                copy_text("beTermBoard.dot.shell", &[])
+                copy_text("beSession.activity.idle", &[])
             } else {
-                copy_text("beTermBoard.dot.program", &[])
+                copy_text("backend.status.connected", &[])
             };
             (
                 dot,
@@ -109,11 +109,11 @@ fn row_of(
     let mut chips = Vec::new();
     if attached {
         chips.push(Words(copy_text(
-            "beTermBoard.chip.windows",
+            "terminal.tag.windows",
             &[("n", &t.clients.len().to_string())],
         )));
     } else {
-        chips.push(Words(copy_text("beTermBoard.chip.background", &[])));
+        chips.push(Words(copy_text("terminal.tag.background", &[])));
     }
     if sid.is_some() && t.state == TermState::ProgramExited {
         chips.push(dot_name.clone());
@@ -224,7 +224,7 @@ fn sub_of(rows: &[BoardRow]) -> Words {
 /// 那台叫什么（本机 ⇒「本机」）。
 fn name_of(m: &Machine) -> Words {
     if m.is_local() {
-        Words(copy_text("beTermBoard.group.local", &[]))
+        Words(copy_text("detail.label.local", &[]))
     } else {
         Words(m.to_string())
     }
@@ -302,7 +302,7 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
         u32::try_from(n).unwrap_or(u32::MAX)
     };
     let filters = [
-        (BoardTag::All, copy_text("beTermBoard.filter.all", &[])),
+        (BoardTag::All, copy_text("extPage.filter.all", &[])),
         (
             BoardTag::Session,
             copy_text("beTermBoard.filter.session", &[]),
@@ -310,7 +310,7 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
         (BoardTag::Bare, copy_text("beTermBoard.filter.bare", &[])),
         (
             BoardTag::Background,
-            copy_text("beTermBoard.filter.background", &[]),
+            copy_text("terminal.tag.background", &[]),
         ),
     ]
     .into_iter()

@@ -443,7 +443,7 @@ fn a_gone_monitor_is_said_as_such_not_as_reconnecting() {
         !painted.iter().any(|(t, _)| *t == reconnecting),
         "monitor 不在了还说在重连"
     );
-    let retry = copy_text("rsFilewinChrome.link.retry", &[]);
+    let retry = copy_text("history.list.reconnect", &[]);
     assert!(
         !painted.iter().any(|(t, _)| *t == retry),
         "monitor 不在了还给「重新连接」"
@@ -532,7 +532,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     // 连着（流说了 Up）⇒ 没有条。
     ws.gate.set(LinkSeen::Up);
     let painted = frames_at(&mut ws, screen, 3);
-    let retry = copy_text("rsFilewinChrome.link.retry", &[]);
+    let retry = copy_text("history.list.reconnect", &[]);
     assert!(!painted.iter().any(|(t, _)| *t == retry), "连着却有断线条");
     // 刚断：在重连。
     ws.gate.set(LinkSeen::Reconnecting);
@@ -584,7 +584,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     );
     assert_eq!(ws.pane_on(0).listing.rows.lock().unwrap().len(), 2);
     // 写类那几件做不了，说同一句。
-    let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
+    let read_only = copy_text("acctPage.offline.hover", &[]);
     assert_eq!(
         ws.pane_on(0).refused_here(crate::select::Action::Rename),
         Some(read_only.clone())
@@ -2361,10 +2361,10 @@ fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
         copy_text("rsFilewinWorkspace.closeAsk.title", &[("machine", "ws")]),
         copy_text("rsFilewinWorkspace.closeAsk.unsaved", &[]),
         "t.txt".to_string(),
-        copy_text("rsFilewinWorkspace.closeAsk.transfers", &[]),
+        copy_text("attach.chip.sending", &[]),
         "logs.zip".to_string(),
         copy_text("rsFilewinWorkspace.closeAsk.down", &[("pct", "12")]),
-        copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
+        copy_text("kit.dialog.cancel", &[]),
         copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]),
         copy_text("rsFilewinWorkspace.closeAsk.force", &[]),
     ] {

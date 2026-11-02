@@ -591,7 +591,7 @@ fn the_four_columns_and_how_a_click_turns_the_order() {
     assert_eq!(
         labels,
         [
-            copy_core::copy_static!("rsFilewinSource.sort.name"),
+            copy_core::copy_static!("machineForm.field.name"),
             copy_core::copy_static!("rsFilewinSource.sort.mtime"),
             copy_core::copy_static!("rsFilewinSource.sort.type"),
             copy_core::copy_static!("rsFilewinSource.sort.size")
@@ -1080,7 +1080,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
     for want in [
         format!(
             "{}：devbox（{}）",
-            label("detail.label.machine"),
+            label("newSession.label.machine"),
             label("detail.value.notConnected")
         ),
         format!("{}：files-ls", label("detail.label.command")),

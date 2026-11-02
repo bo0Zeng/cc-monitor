@@ -1674,7 +1674,7 @@ fn the_run_table_carries_its_own_words() {
     assert_eq!(
         words(&s.runs[0]),
         (
-            Words(copy_text("runs.state.running", &[])),
+            Words(copy_text("history.row.live", &[])),
             Words("审交互".into()),
             Some(Words(copy_text("runs.last.tool", &[("tool", "Bash")]))),
         )
@@ -1683,14 +1683,14 @@ fn the_run_table_carries_its_own_words() {
         words(&s.runs[1]),
         (
             Words(copy_text("runs.state.failed", &[])),
-            Words(copy_text("runs.label.unnamed", &[])),
+            Words(copy_text("newSession.label.agent", &[])),
             Some(Words(copy_text("runs.last.think", &[]))),
         )
     );
     for (st, key) in [
         (RunState::Done, "runs.state.done"),
         (RunState::Stopped, "runs.state.stopped"),
-        (RunState::Unknown, "runs.state.unknown"),
+        (RunState::Unknown, "sessionState.unseen.name"),
     ] {
         assert_eq!(status_text(st), Words(copy_text(key, &[])), "{st:?}");
     }
@@ -1780,8 +1780,8 @@ fn the_run_table_writes_facts_explain_and_end() {
         vec![
             line("agentWindow.facts.running", dur, Some(1_000)),
             line("agentWindow.facts.active", dur, Some(5_000)),
-            line("agentWindow.facts.calls", &[("n", "3")], None),
-            line("agentWindow.facts.kids", &[("n", "1")], None),
+            line("rsTurns.proc.tools", &[("n", "3")], None),
+            line("rsTurns.proc.agents", &[("n", "1")], None),
             line("agentWindow.facts.background", &[], None),
         ]
     );
@@ -1818,7 +1818,7 @@ fn the_run_table_writes_facts_explain_and_end() {
             sub: line("agentWindow.end.failed", &[], None),
         })
     );
-    let unknown = Some(Words(copy_text("runs.state.unknown", &[])));
+    let unknown = Some(Words(copy_text("sessionState.unseen.name", &[])));
     assert_eq!(
         c.explain,
         Some(RunExplain {

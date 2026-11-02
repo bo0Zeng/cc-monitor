@@ -16,7 +16,7 @@ pub static CROSS_LABEL: std::sync::LazyLock<String> =
 /// 机器下拉里给人看的名字：本机（地址只一个家 `cmd_wire::LOCAL`）写「本机」，别的照名字。
 pub fn shown_machine(origin: &str) -> String {
     if origin == cmd_wire::LOCAL {
-        copy_text("rsFilewinCrossCopy.prompt.localMachine", &[])
+        copy_text("detail.label.local", &[])
     } else {
         origin.to_string()
     }
@@ -25,7 +25,7 @@ pub fn shown_machine(origin: &str) -> String {
 /// 框里那一格（给人看的名字，或手填的名字）→ 发出去的机器地址：「本机」⇒ 本机后端的地址。
 pub fn origin_of(shown: &str) -> String {
     let t = shown.trim();
-    if t == copy_text("rsFilewinCrossCopy.prompt.localMachine", &[]) {
+    if t == copy_text("detail.label.local", &[]) {
         cmd_wire::LOCAL.to_string()
     } else {
         t.to_string()

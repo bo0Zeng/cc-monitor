@@ -251,7 +251,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
             "io_failed",
             crate::common::said::IntoNote::into_note(Said::with_raw(
                 copy_text(
-                    "beLastSeen.store.mkdirFailed",
+                    "beChore.marks.mkdirFailed",
                     &[
                         ("dir", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),

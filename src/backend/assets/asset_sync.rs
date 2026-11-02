@@ -87,7 +87,7 @@ fn outcome(
         changed,
         pushed,
         error: (!errors.is_empty())
-            .then(|| errors.join(&copy_text("beAssetSync.report.errorSep", &[]))),
+            .then(|| errors.join(&copy_text("kit.text.sep", &[]))),
     }
 }
 

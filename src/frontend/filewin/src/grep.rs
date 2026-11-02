@@ -374,7 +374,7 @@ impl GrepBoard {
                     ui,
                     super::kit::Tone::Error,
                     n,
-                    &[copy_text("rsFilewinFind.action.retry", &[])],
+                    &[copy_text("front.act.retry", &[])],
                     &s.notice_detail,
                     id,
                 )
@@ -391,7 +391,7 @@ impl GrepBoard {
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
-                        .button(copy_text("rsFilewinGrep.action.stop", &[]))
+                        .button(copy_text("rsFilewinProgress.action.stop", &[]))
                         .clicked()
                     {
                         stop = true;
@@ -405,7 +405,7 @@ impl GrepBoard {
                     let lines = skipped_detail(o);
                     let entries: Vec<super::kit::Entry> =
                         lines.into_iter().map(super::kit::Entry::Note).collect();
-                    super::kit::menu(ui, copy_text("rsFilewinGrep.action.detail", &[]), &entries);
+                    super::kit::menu(ui, copy_text("messages.record.expand", &[]), &entries);
                 }
                 if let Some(t) = stopped_line(o) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -511,7 +511,7 @@ pub fn show_grep_rows(ui: &mut egui::Ui, rows: &[GrepRow], tally: &mut GrepTally
                                 p.text,
                             );
                             let c = painter.layout_no_wrap(
-                                copy_text("rsFilewinGrep.hit.count", &[("n", &n.to_string())]),
+                                copy_text("kit.toast.count", &[("n", &n.to_string())]),
                                 font.clone(),
                                 p.text2,
                             );

@@ -178,7 +178,7 @@ pub fn identity_decision(
             &[
                 ("machine", &machine.to_string()),
                 ("path", &path.to_string()),
-                ("ids", &ids.join(&copy_text("rsSftp.identity.listSep", &[]))),
+                ("ids", &ids.join(&copy_text("kit.text.sep", &[]))),
                 ("handsOff", &hands_off.to_string()),
             ],
         )),
