@@ -2,7 +2,7 @@
  * 过程里的一步一行：状态图标 · 工具名 · 主参数（等宽、一行、路径中间省略）· 说明 · 右侧小字。
  *
  * 判定都在后端：主参数与说明是 assistant 记录成品的 `toolSteps`，结果一句的数是 user 记录成品的 `toolResults`；
- * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）；耗时交那一个读口（`duration-format.ts::spanNow`，两条记录后端解好的 `atMs`）。界面不认入参与结果的结构。
+ * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）；一步用时是后端配好写进结果那一句的。界面不认入参与结果的结构。
  * 还没有结果的那一步是什么样子（在跑 · 在等你 · 状态不明）读会话事实的 `pending[].state`（[`paintWaiting`]）；事实到之前不画状态，
  * 不按「没有结果」当它在跑。
  */
@@ -11,7 +11,6 @@ import type { StepResult } from "../generated/StepResult";
 import { icon, type IconName } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
-import { spanNow } from "../duration-format";
 import type { PendingCall } from "../session-reads";
 
 /**
@@ -23,11 +22,6 @@ export type StepState = "pending" | "running" | "unclear" | "ok" | "failed" | "r
 /** 还没结果的那几种（会话事实一到就按它重画）。 */
 const WAITING = new Set(["pending", "running", "awaiting", "unclear"]);
 
-/** 两条记录之间多久（毫秒时刻，后端解好的 `atMs`；任一缺 ⇒ `null`）⇒ 那一个读口写的字。 */
-export function durBetween(from: number | undefined, to: number | undefined): string | null {
-  return from === undefined || to === undefined || to < from ? null : spanNow(from, to);
-}
-
 /** 结果到了 ⇒ 这一步的状态。 */
 export function stateOf(step: ToolStep | undefined, res: StepResult | undefined, isError: boolean): StepState {
   if (res?.rejected) return "rejected";
@@ -37,15 +31,13 @@ export function stateOf(step: ToolStep | undefined, res: StepResult | undefined,
 }
 
 /**
- * 右侧小字：都是核心写好的 —— 结果那一句（`StepResult.text`；带耗时的那一形 `timed`，耗时那一截 `{dur}` 由这里填两条记录之间的用时
- * [`durBetween`]）、认不出的工具那一句（`ToolStep.text`，结果成功时用它）；还没结果的那几种照会话事实画（[`paintWaiting`]）。
- * 没有结果那一格 ⇒ 只写耗时。
+ * 右侧小字：都是核心写好的 —— 结果那一句（`StepResult.text`，一步用时也由核心配好写进去）、认不出的工具那一句（`ToolStep.text`，
+ * 结果成功时用它）；还没结果的那几种照会话事实画（[`paintWaiting`]）。没有结果那一格 ⇒ 不写。
  */
-export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, durText: string | null): string {
-  const dur = durText ?? "";
-  if (!res) return dur;
+export function stepRight(step: ToolStep | undefined, res: StepResult | undefined): string {
+  if (!res) return "";
   if (res.ok && step?.text !== undefined) return step.text;
-  return res.timed !== undefined && durText !== null ? res.timed.replace("{dur}", dur) : res.text;
+  return res.text;
 }
 
 /** 路径中间省略：留开头一段与文件名，中间换成 `…`（只在超长时）。 */
@@ -126,10 +118,10 @@ export function buildThinkingLine(label: string, preview: string): HTMLElement {
 }
 
 /** 结果到了：改那一行的状态图标与右侧小字（同一步再来一次结果就再改一次，幂等）。 */
-export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean, durText: string | null): StepState {
+export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean): StepState {
   row.querySelector(".step-await")?.remove();
   const state = stateOf(step, res, isError);
-  paint(row, state, stepRight(step, res, durText));
+  paint(row, state, stepRight(step, res));
   return state;
 }
 

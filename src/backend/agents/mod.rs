@@ -995,43 +995,30 @@ impl PlanTitleExt for PlanTitle {
     }
 }
 
-/// 耗时那一截的占位（出口填）。
-pub(crate) const DUR_SLOT: &str = "{dur}";
-
 /// 过程一步的结果那一句（形状在 `cmd-wire`，写字在这里）。
 pub trait StepResultExt {
     /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
     fn written(self, read: bool) -> Self;
-    /// ★ 配上调用时刻之后那一句（唯一一处）：有带耗时那一形、`ms` 有 ⇒ `{dur}` 填好成 `text`、`timed` 清掉；
-    /// 配不上（`None`）· 没有带耗时那一形 ⇒ 不动（读不到就不写，不猜）。
+    /// ★ 配上调用时刻之后那一句（唯一一处）：带耗时的只有两形 —— 失败（`text` 还是「失败」那一句）⇒ 「失败 · 用时」，
+    /// 都说不上（`text` 空）⇒ 只写用时；配不上（`None`）· 别的那几形 ⇒ 不动（读不到就不写，不猜）。
     fn timed_by(self, ms: Option<u64>) -> Self;
 }
 
 impl StepResultExt for StepResult {
     fn written(mut self, read: bool) -> Self {
-        let w = |s: String| crate::common::cells::Words(s);
-        let (text, timed) = if self.rejected {
-            (copy_core::copy_text("stream.step.rejected", &[]), None)
+        let text = if self.rejected {
+            copy_core::copy_text("stream.step.rejected", &[])
         } else if !self.ok {
-            (
-                copy_core::copy_text("stream.step.failed", &[]),
-                Some(copy_core::copy_text(
-                    "stream.step.failedFor",
-                    &[("dur", DUR_SLOT)],
-                )),
-            )
+            copy_core::copy_text("stream.step.failed", &[])
         } else if let Some(a) = &self.answer {
             // 提问 / 计划答了什么（卡片底行那一句）。
-            (
-                match a {
-                    Answer::Approved => copy_core::copy_text("interactive.done.approved", &[]),
-                    Answer::Picked { options } => copy_core::copy_text(
-                        "interactive.done.picked",
-                        &[("option", &options.join(" / "))],
-                    ),
-                },
-                None,
-            )
+            match a {
+                Answer::Approved => copy_core::copy_text("interactive.done.approved", &[]),
+                Answer::Picked { options } => copy_core::copy_text(
+                    "interactive.done.picked",
+                    &[("option", &options.join(" / "))],
+                ),
+            }
         } else {
             let diff: Vec<String> = [
                 self.added.filter(|n| *n > 0).map(|n| format!("+{n}")),
@@ -1041,32 +1028,32 @@ impl StepResultExt for StepResult {
             .flatten()
             .collect();
             if !diff.is_empty() {
-                (diff.join(" "), None)
+                diff.join(" ")
             } else if let Some(n) = self.lines.filter(|_| read) {
-                (
-                    copy_core::copy_text("stream.step.lines", &[("n", &n.to_string())]),
-                    None,
-                )
+                copy_core::copy_text("stream.step.lines", &[("n", &n.to_string())])
             } else if let Some(n) = self.files {
-                (
-                    copy_core::copy_text("stream.step.files", &[("n", &n.to_string())]),
-                    None,
-                )
+                copy_core::copy_text("stream.step.files", &[("n", &n.to_string())])
             } else {
-                (String::new(), Some(DUR_SLOT.to_string()))
+                String::new()
             }
         };
-        self.text = w(text);
-        self.timed = timed.map(w);
+        self.text = crate::common::cells::Words(text);
         self
     }
 
     fn timed_by(mut self, ms: Option<u64>) -> Self {
-        if let (Some(ms), Some(timed)) = (ms, &self.timed) {
-            let text = timed.0.replace(DUR_SLOT, &copy_core::short_duration(ms));
-            self.text = crate::common::cells::Words(text);
-            self.timed = None;
-        }
+        let Some(ms) = ms else { return self };
+        let dur = copy_core::short_duration(ms);
+        let text = if self.rejected {
+            return self;
+        } else if !self.ok && self.text.0 == copy_core::copy_text("stream.step.failed", &[]) {
+            copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)])
+        } else if self.ok && self.text.0.is_empty() {
+            dur
+        } else {
+            return self;
+        };
+        self.text = crate::common::cells::Words(text);
         self
     }
 }
