@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     // 住址唯一源：`guard_core::addr`。
@@ -313,7 +313,8 @@ fn bare_matchers_on_disk_corpora_equal_the_debt_list() {
         ("src/frontend/shell/src", &[] as &[&str]),
         ("src/backend", &[]),
         ("src/common", &[]),
-        ("tests/frontend/shell", &["needle_anchor_registry_tests.rs"]),
+        ("tests/frontend/shell", &[]),
+        ("tests/common/guard-core/rules", &["needle_anchor_registry_tests.rs"]),
         ("tests/frontend/filewin", &[]),
         ("tests/backend", &[]),
         ("tests/comms", &[]),

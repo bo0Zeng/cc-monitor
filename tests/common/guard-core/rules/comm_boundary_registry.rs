@@ -21,7 +21,7 @@
 //!
 //! - **不买「这份文件真的该属于通信层」**：归属是人定的（放进哪个 crate），判据只管放进去之后它守不守这几条。
 //! - **不买「通信层之外没有第二个通信层」**：一份做传输的代码住在别的包里，这里一个字都看不见。
-//! - 各条各自买到什么、买不到什么，写在 `tests/frontend/shell/comm_boundary_registry_tests.rs`
+//! - 各条各自买到什么、买不到什么，写在 `tests/common/guard-core/rules/comm_boundary_registry_tests.rs`
 //!   每条判据自己的文档注释里。
 //!
 //! 本文件**整体在 `#[cfg(test)]` 内**，非测试构建为空。

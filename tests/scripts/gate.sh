@@ -773,7 +773,7 @@ gate_family() {
   printf '%s: %s passed（%s 里声明的 #[test] 名字集合 == cargo 真跑过的集合）\n' "$label" "$(printf '%s\n' "$ran" | grep -c .)" "$file"
 }
 run_gate comm-boundary '判过的条数 = 通信层那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
-         gate_family comm-boundary tests/frontend/shell/comm_boundary_registry_tests.rs monitor comm_boundary_registry::tests::
+         gate_family comm-boundary tests/common/guard-core/rules/comm_boundary_registry_tests.rs guard-core rules::comm_boundary_registry::tests::
 run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
          gate_family test-tiers tests/common/guard-core/test_tiers_tests.rs guard-core test_tiers::
 

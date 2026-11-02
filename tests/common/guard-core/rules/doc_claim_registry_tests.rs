@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-const INVARIANTS: &str = include_str!("../../../src/doc/INVARIANTS.md");
+const INVARIANTS: &str = include_str!("../../../../src/doc/INVARIANTS.md");
 
 fn repo_root() -> PathBuf {
     // 住址唯一源：`guard_core::addr`。
@@ -32,7 +32,7 @@ fn tracked_files() -> Vec<String> {
     // ★ 自检：口径坏了 ⇒ 下面整族会零命中地绿。正控：本文件自己在人群里。
     assert!(
         v.iter()
-            .any(|r| r == "tests/frontend/shell/doc_claim_registry_tests.rs"),
+            .any(|r| r == "tests/common/guard-core/rules/doc_claim_registry_tests.rs"),
         "`git ls-files` 列出的清单里没有本文件 —— 口径坏了"
     );
     v
@@ -581,7 +581,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 /// 版本号手写的四处（`package.json` · `Cargo.toml` · `tauri.conf.json` · `Cargo.lock`）彼此一致
 /// 由发版那一趟 `release.yml` 的 `Verify version consistency with tag` 对着 tag 核；
 /// 本条只接 **`CHANGELOG.md` 最上一节 ↔ `src/frontend/shell/Cargo.toml`** 这一段
-/// （`env!("CARGO_PKG_VERSION")`，编译期注入，不抠锚点）。
+/// （读那份清单 `[package]` 的版本行）。
 ///
 /// # 第二条判定：breaking 段不许被埋在列表里
 ///
@@ -611,9 +611,18 @@ fn the_changelog_top_section_is_the_version_we_ship() {
     /// 节内子标题。
     const SUB_MARK: &str = "### ";
 
-    // 🔴 **要发的那个版本号从 `src/frontend/shell/Cargo.toml` 编译期注入**，本条不自己再抠一遍锚点
+    /// 壳那个包的清单里 `[package]` 那一节与它的版本行。
+    const PACKAGE_MARK: &str = "[package]";
+    const VERSION_MARK: &str = "version = \"";
+
+    // 🔴 **要发的那个版本号只住 `src/frontend/shell/Cargo.toml` 的 `[package]`**，本条照那一行读
     //    —— 同一个值不许长出第二个住址。
-    let shipping = env!("CARGO_PKG_VERSION");
+    let manifest = read_repo_file("src/frontend/shell/Cargo.toml");
+    let shipping: &str = manifest
+        .lines()
+        .skip_while(|l| l.trim() != PACKAGE_MARK)
+        .find_map(|l| l.trim().strip_prefix(VERSION_MARK)?.strip_suffix('"'))
+        .expect("`src/frontend/shell/Cargo.toml` 的 `[package]` 里没有版本行");
     let changelog = read_repo_file("CHANGELOG.md");
 
     let heading = changelog
