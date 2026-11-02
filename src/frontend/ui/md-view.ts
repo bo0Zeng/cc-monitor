@@ -20,23 +20,6 @@ import s from "./md-view.module.css";
 /** 代码块复制钮上的字：每块都一样，不随树里的值变。 */
 const COPY_LABEL = copyText("render.codeBlock.copy");
 
-/** 高亮类：下标就是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`），名单的先后只许跟着那边改。 */
-const HL_CLASSES: readonly string[] = [
-  s.hlKeyword,
-  s.hlString,
-  s.hlComment,
-  s.hlNumber,
-  s.hlFunction,
-  s.hlType,
-  s.hlConstant,
-  s.hlVariable,
-  s.hlAttribute,
-  s.hlTag,
-  s.hlInserted,
-  s.hlDeleted,
-  s.hlMeta,
-];
-
 /** 一份排好的正文：`root` 挂进卡里；`buildNext` 接着建下一段，建完了（或本来只有一段）回 false。 */
 export interface DocView {
   readonly root: HTMLElement;
@@ -117,7 +100,8 @@ function block(b: MdBlock, ctx: Ctx): Node {
     case "quote":
       return box("blockquote", blocksOf(b.blocks, ctx));
     case "alert": {
-      const q = box("blockquote", blocksOf(b.blocks, ctx), s.mdAlert);
+      const q = box("blockquote", blocksOf(b.blocks, ctx));
+      q.className = s.mdAlert;
       q.dataset.kind = b.kind;
       return q;
     }
@@ -134,7 +118,9 @@ function block(b: MdBlock, ctx: Ctx): Node {
           return li;
         }),
       );
-      return box("section", [ol], s.mdNotes);
+      const notes = box("section", [ol]);
+      notes.className = s.mdNotes;
+      return notes;
     }
   }
 }
@@ -179,7 +165,8 @@ function codeBlock(lang: string | null, x: string, hl: readonly number[]): HTMLE
   copy.type = "button";
   copy.dataset.copy = "";
   const bar = box("div", [label, copy], "code-bar");
-  const code = box("code", highlighted(x, hl), s.mdCode);
+  const code = box("code", highlighted(x, hl));
+  code.className = s.mdCode;
   const wrap = box("div", [bar, box("pre", [code])], "code-block");
   if (lang !== null) wrap.dataset.lang = lang;
   return wrap;
@@ -193,18 +180,64 @@ function highlighted(x: string, hl: readonly number[]): Node[] {
     const from = Math.min(at + hl[i], x.length);
     const to = Math.min(from + hl[i + 1], x.length);
     if (from > at) out.push(document.createTextNode(x.slice(at, from)));
-    const cls = HL_CLASSES[hl[i + 2]];
-    if (to > from) {
-      if (cls === undefined) {
-        out.push(document.createTextNode(x.slice(from, to)));
-      } else {
-        out.push(el("span", cls, x.slice(from, to)));
-      }
-    }
+    if (to > from) out.push(hlSpan(hl[i + 2], x.slice(from, to)) ?? document.createTextNode(x.slice(from, to)));
     at = to;
   }
   if (at < x.length) out.push(document.createTextNode(x.slice(at)));
   return out;
+}
+
+/**
+ * 着色的一截：`cls` 是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`），分支的先后只许跟着那边改；认不出的序号回 null（当没着色）。
+ * 类名直接从 CSS 模块对象取、赋给 `className`，不经名单或小工具函数。
+ */
+function hlSpan(cls: number, text: string): HTMLElement | null {
+  const sp = document.createElement("span");
+  switch (cls) {
+    case 0:
+      sp.className = s.hlKeyword;
+      break;
+    case 1:
+      sp.className = s.hlString;
+      break;
+    case 2:
+      sp.className = s.hlComment;
+      break;
+    case 3:
+      sp.className = s.hlNumber;
+      break;
+    case 4:
+      sp.className = s.hlFunction;
+      break;
+    case 5:
+      sp.className = s.hlType;
+      break;
+    case 6:
+      sp.className = s.hlConstant;
+      break;
+    case 7:
+      sp.className = s.hlVariable;
+      break;
+    case 8:
+      sp.className = s.hlAttribute;
+      break;
+    case 9:
+      sp.className = s.hlTag;
+      break;
+    case 10:
+      sp.className = s.hlInserted;
+      break;
+    case 11:
+      sp.className = s.hlDeleted;
+      break;
+    case 12:
+      sp.className = s.hlMeta;
+      break;
+    default:
+      return null;
+  }
+  sp.textContent = text;
+  return sp;
 }
 
 /** 公式占位：`render.ts::enhanceCard` 读 `data-math-pending` 与 `textContent` 排 KaTeX。 */

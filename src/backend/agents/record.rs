@@ -112,7 +112,8 @@ fn draw_of(body: &Body) -> Draw {
                 return Draw::None;
             }
             // 助手的正文都是树（[`reply_blocks`]）：解析出来一块都没有（空 · 只剩空白）⇒ 不算。
-            let shown = |b: &&Block| !matches!(b, Block::Prose { doc, .. } if doc.blocks.is_empty());
+            let shown =
+                |b: &&Block| !matches!(b, Block::Prose { doc, .. } if doc.blocks.is_empty());
             let mut any = false;
             for b in blocks.iter().filter(shown) {
                 any = true;
