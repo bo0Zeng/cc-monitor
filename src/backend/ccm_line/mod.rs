@@ -1,7 +1,7 @@
 //! `ccm` 这一行的**词与解析**：旗标 · 解析 · 默认值（[`argv`]）· 自己叫什么 · 用配置那一段的记号。
 //!
 //! 起会话（`control::ccm`）· 账号域拼 ccm 那一行（`accounts::manage::wire`）· 别名与配置那一族（`assets::aliases`）都认这一套词，
-//! 所以它住在它们底下：只引 `agents`（认得哪几家）· `common` · `platform` 与根上的 argv 表，不往上引。
+//! 所以它住在它们底下：只引 `agents`（认得哪几家）· `common` · `platform`，不往上引；后端有哪些子命令它不知道（`control::ccm::route` 收入口交下来的那一问）。
 //! 做事那一半（算计划 · 渲染 · 起会话）住 `control::ccm`。
 
 pub(crate) mod argv;
@@ -29,9 +29,4 @@ pub(crate) const PROFILE_SIGIL: char = '@';
 /// 不是 ⇒ 被叫成这个名字等同 `@<名>`（`control::ccm::route`）；配置文件也不收这几个名字当段名。
 pub(crate) fn is_own_name(name: &str) -> bool {
     name == SUBCOMMAND_WORD || name.starts_with(env!("CARGO_PKG_NAME"))
-}
-
-/// 后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
-pub(crate) fn is_backend_word(w: &str) -> bool {
-    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }

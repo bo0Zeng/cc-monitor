@@ -173,7 +173,7 @@ fn unavailable_on(t: Target) -> Vec<String> {
     .collect()
 }
 
-/// 那个 target 上的 `(面, 名)`：帧面 `inbound::REGISTRY` ＋ CLI 面 `SUBCOMMANDS`（经 `spec_for` 派生的跟着帧面那一条走）。
+/// 那个 target 上的 `(面, 名)`：帧面 `inbound::REGISTRY` ＋ CLI 面闸门认的子命令（`stream::cli::is_subcommand`；经 `spec_for` 派生的跟着帧面那一条走）。
 fn faces_on(t: Target) -> BTreeSet<(&'static str, &'static str)> {
     let gone = unavailable_on(t);
     let off = |name: &str| gone.iter().any(|g| g == name);
