@@ -1,8 +1,10 @@
 //! 本机起进程的落点：一处一行，每一处写清起的是什么、为什么必须起进程、交给唯一出口
 //! （`spawn_managed.rs`）的哪个入口、选了哪三条策略。人群从源码现扫，两向按处相等。
 //!
-//! 一处落点 ＝ 生产段里一句 `Command::new(`，或一次调用出口最简那一形 `spawn_managed(`（出口替它造 `Command`）。
-//! 同一个函数里两句 `Command::new` 是两处、两行；往已登记的函数里再加一句，处数就对不上。
+//! 一处落点 ＝ 出口外面一次调用出口那几个起进程 / 造 `Command` 的口子：`spawn_managed(` · `spawn_managed_with(`
+//! （出口替它造 `Command`、当场起）· `spawn_managed::command(`（造一个还没起的，交注入的 `ManagedSpawn` 起）；
+//! 出口自己那份里只数 `Command::new(`（全壳唯一那一句）。别处再写一句 `Command::new(` 也是一处（它绕开了出口）。
+//! 同一个函数里两次是两处、两行；往已登记的函数里再加一次，处数就对不上。
 //! 后端那一半起进程由它自己的 `readonly_guard::spawn_registry` 登记，这里只扫壳。
 
 use std::path::{Path, PathBuf};
@@ -21,7 +23,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
     (
         "platform/console.rs",
         "run_helper",
-        "spawn_managed_cmd",
+        "spawn_managed_with",
         "`<本二进制> --ccm-console <件> <进程号…>`（不经 shell）",
         "认窗口要借别人的控制台（`AttachConsole`），而挂控制台是整个进程的状态 ⇒ 交给一个自己没有控制台、\
          用完即退的小助手借（本二进制的隐藏子命令）。参数只有子命令名与进程号 / 窗口句柄，答话在 stdout 上。\
@@ -60,19 +62,71 @@ const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
     (
         "local_backend_host.rs",
         "run_resident_stop_within",
-        "spawn_managed_cmd",
+        "spawn_managed_with",
         "`<本机后端> --resident-stop`（不经 shell）",
         "停本机常驻后端：在这台机器上跑一次那个一次性子命令，由它做「请它收尾 → 宽限期内等 → 到点强杀」，\
          monitor 只拿回结局。参数是我们自己记下的那个二进制与一个常量 flag；失败那句 `{code,message}` 在 stderr 上。",
         "Hidden · JobKillOnClose · Captured",
     ),
     (
-        "spawn_managed.rs",
+        "backend_once.rs",
+        "ask_once",
         "spawn_managed_with",
+        "`<我们放下去的后端> -- --<命令>`（不经 shell）",
+        "同步命令里问后端一次（不 `block_on` 连常驻后端）：帧命令的 CLI 面，入参 JSON 走 stdin、答话在 stdout、\
+         失败信封在 stderr ⇒ `Captured`；超时收整棵 ⇒ `JobKillOnClose`。",
+        "Hidden · JobKillOnClose · Captured",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_local_posix_via",
+        "spawn_managed_with",
+        "用户的终端程序（`local_posix_spawn_plan` 挑的那一个）＋ 它要跑的那条命令",
+        "在本机开一个终端窗口跑会话：窗口是终端程序自己开的。`Detached`：用户的终端不随 monitor 收信号；\
+         `Null`：说话的是开出来的那个窗口。",
+        "Hidden · Detached · Null",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_powershell_window",
+        "spawn_managed_with",
+        "`wt.exe` 新标签里的 powershell（Plan A）",
+        "Windows 上开终端窗口跑 PowerShell 命令（加载用户 profile、`-NoExit`）。`Inherit`：`wt.exe` 多半只是把请求转交给\
+         已在跑的 Windows Terminal，真正开窗的不是这次起的进程；`Detached`：关界面不等于关用户正在敲字的会话。",
+        "Inherit · Detached · Inherit",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_powershell_window",
+        "spawn_managed_with",
+        "`powershell.exe` 独立控制台（Plan B，`wt.exe` 起不来时）",
+        "同上一行的兜底：这一次是真新起的控制台进程 ⇒ `NewVisible`（全仓唯一一处，刻意的）；后两格同 Plan A。",
+        "NewVisible · Detached · Inherit",
+    ),
+    (
+        "shots_shell.rs",
+        "start",
+        "spawn_managed_with",
+        "截图台架给好的那条后端命令（含沙箱）",
+        "截图台架的无头壳起本机那一台的后端：stdin / stdout 两根管子接产品本机那条读循环；台架收场时一起收 ⇒ `JobKillOnClose`。",
+        "Hidden · JobKillOnClose · Inherit",
+    ),
+    (
+        "filewin/proc.rs",
+        "spawn_window",
+        "spawn_managed_with",
+        "自带的文件窗口程序（argv 上一个字都没有，请求走 stdin 上的种子）",
+        "原生文件管理窗口是另一个进程（另一套渲染栈）。`Detached`：开窗命令一返回句柄就丢，Job 一关窗口当场被收；\
+         `Captured`：就绪那一行与「窗口为什么没立起来」在 stderr 上。",
+        "Hidden · Detached · Captured",
+    ),
+    (
+        "spawn_managed.rs",
+        "command",
         "——",
-        "调用方给的那个二进制 ＋ argv",
-        "唯一出口：三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语，全仓只此一份；\
-         `.spawn()` 与那几条平台原语只许长在这里由 `spawn_managed::tests` 钉。",
+        "调用方给的那个二进制（造好、还没起）",
+        "唯一出口：壳里造 `Command` 只此一句；三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在 `spawn_managed_cmd` \
+         落成平台原语，全仓只此一份；`.spawn()` 与那几条平台原语只许长在这里由 `spawn_managed::tests` 钉。",
         "—— 它就是那个出口本身",
     ),
 ];
@@ -148,7 +202,11 @@ type Site = (String, String, String, String);
 /// 现扫：一处一条、不去重。针运行时拼，免得命中本文件自己。
 fn sites(files: &[(String, String)]) -> Vec<Site> {
     let build = concat!("Command::", "new(");
-    let call = concat!("spawn_", "managed(");
+    let calls = [
+        concat!("spawn_", "managed("),
+        concat!("spawn_", "managed_with("),
+        concat!("spawn_managed::", "command("),
+    ];
     let mut out: Vec<Site> = Vec::new();
     for (file, prod) in files {
         let lines: Vec<&str> = prod.lines().collect();
@@ -156,8 +214,11 @@ fn sites(files: &[(String, String)]) -> Vec<Site> {
         let hits: Vec<usize> = (0..lines.len())
             .filter(|&i| {
                 let l = lines[i];
-                // 出口自己那份只按 `Command::new` 数：`spawn_managed(` 在那里是它的签名与实现。
-                l.contains(build) || (!is_the_exit && l.contains(call) && fn_name_on(l).is_none())
+                // 出口自己那份只按 `Command::new` 数：那几个口子在那里是它的签名与实现。
+                l.contains(build)
+                    || (!is_the_exit
+                        && calls.iter().any(|c| l.contains(c))
+                        && fn_name_on(l).is_none())
             })
             .collect();
         for (n, &i) in hits.iter().enumerate() {
@@ -319,7 +380,8 @@ fn a_second_bare_command_in_one_function_is_a_second_site() {
     let one = "fn f() {\n    let mut c = std::process::Command::new(a);\n    spawn_managed_cmd(&mut c);\n}\n";
     let two = "fn f() {\n    let mut c = std::process::Command::new(a);\n    spawn_managed_cmd(&mut c);\n\
                let mut d = std::process::Command::new(b);\n    spawn_managed_cmd(&mut d);\n}\n\
-               fn g() {\n    crate::spawn_managed::spawn_managed(p, &[], X, Y, Z);\n}\n";
+               fn g() {\n    crate::spawn_managed::spawn_managed(p, &[], X, Y, Z);\n}\n\
+               fn h() {\n    spawn_managed_with(p, X, Y, Z, |c| {});\n    let c = crate::spawn_managed::command(p);\n}\n";
     let at = |src: &str| sites(&[("x.rs".to_string(), src.to_string())]);
     assert_eq!(keys(&at(one)), vec![("x.rs".into(), "f".into())]);
     let k = keys(&at(two));
@@ -329,13 +391,16 @@ fn a_second_bare_command_in_one_function_is_a_second_site() {
             ("x.rs".to_string(), "f".to_string()),
             ("x.rs".to_string(), "f".to_string()),
             ("x.rs".to_string(), "g".to_string()),
+            ("x.rs".to_string(), "h".to_string()),
+            ("x.rs".to_string(), "h".to_string()),
         ],
-        "同一个函数里第二句 `Command::new` 没被数成第二处 —— 本表此刻按函数去重了"
+        "同一个函数里第二句 `Command::new` 没被数成第二处 —— 本表此刻按函数去重了；\
+         或 `spawn_managed_with(` · `spawn_managed::command(` 那两形没算落点"
     );
     assert_eq!(
         only_in(&k, &keys(&at(one))).len(),
-        2,
-        "多重集差没数出多出来的那两处"
+        4,
+        "多重集差没数出多出来的那四处"
     );
 }
 

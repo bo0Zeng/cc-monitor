@@ -19,30 +19,10 @@ const RULE: &str = "\
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "local_backend.rs",
-        "rename",
-"rename_into_place",
-        "monitor 自己的缓存（自释放出来的后端二进制 · 本机那条 `ccm` 入口 · 文件窗口程序）",
-        "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
-             §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
-             刚建的新文件、dst 通常压根不存在 ⇒ 没有要保留的 ACL，`rename` 的语义正合适。\
-             🔴 第二处是 `install_local_ccm_entry`（本机那条 `ccm` 入口 = 后端二进制的改名副本）。\
-             它**同属 monitor 自己的文件**：落点是 `~/.cc-monitor/bin/`，不是用户的 `~/.local/bin/ccm`。\
-             ⚠ **那个区别正是要害**：往用户那份上写就要保 ACL、更要先问用户 —— 而 `K34` 逐字\
-             「原本的配置**要手动删除**」⇒ 产品根本不往那儿写。所以这一处仍落 monitor 自己那一档。\
-             🔴 〔从 2 处涨到 3 处，重判一次 —— 结论不变〕第三处是 `place_local_program`（放文件窗口程序），\
-             落点同是 `~/.cc-monitor/bin/`，我们自己放、自己起 ⇒ 没有要保留的 ACL，`rename` 正合适。",
-    ),
+    // `local_backend.rs [rename]`（`rename_into_place`：自释放的后端 · 本机 `ccm` 入口 · 文件窗口程序先写暂存件再上位）摘了 ——
+    //   壳自己的部署物改经 `platform/own_fs.rs`（`OwnBin` 上位那一口），这一层不再直接 rename；换名都归下面 `own_fs.rs` 那一行。
     // `cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
-    (
-        "config.rs",
-        "rename",
-        "patch_config_at",
-        "monitor 自己的 config.json",
-        "写的是我们自己的配置文件：临时件先落盘再换名上位，tmp 的 ACL 覆盖到 dst 没有受害者。\
-             §4 把保 ACL 的要求**限定在用户文件**，这里不在其中。",
-    ),
+    // `config.rs [rename]`（`patch_config_at`：config.json 临时件上位）同样摘了 —— 改经 `own_fs.rs` 的原子写。
     // `logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
     //   它那份从 config.rs 复制来的 `atomic_replace` 随之删了。
     (

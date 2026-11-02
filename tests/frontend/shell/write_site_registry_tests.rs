@@ -32,42 +32,10 @@ const WRITE_CALLS: &[&str] = &[
 /// 新落点要在这里登记，就得先说清它落在哪一类不是用户文件的地方。
 #[allow(clippy::type_complexity)]
 const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
-    // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
-    ("local_backend.rs", "extract_embedded_to", Lands::OwnDeployment,
-     "把后端字节放到 `~/.cc-monitor/bin/ccm`（它就是后端本身，本机常驻后端跑的与终端里敲的是同一个文件）。\
-          写的是 monitor 自己的目录，不碰用户既有环境、不注册到任何用户配置里；换版照 HX2 D-b「盘上的比我旧才换」。\
-          ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
-          「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
-          `local_backend_host::resolve_backend_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
-          仍然只有一处，而**吃它的路从一条变成两条**〕"),
-    // ── P2t：收掉自己留下的 `.partial` 残骸。**不是安装动作** —— 它只**删**，且只删自己那套命名。
-    ("local_backend.rs", "sweep_stale_partials", Lands::OwnDeployment,
-     "删 `~/.cc-monitor/bin/.<释放名>.<pid>.partial` 里**够老**（≥24h）的残骸 —— \
-          那是 `extract_embedded_to` 崩在 rename 之前留下的自家垃圾。\
-          ⚠ 三重收窄，因为这个目录**与远端自部署共用**：① 只认自己那套命名（`.<释放名>.<pid>.partial`）；\
-          ② 只删够老的（正常释放是毫秒级的顺序写，24h 给了五个数量级余量 —— \
-          宁可多留一天垃圾，也不要把**正在写的**那份删掉，那等于自己制造半截文件）；\
-          ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
-          ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
-          崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
-    // ── `extract_embedded_to` 自己那一份暂存件的收尾（问完 / 失败 / 不放，任何结局都删）。**不是安装动作** —— 它只**删**自己刚写的那一份。
-    ("local_backend.rs", "drop_partial", Lands::OwnDeployment,
-     "删 `extract_embedded_to` 这一趟刚写的 `~/.cc-monitor/bin/.<ccm 名>.<pid>.partial`（问手上那份字节放不放用的暂存件）：\
-          放了（换名上位后它已不在）· 不放 · 它说「不」· 问不成，四种结局都走这里；清不掉出声，一天后由 `sweep_stale_partials` 收。"),
-    ("local_backend.rs", "sweep_moved_aside", Lands::OwnDeployment,
-     "删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
-          只认自己那套命名，删不掉就下次再说。"),
-    // ── **本机那一份文件窗口程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
-    ("local_backend.rs", "place_local_program", Lands::OwnDeployment,
-     "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：文件窗口程序 \
-          `cc-monitor-filewin[.exe]`（开文件窗口都走这一份；安装包里不另放）。\
-          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + 上位走 `rename_into_place`）；盘上那份逐字节相等就零写。\
-          调用点：`filewin::proc::resolve_window_bin`（开窗时）。\
-          不碰用户既有环境、不注册到任何用户配置里。"),
-    // ── 往 `~/.cc-monitor/bin` 放程序的两条路共用的上位那一步（旧的正在跑 ⇒ 先挪开）。不是安装动作。
-    ("local_backend.rs", "rename_into_place", Lands::OwnDeployment,
-     "`~/.cc-monitor/bin/.<名>.<pid>.partial` → `<名>`；Windows 上旧的那份正在跑换不掉 ⇒ 先把它改名成 `.<名>.<pid>.old` 再上位\
-          （挪开的那份由 `sweep_moved_aside` 下次收）。写的只是我们自己刚放的那一份与我们自己的旧版。"),
+    // ── 这里原来有 `local_backend.rs` 的六行（`extract_embedded_to` 自释放后端 · `place_local_program` 放文件窗口程序 ·
+    //    `rename_into_place` 上位 · `drop_partial` / `sweep_stale_partials` / `sweep_moved_aside` 收暂存件与旧版），
+    //    全是 `~/.cc-monitor/bin/` 底下我们自己的部署物。那几件改经 `platform/own_fs.rs` 的 `OwnBin`（暂存 · 上位 · 删），
+    //    本文件零写盘 ⇒ 摘行；写的是什么、为什么不是安装动作，归下面 `own_fs.rs` 那几行。
     // ── 这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
     //    只有后端的文件管理部分写文件，本机也算 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
@@ -97,17 +65,14 @@ const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `files/write.rs::put_text`。
     // ── 不是安装动作：写的是 monitor 自己的东西
-    ("bind.rs", "spawn", Lands::OwnState, "monitor 自己的运行时目录/落地文件"),
-    ("bind.rs", "process_tty_file", Lands::OwnState, "monitor 自己的握手表（bash / zsh 那一份认上了写一条登记）· 删用完的那份等待记录"),
-    ("console.rs", "tty_title", Lands::TerminalDevice, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
-    ("bind.rs", "forget", Lands::OwnState, "shell 退了：删 monitor 自己的握手表里那一条"),
-    ("config.rs", "patch_config_at", Lands::OwnState, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁）"),
-    ("bookmarks_migration.rs", "settled_at", Lands::OwnState, "书签迁移（下一版删）：monitor 自己的旧书签文件 `filewin-bookmarks.json` 在锁旁件里删一格 / 删空了连旁件删整份"),
+    // 这里原来有 `bind.rs`（`spawn` · `process_tty_file` · `forget`：握手表）· `console.rs::tty_title`（终端设备）·
+    //   `config.rs::patch_config_at`（配置文件）· `bookmarks_migration.rs::settled_at`（旧书签文件）六行：
+    //   都改经 `platform/own_fs.rs`（`OwnState` 写自己的状态 · `tty_write` 写终端设备），这几份零写盘 ⇒ 摘行。
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，后端自有状态，写经 `Own`），本进程一个字节不落 ⇒ 摘行。
-    ("lib.rs", "open_log_dir", Lands::OwnState, "打开日志目录前确保它存在"),
-    ("logging.rs", "build_rolling_appender", Lands::OwnState, "monitor 自己的滚动日志"),
+    // `lib.rs::open_log_dir`（打开前确保日志目录在）· `logging.rs::build_rolling_appender`（滚动日志的目录）两行摘了：
+    //   建日志目录改经 `platform/own_fs.rs::log_dir`。
     // `logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
     //   `config::patch_config_at`，本文件零写盘。
     // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
@@ -121,10 +86,7 @@ const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
     // 文件窗口的帧日志：只在设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 时开，往那份文件追加（收集「一闪一闪」的证据）。
     ("frame_log.rs", "to_file", Lands::OwnState,
      "文件窗口自己的诊断日志：用户经环境变量点名的那一份文件，只追加；不设就不碰盘"),
-    // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
-    ("local_backend_host.rs", "spawn_detached", Lands::OwnState,
-     "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
-          这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
+    // `local_backend_host.rs::spawn_detached`（起脱离常驻之前建 `<数据目录>/logs/backend/`）那一行摘了：同上，改经 `own_fs::log_dir`。
     // 删历史会话是后端一条只收 sid 的命令（`files-delete-session`），本进程一个字节不删 ⇒ 不在本表。
     // 壳的写盘模块（`platform/own_fs.rs`）：自己的状态 · 自己的部署物 · 终端设备，写只经这里。
     ("own_fs.rs", "create_new_private", Lands::OwnState, "原子写的旁名：只给本人地新建（O_EXCL），写满换名上位"),
