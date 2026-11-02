@@ -175,7 +175,6 @@ tests/e2e/exec-bit-guard.sh	1
 tests/e2e/f40-suite.sh	2
 tests/e2e/gen-fork-session.py	1
 tests/e2e/inbound-backend-frames.sh	7
-tests/evidence/SR1b-sftp-loopback.py	1
 tests/frontend/filewin/find_tests.rs	1
 tests/frontend/filewin/kit_tests.rs	1
 tests/frontend/filewin/plan_tests.rs	9
@@ -192,7 +191,6 @@ tests/frontend/shell/capability_registry_tests.rs	23
 tests/frontend/shell/chan/webview_tests.rs	2
 tests/frontend/shell/cross_half_edge_registry.rs	2
 tests/frontend/shell/cross_half_edge_registry_tests.rs	1
-tests/frontend/shell/deploy_tests.rs	1
 tests/frontend/shell/doc_claim_registry.rs	2
 tests/frontend/shell/doc_claim_registry_daemon_wording_registry.rs	1
 tests/frontend/shell/doc_claim_registry_tests.rs	5
@@ -203,7 +201,6 @@ tests/frontend/shell/frame_query_tests.rs	1
 tests/frontend/shell/inbound_client_tests.rs	1
 tests/frontend/shell/launch_tests.rs	4
 tests/frontend/shell/lib_mod_decl_hygiene_tests.rs	1
-tests/frontend/shell/local_backend_host_tests.rs	85
 tests/frontend/shell/lockfile_conflict_guard.rs	1
 tests/frontend/shell/lockfile_conflict_guard_tests.rs	1
 tests/frontend/shell/needle_anchor_registry.rs	7

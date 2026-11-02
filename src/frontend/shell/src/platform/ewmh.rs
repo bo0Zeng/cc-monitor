@@ -140,6 +140,10 @@ pub fn activate(window: u32, wait: std::time::Duration) -> bool {
         if std::time::Instant::now() >= deadline {
             return false;
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "↗ 那一下核窗口管理器答没答应：30ms 一步、到调用方给的上限就停；x11rb 没有带期限的属性变更等待，有了就换成订根窗口的事件"
+        )]
         std::thread::sleep(std::time::Duration::from_millis(30));
     }
 }

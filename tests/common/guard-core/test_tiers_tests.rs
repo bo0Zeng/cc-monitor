@@ -456,7 +456,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/frontend/shell/deploy_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
-        Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
+        Trigger::Filter { by: "tests/evidence/sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
     ),
     (
         "tests/backend/dial_compress_tests.rs",

@@ -10,7 +10,7 @@
 use crate::history::launch_book::{read_book, Book};
 use crate::platform::fs::{Own, OwnPath};
 use cmd_wire::accounts::{AccountRow, AccountsList};
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -319,7 +319,8 @@ pub(crate) fn adopt(
                 .and_then(|n| n.to_str())
                 .and_then(|n| notes.join(n).ok())
             {
-                let _ = own.delete_file(&f);
+                // 清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认
+                own.delete_file(&f).discard(Why::CleanupAfterFailure);
             }
         }
     }

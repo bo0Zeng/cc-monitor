@@ -58,11 +58,12 @@ impl Setup {
         sids: &[String],
         copy: Option<&Copy>,
     ) -> Result<usize, Said> {
+        let shared = copy.cloned().map(Arc::new);
         rotation::face_change(&self.book, own, |b| {
             let mut n = 0;
             for sid in sids {
                 if let Some(s) = b.sessions.get_mut(sid) {
-                    s.uses = copy.cloned();
+                    s.uses = shared.clone();
                     s.memo = None;
                     s.wake = Default::default();
                     n += 1;
@@ -94,7 +95,7 @@ pub(crate) fn preset(
         b.sessions.insert(
             sid.to_string(),
             book::Session {
-                uses: copy,
+                uses: copy.map(Arc::new),
                 ..book::Session::fresh(route.id(), acct_core::BARE_ACCOUNT, now)
             },
         );

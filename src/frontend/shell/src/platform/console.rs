@@ -318,6 +318,10 @@ impl crate::bind::TabReader for LentTitle<'_> {
     fn select(&mut self, i: usize) -> bool {
         self.tabs.select(i)
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "↗ 切标签页的小助手等记号标题传到标签名上：50ms 一步、整趟不过 `TAB_BUDGET`；WT 的标签名变更没有给外部订的事件，有了就去掉"
+    )]
     fn wait(&mut self) {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -487,7 +491,12 @@ pub(crate) fn pick_tab_in_budget(
     let watch = {
         let (lease, answer) = (lease.clone(), answer.clone());
         std::thread::spawn(move || {
-            if rx.recv_timeout(budget).is_ok() {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "看门那一支等主线程做完，至多 `TAB_BUDGET` 一次；主线程一答就醒，到点替它写回标题、答话：一次性的上限，不是节拍"
+            )]
+            let finished = rx.recv_timeout(budget).is_ok();
+            if finished {
                 return;
             }
             if let Some(old) = lease.old.lock().unwrap().take() {
@@ -554,7 +563,12 @@ pub(crate) fn ask_helper(
         // monitor 到点已经不等了，就没人要它。
         tx.send(read.map(|_| buf)).discard(Why::PeerGone);
     });
-    match rx.recv_timeout(wait) {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "等借控制台的小助手答话，至多 `wait` 一次；答了就醒，到点只是不再等、不掐它：一次性的上限，不是节拍"
+    )]
+    let answer = rx.recv_timeout(wait);
+    match answer {
         Ok(Ok(buf)) => Some(String::from_utf8_lossy(&buf).into_owned()),
         Ok(Err(e)) => {
             tracing::info!("bind: 读借控制台小助手的答话出错：{e}");

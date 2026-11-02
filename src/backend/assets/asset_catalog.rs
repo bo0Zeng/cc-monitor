@@ -18,6 +18,7 @@
 //! FNV-1a 64（[`crate::common::digest::Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
 
 use crate::common::said::IntoNote as _;
+use crate::common::time::now_secs;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -49,7 +50,7 @@ pub const SKILL_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。读的那一口照声明表的那一格；
 /// 这里的名字给字节上限登记表认、远端拉回那一侧取同一个数，两处须相等（下一行编译期查）。
 pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
-const _: () = assert!(CATALOG_MAX_BYTES == relay_route_core::ASSET_CATALOG_FILE.row.cap);
+const _: () = assert!(CATALOG_MAX_BYTES == relay_route_core::ASSET_CATALOG_FILE.row.cap.bytes);
 
 /// 资产目录：状态（读不出来不覆盖；版本照声明表、在顶层 `version`，更新的格式整份不认 —— 读写口管）。
 /// 旧文件里的 `"v":1` 读的时候不认、写的时候不再写。
@@ -682,13 +683,6 @@ pub fn machine_label() -> String {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "?".into());
     format!("{user}@{host}")
-}
-
-fn now_secs() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// 生成这台的 id：（家目录, 称呼, 纳秒, pid）的摘要。只在目录文件不存在时调一次。

@@ -205,9 +205,8 @@ fn a_terminal_opened_here_is_read_from_the_shell_its_label_names() {
     assert_eq!(at(500, 2000), OpenedHere::NoSsh, "底下只有 shell、没有 ssh");
 }
 
-/// 开窗时起的那条 ssh 退了、人在同一个 shell 里又 ssh 去了别台：shell 还是它，底下那条 ssh 却不是开窗那一刻起的。
-/// 起得比 shell 晚过 [`OPENED_SSH_WITHIN_SECS`] 的不当开的那一条（不认它连的是哪台）⇒ 当底下没开着 ssh，照问那台；窗口里刚起的那一条照认。
-fn reconnected(ssh_after_shell: u64) -> Tables {
+/// 一个 shell，底下一条 ssh 比它晚起 `ssh_after_shell` 格（profile 慢 · 开窗之后人在窗口里又敲了一条，都是这一形）。
+fn ssh_under_shell(ssh_after_shell: u64) -> Tables {
     parse_tables(
         &json!({
             "tcp": [{ "la": "192.0.2.5", "lp": 62414, "ra": "203.0.113.7", "rp": 22, "pid": 700 }],
@@ -223,37 +222,62 @@ fn reconnected(ssh_after_shell: u64) -> Tables {
     .unwrap()
 }
 
+/// 秒 ⇒ 进程表起始时刻的格数（Windows FILETIME 100ns 一格 · Linux USER_HZ）。
+fn ticks(secs: u64) -> u64 {
+    #[cfg(windows)]
+    let per_sec = 10_000_000;
+    #[cfg(not(windows))]
+    let per_sec = crate::platform::proc::USER_HZ;
+    secs * per_sec
+}
+
+/// 记录在 ＝ 开窗那条 ssh 还开着（它一退，开窗那一串的收尾就删了记录）⇒ 不比 ssh 比 shell 晚起多久：
+/// shell 起得慢（PowerShell profile 载入几十秒）、ssh 晚起的照认。
 #[test]
-fn an_ssh_started_long_after_the_window_opened_is_not_the_one_it_opened() {
+fn an_ssh_started_after_a_slow_profile_is_still_the_one_it_opened() {
     let label = crate::common::seen_terminal::WindowLabel {
         pid: 600,
         start: 3000,
     };
-    let window = start_ticks(OPENED_SSH_WITHIN_SECS);
-    assert_eq!(
-        opened_chain(&label, &reconnected(window + 1).procs),
-        OpenedHere::NoSsh,
-        "开窗之后过了这么久才起的 ssh 是人后来敲的"
-    );
-    assert!(
-        matches!(
-            opened_chain(&label, &reconnected(window).procs),
-            OpenedHere::Chain(_)
-        ),
-        "开窗那一刻起的照认"
-    );
+    for secs in [0, 40, 600] {
+        assert!(
+            matches!(
+                opened_chain(&label, &ssh_under_shell(ticks(secs)).procs),
+                OpenedHere::Chain(ref c) if c.first().map(|l| l.pid) == Some(700)
+            ),
+            "shell 起来 {secs} 秒后才起的 ssh 照认"
+        );
+    }
 }
 
-/// 同一件事走一遍 `session-window`：记下的那台是 devbox、窗口里此刻的 ssh 是后来起的 ⇒ 不拉这个窗口，照问 devbox（它说会话没终端连着）。
+/// 同一形走一遍 `session-window`：记录在 · shell 还是它 · 底下的 ssh 比 shell 晚起 40 秒 ⇒ 本机那一支就答，不问那台。
 #[tokio::test]
-async fn a_window_whose_ssh_was_restarted_elsewhere_is_not_brought_forward() {
+async fn a_slow_profile_window_is_brought_forward_without_asking_the_machine() {
+    let (chain, faced, asked) = window_face(Some("600-3000"), ssh_under_shell(ticks(40))).await;
+    assert_eq!(chain, vec![700, 600, 500]);
+    assert!(!faced);
+    assert_eq!(asked, 0, "不问 devbox");
+}
+
+/// 开窗那条 ssh 退了 ⇒ 收尾删了记录；人在同一个窗口里又 ssh 了别台 ⇒ 没有记录，不拉这个窗口，照问 devbox（它说会话没终端连着）。
+#[tokio::test]
+async fn after_the_opened_ssh_returned_a_new_ssh_in_that_window_is_not_brought_forward() {
+    let (chain, faced, asked) = window_face(None, ssh_under_shell(ticks(5))).await;
+    assert!(chain.is_empty(), "不拉那个窗口：{chain:?}");
+    assert!(faced, "devbox 的原因照摆");
+    assert_eq!(asked, 1, "照问 devbox");
+}
+
+/// `session-window` 问 devbox 上的一个会话：本机记录是 `record`（`None` ＝ 没有）、这台的两张表是 `tables`，devbox 说会话没终端连着。
+/// ⇒ （拉前的进程链 · 摆没摆原因 · 问了 devbox 几回）。
+async fn window_face(record: Option<&'static str>, tables: Tables) -> (Vec<u32>, bool, usize) {
     use crate::dial::opened_windows::{Opened, Records};
     use crate::dial::remote_ask::test_peers::{until, Peers};
-    struct One;
+    struct One(Option<&'static str>);
     impl Records for One {
         fn get(&self, _sid: &str) -> Option<Opened> {
-            Some(Opened {
-                label: "600-3000".parse().unwrap(),
+            self.0.map(|l| Opened {
+                label: l.parse().unwrap(),
                 machine: "devbox".into(),
             })
         }
@@ -261,7 +285,7 @@ async fn a_window_whose_ssh_was_restarted_elsewhere_is_not_brought_forward() {
             panic!("shell 还在 ⇒ 不删");
         }
     }
-    let late = reconnected(start_ticks(OPENED_SSH_WITHIN_SECS) + 1);
+    let late = tables;
     let raw = json!({
         "tcp": late.conns.iter().map(|c| json!({
             "la": c.local.to_string(), "lp": c.local_port,
@@ -288,14 +312,16 @@ async fn a_window_whose_ssh_was_restarted_elsewhere_is_not_brought_forward() {
         until(9_000),
         &Peers::table(&["devbox"]),
         &peers,
-        One,
+        One(record),
     )
     .await
     .expect("答得出");
-    assert!(got.chain.is_empty(), "不拉那个窗口：{got:?}");
-    assert!(got.labels.is_empty(), "{got:?}");
-    assert!(got.face.is_some(), "devbox 的原因照摆：{got:?}");
-    assert_eq!(peers.asked().len(), 1, "照问 devbox");
+    let asked = peers.asked().len();
+    (
+        got.chain.iter().map(|l| l.pid).collect(),
+        got.face.is_some(),
+        asked,
+    )
 }
 
 /// 记录随用随长：开新终端那一下（建那一层目录时）顺手删掉 shell 已经不在的那几份；shell 还在的 · 正写到一半的旁名 · 不是会话 id 的不动。
@@ -318,7 +344,7 @@ fn records_whose_shell_is_gone_are_swept_when_the_directory_is_made() {
     std::fs::write(dir.join(unreadable), "not a record").unwrap();
     std::fs::write(dir.join(&part), "600-30").unwrap();
     std::fs::write(dir.join("notes.txt"), "x").unwrap();
-    crate::dial::opened_windows::sweep(&own, &reconnected(1000).procs);
+    crate::dial::opened_windows::sweep(&own, &ssh_under_shell(1000).procs);
     let left = [alive, gone, reused, unreadable, part.as_str(), "notes.txt"]
         .map(|n| (n.to_string(), dir.join(n).exists()));
     let _ = std::fs::remove_dir_all(&data);

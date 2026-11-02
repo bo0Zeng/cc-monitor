@@ -6,6 +6,7 @@
 //! 用它的：轮换 · 计划 · 一次性等待 · 各号 MCP 与信任同步 · 浏览目录保鲜。生产段里挂 `notify` 监听只此一处
 //! （会话流那一份 `observe/watcher.rs` 除外：它是流本身，盯整棵记录树、按批去抖、自己分派）——判据 `only_this_primitive_hangs_a_notify_watcher`。
 
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 盯一个目录：要不要连子目录一起。
@@ -26,7 +27,7 @@ impl Watching {
         use notify::Watcher;
         for gone in self.armed.iter().filter(|d| !dirs.contains(d)) {
             // 卸不掉多半是那个目录已经没了（watch 跟着 inode 一起走了）：名单照样摘。
-            let _ = self.inner.unwatch(&gone.0);
+            self.inner.unwatch(&gone.0).discard(Why::Reap);
         }
         self.armed.retain(|d| dirs.contains(d));
         let mut failed = Vec::new();
@@ -49,7 +50,7 @@ impl Watching {
 
     /// 踢一下：没有文件动静也回调一次（路径为空）—— 调用方自己做完了一件事、要同步一趟时用。
     pub fn kick(&self) {
-        let _ = self.tx.send(None);
+        self.tx.send(None).discard(Why::PeerGone); // 收的线程不在了就没人要这一下
     }
 }
 
@@ -78,7 +79,7 @@ pub fn watch(
             return;
         }
         for p in ev.paths.into_iter().filter(|p| concerns(p)) {
-            let _ = events.send(Some(p));
+            events.send(Some(p)).discard(Why::PeerGone); // 收的线程不在了就没人要这一下
         }
     })
     .map_err(|e| e.to_string())?;

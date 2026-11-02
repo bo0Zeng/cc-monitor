@@ -19,11 +19,12 @@ impl ContentDigest {
     }
     /// 64 位小写十六进制。
     pub fn finish(self) -> String {
+        use copy_core::{Discard, Why};
         use std::fmt::Write as _;
         let d = self.0.finish();
         let mut out = String::with_capacity(SHA256_HEX_LEN);
         for b in d.as_ref() {
-            let _ = write!(out, "{b:02x}");
+            write!(out, "{b:02x}").discard(Why::InfallibleWrite);
         }
         out
     }

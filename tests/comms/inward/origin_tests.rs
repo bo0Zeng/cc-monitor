@@ -108,18 +108,9 @@ fn the_machine_type_exports_under_its_own_name() {
     );
 }
 
-// `inbound_client::LOCAL_ORIGIN` 与 `backend-policy.ts::LOCAL_ORIGIN` 是待删的两份抄写；删掉之前与 `LOCAL` 逐字节相等。
+// `backend-policy.ts::LOCAL_ORIGIN` 是待删的那一份抄写；删掉之前与 `LOCAL` 逐字节相等。
 #[test]
-fn the_sentinel_agrees_with_the_two_existing_homes() {
-    // Rust 那一处（本文件之外的既有住址）
-    assert_eq!(
-        LOCAL,
-        crate::inbound_client::LOCAL_ORIGIN,
-        "本文件的 `LOCAL` 与 `inbound_client::LOCAL_ORIGIN` 不一致 —— \n\
-         那两个值必须逐字节相同，否则 `Origin::is_local()` 与后端那侧的判定会分叉，\n\
-         而分叉的后果**不报错**：它只是查不到那个 origin，然后静默当成「没有这台机器」。"
-    );
-    // TS 那一处
+fn the_sentinel_agrees_with_the_ts_copy() {
     let ts = include_str!("../../../src/frontend/ui/backend-policy.ts");
     let needle = "export const LOCAL_ORIGIN = ";
     let n = ts.matches(needle).count();

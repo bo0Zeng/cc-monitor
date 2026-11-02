@@ -246,9 +246,7 @@ pub(crate) async fn listing_with(
     .map_err(|s| crate::common::said::Said::new(code_of(s.code.as_deref()), s.said));
     match got {
         Ok(patch) => {
-            let at_ms = crate::common::time::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_millis() as i64);
+            let at_ms = crate::common::time::now_ms() as i64;
             Ok(copies.took(machine, patch, at_ms))
         }
         Err(e) => {

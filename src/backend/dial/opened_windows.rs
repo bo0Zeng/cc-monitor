@@ -1,10 +1,11 @@
 //! ↗ 的本机记录：cc-monitor 给远端会话开终端那一刻，跑那一行的那个 shell 把自己的窗口标签写下来；↗ 时本机先照它找窗口，对不上才问那台。
 //!
-//! - 写：开终端那一行（`dial/terminal.rs`，帧命令 `terminal-ssh` 交了 `sid`）前面接一段前奏（[`prelude`]），
-//!   那个 shell 把 `<自己的进程号>-<起始时刻>`（与接入块设的 `LC_CCM_WINDOW` 同一个键）和那台的名字写进 `<数据目录>/opened-windows/<sid>`。
+//! - 写：开终端那一行（`dial/terminal.rs`，帧命令 `terminal-ssh` 交了 `sid`）前面接一段前奏、后面接一句收尾（[`window`]）：
+//!   那个 shell 先把 `<自己的进程号>-<起始时刻>`（与接入块设的 `LC_CCM_WINDOW` 同一个键）和那台的名字写进 `<数据目录>/opened-windows/<sid>`，
+//!   跑那一行（ssh），ssh 一退就删掉它。记录在 ＝ 开窗那条 ssh 还开着。
 //!   目录由后端渲那一行时建好（[`dir`]）；写不成不挡开终端（前奏吞掉错误）。
 //! - 读：`session-window`（`faces/session_window_face.rs`）问远端会话时先读这一份（[`Records`]），
-//!   标签那个 shell 在这台还活着、底下开着开窗那一刻起的 ssh ⇒ 从那个 ssh 往上数链（`dial/terminal_processes.rs::opened_chain`），不问那台；
+//!   标签那个 shell 在这台还活着、它自己或底下开着 ssh ⇒ 从那个 ssh 往上数链（`dial/terminal_processes.rs::opened_chain`），不问那台；
 //!   shell 没了 ⇒ 删这一份。
 //! - 扫：每回建那一层目录（开新终端）时删掉 shell 已经不在的那几份（[`sweep`]），从没被 ↗ 问过的也不留。
 //! - 一份两行：标签 · 那台的名字。换行 LF / CRLF 都认。认不出 ⇒ 当没有。
@@ -13,6 +14,7 @@ use crate::common::seen_terminal::WindowLabel;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::Own;
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 数据目录底下的那一层。
@@ -41,7 +43,7 @@ pub(crate) fn parse(body: &str) -> Option<Opened> {
 
 /// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去），再接后面那一行。
 /// 写法按本机终端方言，住 `platform/shell/{posix, powershell}.rs::note_own_window`；三个词经本方言的单引号字面量。
-pub(crate) fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
+fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
     let file = file.to_string_lossy();
     let part = format!("{file}.part");
     if powershell {
@@ -57,6 +59,22 @@ pub(crate) fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
             &shell_quote_core::posix_quote(machine),
         )
     }
+}
+
+/// 开窗那一串：[`prelude`] ＋ `line` ＋ 收尾（`line` 跑完删掉 `file`，写法住 `platform/shell/{posix, powershell}.rs::then_forget_own_window`）。
+/// 于是「记录在」＝「开窗那条 ssh 还开着」：那条 ssh 怎么退的都一样，退了记录就没了；窗口整个关掉、收尾没跑 ⇒ shell 也没了，[`sweep`] 删。
+pub(crate) fn window(powershell: bool, file: &Path, machine: &str, line: &str) -> String {
+    let head = prelude(powershell, file, machine);
+    let path = file.to_string_lossy();
+    let tail = if powershell {
+        crate::platform::shell::powershell::then_forget_own_window(line, &ps_literal(&path))
+    } else {
+        crate::platform::shell::posix::then_forget_own_window(
+            line,
+            &shell_quote_core::posix_quote(&path),
+        )
+    };
+    format!("{head}{tail}")
 }
 
 /// 那一层目录（渲开终端那一行时建好，0700）；建不成 ⇒ `None`（那一行不带前奏）。
@@ -147,7 +165,7 @@ impl Records for OnDisk {
 
     fn forget(&self, sid: &str) {
         if let Some(f) = self.file(sid) {
-            let _ = self.0.delete_file(&f);
+            self.0.delete_file(&f).discard(Why::CleanupAfterFailure); // 删不掉下一次 ↗ 再清；它对不上进程，不会被认
         }
     }
 }

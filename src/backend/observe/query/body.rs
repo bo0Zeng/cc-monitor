@@ -15,15 +15,18 @@
 //! - **子运行那一页**（[`run_rows`]）：`{record, rid?}`。
 
 use super::locate::validate_session_path;
-use crate::agents::record::RecordExt as _;
+use crate::agents::beat::contains;
+use crate::agents::record::{Block, Body, Record, RecordExt as _};
 use crate::agents::RecordFace;
 use crate::common::said::Said;
+use crate::observe::recognize::step_clock::StepClock;
 use crate::platform::fs::Ro;
 /// 行摘要 · 记录行的线上形住 `cmd-wire`（手机按同一份解）；记录那一格后端照原样的一团写（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{ReadRow, RecordLine};
 use copy_core::copy_text;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 /// 一行正文（不含 `\n`、去掉行尾 `\r`）的摘要：FNV-1a 64。
 ///
@@ -55,20 +58,57 @@ fn split_lines_full(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64, Option<u64>)>
     out
 }
 
-/// 一页的读法：适配层 ＋ 看的那一台的时区。要哪几格不归这里管：出口交的声明由登记处统一投影（`faces/project.rs`）。
+/// 一页的读法：适配层 ＋ 看的那一台的时区 ＋ 一步用时的配对表。要哪几格不归这里管：出口交的声明由登记处统一投影（`faces/project.rs`）。
+///
+/// 一步用时（工具调用与它的结果在两条记录上）在出页这一遍配：一页先整页解成通用记录，按文件序先 `note` 再 `time`
+/// （[`StepClock`]），再序列化；同一个读法接着读的几块共用一份表。页里还有配不上的结果、又给了往回读的那一份文件
+/// （[`Reader::back`]）⇒ 从这个读法头一页的起点往前读**一页的额度**，先按字节筛含那几个调用 id 的行，只解筛中的喂 `note`。
+/// 再往前不读：读不到 ⇒ 那一格照没有用时的那一形（读不到就不写，不猜）。
 pub(crate) struct Reader<'a> {
     face: &'a RecordFace,
     /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
     tz: crate::common::time::Tz,
+    /// 没结果的调用记着的时刻。
+    clock: StepClock,
+    /// 这个读法见过的调用 id：一条结果的调用不在里面 ⇒ 要往回找。
+    called: HashSet<String>,
+    /// 往回读的那一份文件与额度；缺 ⇒ 只在读到的页里配。
+    back: Option<Back>,
 }
+
+/// 往回读的那一段：哪份文件（已过围栏的真路径）· 一页的额度 · 这个读法头一页的起点（读头一页时记下）。
+struct Back {
+    file: PathBuf,
+    page: usize,
+    origin: Option<u64>,
+}
+
+/// 一页里逐行的成品：`(记录, cwd)`，不出成品的那一行 ⇒ `None`。
+type Interpreted = Option<(Value, Option<String>)>;
 
 impl<'a> Reader<'a> {
     pub(crate) fn new(face: &'a RecordFace, tz: crate::common::time::Tz) -> Self {
-        Self { face, tz }
+        Self {
+            face,
+            tz,
+            clock: StepClock::default(),
+            called: HashSet::new(),
+            back: None,
+        }
     }
 
-    /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-    fn interpret(&self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
+    /// 配不上的结果往回读 `file`（已过围栏的真路径）里、这个读法头一页起点之前的 `page` 字节（一页的额度）。
+    pub(crate) fn back(mut self, file: &Path, page: usize) -> Self {
+        self.back = Some(Back {
+            file: file.to_path_buf(),
+            page,
+            origin: None,
+        });
+        self
+    }
+
+    /// 一行交适配层解成通用记录（钟面写好）：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
+    fn parse(&self, body: &[u8], start: u64) -> Option<(Record, Option<String>)> {
         match (self.face.parse)(&crate::agents::Line::new(
             &String::from_utf8_lossy(body),
             start,
@@ -76,8 +116,7 @@ impl<'a> Reader<'a> {
             Ok(Some(t)) => {
                 let mut rec = t.record?;
                 rec.stamp(&self.tz);
-                let record = serde_json::to_value(rec).ok()?;
-                Some((record, t.cwd))
+                Some((rec, t.cwd))
             }
             Ok(None) => None,
             Err(e) => {
@@ -86,6 +125,101 @@ impl<'a> Reader<'a> {
             }
         }
     }
+
+    /// 一页的行（`(正文, 起点)`，文件序）⇒ 逐行的成品，与 `lines` 一一对齐：先整页解开、配好一步用时，再序列化。
+    fn interpret_page(&mut self, lines: &[(&[u8], u64)]) -> Vec<Interpreted> {
+        if let (Some(b), Some(&(_, start))) = (self.back.as_mut(), lines.first()) {
+            b.origin.get_or_insert(start);
+        }
+        let mut recs: Vec<_> = lines.iter().map(|&(b, s)| self.parse(b, s)).collect();
+        let mut missing: Vec<String> = Vec::new();
+        for (r, _) in recs.iter().flatten() {
+            match &r.body {
+                Body::Reply { blocks, .. } => {
+                    for b in blocks {
+                        if let Block::ToolUse { id, .. } = b {
+                            self.called.insert(id.clone());
+                        }
+                    }
+                }
+                Body::Said { blocks, .. } => {
+                    for b in blocks {
+                        if let Block::ToolResult { of, .. } = b {
+                            if !self.called.contains(of) && !missing.contains(of) {
+                                missing.push(of.clone());
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !missing.is_empty() {
+            self.look_back(&missing);
+            self.called.extend(missing);
+        }
+        recs.iter_mut()
+            .map(|slot| {
+                let (mut rec, cwd) = slot.take()?;
+                self.clock.note(&rec);
+                self.clock.time(&mut rec);
+                Some((serde_json::to_value(rec).ok()?, cwd))
+            })
+            .collect()
+    }
+
+    /// 从头一页的起点往前读一页的额度：只解含 `ids` 里某个 id 的整行，把其中的调用记进表。读不动 ⇒ 不记。
+    fn look_back(&mut self, ids: &[String]) {
+        use std::io::{Read, Seek, SeekFrom};
+        let Some(Back {
+            file,
+            page,
+            origin: Some(origin),
+        }) = &self.back
+        else {
+            return;
+        };
+        let origin = *origin;
+        let lo = origin.saturating_sub(*page as u64);
+        if lo >= origin {
+            return;
+        }
+        // 带上 `lo` 前那一个字节：它是换行（或 `lo` ＝ 0）⇒ `lo` 就是行头；否则头一段是半行，丢掉。
+        let from = lo.saturating_sub(1);
+        let mut buf = vec![0u8; (origin - from) as usize];
+        let read = Ro::open(file).and_then(|mut f| {
+            f.seek(SeekFrom::Start(from))?;
+            f.read_exact(&mut buf)
+        });
+        if let Err(e) = read {
+            tracing::debug!("record_page: 往回读不动（不写用时）: {e}");
+            return;
+        }
+        let skip = if lo == 0 {
+            0
+        } else {
+            match buf.iter().position(|&b| b == b'\n') {
+                Some(i) => i + 1,
+                None => return,
+            }
+        };
+        let hits: Vec<_> = split_starts(from + skip as u64, &buf[skip..])
+            .into_iter()
+            .filter(|(body, _)| ids.iter().any(|id| contains(body, id.as_bytes())))
+            .filter_map(|(body, start)| self.parse(body, start))
+            .collect();
+        for (rec, _) in &hits {
+            self.clock.note(rec);
+        }
+    }
+}
+
+/// 逐行 `(正文, 起点, 末端)` ⇒ `(正文, 起点)`（交 [`Reader::interpret_page`] 的那一形）。
+fn starts_of<'b>(lines: &[(&'b [u8], u64, Option<u64>)]) -> Vec<(&'b [u8], u64)> {
+    lines
+        .iter()
+        .map(|&(body, start, _)| (body, start))
+        .collect()
 }
 
 /// 一页原始字节 ⇒ 逐行 `(正文, 起点)`（[`split_lines`] 的起点那一形）。
@@ -101,13 +235,13 @@ fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
 pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
     let mut out: Vec<ReadRow> = Vec::new();
     let mut last: Option<usize> = None;
-    for (body, start, end) in split_lines_full(offset, bytes)
+    let lines: Vec<_> = split_lines_full(offset, bytes)
         .into_iter()
         .filter(|(body, _, _)| super::super::lines::counts(body))
-    {
-        let (mut record, mut cwd) = reader
-            .interpret(body, start)
-            .map_or((None, None), |(r, c)| (Some(r), c));
+        .collect();
+    let made = reader.interpret_page(&starts_of(&lines));
+    for ((body, _, end), made) in lines.into_iter().zip(made) {
+        let (mut record, mut cwd) = made.map_or((None, None), |(r, c)| (Some(r), c));
         if let (Some(r), Some(i)) = (&record, last) {
             if let Some(prev) = out[i].record.as_mut() {
                 if fold_unread(prev, r) {
@@ -183,13 +317,15 @@ pub(crate) fn record_lines<'b>(
     let path_str = path.to_string_lossy();
     let mut next = seq;
     let mut out: Vec<RecordLine> = Vec::new();
-    for (body, start, end) in lines {
-        if !super::super::lines::counts(body) {
-            continue;
-        }
+    let lines: Vec<_> = lines
+        .into_iter()
+        .filter(|(body, _, _)| super::super::lines::counts(body))
+        .collect();
+    let made = reader.interpret_page(&starts_of(&lines));
+    for ((_, _, end), made) in lines.into_iter().zip(made) {
         let at = next;
         next += 1;
-        if let Some((record, cwd)) = reader.interpret(body, start) {
+        if let Some((record, cwd)) = made {
             if let Some(prev) = out.last_mut() {
                 if fold_unread(&mut prev.record, &record) {
                     prev.end = end;
@@ -225,8 +361,10 @@ pub(crate) fn record_lines_of_page(
 pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<RunRow> {
     let faces = crate::agents::RunFaces::of(reader.face);
     let mut out: Vec<RunRow> = Vec::new();
-    for (body, start) in split_starts(offset, bytes) {
-        let Some((record, _)) = reader.interpret(body, start) else {
+    let lines = split_starts(offset, bytes);
+    let made = reader.interpret_page(&lines);
+    for ((body, _), made) in lines.into_iter().zip(made) {
+        let Some((record, _)) = made else {
             continue;
         };
         if let Some(prev) = out.last_mut() {

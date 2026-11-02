@@ -1,10 +1,8 @@
 use super::*;
 
-// 这里原来是「删远端文件的入口真的过了围栏吗」（喂 `/etc/passwd` 给 SFTP 直删、
-//   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
-//   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
+// 删远端会话文件经远端后端（`files-delete-session`，只收 sid）：「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
-/// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
+/// 仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
 /// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
 /// 本测试被 cfg 掉，不误报。取字节口是 `byte_table::pick`（按 (OS, arch)）。
 #[cfg(embedded_backends)]
@@ -367,13 +365,13 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
 /// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`）、
 /// 传输经中继（`transfer_relay::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
-/// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
+/// 只由 `tests/evidence/sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
 /// 无戳的文件 ⇒ 显式失败不覆盖；三行入口那种旧文件也一样）·
 /// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、最后一格是后端那一帧的终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
+#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/sftp-loopback.py --monitor 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     use futures::StreamExt;
     let _local = crate::inbound_client::local_origin_test_lock();

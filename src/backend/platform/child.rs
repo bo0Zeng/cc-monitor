@@ -25,6 +25,7 @@
 
 use crate::platform::child_env::OWN_ENVS;
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 use std::cell::Cell;
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
@@ -462,7 +463,7 @@ impl Child {
             let e = std::thread::spawn(move || read_all(err));
             let o = read_all(out);
             let e = e.join().unwrap_or_default();
-            let _ = piped_tx.send(Ev::Piped(o, e));
+            piped_tx.send(Ev::Piped(o, e)).discard(Why::PeerGone); // 等待线程已按放手收尾 ⇒ 读完的输出没人收
         });
 
         // 等退出（不收尸）→ 等输出读完或发起方放弃 → 收尸。收尸与杀组互斥：收尸之前 pid 仍被占着，杀组不会误伤。
@@ -480,11 +481,14 @@ impl Child {
             };
             match ev {
                 Ok(Ev::Piped(o, e)) => {
-                    let _ = done_tx.send(status.map(|s| Output {
-                        status: s,
-                        stdout: o,
-                        stderr: e,
-                    }));
+                    // 发起方过了期限已放手、回了超时 ⇒ 这份结果没人收
+                    done_tx
+                        .send(status.map(|s| Output {
+                            status: s,
+                            stdout: o,
+                            stderr: e,
+                        }))
+                        .discard(Why::PeerGone);
                 }
                 Ok(Ev::GaveUp) | Err(_) => {
                     if !matches!(ev_rx.recv_timeout(DRAIN_AFTER_KILL.0), Ok(Ev::Piped(..))) {
@@ -504,7 +508,7 @@ impl Child {
                     // 已收尸 ⇒ 等待线程已拿到输出、答案正在路上；不再杀（组号可能已不归它）。
                     if !*r {
                         group.kill();
-                        let _ = ev_tx.send(Ev::GaveUp);
+                        ev_tx.send(Ev::GaveUp).discard(Why::PeerGone); // 等待线程已收尾退出 ⇒ 放手那一声没人收
                     }
                 }
                 Err(ChildFail::TimedOut {
@@ -571,7 +575,7 @@ impl Drop for Streaming {
     fn drop(&mut self) {
         // 收尸之前它的 pid 一直占着 ⇒ 杀组不会落到别的组上（它自己先退了也一样：僵尸照样占着）。
         self.group.kill();
-        let _ = self.child.wait();
+        self.child.wait().discard(Why::Reap); // 组已杀，收不了尸也没有更好的补救
     }
 }
 
@@ -603,7 +607,7 @@ enum Ev {
 fn read_all(r: Option<impl Read>) -> Vec<u8> {
     let mut buf = Vec::new();
     if let Some(mut r) = r {
-        let _ = r.read_to_end(&mut buf);
+        r.read_to_end(&mut buf).discard(Why::Drain); // 读错只少尾巴几个字节，退出码与超时照旧判
     }
     buf
 }
@@ -708,6 +712,7 @@ mod os {
 #[cfg(windows)]
 mod os {
     use super::ChildFail;
+    use copy_core::{Discard, Why};
     use std::os::windows::io::{AsRawHandle, RawHandle};
     use std::os::windows::process::CommandExt;
     use std::process::Command;
@@ -862,7 +867,7 @@ mod os {
 
     /// Windows 上句柄占着 pid，不存在收尸前后的误伤 ⇒ 直接等它退出。
     pub(super) fn exited_unreaped(child: &mut std::process::Child) {
-        let _ = child.wait();
+        child.wait().discard(Why::Reap); // 只等它退出；退出码由随后那一下 `wait` 取
     }
 
     /// 伪终端起的那一个：等它的进程句柄有信号（＝ 它退了），不取退出码（取在锁里）。
@@ -1018,9 +1023,11 @@ impl Child {
             // 两条输出读完再报「退了」：它最后说的那几行（`Login failed: …` 那一类）先进通道。
             //   输出管道被逃出组的进程攥着 ⇒ 读不到头、不报 —— 拿着它的那一方照旧能放手收掉（不靠这一件）。
             for r in readers {
-                let _ = r.join();
+                r.join().discard(Why::Reap); // 读线程只往通道里送行、不会 panic；join 失败没有更好的补救
             }
-            let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));
+            // 拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收
+            tx.send(Heard::Exited(status.ok().and_then(|s| s.code())))
+                .discard(Why::PeerGone);
         });
         Ok(Conversation {
             stdin: stdin.map(|w| Box::new(w) as Box<dyn std::io::Write + Send>),
@@ -1058,8 +1065,9 @@ impl Child {
         #[cfg(windows)]
         let group = child.as_raw_handle().map(os::Group::tree_of_handle);
         let Some(group) = group else {
-            let _ = child.kill();
-            let _ = child.wait();
+            // 起不来已照实报；杀 / 收失败没有更好的补救
+            child.kill().discard(Why::Reap);
+            child.wait().discard(Why::Reap);
             return Err(pty_fail("no pid"));
         };
         let (tx, rx) = mpsc::channel::<Heard>();
@@ -1075,14 +1083,16 @@ impl Child {
             // Windows 的伪终端它退了也不给读的那一端读到头 ⇒ 先关终端；Unix 上先读完再关（关早了会丢它最后那几行）。
             #[cfg(windows)]
             drop(master);
-            let _ = reader.join();
+            reader.join().discard(Why::Reap); // 读线程只往通道里送行、不会 panic；join 失败没有更好的补救
             #[cfg(unix)]
             drop(master);
-            let _ = tx.send(Heard::Exited(
+            // 拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收
+            tx.send(Heard::Exited(
                 status
                     .ok()
                     .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX)),
-            ));
+            ))
+            .discard(Why::PeerGone);
         });
         Ok(Conversation {
             stdin: Some(writer),
@@ -1116,8 +1126,9 @@ impl Child {
         #[cfg(windows)]
         let group = child.as_raw_handle().map(os::Group::tree_of_handle);
         let Some(group) = group else {
-            let _ = child.kill();
-            let _ = child.wait();
+            // 同上
+            child.kill().discard(Why::Reap);
+            child.wait().discard(Why::Reap);
             return Err(pty_fail("no pid"));
         };
         let reaped = Arc::new(Mutex::new(false));
@@ -1283,7 +1294,7 @@ fn read_terminal(mut r: impl Read, tx: mpsc::Sender<Heard>) {
         }
     }
     if !buf.is_empty() {
-        let _ = tx.send(Heard::Out(plain_line(&buf)));
+        tx.send(Heard::Out(plain_line(&buf))).discard(Why::PeerGone); // 没收尾的那半行：拿着它的那一方已放手 ⇒ 没人收
     }
 }
 

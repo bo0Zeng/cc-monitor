@@ -86,15 +86,8 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
         ".process_group(",
         ".kill_on_drop(",
     ];
-    /// 🔴 **只在「这份源码里确实造了 `Command`」时才算**。
-    ///
-    /// 射程边界，写下来：`.output()` / `.status()` 这两个名字**别的东西也有**
-    /// （现打：`search.rs` 的 `index.status()` 是索引器的状态，和进程没关系）。
-    /// 把它们无条件禁掉就是造一族假红，而假红会逼人去登记一条与事实无关的例外。
-    /// ⇒ 用「同一份源码里有没有 `Command::new(`」当前提。
-    /// **代价也写下来**：一个既造 `Command`、又在别处对别的类型调 `.output()` 的文件
-    /// 会被误判 —— 那时该做的是把那一处改名/拆文件，不是把这两个词删掉。
-    const VERBS_IF_BUILDS_A_COMMAND: &[&str] = &[".output()", ".status()"];
+    // `.output()` / `.status()` 不在这里：它们只长在一个 `Command` 上，而壳里 `Command` 只在
+    // `spawn_managed_with` 里造（`clippy.toml` 起进程那一组），造好当场按三条策略起，落点拿不到它。
     // 🔴 **排掉的是谁、为什么 —— 明写。**
     //
     // 排掉 `src/frontend/shell/src/spawn_managed.rs`：它**就是**那个唯一出口，
@@ -125,34 +118,17 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
                 offenders.push(format!("  {}: `{v}`", path.display()));
             }
         }
-        if prod.contains(concat!("Command::", "new(")) {
-            for v in VERBS_IF_BUILDS_A_COMMAND {
-                if prod.contains(v) {
-                    offenders.push(format!("  {}: `{v}`", path.display()));
-                }
-            }
-        }
     }
     assert!(
         scanned > 100_000,
         "剥掉测试段后只剩 {scanned} 字节可扫 —— 这条会零命中地绿"
-    );
-    // 反向自检②：条件那一支**必须真的有人走过**。全树一份 `Command::new(` 都扫不到时，
-    // `VERBS_IF_BUILDS_A_COMMAND` 那两条就是死规则，而死规则看起来和「干净」一模一样。
-    let builders = files
-        .iter()
-        .filter(|(_, raw)| guard_core::production_code(raw).contains(concat!("Command::", "new(")))
-        .count();
-    assert!(
-        builders >= 5,
-        "全树生产段只有 {builders} 份源码在造 `Command` ——              `VERBS_IF_BUILDS_A_COMMAND` 那一支此刻近乎死规则（08-08 起这个数一直是两位数）"
     );
     assert!(
         offenders.is_empty(),
         "这些地方绕开了 `spawn_managed` 这个唯一出口：\n{}\n\n\
              ★：起子进程的三个问题（要不要窗口 · 要不要随我死 · \
              错误往哪去）**必须在编译期各自回答一遍**。\n\
-             ⇒ 把 `cmd.spawn()` 换成 `crate::spawn_managed::spawn_managed_cmd(&mut cmd, …)`，\
+             ⇒ 改经 `crate::spawn_managed::spawn_managed_with(程序, …, |cmd| {{ … }})`，\
              三个策略照实写；`backend/` 那一半收注入参数（`ManagedSpawn`），不许自己认平台。\n\
              ⚠ 别在落点上直接写 `creation_flags` / `process_group` / `kill_on_drop` —— \
              那正是「同一形状出现三次」的来路。",

@@ -24,9 +24,9 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import type { MachineState } from "../../../src/frontend/ui/generated/MachineState";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
-import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
+import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
@@ -60,7 +60,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     line: null,
     pinned: false,
     group: null,
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
@@ -76,7 +76,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
 }
 
 /** 会话事实那一句（写它时那一态是 `doing`）。 */
-const lineFor = (doing: WireSessionActivity): FactsLine => ({ for: doing, text: `${doing}·核心`, clock: null, peek: null });
+const lineFor = (doing: SessionActivity): FactsLine => ({ for: doing, text: `${doing}·核心`, clock: null, peek: null });
 /** 在等人：脸 ＋ 同一刻的那一句。 */
 const waiting = { face: liveFace("needs_you"), line: lineFor("needs_you") };
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
@@ -90,7 +90,7 @@ const LOCAL_NAME = "workstation";
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  noteMachine(LOCAL_ORIGIN, { name: LOCAL_NAME, offlineSaid: "" });
+  noteMachine(LOCAL, { name: LOCAL_NAME, offlineSaid: "" });
   vi.mocked(terminalFrontAvailable).mockReturnValue(false);
 });
 
@@ -212,11 +212,11 @@ async function bar(tabs: Tab[], ranked?: string[]) {
   document.body.appendChild(el);
   const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, host);
   const waits = ranked ?? tabs.filter((t) => needsOf(t) !== null).map((t) => t.sessionId);
-  const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf(waits.map((sid) => sessionItem(sid, needsOf(store.tabs.get(sid)!) ?? approve()))) });
+  const needs = fakeNeedsBook({ [LOCAL]: listOf(waits.map((sid) => sessionItem(sid, needsOf(store.tabs.get(sid)!) ?? approve()))) });
   view.needs = { book: needs.book, login: vi.fn() };
   needs.book.subscribe(() => view.planNeedsChanged());
   view.refresh();
-  await needs.book.refresh(LOCAL_ORIGIN);
+  await needs.book.refresh(LOCAL);
   return { view, host: host as TabBarViewHost & typeof host, store, el, needs };
 }
 
@@ -234,8 +234,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(r.host.switchTo).not.toHaveBeenCalled();
     // 答完了（那台重问回来不在等了）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).face = liveFace("working");
-    r.needs.answers[LOCAL_ORIGIN] = listOf([]);
-    await r.needs.book.refresh(LOCAL_ORIGIN);
+    r.needs.answers[LOCAL] = listOf([]);
+    await r.needs.book.refresh(LOCAL);
     r.view.refresh();
     expect(strip.style.display).toBe("none");
     expect(b.badge.textContent).toBe("3");
@@ -252,7 +252,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
       expect(document.querySelector('[role="dialog"]'), "悬停不开").toBeNull();
       r.needs.asked.length = 0;
       await r.view.nextNeeds();
-      expect(r.needs.asked, "跳之前先重问一回").toEqual([LOCAL_ORIGIN]);
+      expect(r.needs.asked, "跳之前先重问一回").toEqual([LOCAL]);
       expect(r.host.answerAt).toHaveBeenCalledWith("b");
       expect(document.querySelector('[role="dialog"]'), "Ctrl+J 不开浮层").toBeNull();
     } finally {
@@ -268,10 +268,10 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, (await bar([])).host);
-    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [] }));
+    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [] }));
     view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => view.planNeedsChanged());
-    await needs.book.refresh(LOCAL_ORIGIN);
+    await needs.book.refresh(LOCAL);
     view.refresh();
     expect(view.needsCountNow()).toBe(5);
     expect(el.querySelector(".tab-needs .tab-needs-count")?.textContent).toBe("5");

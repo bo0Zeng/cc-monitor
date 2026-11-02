@@ -121,9 +121,9 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         ),
     ];
     for (name, src) in &homes {
-        // `backend-policy.ts` 的退出行为取文口搬走后只剩本机那个常量（剥完 ~430 字节）⇒ 地板 500 → 300。
+        // `backend-policy.ts` 只剩本机那个常量与它的头注（剥完 ~300 字节）⇒ 地板 200：只防「读空了 / 读错了文件」。
         assert!(
-            src.len() > 300,
+            src.len() > 200,
             "{name} 只读到 {} 字节 —— 人群坏了",
             src.len()
         );

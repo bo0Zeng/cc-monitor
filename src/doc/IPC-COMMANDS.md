@@ -456,7 +456,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
-- `empty` —— 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
+- `empty` —— 这一端各台合一次写好的那几句（首屏那一句 ＋ 机器列表计数那一句；`body` ＝ `FleetLines`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
@@ -2868,7 +2868,11 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLine = { account: string, group: RotGroup, state: string, why?: string, movable: boolean, stay?: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
-type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
+/**
+ * 那一判看的事实摘要（事后核每一次为什么换）；没记 ⇒ 缺。
+ */
+saw?: RotSaw, };
 type RotMark = { glyph?: string, dashed: boolean, tip: string, };
 type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**
@@ -2882,6 +2886,20 @@ type RotRow = { account: string,
  * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
  */
 row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
+type RotSaw = { accounts: Array<RotSawAcct>, 
+/**
+ * 本会话用速：折合输入 token / 分。
+ */
+pace?: number, 
+/**
+ * 本会话用速的起伏（σ/μ）。
+ */
+spread?: number, 
+/**
+ * 本会话上下文（token）。
+ */
+context?: number, };
+type RotSawAcct = { id: string, used5h: number, resets5h?: number, rate5h?: number, others?: number, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -4313,7 +4331,7 @@ type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
  * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
@@ -4340,6 +4358,7 @@ bg: boolean,
  */
 at: number | null, };
 type NoArgs = Record<symbol, never>;
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4411,7 +4430,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -4475,7 +4493,7 @@ machines: Array<GroupsMachine>, };
 type GroupsReadReq = { machines: Array<string>, };
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
  * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
@@ -4501,6 +4519,7 @@ bg: boolean,
  * 最后活动（毫秒；清单里没有 ⇒ 缺）。
  */
 at: number | null, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4572,7 +4591,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -4637,7 +4655,7 @@ named: number | null, known: GroupKnown,
  */
 members: Array<GroupMember>, counts: Array<GroupCount>, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Looked = "every" | "this_machine" | "nothing";
 type MemberFacts = { 
 /**
@@ -4665,6 +4683,7 @@ bg: boolean,
  */
 at: number | null, };
 type NoArgs = Record<symbol, never>;
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4745,7 +4764,6 @@ sid: string,
  */
 groups: Array<GroupRead>, looked: Looked, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -4885,7 +4903,8 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 origin?: string, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4961,7 +4980,6 @@ type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -5133,7 +5151,8 @@ origin?: string, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -5209,7 +5228,6 @@ type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -5285,14 +5303,14 @@ projectDir: string,
  */
 group: string, lastAccount?: string, };
 type LaunchTab = { tab: Tab, alias?: string, };
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 type Rules = { childTab: Tab, bgTab: Tab, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type Tab = "show" | "hide";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 ```
 
 码：`bad_args` · `failed`
@@ -5372,7 +5390,7 @@ limit?: number,
  */
 titles?: boolean, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -5452,6 +5470,7 @@ forkedFrom?: ForkedFrom,
  */
 face: SessionFace, };
 type SearchScope = "user" | "assistant" | "report";
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -5523,7 +5542,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -5592,7 +5610,7 @@ limit?: number,
  */
 titles?: boolean, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Machine = string;
 type Merged = { 
 /**
@@ -5704,6 +5722,7 @@ offset: number,
  */
 line: number, };
 type SearchScope = "user" | "assistant" | "report";
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -5775,7 +5794,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -7738,7 +7756,7 @@ type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
 type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
@@ -7922,6 +7940,7 @@ face: SessionFace, needs: Needs,
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -7994,7 +8013,6 @@ order: number, can: SessionCan,
 account?: string, };
 type SessionsNeedsReq = Record<symbol, never>;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -8018,7 +8036,7 @@ type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type Machine = string;
 type ManualFix = { command: string, args: LoginStartReq, };
@@ -8195,6 +8213,7 @@ face: SessionFace, needs: Needs,
  */
 hidden: Hidden | null, };
 type NeedsUnreadable = { origin: Machine, said: Words, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -8266,7 +8285,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -8405,7 +8423,7 @@ type FactsBySid = {
 sid: string, };
 type FactsClock = { text: Words, from: number, };
 type FactsCost = { micros: number, partial: boolean, text: Words, };
-type FactsLine = { for: WireSessionActivity, text: Words, clock: FactsClock | null, peek: Words | null, };
+type FactsLine = { for: SessionActivity, text: Words, clock: FactsClock | null, peek: Words | null, };
 type FactsReply = { 
 /**
  * 按 sid 找到的那份记录（全路径）；按路径问的 ⇒ 缺。
@@ -8557,7 +8575,7 @@ at: string | null,
  */
 atMs: number | null, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LimitFrom = "relay" | "setting" | "model" | "observed" | "assumed";
 type McpStatus = "needsLogin" | "failed" | "pending" | "disabled" | "unknown";
 type McpTrouble = { name: string, 
@@ -8781,6 +8799,7 @@ type RetryRun = {
  * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
  */
 id: string, outcome: RetryOutcome, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -8900,7 +8919,6 @@ limitText: Words,
  * 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
  */
 limitFromText: Words | null, };
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -12395,10 +12413,10 @@ type Machine = string;
 type Sid = string;
 type SshCommand = { 
 /**
- * 只给 cc-monitor 自己开的窗、接在 `line` 前面跑的一段（跑它的 shell 把窗口标签记进本机后端的家；里面是本机数据目录的
- * 绝对路径与这台终端方言的写法）。入参没给 `sid` · 记录目录不在 ⇒ 空串。
+ * cc-monitor 自己开的窗里跑的那一整串，本机后端拼好：入参给了 `sid`、记录目录也在 ⇒ 前奏（跑它的 shell 把窗口标签记进本机后端的家）
+ * ＋ `line` ＋ 收尾（那条 ssh 一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
  */
-prelude: string, 
+window: string, 
 /**
  * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
  */
@@ -12612,6 +12630,7 @@ input: true | { no: "not_yours" | "not_managed", said: string },
  * 能不能结束。
  */
 end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
+type TerminalHost = "tmux" | "managed";
 type TerminalItem = { 
 /**
  * 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）。
@@ -12620,7 +12639,7 @@ terminal: string,
 /**
  * 终端宿主。
  */
-host: WireTerminalHost, 
+host: TerminalHost, 
 /**
  * 给人看的名（tmux：会话名；托管：`ccm --attach <名>` 认的那个名）。
  */
@@ -12679,7 +12698,6 @@ type TerminalsListReq = {
  * 自报的前端（1–32 个 `[a-z0-9-]`）：决定每行的 `can` 与 `started_by.mine`。
  */
 client?: string, };
-type WireTerminalHost = "tmux" | "managed";
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -14670,18 +14688,22 @@ removed: boolean, said: string, };
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
-type EmptyFace = { 
+type FleetLines = { 
 /**
- * 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+ * 首屏大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
  */
 line: string, 
 /**
- * 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+ * 首屏下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
  */
-hint: string, };
+hint: string, 
+/**
+ * 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
+ */
+count: string, };
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };
+type MachineRead = { machines: { [key in string]: MachineState }, empty: FleetLines, };
 type MachineReadReq = Record<symbol, never>;
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
@@ -16077,7 +16099,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
 type PlanBlock = { id: string, 
 /**
@@ -16454,6 +16476,7 @@ atMs: number,
  * 「采样于 12:03」（后端照文案表与那一台的钟写）。
  */
 said: Words, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -16525,7 +16548,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
@@ -16863,7 +16885,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type Launch = "managed" | "tmux" | "direct";
-type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
  * `queued`（投进那条会话的输入队、那台已落盘；投递在它能收时送，已结束的先恢复它）· `copy`（投不了，只给这一行去复制）。
@@ -16920,6 +16942,7 @@ face: SessionFace,
  * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
+type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -16991,7 +17014,6 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
-type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 

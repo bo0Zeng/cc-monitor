@@ -124,8 +124,8 @@ fn read_rows(
     tz: &crate::Tz,
     fixed: usize,
 ) -> Result<(Vec<ReadRow>, u64, bool), crate::common::said::Said> {
-    let (_, face) = record_face(home, path)?;
-    let mut reader = reader(&face, tz);
+    let (target, face) = record_face(home, path)?;
+    let mut reader = reader(&face, tz).back(&target, READ_PAGE_BYTES);
     let room = READ_PAGE_BYTES.saturating_sub(fixed + ENVELOPE_BYTES);
     let (mut rows, mut used, mut at) = (Vec::<ReadRow>::new(), 0usize, offset);
     // 上一块里最后一条带记录的行：这一块第一条带记录的行可能要并进它。
@@ -262,7 +262,7 @@ pub(crate) fn page_at(
     )
     .map_err(&lower)?;
     let (lines, next_seq) = crate::observe::query::body::record_lines_of_page(
-        &mut reader(&face, tz),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
         &target,
         req.seq.unwrap_or(0),
         offset,
@@ -328,7 +328,7 @@ pub(crate) fn lines_at(
     )
     .map_err(&lower)?;
     let (lines, _) = crate::observe::query::body::record_lines(
-        &mut reader(&face, tz),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
         &target,
         page.from,
         page.lines
@@ -547,7 +547,7 @@ pub(crate) fn run_at(
         locate::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
             .map_err(&lower)?;
     let path = source.to_string_lossy().into_owned();
-    let (_, face) = record_face(home, &path).map_err(&lower)?;
+    let (target, face) = record_face(home, &path).map_err(&lower)?;
     let (from, bytes, end, more) = if req.tail == Some(true) || req.before.is_some() {
         let page = body::read_back(home, &path, req.before, READ_PAGE_BYTES, LINE_CAP_BYTES)
             .map_err(&lower)?;
@@ -557,7 +557,11 @@ pub(crate) fn run_at(
             .map_err(&lower)?;
         (from, page.bytes, page.next, !page.eof)
     };
-    let rows = crate::observe::query::body::run_rows(&mut reader(&face, tz), from, &bytes);
+    let rows = crate::observe::query::body::run_rows(
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
+        from,
+        &bytes,
+    );
     let reply = HistoryRun {
         run,
         path,
@@ -1446,12 +1450,7 @@ pub(crate) fn facts_at(
     // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
     facts.background = crate::history::live_table::now(home)
         .background_since(sid)
-        .map(|born| {
-            let now = crate::common::time::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-            facts::background_of(&facts.bg_tasks, born, now)
-        });
+        .map(|born| facts::background_of(&facts.bg_tasks, born, crate::common::time::now_ms()));
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts::settle_pending(&mut facts, holders.is_some());
     // 状态一句会走的那一截：照 pidfile 此刻那一态 ＋ 上面这几格写（不活 ⇒ 不带）。
@@ -1460,9 +1459,7 @@ pub(crate) fn facts_at(
             .doing_one(sid)
             .flatten(),
         &facts,
-        crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+        crate::common::time::now_ms(),
     );
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
     facts::settle_notices(&mut facts, tz);

@@ -3,9 +3,9 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.TermInput
 import com.ccmonitor.mobile.core.wire.gen.TerminalEndReq
+import com.ccmonitor.mobile.core.wire.gen.TerminalHost
 import com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq
 import com.ccmonitor.mobile.core.wire.gen.TerminalsListReq
-import com.ccmonitor.mobile.core.wire.gen.WireTerminalHost
 
 /*
  * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
@@ -53,7 +53,7 @@ object TerminalsList {
                 attached = t.clients.isNotEmpty(),
                 agent = t.session?.agent,
                 sid = t.session?.sid,
-                tmux = t.host == WireTerminalHost.TMUX,
+                tmux = t.host == TerminalHost.TMUX,
                 holder = (t.input as? TermInput.Held)?.holder?.said,
             )
         }

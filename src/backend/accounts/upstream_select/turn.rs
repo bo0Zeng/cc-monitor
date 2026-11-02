@@ -148,6 +148,31 @@ pub(crate) fn sigma_of(s: &Session) -> Sigma {
     }
 }
 
+/// 一判看的事实摘要（记进换号那一条）：照交给策略的那一份 ctx 摘（[`decide::ctx_of`]，不另算），小数截到够核对的位数。
+pub(crate) fn saw_of(sigma: &Sigma, facts: &[Acct], now: u64) -> book::Saw {
+    let round = |x: f64, places: i32| {
+        let k = 10f64.powi(places);
+        (x * k).round() / k
+    };
+    let ctx = decide::ctx_of(sigma, facts, &Value::Null, 0, now);
+    book::Saw {
+        accounts: ctx
+            .accounts
+            .iter()
+            .map(|a| book::SawAcct {
+                id: a.id.clone(),
+                used5h: round(a.used[0], 2),
+                resets5h: a.resets[0],
+                rate5h: a.rate[0].map(|x| round(x, 4)),
+                others: a.others.map(|x| round(x, 4)),
+            })
+            .collect(),
+        pace: ctx.me.pace.map(|x| round(x, 0)),
+        spread: ctx.me.spread.map(|x| round(x, 3)),
+        context: ctx.me.context,
+    }
+}
+
 /// 一判的结论落进会话那一条（换了号记一条；停发记一条，同一个 `until` 不重记；拖出来的顺序 · memo · 叫醒照新的）。
 pub(crate) fn apply(
     s: &mut Session,
@@ -182,6 +207,7 @@ pub(crate) fn apply(
                 to: a.clone(),
                 cause,
                 why,
+                saw: Some(saw_of(&d.sigma, facts, now)),
             });
         }
         Pick::Hold { until, .. } => {
@@ -206,6 +232,7 @@ pub(crate) fn apply(
                             let dur = copy_core::format_duration(within.saturating_mul(1000));
                             copy_core::copy_text("beRotation.hold.noAutoResume", &[("dur", &dur)])
                         }),
+                    saw: Some(saw_of(&d.sigma, facts, now)),
                 });
             }
         }
@@ -601,7 +628,7 @@ impl Hop {
         let Some(s) = self.entry(own, a) else {
             return Go::Start;
         };
-        let plan = Adopted::of(s.uses.as_ref());
+        let plan = Adopted::of(s.uses.as_deref());
         // 这个会话不轮换（没选策略）⇒ 不叫策略、不自动换：照会话那一条的在用号走（手动换过 ⇒ 那个号；接不上 ⇒ 开会话的号）。
         if plan.id.is_empty() {
             return self.prepare(own, a, &lib, &s.current).unwrap_or(Go::Start);
@@ -631,7 +658,7 @@ impl Hop {
     ) -> Option<InTurn> {
         let r = rotation::relay_change(&self.store, own, |b| {
             let before = b.sessions.get(a.sid)?.clone();
-            let plan = Adopted::of(before.uses.as_ref());
+            let plan = Adopted::of(before.uses.as_deref());
             if plan.id.is_empty() {
                 return None;
             }
@@ -725,7 +752,7 @@ impl Hop {
         }
         let lib = self.library_here()?;
         let s = self.entry(own, a)?;
-        let plan = Adopted::of(s.uses.as_ref());
+        let plan = Adopted::of(s.uses.as_deref());
         if plan.id.is_empty() {
             return None;
         }

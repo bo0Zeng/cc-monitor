@@ -1077,9 +1077,10 @@
       }
     },
     "machine-read": {
-      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\"}}",
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\"}}",
       "sample": {
         "empty": {
+          "count": "count-x",
           "hint": "hint-x",
           "line": "line-x"
         },
@@ -2267,10 +2268,10 @@
       }
     },
     "terminal-ssh": {
-      "rust": "{\"prelude\":\"prelude-x\",\"line\":\"line-x\"}",
+      "rust": "{\"window\":\"window-x\",\"line\":\"line-x\"}",
       "sample": {
         "line": "line-x",
-        "prelude": "prelude-x"
+        "window": "window-x"
       }
     },
     "terminal-unfollow": {

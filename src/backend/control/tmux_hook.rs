@@ -467,7 +467,7 @@ pub fn notify(args: &[String]) -> i32 {
 
     // 发信号那一步在 `platform::signal`（平台原语只许在 platform/；措辞不写那个 libc 函数名，免得「本层还有没有平台原语」的 grep 白查一趟）。
     // 身份校验留在这里 —— 那是域判断。发失败不是错误：校验之后、发信号之前后端可能已经退了。
-    let _ = crate::platform::signal::send_sigusr1(pid);
+    crate::platform::signal::send_sigusr1(pid); // 回的是「送没送到」：送不到 ＝ 那个进程已不在
     0
 }
 

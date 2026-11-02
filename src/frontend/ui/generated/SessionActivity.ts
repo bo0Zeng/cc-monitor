@@ -4,4 +4,4 @@
  * 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
  * 线上整份脸 `face.live.activity` 送它。
  */
-export type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+export type SessionActivity = "working" | "needs_you" | "idle" | "background_work";

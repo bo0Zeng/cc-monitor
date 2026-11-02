@@ -51,7 +51,7 @@ fn live_here() -> Vec<Live> {
             alias: aliases.get(sid).cloned(),
         });
     }
-    let now = crate::common::time::now_ms();
+    let now = crate::common::time::now_ms() as i64;
     let mut p = pending();
     p.retain(|(sid, ..)| !out.iter().any(|l| &l.sid == sid));
     p.retain(|(.., at)| now - *at < PENDING_MS);
@@ -197,7 +197,7 @@ fn launch(
         .find_set(&req.name)
         .map(|s| crate::assets::aliases::profile::edit_of_set(s).rows)
         .unwrap_or_default();
-    let now = crate::common::time::now_ms;
+    let now = || crate::common::time::now_ms() as i64;
     // 组那一笔：照这台那一片里那一组此刻的样子抄进组员的注解（[`groups::write_at`] 的 `move`）。
     let here_of = |g: &GroupRef| {
         group_here(&g.id).unwrap_or_else(|| HereGroup {
@@ -328,7 +328,7 @@ fn launch(
                 s.clone(),
                 r.cwd.clone(),
                 r.alias.clone(),
-                crate::common::time::now_ms(),
+                crate::common::time::now_ms() as i64,
             ));
         }
         Ok(o)

@@ -3,7 +3,7 @@
 //! 连接是池里拿的（[`Lease`]，同身份复用）。
 
 use crate::Said;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -126,7 +126,7 @@ pub trait Closable: Send + 'static {
 impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
     fn close_it(self) -> impl std::future::Future<Output = ()> + Send {
         async move {
-            let _ = self.close().await;
+            self.close().await.discard(Why::Reap); // 放弃 / 提前收工时向远端发关通道：对端撤活只是尽力
         }
     }
 }
@@ -554,7 +554,7 @@ impl Opened {
                 _permit,
             } => {
                 let got = collect(&mut rd, &opts, early).await;
-                let _ = write_line(out, &got).await;
+                write_line(out, &got).await.discard(Why::DeadLink);
                 drop(wr);
             }
             Held::Forward { listener, spec } => {
@@ -815,7 +815,9 @@ where
         };
         match moving(out, &mut steps, opening(req, &live)).await {
             Err(f) => {
-                let _ = write_stages_then_ack(out, &live, &DialAck::of_fail(f)).await;
+                write_stages_then_ack(out, &live, &DialAck::of_fail(f))
+                    .await
+                    .discard(Why::DeadLink);
             }
             Ok(opened) => {
                 if write_stages_then_ack(out, &live, &opened.ack())
@@ -1028,5 +1030,5 @@ async fn forward<R, W>(
     }
     drop(listener);
     tunnels.abort_all();
-    let _ = out.flush().await;
+    out.flush().await.discard(Why::DeadLink);
 }

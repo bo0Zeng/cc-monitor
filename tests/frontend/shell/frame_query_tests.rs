@@ -812,7 +812,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
     //   monitor 零处再问它。
     // `files-ls` · `files-stat` 不在这里：界面不再问它们（见上表），文件窗口列目录 · 看属性
-    //   （`filewin/source.rs::CMD_LS` · `cmd_wire::files::StatReq` …）是另一个前端自己的事。
+    //   （`cmd_wire::files::LsReq` · `cmd_wire::files::StatReq` …）是另一个前端自己的事。
     // 文件窗口「在此打开终端」。窗口只交意图（经通道 `terminal-open`），
     //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::terminal_open`，照类型问 `TerminalSshReq`）—— 与主界面开终端同一条路。
     (

@@ -262,10 +262,7 @@ pub(crate) fn install_at(
         .map_err(|e| crate::common::said::Said::new("refused", e))?
         .is_some()
     {
-        let ts = crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_secs())
-            .unwrap_or(0);
+        let ts = crate::common::time::now_secs();
         let bak = format!("{NAME}.bak-{ts}");
         let top_name = skills_name(skills);
         let (from, to) = (format!("{top_name}/{NAME}"), format!("{top_name}/{bak}"));

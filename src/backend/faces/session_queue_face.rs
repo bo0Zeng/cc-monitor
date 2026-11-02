@@ -55,7 +55,7 @@ impl typed::Handle for SessionQueuePutCmd {
             route::<Self, _>(
                 &req,
                 move || {
-                    let put = put_here(&own, &r, crate::common::time::now_ms(), &cwd_here);
+                    let put = put_here(&own, &r, crate::common::time::now_ms() as i64, &cwd_here);
                     // 投进来了 ⇒ 叫一声这台的投递那一侧（这一个进程没起它 ⇒ 不做什么，常驻那一份由 watcher 看见队目录动了叫醒）。
                     q::moved();
                     put
@@ -139,7 +139,7 @@ impl typed::Handle for SessionQueueCancelCmd {
             let r = req.clone();
             route::<Self, _>(
                 &req,
-                move || q::cancel(&own, &r.sid, &r.id, crate::common::time::now_ms()),
+                move || q::cancel(&own, &r.sid, &r.id, crate::common::time::now_ms() as i64),
                 SessionQueueCancelErr::ALL,
                 &cx.tz,
                 cx.until,
@@ -186,7 +186,7 @@ impl typed::Handle for SessionQueueReadCmd {
             let r = req.clone();
             route::<Self, _>(
                 &req,
-                move || q::read(&own, &r.sid, crate::common::time::now_ms()),
+                move || q::read(&own, &r.sid, crate::common::time::now_ms() as i64),
                 SessionQueueReadErr::ALL,
                 &cx.tz,
                 cx.until,

@@ -228,3 +228,73 @@ fn scanning_in_blocks_matches_one_whole_scan() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 一步用时（实时那条）：接上时记录里已有一个没结果的调用（时刻 t），接上之后追加它的结果（t＋90 秒）⇒
+/// 那一帧 `Line` 的成品里结果那一格写好用时。起步照冷开扫描图的事实种表（预读一行都不上流、调用那一行不再读）；
+/// 之后同一趟里来的调用与结果照样配上；结果配不上调用（没记下）⇒ 那一格不写。夹具只造结构（类型 · 调用 id · 时刻）。
+#[test]
+fn a_result_after_attach_carries_the_step_duration_from_the_scanned_call() {
+    let (dir, path, mut state, mut sink, mut rx) = rig("step-clock");
+    let call = |uuid: &str, at: &str, id: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{at}","message":{{"id":"m-{uuid}","role":"assistant","model":"m-x","stop_reason":"tool_use","content":[{{"type":"tool_use","id":"{id}","name":"Bash","input":{{"command":"x"}}}}]}}}}"#
+        )
+    };
+    let result = |uuid: &str, at: &str, id: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{at}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{id}","content":"x"}}]}}}}"#
+        )
+    };
+    std::fs::write(&path, call("a1", "2026-10-01T00:00:00.000Z", "c1") + "\n").unwrap();
+    let scans: &'static crate::observe::record_scan::RecordScans = Box::leak(Box::new(
+        crate::observe::record_scan::RecordScans::new(16, 64 << 20),
+    ));
+    state.scans = Some(scans);
+    start_prime(
+        SID,
+        std::slice::from_ref(&path),
+        false,
+        &mut state,
+        &mut sink,
+    );
+    assert!(state.priming.is_empty(), "夹具没有池 ⇒ 就地读完");
+    assert_eq!(lines(&mut rx), Vec::<(u64, u64)>::new(), "预读一行都不上流");
+    let tail = [
+        result("u1", "2026-10-01T00:01:30.000Z", "c1"),
+        call("a2", "2026-10-01T00:02:00.000Z", "c2"),
+        result("u2", "2026-10-01T00:02:05.000Z", "c2"),
+        result("u3", "2026-10-01T00:03:00.000Z", "c9"),
+    ];
+    let mut body = std::fs::read_to_string(&path).unwrap();
+    for l in &tail {
+        body += l;
+        body += "\n";
+    }
+    std::fs::write(&path, body).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Line(crate::wire::Line {
+            record: Some(r), ..
+        }) = f
+        {
+            let v = serde_json::to_value(&r).unwrap();
+            if let Some(res) = v.get("results").and_then(|m| m.as_object()) {
+                for (id, cell) in res {
+                    got.push((id.clone(), cell.get("text").cloned()));
+                }
+            }
+        }
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    let text = |ms| Some(serde_json::json!(copy_core::short_duration(ms)));
+    assert_eq!(
+        got,
+        vec![
+            ("c1".to_string(), text(90_000)),
+            ("c2".to_string(), text(5_000)),
+            ("c9".to_string(), Some(serde_json::json!(""))),
+        ],
+        "接上前的调用 · 接上后的调用都配上；配不上的不写"
+    );
+}
