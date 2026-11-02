@@ -77,6 +77,10 @@ pub struct HistoryRow {
     pub span_text: Words,
     /// 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
     pub origin: Machine,
+    /// 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+    pub reveal: bool,
+    /// 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+    pub delete_ask: Words,
 }
 
 /// 分叉来的那一行的父会话：显示标题（同父会话自己那一行的 `label`）。
