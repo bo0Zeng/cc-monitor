@@ -28,20 +28,12 @@
 # 枚举标 @JsonClass(generateAdapter = false)，keep 在 moshi 自带的规则里。这里不另写。混淆过的包冒烟一趟（smoke.sh 的 minified 那一趟）核它。仅压制告警。
 -dontwarn com.squareup.moshi.**
 
-# ── Koin / Compose / Room / Markwon ──
+# ── Koin / Compose / Room ──
 # 这些库各自 ship consumer proguard 规则（随 AAR 传入），通常无需额外 keep。
 # 若 release 运行期出现 ClassNotFound/NoSuchMethod，再按需补 -keep。
 
-# ── Prism4j 语法高亮 ──
-# bundler 生成的 GrammarLocatorDef 直接 new Prism_xxx 语法类（非按名反射），R8 正常可达即保留；
-# 保守整包 keep + 生成的 locator（同包），防 full-mode 误删语法类导致高亮静默失效。
--keep class io.noties.prism4j.** { *; }
--keep class com.ccmonitor.mobile.ui.claude.GrammarLocatorDef { *; }
--dontwarn io.noties.prism4j.**
-
 # ── JLaTeXMath 数学渲染 ──
 # JLaTeXMath 经反射/资源加载符号定义(.xml)+字体；R8 误删 → 渲染崩/空。整包 keep + dontwarn。
--keep class io.noties.markwon.ext.latex.** { *; }
 -keep class ru.noties.jlatexmath.** { *; }
 -keep class org.scilab.forge.jlatexmath.** { *; }
 -dontwarn ru.noties.jlatexmath.**

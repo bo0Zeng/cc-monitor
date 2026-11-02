@@ -20,7 +20,7 @@ import { REVEAL_RUN_EVENT } from "../cards/speaker-bar";
 import { speakerNameOf } from "../agent-profile";
 import { followSession, type FollowEvent } from "../events";
 import { fetchList, type HistoryRow } from "../history-list-reads";
-import { isLocalOrigin, type Origin } from "../ipc/origin";
+import { isLocalOrigin, type Machine } from "../ipc/origin";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
 import { detailOf } from "../kit/detail";
@@ -88,7 +88,7 @@ export class AgentWindow {
   constructor(
     private readonly sid: string,
     private readonly run: string,
-    private readonly origin: Origin,
+    private readonly origin: Machine,
     private readonly parts: AgentWindowParts,
   ) {
     this.crumbs = document.createElement("div");
@@ -172,7 +172,7 @@ export class AgentWindow {
   /** 读这个会话的那一行、订它的流、读第一页。 */
   async start(): Promise<void> {
     try {
-      const list = await fetchList(isLocalOrigin(this.origin) ? undefined : this.origin, { sid: this.sid });
+      const list = await fetchList(this.origin, { sid: this.sid });
       this.row = list.rows.find((r) => r.sessionId === this.sid) ?? null;
     } catch (e) {
       this.say(copyText("sessionViewer.load.failed", { why: String(e) }), detailOf(e));
@@ -216,6 +216,11 @@ export class AgentWindow {
     const r = this.row;
     if (!r) return "";
     return r.label;
+  }
+
+  /** 标题里那台的名字：本机不写（`agentWindowTitle` 的 `machine` 缺 ＝ 本机那一句）。 */
+  private machineLabel(): Machine | null {
+    return isLocalOrigin(this.origin) ? null : this.origin;
   }
 
   /** 顶上那一条；`detail`（出错那一端写的复制详情）非空 ⇒ 带［复制详情］。 */
@@ -423,13 +428,13 @@ export class AgentWindow {
     this.crumbs.replaceChildren(...parts);
 
     // 系统标题 · 状态栏
-    if (this.row) void getCurrentWindow().setTitle(agentWindowTitle(r, this.sessionName(), this.row.origin ?? null)).catch(() => {});
+    if (this.row) void getCurrentWindow().setTitle(agentWindowTitle(r, this.sessionName(), this.machineLabel())).catch(() => {});
     this.status.textContent = this.live && this.following ? copyText("agentWindow.status.live") : copyText("agentWindow.status.plain");
   }
 
   /** 开另一个子运行的窗口（在这扇窗右下错开；已开着 ⇒ 拉到前面）。 */
   private async open(r: RunInfo): Promise<void> {
-    await openAgentWindow({ origin: this.origin, sid: this.sid, run: r, session: this.sessionName(), machine: this.row?.origin ?? null });
+    await openAgentWindow({ origin: this.origin, sid: this.sid, run: r, session: this.sessionName(), machine: this.machineLabel() });
   }
 
   /** 回到派出它的地方：父 agent 的窗口（没开就开）或主窗口，滚到派出它的那张卡。 */
@@ -502,7 +507,7 @@ function stateIcon(r: RunInfo): HTMLElement {
 }
 
 /** 入口：`viewer.html?viewer=<sid>&run=<运行>&origin=<机器>`。 */
-export async function bootstrapAgentWindow(sid: string, run: string, origin: Origin): Promise<void> {
+export async function bootstrapAgentWindow(sid: string, run: string, origin: Machine): Promise<void> {
   document.body.classList.add("viewer-mode");
   const app = document.getElementById("app");
   const main = document.getElementById("message-stream");

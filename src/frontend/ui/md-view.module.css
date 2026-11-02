@@ -1,0 +1,125 @@
+/* 正文排版器（md-view.ts）出的那几样：代码高亮十三类 · 提示块 · 任务项 · 脚注 · 表格对齐。段落 · 表格框线 · 行内代码这些照卡里 `.card-body` 的全局样式。
+   高亮色只用令牌里的终端色票：类的先后跟着 `HlClass`，颜色是两端各自主题的事、不上线。 */
+@layer components {
+  .mdDoc {
+    overflow-wrap: anywhere;
+  }
+
+  .mdCode {
+    display: block;
+    padding: 14px 16px;
+    overflow-x: auto;
+    background: transparent;
+    font-size: var(--font-size-mono);
+    line-height: var(--line-height-mono);
+  }
+
+  .hlKeyword {
+    color: var(--term-magenta);
+  }
+
+  .hlString {
+    color: var(--term-green);
+  }
+
+  .hlComment {
+    color: var(--term-bright-black);
+    font-style: italic;
+  }
+
+  .hlNumber {
+    color: var(--term-yellow);
+  }
+
+  .hlFunction {
+    color: var(--term-blue);
+  }
+
+  .hlType {
+    color: var(--term-cyan);
+  }
+
+  .hlConstant {
+    color: var(--term-bright-yellow);
+  }
+
+  .hlVariable {
+    color: var(--term-red);
+  }
+
+  .hlAttribute {
+    color: var(--term-bright-cyan);
+  }
+
+  .hlTag {
+    color: var(--term-bright-blue);
+  }
+
+  .hlInserted {
+    color: var(--term-bright-green);
+    background: var(--diff-add-bg);
+  }
+
+  .hlDeleted {
+    color: var(--term-bright-red);
+    background: var(--diff-del-bg);
+  }
+
+  .hlMeta {
+    color: var(--term-bright-magenta);
+  }
+
+  .mdAlert {
+    margin: var(--space-4) 0;
+    padding: var(--space-2) var(--space-4);
+    border-left: 3px solid var(--color-link);
+  }
+
+  .mdAlert[data-kind="tip"] {
+    border-left-color: var(--success);
+  }
+
+  .mdAlert[data-kind="important"] {
+    border-left-color: var(--bgwork);
+  }
+
+  .mdAlert[data-kind="warning"] {
+    border-left-color: var(--warn);
+  }
+
+  .mdAlert[data-kind="caution"] {
+    border-left-color: var(--error);
+  }
+
+  .mdTask {
+    list-style: none;
+  }
+
+  .mdTask > input {
+    margin: 0 var(--space-2) 0 0;
+  }
+
+  .mdNotes {
+    margin-top: var(--space-4);
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-2);
+    font-size: 0.9em;
+  }
+
+  .mdFnRef {
+    color: var(--color-link);
+    font-size: 0.75em;
+  }
+
+  .mdDoc [data-align="left"] {
+    text-align: left;
+  }
+
+  .mdDoc [data-align="center"] {
+    text-align: center;
+  }
+
+  .mdDoc [data-align="right"] {
+    text-align: right;
+  }
+}

@@ -16,7 +16,7 @@ import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
@@ -67,7 +67,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   // 这个会话在哪台机器上（`history-list` 与会话流的寻址键）。缺 ⇒ 本机。
   const rawOrigin = q.get("origin");
-  const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
+  const origin: Machine = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL : rawOrigin;
   // 带 `run` ⇒ 这扇窗是这个会话里一个子运行自己的窗口（agent 窗口）。
   const run = q.get("run");
   // 这扇窗也订各台的机器成品：称呼哪台都照那台成品的 `name`（`machineName`），本机远端同一条路；这台的成品一到就重画标题。
@@ -101,7 +101,7 @@ async function loadKeys(): Promise<void> {
   bindErrorToast();
 }
 
-async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
+async function bootstrapViewer(sid: string, origin: Machine): Promise<void> {
   document.body.classList.add("viewer-mode");
   const app = document.getElementById("app");
   const streamRoot = document.getElementById("message-stream");
@@ -143,7 +143,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
 
   let row: HistoryRow | null;
   try {
-    const list = await fetchList(isLocalOrigin(origin) ? undefined : origin, { sid });
+    const list = await fetchList(origin, { sid });
     row = list.rows.find((r) => r.sessionId === sid) ?? null;
   } catch (e) {
     viewer.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [], detailOf(e)));
@@ -203,7 +203,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
 }
 
 /** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。 */
-async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promise<void> {
+async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Machine): Promise<void> {
   const res = await bringTerminalToFront(origin, r.sessionId);
   const view = frontView(res, machineName(origin));
   if (view === null) {
@@ -213,7 +213,7 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promi
   const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect" && a.kind !== "open-here");
   showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
     if (a.kind === "retry") await viewerFront(b, r, origin);
-    else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));
+    else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL));
     else if (a.kind === "open-in-terminal") await openSession(origin, { what: { kind: "look", sid: r.sessionId }, local: isLocalOrigin(origin) });
   });
 }
@@ -235,18 +235,17 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   } else {
     out.push(resumeControl(r));
   }
-  if (!r.origin && r.projectPath) {
+  if (isLocalOrigin(r.origin) && r.projectPath) {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
   }
   if (live && terminalFrontAvailable()) {
-    const origin = r.origin ?? LOCAL_ORIGIN;
     out.push(
       button({
         label: copyText("tabBarView.tab.terminalHint"),
         kind: "icon",
         icon: "front",
         hint: copyText("tabBarView.tab.terminalHint"),
-        onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, origin),
+        onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );
   }
@@ -255,7 +254,7 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
 
 /** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 那一句已经说过。 */
 function resumeControl(r: HistoryRow): HTMLElement {
-  const origin = r.origin ?? LOCAL_ORIGIN;
+  const origin = r.origin;
   const pick: ResumePick = defaultPick();
   let accounts: ResumeAccounts = !r.can.accounts
     ? { kind: "none", agentName: r.agentTag ?? r.agent }

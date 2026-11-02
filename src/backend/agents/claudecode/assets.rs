@@ -10,9 +10,10 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
-use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
+use super::accounts::{config_path_in, CONFIG_CAP};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
 use crate::agents::{McpSeen, Sightings, SkillSeen};
 use crate::common::said::IntoNote as _;
@@ -27,17 +28,26 @@ const SKILL_DOC: &str = "SKILL.md";
 pub(crate) const PROJECT_MCP_FILE: &str = ".mcp.json";
 /// `.mcp.json` / `.claude.json` 里装 server 表的键。
 pub(crate) const SERVERS_KEY: &str = "mcpServers";
-/// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级；超了说出来，不截断）。
-pub(crate) const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
-/// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 不取说明、说出来。
-const SKILL_DOC_MAX_BYTES: u64 = 1024 * 1024;
+/// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级）：超了那一份跳过、记进 `problems`，不截断。
+pub(crate) const PROJECT_MCP_CAP: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
+/// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 错交给调用方，不取说明、记进 `problems`。
+const SKILL_DOC_MAX_BYTES: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::HardError,
+};
 
 /// 插件缓存（配置根下）：`plugins/cache/<市场>/<插件>/<版本>/` 每个版本一个插件根。
 const PLUGIN_CACHE: [&str; 2] = ["plugins", "cache"];
 /// 插件清单（相对插件根）。
 const PLUGIN_MANIFEST: [&str; 2] = [".claude-plugin", "plugin.json"];
-/// 读清单的上限（手写的几行 JSON，远不到这个量级）。
-const PLUGIN_MANIFEST_MAX_BYTES: u64 = 64 * 1024;
+/// 读清单的上限（手写的几行 JSON，远不到这个量级）：超了那一份跳过、记日志。
+const PLUGIN_MANIFEST_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::SkipAndSay,
+};
 
 /// 一个配置根底下装着的插件：插件根 ＋ 清单里的名字。插件根从两处来：`skills/<名>/`（用户自己放进来的，常是指向插件根的链接）
 /// · 插件缓存里每个版本一个。没有清单 / 读不懂 / 没名字的目录不算插件；读不了的那一层当没有。
@@ -69,7 +79,7 @@ pub(crate) fn plugins(config_root: &Path) -> Vec<(PathBuf, String)> {
             if !m.exists() {
                 return None; // 普通 skill 目录：不是插件，不用说
             }
-            let bytes = match Ro::read_regular_capped(&m, PLUGIN_MANIFEST_MAX_BYTES) {
+            let bytes = match Ro::read_capped(&m, PLUGIN_MANIFEST_MAX_BYTES) {
                 Ok(b) => b,
                 Err(e) => {
                     tracing::warn!(
@@ -217,7 +227,7 @@ fn skill_description(doc: &Path) -> Result<Option<String>, crate::common::said::
     if !doc.exists() {
         return Ok(None);
     }
-    let bytes = Ro::read_regular_capped(doc, SKILL_DOC_MAX_BYTES)?;
+    let bytes = Ro::read_capped(doc, SKILL_DOC_MAX_BYTES)?;
     let text = String::from_utf8_lossy(&bytes);
     let mut lines = text.lines();
     // front matter 的围栏是一行三个 `-`（写成 `repeat` 是为了不让协议对拍把它认成一个 `--子命令` 字面量）。
@@ -242,7 +252,7 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
     if !claude_json.exists() {
         return;
     }
-    match crate::platform::fs::Ro::read_json_capped(claude_json, MAX_CONFIG_BYTES) {
+    match Ro::read_json(claude_json, CONFIG_CAP) {
         Ok(v) => servers_into(&v, claude_json, None, out),
         // 这一条只是资产目录上的一句说明（没有复制详情那一格）：原话记日志。
         Err(e) => out.problems.push(
@@ -280,7 +290,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
         }
         Ok(_) => {}
     }
-    match crate::platform::fs::Ro::read_json_capped(&file, MAX_PROJECT_MCP_BYTES) {
+    match Ro::read_json(&file, PROJECT_MCP_CAP) {
         Ok(v) => servers_into(&v, &file, Some(&dir.display().to_string()), out),
         Err(e) => {
             let e = e.wrap(|why| {
@@ -323,16 +333,22 @@ fn servers_into(v: &serde_json::Value, file: &Path, project: Option<&str>, out: 
 const PLUGIN_RECORD: [&str; 2] = ["plugins", "installed_plugins.json"];
 /// 认得的安装记录格式版本。
 const PLUGIN_RECORD_V: u64 = 2;
-/// 安装记录的读取上限（几百条也远不到）。
-const PLUGIN_RECORD_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// 安装记录的读取上限（几百条也远不到）：超了当没有、记日志 ＋ 记进 `problems`。
+const PLUGIN_RECORD_MAX_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 /// 放在 skills 目录里的插件属的那个市场名（`enabledPlugins` 里写 `<名>@skills-dir`）。
 const SKILLS_DIR_MARKET: &str = "skills-dir";
 /// 设置里写开关的那一格。
 const ENABLED_KEY: &str = "enabledPlugins";
 /// 远端下发的托管设置（配置根下；与策略文件同一级）。
 const REMOTE_SETTINGS: &str = "remote-settings.json";
-/// 一份设置的读取上限。
-const SETTINGS_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// 一份设置的读取上限：超了当没写、记日志 ＋ 记进 `problems`。
+const SETTINGS_MAX_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 /// 插件里装 hook 的那份（相对插件根）。
 const PLUGIN_HOOKS: [&str; 2] = ["hooks", "hooks.json"];
 
@@ -379,9 +395,9 @@ fn read_json_said(
         PluginJson::Record => PLUGIN_RECORD_MAX_BYTES,
         PluginJson::Settings => SETTINGS_MAX_BYTES,
         PluginJson::Manifest => PLUGIN_MANIFEST_MAX_BYTES,
-        PluginJson::Mcp => MAX_PROJECT_MCP_BYTES,
+        PluginJson::Mcp => PROJECT_MCP_CAP,
     };
-    match Ro::read_json_capped(file, cap) {
+    match Ro::read_json(file, cap) {
         Ok(v) => Some(v),
         Err(e) => {
             tracing::warn!("[plugins] {} 读不出来，当没有：{}", file.display(), e.said);
@@ -680,8 +696,11 @@ mod tests;
 /// 斜杠命令住的目录名（`<项目>/.claude/commands` · `<配置根>/commands`）。
 const COMMANDS_DIR: &str = "commands";
 
-/// 一份命令文件最多读多少（只取 front matter 与第一行）。
-const COMMAND_DOC_MAX_BYTES: u64 = 256 * 1024;
+/// 一份命令文件最多读多少（只取 front matter 与第一行）：超了那一份跳过、记进 `problems`，不列这一条。
+const COMMAND_DOC_MAX_BYTES: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::SkipAndSay,
+};
 
 /// Claude Code 内置、手机 ［+］ 面板会用到的几条（`/clear` 丢掉对话 ⇒ 先确认；`/model` 不带名字会弹选择框 ⇒ 要参数）。
 pub(crate) const BUILTIN_COMMANDS: &[crate::agents::BuiltinCommand] = &[
@@ -750,7 +769,7 @@ fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::Session
         else {
             continue;
         };
-        let bytes = match Ro::read_regular_capped(&path, COMMAND_DOC_MAX_BYTES) {
+        let bytes = match Ro::read_capped(&path, COMMAND_DOC_MAX_BYTES) {
             Err(e) => {
                 tracing::warn!("一条会话能用的命令：跳过读不出的 {}", path.display());
                 out.problems.push(

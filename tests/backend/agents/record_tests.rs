@@ -44,7 +44,8 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         runs: BTreeMap::new(),
         error: None,
     };
-    let text = |s: &str| Block::text(s.into());
+    // 助手的正文照适配层那样解析成树（[`reply_blocks`]）。
+    let prose = |s: &str| reply_blocks(vec![Block::text(s.into())]).remove(0);
     let call = |id: &str| Block::ToolUse {
         id: id.into(),
         name: "X".into(),
@@ -226,13 +227,13 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         (
             "回复有字",
-            reply(vec![text("a"), call("c")], &[]),
+            reply(vec![prose("a"), call("c")], &[]),
             Draw::Card,
             false,
         ),
         (
             "回复只有工具",
-            reply(vec![call("c"), text("  ")], &[]),
+            reply(vec![call("c"), prose("  ")], &[]),
             Draw::Steps,
             false,
         ),
@@ -242,7 +243,12 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             Draw::Card,
             false,
         ),
-        ("回复空正文", reply(vec![text(" ")], &[]), Draw::None, false),
+        (
+            "回复空正文",
+            reply(vec![prose(" ")], &[]),
+            Draw::None,
+            false,
+        ),
         (
             "思考没写进记录（空串）照画",
             reply(
@@ -256,7 +262,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         (
             "自动应答",
-            quiet(reply(vec![text("a")], &[])),
+            quiet(reply(vec![prose("a")], &[])),
             Draw::None,
             false,
         ),

@@ -36,6 +36,7 @@
  */
 import { expect, vi } from "vitest";
 import { withSessionReads } from "./chan-fake";
+import type { Doc } from "../../src/frontend/ui/generated/Doc";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
 /** `find` = 后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
@@ -237,13 +238,18 @@ export function withSession(p: RigPayload, sessionId: string): RigPayload {
   return { ...p, session_id: sessionId, path: `/p/${sessionId}.jsonl` };
 }
 
-/** 一条回复记录（清单口径里它必须被排掉，判据要拿它当反例）。 */
-export function assistantLine(seq: number, id: string, text: string): RigPayload {
+/**
+ * 一条回复记录（清单口径里它必须被排掉，判据要拿它当反例）。正文是后端交的块树（`prose`）：
+ * 给一句字 ⇒ 一段落（照字出现，不经解析），`bytes` 是那句字的字节数；要别的块（公式 · 代码块）就直接给树。
+ */
+export function assistantLine(seq: number, id: string, body: string | Doc): RigPayload {
+  const doc: Doc = typeof body === "string" ? { blocks: [{ t: "p", k: [body] }], segs: [] } : body;
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body).length : 0;
   return line(seq, {
     t: "reply",
     id,
     at: atOf(seq),
-    blocks: [{ type: "text", text }],
+    blocks: [{ type: "prose", doc, bytes }],
     autoReply: false,
     draw: "card",
     human: false,

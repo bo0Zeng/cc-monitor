@@ -194,74 +194,14 @@ export interface RenderMarkdownOptions {
   lazy?: boolean;
 }
 
-/** 基础 Markdown 渲染：GFM ＋ KaTeX ＋ 代码高亮 ＋ sanitize。`opts.lazy` 选惰实例。 */
 /**
- * 多行块级公式预处理：`marked-katex-extension` 的块规则要 `$$` 独占一行、块前没空行会被段落吞掉、也不认 `\[...\]`。
- * 这里在 `marked.parse` 前把块公式规整成 `$$` 独占行 ＋ 前后空行，并把 `\[..\]` → `$$..$$`、`\(..\)` → `$..$`；先保护代码围栏与行内代码。
- * 边界：4 空格缩进的代码块不保护；正文里恰好配对的 `$$…$$`（"from $$5 to $$10"）会被当成公式。
+ * 基础 Markdown 渲染：GFM ＋ KaTeX ＋ 代码高亮 ＋ sanitize。`opts.lazy` 选惰实例。
+ * 助手正文不走这里（后端交树，`md-view.ts` 排）；还在用它的是计划卡 · 计划格 · 说话人条 · 思考 · 工具结果的 MD 模式。
  */
-/** 代码 stub 的包边字符：Unicode 非字符 U+FDD0（永不分配，程序内部哨兵；控制字符会撞 eslint `no-control-regex`）。 */
-const STUB_MARK = "\uFDD0";
-
-export function preprocessMath(md: string): string {
-  // 前置闸。见 `needsMathPreprocess` 头注。
-  if (!needsMathPreprocess(md)) return md;
-  return preprocessMathUnguarded(md);
-}
-
-/**
- * 六遍全文正则的前置闸：多数消息不含 LaTeX，没有这几个记号就跳过 `preprocessMathUnguarded`（最多五次 `indexOf`）。
- *
- * 闸认的记号就是那六遍里唯一可能改到东西的入口：`\r`（CRLF 归一）· `\[` / `\(`（翻译）· `$`（块级规整）·
- * `\uFDD0`（还原正则认的包边字符：正文里本来就带着它时慢路会错换，进闸是为了「走快路 ⇒ 与慢路逐字相同」无条件成立）。
- * 代码记号不必进闸：打 stub 与还原是一对，中间没东西可改时净效果恒等。
- * 导出给判据独立数「语料里几条走了快路」。
- */
-export function needsMathPreprocess(md: string): boolean {
-  return (
-    md.indexOf("$") >= 0 ||
-    md.indexOf("\\[") >= 0 ||
-    md.indexOf("\\(") >= 0 ||
-    md.indexOf("\r") >= 0 ||
-    md.indexOf(STUB_MARK) >= 0
-  );
-}
-
-/**
- * 闸之前的**原样实现**（只加闸、一个字节都没动这里面）。
- * 导出仅为单测：判据拿它当「慢路」的对照组，逐条对拍快路的返回值。
- */
-export function preprocessMathUnguarded(md: string): string {
-  // #42:先把 CRLF/CR 归一成 LF——preprocessMath 跑在 marked 内部换行归一**之前**,下面所有基于 `\n`
-  // 的块规则/代码保护才对 Windows(`\r\n`)行尾可靠(否则 `$$\r\n…` 的块识别不出、露字面 `$$`)。
-  md = md.replace(/\r\n?/g, "\n");
-  const stash: string[] = [];
-  const stub = (m: string): string => {
-    stash.push(m);
-    return `${STUB_MARK}M${stash.length - 1}${STUB_MARK}`;
-  };
-  // 1) 保护代码：围栏（``` / ~~~）+ 行内 `code`——避免动到代码里的 $$ / \[。
-  md = md.replace(/(^|\n)(```|~~~)[\s\S]*?\n\2[^\n]*(?=\n|$)/g, (m) => stub(m));
-  md = md.replace(/`[^`\n]*`/g, (m) => stub(m));
-  // 2) \[ ... \] → 块级 $$；\( ... \) → 行内 $。
-  md = md.replace(/\\\[([\s\S]*?)\\\]/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
-  md = md.replace(/\\\(([\s\S]*?)\\\)/g, (_m, x: string) => `$${x.trim()}$`);
-  // 3) 块级 $$ ... $$ 规整成独占行 ＋ 空行包裹。`$$` 贴着行边界才算块定界符：开 = 行首或其后紧跟换行，闭 = 行尾或其前紧接换行；
-  //    散文里游离 / 未配对的 `$$`（前后都是正文）不算 —— 按个数配对会在奇数个时错位、吞掉后一个真公式。
-  //    行中 `$$x$$` 不匹配，留给 marked-katex 的行内规则。lookbehind 要 V8 / Chromium。
-  md = md.replace(
-    /(?:(?<=^|\n)[ \t]*\$\$|\$\$(?=[ \t]*\n))([\s\S]*?)(?:(?<=\n[ \t]{0,32})\$\$|\$\$(?=[ \t]*(?:\n|$)))/g,
-    (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`,
-  );
-  // 4) 还原代码。
-  return md.replace(/\uFDD0M(\d+)\uFDD0/g, (_m, i: string) => stash[Number(i)]);
-}
-
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
   // lazy 由调用方显式传（不传 = 急）；只选实例，不改任何共享状态。
   const m = opts.lazy ? LAZY : EAGER;
-  // 数学预处理（多行块公式规整 ＋ \[..\] / \(..\) 翻译）后再交给 marked。
-  const raw = m.parse(preprocessMath(md), { async: false }) as string;
+  const raw = m.parse(md, { async: false }) as string;
   return DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
 }
 
@@ -278,20 +218,26 @@ function escapeHtml(s: string): string {
   return div.innerHTML;
 }
 
-/**
- * 补卡片里惰路留下的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换，
- * 图（`[data-image-pending]`）这时才去取（`cards/attach-strip.ts::fillImage`）。
- * 幂等：标 `data-enhanced`；没有占位时一次 querySelector 就返回。
- */
 /** 惰路留下的占位：等着高亮的代码块 · 等着排版的公式 · 等着取的图。 */
 const PENDING = ".code-block.code-pending, [data-math-pending], [data-image-pending]";
 
+/**
+ * 补卡片里惰路留下的占位（[`enhancePending`]）。幂等：标 `data-enhanced`；没有占位时一次 querySelector 就返回。
+ */
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
   el.dataset.enhanced = "1";
+  enhancePending(el);
+}
 
+/**
+ * 补 `el` 里此刻还在的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换，
+ * 图（`[data-image-pending]`）这时才去取（`cards/attach-strip.ts::fillImage`）。
+ * 不标记：同一块后来又长出占位（长正文点「显示全部」补的那几段）时再调一次，只补新的。
+ */
+export function enhancePending(el: HTMLElement): void {
   const pendings = el.querySelectorAll<HTMLElement>(PENDING);
-  if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式、没图
+  if (pendings.length === 0) return; // fast path: 没代码块、没公式、没图
 
   for (const block of pendings) {
     if (block.hasAttribute("data-math-pending")) {

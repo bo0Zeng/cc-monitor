@@ -194,10 +194,11 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", ()
     }
   }
 
-  it("一个 IO、root 是 `.session-viewer-stream`、两张带代码块的卡都交给了它（没有占位的卡不交：`render.vitest.ts`「D2」）；换会话时断开", async () => {
+  it("一个 IO、root 是 `.session-viewer-stream`、两张带公式占位的卡都交给了它（没有占位的卡不交：`render.vitest.ts`「D2」）；换会话时断开", async () => {
     FakeIO.all = [];
     vi.stubGlobal("IntersectionObserver", FakeIO);
-    const v = await mount([assistantLine(1, "a1", "第一句\n\n```ts\nconst a = 1;\n```"), assistantLine(2, "a2", "第二句\n\n```ts\nconst b = 2;\n```")]);
+    const withMath = (lead: string, tex: string) => ({ blocks: [{ t: "p" as const, k: [lead] }, { t: "math" as const, tex }], segs: [] });
+    const v = await mount([assistantLine(1, "a1", withMath("第一句", "a^2")), assistantLine(2, "a2", withMath("第二句", "b^2"))]);
     const root = v.element.querySelector<HTMLElement>(".session-viewer-stream");
     expect(root, "台子里找不到查看器的滚动容器 —— 本条会零命中地绿").not.toBeNull();
     expect(FakeIO.all.length).toBe(1);

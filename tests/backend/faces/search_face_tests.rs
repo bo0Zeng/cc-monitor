@@ -235,22 +235,18 @@ async fn the_local_backend_asks_each_machine_itself_and_merges() {
     )
     .await
     .expect("合得出");
-    let order: Vec<(&str, Option<String>)> = got
+    let order: Vec<(&str, String)> = got
         .sessions
         .iter()
-        .map(|r| {
-            (
-                r.row.row.session_id.as_str(),
-                r.origin.as_ref().map(ToString::to_string),
-            )
-        })
+        .map(|r| (r.row.row.session_id.as_str(), r.origin.to_string()))
         .collect();
+    let (devbox, here) = ("devbox".to_string(), cmd_wire::LOCAL.to_string());
     assert_eq!(
         order,
         [
-            ("rem-new", Some("devbox".to_string())),
-            ("loc", None),
-            ("rem-old", Some("devbox".to_string()))
+            ("rem-new", devbox.clone()),
+            ("loc", here),
+            ("rem-old", devbox)
         ]
     );
     assert_eq!(

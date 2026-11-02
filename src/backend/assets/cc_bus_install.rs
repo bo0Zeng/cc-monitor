@@ -25,6 +25,20 @@ use super::skill_ledger::{RecordReq, Recorded};
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。
 pub(crate) const NAME: &str = "cc-bus";
 
+/// 装之前看一眼时读落点上那一份的上限：内嵌的每一份都比它小（下面编译期查）⇒ 超了的那一份必定不一样，
+/// 跳过不读（读的那一口 `warn!` 带路径）、照「要写」算。
+const INSTALLED_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
+const _: () = {
+    let mut i = 0;
+    while i < FILES.len() {
+        assert!((FILES[i].1.len() as u64) < INSTALLED_FILE_CAP.bytes);
+        i += 1;
+    }
+};
+
 /// 内嵌的那些文件（条数以 `FILES.len()` 为准，判据对拍，不在散文里写数）。
 ///
 /// ⚠ 加文件要同时加到这里 —— 判据 `the_embedded_file_list_matches_the_repo` 会对拍，少一个当场红。
@@ -164,7 +178,7 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
     let writes: Vec<String> = FILES
         .iter()
         .filter(|(rel, bytes)| {
-            Ro::read(dest.join(rel))
+            Ro::read_capped(dest.join(rel), INSTALLED_FILE_CAP)
                 .map(|got| got != *bytes)
                 .unwrap_or(true)
         })

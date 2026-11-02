@@ -18,6 +18,7 @@
 //!   报错原话：前台那次调用 `is_error` 的结果正文 · API 报错那条 assistant 记录的正文。
 
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -311,7 +312,10 @@ pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> 
 /// 派出那一刻落盘的那一份（与子记录同目录、同名换后缀）：`toolUseId` ＝ 父侧那次 Agent 调用的 id。
 const META_SUFFIX: &str = ".meta.json";
 /// 那一份至多读多少字节（它只有几格）；超了 ⇒ 不认它、说一声（卡等父侧结果回来再对上）。
-const META_MAX: u64 = 64 * 1024;
+const META_MAX: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::SkipAndSay,
+};
 
 /// 后台派出那一形在那一份里的写法（`requestShape`）。
 const META_BACKGROUND: &str = "background";
@@ -327,7 +331,7 @@ pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
     if !meta.exists() {
         return None;
     }
-    let v = match crate::platform::fs::Ro::read_json_capped(&meta, META_MAX) {
+    let v = match Ro::read_json(&meta, META_MAX) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(

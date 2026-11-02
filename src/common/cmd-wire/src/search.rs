@@ -133,7 +133,7 @@ pub struct Merged {
     pub summary: String,
 }
 
-/// 合好的一行：那台答的那一行 ＋ 哪台（本机缺）。
+/// 合好的一行：那台答的那一行 ＋ 哪台。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -142,10 +142,8 @@ pub struct MergedRow {
     #[serde(flatten)]
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub row: SearchRow,
-    /// 那台远端的名字；本机 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
-    pub origin: Option<Machine>,
+    /// 哪一台答的这一行（这台逐字 `"<local>"`）。
+    pub origin: Machine,
 }
 
 /// 没答上的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
@@ -176,7 +174,6 @@ pub fn merge(
     let mut unreadable = 0usize;
     let mut skipped: Vec<String> = Vec::new();
     for (machine, reply) in answered {
-        let origin = (!machine.is_local()).then_some(machine);
         unreadable = unreadable.saturating_add(reply.unreadable);
         for s in reply.skipped {
             if !skipped.contains(&s) {
@@ -190,7 +187,7 @@ pub fn merge(
             truncated |= row.row.hits_truncated;
             sessions.push(MergedRow {
                 row,
-                origin: origin.clone(),
+                origin: machine.clone(),
             });
         }
     }

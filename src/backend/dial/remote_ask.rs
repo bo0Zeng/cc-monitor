@@ -1,7 +1,7 @@
 //! **本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
 //!
 //! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。用它的：资产目录同步（[`command_line`] ＋ [`DialRemote`]）·
-//! 两台之间的枢纽 · 公钥（[`ask_json`]）· 那台常驻的清单（[`ask_resident`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`capped_line`] · [`REACH`]）。
+//! 两台之间的枢纽 · 公钥（[`ask_json`]）· 那台常驻的清单（[`ask_resident`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`REACH`]）。
 //!
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
@@ -31,7 +31,6 @@ use std::pin::Pin;
 use std::sync::Mutex;
 
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
 /// 拉回来那一份（远端 stdout）的上限。目录文件本身 16 MiB 封顶（`asset_catalog::CATALOG_MAX_BYTES`），这里取同一个数。
 pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -454,35 +453,6 @@ async fn exchange(
 
 /// 经本机常驻后端池里那条 SSH 连接跑 capture（`ssh_dial::uses::capture`，与 monitor 开的链路同一个池，零新连接）。
 pub struct DialRemote;
-
-/// 读一行（带上限；超了是错，不截断）。
-pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<Option<String>, String> {
-    let mut buf = Vec::new();
-    let n = r
-        .take(cap + 1)
-        .read_until(b'\n', &mut buf)
-        .await
-        .map_err(|e| {
-            // 这一形的失败只有一句话的位：系统原话记一行日志。
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
-                copy_text("beRemoteAsk.cappedLine.readFailed", &[]),
-                e,
-            ))
-        })?;
-    if n == 0 {
-        return Ok(None);
-    }
-    if buf.len() as u64 > cap {
-        return Err(copy_text(
-            "beRemoteAsk.cappedLine.tooLong",
-            &[("cap", &cap.to_string())],
-        ));
-    }
-    Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
-}
 
 /// 一份组好的拨号请求（[`Table::dial`] · [`crate::dial::request_named`] 那一形）⇒「capture 这一条命令」的拨号请求
 /// （照类型组；纯，抽出来是为了判据 —— 载荷真进了 `capture.stdin`，不靠真 sshd 也验得动）。

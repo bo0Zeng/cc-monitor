@@ -75,10 +75,8 @@ pub struct HistoryRow {
     pub at_text: Words,
     pub section_text: Words,
     pub span_text: Words,
-    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
-    pub origin: Option<Machine>,
+    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
+    pub origin: Machine,
 }
 
 /// 分叉来的那一行的父会话：显示标题（同父会话自己那一行的 `label`）。
@@ -116,10 +114,8 @@ pub struct HistoryGroup {
     pub order: i64,
     /// 读不了的那个记录目录：原因。
     pub failed: Option<String>,
-    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
-    pub origin: Option<Machine>,
+    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
+    pub origin: Machine,
 }
 
 /// 一台自己的清单（`raw` 那一形，也是远端那一支带回来的样子）：行 · 读不了的记录目录 · 那台自己的注解（或读不到它的那一句）。
@@ -364,16 +360,14 @@ pub enum HistorySort {
     Created,
 }
 
-/// `history-list` 的入参（全可缺）。
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+/// `history-list` 的入参（`origin` 必填，别的都可缺）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub struct HistoryListReq {
-    /// 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
-    pub origin: Option<Machine>,
+    /// 问哪一台（行与组都标上它）：这台逐字 `"<local>"`，别台是机器表里的名字。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
+    pub origin: Machine,
     /// 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -402,4 +396,20 @@ pub struct HistoryListReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub range: Option<crate::sync::Range>,
+}
+
+impl HistoryListReq {
+    /// 问 `origin` 那一台的整份（别的格都缺）。
+    pub fn on(origin: Machine) -> Self {
+        Self {
+            origin,
+            sid: None,
+            query: None,
+            sort: None,
+            within_days: None,
+            hidden: None,
+            held: None,
+            range: None,
+        }
+    }
 }

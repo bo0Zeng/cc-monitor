@@ -4823,9 +4823,9 @@ order: number,
  */
 failed: string | null, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryHead = { groups: Array<HistoryGroup>, 
 /**
  * 注解没并上的那一句；并上了 ⇒ `null`。
@@ -4833,9 +4833,9 @@ type HistoryHead = { groups: Array<HistoryGroup>,
 notice: string | null, };
 type HistoryListReq = { 
 /**
- * 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
+ * 问哪一台（行与组都标上它）：这台逐字 `"<local>"`，别台是机器表里的名字。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
  */
@@ -4898,12 +4898,13 @@ context?: true,
  */
 at: number, atText: Words, sectionText: Words, spanText: Words, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
@@ -5087,20 +5088,20 @@ order: number,
  */
 failed: string | null, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryGroupId = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, key: string, };
+origin: Machine, key: string, };
 type HistoryLine = { "kind": "group", group: HistoryGroup, open: boolean, } | { "kind": "row", row: HistoryRow, child: boolean, forks: number, forksOpen: boolean, orphan: boolean, };
 type HistoryMachine = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
  */
@@ -5140,18 +5141,19 @@ context?: true,
  */
 at: number, atText: Words, sectionText: Words, spanText: Words, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryRowId = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, sid: string, };
+origin: Machine, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
@@ -5640,9 +5642,9 @@ down: Array<SearchDown>,
 summary: string, };
 type MergedRow = { 
 /**
- * 那台远端的名字；本机 ⇒ 缺。
+ * 哪一台答的这一行（这台逐字 `"<local>"`）。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 行尾那一格。
  */
@@ -5809,6 +5811,7 @@ type Words = string;
 
 ```ts
 type AgentKind = string;
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -5850,7 +5853,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, 
+type Block = { "type": "prose", doc: Doc, 
+/**
+ * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ */
+bytes: number, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -5884,6 +5891,11 @@ at: number,
  */
 n: number, };
 type ChildRunTag = { label: string, kind?: string, };
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRun = { 
@@ -5936,6 +5948,8 @@ tail?: boolean | null,
  * 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
  */
 before?: number | null, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6056,6 +6070,10 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 正文的行数（两头的空行不算）。
@@ -6275,6 +6293,7 @@ root: string, };
 
 ```ts
 type AgentKind = string;
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -6316,7 +6335,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, 
+type Block = { "type": "prose", doc: Doc, 
+/**
+ * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ */
+bytes: number, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -6350,6 +6373,11 @@ at: number,
  */
 n: number, };
 type ChildRunTag = { label: string, kind?: string, };
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryLines = { 
@@ -6386,6 +6414,8 @@ from?: number | null,
  * 可选右端（半开区间）；缺 ⇒ 到最后一个完整行为止。
  */
 until?: number | null, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6506,6 +6536,10 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 正文的行数（两头的空行不算）。
@@ -6749,6 +6783,7 @@ id: string, };
 
 ```ts
 type AgentKind = string;
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -6790,7 +6825,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, 
+type Block = { "type": "prose", doc: Doc, 
+/**
+ * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ */
+bytes: number, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -6824,6 +6863,11 @@ at: number,
  */
 n: number, };
 type ChildRunTag = { label: string, kind?: string, };
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRead = { 
@@ -6852,6 +6896,8 @@ offset?: number | null,
  * 可选右端（半开区间）；缺 ⇒ 读到文件尾。
  */
 until?: number | null, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6972,6 +7018,10 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 正文的行数（两头的空行不算）。
@@ -7168,6 +7218,7 @@ pasted?: Array<Pasted>, };
 
 ```ts
 type AgentKind = string;
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -7209,7 +7260,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, 
+type Block = { "type": "prose", doc: Doc, 
+/**
+ * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ */
+bytes: number, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -7243,6 +7298,11 @@ at: number,
  */
 n: number, };
 type ChildRunTag = { label: string, kind?: string, };
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryPage = { 
@@ -7279,6 +7339,8 @@ until?: number | null,
  * `offset` 那一行的行号（缺 ⇒ 0）；续页交上一页的 `nextSeq`。
  */
 seq?: number | null, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -7399,6 +7461,10 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 正文的行数（两头的空行不算）。
@@ -9185,6 +9251,7 @@ limit?: number | null, };
 
 ```ts
 type AgentKind = string;
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -9226,7 +9293,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, 
+type Block = { "type": "prose", doc: Doc, 
+/**
+ * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ */
+bytes: number, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -9260,6 +9331,11 @@ at: number,
  */
 n: number, };
 type ChildRunTag = { label: string, kind?: string, };
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type Held = { 
@@ -9333,6 +9409,8 @@ n: number,
  * 上一次回的那一份（缺 ⇒ 手上什么都没有）。
  */
 held?: Held, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -9453,6 +9531,10 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 正文的行数（两头的空行不算）。

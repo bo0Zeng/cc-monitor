@@ -296,7 +296,7 @@ fn maps_message_to_said_and_reply() {
     assert_eq!((r.agent.as_str(), r.id.as_str()), ("codex", "m1"));
     assert_eq!(
         blocks_of(&r),
-        json!([{"type": "text", "text": "回复", "bytes": 6}])
+        json!([{"type": "prose", "doc": {"blocks": [{"t": "p", "k": ["回复"]}], "segs": []}, "bytes": 6}])
     );
 
     let dev = env(
