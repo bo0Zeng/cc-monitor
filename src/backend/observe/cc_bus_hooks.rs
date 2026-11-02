@@ -13,6 +13,7 @@
 use crate::platform::fs::Ro;
 use crate::platform::shell::posix;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use serde::Serialize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -22,8 +23,11 @@ pub(crate) const PROGRAM: &str = "cc-bus";
 /// 钩子命令里程序后面紧跟的那个词。
 pub(crate) const VERB: &str = "stop-hook";
 
-/// 读 `settings.json` 的上限（它是几 KB 的配置；超了按「读不到」说）。
-const SETTINGS_CAP_BYTES: u64 = 1 << 20;
+/// 读 `settings.json` 的上限（它是几 KB 的配置；超了按「读不到」降级，诊断里说出来）。
+const SETTINGS_CAP_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::DegradeAndSay,
+};
 
 /// 一个钩子的诊断结论。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -274,12 +278,7 @@ pub(crate) fn answer_at(
         .and_then(|k| crate::agents::user_settings_of(k, agent_home))
         .unwrap_or_default();
     // 超上限 / 不是普通文件 / 读不了 ⇒ 按「没读到」降级，`note` 说出来（`diagnose(None)`）。
-    let raw = match Ro::metadata(&settings) {
-        Ok(meta) if meta.is_file() && meta.len() <= SETTINGS_CAP_BYTES => {
-            Ro::read_to_string(&settings).ok()
-        }
-        _ => None,
-    };
+    let raw = Ro::read_string_capped(&settings, SETTINGS_CAP_BYTES).ok();
     let exists = |s: &str| expand(s, home).exists();
     HooksReport {
         supported,

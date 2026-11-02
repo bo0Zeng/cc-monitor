@@ -35,8 +35,11 @@ pub fn writers_of(wanted: &dyn Fn(&Path) -> bool) -> Option<Writers> {
             if !wanted(&target) {
                 continue;
             }
-            let info = Ro::read_to_string(ent.path().join("fdinfo").join(fd.file_name()))
-                .unwrap_or_default();
+            let info = Ro::read_string_capped(
+                ent.path().join("fdinfo").join(fd.file_name()),
+                crate::platform::proc::PROC_FILE_CAP,
+            )
+            .unwrap_or_default();
             if !opened_for_write(&info) {
                 continue;
             }

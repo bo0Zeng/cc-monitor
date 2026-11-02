@@ -9,6 +9,12 @@
 use super::*;
 use std::path::PathBuf;
 
+/// 这几条判据用的读上限：64 字节，超了当读不出来。
+const CAP: Cap = Cap {
+    bytes: 64,
+    over: relay_route_core::Over::Reject,
+};
+
 fn sandbox(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(
         "ccm-own-state-{tag}-{}-{:?}",
@@ -25,23 +31,23 @@ fn sandbox(tag: &str) -> PathBuf {
 fn s1_three_states() {
     let base = sandbox("s1");
     let p = base.join("x.json");
-    assert!(matches!(read_bytes(&p, 64), Read::Absent));
+    assert!(matches!(read_bytes(&p, CAP), Read::Absent));
     std::fs::create_dir(&p).expect("dir in place");
-    assert!(matches!(read_bytes(&p, 64), Read::Unreadable(_)));
+    assert!(matches!(read_bytes(&p, CAP), Read::Unreadable(_)));
     std::fs::remove_dir(&p).expect("rm");
     std::fs::write(&p, vec![b'a'; 65]).expect("seed");
     assert!(
-        matches!(read_bytes(&p, 64), Read::Unreadable(_)),
+        matches!(read_bytes(&p, CAP), Read::Unreadable(_)),
         "超上限也读进来了"
     );
     std::fs::write(&p, b"{\"a\":1}").expect("seed");
-    match read_json::<serde_json::Value>(&p, 64) {
+    match read_json::<serde_json::Value>(&p, CAP) {
         Read::Present(v) => assert_eq!(v["a"], 1),
         _ => panic!("读得懂的没读出来"),
     }
     std::fs::write(&p, b"{").expect("seed");
     assert!(matches!(
-        read_json::<serde_json::Value>(&p, 64),
+        read_json::<serde_json::Value>(&p, CAP),
         Read::Unreadable(_)
     ));
     std::fs::remove_dir_all(&base).ok();
@@ -53,7 +59,7 @@ fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() 
     let base = sandbox("s5");
     let p = base.join("x.json");
     std::fs::write(&p, b"{").expect("seed");
-    let Read::Unreadable(s) = read_json::<serde_json::Value>(&p, 64) else {
+    let Read::Unreadable(s) = read_json::<serde_json::Value>(&p, CAP) else {
         panic!("坏 JSON 没读成读不出");
     };
     let shown = p.display().to_string();
