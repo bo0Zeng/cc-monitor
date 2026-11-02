@@ -53,7 +53,7 @@ fn shape_of(c: &Value) -> Shape {
 /// 摊好的一列照金样那一形写成一条一条（段头插在它落的那一项之前；孤儿那一句只在按时间那一形里画）。
 fn tokens(laid: &Laid, by: By) -> Vec<String> {
     let mut out = Vec::new();
-    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
+    let o = |m: &cmd_wire::Machine| m.to_string();
     for (i, line) in laid.lines.iter().enumerate() {
         for s in laid.sections.iter().filter(|s| s.at as usize == i) {
             out.push(format!("sec:{}", s.text.0));
@@ -106,9 +106,7 @@ fn machines_ok(g: &Value) -> Vec<MachineHead> {
         .unwrap()
         .iter()
         .map(|m| MachineHead {
-            origin: m["origin"]
-                .as_str()
-                .map(|o| cmd_wire::Machine::named(o.to_string())),
+            origin: serde_json::from_value(m["origin"].clone()).expect("那台的名字"),
             total: m["rows"].as_array().unwrap().len() as u32,
             read: Read::Ok { notice: None },
         })
@@ -163,11 +161,14 @@ fn each_machine_says_whether_it_was_read() {
     let ask = super::super::history_list::filters(None, None, None, None).unwrap();
     let (heads, answered) = per_machine(
         vec![
-            (None, Got::Listing(local)),
-            (Some("dev".into()), Got::Failed("dev 后端未在运行".into())),
-            (Some("box".into()), Got::Unread),
+            (cmd_wire::Machine::local(), Got::Listing(local)),
             (
-                Some("old".into()),
+                cmd_wire::Machine::named("dev"),
+                Got::Failed("dev 后端未在运行".into()),
+            ),
+            (cmd_wire::Machine::named("box"), Got::Unread),
+            (
+                cmd_wire::Machine::named("old"),
                 Got::Stale {
                     listing: stale_listing(),
                     why: "old 后端未在运行".into(),
@@ -181,19 +182,12 @@ fn each_machine_says_whether_it_was_read() {
     );
     assert_eq!(answered.len(), 2, "只有读到了的与有旧副本的出成品");
     assert_eq!(answered[1].rows.len(), 1, "旧副本的行要照出");
-    assert_eq!(
-        answered[1].rows[0]
-            .origin
-            .as_ref()
-            .map(ToString::to_string)
-            .as_deref(),
-        Some("old")
-    );
+    assert_eq!(answered[1].rows[0].origin.to_string(), "old");
     let v = serde_json::to_value(&heads).unwrap();
     assert_eq!(
         v,
         json!([
-            {"total": 0, "read": {"is": "ok", "notice": null}},
+            {"origin": cmd_wire::LOCAL, "total": 0, "read": {"is": "ok", "notice": null}},
             {"origin": "dev", "total": 0, "read": {"is": "failed", "why": "dev 后端未在运行"}},
             {"origin": "box", "total": 0, "read": {"is": "unread"}},
             {"origin": "old", "total": 1, "read": {"is": "stale", "why": "old 后端未在运行", "at": v[3]["read"]["at"]}},
@@ -268,6 +262,8 @@ async fn the_frame_arm_reads_what_is_held_and_syncs_only_fresh_ones() {
         (with(json!({"remotes": ["x"], "fresh": ["x"]})), false),
         (with(json!({"remotes": ["x", "x"]})), false),
         (with(json!({"remotes": [""]})), false),
+        // 这台走 `here`，不在 `remotes` 里再出一回。
+        (with(json!({"remotes": [cmd_wire::LOCAL]})), false),
         (with(json!({"range": {"from": 0, "limit": 0}})), false),
         (with(json!({"range": {"from": 0, "limit": 2001}})), false),
         (with(json!({"range": null})), false),
@@ -288,7 +284,7 @@ fn phone_ask(
     placed: &dyn Fn(&HistoryRow) -> bool,
 ) -> resident_client::column::ChatsColumnAsk {
     use resident_client::column::{ChatsColumnAsk, ColumnFork, ColumnHost, ColumnRow};
-    let host_of = |o: &Option<cmd_wire::Machine>| {
+    let host_of = |o: &cmd_wire::Machine| {
         a.iter()
             .position(|m| m.rows.first().is_some_and(|r| &r.origin == o))
             .map(|h| h as u32)
@@ -326,7 +322,7 @@ fn phone_ask(
 
 /// 端核心交回的那一列照 [`tokens`] 那一形写成一条一条（段头 ＋ 行；孤儿那一句照按时间那一形）。
 fn phone_tokens(a: &[Answered], c: &resident_client::column::ChatsColumn) -> Vec<String> {
-    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
+    let o = |m: &cmd_wire::Machine| m.to_string();
     c.sections
         .iter()
         .flat_map(|s| {
@@ -360,7 +356,7 @@ fn the_phone_column_merges_like_the_backend() {
     use resident_client::column::column;
     let g = golden();
     let a = answered(&g);
-    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
+    let o = |m: &cmd_wire::Machine| m.to_string();
     let folded = Shape {
         by: By::Project,
         all_open: false,
@@ -402,12 +398,17 @@ fn the_phone_column_nests_forks_under_their_parent() {
         by: By::Time,
         all_open: false,
         fold: Fold::default(),
-        forks: forks.iter().map(|s| (None, s.to_string())).collect(),
+        forks: forks
+            .iter()
+            .map(|s| (cmd_wire::Machine::local(), s.to_string()))
+            .collect(),
     };
+    // 这台那几行的记法（[`tokens`]）。
+    let here = |t: &str| format!("r:{}|{t}", cmd_wire::LOCAL);
     // 父收着：k1（a1 的分叉）· g1（k1 的分叉）· k2（cx 的分叉）都不出。
     let shut = phone_tokens(&a, &column(&phone_ask(&a, &shape_with(&[]), &|_| false)));
     for sid in ["k1", "g1", "k2"] {
-        let me = format!("r:|{sid}");
+        let me = here(sid);
         assert!(
             !shut
                 .iter()
@@ -415,10 +416,10 @@ fn the_phone_column_nests_forks_under_their_parent() {
             "父收着、{sid} 还出：{shut:?}"
         );
     }
-    assert!(shut.contains(&"r:|a1:forks=1".to_string()), "{shut:?}");
+    assert!(shut.contains(&here("a1:forks=1")), "{shut:?}");
     // 父不在这一列（o1 的父 nowhere 没有、x1 的父 d1 在另一台）⇒ 自成一行、记孤儿。
-    for t in ["r:|o1:orphan", "r:|x1:orphan"] {
-        assert!(shut.contains(&t.to_string()), "{t}：{shut:?}");
+    for t in [here("o1:orphan"), here("x1:orphan")] {
+        assert!(shut.contains(&t), "{t}：{shut:?}");
     }
     // 展开 a1 · k1：k1 · g1 紧跟 a1，在同一段里。
     let open = phone_tokens(
@@ -427,14 +428,11 @@ fn the_phone_column_nests_forks_under_their_parent() {
     );
     let at = open
         .iter()
-        .position(|t| t == "r:|a1:forks=1(open)")
+        .position(|t| *t == here("a1:forks=1(open)"))
         .expect("a1 展开那一行");
     assert_eq!(
         open[at + 1..at + 3],
-        [
-            "r:|k1:child:forks=1(open)".to_string(),
-            "r:|g1:child".to_string()
-        ],
+        [here("k1:child:forks=1(open)"), here("g1:child")],
         "{open:?}"
     );
     // 摆进别处的 k1 · b1：g1 没了父 ⇒ 孤儿；a1 底下没有分叉。与后端去掉那两行摊出的相同。
@@ -452,8 +450,8 @@ fn the_phone_column_nests_forks_under_their_parent() {
         tokens(&lay(&rest, &shape_with(&["a1"])), By::Time),
         "去掉摆进别处的"
     );
-    assert!(got.contains(&"r:|g1:orphan".to_string()), "{got:?}");
-    assert!(got.contains(&"r:|a1".to_string()), "{got:?}");
+    assert!(got.contains(&here("g1:orphan")), "{got:?}");
+    assert!(got.contains(&here("a1")), "{got:?}");
     // 分叉落在另一天（段头字不同）：展开了也跟着父，不另起段。
     let mut later = answered(&g);
     for r in later.iter_mut().flat_map(|m| m.rows.iter_mut()) {
@@ -465,6 +463,9 @@ fn the_phone_column_nests_forks_under_their_parent() {
     let got = phone_tokens(&later, &column(&phone_ask(&later, &shape, &|_| false)));
     let want = tokens(&lay(&later, &shape), By::Time);
     assert_eq!(got, want, "分叉落在另一天");
-    let at = want.iter().position(|t| t == "r:|g1:child").expect("g1");
-    assert_eq!(want[at - 1], "r:|k1:child:forks=1(open)", "{want:?}");
+    let at = want
+        .iter()
+        .position(|t| *t == here("g1:child"))
+        .expect("g1");
+    assert_eq!(want[at - 1], here("k1:child:forks=1(open)"), "{want:?}");
 }

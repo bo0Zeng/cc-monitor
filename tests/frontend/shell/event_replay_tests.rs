@@ -8,7 +8,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         cwd: None,
         path: format!("/fake/{sid}/{idx}.jsonl"),
         seq: idx as u64,
-        origin: None,
+        origin: crate::origin::Origin::local(),
         record: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
         end: None,
@@ -217,10 +217,10 @@ fn the_highest_seqs_are_kept_even_when_the_tail_arrived_first() {
     assert_eq!(seqs_of(&replay, "s").last().copied(), Some(n as u64));
 }
 
-/// 一行带 `n` 字节正文、记在 `origin` 名下（`None` ＝ 本机）。
-fn sized(origin: Option<&str>, sid: &str, idx: usize, n: usize) -> JsonlLinePayload {
+/// 一行带 `n` 字节正文、记在 `origin` 那台名下。
+fn sized(origin: &crate::origin::Origin, sid: &str, idx: usize, n: usize) -> JsonlLinePayload {
     let mut p = payload(sid, idx);
-    p.origin = origin.map(str::to_string);
+    p.origin = origin.clone();
     p.record = crate::ui_contract::RecordBody::from_json(format!("\"{}\"", "x".repeat(n))).unwrap();
     p
 }
@@ -232,7 +232,7 @@ fn total_retention_stays_under_the_cap_however_many_sessions() {
     replay.inner.lock().held_cap = 20_000;
     for s in 0..200 {
         let batch: Vec<_> = (0..10)
-            .map(|i| sized(None, &format!("s{s}"), i, 100))
+            .map(|i| sized(&local(), &format!("s{s}"), i, 100))
             .collect();
         hold(&mut replay.inner.lock(), replay.book, &batch);
         let inner = replay.inner.lock();
@@ -274,7 +274,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
         frame: cmd_wire::frame::Frame::SessionLeft(ended_state("done", "T")),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
-        (0..10).map(|i| sized(None, sid, i, 100)).collect()
+        (0..10).map(|i| sized(&local(), sid, i, 100)).collect()
     };
     hold(&mut r.inner.lock(), r.book, &rows("live"));
     hold(&mut r.inner.lock(), r.book, &rows("done"));
@@ -288,9 +288,9 @@ fn when_full_sessions_that_are_not_live_go_first() {
 #[tokio::test]
 async fn the_same_sid_on_two_machines_is_held_apart() {
     let replay = EventReplay::new();
-    let local: Vec<_> = (0..5).map(|i| sized(None, "s", i, 10)).collect();
+    let local: Vec<_> = (0..5).map(|i| sized(&local(), "s", i, 10)).collect();
     let pi: Vec<_> = (0..REPLAY_TAIL_KEEP + TRIM_SLACK + 1)
-        .map(|i| sized(Some("pi"), "s", i, 10))
+        .map(|i| sized(&crate::origin::Origin::named("pi".to_string()), "s", i, 10))
         .collect();
     push_and_trim(&mut replay.inner.lock(), &local);
     push_and_trim(&mut replay.inner.lock(), &pi);
@@ -603,7 +603,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     );
     // 过了就绪点：同一个 webview 再订一条（另一台机器的整台流）⇒ 当场交它的留存
     let mut remote = payload("rs", 0);
-    remote.origin = Some("box".to_string());
+    remote.origin = crate::origin::Origin::named("box".to_string());
     r.on_line_batch_awaited(vec![remote]).await;
     rec.clear();
     let boxo = crate::origin::Origin::named("box".to_string());
@@ -627,7 +627,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     let (r, rec) = hub();
     r.origin_seen(&local(), true);
     let mut far = payload("b", 9);
-    far.origin = Some("box".to_string()); // 同名会话、别的机器
+    far.origin = crate::origin::Origin::named("box".to_string()); // 同名会话、别的机器
     let mut early = lines("a", 0..2);
     early.extend(lines("b", 0..2));
     early.push(far.clone());
@@ -826,7 +826,7 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
     r.ready_point(None).await;
     let mut remote_lines = lines("s", 0..2);
     for p in &mut remote_lines {
-        p.origin = Some("box-a".into());
+        p.origin = crate::origin::Origin::named("box-a".to_string());
     }
     r.on_line_batch_awaited(remote_lines).await;
     assert_eq!(by_sub(&rec), vec![(2, "line", 0), (2, "line", 1)]);

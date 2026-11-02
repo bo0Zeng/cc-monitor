@@ -10,6 +10,7 @@
 
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 这一家的默认上游那一格（注册表 `Adapter.upstream`）。
@@ -70,8 +71,11 @@ pub(crate) const SETTINGS_ENV: SettingsEnvFace = SettingsEnvFace {
     covered_in: |_| None,
 };
 
-/// 读那份配置的上限（几 KB；超了按「读不了」说，不当没写）。
-const CONFIG_CAP_BYTES: u64 = 1 << 20;
+/// 读那份配置的上限（几 KB）：超了按「读不了」说（结果里带着为什么），不当没写。
+const CONFIG_CAP_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::DegradeAndSay,
+};
 
 /// 顶层那个键。
 const KEY: &str = "openai_base_url";
@@ -85,11 +89,12 @@ fn read_config_base_url(home: &Path) -> (PathBuf, SettingsBaseUrl) {
         }
         Err(e) => Err(SettingsUnreadable::Io(e.to_string())),
         Ok(m) if !m.is_file() => Err(SettingsUnreadable::NotFile),
-        Ok(m) if m.len() > CONFIG_CAP_BYTES => {
-            let error = SettingsUnreadable::TooLarge(CONFIG_CAP_BYTES);
+        Ok(m) if m.len() > CONFIG_CAP_BYTES.bytes => {
+            let error = SettingsUnreadable::TooLarge(CONFIG_CAP_BYTES.bytes);
             Err(error)
         }
-        Ok(_) => Ro::read_to_string(&file).map_err(|e| SettingsUnreadable::Io(e.to_string())),
+        Ok(_) => Ro::read_string_capped(&file, CONFIG_CAP_BYTES)
+            .map_err(|e| SettingsUnreadable::Io(e.raw.unwrap_or(e.said))),
     };
     let found = match raw {
         Ok(text) => config_base_url(&text),

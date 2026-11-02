@@ -2,6 +2,7 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 覆盖配置根的环境变量名。**账号隔离（后端 `accounts/manage/` 建的账号库）就是靠切它**，
@@ -34,15 +35,19 @@ pub(crate) fn settings_may_set_base_url(
     if let Some(c) = cwd {
         files.extend(super::footprint::project_settings_files(c));
     }
-    files.iter().any(|f| match Ro::read_to_string(f) {
-        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
-        Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {
-            Err(_) => true,
-            Ok(v) => v["env"][BASE_URL_ENV]
-                .as_str()
-                .is_some_and(|u| !u.is_empty()),
-        },
-    })
+    files
+        .iter()
+        .any(|f| match Ro::read_string_capped(f, SETTINGS_CAP_BYTES) {
+            Err(_) => {
+                !matches!(Ro::metadata(f), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+            }
+            Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {
+                Err(_) => true,
+                Ok(v) => v["env"][BASE_URL_ENV]
+                    .as_str()
+                    .is_some_and(|u| !u.is_empty()),
+            },
+        })
 }
 
 /// 直接敲的 claude 也走中转（注册表 `DefaultUpstream.settings_env` 那一格）：`~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL`。
@@ -59,15 +64,16 @@ pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::Set
 fn project_covers_base_url(project: &Path) -> Option<PathBuf> {
     let [shared, local] = super::footprint::project_settings_files(project);
     [local, shared].into_iter().find(|f| {
-        Ro::metadata(f).is_ok_and(|m| m.is_file() && m.len() <= SETTINGS_CAP_BYTES)
-            && Ro::read_to_string(f).is_ok_and(|t| {
-                matches!(settings_base_url(&t), super::super::SettingsBaseUrl::Set(_))
-            })
+        Ro::read_string_capped(f, SETTINGS_CAP_BYTES)
+            .is_ok_and(|t| matches!(settings_base_url(&t), super::super::SettingsBaseUrl::Set(_)))
     })
 }
 
-/// 读那份设置文件的上限（几 KB 的配置；超了按「读不了」说，不当没写）。
-const SETTINGS_CAP_BYTES: u64 = 1 << 20;
+/// 读那份设置文件的上限（几 KB 的配置）：超了按「读不了」说（结果里带着为什么），不当没写。
+const SETTINGS_CAP_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::DegradeAndSay,
+};
 
 /// `$HOME/.claude/settings.json`（不看 `CLAUDE_CONFIG_DIR`：直接敲的 claude 没设它时读的就是这一份）＋ 里面那一格。**只读**。
 /// 不在 ⇒ 没写；不是普通文件 / 超上限 / 读不动 / 读不懂 ⇒ 读不了（带为什么，不当没写）。
@@ -78,11 +84,12 @@ fn read_settings_base_url(home: &Path) -> (PathBuf, super::super::SettingsBaseUr
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (file, S::Unset),
         Err(e) => Err(Why::Io(e.to_string())),
         Ok(m) if !m.is_file() => Err(Why::NotFile),
-        Ok(m) if m.len() > SETTINGS_CAP_BYTES => {
-            let error = Why::TooLarge(SETTINGS_CAP_BYTES);
+        Ok(m) if m.len() > SETTINGS_CAP_BYTES.bytes => {
+            let error = Why::TooLarge(SETTINGS_CAP_BYTES.bytes);
             Err(error)
         }
-        Ok(_) => Ro::read_to_string(&file).map_err(|e| Why::Io(e.to_string())),
+        Ok(_) => Ro::read_string_capped(&file, SETTINGS_CAP_BYTES)
+            .map_err(|e| Why::Io(e.raw.unwrap_or(e.said))),
     };
     let found = match raw {
         Ok(text) => settings_base_url(&text),

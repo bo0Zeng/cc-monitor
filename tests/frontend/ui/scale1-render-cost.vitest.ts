@@ -76,7 +76,7 @@ import {
 } from "../../../src/frontend/ui/render-stream-record";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
@@ -196,7 +196,7 @@ const FOLDED_GROWTH_MAX = 2 * 201;
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale1/session.jsonl",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),
@@ -224,6 +224,7 @@ function drivePass(lines: string[]): void {
       session_id: "scale1",
       cwd: null,
       path: "/tmp/scale1/session.jsonl",
+      origin: LOCAL,
       seq: seq++,
       record,
     };
@@ -691,6 +692,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
           session_id: "ring",
           cwd: null,
           path: "/tmp/scale1/ring.jsonl",
+          origin: LOCAL,
           seq: i,
           record: {
             agent: "claude",

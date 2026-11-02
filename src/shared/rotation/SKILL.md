@@ -40,7 +40,7 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 ```ts
 type AgentKind = string;
-type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "reset": { key: string, row?: number, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | { "prune": Record<symbol, never> };
 type RotSeg = { from: string, to: string, v: number, };
 type RotTarget = { sid: string, } | { strategy: string, };
 type RotTempOp = { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };

@@ -286,18 +286,22 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
                 &[("seq", &seq.to_string()), ("bytes", &bytes.to_string())],
             )));
         }
-        let got = Ro::read_nofollow(&p).map_err(|e| {
-            WriteRefusal::io(
+        // 这一块至多是总长还没拼上的那一段：上限就是它，超了整趟拒（不截一段拼进去）。
+        let left = relay_route_core::Cap {
+            bytes: bytes.saturating_sub(out.len() as u64),
+            over: relay_route_core::Over::Reject,
+        };
+        let got = Ro::read_capped_nofollow(&p, left).map_err(|e| {
+            WriteRefusal::read(e, |why| {
                 copy_text(
                     "beFilesCommit.chunk.unreadable",
                     &[
                         ("seq", &seq.to_string()),
                         ("path", &p.display().to_string()),
-                        ("why", &io_reason(e.kind())),
+                        ("why", why),
                     ],
-                ),
-                &e,
-            )
+                )
+            })
         })?;
         out.extend_from_slice(&got);
     }
