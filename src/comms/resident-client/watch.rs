@@ -20,6 +20,10 @@ use tokio::sync::Notify;
 pub const WATCH_CMD: &str = "stream-watch";
 
 /// 一次报名单的期限：后端在连接内就地做完（只是换一张表、数几个游标），几秒足够；超了就等下一次变化 / 下一条连接。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "报一次在看名单的期限：客户端自己定的数，管 `stream-watch` 那一问"
+)]
 pub const WATCH_BUDGET: Duration = Duration::from_secs(10);
 
 type HeldFn = Box<dyn Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync>;

@@ -16,6 +16,10 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, Write
 pub const RELAY_ABSENT: &str = "absent";
 /// 等常驻后端绑上口那一段：至多试几次 · 每次隔多久（合计 6 秒）。
 pub const RELAY_TRIES: u32 = 30;
+#[expect(
+    clippy::disallowed_methods,
+    reason = "等常驻后端绑上口那一段每次隔多久：客户端自己定的数，管小中继回 `absent` 之后的那一次重试"
+)]
 pub const RELAY_WAIT: Duration = Duration::from_millis(200);
 
 /// 握手那两行（hello · attach 回话）的上限：hello 实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，
