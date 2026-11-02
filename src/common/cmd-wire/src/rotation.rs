@@ -975,7 +975,7 @@ pub struct RotSeg {
     pub v: f64,
 }
 
-/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
+/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 恢复默认 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出 · 清掉账号库里没有的号。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -989,6 +989,14 @@ pub enum RotEdit {
         row: Option<usize>,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         v: Value,
+    },
+    /// 恢复默认：那一格的键从那一行删掉（`row` 缺 ⇒ 从总体删；分段那一格几窗一起删），回到跟总体或声明里的默认。
+    /// 不借 `set` 的 `v: null`：可空的那一格，`null` 是「设成空的那一项」。
+    Reset {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        row: Option<usize>,
     },
     /// 分段那一窗此刻生效的段里：`at` ＋ `seg` ⇒ 第 `at` 段换成 `seg`；只 `at` ⇒ 删第 `at` 段；只 `seg` ⇒ 加一段（压过它盖住的）。写成那一行自己的。
     Seg {
@@ -1019,6 +1027,8 @@ pub enum RotEdit {
     Add { account: String },
     /// 移出一行。
     Remove { row: usize },
+    /// 号列表里这台账号库没有的号一并移出（开会话的号那一行与库里有的照留、照原先后）。
+    Prune {},
 }
 
 /// `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `stale`）。

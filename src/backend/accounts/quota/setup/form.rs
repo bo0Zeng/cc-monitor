@@ -438,7 +438,13 @@ fn put_window(
 }
 
 /// 照意图改出整份新设置（形状照声明的校验另做：[`check`]）。行号越界 · 那一格不是 24 小时条 · 分钟越界 ⇒ 那一句（入参不对）。
-pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<Value, String> {
+/// `here`：这个号在这台账号库里（只有「清掉库里没有的号」问它）。
+pub(crate) fn apply(
+    form: &[Cell],
+    settings: &Value,
+    edit: &RotEdit,
+    here: &dyn Fn(&str) -> bool,
+) -> Result<Value, String> {
     let mut out = settings.clone();
     if !out.is_object() {
         out = Value::Object(Default::default());
@@ -538,6 +544,20 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
                 return Err(no_row(*row));
             }
             r.remove(*row);
+            top.insert(ACCOUNTS.into(), Value::Array(r));
+        }
+        RotEdit::Reset { key, row: None } => {
+            top.remove(key);
+        }
+        RotEdit::Reset { key, row: Some(i) } => {
+            row_mut(top, *i)?.remove(key);
+        }
+        RotEdit::Prune {} => {
+            let mut r = rows();
+            r.retain(|x| match x.get("id").and_then(Value::as_str) {
+                Some(id) => here(id),
+                None => true,
+            });
             top.insert(ACCOUNTS.into(), Value::Array(r));
         }
     }

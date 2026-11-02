@@ -342,7 +342,7 @@ pub enum Unopened {
 /// 列不出来 ⇒ 窗口进程不开窗就退，这里带着那句原话回 [`Unopened::Said`]；一句话都没说就 EOF ⇒ 进程这一层的错。
 /// 这一等是阻塞的，上界由窗口进程自己那几段期限定（两问各一个 `FIRST_SCREEN_BUDGET`，窗口包 `proc.rs`）⇒ 入口把整件放在 `spawn_blocking` 上。
 ///
-/// 早失败那一跳走 [`early_failure`] 同一条轮询（登记在 `rust_timer_registry` 里）：起不来那一形在说完就绪之后毫秒级就退，起来了那一形要占着
+/// 早失败那一跳走 [`early_failure`] 同一条轮询（`src/frontend/clippy.toml` 的定时器那一组 ＋ 那一处的放行理由）：起不来那一形在说完就绪之后毫秒级就退，起来了那一形要占着
 /// 进程直到用户关窗 ⇒ 预算内必然还在跑。买不到「窗口真的出现在屏幕上」与「起了循环之后才炸」的慢失败。
 ///
 /// # Errors
@@ -432,7 +432,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
 
 // 判的是 monitor 起的那个进程，所以住「起进程那一侧」。
 /// 那件事是不是当场就失败了 —— 是（＝预算内就结束了）回 `true`。「当场就死了」不许被报成成功。
-/// 「结束了没有」是入参：线程那一侧问 `is_finished()`、进程那一侧问 `try_wait()`，轮询只此一份（`rust_timer_registry` 里登记的那个 `wait-for-condition`）。
+/// 「结束了没有」是入参：线程那一侧问 `is_finished()`、进程那一侧问 `try_wait()`，轮询只此一份（`src/frontend/clippy.toml` 的定时器那一组 ＋ 下面那一处的放行理由）。
 ///
 /// 够用：起不来那一形在毫秒级就结束（二进制不对 · 没有图形会话 · 种子解不出），起来了的那一条会一直占着直到窗口关闭。
 /// 买不到「窗口真的出现在屏幕上」与慢失败。预算刻意短（300ms：加在用户那一次点击上的延迟）；不注入假时钟（换不掉任何 IO）。
@@ -442,6 +442,10 @@ pub fn early_failure(mut finished: impl FnMut() -> bool, budget: std::time::Dura
         if finished() {
             return true;
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "等开窗那一件是不是当场就死了：10ms 一步、至多 `budget`（入口给 `EARLY_FAILURE_BUDGET` 300ms），跑完就结束；阻塞等会把命令挂在窗口整个寿命上。窗口改成常驻一个事件循环、第二次开窗不再失败时就去掉"
+        )]
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     false

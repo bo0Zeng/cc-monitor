@@ -491,14 +491,15 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),
-    // 开终端那一行前面那一段（带了 sid）：记录文件的路径 = 本机后端自己的数据目录 ＋ sid（`Sid` 解码那一下过 `session_id_ok`）·
-    //   那台的名字（机器表里那一格）；三样都只经本方言的单引号字面量，写法住 `platform/shell/{posix, powershell}.rs::note_own_window`。
+    // 开窗那一串（带了 sid）：前奏 ＋ 那一行 ＋ 收尾。记录文件的路径 = 本机后端自己的数据目录 ＋ sid（`Sid` 解码那一下过 `session_id_ok`）·
+    //   那台的名字（机器表里那一格）；都只经本方言的单引号字面量，写法住 `platform/shell/{posix, powershell}.rs` 的
+    //   `note_own_window` · `then_forget_own_window`；夹在中间的那一行是本侧已渲好的成品。
     (
         "src/backend/dial/opened_windows.rs",
-        &["prelude"],
+        &["prelude", "window"],
         &[("src/common/shell-quote-core/src/lib.rs", "session_id_ok")],
         "",
-        "开的那个 shell 记下自己窗口标签的那一段：记录文件路径（数据目录 ＋ sid）· 那台的名字",
+        "开的那个 shell 记下自己窗口标签、ssh 一退就删的那两段：记录文件路径（数据目录 ＋ sid）· 那台的名字 · 本侧渲好的那一行",
     ),
     // 收一整串的终端（Tilix）：开窗那一跳把 `bash -lic <留窗脚本> bash <命令>` 拼成一个参数交给它（它按 shell 词法切回去）。
     //   命令是本机后端渲好的成品，开窗之前过 `validate_launch_cmd`（控制符 · 长度 · 空）；留窗脚本是常量。
