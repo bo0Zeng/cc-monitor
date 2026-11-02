@@ -7,6 +7,20 @@ fn me() -> String {
     ))
 }
 
+/// `command` 造的是还没起的那一个：程序就是给的那个，argv 空，交注入的 `ManagedSpawn` 起得出来、同一个能起两次。
+#[cfg(unix)]
+#[test]
+fn a_built_command_is_unstarted_and_can_be_started_twice_through_the_injected_spawn() {
+    let mut cmd = command("true");
+    assert_eq!(cmd.get_program(), "true");
+    assert_eq!(cmd.get_args().count(), 0);
+    let spawn = managed_spawner(ConsolePolicy::Hidden, Lifetime::JobKillOnClose, StderrSink::Null);
+    for _ in 0..2 {
+        let mut child = spawn(&mut cmd).expect("起得来");
+        assert!(child.wait().expect("收尸").success());
+    }
+}
+
 /// ★★ **三个策略一个都不许有 `Default`。**
 ///
 /// 这是整件事的**承重墙**：有 `Default` 的那一刻，「每个落点被迫回答三个问题」
@@ -86,8 +100,8 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
         ".process_group(",
         ".kill_on_drop(",
     ];
-    // `.output()` / `.status()` 不在这里：它们只长在一个 `Command` 上，而壳里 `Command` 只在
-    // `spawn_managed_with` 里造（`clippy.toml` 起进程那一组），造好当场按三条策略起，落点拿不到它。
+    // `.output()` / `.status()` 不在这里：它们只长在一个 `Command` 上，而壳里 `Command` 只经
+    // `spawn_managed::command` 造（`clippy.toml` 起进程那一组），交出去的那一个由注入的 `ManagedSpawn` 起。
     // 🔴 **排掉的是谁、为什么 —— 明写。**
     //
     // 排掉 `src/frontend/shell/src/spawn_managed.rs`：它**就是**那个唯一出口，

@@ -39,7 +39,6 @@
 use crate::detail::Shell as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use copy_core::{Discard, Why};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -172,18 +171,21 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
-        let path = resolve_config_path().ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
-        patch_config_at(&path, &edits).map_err(ConfigWriteError::into_said)?;
+        let own = crate::platform::own_fs::OwnState::issue()
+            .ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
+        patch_config_at(&own, &edits).map_err(ConfigWriteError::into_said)?;
         Ok(())
     })();
     r.map_err(|s| s.named("patch_config"))
 }
 
-/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没有 ⇒ 不写。
+/// 🔴 **`config.json` 唯一的写函数**（落在 `own` 的根底下）。锁内现读 → 逐条应用 → 经 `own_fs` 原子写。回逐条结局；一条都没有 ⇒ 不写。
 pub(crate) fn patch_config_at(
-    path: &Path,
+    own: &crate::platform::own_fs::OwnState,
     edits: &[ConfigEdit],
 ) -> Result<Vec<Applied>, ConfigWriteError> {
+    let name = relay_route_core::file_name_of(relay_route_core::CONFIG_FILE.row.rel);
+    let path = &config_path_in(own.root());
     // ① 先验全部：一条不成形 ⇒ 整批拒，连锁都不拿。
     if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
         return Err(ConfigWriteError::BadEdit(format!(
@@ -196,16 +198,8 @@ pub(crate) fn patch_config_at(
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // ②b 跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
-    let dir = path.parent().ok_or_else(|| {
-        ConfigWriteError::Io(
-            Said::of(
-                "rsConfig.write.noParent",
-                &[("path", &path.display().to_string())],
-            )
-            .into(),
-        )
-    })?;
-    // 数据目录只给本人（缺的几层建成 0700，已在的不动）；下面那份临时件出生即 0600，换名上位后 `config.json` 就是它的权限。
+    let dir = own.root();
+    // 数据目录只给本人（缺的几层建成 0700，已在的不动）；`own_fs` 的临时件出生即 0600，换名上位后 `config.json` 就是它的权限。
     crate::platform::fs::ensure_private_dir(dir).map_err(ConfigWriteError::Io)?;
     let _cross = crate::platform::fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
@@ -236,38 +230,14 @@ pub(crate) fn patch_config_at(
     // ④ 逐条应用。
     let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(&mut root, e)).collect();
 
-    // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
+    // ⑤ 原子写：临时件名带 pid 与序号（两个 monitor 进程不互删对方的），先落盘再换名上位，失败时临时件由 `own_fs` 收。
     let pretty = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| {
         ConfigWriteError::Io(Said::with_raw(
             copy_text("rsConfig.write.encodeFailed", &[]),
             &e,
         ))
     })?;
-    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    crate::platform::fs::only_me_on_create(&mut opts);
-    // 换名前先落盘：不然断电后换上去的可能是一份空文件。
-    opts.open(&tmp)
-        .and_then(|mut f| {
-            std::io::Write::write_all(&mut f, pretty.as_bytes())?;
-            f.sync_all()
-        })
-        .map_err(|e| {
-            ConfigWriteError::Io(Said::with_raw(
-                copy_text(
-                    "reason.fs.writeFailed",
-                    &[
-                        ("path", &tmp.display().to_string()),
-                        ("why", &copy_core::io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            ))
-        })?;
-    // 标准库的换名在 Windows 上就是覆盖已在的目标，长路径前缀它自己补。
-    std::fs::rename(&tmp, path).map_err(|e| {
-        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 原子写的临时件
+    own.write(name, pretty.as_bytes()).map_err(|e| {
         ConfigWriteError::Io(Said::with_raw(
             copy_text(
                 "reason.fs.writeFailed",

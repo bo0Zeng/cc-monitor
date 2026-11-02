@@ -27,18 +27,11 @@ fn slot_rows() -> Result<Vec<SlotRow>, Said> {
     if let Some(r) = ROWS.get() {
         return Ok(r.clone());
     }
-    let dir = slots_dir().ok_or_else(|| Said::of("rsFilewinProc.bin.noHome", &[]))?;
+    let slots = slots_bin().ok_or_else(|| Said::of("rsFilewinProc.bin.noHome", &[]))?;
     let mut rows = Vec::new();
     for (key, id, bytes) in crate::byte_table::carried_backends() {
         let name = format!("{}-{}", key.os.label(), key.arch.label()).to_lowercase();
-        let path = crate::local_backend::place_local_program(
-            &dir,
-            &name,
-            bytes,
-            &crate::platform::fs::make_executable,
-            &crate::platform::fs::ensure_private_dir,
-        )
-        .map_err(|e| {
+        let path = crate::local_backend::place_local_program(&slots, &name, bytes).map_err(|e| {
             Said::with_raw(
                 copy_text(
                     "deploy.bytes.unreadable",
@@ -68,10 +61,9 @@ pub(crate) fn place_slots() {
     }
 }
 
-/// 那几格落在哪：本机后端落点旁边（`~/.cc-monitor/bin/slots`）。家目录问不到 ⇒ `None`。
-fn slots_dir() -> Option<std::path::PathBuf> {
-    let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
-    crate::data_paths::home().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
+/// 那几格落在哪：本机后端落点旁边（`~/.cc-monitor/bin/slots`）的句柄。家目录问不到 ⇒ `None`。
+fn slots_bin() -> Option<crate::platform::own_fs::OwnBin> {
+    crate::platform::own_fs::OwnBin::issue()?.sub("slots").ok()
 }
 
 /// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。

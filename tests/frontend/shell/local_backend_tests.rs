@@ -500,7 +500,7 @@ fn two_processes_do_not_share_one_partial_file() {
 /// 「按年龄判」这种阈值逻辑最容易写反（`>=` 写成 `<=` 一个字符的事）。
 #[test]
 fn the_sweep_only_takes_the_old_ones() {
-    let dir = std::env::temp_dir().join(format!(
+    let home = std::env::temp_dir().join(format!(
         "p2t-sweep-{}-{:?}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -508,6 +508,8 @@ fn the_sweep_only_takes_the_old_ones() {
             .unwrap()
             .as_nanos()
     ));
+    let bin = bin_under(&home);
+    let dir = bin.dir().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     let name = "cc-monitor-backend-testbuild";
     // 把 mtime 拨老 48h。⚠ 这一步是**判据的一部分**：首跑时我只放了「新鲜的别人的文件」，
@@ -530,7 +532,7 @@ fn the_sweep_only_takes_the_old_ones() {
     age_back(&stale);
     age_back(&other_stale);
 
-    sweep_stale_partials(&dir, name);
+    sweep_stale_partials(&bin, name);
 
     assert!(
         fresh.exists(),
@@ -550,7 +552,7 @@ fn the_sweep_only_takes_the_old_ones() {
         "把**别人的**老文件也收了 —— 这个目录与远端自部署共用，\
              只有「够老」不构成删的理由，还得是**我们自己命名法**的"
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 读行循环**真的调**那个吸收点。
@@ -960,6 +962,15 @@ fn tmpdir_e2(tag: &str) -> PathBuf {
     d
 }
 
+/// 落点句柄：家目录喂成 `home`（真 `~/.cc-monitor` 不碰），落点就是它底下的 `.cc-monitor/bin`。
+fn bin_under(home: &Path) -> OwnBin {
+    let home = home.to_path_buf();
+    OwnBin::issue_with(&|k| {
+        matches!(k, "HOME" | "USERPROFILE").then(|| home.clone().into_os_string())
+    })
+    .expect("家是绝对路径")
+}
+
 /// 替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
 struct FakeAsk {
     answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
@@ -1003,11 +1014,8 @@ fn place() -> Result<serde_json::Value, crate::backend_once::OnceErr> {
 /// 每一形之后目录里都没有暂存件。落点文件名恒是 [`local_ccm_entry_name`]。
 #[test]
 fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
-    let d = tmpdir_e2("place");
-    let mark = |_: &Path| Ok(());
-    let dirs = |p: &Path| {
-        std::fs::create_dir_all(p).map_err(|e| copy_core::said::Said::from(e.to_string()))
-    };
+    let bin = bin_under(&tmpdir_e2("place"));
+    let d = bin.dir().to_path_buf();
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
     let partial = d.join(format!(
@@ -1018,7 +1026,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let no_partials = || !partial.exists();
     let mine = stamped("p5a-mine", 1);
     let put = |fake: &FakeAsk| {
-        extract_embedded_to(&d, "p5a-mine", &mine, &mark, &dirs, &|p, a| fake.ask(p, a))
+        extract_embedded_to(&bin, "p5a-mine", &mine, &|p, a| fake.ask(p, a))
     };
     // 缺 ⇒ 问 ⇒ 放
     let fake = FakeAsk::new(place(), &mine);
@@ -1107,16 +1115,11 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 /// 真跑一趟 `resolve_or_extract`（字节只有内嵌那一个来源）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
 #[test]
 fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
-    let base = tmpdir_e2("resolve");
+    let home = tmpdir_e2("resolve");
+    let landing = bin_under(&home);
+    let base = landing.dir().to_path_buf();
     let bytes = stamped("p5a-wire", 5);
-    let mark = |_: &Path| Ok(());
-    let r = resolve_or_extract(
-        &base,
-        Ok(("p5a-wire", &bytes)),
-        &mark,
-        &crate::platform::fs::ensure_private_dir,
-        &|_, _| place(),
-    );
+    let r = resolve_or_extract(&landing, Ok(("p5a-wire", &bytes)), &|_, _| place());
     let Resolved::Found(bin) = r.clone() else {
         panic!("夹具塌了：内嵌那份没放出来 ⇒ 本条此刻无效。实得 {r:?}");
     };
@@ -1134,7 +1137,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
         !base.join("cc-monitor-backend-p5a-wire").exists(),
         "又按带 build_id 的名字放了第二份后端字节"
     );
-    let _ = std::fs::remove_dir_all(&base);
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 同源的**拼写那一半**：两条落点里那个 `ccm`，取自**同一处**。
@@ -1317,14 +1320,14 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     // 用一个**普通文件**占住父路径 —— 下面那个 `create_dir_all` 必然失败。
     let blocker = base.join("occupied");
     std::fs::write(&blocker, b"x").expect("写占位文件");
-    let dir = blocker.join("bin");
+    // 家目录喂成那个普通文件 ⇒ 落点 `<它>/.cc-monitor/bin` 建不出来。
+    let landing = bin_under(&blocker);
+    let dir = landing.dir().to_path_buf();
 
     let Err(Unplaced::Write(err)) = extract_embedded_to(
-        &dir,
+        &landing,
         "p2e-dial",
         b"not-a-real-backend",
-        &|_| Ok(()),
-        &crate::platform::fs::ensure_private_dir,
         &|_, _| panic!("目录都建不出来还去问放不放"),
     ) else {
         panic!("目标目录的父路径是个普通文件，它居然没走「写不进去」那一形");
@@ -2232,14 +2235,15 @@ fn e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap() {
 #[test]
 #[ignore]
 fn e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem() {
-    let dir = std::path::PathBuf::from(std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK"))
-        .join("not-carried");
+    let landing = bin_under(
+        &std::path::PathBuf::from(std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK"))
+            .join("not-carried"),
+    );
+    let dir = landing.dir().to_path_buf();
     let said = "这一份产物没带本机后端（夹具句）";
     let r = resolve_or_extract(
-        &dir,
+        &landing,
         Err(said.to_string()),
-        &|_: &Path| Ok(()),
-        &crate::platform::fs::ensure_private_dir,
         &|_, _| panic!("没带字节还去问放不放"),
     );
     let Resolved::Missing { reason, .. } = r else {
@@ -2665,13 +2669,10 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     let base = std::env::temp_dir().join(format!("ccm-dp1-refuse-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).expect("建夹具目录");
-    let mark = |_: &Path| Ok(());
     let said = "本机 是 macOS / arm64 的机器（夹具句）";
     let r = resolve_or_extract(
-        &base,
+        &bin_under(&base),
         Err(said.to_string()),
-        &mark,
-        &crate::platform::fs::ensure_private_dir,
         &|_, _| panic!("取不到字节还去问放不放"),
     );
     let Resolved::Missing { reason, .. } = r else {

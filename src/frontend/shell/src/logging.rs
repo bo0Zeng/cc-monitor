@@ -163,6 +163,8 @@ pub struct LoggingState {
     reload_handle: FilterReloadHandle,
     log_dir: PathBuf,
     monitor_data_dir: PathBuf,
+    /// 诊断设置写回 `config.json` 用的句柄（`init` 那一下造）；数据目录说不出 ⇒ `None`，改设置时照「无主目录」报。
+    own: Option<crate::platform::own_fs::OwnState>,
     /// non_blocking writer 的 WorkerGuard。drop 时 worker 线程 flush + 退出。
     /// 必须跟 monitor 进程同生命周期 → 挂在 app.manage 的 state 上。
     _guard: Mutex<Option<WorkerGuard>>,
@@ -226,7 +228,11 @@ impl LoggingState {
         }
 
         // 4. 写回 config.json
-        write_diagnostics_to_config(&self.monitor_data_dir, &new_cfg)?;
+        let own = self
+            .own
+            .as_ref()
+            .ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
+        write_diagnostics_to_config(own, &new_cfg)?;
         *self.cfg.write() = new_cfg;
         Ok(hint)
     }
@@ -296,6 +302,7 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
         reload_handle,
         log_dir,
         monitor_data_dir: monitor_data_dir.to_path_buf(),
+        own: crate::platform::own_fs::OwnState::issue(),
         _guard: Mutex::new(guard),
     })
 }
@@ -381,7 +388,7 @@ fn read_diagnostics_from_config(monitor_data_dir: &Path) -> DiagnosticsConfig {
 }
 
 fn write_diagnostics_to_config(
-    monitor_data_dir: &Path,
+    own: &crate::platform::own_fs::OwnState,
     cfg: &DiagnosticsConfig,
 ) -> Result<(), Said> {
     let value = serde_json::to_value(cfg)
@@ -390,7 +397,7 @@ fn write_diagnostics_to_config(
         path: vec!["diagnostics".to_string()],
         value,
     };
-    crate::config::patch_config_at(&crate::config::config_path_in(monitor_data_dir), &[edit])
+    crate::config::patch_config_at(own, &[edit])
         .map(|_| ())
         .map_err(|e| {
             match e {

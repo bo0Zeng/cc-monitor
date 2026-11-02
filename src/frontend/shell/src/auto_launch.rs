@@ -18,8 +18,8 @@
 
 use copy_core::copy_text;
 use copy_core::said::Said;
+use crate::platform::own_fs::OwnState;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -42,26 +42,28 @@ impl Default for AutoLaunchConfig {
     }
 }
 
+/// 数据目录里那份文件的名字（PowerShell 别名块 `cc.ps1.tpl` 照同一个名字读）。
+const FILE: &str = "auto-launch.json";
+
 /// 读 auto-launch.json。文件不存在或损坏时返回 default。
-pub fn load(file: &Path) -> AutoLaunchConfig {
-    let Ok(s) = std::fs::read_to_string(file) else {
+pub fn load(own: &OwnState) -> AutoLaunchConfig {
+    let Ok(s) = own.path(FILE).and_then(std::fs::read_to_string) else {
         return AutoLaunchConfig::default();
     };
     serde_json::from_str(&s).unwrap_or_default()
 }
 
-/// 原子写 auto-launch.json — 走 utils::atomic_write_json（Windows ReplaceFileW；
-/// 非 Windows rename），确保 crash 不丢 monitor exe 路径记录。
-pub fn save(file: &Path, cfg: &AutoLaunchConfig) -> std::io::Result<()> {
-    host_core::atomic_write_json(file, cfg)
+/// 写 auto-launch.json：monitor 自己的状态，经 `own_fs` 原子写（临时件先落盘再换名上位），crash 不丢 monitor exe 路径记录。
+pub fn save(own: &OwnState, cfg: &AutoLaunchConfig) -> std::io::Result<()> {
+    let body = serde_json::to_vec_pretty(cfg).map_err(std::io::Error::other)?;
+    own.write(FILE, &body)
 }
 
 /// monitor 启动时调：把当前 exe 路径更新到 auto-launch.json（保留 auto_launch_enabled）。
 ///
 /// 用户移动 cc-monitor.exe 后下次启动会自动更新。
-pub fn update_monitor_path_on_startup(monitor_data_dir: &Path) {
-    let file = monitor_data_dir.join("auto-launch.json");
-    let mut cfg = load(&file);
+pub fn update_monitor_path_on_startup(own: &OwnState) {
+    let mut cfg = load(own);
     let Ok(current) = std::env::current_exe() else {
         tracing::warn!("auto_launch: can't resolve current_exe");
         return;
@@ -71,7 +73,7 @@ pub fn update_monitor_path_on_startup(monitor_data_dir: &Path) {
         return; // 没变化，不写
     }
     cfg.monitor_exe_path = Some(current_str.clone());
-    if let Err(e) = save(&file, &cfg) {
+    if let Err(e) = save(own, &cfg) {
         tracing::warn!("auto_launch: save failed: {e}");
     } else {
         tracing::info!("auto_launch: recorded monitor path: {}", current_str);
@@ -79,29 +81,28 @@ pub fn update_monitor_path_on_startup(monitor_data_dir: &Path) {
 }
 
 /// 暴露给前端 UI（读 toggle 状态 + 当前记录的 path）
-pub fn get_config(monitor_data_dir: &Path) -> AutoLaunchConfig {
-    load(&monitor_data_dir.join("auto-launch.json"))
+pub fn get_config(own: &OwnState) -> AutoLaunchConfig {
+    load(own)
 }
 
 /// UI toggle 改变时调
-pub fn set_enabled(monitor_data_dir: &Path, enabled: bool) -> Result<(), Said> {
-    let file = monitor_data_dir.join("auto-launch.json");
-    let mut cfg = load(&file);
+pub fn set_enabled(own: &OwnState, enabled: bool) -> Result<(), Said> {
+    let mut cfg = load(own);
     cfg.auto_launch_enabled = enabled;
-    save(&file, &cfg).map_err(|e| {
+    save(own, &cfg).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "rsShellCmd.autoLaunch.saveFailed",
                 &[("why", &copy_core::reason::io_reason(e.kind()))],
             ),
-            format!("{}\n{e}", file.display()),
+            format!("{}\n{e}", own.root().join(FILE).display()),
         )
     })
 }
 
-/// 返回 monitor_data_dir 的 PathBuf 便利方法（IPC 命令用）
-pub fn data_dir() -> Option<PathBuf> {
-    crate::config::resolve_monitor_data_dir()
+/// 写 auto-launch.json 的句柄（IPC 命令那一口造一次）：数据目录说不出 ⇒ `None`。
+pub fn own_state() -> Option<OwnState> {
+    OwnState::issue()
 }
 
 #[cfg(test)]

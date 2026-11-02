@@ -31,9 +31,20 @@ fn remove(path: &[&str]) -> ConfigEdit {
     }
 }
 
-/// 写口用的临时件名（`config.json.<pid>.tmp`）。
-fn tmp_of(file: &Path) -> PathBuf {
-    file.with_extension(format!("json.{}.tmp", std::process::id()))
+/// 写 `file` 那一份的句柄：根是它所在的目录（经 `CCM_DATA_DIR` 喂成它；真数据目录不碰）。
+fn own_of(file: &Path) -> crate::platform::own_fs::OwnState {
+    let dir = file.parent().expect("config.json 有上一层").to_path_buf();
+    crate::platform::own_fs::OwnState::issue_with(&|k| {
+        (k == DATA_DIR_ENV).then(|| dir.clone().into_os_string())
+    })
+    .expect("临时目录是绝对路径")
+}
+
+/// 那一层里除了 `file` 别无他物（临时件一份都没留下）：删掉 `file` 后那一层删得掉 ⇒ 是空的。
+/// 不遍历目录（见 `scanning_guard_registry`），收尾时用。
+fn nothing_else_beside(file: &Path) -> bool {
+    std::fs::remove_file(file).ok();
+    std::fs::remove_dir(file.parent().expect("上一层")).is_ok()
 }
 
 fn read(p: &Path) -> Value {
@@ -64,7 +75,7 @@ fn concurrent_patches_to_different_keys_all_survive() {
                     let top = format!("k{t}");
                     let sub = format!("s{t}");
                     patch_config_at(
-                        &file,
+                        &own_of(&file),
                         &[
                             set(&[top.as_str()], json!(r)),
                             set(&["seg", sub.as_str()], json!(r)),
@@ -87,8 +98,8 @@ fn concurrent_patches_to_different_keys_all_survive() {
     }
     want.insert("seg".into(), Value::Object(seg));
     assert_eq!(read(&file), Value::Object(want));
-    // 临时件没留下（名字由 pid 定，按名字查 —— 不遍历目录，见 `scanning_guard_registry`）
-    assert!(!tmp_of(&file).exists(), "临时件留下了");
+    // 临时件没留下（那一层删掉 config.json 后是空的）
+    assert!(nothing_else_beside(&file), "临时件留下了");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -103,7 +114,7 @@ fn set_and_remove_touch_only_their_path() {
     )
     .unwrap();
     patch_config_at(
-        &file,
+        &own_of(&file),
         &[
             // 段内一个子键：兄弟键不动
             set(&["tabBar", "order"], json!(["b", "a"])),
@@ -127,7 +138,7 @@ fn set_and_remove_touch_only_their_path() {
         })
     );
     patch_config_at(
-        &file,
+        &own_of(&file),
         &[
             remove(&["accounts", "modelByAccount", "a1"]),
             remove(&["keep"]),
@@ -150,7 +161,7 @@ fn set_and_remove_touch_only_their_path() {
 fn a_missing_file_starts_from_an_empty_object() {
     let dir = tmpdir("missing");
     let file = dir.join("sub").join("config.json");
-    patch_config_at(&file, &[set(&["theme"], json!({"bg": "#000"}))]).unwrap();
+    patch_config_at(&own_of(&file),&[set(&["theme"], json!({"bg": "#000"}))]).unwrap();
     assert_eq!(read(&file), json!({"theme": {"bg": "#000"}}));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -162,11 +173,11 @@ fn the_config_file_and_its_new_directory_are_only_for_the_owner() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = tmpdir("private");
     let file = dir.join("data").join("config.json");
-    patch_config_at(&file, &[set(&["a"], json!(1))]).unwrap();
+    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).unwrap();
     let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
     assert_eq!((mode(&dir.join("data")), mode(&file)), (0o700, 0o600));
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o664)).unwrap();
-    patch_config_at(&file, &[set(&["a"], json!(2))]).unwrap();
+    patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]).unwrap();
     assert_eq!(mode(&file), 0o600);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -178,7 +189,7 @@ fn an_empty_path_refuses_the_whole_batch() {
     let file = dir.join("config.json");
     let original = r#"{"keep":1}"#;
     std::fs::write(&file, original).unwrap();
-    let err = patch_config_at(&file, &[set(&["a"], json!(1)), set(&[], json!({}))])
+    let err = patch_config_at(&own_of(&file),&[set(&["a"], json!(1)), set(&[], json!({}))])
         .expect_err("空路径被接受了");
     assert!(matches!(err, ConfigWriteError::BadEdit(_)), "{err:?}");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
@@ -192,7 +203,7 @@ fn an_unreadable_file_is_left_alone() {
         let dir = tmpdir(tag);
         let file = dir.join("config.json");
         std::fs::write(&file, original).unwrap();
-        let err = patch_config_at(&file, &[set(&["a"], json!(9))]).expect_err("读不懂的被写了");
+        let err = patch_config_at(&own_of(&file),&[set(&["a"], json!(9))]).expect_err("读不懂的被写了");
         assert!(
             matches!(err, ConfigWriteError::Unreadable { .. }),
             "{err:?}"
@@ -205,7 +216,7 @@ fn an_unreadable_file_is_left_alone() {
         );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
         assert!(
-            !tmp_of(&file).exists(),
+            nothing_else_beside(&file),
             "留下了临时件 —— 「不写」要在写之前就停"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -243,7 +254,7 @@ fn the_golden_cases_hold() {
         let before = c["before"].as_str().unwrap();
         std::fs::write(&file, before).unwrap();
         let edits: Vec<ConfigEdit> = serde_json::from_value(c["edits"].clone()).unwrap();
-        let got = patch_config_at(&file, &edits);
+        let got = patch_config_at(&own_of(&file),&edits);
         match c.get("refused").and_then(Value::as_str) {
             Some(kind) => {
                 let err = got.expect_err(name);
@@ -285,7 +296,7 @@ fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
     let (tx, rx) = std::sync::mpsc::channel();
     let f2 = file.clone();
     let racer = std::thread::spawn(move || {
-        let r = patch_config_at(&f2, &[set(&["mine"], json!(1))]);
+        let r = patch_config_at(&own_of(&f2),&[set(&["mine"], json!(1))]);
         tx.send(r.is_ok()).unwrap();
     });
     assert!(
@@ -325,7 +336,8 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
     );
 }
 
-/// 🔴 临时件先落盘再换名：`sync_all` 恰好一处、排在换名之前（反过来 ⇒ 断电后换上去的可能是一份空文件，用户配置全丢）。
+/// 🔴 临时件先落盘再换名（反过来 ⇒ 断电后换上去的可能是一份空文件，用户配置全丢）：写口落盘恰好经 `own_fs` 那一口原子写一处，
+/// 而那一口里「写满 ＋ `sync_all`」排在换名之前。
 #[test]
 fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let prod =
@@ -333,13 +345,23 @@ fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let at = guard_core::find_pinned(&prod, "pub(crate) fn patch_config_at(").expect("写口不在了");
     let body = &prod[at..];
     let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
-    let sync = guard_core::find_pinned(body, ".sync_all()").expect("写口里落盘不是恰好一处");
-    let swap = guard_core::find_pinned(body, "std::fs::rename(&tmp, path)")
-        .expect("写口里换名不是恰好一处");
+    guard_core::find_pinned(body, "own.write(name, ").expect("写口落盘不是恰好经 `own.write` 一处");
+    let own_fs = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/own_fs.rs"
+    ));
+    let at = guard_core::find_pinned(&own_fs, "fn write_atomic(").expect("原子写那一口不在了");
+    let body = &own_fs[at..];
+    let body = &body[..body.find("\n}").expect("函数体没收尾")];
+    let fill = guard_core::find_pinned(body, "fill(f, bytes)").expect("原子写里写满不是恰好一处");
+    let swap = guard_core::find_pinned(body, "rename(&tmp, at)").expect("原子写里换名不是恰好一处");
     assert!(
-        sync < swap,
+        fill < swap,
         "落盘排在换名之后 —— 换上去的那一份可能还没写到盘上"
     );
+    let at = guard_core::find_pinned(&own_fs, "fn fill(").expect("写满那一口不在了");
+    let fill_body = &own_fs[at..];
+    let fill_body = &fill_body[..fill_body.find("\n}").expect("函数体没收尾")];
+    guard_core::find_pinned(fill_body, ".sync_all()").expect("写满之后没落盘");
 }
 
 /// 路径超过 260 字符照样写得上（Windows 上换名要带长路径前缀；标准库自己补）。
@@ -351,8 +373,8 @@ fn a_config_path_longer_than_260_characters_is_written() {
         dir.push("abcdefghijklmnopqrstuvwxyz0123456789");
     }
     let file = dir.join("config.json");
-    patch_config_at(&file, &[set(&["a"], json!(1))]).unwrap();
-    patch_config_at(&file, &[set(&["a"], json!(2))]).unwrap();
+    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).unwrap();
+    patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]).unwrap();
     assert_eq!(read(&file), json!({"a": 2}));
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -417,7 +439,7 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
         path: vec!["theme".to_string()],
         value: serde_json::json!("dark"),
     };
-    let Err(ConfigWriteError::Io(s)) = patch_config_at(&path, &[edit]) else {
+    let Err(ConfigWriteError::Io(s)) = patch_config_at(&own_of(&path),&[edit]) else {
         panic!("父路径是个普通文件，写口居然没走盘上失败那一形");
     };
     assert!(s.said.contains("occupied"), "没说清是哪个目录：{s}");
@@ -466,7 +488,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         load_config_at(&file).unwrap()["pad"].as_str().map(str::len),
         Some(cap - 10)
     );
-    patch_config_at(&file, &[set(&["a"], json!(1))]).expect("刚好上限那一份写不进");
+    patch_config_at(&own_of(&file),&[set(&["a"], json!(1))]).expect("刚好上限那一份写不进");
 
     let over = sized(cap + 1);
     std::fs::write(&file, &over).unwrap();
@@ -479,7 +501,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         "{}",
         said.said
     );
-    let Err(err) = patch_config_at(&file, &[set(&["a"], json!(2))]) else {
+    let Err(err) = patch_config_at(&own_of(&file),&[set(&["a"], json!(2))]) else {
         panic!("超了上限的被写了")
     };
     assert!(matches!(err, ConfigWriteError::Io(_)), "{err:?}");
@@ -487,7 +509,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         std::fs::read_to_string(&file).unwrap() == over,
         "盘上字节变了"
     );
-    assert!(!tmp_of(&file).exists(), "留下了临时件");
+    assert!(nothing_else_beside(&file), "留下了临时件");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

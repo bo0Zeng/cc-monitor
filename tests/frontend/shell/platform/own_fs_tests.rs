@@ -115,3 +115,36 @@ fn a_log_dir_is_created_where_the_caller_says() {
     log_dir(&at).expect("已在的不动");
     std::fs::remove_dir_all(&home).ok();
 }
+
+/// 喂进去的环境只答这几个名字（家目录两臂都答同一个，`CCM_DATA_DIR` 给了才答）。
+fn env_of(
+    home: &Path,
+    data: Option<&Path>,
+) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+    let home = home.to_path_buf();
+    let data = data.map(Path::to_path_buf);
+    move |k: &str| match k {
+        "HOME" | "USERPROFILE" => Some(home.clone().into_os_string()),
+        k if k == crate::config::DATA_DIR_ENV => data.clone().map(PathBuf::into_os_string),
+        _ => None,
+    }
+}
+
+/// 状态的根照数据目录的规矩推（设了 `CCM_DATA_DIR` 就是它）；部署物的落点恒在家目录底下后端落点那一层，
+/// 与 `CCM_DATA_DIR` 无关（远端部署 · 别名块认的是同一处）。
+#[test]
+fn the_two_roots_follow_their_own_rules() {
+    let home = fake_home("roots");
+    let data = home.join("elsewhere");
+    let own = OwnState::issue_with(&env_of(&home, None)).expect("有家");
+    assert_eq!(own.root(), home.join(".cc-monitor"));
+    let own = OwnState::issue_with(&env_of(&home, Some(&data))).expect("有家");
+    assert_eq!(own.root(), data);
+    let bin = OwnBin::issue_with(&env_of(&home, Some(&data))).expect("有家");
+    assert_eq!(bin.dir(), home.join(".cc-monitor").join("bin"));
+    let slots = bin.sub("slots").expect("一段名字");
+    assert_eq!(slots.dir(), home.join(".cc-monitor").join("bin").join("slots"));
+    assert!(bin.sub("a/b").is_err(), "落点底下只认一段名字");
+    assert!(OwnState::issue_with(&|_: &str| None).is_none(), "没有家 ⇒ 造不出");
+    std::fs::remove_dir_all(&home).ok();
+}
