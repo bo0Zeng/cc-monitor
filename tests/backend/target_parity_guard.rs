@@ -258,7 +258,7 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
 // - **帧面**：`inbound::REGISTRY` 每条命令的处理器函数（`impl Handle for <类型>` 那一块），沿**函数级调用图**（[`fn_graph`]）
 //   能不能走到一个**真起 `tmux`** 的函数（`Command::new("tmux")`，或经 `platform::shell::posix_shell` 起 shell 送 tmux 脚本的那一个）。
 //   够得着的 == 声明 `no_tmux` 的 ∪ 登记的「够得着但 tmux 只是可选的」。
-// - **ccm 面**：`control::ccm::CAPABILITIES` 每一条配一个最小探针 argv，经**真解析器 ＋ 真计划**（`argv::parse` → `plan::build`，纯、不起进程）
+// - **ccm 面**：`control::ccm::CAPABILITIES` 每一条配一个最小探针 argv，经**真解析器 ＋ 真计划**（`argv::parse_layered` → `plan::build`，纯、不起进程）
 //   看它落在哪条路上：接回 / 容器 ⇒ 靠 tmux；直路 ⇒ 它在直路上必须**有效果**（计划与基线不同），否则它离了 tmux 什么都不做。
 //   靠 tmux 的 ∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 //
