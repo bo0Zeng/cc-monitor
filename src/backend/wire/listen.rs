@@ -48,43 +48,6 @@ pub const ATTACH_LINE: Cap = Cap {
     over: Over::Reject,
 };
 
-/// [`ATTACH_LINE`] 的字节数：`main.rs` 读 attach 请求那一处还按字节数传给 [`read_capped_line`]。
-pub const ATTACH_LINE_CAP: usize = ATTACH_LINE.bytes as usize;
-
-/// 读一行 attach 请求的三种结局。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HandshakeLine {
-    /// 对端读完 hello 就关了 —— **那正是「只读 hello 就走」那一档**，是正常结局。
-    Eof,
-    /// 一整行。
-    Line(String),
-    /// 超限。**丢弃 + 出声**，不静默。
-    TooLong(usize),
-}
-
-/// 读一行 attach 请求：至多 `cap` 字节、超了拒收（[`ATTACH_LINE`] 那一档），读本身是 `comms_inward::line::read_capped_line`。
-/// `main.rs` 那一处改调 `comms_inward::line` 之后，本函数与 [`ATTACH_LINE_CAP`] · [`HandshakeLine`] 一起删。
-pub async fn read_capped_line<R>(rd: &mut R, cap: usize) -> std::io::Result<HandshakeLine>
-where
-    R: tokio::io::AsyncBufRead + Unpin,
-{
-    use comms_inward::line::CappedLine;
-    let mut buf: Vec<u8> = Vec::new();
-    let cap = Cap {
-        bytes: cap as u64,
-        ..ATTACH_LINE
-    };
-    Ok(
-        match comms_inward::line::read_capped_line(rd, &mut buf, cap).await? {
-            CappedLine::Eof => HandshakeLine::Eof,
-            CappedLine::Line => HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned()),
-            CappedLine::TooLong(n) => {
-                HandshakeLine::TooLong(usize::try_from(n).unwrap_or(usize::MAX))
-            }
-        },
-    )
-}
-
 /// 拒绝的理由（闭集）：`refusal_line` 只拼这里的常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
 /// 常驻后端自己只发这一个：attach 行形状不对。

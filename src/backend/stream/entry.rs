@@ -21,6 +21,7 @@ use crate::wire::{self, drain, listen, topic_hook, Frame};
 use crate::{
     agents, control, dial, faces, history, observe, stderr_log, unavailable_here, BUILD_ID,
 };
+use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::discard::{Discard, Why};
 
 use std::path::PathBuf;
@@ -518,13 +519,14 @@ async fn handshake_one(
     let mut r = tokio::io::BufReader::new(r);
     // ⚠ **有上限地读** —— 对端完全可以一直发字节不发换行，
     // 而无界读就是无界堆分配（backend 侧为同一形栽过一次实测，见 `stream/inbound/` 头注）。
-    let line = match listen::read_capped_line(&mut r, listen::ATTACH_LINE_CAP).await {
-        Ok(listen::HandshakeLine::Line(l)) => l,
-        Ok(listen::HandshakeLine::Eof) => {
+    let mut buf = Vec::new();
+    let line = match read_capped_line(&mut r, &mut buf, listen::ATTACH_LINE).await {
+        Ok(CappedLine::Line) => String::from_utf8_lossy(&buf).into_owned(),
+        Ok(CappedLine::Eof) => {
             // 「只读 hello 就走」那一档：对端读完就关，是**正常**结局，不出声。
             return;
         }
-        Ok(listen::HandshakeLine::TooLong(bytes)) => {
+        Ok(CappedLine::TooLong(bytes)) => {
             tracing::warn!("一条 attach 请求 {bytes} 字节还没换行 ⇒ 整行丢弃并关连接");
             return;
         }
