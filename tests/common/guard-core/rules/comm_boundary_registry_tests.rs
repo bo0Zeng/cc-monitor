@@ -1,5 +1,5 @@
 //! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 这几条管什么 · 买到什么买不到什么）住
-//! `tests/frontend/shell/comm_boundary_registry.rs`，不在这里抄第二份。
+//! `tests/common/guard-core/rules/comm_boundary_registry.rs`，不在这里抄第二份。
 //!
 //! 谁守哪一条：读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量（`Duration::from_*`）· `try_send` 由两包的
 //! `clippy.toml`（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）挡；`match` 列全变体由两包

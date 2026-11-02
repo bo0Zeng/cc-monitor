@@ -35,8 +35,8 @@ export function clockNow(c: Clock, now: number): string {
   return c.text.replace("{dur}", spanNow(c.from, c.to ?? now));
 }
 
-/** 从 `from`（毫秒时刻）到 `to`（毫秒时刻，缺 ⇒ 此刻）多久 ⇒ 短时长（「已经多久」「用了多久」都经它）。 */
-export function spanNow(from: number, to: number): string {
+/** 从 `from`（毫秒时刻）到 `to`（毫秒时刻）多久 ⇒ 短时长（只给会走的钟用；一步用时由后端写好）。 */
+function spanNow(from: number, to: number): string {
   return fmtDur((to - from) / 1000);
 }
 

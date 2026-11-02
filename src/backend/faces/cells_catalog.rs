@@ -810,7 +810,6 @@ mod specimens {
             file: some("/f"),
             patch: Some(diff(true)),
             text: Words(s("t")),
-            timed: Some(Words(s("{dur}"))),
             preview: some("p"),
             chars: Some(1),
             kind: Some(ResultKind::Handback),

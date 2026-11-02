@@ -11,10 +11,10 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 const PENDING: &[&str] = &[
     "tests/frontend/shell/backend_kill_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
-    "tests/frontend/shell/polling_registry_tests.rs",
+    "tests/common/guard-core/rules/polling_registry_tests.rs",
     "tests/backend/assets/aliases/block_tests.rs",
-    "tests/frontend/shell/session_name_registry_tests.rs",
-    "tests/frontend/shell/shared_crate_registry_tests.rs",
+    "tests/common/guard-core/rules/session_name_registry_tests.rs",
+    "tests/common/guard-core/rules/shared_crate_registry_tests.rs",
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -595,7 +595,7 @@ fn raw_walkers() -> Vec<String> {
     for (sub, excluded) in [
         ("src/frontend/shell/src", &[] as &[&str]),
         ("src/backend", &[]),
-        ("tests", &["shell/scanning_guard_registry_tests.rs"]),
+        ("tests", &["rules/scanning_guard_registry_tests.rs"]),
     ] {
         // 🔴 **摘除是明写名单，而且它是真承重的**：只有它挡着本文件。
         // `file!()` 那条路在这里空转（本文件被 `#[path]` 引进来 ⇒ `file!()` 是带 `..` 的
@@ -678,19 +678,23 @@ fn the_pending_inventory_only_shrinks() {
 /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
 ///
 /// 解析器要跑在**住着 `PENDING` 的那份文件**的历史版本上。
-const SELF_REL: &str = "tests/frontend/shell/scanning_guard_registry_tests.rs";
+const SELF_REL: &str = "tests/common/guard-core/rules/scanning_guard_registry_tests.rs";
 
 /// `PENDING` 在 git 历史上住过的**全部**住址，`(相对路径, 要不要 --follow)`。
 ///
 /// 🔴 为什么是一张表而不是一个字符串：**剖分不是改名**，`--follow` 跨不过去。
 /// 逐条写明每一个住址买到哪一段历史（缺一段 = 历史面变短 = 棘轮变松）：
-/// · `tests/frontend/shell/scanning_guard_registry_tests.rs` —— 步 7c 剖分**之后**的提交。
-/// 带 `--follow`：收尾重排把它从 `tests/bridge/` 挪到这里（改名链一步），剖分那一刻它是新增文件、`--follow` 停在那儿。
-/// · `tests/frontend/shell/scanning_guard_registry.rs` —— 剖分**之前**的整条历史。
-///   带 `--follow`：它自己还跨着 2026-09-17 那次搬树（`src-tauri/src/…` → `src/frontend/shell/src/…`）。
+/// · `tests/common/guard-core/rules/scanning_guard_registry_tests.rs` —— 步 7c 剖分**之后**的提交。
+/// 带 `--follow`：改名链 `tests/bridge/` → `tests/frontend/shell/` → 这里，剖分那一刻它是新增文件、`--follow` 停在那儿。
+/// · `tests/common/guard-core/rules/scanning_guard_registry.rs` —— 剖分**之前**的整条历史。
+///   带 `--follow`：改名链 `src-tauri/src/…` → `src/frontend/shell/src/…` → `tests/frontend/shell/` → 这里。
+///   写今天的住址：旧住址带 `--follow` 会列出它被挪走的那个提交，那个提交里旧住址已经没有 blob。
 const SELF_HOMES: &[(&str, bool)] = &[
     (SELF_REL, true),
-    ("tests/frontend/shell/scanning_guard_registry.rs", true),
+    (
+        "tests/common/guard-core/rules/scanning_guard_registry.rs",
+        true,
+    ),
 ];
 
 /// 找 `PENDING` 那张表表头的针 —— 🔴 **运行时拼，别写成字面量**：

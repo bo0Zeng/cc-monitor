@@ -32,6 +32,8 @@ mod filewin_panic_points;
 mod fnv_one_home;
 #[path = "raw_said_guard.rs"]
 mod raw_said_guard;
+#[path = "registry_home.rs"]
+mod registry_home;
 #[path = "search_kou_jing_guard.rs"]
 mod search_kou_jing_guard;
 #[path = "strip_clean.rs"]
@@ -40,6 +42,53 @@ mod strip_clean;
 mod structural_scan;
 #[path = "test_home_linked.rs"]
 mod test_home_linked;
+
+// 登记表（`*_registry`）：自己读盘、自己取人群，没改经 [`repo`] 读 ⇒ 每一张就地放行读盘那几个口。
+#[allow(clippy::disallowed_methods)]
+#[path = "bus_identity_registry.rs"]
+mod bus_identity_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "capability_registry.rs"]
+mod capability_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "comm_boundary_registry.rs"]
+mod comm_boundary_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "cross_half_edge_registry.rs"]
+mod cross_half_edge_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "doc_claim_registry.rs"]
+mod doc_claim_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "e2e_gate_registry.rs"]
+mod e2e_gate_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "needle_anchor_registry.rs"]
+mod needle_anchor_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "plugin_class_registry.rs"]
+mod plugin_class_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "polling_registry.rs"]
+mod polling_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "pub_reader_registry.rs"]
+mod pub_reader_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "scanning_guard_registry.rs"]
+mod scanning_guard_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "session_name_registry.rs"]
+mod session_name_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "shared_crate_registry.rs"]
+mod shared_crate_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "shell_lint_registry.rs"]
+mod shell_lint_registry;
+#[allow(clippy::disallowed_methods)]
+#[path = "sync_command_registry.rs"]
+mod sync_command_registry;
 
 #[path = "mod_tests.rs"]
 mod tests;

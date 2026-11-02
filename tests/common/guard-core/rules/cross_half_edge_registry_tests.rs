@@ -24,9 +24,8 @@ fn both_halves() -> Vec<String> {
     // 抬上去「提交了也不会绿」。⇒ 正确出路只有一条：**真迁一个**。
     // 这一处语义与 `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、
     // 返回相对路径），是纯死重。
-    // ⚠ 名单明写为空（纪律 4）：本文件的自摘走的是
-    //   下面 `every_non_literal_include_is_registered_with_a_reason` 里那条
-    //   `SELF_EXCLUDED`（带「摘不到就红」的自检），不在这一层做。
+    // ⚠ 名单明写为空（纪律 4）：本文件不住这几棵树里；它进了人群由
+    //   下面 `every_non_literal_include_is_registered_with_a_reason` 当场报红。
     for sub in [
         "src/frontend/shell/src",
         "src/backend",
@@ -310,39 +309,21 @@ fn every_non_literal_include_is_registered_with_a_reason() {
              〔这两处收在全仓唯一的取字节口这一份里。〕",
     )];
     let mut found: Vec<String> = Vec::new();
-    // 🔴 **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**
-    //
-    // 原来写的是 `cross_half_edge_registry.rs`（本条剖分前住的那份）。
-    // 剖分之后本条住 `..._tests.rs`，而 `ends_with` 对它不命中 ⇒ **排除空转** ⇒
-    // 本文件把自己那两段非字面量调用示例（上面头注里逐字写着的）当成了病
-    // ⇒ 现打红成「多出来 ("tests/frontend/shell/cross_half_edge_registry_tests.rs", 5)」。
-    //
-    // ⚠ 明写名单还不够：**名单摘不到东西时必须出声**，否则改名/搬家又会静默失效
-    //   （这正是 `guard_core::scan_tree_excluding` 比 `file!()` 多出来的那一格，
-    //   这里是手写遍历，所以把那一格自己补上）。
-    const SELF_EXCLUDED: &str = "tests/frontend/shell/cross_half_edge_registry_tests.rs";
-    let mut self_excluded = 0usize;
-    for rel in both_halves() {
-        // 本文件自己要排除：上面那段说明里逐字写着两种**非字面量**的调用示例，
-        // 不排除就会把自己的病历当成病（F23 那一族，本区第六次）。
-        if rel == SELF_EXCLUDED {
-            self_excluded += 1;
-            continue;
-        }
+    // 本文件住 `tests/common/guard-core/rules/`，不在两半的人群里：它头注里逐字写着两种**非字面量**的调用示例，
+    // 一旦被收进人群就会把自己的病历当成病 ⇒ 当场红在这里，而不是多出一行。
+    const SELF: &str = "tests/common/guard-core/rules/cross_half_edge_registry_tests.rs";
+    let halves = both_halves();
+    assert!(
+        !halves.iter().any(|rel| rel == SELF),
+        "`{SELF}` 进了两半的人群 —— 它的头注里写着非字面量调用示例，会把自己算进去；\
+         扩人群时把它明写摘掉（摘不到就红）"
+    );
+    for rel in halves {
         let raw = std::fs::read_to_string(repo_root().join(&rel)).unwrap_or_default();
         if include_invocations(&raw) > includes_of(&rel, &raw).len() {
             found.push(rel);
         }
     }
-    // 排除项自检（`§5.4b` 纪律 4 的那一格）：名单摘到 0 份 ⇒ 住址馊了，当场红。
-    assert_eq!(
-        self_excluded, 1,
-        "自摘名单上的 `{SELF_EXCLUDED}` 在人群里出现了 {self_excluded} 次（应恰好 1 次）——\n\
-             ⇒ 要么本文件改名/搬家了（住址馊了，排除从此空转 ⇒ 本条把自己的病历当病），\n\
-             要么 `both_halves()` 的射程不再覆盖 `tests/frontend/shell`（那才是更大的问题）。\n\
-             ★ 这一格就是为了不让「排除悄悄失效」再走一遍：步 7c 之前它失效过一次，\n\
-             而那次是靠对拍多出一行才被看见的 —— 反过来的那一半（排除多摘了）不会有人看见。"
-    );
     found.sort();
     let mut want: Vec<String> = NON_LITERAL_INCLUDES
         .iter()
