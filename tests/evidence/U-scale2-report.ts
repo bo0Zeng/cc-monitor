@@ -2,7 +2,7 @@
 /**
  * 秤 2 的**出表器 + 金标准刷新器**。
  *
- * 读 `/tmp/scale2-height-truth/result-{chromium,webkitgtk}.json`（探针的原始读数），
+ * 读 `$SCALE2_WORK/result-{chromium,webkitgtk}.json`（探针的原始读数；缺省目录与 `U-scale2-run.sh` 同一个，在盘上），
  * ① 打印按 card class 分桶的相对误差分布（p50/p90/max，两个口径）；
  * ② 把 Chromium 那一份**真高**固化成 `tests/evidence/U-scale2-truth-golden.json`，
  *    供 `tests/frontend/ui/scale2-height-truth.vitest.ts` 当门禁语料。
@@ -19,6 +19,7 @@
  * ⚠ 写成 `.ts` 而不是 `.mjs` 的理由与采样器同一条，原文记在那边的头注。
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,7 +54,12 @@ interface Probe {
   intrinsic: Intrinsic[];
 }
 
-const WORK = process.env.SCALE2_WORK ?? "/tmp/scale2-height-truth";
+const WORK =
+  process.env.SCALE2_WORK ??
+  resolve(
+    process.env.XDG_CACHE_HOME ?? resolve(homedir(), ".cache"),
+    "cc-monitor-scale2/work",
+  );
 const GOLDEN = resolve(REPO_ROOT, "tests/evidence/U-scale2-truth-golden.json");
 
 function load(engine: string): Probe {
