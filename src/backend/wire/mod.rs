@@ -20,7 +20,7 @@ pub(crate) mod typed; // typed 命令：入参 · 回包 · 错误码各是一�
 
 use crate::agents::record::RecordExt as _;
 use crate::common::cells::{Tone, Words};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 pub use topic::TopicExt;
 

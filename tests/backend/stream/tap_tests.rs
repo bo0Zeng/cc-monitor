@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::relay::{TapBody, TapEvent};
-use crate::wire::TopicExt as _;
 
 /// 中转交来的事件经 hub 进了活卡：这条连接的写者取得到 `live` 帧（名单只报 A ⇒ B 的不来）。
 #[test]

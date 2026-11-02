@@ -13,7 +13,6 @@ use crate::relay::{host, our_relay_listening, Hosted, ENV_PORT};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
-use std::time::Duration;
 
 /// 上游那一段 SSE（**原样字节**；下游必须逐字节收到它）。
 const SSE_BODY: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"n\":1}\n\ndata: {\"type\":\"ping\"}\n\n";

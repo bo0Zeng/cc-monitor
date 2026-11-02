@@ -2,7 +2,6 @@
 //! 内置几条由适配层声明；住文件里的按那条会话的项目目录与它用的号的配置目录现扫（目录名 · 认法住适配层）；每格的字由这里写好。
 
 use crate::agents::AssetFace;
-use crate::common::contract::malformed;
 use crate::common::said::Said;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;

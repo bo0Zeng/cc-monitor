@@ -2119,7 +2119,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
             }],
             &[],
             Ok(Vec::new()),
-            vec![crate::faces::history_face::AnsweredRow {
+            vec![cmd_wire::needs::AnsweredRow {
                 sid: "s-2".into(),
                 said: crate::common::cells::Words("w".into()),
             }],

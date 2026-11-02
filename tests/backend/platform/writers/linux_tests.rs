@@ -5,7 +5,6 @@ use super::*;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
-use std::time::Duration;
 
 fn tmp(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("ccm-writers-{tag}-{}", std::process::id()));

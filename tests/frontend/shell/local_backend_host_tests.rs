@@ -3486,7 +3486,7 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
         (
             "crate::relay::ENV_PORT",
             "backend/relay/listen.rs",
-            "pub(crate) const ENV_PORT: &str = \"",
+            "pub const ENV_PORT: &str = \"",
         ),
         (
             "creds_core::store::DATA_DIR_ENV",

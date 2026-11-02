@@ -1,6 +1,10 @@
 //! agent 适配层判据里经观测面的那几条：适配层是独立的包（`backend-agents`）、够不到观测面 ⇒ 挂在 `observe` 底下，
 //! 观测面拆成包时跟着走。夹具是结构占位，正文都是编的。
 
+/// Claude 一行 ⇒ 通用记录的金样（骨架行那一条经观测面）。挂在这里而不在 `observe/mod.rs`：通用层不写哪一家的目录名。
+#[path = "claudecode/record_of_tests.rs"]
+mod claudecode_record_of;
+
 /// Claude 答题口那一侧（`claudecode/asks.rs`）读出的问题，经观测面穿成需手动那一条。
 mod claudecode_asks {
     use serde_json::json;

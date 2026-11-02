@@ -15,6 +15,7 @@
 //! - 不看执行位（有这个名字的文件就算「找得到」）。
 
 use super::*;
+use serde_json::json;
 use std::path::PathBuf;
 
 fn temp_dir(tag: &str) -> PathBuf {

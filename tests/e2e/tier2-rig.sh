@@ -31,7 +31,7 @@ LHOME="$SBX/h"                       # app 的家
 RHOME="$SBX/r"                       # 回环 sshd 那一头的家
 LANDING="$RHOME/.cc-monitor/bin"     # 远端后端的落点目录（`relay_route_core::BACKEND_LANDING_SHELL` 那一份）
 RBACKEND_HOME="$LANDING/home"        # 远端后端真正住的家：wrapper 把 HOME 换成它旁边的 `home/`（常驻 · 诊断文件都在这底下）
-# 常驻后端的 stderr 诊断文件（家目录相对；`src/backend/stderr_log.rs::STDERR_LOG_REL` 那一份）。
+# 常驻后端的 stderr 诊断文件（家目录相对；`src/backend/stderr_log/mod.rs::STDERR_LOG_REL` 那一份）。
 BACKEND_STDERR_REL=".cc-monitor/logs/backend/stderr.log"
 BACKEND="$REPO/.build/backend/debug/cc-monitor-backend"
 # 真 HOME 只用来指回 rustup / cargo 的家（沙箱 HOME 会把它们一起换掉；那两个不是账号数据）。

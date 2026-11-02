@@ -466,7 +466,7 @@ fn spawn_detached(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
     // stderr 仍是 null（理由见下），但交它一份自己的诊断文件路径 ⇒ 它把 fd 2
-    //   接进一份有上限、滚动的文件（后端 `stderr_log.rs`），设置「日志」里看得到。**只这条载体交**：被监护那条的
+    //   接进一份有上限、滚动的文件（后端 `stderr_log/`），设置「日志」里看得到。**只这条载体交**：被监护那条的
     //   stderr 已经进本进程的滚动日志（`StderrSink::ToLog`），交了反而分成两处。目录由这里建好（后端只新建文件、不建目录）；
     //   拿不到数据目录 / 建不了目录 ⇒ 不交，后端照旧不落盘（不猜路径）。
     if let Some(p) = crate::config::resolve_monitor_data_dir()

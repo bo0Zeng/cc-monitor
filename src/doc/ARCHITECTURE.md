@@ -158,7 +158,7 @@ subscribe(origin, kind)    → 流
 - `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
 - `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
 - `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
-- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）；`stderr_log.rs`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
+- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）；`stderr_log/`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/`：读族 ＋ `write.rs` · `upload_chunks.rs` · `extract.rs` · `commit.rs` · `batch.rs`），两块只共用 `platform/` · `common/`；原生那一块够到文件管理那一块只经命令那一层（`stream/inbound/files_*_face.rs`）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。文件管理那一块是独立的包 `backend-files`：只依赖纯工具与平台两层由它的 `Cargo.toml` 管，上层够得到的只有它的 `pub` 项（谁读哪一项由 `pub_reader_registry` 数着）。
 

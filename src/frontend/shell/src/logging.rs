@@ -75,7 +75,7 @@ const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
 
 /// 本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
-/// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
+/// （后端那侧 `src/backend/stderr_log/mod.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
 /// 那边的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
 const BACKEND_STDERR_DIR: &str = "backend";
 const BACKEND_STDERR_FILE: &str = "stderr.log";
