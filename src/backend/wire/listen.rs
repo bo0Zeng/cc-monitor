@@ -194,7 +194,7 @@ where
     w.flush().await
 }
 
-/// deflate 级别（同 OpenSSH ≤ 10.5 的 `zlib@openssh.com`）。
+/// deflate 级别（同 OpenSSH ≤ 10.5 的 `zlib@openssh.com`）。只管一帧之内压多狠：每帧一个上下文（[`Down`]），帧之间不回指。
 pub const DEFLATE_LEVEL: u32 = 6;
 
 /// 压缩器一次往外攒多少字节（攒满就先往下写，再接着压）。
@@ -202,7 +202,10 @@ const DEFLATE_CHUNK: usize = 64 * 1024;
 
 /// 接成流之后这台写过去的那一半：原样，或客户端要了 deflate（回话认了）⇒ 回话那一行之后整条是一个 raw deflate 流。
 /// `poll_write` 只往压缩器里喂、攒出来的往下写；`poll_flush` 先做一次 sync flush 再 flush 下面 ⇒ `writer_task` 三路排空才 flush（一直排着时每 64 KB 一次），
-/// flush 过的帧到了对端就解得出来。整条一个压缩上下文：与 SSH 层 zlib 压这条流时同一形。
+/// flush 过的帧到了对端就解得出来。
+///
+/// 每帧一个上下文：full flush 清掉压缩器的字典，下一帧一个字节都回指不到前面的帧 ⇒ 外来内容（抓回来的网页 · 别人写的文件）
+/// 借密文长度猜不到别的帧里的秘密。解的那一侧照样是一个 raw inflate 流，不用跟着换。
 pub struct Down<W> {
     inner: W,
     z: Option<Deflating>,
@@ -213,7 +216,7 @@ struct Deflating {
     /// 压出来、还没写下去的字节（`out[at..]`）。
     out: Vec<u8>,
     at: usize,
-    /// 上一次 sync flush 之后喂过字节。
+    /// 上一次 full flush 之后喂过字节。
     dirty: bool,
 }
 
@@ -293,7 +296,7 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Down<W> {
                 if !d.dirty {
                     break;
                 }
-                d.z.compress_vec(&[], &mut d.out, flate2::FlushCompress::Sync)
+                d.z.compress_vec(&[], &mut d.out, flate2::FlushCompress::Full)
                     .map_err(deflate_failed)?;
                 // 没攒满 ⇒ 这一次 flush 收完了；攒满了 ⇒ 写下去再接着收。
                 d.dirty = d.out.len() == d.out.capacity();

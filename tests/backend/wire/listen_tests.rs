@@ -301,8 +301,8 @@ fn the_last_client_is_the_last_of_all_connections_not_the_first_to_leave() {
     assert_eq!(c.leave(b), 0);
 }
 
-/// 回认之后那一侧的写半边：每帧写完 flush 一次 ⇒ 对端就地解得出这一帧（sync flush），整串解出来与写进去的逐字节相同、
-/// 远少于原样；不压那一形原样过。
+/// 回认之后那一侧的写半边：每帧写完 flush 一次 ⇒ 对端就地解得出这一帧（full flush 也对齐到字节），整串解出来与写进去的逐字节相同、
+/// 少于原样（每帧各压各的，帧小就压得少）；不压那一形原样过。
 #[tokio::test]
 async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
     use tokio::io::AsyncWriteExt;
@@ -333,10 +333,64 @@ async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
     }
     let raw: usize = frames.iter().map(String::len).sum();
     assert_eq!(back.len(), raw);
-    assert!(fed * 4 < raw, "线上 {fed} 字节，原样 {raw}：没压下来");
+    assert!(fed < raw, "线上 {fed} 字节，原样 {raw}：没压下来");
 
     let mut p = Down::new(Vec::new(), false);
     p.write_all(frames[0].as_bytes()).await.unwrap();
     p.flush().await.unwrap();
     assert_eq!(p.get_ref(), frames[0].as_bytes(), "不压那一形原样过");
+}
+
+/// 一帧 `n` 个随机小写字母再接换行（xorshift，种子定死；夹具不放真正文）。
+fn random_letters(seed: u64, n: usize) -> Vec<u8> {
+    let mut s = seed | 1;
+    let mut v: Vec<u8> = (0..n)
+        .map(|_| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            b'a' + (s % 26) as u8
+        })
+        .collect();
+    v.push(b'\n');
+    v
+}
+
+/// 每帧一个压缩上下文：两帧一模一样，第二帧也回指不到第一帧 ⇒ 线上那一段与第一帧差不多长
+/// （连着一个上下文时第二帧整段回指第一帧，只剩十几个字节：外来内容就能借长度猜别的帧里的秘密）。
+#[tokio::test]
+async fn frames_do_not_point_back_into_earlier_frames() {
+    use tokio::io::AsyncWriteExt;
+    let frame = random_letters(0x5eed, 4096);
+    let mut w = Down::new(Vec::new(), true);
+    w.write_all(&frame).await.unwrap();
+    w.flush().await.unwrap();
+    let first = w.get_ref().len();
+    w.write_all(&frame).await.unwrap();
+    w.flush().await.unwrap();
+    let second = w.get_ref().len() - first;
+    assert!(
+        second * 10 >= first * 9,
+        "第二帧线上 {second} 字节、第一帧 {first}：第二帧回指了第一帧"
+    );
+}
+
+/// 客户端那一份读法（`resident_client::line::Inflate`，一个 raw inflate 流）接这台写出的流 ⇒ 逐字节相同：
+/// 只换写的那一侧，解的那一侧不动。
+#[tokio::test]
+async fn the_client_inflater_reads_the_stream_back_byte_for_byte() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let frames: Vec<Vec<u8>> = (0..40u64)
+        .map(|i| random_letters(0x9e37_79b9 + i % 3, 700 + (i % 5) as usize * 900))
+        .collect();
+    let mut w = Down::new(Vec::new(), true);
+    for f in &frames {
+        w.write_all(f).await.unwrap();
+        w.flush().await.unwrap();
+    }
+    let wire = w.get_ref().clone();
+    let mut r = resident_client::line::Inflate::new(tokio::io::BufReader::new(&wire[..]));
+    let mut back = Vec::new();
+    r.read_to_end(&mut back).await.unwrap();
+    assert_eq!(back, frames.concat(), "客户端解出来与写进去的不一样");
 }
