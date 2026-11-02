@@ -30,6 +30,7 @@
 //! 写经分叉那只只会新建的手（`NewFile`）。
 
 use crate::platform::fs::{NewFile, NewFileFail};
+use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 本体落完盘的结果（帧面回包由它 ＋ `launch` 那三格拼成 [`Forked`]）。
@@ -75,22 +76,20 @@ crate::wire::typed::codes! {
     }
 }
 
-/// 单份会话 jsonl 的读取上限。
+/// 分叉时读源会话 jsonl 的上限；超了这一趟分叉整个失败（硬报错，错误照实往上交）。
 ///
-/// **Phase G 审计补的**：原来是裸 `read_to_string`（无上限）。同一个 crate 里
-/// `platform::fs::Ro::read_regular_capped` 早就为这件事写好了函数**和**一句结论
-///（「`read_to_string` 无上限 → 远端 OOM」，还实测过 symlink→/dev/zero 六秒涨 11GB），
-/// 分叉这条新路却没用它。真机上会话 jsonl 到几十 MB 是常态（本仓注释里记过 37MB 一份），
-/// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
-///
-/// 256MB：与 monitor 侧 `remote_history::MAX_SESSION_BYTES` 同一量级，正常会话远够不到。
-const MAX_SESSION_JSONL_BYTES: u64 = 256 * 1024 * 1024;
+/// 真机上会话 jsonl 到几十 MB 是常态，backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value`
+/// 双份驻留很容易把它按死；整读无上限时实测过 symlink→/dev/zero 六秒涨 11GB。
+/// 256MB：正常会话远够不到。
+const MAX_SESSION_JSONL_BYTES: Cap = Cap {
+    bytes: 256 * 1024 * 1024,
+    over: Over::HardError,
+};
 
 /// 读一个 jsonl 为逐行 `Value`（剥 BOM、跳空行、坏行忽略——口径同 monitor 侧）。
 fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, String> {
-    // 走共享的**安全读**（先确认是常规文件，挡掉 FIFO/设备，再 take(cap) 限量）——
-    // 不是自己再写一遍 `read_to_string`。
-    let bytes = crate::platform::fs::Ro::read_regular_capped(path, MAX_SESSION_JSONL_BYTES)
+    // 共享的带上限整读：只认普通文件（挡掉 FIFO/设备），超上限一个字节不交出来。
+    let bytes = crate::platform::fs::Ro::read_capped(path, MAX_SESSION_JSONL_BYTES)
         .map_err(|e| format!("refuse fork: read {}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&bytes);
     Ok(text

@@ -12,6 +12,7 @@ use crate::platform::fs::{Own, OwnPath, Ro};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
+use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 复制详情「命令」那一项里的名字。
@@ -19,6 +20,13 @@ const CMD: &str = "place-self";
 
 /// 复制详情「命令」那一项里卸载那一条的名字。
 const UNPLACE_CMD: &str = "unplace-self";
+
+/// 整份读一份后端字节（这一份自己 · 落点那一份 · 部署带着的那几格）的上限：今天一份二十来 MB，留足十倍余量；
+/// 超了 ⇒ 不读、回一句说清超了（这一趟换 · 装不做，落点一个字节不动）。
+pub(crate) const BACKEND_BYTES_CAP: Cap = Cap {
+    bytes: 256 << 20,
+    over: Over::Reject,
+};
 
 /// 留存区（落点那层 `bin` 底下的 `relay_route_core::BACKEND_KEPT_DIR_NAME`）最多留几份被盖掉的落点。
 pub(crate) const KEPT_MAX: usize = 3;
@@ -97,6 +105,12 @@ fn io_failed(shown: &str, e: std::io::Error) -> Said {
     .coded("place_failed")
 }
 
+/// 读一份后端字节没成 ⇒ `place_failed`（那一句只有路径与读里那一句，原话照带）。
+fn read_failed(shown: &str, s: Said) -> Said {
+    s.wrap(|why| copy_text("bePlaceSelf.place.failed", &[("path", shown), ("why", why)]))
+        .coded("place_failed")
+}
+
 /// 卸载的本体：暂存区里的这一份删掉落点那一份（不在 ⇒ `false`）、再删自己。
 pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Said> {
     let (staging, name) = staged_self(own, exe)?;
@@ -117,7 +131,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Said> {
     let shown = exe.display().to_string();
     let (staging, name) = staged_self(own, exe)?;
     let io = |e: std::io::Error| io_failed(&shown, e);
-    let bytes = Ro::read(exe).map_err(io)?;
+    let bytes = Ro::read_capped(exe, BACKEND_BYTES_CAP).map_err(|s| read_failed(&shown, s))?;
     if deploy_contract::identity_of_bytes(&bytes, deploy::MARKS)
         != deploy_contract::RemoteIdentity::Stamp(mine.to_string())
     {
@@ -145,11 +159,13 @@ fn old_copy(own: &Own) -> Result<Option<(Vec<u8>, String)>, Said> {
     let at = own
         .at_home(relay_route_core::BACKEND_LANDING_REL)
         .map_err(|s| s.coded("place_failed"))?;
-    let bytes = match Ro::read(at.as_path()) {
-        Ok(b) => b,
+    match Ro::metadata(at.as_path()) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(io_failed(relay_route_core::BACKEND_LANDING_REL, e)),
-    };
+        Ok(_) => {}
+    }
+    let bytes = Ro::read_capped(at.as_path(), BACKEND_BYTES_CAP)
+        .map_err(|s| read_failed(relay_route_core::BACKEND_LANDING_REL, s))?;
     let name = match deploy_contract::identity_of_bytes(&bytes, deploy::MARKS) {
         deploy_contract::RemoteIdentity::Stamp(id) if !id.starts_with('.') => format!("ccm-{id}"),
         _ => "ccm-unstamped".to_string(),
