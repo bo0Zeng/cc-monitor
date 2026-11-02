@@ -1212,7 +1212,7 @@
     "beGate.admitDestructive.manyWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 会话 {name} 有窗口 ×{n} · 可能开着别的 · 未结束 · 需手动处理",
+      "zh": "tmux 会话 {name} 有窗口 ×{n} · 未结束 · 需手动处理",
       "args": ["name", "n"],
       "limited": ["tmux"]
     },
@@ -1259,7 +1259,7 @@
     "beSessionRestart.live.before": {
       "kind": "error",
       "role": "报错",
-      "zh": "未重启 · 进程 ×{n} 在写会话 · pid {pids}",
+      "zh": "未重启 · 会话在别处运行 ×{n} · pid {pids}",
       "args": ["n", "pids"]
     },
     "beSessionRestart.live.afterStop": {
@@ -1406,7 +1406,7 @@
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入失败 · 不支持 · 远端只支持 Unix 机器",
+      "zh": "启动远端后端失败 · 不支持 · 远端只支持 Unix 机器",
       "args": []
     },
     "rsRemoteResident.ensure.answerUnreadable": {
@@ -1442,8 +1442,9 @@
     "rsRemoteResident.relay.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 后端无法接入 · 需重启 {machine} 后端",
-      "args": ["machine"]
+      "zh": "{machine} 后端无法连接 · 需重启 {machine} 后端",
+      "args": ["machine"],
+      "limited": ["连接"]
     },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
@@ -1584,7 +1585,7 @@
     "beSessionOpen.live.writing": {
       "kind": "error",
       "role": "报错",
-      "zh": "未恢复 · 进程 ×{n} 在写会话 · pid {pids}",
+      "zh": "未恢复 · 会话在别处运行 ×{n} · pid {pids}",
       "args": ["n", "pids"]
     },
     "beSessionOpen.look.notHosted": {
@@ -1989,7 +1990,7 @@
     "beResident.stop.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "未停止进程 {pid} · 不是记下的后端\n它运行的是 {exe} · 进程号可能已被别的程序复用",
+      "zh": "未停止进程 {pid} · 不是记下的后端\n它运行的是 {exe}",
       "args": ["pid", "exe"]
     },
     "beResident.stop.cannotAsk": {
@@ -2029,7 +2030,7 @@
     "beResident.stop.stuck": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端进程 {pid} 强制结束后仍在 · 未停止",
+      "zh": "后端强制结束后仍在运行 · pid {pid} · 未停止",
       "args": ["pid"]
     },
     "beStop.handle.failed": {
@@ -2840,7 +2841,7 @@
     "stream.step.unclearNoWriter": {
       "kind": "body",
       "role": "片段",
-      "zh": "无进程在运行该会话",
+      "zh": "会话未在运行",
       "args": []
     },
     "stream.step.unclearUntracked": {
@@ -4063,7 +4064,7 @@
     "front.body.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 进程信息不可读",
+      "zh": "无法读取 {machine} 的进程列表",
       "args": ["machine"]
     },
     "front.body.update": {
@@ -4568,7 +4569,7 @@
     "tabBarView.tab.writers": {
       "kind": "body",
       "role": "片段",
-      "zh": "写入进程 ×{n}",
+      "zh": "运行处 ×{n}",
       "args": ["n"]
     },
     "tabBarView.tab.cwdHint": {
@@ -6875,7 +6876,7 @@
     "ccBusHooks.snippet.merge": {
       "kind": "body",
       "role": "说明",
-      "zh": "合并进现有文件 · 勿整份覆盖 · 其中可能有别的工具的钩子",
+      "zh": "合并进现有文件 · 勿整份覆盖 · 保留其中别的工具的钩子",
       "args": [],
       "limited": ["hook"]
     },
@@ -7285,13 +7286,13 @@
     "backend.stopSaid.graceful": {
       "kind": "body",
       "role": "说明",
-      "zh": "已停 · 后端（进程 {pid}）做完手上的事后自行退出",
+      "zh": "已停止 · 后端 pid {pid} 完成进行中的操作后退出",
       "args": ["pid"]
     },
     "backend.stopSaid.killed": {
       "kind": "body",
       "role": "说明",
-      "zh": "已强制结束后端 · 进程 {pid} 到时未退出 · 进行中的操作未完成",
+      "zh": "已强制结束后端 · pid {pid} 到时未退出 · 进行中的操作未完成",
       "args": ["pid"]
     },
     "backend.stopSaid.notRunning": {
@@ -7543,7 +7544,7 @@
     "rsSftp.uninstall.absent": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 不存在 · 可能已卸载",
+      "zh": "{path} 不存在 · 无需卸载",
       "args": ["path"]
     },
     "rsSftp.uninstall.done": {
@@ -8969,7 +8970,7 @@
     "rsInboundClient.error.timeoutPeerRunsOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时 · {dur} · 远端后端无法撤回 · 该操作可能仍在跑",
+      "zh": "等回答超时 · {dur} · 远端后端无法撤回 · 结果未知",
       "args": ["dur"]
     },
     "rsInboundClient.error.closed": {
@@ -10394,7 +10395,7 @@
     "beFootprint.env.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端进程无主目录 · HOME 与 USERPROFILE 均无 · 无法查足迹",
+      "zh": "后端无主目录 · HOME 与 USERPROFILE 均未设 · 无法查足迹",
       "args": []
     },
     "beCcmProbe.onPath.other": {
@@ -10728,7 +10729,7 @@
     "rsBackendPolicy.status.neverExisted": {
       "kind": "body",
       "role": "状态",
-      "zh": "状态不明 · 进程从未存在",
+      "zh": "状态不明 · 后端从未启动",
       "args": []
     },
     "rsBackendPolicy.death.consoleCtrl": {
@@ -11982,7 +11983,7 @@
     "rsLocalBackendHost.stop.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止本机后端 {dur} 内未答完 · 后端可能仍在跑 · 可再停一次",
+      "zh": "停止本机后端 {dur} 内未答完 · 结果未知\n可再停一次",
       "args": ["dur"]
     },
     "rsLocalBackendHost.stop.readFailed": {
@@ -11994,7 +11995,7 @@
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端进程 {pid} 仍在运行 · 未找到进程记录 · 未停止",
+      "zh": "本机后端仍在运行 · pid {pid} · 未找到启动记录 · 未停止",
       "args": ["pid"]
     },
     "rsLocalBackendHost.local.noStamp": {
@@ -12051,7 +12052,7 @@
     "rsLocalBackendHost.stream.asyncFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · 连接无法接入",
+      "zh": "程序出错 · 无法建立连接",
       "args": [],
       "limited": ["连接"]
     },
@@ -12425,7 +12426,7 @@
     "bePlan.build.manyWriters": {
       "kind": "error",
       "role": "报错",
-      "zh": "未接入 · 进程 ×{n} 在写会话 {sid} · pid {pids}",
+      "zh": "未接回 · 会话 {sid} 在别处运行 ×{n} · pid {pids}",
       "args": ["n", "pids", "sid"]
     },
     "bePlan.build.attachDetach": {
@@ -14443,7 +14444,7 @@
     "beFilesWrite.put.hollow": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 盘上 {size} 字节但读出为空\n可能被 OneDrive 或杀毒软件锁着 · 已取消 · 未改动",
+      "zh": "{path} 盘上 {size} 字节但读出为空 · 原因不明 · 已取消 · 未改动\nOneDrive 或杀毒软件锁住文件时会这样",
       "args": ["path", "size"]
     },
     "beFilesWrite.put.gone": {
@@ -14533,7 +14534,7 @@
     "beFilesWrite.backup.notRemoved": {
       "kind": "body",
       "role": "说明",
-      "zh": "备份也未删掉 · {why} · 可能比原文件更易被他人读到 · 手动删除",
+      "zh": "备份也未删除 · {why} · 备份未沿用原文件的权限 · 需手动删除",
       "args": ["why"]
     },
     "beFilesWrite.backup.modeFailed": {
@@ -15258,7 +15259,7 @@
     "beTermFollow.refuse.other": {
       "kind": "error",
       "role": "报错",
-      "zh": "实时画面无法接入",
+      "zh": "无法显示实时画面",
       "args": []
     },
     "beTermFollow.tmux.tooOld": {
@@ -15444,7 +15445,7 @@
     "beFilesCommit.upload.stagedMissing": {
       "kind": "error",
       "role": "报错",
-      "zh": "未找到上传的临时文件 {path} · {why} · 可能传输未完成",
+      "zh": "未找到上传的临时文件 {path} · {why}",
       "args": ["path", "why"]
     },
     "beFilesCommit.upload.stagedNotRegular": {
@@ -15620,7 +15621,7 @@
     "beSftp.open.subsystem": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法打开远端 SFTP · 可能远端 sshd 未开 SFTP",
+      "zh": "无法打开远端 SFTP · 远端 sshd 拒绝 SFTP",
       "args": []
     },
     "beSftp.open.initFailed": {
@@ -15946,7 +15947,7 @@
     "beUses.session.refusedAll": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端拒绝新开 SSH 连接 · 可能远端 sshd MaxSessions 为 0",
+      "zh": "远端 sshd 拒绝新开 SSH 连接 · 相关设置 MaxSessions",
       "args": [],
       "limited": ["SSH", "连接"]
     },
@@ -18455,7 +18456,7 @@
     "beOauth.writeback.timedOut": {
       "kind": "error",
       "role": "原因格",
-      "zh": "登录信息被 Claude 持续占用 · 新令牌未保存 · 可能需重新登录",
+      "zh": "登录信息被 Claude 持续占用 · 新令牌未保存\n旧令牌过期后需重新登录",
       "args": []
     },
     "beOauth.unusable.unreadable": {
@@ -20295,8 +20296,9 @@
     "terminal.head.joining": {
       "kind": "body",
       "role": "进度",
-      "zh": "接入实时",
-      "args": []
+      "zh": "实时连接中",
+      "args": [],
+      "limited": ["连接"]
     },
     "terminal.head.snapshotOnly": {
       "kind": "body",
@@ -26230,7 +26232,7 @@
     "mobTerms.row.attached": {
       "kind": "body",
       "role": "片段",
-      "zh": "已有终端接入",
+      "zh": "已在终端里打开",
       "args": []
     },
     "mobTerms.row.attach": {
