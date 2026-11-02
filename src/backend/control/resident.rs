@@ -179,7 +179,7 @@ pub async fn attach() -> i32 {
 /// `--resident-call` 那一条请求的 id（一条连接只问这一次）。
 const CALL_ID: &str = "resident-call";
 
-/// 常驻那条连接上一行帧的上限（应答里一整份清单也在这之内；同问远端那一跳收 stdout 的上限）。超了：拒收＋回错（这一问读成连不上）。
+/// 常驻那条连接上一行帧的上限（应答里一整份清单也在这之内；同问远端那一跳收 stdout 的上限）。超了：拒收＋回错（这一问读成断开）。
 const FRAME_LINE_CAP: Cap = Cap {
     bytes: 16 * 1024 * 1024,
     over: Over::Reject,
