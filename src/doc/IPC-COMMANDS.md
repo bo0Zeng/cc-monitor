@@ -4823,9 +4823,9 @@ order: number,
  */
 failed: string | null, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryHead = { groups: Array<HistoryGroup>, 
 /**
  * 注解没并上的那一句；并上了 ⇒ `null`。
@@ -4833,9 +4833,9 @@ type HistoryHead = { groups: Array<HistoryGroup>,
 notice: string | null, };
 type HistoryListReq = { 
 /**
- * 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
+ * 问哪一台（行与组都标上它）：这台逐字 `"<local>"`，别台是机器表里的名字。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
  */
@@ -4898,12 +4898,13 @@ context?: true,
  */
 at: number, atText: Words, sectionText: Words, spanText: Words, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
@@ -5087,20 +5088,20 @@ order: number,
  */
 failed: string | null, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryGroupId = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, key: string, };
+origin: Machine, key: string, };
 type HistoryLine = { "kind": "group", group: HistoryGroup, open: boolean, } | { "kind": "row", row: HistoryRow, child: boolean, forks: number, forksOpen: boolean, orphan: boolean, };
 type HistoryMachine = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
  */
@@ -5140,18 +5141,19 @@ context?: true,
  */
 at: number, atText: Words, sectionText: Words, spanText: Words, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
 type HistoryRowId = { 
 /**
- * 哪台（这台 ⇒ 缺）。
+ * 哪台（这台逐字 `"<local>"`）。
  */
-origin?: string, sid: string, };
+origin: Machine, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Machine = string;
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
@@ -5640,9 +5642,9 @@ down: Array<SearchDown>,
 summary: string, };
 type MergedRow = { 
 /**
- * 那台远端的名字；本机 ⇒ 缺。
+ * 哪一台答的这一行（这台逐字 `"<local>"`）。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 行尾那一格。
  */

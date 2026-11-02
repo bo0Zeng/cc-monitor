@@ -3,6 +3,7 @@ import type { AgentKind } from "./AgentKind";
 import type { Can } from "./Can";
 import type { ForkedFrom } from "./ForkedFrom";
 import type { Hidden } from "./Hidden";
+import type { Machine } from "./Machine";
 import type { SessionFace } from "./SessionFace";
 import type { Words } from "./Words";
 
@@ -43,6 +44,6 @@ context?: true,
  */
 at: number, atText: Words, sectionText: Words, spanText: Words, 
 /**
- * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin?: string, };
+origin: Machine, };
