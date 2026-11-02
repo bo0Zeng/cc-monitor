@@ -559,6 +559,94 @@ fn over_cap_evicts_least_recently_used() {
     assert_eq!(tiny.computed(), 2);
 }
 
+fn at(text: &str, piece: &str, label: &str) -> RefAt {
+    let start = text.find(piece).unwrap();
+    let cp = |b: usize| text[..b].encode_utf16().count();
+    RefAt {
+        start: cp(start),
+        end: cp(start + piece.len()),
+        ids: vec![piece.to_string()],
+        label: label.to_string(),
+    }
+}
+fn r(x: &str, label: &str) -> Inl {
+    n(InlNode::Ref {
+        x: x.into(),
+        ids: vec![x.into()],
+        label: label.into(),
+    })
+}
+
+#[test]
+fn ref_text_keeps_words_only_and_gaps_the_rest() {
+    let doc = parse("先看 **A1-1**，`A2` 在代码里\n\n```\nA3\n```\n\n- 末 $x$ 项");
+    assert_eq!(
+        ref_text(&doc),
+        "先看 A1-1，\u{FFFC} 在代码里\n\n\u{FFFC}\n\n末 \u{FFFC} 项"
+    );
+}
+
+#[test]
+fn with_refs_turns_the_number_into_a_ref_node() {
+    let doc = parse("😀 先看 **A1-1**，再看 A1-2 的写法。");
+    let text = ref_text(&doc);
+    let got = with_refs(&doc, &[at(&text, "A1-1", "甲"), at(&text, "A1-2", "乙")]);
+    assert_eq!(
+        got.blocks,
+        vec![MdBlock::P {
+            k: vec![
+                s("😀 先看 "),
+                n(InlNode::B {
+                    k: vec![r("A1-1", "甲")]
+                }),
+                s("，再看 "),
+                r("A1-2", "乙"),
+                s(" 的写法。"),
+            ]
+        }]
+    );
+    // 没有一处 ⇒ 原样；跨了加粗边界的那一处 ⇒ 不插。
+    assert_eq!(with_refs(&doc, &[]), doc);
+    let cross = parse("**A1**-2 后");
+    let t = ref_text(&cross);
+    assert_eq!(with_refs(&cross, &[at(&t, "A1-2", "丙")]), cross);
+}
+
+#[test]
+fn parse_marked_reads_refs_at_utf16_spans() {
+    let src = "😀 见 A1-2 与 `A3`\n\n## 标题 A4";
+    let u16 = |piece: &str| {
+        let b = src.find(piece).unwrap();
+        let s = src[..b].encode_utf16().count();
+        RefAt {
+            start: s,
+            end: s + piece.encode_utf16().count(),
+            ids: vec![piece.to_string()],
+            label: String::new(),
+        }
+    };
+    let got = parse_marked(src, &[u16("A1-2"), u16("A3"), u16("A4")]);
+    assert_eq!(
+        got.blocks,
+        vec![
+            MdBlock::P {
+                k: vec![
+                    s("😀 见 "),
+                    r("A1-2", ""),
+                    s(" 与 "),
+                    n(InlNode::C { x: "A3".into() })
+                ]
+            },
+            MdBlock::H {
+                level: 2,
+                k: vec![s("标题 "), r("A4", "")]
+            },
+        ]
+    );
+    // 没有一处 ⇒ 与直接解析同一棵树。
+    assert_eq!(parse_marked(src, &[]), parse(src));
+}
+
 #[test]
 fn tool_result_strips_line_number_prefixes_first() {
     let src = "1\t# 标题\n2\t\n3\t- 一\n4\t- 二";

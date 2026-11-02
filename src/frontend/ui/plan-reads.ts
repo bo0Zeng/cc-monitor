@@ -7,6 +7,7 @@
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { ControlError } from "./control-said";
 import type { Origin } from "./ipc/origin";
+import type { Doc } from "./generated/Doc";
 import type { PlanAckReply } from "./generated/PlanAckReply";
 import type { PlanArchived } from "./generated/PlanArchived";
 import type { PlanAsk } from "./generated/PlanAsk";
@@ -101,9 +102,12 @@ export async function fetchPlanRead(origin: Origin, workspace: string): Promise<
   return callTyped(origin, "plan-read", { workspace }, budgetWithin(READ_BUDGET_MS));
 }
 
-/** 一个会话的几段正文里提到的格（`refs[i]` 对 `texts[i]`；认不出片 ⇒ 每段空）。 */
-export async function fetchMsgRefs(origin: Origin, sid: string, texts: readonly string[]): Promise<PlanMsgRefs> {
-  return callTyped(origin, "plan-refs", { sid, texts: [...texts] }, budgetWithin(READ_BUDGET_MS));
+/**
+ * 一个会话的几段人说的话 · 几块回复正文（后端交过的树）里提到的格：`refs[i]` 对 `texts[i]`；`docs[i]` 对 `docs[i]`，
+ * 有引用 ⇒ 标好引用节点的树，没有 ⇒ `null`；认不出片 ⇒ 全空。
+ */
+export async function fetchMsgRefs(origin: Origin, sid: string, texts: readonly string[], docs: readonly Doc[]): Promise<PlanMsgRefs> {
+  return callTyped(origin, "plan-refs", { sid, texts: [...texts], docs: [...docs] }, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 一个节点的 agent 视角（pb 原样那一段）。 */

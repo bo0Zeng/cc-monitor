@@ -25,7 +25,7 @@
  * 禁止清单里的**每一个**模式，都必须在**别的**窗口的闭包里**命中** ——
  * 一个拼错的模式到处零命中，正控会当场红；
  * 另外每个窗口的闭包必须**含有**它该有的东西（设置窗有 `settings/panel.ts`，
- * viewer 有 `tabs.ts` ＋ `render.ts` ＋ highlight.js），免得零命中是因为整张图空了。
+ * viewer 有 `session-viewer.ts` ＋ `render.ts` ＋ KaTeX），免得零命中是因为整张图空了。
  *
  * # 买到 / 买不到
  *
@@ -70,12 +70,9 @@ function hit(mods: ReadonlySet<string>, pat: string): string[] {
 
 /** 设置窗：只含设置面板 ＋ 主题 ＋ 键位 ⇒ 渲染栈与 tab 管理一个都不许有。 */
 const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
-  { pat: "npm:highlight.js", what: "语法高亮" },
   { pat: "npm:katex", what: "数学排版" },
-  { pat: "npm:marked-katex-extension", what: "数学排版（marked 插件）" },
-  { pat: "npm:marked", what: "markdown 渲染" },
-  { pat: "npm:dompurify", what: "渲染栈的 HTML 净化" },
   { pat: "src/frontend/ui/render.ts", what: "渲染栈" },
+  { pat: "src/frontend/ui/md-view.ts", what: "渲染栈（照树排版）" },
   { pat: "src/frontend/ui/render-stream-record.ts", what: "渲染栈（逐条记录）" },
   { pat: "src/frontend/ui/cards/index.ts", what: "卡片系" },
   { pat: "src/frontend/ui/tabs.ts", what: "tab 管理" },
@@ -114,9 +111,9 @@ const FORBIDDEN_IN_VIEWER: readonly { pat: string; what: string }[] = [
 
 /** 反空真：每个窗口**必须有**的东西（没有就说明闭包走空了，零命中不作数）。 */
 const REQUIRED: Record<Win, readonly string[]> = {
-  main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/views/history.ts"],
+  main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "npm:katex", "src/frontend/ui/views/history.ts"],
   settings: ["src/frontend/ui/entry-settings.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/theme.ts", "src/frontend/ui/keybindings/registry.ts", "src/frontend/ui/keybindings/editor.ts"],
-  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/theme.ts"],
+  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "npm:katex", "src/frontend/ui/theme.ts"],
   terminal: ["src/frontend/ui/entry-terminal.ts", "src/frontend/ui/terminal-page.ts", "src/frontend/ui/theme.ts"],
 };
 
@@ -968,7 +965,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
 //
 // 源码那一侧（每条规则都在层里、层名不拼错、声明次序）住 `tests/frontend/ui/css-ledger.vitest.ts` 格 ⑤。
 // 这里判**产物**，因为有两件事只在构建里发生：
-//   ① 第三方 CSS（highlight.js 主题、KaTeX）由 `vite.config.ts` 的 postcss 插件包进 `@layer vendor` ——
+//   ① 第三方 CSS（KaTeX）由 `vite.config.ts` 的 postcss 插件包进 `@layer vendor` ——
 //      插件没生效，它们就是无层的，会反过来压住我们所有的覆盖；
 //   ② vite 按 JS chunk 重新归并 CSS 资产、重排 `<link>` —— 层声明那一句必须仍在每个窗口的**第一份**资产的最前面。
 

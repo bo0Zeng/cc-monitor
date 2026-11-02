@@ -319,6 +319,11 @@ private class Ctx(
             is InlNode.Img -> withStyle(style.faint) { append(n.alt) }
             InlNode.Br -> append('\n')
             is InlNode.Fn -> withStyle(style.fnRef) { append(n.n.toString()) }
+            // 计划格引用：编号原样，后端写好的标题跟在后面、淡色（手机不接点）。
+            is InlNode.Ref -> {
+                append(n.x)
+                if (n.label.isNotEmpty()) withStyle(style.faint) { append(" ${n.label}") }
+            }
         }
     }
 }

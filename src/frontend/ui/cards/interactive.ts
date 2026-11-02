@@ -17,13 +17,20 @@ import type { StepResult } from "../generated/StepResult";
 import type { StepAsk } from "../generated/StepAsk";
 import type { PlanTitle } from "../generated/PlanTitle";
 import type { AskQuestion } from "../generated/AskQuestion";
+import type { HlPull } from "../md-view";
+
+/** 建卡的选项：`lazy` ⇒ 公式留占位等进视口；`pull` ⇒ 计划正文里代码块的高亮问谁（不给 ⇒ 纯字）。 */
+interface Opts {
+  lazy?: boolean;
+  pull?: HlPull;
+}
 
 /**
  * 分发入口：按核心给的那一格（`ToolStep.ask`，从入参里读出来的提问 / 计划）建卡，不认入参结构。
  * 返回的元素内含 `.block-body-wrap`（tool_result 注入靶点，结构同 buildToolUseCard），调用方负责 `ctx.toolUseElements.set(block.id, el)`。
  * 没有那一格 → throw，调用方回退通用折叠卡。
  */
-export function buildInteractiveCard(ask: StepAsk | undefined, opts: { lazy?: boolean }): HTMLElement {
+export function buildInteractiveCard(ask: StepAsk | undefined, opts: Opts): HTMLElement {
   if (ask?.kind === "questions") return buildAskCard(ask.questions);
   if (ask?.kind === "plan") return buildPlanCard(ask.doc, ask.title, opts);
   throw new Error("interactive card: no ask cell");
@@ -88,7 +95,7 @@ function buildAskCard(questions: AskQuestion[]): HTMLElement {
 /** 计划卡标题三态（核心写好的，`PlanTitle`）：建卡时记下，答了之后按结果挑一句。 */
 const planTitles = new WeakMap<HTMLElement, PlanTitle>();
 
-function buildPlanCard(plan: Doc, titles: PlanTitle, opts: { lazy?: boolean }): HTMLElement {
+function buildPlanCard(plan: Doc, titles: PlanTitle, opts: Opts): HTMLElement {
   const root = document.createElement("div");
   root.className = "block-plan";
 
@@ -100,7 +107,7 @@ function buildPlanCard(plan: Doc, titles: PlanTitle, opts: { lazy?: boolean }): 
 
   const body = document.createElement("div");
   body.className = "block-plan-body block-body-md";
-  body.append(mountWhole(plan, opts.lazy));
+  body.append(mountWhole(plan, opts.lazy, opts.pull));
   root.appendChild(body);
 
   const wrap = document.createElement("div");

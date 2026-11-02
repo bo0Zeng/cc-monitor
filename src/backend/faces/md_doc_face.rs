@@ -1,5 +1,5 @@
 //! 帧面 `md-doc`：一段 Markdown 原文 ⇒ 块树（[`md_core`] 解析，两端只照树排版）。
-//! 给界面手上本来就有原文、点开才要排的那几处：思考展开 · 工具结果切到 Markdown。纯函数，不碰盘。
+//! 给界面手上本来就有原文、点开才要排的那几处：思考展开 · 工具结果切到 Markdown · 计划页里选中那一格的正文。纯函数，不碰盘。
 
 use crate::wire::typed::{codes, Command, Cx, Handle};
 use cmd_wire::md::Doc;
@@ -25,12 +25,26 @@ pub(crate) struct MdDocReq {
     pub(crate) text: String,
     #[serde(rename = "as")]
     pub(crate) of: MdAs,
+    /// 原文里提到的格（pb 给的 UTF-16 起止，计划格的正文带着）：那几段解成引用节点，标题留空、由界面照编号写。只认 `prose`。
+    pub(crate) refs: Vec<cmd_wire::plan::PlanRef>,
 }
 
 /// 本体：按 `of` 选解析法。
 pub(crate) fn doc_of(req: &MdDocReq) -> Doc {
     match req.of {
-        MdAs::Prose => md_core::parse(&req.text),
+        MdAs::Prose => {
+            let at: Vec<md_core::RefAt> = req
+                .refs
+                .iter()
+                .map(|r| md_core::RefAt {
+                    start: r.start as usize,
+                    end: r.end as usize,
+                    ids: r.ids.clone(),
+                    label: String::new(),
+                })
+                .collect();
+            md_core::parse_marked(&req.text, &at)
+        }
         MdAs::ToolResult => md_core::tool_result(&req.text),
     }
 }

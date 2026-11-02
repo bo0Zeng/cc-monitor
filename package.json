@@ -54,11 +54,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "dompurify": "^3.4.5",
-    "highlight.js": "^11.11.1",
-    "katex": "^0.16.47",
-    "marked": "^18.0.3",
-    "marked-katex-extension": "^5.1.8"
+    "katex": "^0.16.47"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

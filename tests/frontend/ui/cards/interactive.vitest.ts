@@ -23,6 +23,7 @@
 import { describe, it, expect } from "vitest";
 import { buildInteractiveCard, settleInteractive } from "../../../../src/frontend/ui/cards/interactive";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { __mathSettledForTests } from "../../../../src/frontend/ui/render";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -104,10 +105,11 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
 
   // 计划正文是后端解析好的树（`md_core::parse`），卡照树排、与回复正文卡同一套（`md-view`）。
   const PLAN_DOC = { blocks: [{ t: "h" as const, level: 2, k: ["甲的步骤"] }, { t: "p" as const, k: ["甲 ", { t: "m" as const, tex: "a+b" }] }], segs: [] };
-  it("★ 计划卡照后端交的树排：标题 · 段落 · 行内公式都在，不再有原文", () => {
+  it("★ 计划卡照后端交的树排：标题 · 段落 · 行内公式都在，不再有原文", async () => {
     const el = buildInteractiveCard({ kind: "plan", doc: PLAN_DOC, title: { waiting: "w", approved: "a", kept: "k" } }, opts);
     const body = el.querySelector(".block-plan-body")!;
     expect(body.querySelector("h2")?.textContent).toBe("甲的步骤");
+    await __mathSettledForTests();
     expect(body.querySelector(".katex")).not.toBeNull();
     expect(body.textContent).toContain("甲");
   });

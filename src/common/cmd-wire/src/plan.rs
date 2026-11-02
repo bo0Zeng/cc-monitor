@@ -912,7 +912,8 @@ pub struct PlanMsgRef {
     pub label: String,
 }
 
-/// `plan-refs` 的回包：照哪一片认的（认不出 ⇒ 两样都 `null`、每段空）；`refs[i]` 对 `texts[i]`。
+/// `plan-refs` 的回包：照哪一片认的（认不出 ⇒ 两样都 `null`、每段空）；`refs[i]` 对 `texts[i]`（人说的话，原文在界面手上）；
+/// `docs[i]` 对入参的 `docs[i]`（回复正文的树）：有引用 ⇒ 标好引用节点的那一棵（[`crate::md::InlNode::Ref`]），没有 ⇒ `null`。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -920,6 +921,7 @@ pub struct PlanMsgRefs {
     pub workspace: Option<String>,
     pub slice: Option<String>,
     pub refs: Vec<Vec<PlanMsgRef>>,
+    pub docs: Vec<Option<crate::md::Doc>>,
 }
 
 #[cfg(test)]

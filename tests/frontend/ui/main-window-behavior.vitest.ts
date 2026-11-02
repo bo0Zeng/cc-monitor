@@ -678,7 +678,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" }, draw, human: false }) as never;
   const para = (...k: unknown[]) => ({ blocks: [{ t: "p", k }], segs: [] });
 
-  it("★ 交回默认展开、正文照树排、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", () => {
+  it("★ 交回默认展开、正文照树排、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", async () => {
     const c = { ...ctx(), runLabelOf: (run: string) => (run === "a7" ? "审面板交互" : undefined) };
     const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, doc: para("甲乙丙", { t: "b", k: ["已查完"] }, " ", { t: "m", tex: "a+b" }) }), c);
     if (r.kind !== "card") throw new Error(r.kind);
@@ -686,7 +686,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", copyText("speaker.tag.handback")]);
     expect(el.querySelector(".speaker-body")?.textContent).toContain("甲乙丙已查完");
     expect(el.querySelector(".speaker-body strong")?.textContent, "照树排：加粗是树上的节点").toBe("已查完");
-    expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull();
+    await vi.waitFor(() => expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull());
     document.body.appendChild(el);
     const got: unknown[] = [];
     document.addEventListener("ccm:reveal-run", (e) => got.push((e as CustomEvent).detail), { once: true });

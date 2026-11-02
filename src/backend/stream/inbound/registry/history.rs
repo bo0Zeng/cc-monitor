@@ -29,6 +29,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
         "我是哪条会话 · 在哪几组 · 组员有谁",
     ),
+    // 一段 Markdown 原文解析成块树（纯函数、不碰盘；长正文解析几毫秒 ⇒ 阻塞档，不占反应堆）。
+    crate::wire::typed::blocking::<crate::faces::md_doc_face::MdDocCmd>(
+        "一段 Markdown 原文解析成块树，两端照树排版（`as`：`prose` 照原文、`refs` 那几段解成计划格引用 · `tool_result` 先剥 Read / Grep 的行号前缀）",
+    ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），

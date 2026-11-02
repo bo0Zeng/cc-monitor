@@ -16,11 +16,13 @@ pub use cmd_wire::md;
 
 mod highlight;
 mod parse;
+mod refs;
 mod segment;
 
 pub use highlight::Highlighter;
 pub use md::*;
 pub use parse::parse;
+pub use refs::{parse_marked, ref_text, with_refs, RefAt};
 pub use segment::{seg_blocks, segment, SEG_BYTES};
 
 /// 工具结果按 Markdown 读：Read / Grep 那种每行带行号前缀（`<n>\t…` · `<n>:…` · `<路径>:<n>:…`）的，

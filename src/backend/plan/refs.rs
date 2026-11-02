@@ -226,25 +226,51 @@ pub(crate) fn refs_in(
 }
 
 /// `plan-refs` 的本体：认片 ⇒ 认这一批；认不出片 ⇒ 两样 `null`、每段空，不起 pb。
+/// 回复正文是树（`trees`）：投成一段字（[`md_core::ref_text`]）跟人说的话一起认，认出的几处插回树上（[`md_core::with_refs`]）。
 pub(crate) fn answer(
     docs: &[PlanRead],
     sid: &str,
     cwd: Option<&str>,
     texts: &[String],
+    trees: &[md_core::Doc],
     memo: &Memo,
     ask: &dyn Fn(&At, &str) -> Option<Value>,
 ) -> PlanMsgRefs {
-    match at_for(docs, sid, cwd) {
-        Some(at) => PlanMsgRefs {
-            refs: refs_in(memo, &at, texts, &|one| ask(&at, one)),
-            workspace: Some(at.workspace),
-            slice: Some(at.slice),
-        },
-        None => PlanMsgRefs {
+    let Some(at) = at_for(docs, sid, cwd) else {
+        return PlanMsgRefs {
             workspace: None,
             slice: None,
             refs: vec![Vec::new(); texts.len()],
-        },
+            docs: vec![None; trees.len()],
+        };
+    };
+    let all: Vec<String> = texts
+        .iter()
+        .cloned()
+        .chain(trees.iter().map(md_core::ref_text))
+        .collect();
+    let mut refs = refs_in(memo, &at, &all, &|one| ask(&at, one));
+    let of_trees = refs.split_off(texts.len());
+    PlanMsgRefs {
+        refs,
+        docs: trees
+            .iter()
+            .zip(of_trees)
+            .map(|(doc, found)| {
+                let at: Vec<md_core::RefAt> = found
+                    .into_iter()
+                    .map(|r| md_core::RefAt {
+                        start: r.start as usize,
+                        end: r.end as usize,
+                        ids: r.ids,
+                        label: r.label,
+                    })
+                    .collect();
+                (!at.is_empty()).then(|| md_core::with_refs(doc, &at))
+            })
+            .collect(),
+        workspace: Some(at.workspace),
+        slice: Some(at.slice),
     }
 }
 
