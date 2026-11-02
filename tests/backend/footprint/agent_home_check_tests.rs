@@ -88,6 +88,24 @@ fn 波浪号按这台家目录展开() {
     std::fs::create_dir_all(crate::agents::records_root(&d.path().join(".agent-x")).unwrap())
         .unwrap();
     let home = d.path().to_path_buf();
-    let got = answer_check_with(&json!({"path": "~/.agent-x"}), Some(home)).unwrap();
+    let got = answer_check_with(&json!({"path": "~/.agent-x"}), Some(home.clone())).unwrap();
     assert_eq!(got, json!({"state": "ok"}));
+    // Windows 的写法 `~\…` 同一份展开（`platform::paths::expand_tilde_from`）。
+    let got = answer_check_with(&json!({"path": "~\\.agent-x"}), Some(home.clone())).unwrap();
+    assert_eq!(got, json!({"state": "ok"}));
+    assert_eq!(
+        answer_check_with(&json!({"path": "~"}), Some(home)).unwrap(),
+        json!({"state": "no_records"})
+    );
+}
+
+#[test]
+fn 家目录说不出_波浪号路径拒() {
+    assert_eq!(
+        answer_check_with(&json!({"path": "~/.agent-x"}), None)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
+    );
 }
