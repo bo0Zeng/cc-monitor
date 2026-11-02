@@ -528,7 +528,7 @@ fn reply_head(reply_text: &str) -> String {
     if head.is_empty() && code {
         copy_text("rsTurns.reply.codeOnly", &[])
     } else {
-        clip(&head.join("\n"), REPLY_MAX)
+        copy_core::clip(&head.join("\n"), REPLY_MAX)
     }
 }
 
@@ -536,14 +536,6 @@ fn reply_head(reply_text: &str) -> String {
 fn plain_line(l: &str) -> String {
     let l = l.trim_start_matches(['#', '>']).trim_start();
     l.replace("**", "").replace("__", "").replace('`', "")
-}
-
-/// 截到 `max` 个字（Unicode 标量），截了加省略号。
-fn clip(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((i, _)) => format!("{}…", &s[..i]),
-        None => s.to_string(),
-    }
 }
 
 /// 一个出错的工具结果落在哪：这一轮里发出那次调用的那一条（找不到 ⇒ 结果这一条自己，仍带调用 id）；两样都没有 uuid ⇒ 没有。
@@ -805,11 +797,7 @@ impl TurnScan {
     ) -> Option<TurnRow> {
         if let Some(said) = user_input_given(kind, v, beat) {
             let speech = beat.said().and_then(|s| s.speech()).unwrap_or_default();
-            let first = speech
-                .lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .unwrap_or("");
+            let first = copy_core::first_line(&speech).unwrap_or("");
             let closed = self.open.take().map(|mut t| {
                 t.row.done = true;
                 t.close(Some((&said.uuid, line)))
@@ -821,7 +809,7 @@ impl TurnScan {
                     uuid: said.uuid,
                     end: said.timestamp.clone(),
                     start: said.timestamp,
-                    said: clip(first, SAID_MAX),
+                    said: copy_core::clip(first, SAID_MAX),
                     ..TurnRow::default()
                 },
                 ..Open::default()
