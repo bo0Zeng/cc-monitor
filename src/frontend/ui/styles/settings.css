@@ -58,7 +58,7 @@
   transform: translateX(0);
 }
 
-/* F82a（#56+#47）：独立设置窗口模式 —— 设置面板占满整窗。
+/* 独立设置窗口模式 —— 设置面板占满整窗。
    〔三入口拆分〕原先这里还有两条兜底：`body.settings-window-mode #app { display: none }` 与
    「设置窗里把顶栏 trigger 再藏一次」。`settings.html` 里**既没有 `#app` 也没有 trigger**
    （它只有一个空 body），两条都没有对象，删了。 */

@@ -29,7 +29,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 /**
- * F82a（#56+#47）：独立**设置窗口**的精简 bootstrap —— 只挂 SettingsPanel（windowMode），
+ * 独立**设置窗口**的精简 bootstrap —— 只挂 SettingsPanel（windowMode），
  * 无 tab / 历史 chrome。照 viewer §22 范式。设置项经既有 config 命令读写（窗口无关）；
  * 保存 / 行为 toggle 后 panel 广播 `settings-applied`，主窗口 listen 并重读应用主题+行为（跨窗同步）。
  * 主题已在本文件的 DOMContentLoaded 里先 `loadTheme()` 应用（本 fn 在其后），此处不重复。
