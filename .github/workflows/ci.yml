@@ -66,17 +66,6 @@ jobs:
         working-directory: src/frontend/shell
     steps:
       - uses: actions/checkout@v4
-        # 🔴 `fetch-depth: 0` 在这个 job 上是**判据的输入**，不是习惯问题。
-        # `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 有一格
-        # 走 `git log --format=%h -- <path>` 数本文件的历史版本（地板 5）。
-        # checkout 默认 depth 1 ⇒ 只回得出 1 个 sha ⇒ 那一格红，
-        # 而它的诊断第一条自己就点名「浅克隆把历史截掉了（要 fetch-depth: 0）」。
-        # ⚠ 判据自己明写「不许靠调低地板让今天好过」⇒ 要修的是这里，不是那个 5。
-        # ⚠ 只加在本 job：另外两处 checkout 的 job 里没有读 git 历史的判据，
-        #    全仓加上去只是让每次 clone 更大而买不到东西。真有新的历史面判据落到别的 job，
-        #    那一格会红并点名这一条，到时候再加。
-        with:
-          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -116,7 +105,8 @@ jobs:
   # 裁决行会是 `GATE: PARTIAL`（只跑了点到的那几格），退出码 0 = 点到的全绿。
   # Windows 那两个 job（`rust` · `frontend`）照旧自己写命令：门禁跑不了真 Windows。
   #
-  # ⚠ `fetch-depth: 0` 与 `rust` job 同一条理由：几条判据拿 git 历史当权威，浅克隆下它们会红。
+  # ⚠ `fetch-depth: 0`：几条判据拿 git 历史当权威（棘轮那一格数本文件的历史版本，地板 5），浅克隆下它们会红。
+  #   它们都住 guard-core（Windows 那个 `rust` job `--exclude guard-core`），所以只本 job 要全历史。
   # ⚠ apt 那几个包：monitor 是 Tauri app crate，`cargo test` 也得先把它编出来（缺 webkit2gtk 的 pkg-config 会红在走到我们代码之前）；
   #   起真窗口的那几条要 Xvfb / xdotool / CJK 字体。
   # ⚠ 门禁的 `cargo` 那一格带 `--lib`（不跑 doctest 与 bin 的测试档）；那两档由 `rust` job 在 Windows 上跑全量。
