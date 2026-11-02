@@ -30,7 +30,7 @@ import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
 import { activityOf, closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
@@ -483,7 +483,7 @@ export class TabManager {
    * 那台机器的会话流**丢了几格**（`gap`：前端落后超过一整个 credit 窗口，句柄丢了、原位报）。
    * 丢的是哪几个会话的哪几行流里说不出来 ⇒ 那台机器上的**每个** tab 都按行号补（`TabStreamView.recoverFromGap`）。
    */
-  onStreamGap(origin: Origin): void {
+  onStreamGap(origin: Machine): void {
     for (const t of this.store.tabs.values()) {
       if (t.origin === origin) this.view.recoverFromGap(t);
     }
@@ -493,7 +493,7 @@ export class TabManager {
    * 这个会话刚进了那台那条流的「在看」名单（`watch` 格）：它的这份记录从第 `seq` 行起上流 ⇒ 之前没上流的那段补上
    * （`TabStreamView.catchUpTo`）。
    */
-  onSessionWatch(origin: Origin, p: WatchFrom): void {
+  onSessionWatch(origin: Machine, p: WatchFrom): void {
     const tab = this.store.tabs.get(p.sid);
     if (!tab || tab.origin !== origin) return;
     this.view.catchUpTo(tab, p.path, p.seq);
@@ -522,7 +522,7 @@ export class TabManager {
   /** 收到一行记录：走 `renderStreamRecord`（时间线按 seq 定位 · 标题与真用户输入走 sink）。 */
   onLine(payload: JsonlLinePayload): void {
     // 项目目录不从行里取（行上的 cwd 是那一刻的工作目录，会漂进子目录）：只认后端那一格（会话宣告 / 会话事实）。
-    const tab = this.ensureTab(payload.session_id, null, payload.path, originFromWire(payload.origin));
+    const tab = this.ensureTab(payload.session_id, null, payload.path, payload.origin);
 
     // 按 seq 去重（唯一一道）：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（seq ＝ 当前文件里的行号）。
     // 必须在 renderStreamRecord 之前、且覆盖不入时间线的记录（attachment / isMeta / 空 user 也有 seq）。
@@ -545,7 +545,7 @@ export class TabManager {
   createSkeletonTab(
     sessionId: string,
     projectDir: string | null,
-    origin: Origin,
+    origin: Machine,
     background: boolean | null = null,
     // `null` ＝ 没说 ＝ 视为可以；只有显式 `false` 才记账。
     attachable: boolean | null = null,
@@ -676,7 +676,7 @@ export class TabManager {
     sessionId: string,
     projectDir: string | null,
     sourcePath: string,
-    origin: Origin = LOCAL_ORIGIN,
+    origin: Machine = LOCAL,
     background: boolean | null = null,
   ): Tab {
     this.settleClose(sessionId); // 撤销期里关掉的那个又来了 ⇒ 先把旧的收干净，再按新的建
@@ -976,7 +976,7 @@ export class TabManager {
   }
 
   /** 右键「账号…」开哪个面板（主窗口接；独立窗口不接 ⇒ 那一项照样在，点了不动）。 */
-  onOpenAccountPanel: ((sid: string, origin: Origin) => void) | null = null;
+  onOpenAccountPanel: ((sid: string, origin: Machine) => void) | null = null;
   /** 菜单「看它的终端」：切到那个标签页之后开底部抽屉的终端页（抽屉归主窗口入口）。 */
   onViewTerminal: (() => void) | null = null;
 
@@ -986,7 +986,7 @@ export class TabManager {
     return this.store.tabs.get(sessionId)?.agent ?? null;
   }
 
-  originOf(sessionId: string): Origin | null {
+  originOf(sessionId: string): Machine | null {
     return this.store.tabs.get(sessionId)?.origin ?? null;
   }
 
@@ -1010,7 +1010,7 @@ export class TabManager {
    * 这台机器的活会话清单报完了：记下（「没回来的组员」等每台都报完了才认）。这台「说不清」的不在这里落地 ——
    * 活的已经宣告过，别的由那台答（手上的 tab 随名单报给它，它不在说的答已结束）。
    */
-  markOriginSeen(origin: Origin): void {
+  markOriginSeen(origin: Machine): void {
     this.listed.reported(origin); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才算那一刻
   }
 
@@ -1028,7 +1028,7 @@ export class TabManager {
   }
 
   /** 一台的会话事实都再问一次（`changed {needs}` 那一批可能漏了）。 */
-  rereadFactsOn(origin: Origin): void {
+  rereadFactsOn(origin: Machine): void {
     for (const t of this.store.tabs.values()) if (t.origin === origin) this.rereadFacts(t.sessionId);
   }
 
@@ -1054,7 +1054,7 @@ export class TabManager {
   onAllListed: () => void = () => {};
 
   /** 这个窗口订了哪几台的会话流（主窗口起步 · 机器表变了）：那一刻要等每台都在自己那条流上报完了才算。 */
-  setMachines(origins: readonly Origin[]): void {
+  setMachines(origins: readonly Machine[]): void {
     this.listed.setMachines(origins);
   }
 
@@ -1096,7 +1096,7 @@ export class TabManager {
   }
 
   /** 一台的状态成品来了（本机后端推的 `changed {machine}`）⇒ 栏里那条机器离线条照它画（离线 · 几条状态不明都是后端说的）。 */
-  machineChanged(origin: Origin, m: MachineState): void {
+  machineChanged(origin: Machine, m: MachineState): void {
     this.bar.machineChanged(origin, m);
   }
 
@@ -1121,7 +1121,7 @@ export class TabManager {
   }
 
   /** 「需手动」的账挂进来（各台整份、本机合好 · 点会话外那一行开登录抽屉）；账变了 ⇒ 入口 · 浮层跟着重画。 */
-  attachNeeds(book: NeedsBook, login: (origin: Origin, item: ManualItem) => void): void {
+  attachNeeds(book: NeedsBook, login: (origin: Machine, item: ManualItem) => void): void {
     this.bar.needs = { book, login };
     book.subscribe(() => this.bar.planNeedsChanged());
     this.bar.planNeedsChanged();
@@ -1546,7 +1546,7 @@ export class TabManager {
   }
 
   /** ↗ 浮层上的按钮。 */
-  private async frontAct(sid: string, from: "row" | "head", origin: Origin, a: FrontAct): Promise<void> {
+  private async frontAct(sid: string, from: "row" | "head", origin: Machine, a: FrontAct): Promise<void> {
     switch (a.kind) {
       case "connect":
         this.onConnectTerminal?.();
@@ -1579,7 +1579,7 @@ export class TabManager {
    * 正在更新 · 换上了 · 没换上都在同一个浮层里说。换上了就重拨那条流：拨成了只留关闭；没拨成才说要重连、给［重新连接］。
    * 没换上 ⇒ ［重试］再更新一次 ·［复制详情］。确认框里取消 ⇒ 什么都不出。
    */
-  private async updateInPlace(sid: string, from: "row" | "head", origin: Origin): Promise<void> {
+  private async updateInPlace(sid: string, from: "row" | "head", origin: Machine): Promise<void> {
     const machine = machineName(origin);
     const show = (view: FrontView): void => {
       const anchor = this.frontAnchor(sid, from);

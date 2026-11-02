@@ -9,7 +9,7 @@
  * 回包是带键集合那一形（`common/views.rs`）：这里不带记号问，答的就是那一窗的整份（`whole`），照 `order` 从 `up` 取项；不写合并。
  */
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { HistoryRow } from "./generated/HistoryRow";
 import type { HistoryGroup } from "./generated/HistoryGroup";
 import type { HistoryHead } from "./generated/HistoryHead";
@@ -47,24 +47,24 @@ const LIST_BUDGET_MS = 30_000;
 
 /** 回包（带键集合，不带记号问 ⇒ 整份）摊成一台的成品；不是整份 · 先后里点了没给的行 ⇒ 抛（细目只进日志）。 */
 function listOf(r: SyncPatch<HistoryHead, HistoryRow>): HistoryList {
-  if (!r.whole || r.order === null || r.head === null) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list answered a patch to an ask without a mark");
+  if (!r.whole || r.order === null || r.head === null) throw new ReplyUnreadable(LOCAL, "history-list answered a patch to an ask without a mark");
   const rows = r.order.map((k) => r.up[k]);
-  if (rows.some((x) => x === undefined)) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-list order names a row it did not send");
+  if (rows.some((x) => x === undefined)) throw new ReplyUnreadable(LOCAL, "history-list order names a row it did not send");
   return { rows, groups: r.head.info.groups, notice: r.head.info.notice, total: r.head.total, truncated: r.head.total > rows.length };
 }
 
-/** 一台的清单（`origin` 缺席 = 本机）。失败 ⇒ 抛（给人看的那句 `kit/detail.ts::saidOf` 取）。 */
-export async function fetchList(origin: string | undefined, ask: HistoryListAsk): Promise<HistoryList> {
-  // 只带给了的那几格（缺 = 后端缺省）。
+/** 一台的清单（`origin` 总带，本机逐字 `<local>`）。失败 ⇒ 抛（给人看的那句 `kit/detail.ts::saidOf` 取）。 */
+export async function fetchList(origin: Machine, ask: HistoryListAsk): Promise<HistoryList> {
+  // 那台总带；别的只带给了的那几格（缺 = 后端缺省）。
   const args: HistoryListReq = {
-    ...(origin ? { origin } : {}),
+    origin,
     ...(ask.sid ? { sid: ask.sid } : {}),
     ...(ask.query ? { query: ask.query } : {}),
     ...(ask.sort ? { sort: ask.sort } : {}),
     ...(ask.withinDays ? { within_days: ask.withinDays } : {}),
     ...(ask.hidden ? { hidden: true } : {}),
   };
-  return listOf(await callTyped(LOCAL_ORIGIN, "history-list", args, budgetWithin(LIST_BUDGET_MS)));
+  return listOf(await callTyped(LOCAL, "history-list", args, budgetWithin(LIST_BUDGET_MS)));
 }
 
 /** 历史页那一列的一窗：第 `from` 项起的那几项 · 整列几项 · 头（各台那一格 · 段头 · 几个项目）。 */
@@ -77,9 +77,9 @@ export interface BrowseWindow {
 
 /** 历史页那一列的一窗。失败 ⇒ 抛（给人看的那句 `kit/detail.ts::saidOf` 取）；一台读不到不算失败（在头里那一格）。 */
 export async function fetchBrowse(ask: HistoryBrowseReq): Promise<BrowseWindow> {
-  const r: SyncPatch<HistoryBrowseHead, HistoryLine> = await callTyped(LOCAL_ORIGIN, "history-browse", ask, budgetWithin(LIST_BUDGET_MS));
-  if (!r.whole || r.order === null || r.head === null) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-browse answered a patch to an ask without a mark");
+  const r: SyncPatch<HistoryBrowseHead, HistoryLine> = await callTyped(LOCAL, "history-browse", ask, budgetWithin(LIST_BUDGET_MS));
+  if (!r.whole || r.order === null || r.head === null) throw new ReplyUnreadable(LOCAL, "history-browse answered a patch to an ask without a mark");
   const lines = r.order.map((k) => r.up[k]);
-  if (lines.some((x) => x === undefined)) throw new ReplyUnreadable(LOCAL_ORIGIN, "history-browse order names a line it did not send");
+  if (lines.some((x) => x === undefined)) throw new ReplyUnreadable(LOCAL, "history-browse order names a line it did not send");
   return { from: ask.range.from, lines, total: r.head.total, head: r.head.info };
 }
