@@ -55,6 +55,7 @@
 //! 每个 debounce 事件把整份 jsonl 读进内存的话，257 MB 的活跃会话 ⇒ 每次读 257 MB，
 //! 只为提取约 500 字节的新行 —— 而 backend 常跑在树莓派那类小机器上。
 
+use crate::history::live_table::SESSION_FILE_CAP;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
@@ -3383,7 +3384,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
         return false;
     };
-    let Some(bytes) = Ro::read(path).ok() else {
+    let Some(bytes) = Ro::read_capped(path, SESSION_FILE_CAP).ok() else {
         return false;
     };
     // 一次解析（适配层翻成一行 `ProcFact`；status diff 与后面的宣告帧共用）
@@ -4180,7 +4181,7 @@ fn reconcile_sessions(
                 continue;
             }
             if let Some(want) = only {
-                let sid = Ro::read(p)
+                let sid = Ro::read_capped(p, SESSION_FILE_CAP)
                     .ok()
                     .and_then(|b| crate::agents::proc_fact(&b))
                     .and_then(|f| f.sid);
@@ -4944,7 +4945,7 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
         .filter(|p| is_session_json(p))
         .filter_map(|p| {
             let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
-            let fact = crate::agents::proc_fact(&Ro::read(&p).ok()?)?;
+            let fact = crate::agents::proc_fact(&Ro::read_capped(&p, SESSION_FILE_CAP).ok()?)?;
             let sid = fact.sid?;
             (pid_alive(pid) && !fact.background && add_time_check(pid, fact.proc_start, &p).is_ok())
                 .then_some((sid, pid))

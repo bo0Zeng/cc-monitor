@@ -14,7 +14,7 @@
 use crate::common::said::Said;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
-use relay_route_core::{Class, Decl, Format, Upgradable};
+use relay_route_core::{Cap, Class, Decl, Format, Upgradable};
 use std::io::Read as _;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -29,8 +29,8 @@ pub(crate) type Step = fn(serde_json::Value) -> Result<serde_json::Value, Said>;
 pub struct Doc<T> {
     /// 落点（家目录底下 `.cc-monitor/` 那一层起；一类多份的写成那一类的样子，如 `…/<pid>.json`；不住那一层的写成它住哪）。
     pub rel: &'static str,
-    /// 读上限（字节）：超了当读不出来。
-    pub(crate) cap: u64,
+    /// 读上限（字节与超了怎么办，声明表那一格）：超了当读不出来。
+    pub(crate) cap: Cap,
     pub(crate) kind: Kind,
     /// 格式与版本（声明表那一格）。
     format: Format,
@@ -70,7 +70,7 @@ impl<T> Doc<T> {
         assert!(steps.len() == span, "升级步数要等于 version - floor");
         Doc {
             rel: d.row.rel,
-            cap: d.row.cap.bytes,
+            cap: d.row.cap,
             kind: d.row.kind,
             format: d.row.format,
             steps,
@@ -108,7 +108,7 @@ impl<T> Doc<T> {
             Read::Absent => Read::Absent,
             Read::Unreadable(e) => Read::Unreadable(e),
             Read::Present(f) => {
-                let mut r = std::io::BufReader::new(f.take(self.cap));
+                let mut r = std::io::BufReader::new(f.take(self.cap.bytes));
                 decoded(decode(&mut r))
             }
         };
@@ -348,19 +348,20 @@ impl<T> Read<T> {
 }
 
 /// 读整份字节（上限 `cap`）。不在 ⇒ `Absent`；不是常规文件 / 超上限 / 读失败 ⇒ `Unreadable`（原因带路径）。
-fn read_bytes(path: &Path, cap: u64) -> Read<Vec<u8>> {
+fn read_bytes(path: &Path, cap: Cap) -> Read<Vec<u8>> {
     match crate::platform::fs::Ro::metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Read::Absent,
         _ => {}
     }
-    match crate::platform::fs::Ro::read_regular_capped(path, cap) {
+    match crate::platform::fs::Ro::read_capped(path, cap) {
         Ok(b) => Read::Present(b),
         Err(e) => Read::Unreadable(failed(path, e)),
     }
 }
 
 /// 打开来流式读（同 [`read_bytes`] 的三态与上限：先认常规文件、先看长度；读的那一侧再 `take(cap)`）。
-fn opened(path: &Path, cap: u64) -> Read<crate::platform::fs::RoFile> {
+fn opened(path: &Path, cap: Cap) -> Read<crate::platform::fs::RoFile> {
+    let Cap { bytes: cap, .. } = cap;
     let meta = match crate::platform::fs::Ro::metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Read::Absent,
         Err(e) => {
@@ -404,7 +405,7 @@ fn failed(path: &Path, e: Said) -> Said {
 }
 
 /// 读整份并按 JSON 解成 `T`。解不开 ⇒ `Unreadable`。
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path, cap: u64) -> Read<T> {
+fn read_json<T: serde::de::DeserializeOwned>(path: &Path, cap: Cap) -> Read<T> {
     read_bytes(path, cap).and_then(|b| match serde_json::from_slice::<T>(&b) {
         Ok(t) => Read::Present(t),
         Err(e) => Read::Unreadable(not_json(path, e)),

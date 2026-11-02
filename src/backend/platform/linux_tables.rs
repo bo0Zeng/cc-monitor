@@ -9,8 +9,17 @@
 #![cfg(target_os = "linux")]
 
 use crate::platform::fs::Ro;
+use crate::platform::proc::PROC_FILE_CAP;
+use relay_route_core::{Cap, Over};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+/// 读一张连接表（`/proc/net/tcp` · `tcp6`）的上限：一行一百多字节，十万条连接也只到十几 MiB。
+/// 超了这一问整个失败、照实回错（少读一截就会把正开着的那条连接漏掉、判成没有）。
+const TCP_TABLE_CAP: Cap = Cap {
+    bytes: 64 * 1024 * 1024,
+    over: Over::HardError,
+};
 
 /// 一族地址。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,10 +162,12 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
         ("/proc/net/tcp", Family::V4),
         ("/proc/net/tcp6", Family::V6),
     ] {
-        match Ro::read_to_string(path) {
+        match Ro::read_string_capped(path, TCP_TABLE_CAP) {
             Ok(t) => lines.extend(parse_proc_net_tcp(&t, fam)),
-            // 内核没开 IPv6 时没有 tcp6；IPv4 那张必须有。
-            Err(e) if fam == Family::V4 => return Err(format!("read {path}: {e}")),
+            // 内核没开 IPv6 时没有 tcp6（不在 ⇒ 跳过）；IPv4 那张必须有，tcp6 在却读不成也照实回错。
+            Err(e) if fam == Family::V4 || Ro::metadata(path).is_ok() => {
+                return Err(format!("read {path}: {}", e.logged()))
+            }
             Err(_) => {}
         }
     }
@@ -179,7 +190,9 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
     let proc: Vec<serde_json::Value> = pids
         .iter()
         .filter_map(|&pid| {
-            let s = parse_stat(&Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+            let s = parse_stat(
+                &Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?,
+            )?;
             Some(
                 serde_json::json!({ "pid": pid, "ppid": s.ppid, "name": s.name, "start": s.start }),
             )

@@ -8,6 +8,14 @@
 
 use crate::platform::fs::Ro;
 
+/// 读 `/proc` 底下一份小文件（`stat` · `environ` · `cmdline` · `fdinfo` · 整机那份 `stat`）的上限：它们正常几 KB，
+/// 环境与命令行受内核参数总长限制（随栈上限走，默认 2 MiB 量级）。超了跳过、读那一层 `warn!` 点名，调用方照「这一刻读不到」办。
+#[cfg(target_os = "linux")]
+pub(crate) const PROC_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 16 * 1024 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
+
 /// Whether `pid` currently exists as a process on this host (existence only).
 ///
 /// Linux (the backend's real target): `/proc/<pid>` existence. This is the
@@ -68,8 +76,8 @@ pub fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 ///
 /// | 支 | 何处 | 事实 |
 /// |---|---|---|
-/// | 一 | `Ro::read(…)` 回 `Err` | 环境读不到（进程没了 / 权限 / 竞态）—— 很少发生 |
-/// | 四 | `Ro::read(…)` 回 `Ok(vec![])` | 读得到，但回 0 字节 —— 常见：exec 窗口（进程刚 `execve`、mm 还没装好）与僵尸进程 |
+/// | 一 | `Ro::read_capped(…)` 回 `Err` | 环境读不到（进程没了 / 权限 / 竞态 / 超出 `PROC_FILE_CAP`）—— 很少发生 |
+/// | 四 | `Ro::read_capped(…)` 回 `Ok(vec![])` | 读得到，但回 0 字节 —— 常见：exec 窗口（进程刚 `execve`、mm 还没装好）与僵尸进程 |
 /// | 二 | 键在，值是空串 | 显式设成了空 |
 /// | 三 | 循环走完没命中 | 压根没这个键 |
 ///
@@ -99,7 +107,7 @@ pub enum EnvRead {
 pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
     #[cfg(target_os = "linux")]
     {
-        let bytes = match Ro::read(format!("/proc/{pid}/environ")) {
+        let bytes = match Ro::read_capped(format!("/proc/{pid}/environ"), PROC_FILE_CAP) {
             Ok(b) => b,
             Err(e) => {
                 tracing::warn!(
@@ -152,7 +160,7 @@ pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 pub fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
         parse_starttime_from_stat(&stat)
     }
     #[cfg(windows)]
@@ -172,7 +180,7 @@ pub fn proc_starttime(pid: u32) -> Option<u64> {
 pub fn parent_of(pid: u32) -> Option<u32> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
         super::linux_tables::parse_stat(&stat).map(|s| s.ppid)
     }
     #[cfg(windows)]
@@ -192,7 +200,7 @@ pub fn parent_of(pid: u32) -> Option<u32> {
 pub fn has_controlling_tty(pid: u32) -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
         parse_tty_nr_from_stat(&stat).map(|n| n != 0)
     }
     #[cfg(not(target_os = "linux"))]
@@ -241,7 +249,7 @@ pub const USER_HZ: u64 = 100;
 pub fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let btime = Ro::read_to_string("/proc/stat")
+        let btime = Ro::read_string_capped("/proc/stat", PROC_FILE_CAP)
             .ok()
             .and_then(|s| parse_btime(&s))?;
         Some(btime + ticks? / USER_HZ)
@@ -294,7 +302,7 @@ pub fn exe_of(pid: u32) -> Option<String> {
 pub fn proc_cmdline(pid: u32) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
-        let bytes = Ro::read(format!("/proc/{pid}/cmdline")).ok()?;
+        let bytes = Ro::read_capped(format!("/proc/{pid}/cmdline"), PROC_FILE_CAP).ok()?;
         let spaced: Vec<u8> = bytes
             .into_iter()
             .map(|b| if b == 0 { b' ' } else { b })

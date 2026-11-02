@@ -17,15 +17,22 @@ use crate::common::said::Said;
 use crate::platform::acct_view::Item;
 use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use serde_json::Value;
 use std::path::Path;
 
-/// 共享集合那份小文件的读取上限。
-const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
+/// 共享集合那份小文件的读取上限：超了这一趟同步整个失败，照实回错。
+const MAX_SMALL_BYTES: Cap = Cap {
+    bytes: 8 * 1024 * 1024,
+    over: Over::HardError,
+};
 /// 改写某个号的配置文件之前那份原文放在备份目录下的哪一层（每个号一份 `<号><配置文件名>`）。
 const BACKUP_SUBDIR: &str = "accounts-mcp";
-/// 各号配置文件的读取上限（它被项目历史与 MCP 配置撑大，同适配层读它时的那个量级）。
-pub(crate) const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
+/// 各号配置文件的读取上限（它被项目历史与 MCP 配置撑大，同适配层读它时的那个量级）：超了跳过那个号、说是哪一份。
+pub(crate) const MAX_CONFIG_BYTES: Cap = Cap {
+    bytes: 32 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 
 /// 一个号读出来的样子 ＋ 原文（落盘时当 `expect`；`None` = 文件不在）。
 struct Account {
@@ -44,11 +51,11 @@ struct Here {
     notes: Vec<String>,
 }
 
-pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::common::said::Said> {
+pub(crate) fn read_text(p: &str, cap: Cap) -> Result<Option<String>, crate::common::said::Said> {
     match item_at(p) {
         Item::Absent => Ok(None),
         Item::File { .. } => {
-            let b = crate::platform::fs::Ro::read_regular_capped(Path::new(p), cap)?;
+            let b = crate::platform::fs::Ro::read_capped(Path::new(p), cap)?;
             String::from_utf8(b)
                 .map(Some)
                 .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]).into())

@@ -19,7 +19,7 @@
 //! - `.lock` / `.highwatermark` / 非 `json` / 文件名不是纯数字：**不是任务文件**，不算跳过。
 //! - 读不出、解不成对象：写者持锁那一刻读到半截是**正常时序**（下一次变更会再触发重读）
 //!   ⇒ 跳过这一条、`trace!`。
-//! - 超过 [`TASK_FILE_CAP_BYTES`]：**跳过＋说清**（`warn!` 点名那个文件）——
+//! - 超过 [`TASK_FILE_CAP`]：**跳过＋说清**（`warn!` 点名那个文件）——
 //!   一个坏文件不该毁掉整张表，但也不许不说一声就少一条。
 //!
 //! # 读失败不许说成「没有任务」
@@ -30,11 +30,15 @@
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 /// 单个任务文件的读上限。本机实测任务文件是几百字节量级（一条 subject ＋ 一段 description）；
-/// 1 MiB 留了三个数量级的余量。超了走**跳过＋说清**（见模块头注）。
-pub(crate) const TASK_FILE_CAP_BYTES: u64 = 1 << 20;
+/// 1 MiB 留了三个数量级的余量。超了走**跳过＋说清**（见模块头注；`warn!` 由读那一层点名）。
+pub(crate) const TASK_FILE_CAP: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::SkipAndSay,
+};
 
 /// 任务列表的根：后端盯着的那一家（注册表 `LocalFace.tasks_dir`）。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
 pub(crate) fn tasks_root(home: &Path) -> std::path::PathBuf {
@@ -104,22 +108,8 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
         else {
             continue;
         };
-        match Ro::metadata(&path) {
-            Ok(m) if m.len() > TASK_FILE_CAP_BYTES => {
-                tracing::warn!(
-                    "任务文件 {} 有 {} 字节，超过单个任务文件的读上限 ⇒ 这一条跳过",
-                    path.display(),
-                    m.len()
-                );
-                continue;
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::trace!("stat 任务文件 {} 失败：{e}", path.display());
-                continue;
-            }
-        }
-        let raw = match Ro::read_to_string(&path) {
+        // 超了上限那一条由读那一层 `warn!` 点名（跳过＋说清）；别的读不出来是正常时序，`trace!`。
+        let raw = match Ro::read_string_capped(&path, TASK_FILE_CAP) {
             Ok(s) => s,
             Err(e) => {
                 tracing::trace!("读任务文件 {} 失败：{e}", path.display());
