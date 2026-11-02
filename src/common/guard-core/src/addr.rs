@@ -186,19 +186,6 @@ pub fn backend_registry_sources() -> Vec<(String, String)> {
     production_files(&backend_src_root().join("stream/inbound/registry"))
 }
 
-/// 后端的根源码面：`lib.rs`（模块声明、身份、`SUBCOMMANDS` 这一族）＋ `main.rs`（分派），两份拼起来的全集。
-/// 要「只看分派」的判据别用它。
-pub fn backend_root_source() -> String {
-    ["lib.rs", "main.rs"]
-        .iter()
-        .map(|f| {
-            let p = backend_src_root().join(f);
-            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// monitor 会话流来源目录（`stream_source/`）下的每一份：`(仓根相对路径, 原文)`，按路径排。
 /// 那份东西从一份文件拆成了一个目录：只看其中一份会安静地少一块人群。
 pub fn stream_source_files() -> Vec<(String, String)> {
