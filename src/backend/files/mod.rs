@@ -727,7 +727,7 @@ pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
 /// `files.read.chunk`：`{path, offset, len}` → `{path, offset, size, eof, content: {b16}}`。
 /// 只读普通文件（不是 ⇒ `not_text`，与读族同一个码）；`offset` 越过末尾 ⇒ 空块、`eof: true`。
 fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
-    use std::io::{Read as _, Seek as _};
+    use std::io::Seek as _;
     let path = path_of(&req.path, "path")?;
     let (offset, len) = (req.offset, req.len);
     if len == 0 || len > READ_CHUNK_MAX_BYTES {
@@ -775,8 +775,7 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
         )
     })?;
     f.seek(std::io::SeekFrom::Start(offset)).map_err(broke)?;
-    let mut buf: Vec<u8> = Vec::new();
-    f.take(len).read_to_end(&mut buf).map_err(broke)?;
+    let buf = relay_route_core::read_window(&mut f, len).map_err(broke)?;
     let size = md.len();
     Ok(wire::ReadChunkReply {
         path: wire_path(raw::path_bytes(&path)),
@@ -846,8 +845,12 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
             &e,
         )
     })?;
-    let mut buf: Vec<u8> = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf).map_err(|e| {
+    // 这一趟的上限是调用方给的 `max_bytes`（已核过在 `READ_TEXT_MAX_BYTES` 以内）：超了整趟拒。
+    let cap = relay_route_core::Cap {
+        bytes: max,
+        over: relay_route_core::Over::Reject,
+    };
+    let read = relay_route_core::read_capped_from(f, cap).map_err(|e| {
         refused(
             "unreadable",
             copy_core::copy_text(
@@ -857,12 +860,12 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
             &e,
         )
     })?;
-    if buf.len() as u64 > max {
+    let relay_route_core::CappedAll::All(buf) = read else {
         return Err(Said::new(
             "too_large",
             copy_core::copy_text("beFilesRead.text.grew", &[("max", &max.to_string())]),
         ));
-    }
+    };
     if buf.contains(&0) {
         return Err(Said::new(
             "not_text",

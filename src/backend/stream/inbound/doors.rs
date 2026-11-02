@@ -122,23 +122,23 @@ pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
 }
 
 /// 常驻后端里起会话输入队的投递线程（`faces::session_queue_deliver`；终端没了恢复那一支预标信任经 [`LocalFiles`]，与帧命令同一扇门）。
-/// 只由 `main.rs` 在占着常驻的那一个进程里调：一台只有一个投递的，同一条不会被两个进程各送一次。
+/// 只由 `stream/entry.rs` 在占着常驻的那一个进程里调：一台只有一个投递的，同一条不会被两个进程各送一次。
 pub fn deliver_queues(own: &crate::platform::fs::Own) {
     crate::faces::session_queue_deliver::start(own.clone(), &LocalFiles);
 }
 
 /// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
-/// （`main.rs` 接中转那一刻）。
+/// （`stream/entry.rs` 接中转那一刻）。
 pub fn fill_account_colors() {
     crate::accounts::manage::wire::colors_here(&LocalFiles);
 }
 
-/// 后端起来时那一次：账号库对齐 —— 按需才建的共用目录接上 · 各号缺的共享链接补上（同补号色那一扇门）。只由 `main.rs` 在常驻那一个里调。
+/// 后端起来时那一次：账号库对齐 —— 按需才建的共用目录接上 · 各号缺的共享链接补上（同补号色那一扇门）。只由 `stream/entry.rs` 在常驻那一个里调。
 pub fn share_on_demand_dirs() {
     crate::accounts::manage::wire::align_here(&LocalFiles);
 }
 
-/// 后端起来时那一次照配置文件对齐别名文件与链接（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。
+/// 后端起来时那一次照配置文件对齐别名文件与链接（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `stream/entry.rs` 调。
 pub fn align_aliases() {
     crate::assets::aliases::align_here(&LocalFiles);
 }

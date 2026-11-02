@@ -439,13 +439,14 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Pl
                 let raw = if f.is_dir() {
                     Raw::Dir
                 } else if f.is_symlink() {
-                    // zip 里链接的目标文本是那一条的正文；多读一个字节判超限（超了整趟拒，不截一半当目标）。
-                    let mut to = Vec::new();
-                    f.by_ref()
-                        .take(LINK_TARGET_MAX_BYTES + 1)
-                        .read_to_end(&mut to)
+                    // zip 里链接的目标文本是那一条的正文；超了上限整趟拒，不截一半当目标。
+                    let cap = relay_route_core::Cap {
+                        bytes: LINK_TARGET_MAX_BYTES,
+                        over: relay_route_core::Over::Reject,
+                    };
+                    let read = relay_route_core::read_capped_from(&mut f, cap)
                         .map_err(|e| broken(archive, e))?;
-                    if to.len() as u64 > LINK_TARGET_MAX_BYTES {
+                    let relay_route_core::CappedAll::All(to) = read else {
                         return Err(refused(copy_text(
                             "beFilesExtract.entry.linkTooLong",
                             &[
@@ -453,7 +454,7 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Pl
                                 ("cap", &LINK_TARGET_MAX_BYTES.to_string()),
                             ],
                         )));
-                    }
+                    };
                     Raw::Link(to)
                 } else {
                     Raw::File(f.unix_mode())

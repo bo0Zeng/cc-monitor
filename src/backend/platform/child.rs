@@ -462,7 +462,7 @@ impl Child {
         std::thread::spawn(move || {
             let e = std::thread::spawn(move || read_all(err));
             let o = read_all(out);
-            let e = e.join().unwrap_or_default();
+            let e = e.join().unwrap_or_else(|_| Ok(Vec::new()));
             piped_tx.send(Ev::Piped(o, e)).discard(Why::PeerGone); // 等待线程已按放手收尾 ⇒ 读完的输出没人收
         });
 
@@ -483,10 +483,12 @@ impl Child {
                 Ok(Ev::Piped(o, e)) => {
                     // 发起方过了期限已放手、回了超时 ⇒ 这份结果没人收
                     done_tx
-                        .send(status.map(|s| Output {
-                            status: s,
-                            stdout: o,
-                            stderr: e,
+                        .send(status.and_then(|s| {
+                            Ok(Output {
+                                status: s,
+                                stdout: o?,
+                                stderr: e?,
+                            })
                         }))
                         .discard(Why::PeerGone);
                 }
@@ -600,16 +602,32 @@ impl Child {
 }
 
 enum Ev {
-    Piped(Vec<u8>, Vec<u8>),
+    Piped(std::io::Result<Vec<u8>>, std::io::Result<Vec<u8>>),
     GaveUp,
 }
 
-fn read_all(r: Option<impl Read>) -> Vec<u8> {
-    let mut buf = Vec::new();
-    if let Some(mut r) = r {
-        r.read_to_end(&mut buf).discard(Why::Drain); // 读错只少尾巴几个字节，退出码与超时照旧判
+/// [`Child::run`] 每一根输出管子收多少（stdout · stderr 各算）：它收的是一问一答的输出（tmux · ssh · git · 一行脚本），
+/// 远到不了这么多；超了 ⇒ 这一趟回错，不交前一截当整份。
+const PIPE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024 * 1024,
+    over: relay_route_core::Over::HardError,
+};
+
+/// 读一根管子到它关；超了 [`PIPE_CAP`] ⇒ 余下的照读掉、不存（不读完，它会卡在写上、等到期限被杀），回错。
+fn read_all(r: Option<impl Read>) -> std::io::Result<Vec<u8>> {
+    let Some(mut r) = r else {
+        return Ok(Vec::new());
+    };
+    match relay_route_core::read_capped_from(&mut r, PIPE_CAP)? {
+        relay_route_core::CappedAll::All(buf) => Ok(buf),
+        relay_route_core::CappedAll::OverCap => {
+            std::io::copy(&mut r, &mut std::io::sink()).discard(Why::Drain); // 只为让它写得完：读错了它照样会退
+            Err(std::io::Error::other(copy_text(
+                "beFs.readRegularCapped.tooBig",
+                &[("cap", &PIPE_CAP.bytes.to_string())],
+            )))
+        }
     }
-    buf
 }
 
 fn is_own(k: &OsStr) -> bool {
