@@ -123,15 +123,9 @@ impl StartOutcome {
 // **别把 `Hidden` 铺到 `platform/terminal.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 握手那一行（hello / attach 应答）的字节上限。
-///
-/// hello 帧本机实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，typed 命令越多越长；
-/// 8 KiB 那一版在文件管理写的那几条换成 typed 时被撑破）。64 KiB 给了 7 倍余量，
-/// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
-/// 不是我们自己的子进程，不能假设它讲道理。
-/// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
-pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
+/// 握手那一行（hello / attach 应答）的字节上限：与连远端常驻后端那一侧是同两行，同一个 `Cap`（`resident_client::attach`，
+/// 拒收＋回错：不静默截断成一行「看起来对」的 JSON）。这条连接的对端是**同机任何进程**，不是我们自己的子进程，不能假设它讲道理。
+use resident_client::attach::HANDSHAKE_LINE_CAP;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
@@ -371,11 +365,11 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
                     });
                 }
                 out.push(one[0]);
-                if out.len() > LISTEN_HANDSHAKE_LINE_CAP {
+                if out.len() as u64 > HANDSHAKE_LINE_CAP.bytes {
                     // **拒收 + 出声**，不静默截断成一行「看起来对」的 JSON。
                     return Err(Said::of(
                         "rsLocalBackendHost.handshake.tooLong",
-                        &[("cap", &LISTEN_HANDSHAKE_LINE_CAP.to_string())],
+                        &[("cap", &HANDSHAKE_LINE_CAP.bytes.to_string())],
                     )
                     .into());
                 }
@@ -458,7 +452,7 @@ fn spawn_detached(
         )
         .into());
     }
-    let mut cmd = std::process::Command::new(bin);
+    let mut cmd = crate::spawn_managed::command(bin);
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
@@ -479,7 +473,7 @@ fn spawn_detached(
         .map(|d| crate::logging::backend_stderr_log_path(&d))
         .filter(|p| {
             p.parent()
-                .is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+                .is_some_and(|d| crate::platform::own_fs::log_dir(d).is_ok())
         })
     {
         cmd.env(crate::logging::BACKEND_STDERR_LOG_ENV, p);
@@ -1106,15 +1100,12 @@ fn detached_exit() -> Option<String> {
 /// ⚠ **本层不许再自己拼失败串** —— 拼了就是第二份说法。由
 /// `the_two_resolution_paths_still_agree_on_the_order` 钉着（它今天钉的是「两条路都走那一份」）。
 fn resolve_backend_bin(
-    extract_dir: &std::path::Path,
+    bin: &crate::platform::own_fs::OwnBin,
     embedded: Result<(&str, &[u8]), String>,
 ) -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)> {
     match local_backend::resolve_or_extract(
-        extract_dir,
+        bin,
         embedded,
-        // `backend-split` 的 C10：平台知识由宿主注入。
-        &crate::platform::fs::make_executable,
-        &crate::platform::fs::ensure_private_dir,
         // 放不放问手上那份字节自己（起进程的三条策略由宿主给）。
         &crate::backend_once::ask_place_verdict,
     ) {
@@ -1184,7 +1175,7 @@ fn run_resident_stop_within(
     bin: &std::path::Path,
     deadline: std::time::Duration,
 ) -> Result<crate::remote_resident::StopAnswer, Said> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
     if bin.as_os_str().is_empty() {
         return Err(Said::of("rsLocalBackendHost.stop.noBin", &[]));
     }
@@ -1195,18 +1186,19 @@ fn run_resident_stop_within(
     let got = crate::backend_once::capture_full(
         deadline,
         &|| {
-            let mut cmd = std::process::Command::new(bin);
-            // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
-            cmd.args([local_backend::BACKEND_SEP, "--resident-stop"])
-                .env_remove("TMUX")
-                .envs(handed.iter().cloned())
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped());
-            spawn_managed_cmd(
-                &mut cmd,
+            spawn_managed_with(
+                bin,
                 ConsolePolicy::Hidden,
                 Lifetime::JobKillOnClose,
                 StderrSink::Captured,
+                |cmd| {
+                    // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
+                    cmd.args([local_backend::BACKEND_SEP, "--resident-stop"])
+                        .env_remove("TMUX")
+                        .envs(handed.iter().cloned())
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::piped());
+                },
             )
         },
         None,
@@ -1422,9 +1414,14 @@ pub fn start_local_backend() -> StartOutcome {
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
     //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，原样交出、不伪造理由。
-    let extract_dir = creds_core::store::home_dir()
-        .map(|h| h.join(".cc-monitor").join("bin"))
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
+    //     家目录问不到 ⇒ 没有落点可放，照「无主目录」说（不发明一个目录）。
+    let Some(bin) = crate::platform::own_fs::OwnBin::issue() else {
+        return note_never_started(StartOutcome::Failed {
+            reason: Said::of("rsFilewinProc.bin.noHome", &[]),
+            looked_at: Vec::new(),
+        });
+    };
+    let extract_dir = bin.dir().to_path_buf();
     // 〔RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
     //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
     if let Some(home_dir) = extract_dir.parent() {
@@ -1455,7 +1452,7 @@ pub fn start_local_backend() -> StartOutcome {
     //   那份环境交给它（[`backend_env`]），**两条载体同一份**（常驻 / 被监护的 stdio）。
     let handed = backend_env();
     // `embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
-    let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
+    let resolve = || resolve_backend_bin(&bin, embedded.clone());
     let landing = extract_dir.join(local_backend::local_ccm_entry_name());
     match start_detached(&resolve, &landing, &handed) {
         // ★ 这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
@@ -1465,11 +1462,8 @@ pub fn start_local_backend() -> StartOutcome {
     // 不脱离的那一支：监护着起，存好句柄再等它说上话（[`start_supervised`]）。
     let resolved = start_supervised(backend_supervise_events(), |events| {
         let (resolved, sup) = local_backend::start_or_extract(
-            &extract_dir,
+            &bin,
             embedded,
-            // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
-            &crate::platform::fs::make_executable,
-            &crate::platform::fs::ensure_private_dir,
             // ★ backend 这条监护路的死亡账**就记在这个闭包里**（`backend_supervise_events` 的头注）。
             events,
             // ★：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。

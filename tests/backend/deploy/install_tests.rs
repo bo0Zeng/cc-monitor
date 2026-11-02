@@ -209,10 +209,22 @@ fn scratch(name: &str) -> std::path::PathBuf {
     d
 }
 
+/// 宿主读一格的样子：读不了 ⇒ 原因词那一句、下层原话进 `raw`。
+fn read(p: &std::path::Path) -> Result<Vec<u8>, Said> {
+    std::fs::read(p).map_err(|e| Said::with_raw(copy_core::io_reason(e.kind()), e))
+}
+
 async fn run(r: &Rig, slots: &[Slot]) -> (Result<crate::Plan, Said>, Vec<Step>) {
+    run_with(r, slots, &read).await
+}
+
+async fn run_with(
+    r: &Rig,
+    slots: &[Slot],
+    load: &crate::Load,
+) -> (Result<crate::Plan, Said>, Vec<Step>) {
     let steps = Mutex::new(Vec::new());
-    let load = |p: &std::path::Path| std::fs::read(p);
-    let got = crate::install(r, slots, &load, "box", NOW, &|s| {
+    let got = crate::install(r, slots, load, "box", NOW, &|s| {
         steps.lock().unwrap().push(s)
     })
     .await;
@@ -322,6 +334,31 @@ async fn bytes_that_do_not_say_the_planned_identity_are_not_pushed() {
     assert!(e.raw.is_some_and(|r| r.contains("missing")));
 }
 
+/// 宿主读那一格超上限 ⇒ 不推、一个字节不写；屏上那一句的原因就是宿主读回的那一句（「超出上限」，不是「原因不明」）。
+#[tokio::test]
+async fn a_slot_over_the_read_cap_says_over_the_cap_not_unknown() {
+    let d = scratch("overcap");
+    let r = Rig::linux(Some(&backend("p9a-old"))).await;
+    let over = copy_core::copy_text("beFs.readRegularCapped.tooBig", &[("cap", "64")]);
+    let said = over.clone();
+    let load =
+        move |_: &std::path::Path| -> Result<Vec<u8>, Said> { Err(Said::from(said.clone())) };
+    let (got, _) = run_with(&r, &[slot(&d, "p9b-mine", &backend("p9b-mine"))], &load).await;
+    let e = got.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("not_carried"), "{e:?}");
+    assert!(
+        copy_core::copy_matches("deploy.bytes.unreadable", &e.said) && e.said.contains(&over),
+        "{e:?}"
+    );
+    assert!(
+        !e.said
+            .contains(&copy_core::copy_text("reason.io.unknown", &[])),
+        "{e:?}"
+    );
+    assert!(e.raw.is_some_and(|r| r.contains("backend-p9b-mine")));
+    assert!(r.fs.lock().unwrap().mutated.is_empty());
+}
+
 /// 读回不对 ⇒ 失败、传坏的那一份当场删掉（下次判成「没装」再来）。
 #[tokio::test]
 async fn a_bad_readback_fails_the_install_and_leaves_nothing_at_the_landing() {
@@ -389,7 +426,7 @@ async fn uninstall_removes_the_landing_through_a_staged_copy() {
     let d = scratch("uninstall");
     let mine = backend("p9b-mine");
     let r = Rig::linux(Some(b"not ours, no stamp")).await;
-    let load = |p: &std::path::Path| std::fs::read(p);
+    let load = read;
     let got = crate::uninstall(&r, &[slot(&d, "p9b-mine", &mine)], &load, "box")
         .await
         .expect("该删掉");

@@ -24,6 +24,7 @@
 //! 握手表里每一条（monitor 起来时从盘上读回来的、之后认上的）都挂一个退出看守（`pidwatch_core`：内核在那个 shell 退出的那一刻叫醒，
 //! 不扫、不轮询）：一醒就从内存与盘上删那一条（[`forget`]）。挂的那一刻那个 shell 已经不在、或进程号已被别人复用（起始时刻对不上）⇒ 当场删。
 
+use crate::platform::own_fs::OwnState;
 use copy_core::{Discard, Why};
 use notify::RecursiveMode;
 use parking_lot::RwLock;
@@ -52,7 +53,8 @@ pub struct HwndEntry {
 }
 /// 全局 shell 进程号 → 窗口的握手表（Linux bash / zsh 那一份）。
 pub struct BindRegistry {
-    monitor_data_dir: PathBuf,
+    /// 数据目录的句柄：握手表与等待记录都在它底下，写与删只经它。空表（[`BindRegistry::empty`]）没有它，一个字节不碰盘。
+    own: Option<OwnState>,
     by_ps_pid: Arc<RwLock<HashMap<u32, HwndEntry>>>,
     /// 这一趟 monitor 里已经认过一回、没认上的 bash / zsh 记录（`ps-await/*.tty`）：不再每来一个文件事件就重认一遍
     /// （那个标签页不在前面时每认一回都要在它标题上闪一下），留到下一个 monitor 起来再认。
@@ -63,20 +65,16 @@ impl BindRegistry {
     /// 启动 watcher 线程，读回来的每一条挂上退出看守。返回 Arc 给外部持有引用。
     /// 这台没有 bash / zsh 终端记录那一套（[`crate::platform::console::TTY_RECORDS`]：只有 Linux 有）⇒ 一张空表，不建目录、不读盘、不起线程
     /// （Windows 按控制台认窗口，这张表在那里永远是空的）。
-    pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
+    pub fn spawn(own: OwnState) -> Arc<Self> {
         if !crate::platform::console::TTY_RECORDS {
-            return Arc::new(Self {
-                monitor_data_dir,
-                by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
-                tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
-            });
+            return Self::empty();
         }
-        let await_dir = monitor_data_dir.join(AWAIT_SUBDIR);
-        let registry_dir = monitor_data_dir.join("ps-registry");
+        let await_dir = own.root().join(AWAIT_SUBDIR);
+        let registry_dir = own.root().join(REGISTRY_SUBDIR);
 
-        for d in [&await_dir, &registry_dir] {
-            if let Err(e) = std::fs::create_dir_all(d) {
-                tracing::warn!("create {} failed: {e}", d.display());
+        for d in [AWAIT_SUBDIR, REGISTRY_SUBDIR] {
+            if let Err(e) = own.dir(d) {
+                tracing::warn!("bind: {e}");
             }
         }
 
@@ -88,7 +86,7 @@ impl BindRegistry {
         );
 
         let me = Arc::new(Self {
-            monitor_data_dir,
+            own: Some(own),
             by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
             tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
         });
@@ -100,13 +98,18 @@ impl BindRegistry {
         me
     }
 
+    /// 一张空表：不建目录、不读盘、不起线程（没有终端记录那一套的平台 · 诊断子命令那一趟用）。
+    pub fn empty() -> Arc<Self> {
+        Arc::new(Self {
+            own: None,
+            by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
+            tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
+        })
+    }
+
     /// 查 shell 进程号对应的那一条登记。
     pub fn lookup_hwnd_for_ps(&self, ps_pid: u32) -> Option<HwndEntry> {
         self.by_ps_pid.read().get(&ps_pid).cloned()
-    }
-
-    fn registry_dir(&self) -> PathBuf {
-        self.monitor_data_dir.join("ps-registry")
     }
 
     fn spawn_await_watcher(this: Arc<Self>, await_dir: PathBuf) {
@@ -150,8 +153,11 @@ fn forget(this: &BindRegistry, pid: u32, recorded: &str) {
         }
         w.remove(&pid);
     }
-    let p = this.registry_dir().join(format!("{pid}.json"));
-    std::fs::remove_file(&p).discard(Why::CleanupAfterFailure); // 死进程留下的登记：删不掉下次重扫再撤
+    // 死进程留下的登记：删不掉下次重扫再撤。
+    if let Some(own) = &this.own {
+        own.remove(&format!("{REGISTRY_SUBDIR}/{pid}.json"))
+            .discard(Why::CleanupAfterFailure);
+    }
     tracing::info!("bind: shell {pid} 退了，删掉它的窗口登记");
 }
 
@@ -164,6 +170,9 @@ fn same_shell(recorded: &str, start_now: Option<u64>) -> bool {
 }
 
 use shell_quote_core::AWAIT_SUBDIR;
+
+/// 握手表那一层（数据目录底下）。
+const REGISTRY_SUBDIR: &str = "ps-registry";
 
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
 /// P3 归并：走 utils::scan_dir_jsons。
@@ -232,6 +241,12 @@ fn drain_await_dir(this: &Arc<BindRegistry>, await_dir: &Path) {
 
 /// 本机 bash / zsh 接入块留的那一份的后缀（`ps-await/<进程号>.tty`；写的一侧是 `src/shared/ccm-aliases.sh`）。
 const TTY_RECORD_EXT: &str = "tty";
+
+/// 那一份的读上限：三格（进程号 · 起始时刻 · 终端设备），实测百来字节。超了当认不出：日志说是哪一份、扔掉，不碰那个终端。
+const TTY_RECORD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
 
 /// 本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在 `ps-await/<进程号>.tty` 留下的那一份：那个 shell 的进程号 ·
 /// 起始时刻（`/proc/<pid>/stat` 第 22 格，与它设的 `LC_CCM_WINDOW` 同一个键）· 它的终端设备。
@@ -322,13 +337,22 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
     if this.tty_tried.lock().contains(file) {
         return;
     }
-    let rec = std::fs::read_to_string(file)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<TtyRecord>(raw.trim()).ok());
+    let rec = match host_core::read_capped(file, TTY_RECORD_CAP) {
+        Ok(host_core::Capped::Whole(raw)) => serde_json::from_str::<TtyRecord>(raw.trim()).ok(),
+        Ok(host_core::Capped::TooBig) => {
+            tracing::warn!(
+                "bind: {} 超过读上限 {} 字节",
+                file.display(),
+                TTY_RECORD_CAP.bytes
+            );
+            None
+        }
+        Ok(host_core::Capped::Absent) | Err(_) => None,
+    };
     let Some(rec) = rec else {
         tracing::warn!("bind: 认不出 {}，扔掉", file.display());
         // 用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删（下同）。
-        std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
+        drop_record(this, file);
         return;
     };
     let claim = claim_tty(
@@ -340,12 +364,15 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
     );
     match claim {
         TtyClaim::Registered(entry) => {
-            let registry_file = this.registry_dir().join(format!("{}.json", entry.ps_pid));
-            if let Err(e) = host_core::atomic_write_json(&registry_file, &entry) {
-                tracing::warn!(
-                    "bind: write registry {} failed: {e}",
-                    registry_file.display()
-                );
+            let Some(own) = &this.own else {
+                return;
+            };
+            let registry_file = format!("{REGISTRY_SUBDIR}/{}.json", entry.ps_pid);
+            let written = serde_json::to_vec_pretty(&entry)
+                .map_err(std::io::Error::other)
+                .and_then(|body| own.write(&registry_file, &body));
+            if let Err(e) = written {
+                tracing::warn!("bind: write registry failed: {e}");
                 this.tty_tried.lock().insert(file.to_path_buf());
                 return;
             }
@@ -357,15 +384,24 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
                 rec.tty
             );
             keep(this, entry);
-            std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
+            drop_record(this, file);
         }
         TtyClaim::Keep => {
             this.tty_tried.lock().insert(file.to_path_buf());
         }
         TtyClaim::Drop => {
-            std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
+            drop_record(this, file);
         }
     }
+}
+
+/// 删掉等待目录里的那一份记录（经数据目录的句柄）；删不掉下一个 monitor 起来按身份再核、再删。
+fn drop_record(this: &BindRegistry, file: &Path) {
+    let (Some(own), Some(name)) = (&this.own, file.file_name().and_then(|n| n.to_str())) else {
+        return;
+    };
+    own.remove(&format!("{AWAIT_SUBDIR}/{name}"))
+        .discard(Why::CleanupAfterFailure);
 }
 
 /// `find_window_by_marker_substr` 命中的窗口快照（住 `platform::hwnd`，这里再导出）。
@@ -901,7 +937,7 @@ pub fn pick_request(args: &[String]) -> Option<u32> {
 /// 真机上核「为什么切不了 / 是不是因为提权」用：判据只能喂替身的读法，提权终端的真令牌要真机才有。
 pub fn pick_main() -> Option<i32> {
     let pid = pick_request(&std::env::args().collect::<Vec<_>>())?;
-    let bind = BindRegistry::spawn(std::env::temp_dir().join("cc-monitor-pick-probe"));
+    let bind = BindRegistry::empty();
     let chain: Vec<ChainLink> = std::iter::once((pid, String::new()))
         .chain(crate::platform::pid::ancestors(pid))
         .map(|(pid, name)| ChainLink { pid, name })

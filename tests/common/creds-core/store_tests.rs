@@ -721,9 +721,9 @@ fn dirs_home_calls(src: &str) -> usize {
 
 /// ★ 要求：「「哪个环境变量算家」是两侧必须对上的**契约** ⇒ 收成 `creds-core` 里唯一一个函数」·
 /// 「monitor 生产段为数据目录 / 家目录用 `dirs::home_dir` 零命中（有别的正当用途就登记理由）」。
-/// 调用点现扫（异源：读两棵树的源码，不信任何一侧自报）：① monitor 那份数据目录（`config.rs::resolve_monitor_data_dir`）与
+/// 调用点现扫（异源：读两棵树的源码，不信任何一侧自报）：① monitor 那份数据目录（`config.rs::resolve_monitor_data_dir` → 壳取家目录那一处 `data_paths.rs::home`）与
 /// 后端那一处家目录（`platform/paths.rs` 的 `home_dir` · `home_dir_from`）都调本模块这一个函数；② 两棵生产树里 `dirs::home_dir(` ==
-/// [`DIRS_HOME_ELSEWHERE`]（两向）。正控：往 `config.rs` 副本里塞回一处数得出。
+/// [`DIRS_HOME_ELSEWHERE`]（两向）。正控：往 `data_paths.rs` 副本里塞回一处数得出。
 #[test]
 fn both_halves_read_the_home_through_this_one_function() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -738,11 +738,16 @@ fn both_halves_read_the_home_through_this_one_function() {
         let tail = &prod[at..];
         tail[..tail.find("\n}").expect("函数体没收尾")].to_string()
     };
+    // monitor 那一侧分两跳：数据目录经壳取家目录的唯一住址（`data_paths::home`），那一处调本模块这一个函数。
     let config = read("src/frontend/shell/src/config.rs");
     assert!(
-        body_of(&config, "pub fn resolve_monitor_data_dir()")
-            .contains("creds_core::store::home_dir()"),
-        "monitor 的数据目录不经 `creds_core::store::home_dir` 取家 —— 两侧会认两个家"
+        body_of(&config, "pub fn resolve_monitor_data_dir()").contains("crate::data_paths::home()"),
+        "monitor 的数据目录不经 `data_paths::home` 取家 —— 两侧会认两个家"
+    );
+    let shell_home = read("src/frontend/shell/src/data_paths.rs");
+    assert!(
+        body_of(&shell_home, "pub(crate) fn home()").contains("creds_core::store::home_dir()"),
+        "壳取家目录那一处不经 `creds_core::store::home_dir` —— 两侧会认两个家"
     );
     let paths = read("src/backend/platform/paths.rs");
     assert!(body_of(&paths, "pub fn home_dir()").contains("creds_core::store::home_dir()"));
@@ -785,8 +790,8 @@ fn both_halves_read_the_home_through_this_one_function() {
         .map(|(f, _)| f.to_string())
         .collect();
     assert_eq!(got, want, "`dirs::home_dir` 的调用点变了 ⇒ 改调 `creds_core::store::home_dir`；确有别的正当用途的写进表里说清");
-    let planted = config.replace("creds_core::store::home_dir()", "dirs::home_dir()");
-    assert_ne!(planted, config, "正控的锚没落在靶上");
+    let planted = shell_home.replace("creds_core::store::home_dir()", "dirs::home_dir()");
+    assert_ne!(planted, shell_home, "正控的锚没落在靶上");
     assert!(dirs_home_calls(&planted) >= 1);
 }
 

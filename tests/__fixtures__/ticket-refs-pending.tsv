@@ -47,7 +47,7 @@ src/frontend/shell/src/deploy.rs	5
 src/frontend/shell/src/event_replay.rs	5
 src/frontend/shell/src/filewin/entry.rs	2
 src/frontend/shell/src/launch.rs	1
-src/frontend/shell/src/lib.rs	24
+src/frontend/shell/src/lib.rs	23
 src/frontend/shell/src/local_backend.rs	11
 src/frontend/shell/src/local_backend_host.rs	3
 src/frontend/shell/src/platform/terminal.rs	2
@@ -172,7 +172,7 @@ tests/frontend/filewin/find_tests.rs	1
 tests/frontend/filewin/kit_tests.rs	1
 tests/frontend/filewin/plan_tests.rs	9
 tests/frontend/filewin/workspace_tests.rs	5
-tests/frontend/shell/atomic_replace_registry_tests.rs	2
+tests/frontend/shell/atomic_replace_registry_tests.rs	1
 tests/frontend/shell/backend_client_guard_tests.rs	1
 tests/frontend/shell/backend_control_tests.rs	1
 tests/frontend/shell/backend_kill_tests.rs	9
@@ -203,7 +203,7 @@ tests/frontend/shell/quote_singleton_guard.rs	2
 tests/frontend/shell/rust_timer_registry.rs	4
 tests/frontend/shell/rust_timer_registry_tests.rs	1
 tests/frontend/shell/session_name_registry_tests.rs	4
-tests/frontend/shell/write_site_registry_tests.rs	2
+tests/frontend/shell/write_site_registry_tests.rs	1
 tests/frontend/ui/account-chip.vitest.ts	1
 tests/frontend/ui/account-commands.vitest.ts	1
 tests/frontend/ui/accounts.vitest.ts	2

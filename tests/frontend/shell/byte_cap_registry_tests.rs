@@ -350,7 +350,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "LOCAL_LINES_CAPACITY",
         "**件数**不是体量：本机内容通道（`local_lines·rs`）能排多少帧，量的是队列深度。满了是**背压**（读循环停在送上 ⇒ 不再读 ⇒ 本机后端写阻塞），**不丢、不截**，\
-             它不限任何一段用户数据的字节数（一帧的字节上限是 `BACKEND_FRAME_LINE_CAP`，本表 `CAPS` 那一行）。",
+             它不限任何一段用户数据的字节数（一帧的字节上限是 `resident-client/line.rs` 的 `BACKEND_FRAME_LINE_CAP`）。",
     ),
     (
         "LIMIT_MAX",
@@ -659,13 +659,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
         "拒收+回错",
     ),
-    // ── 常驻监听口的握手（**两侧各一条，方向不同**）───────────
-    (
-        "src/frontend/shell/src/local_backend_host.rs",
-        "LISTEN_HANDSHAKE_LINE_CAP",
-        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
-        "拒收+回错",
-    ),
     // 一台的平铺清单（`history_list.rs`，手机 · 按会话 ID 那一问）：一台一次最多回多少行；窗外的不回、头里的总数比这一窗多 ⇒ 手机列表底「更早的用搜索找」。
     (
         "src/backend/history/history_list.rs",
@@ -825,16 +818,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // `cc_bus.rs` 没有控制类回显上限：发消息与派生走后端原语，回显不经 SSH 读。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
-    // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
-    // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
-    // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `stream_source/exec.rs::BACKEND_FRAME_LINE_CAP` 头注（monitor 与手机同一份）。
-    (
-        "src/frontend/shell/src/stream_source/exec.rs",
-        "BACKEND_FRAME_LINE_CAP",
-        "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
-        "丢弃+带身份报告",
-    ),
+    // backend 出方向单行的上限 `BACKEND_FRAME_LINE_CAP` 不在本表：它是 `Cap`（`resident-client/line.rs`，monitor 与手机同一份），
+    //   超了怎么办写在它自己的 `over` 上（丢弃＋带身份报告），数为什么刻意不等于入方向的 `MAX_LINE_BYTES` 写在它的头注里。
     // ---- backend 侧 ----
     // 后端 `read_face.rs` 那一行（「整份读进查看器」读过 256 MiB 就明拒）出列：那一道连同 `history-page` 的 `whole` 入参一起删了
     //   （查看器不再整份读：骨架 ＋ 按视口取，一问一段，那一段有自己的上限 `READ_PAGE_BYTES` / `LINE_CAP_BYTES`）。
