@@ -117,7 +117,7 @@ class ProductsTest {
 
     @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）`() {
-        val rows = listOf(Fixtures.historyRow("origin" to LOCAL, "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
+        val rows = listOf(Fixtures.historyRow("hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
         assertEquals(
             Hidden(HiddenBy.CHILD, "由 a 启动 · 子会话默认隐藏"),
             HistoryList
