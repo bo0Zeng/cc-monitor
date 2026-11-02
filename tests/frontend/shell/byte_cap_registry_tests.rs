@@ -858,12 +858,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 后端 `read_face.rs` 那一行（「整份读进查看器」读过 256 MiB 就明拒）出列：那一道连同 `history-page` 的 `whole` 入参一起删了
     //   （查看器不再整份读：骨架 ＋ 按视口取，一问一段，那一段有自己的上限 `READ_PAGE_BYTES` / `LINE_CAP_BYTES`）。
     (
-        "src/backend/control/fork_write.rs",
-        "MAX_SESSION_JSONL_BYTES",
-        "分叉时读源会话 jsonl",
-        "硬报错",
-    ),
-    (
         "src/backend/control/launch.rs",
         "MAX_FIELD_BYTES",
         "启动请求单字段（载荷/名字/cwd）",
@@ -922,13 +916,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/files/commit/session_attachment.rs",
         "MAX_DIR_BYTES",
         "一个工作目录下附件目录的合计",
-        "拒收+回错",
-    ),
-    // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
-    (
-        "src/backend/assets/pubkey.rs",
-        "PUB_READ_MAX",
-        "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
         "拒收+回错",
     ),
     // `files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
@@ -1016,19 +1003,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`footprint-report` 这台自己列一个目录最多几个名字（数 glob 那一族；超了 ⇒ 列不动，不截断）",
         "跳过+说清",
     ),
-    (
-        "src/backend/footprint/mod.rs",
-        "MAX_HOOK_FILE_BYTES",
-        "`footprint-report` 查钩子字样时读的那份 settings 文件多大",
-        "跳过+说清",
-    ),
-    // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
-    (
-        "src/backend/agents/claudecode/paths.rs",
-        "SETTINGS_CAP_BYTES",
-        "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
-        "降级+说清",
-    ),
     // 一次改动的行差（调用那一份 · 结果那一份）至多带多少字；超了在段的边界停下、立 `truncated`（数照整份）。
     (
         "src/backend/agents/claudecode/steps.rs",
@@ -1057,13 +1031,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "运行簿 / 按工具调用读子运行时读一份子 agent 的 `agent-<id>.meta.json`（只为取 `toolUseId`）",
         "跳过+说清",
     ),
-    // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
-    (
-        "src/backend/agents/codex/relay.rs",
-        "CONFIG_CAP_BYTES",
-        "「待办」里「直接敲的也走中转」那一件读那台 `~/.codex/config.toml` 多大",
-        "降级+说清",
-    ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/mcp.rs",
@@ -1078,36 +1045,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
-        "src/backend/agents/claudecode/assets.rs",
-        "SKILL_DOC_MAX_BYTES",
-        "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
-        "硬报错",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "COMMAND_DOC_MAX_BYTES",
-        "一条会话能用的命令：读一份斜杠命令文件（只为取简介与要不要参数）—— 读不出来那一份记进 `problems`、不列这一条",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "PLUGIN_MANIFEST_MAX_BYTES",
-        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（取名字 · 版本 · 说明 · 默认开不开）—— 读不出来：找插件根那一步那个目录不算插件；列插件那一步记日志、记进 `problems`，那几格当没有",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "PLUGIN_RECORD_MAX_BYTES",
-        "找插件时读配置根下的安装记录 `plugins/installed_plugins.json` —— 读不出 / 格式不认得 ⇒ 记日志、记进 `problems`，记录里的插件不列",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "SETTINGS_MAX_BYTES",
-        "读插件开关时读一份设置（托管 · 远端下发 · 用户 · 项目两份，只为取 `enabledPlugins`）与插件根里的 `hooks/hooks.json`（只为数事件名）—— 读不出那一份 ⇒ 记日志、记进 `problems`，当没写",
-        "跳过+说清",
-    ),
-    (
         "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
@@ -1119,12 +1056,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_BYTES",
         "后端自有的额度账 `~/.cc-monitor/quota.json`（读不出来就不覆盖）",
         "拒收+回错",
-    ),
-    (
-        "src/backend/dial/opened_windows.rs",
-        "MAX_BYTES",
-        "↗ 的本机记录一份 `<数据目录>/opened-windows/<sid>`（两行：窗口标签 · 那台的名字；超了 ⇒ `warn!` 带路径，当没有、照问那台）",
-        "跳过+说清",
     ),
     (
         "src/backend/egress/tunnel.rs",
@@ -1151,13 +1082,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-    // 「待办」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
-    (
-        "src/backend/footprint/chores/gather.rs",
-        "READ_CAP",
-        "「待办」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
-        "跳过+说清",
-    ),
     (
         "src/backend/history/session_queue.rs",
         "TEXT_MAX",

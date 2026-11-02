@@ -281,12 +281,12 @@ fn attachment_preserves_uuid_chain() {
 fn unknown_type_does_not_panic() {
     // 注意：`parse` = 裸 `serde_json::from_str`，测的是 **serde 层**（Unknown 是
     // serde 落点，此层它确实非 displayable）。**生产走 `parse::parse_line`**，
-    // 那里 Unknown 会被抢救成 `Unrecognized`（F63）—— 见 parse.rs 的护栏测试。
+    // 那里 Unknown 会被抢救成 `Unrecognized`（`INVARIANTS §18.1`）—— 见 parse.rs 的护栏测试。
     let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
     assert!(matches!(r, JsonlRecord::Unknown));
 }
 
-/// F63 wire 契约：`Unrecognized` 序列化出的 `type` 必须是 `"cc-monitor-unrecognized"`，
+/// wire 契约：`Unrecognized` 序列化出的 `type` 必须是 `"cc-monitor-unrecognized"`，
 /// 且身份字段用 camelCase。前端 `branching.ts` 白名单 + `cards/index.ts` 镜像
 /// **硬编码同一字符串**；改这边的 rename 就得同步改前端，否则 unrecognized
 /// 全部认不出 → 又开始丢链，且现有测试全绿（漂移无声）。此测试守 Rust 侧，
@@ -423,7 +423,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
         ("last-prompt", false),     // 无读者
         ("file-history-snapshot", false), // 无读者
         ("status-line", false),     // 无读者（Claude 的状态行：mode · agent-name …）
-        ("unrecognized+identity", true), // `unread` 一行（两个前端画一行 warn 细条）；也进链（F63 保险那一半在链事实里）
+        ("unrecognized+identity", true), // `unread` 一行（两个前端画一行 warn 细条）；也进链（带链身份不丢的那一半在链事实里）
         ("unrecognized-bare", false), // 没见过的类型又没有链上身份 ⇒ 那一家的簿记行，不成卡、不进链；会话事实 `quietUnread` 记数（10-14 起）
     ]
     .into_iter()

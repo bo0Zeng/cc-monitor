@@ -27,7 +27,7 @@ src/backend/platform/proc.rs	1
 src/backend/platform/shell/dialect.rs	3
 src/backend/plugin/mod.rs	1
 src/backend/relay/mod.rs	1
-src/backend/stream/inbound/mod.rs	7
+src/backend/stream/inbound/mod.rs	6
 src/backend/stream/inbound/registry/history.rs	1
 src/backend/stream/inbound/registry/machine.rs	1
 src/backend/stream/mod.rs	1
@@ -36,15 +36,13 @@ src/common/cmd-wire/src/frame.rs	5
 src/common/creds-core/Cargo.toml	1
 src/common/creds-core/src/lib.rs	10
 src/common/creds-core/src/store.rs	1
-src/common/guard-core/src/lib.rs	48
+src/common/guard-core/src/lib.rs	47
 src/comms/outward/http1.rs	1
 src/comms/outward/lib.rs	1
 src/comms/outward/server.rs	3
 src/comms/resident-client/backoff.rs	1
 src/comms/resident-client/feed.rs	1
 src/comms/resident-client/lib.rs	1
-src/doc/INVARIANTS.md	11
-src/frontend/shell/capabilities/default.json	1
 src/frontend/shell/src/deploy.rs	5
 src/frontend/shell/src/event_replay.rs	5
 src/frontend/shell/src/filewin/entry.rs	2
@@ -61,10 +59,8 @@ src/frontend/ui/cards/bash.ts	1
 src/frontend/ui/composer.ts	1
 src/frontend/ui/end-confirm.ts	1
 src/frontend/ui/entry-common.ts	1
-src/frontend/ui/entry-settings.ts	1
 src/frontend/ui/events.ts	1
 src/frontend/ui/face-can.ts	1
-src/frontend/ui/keybindings/editor.ts	2
 src/frontend/ui/keybindings/registry.ts	1
 src/frontend/ui/live-window.ts	1
 src/frontend/ui/machine-strip.ts	1
@@ -79,7 +75,7 @@ src/frontend/ui/settings/account-new-form.ts	3
 src/frontend/ui/styles.css	10
 src/frontend/ui/styles/layout.css	1
 src/frontend/ui/styles/main.css	8
-src/frontend/ui/styles/settings.css	5
+src/frontend/ui/styles/settings.css	4
 src/frontend/ui/tab-bar-view.ts	1
 src/frontend/ui/tab-bar-width.ts	1
 src/frontend/ui/tab-menu.ts	1
@@ -107,8 +103,7 @@ tests/backend/accounts/upstream_select/file_face_tests.rs	7
 tests/backend/accounts/upstream_select/table_tests.rs	15
 tests/backend/agent_boundary_guard.rs	4
 tests/backend/agent_locality_guard.rs	1
-tests/backend/agents/claudecode/parse_tests.rs	8
-tests/backend/agents/claudecode/schema_tests.rs	5
+tests/backend/agents/claudecode/schema_tests.rs	2
 tests/backend/agents/codex/record_tests.rs	1
 tests/backend/agents/fake_tests.rs	5
 tests/backend/agents_tests.rs	6
@@ -122,7 +117,6 @@ tests/backend/control/cc_bus_hop_tests.rs	1
 tests/backend/control/exit_policy_tests.rs	2
 tests/backend/control/feeds_tests.rs	1
 tests/backend/control/fork_write_tests.rs	1
-tests/backend/control/gate_rules_tests.rs	1
 tests/backend/control/launch_render/ccm_invocation_tests.rs	1
 tests/backend/control/machine_state_tests.rs	1
 tests/backend/control/session_open_tests.rs	2
@@ -159,7 +153,6 @@ tests/backend/relay/creds_guard.rs	16
 tests/backend/relay/server_tests.rs	25
 tests/backend/relay/table_guard.rs	9
 tests/backend/stream/drain_tests.rs	1
-tests/backend/stream/inbound_structure_guards.rs	3
 tests/common/acct-core/lib_tests.rs	1
 tests/common/creds-core/lib_tests.rs	8
 tests/common/creds-core/perm_tests.rs	4
@@ -189,7 +182,7 @@ tests/frontend/shell/byte_cap_registry_tests.rs	9
 tests/frontend/shell/byte_table_tests.rs	1
 tests/frontend/shell/capability_registry_tests.rs	23
 tests/frontend/shell/chan/webview_tests.rs	2
-tests/frontend/shell/cross_half_edge_registry.rs	2
+tests/frontend/shell/cross_half_edge_registry.rs	1
 tests/frontend/shell/cross_half_edge_registry_tests.rs	1
 tests/frontend/shell/doc_claim_registry.rs	2
 tests/frontend/shell/doc_claim_registry_daemon_wording_registry.rs	1
@@ -209,10 +202,8 @@ tests/frontend/shell/polling_registry.rs	6
 tests/frontend/shell/quote_singleton_guard.rs	2
 tests/frontend/shell/rust_timer_registry.rs	4
 tests/frontend/shell/rust_timer_registry_tests.rs	1
-tests/frontend/shell/session_name_registry.rs	1
 tests/frontend/shell/session_name_registry_tests.rs	4
-tests/frontend/shell/tmux_backend_gate_guard_tests.rs	1
-tests/frontend/shell/write_site_registry_tests.rs	3
+tests/frontend/shell/write_site_registry_tests.rs	2
 tests/frontend/ui/account-chip.vitest.ts	1
 tests/frontend/ui/account-commands.vitest.ts	1
 tests/frontend/ui/accounts.vitest.ts	2
@@ -254,7 +245,7 @@ tests/frontend/ui/skeleton-ledger-huge.vitest.ts	1
 tests/frontend/ui/tab-bar-perf.vitest.ts	1
 tests/frontend/ui/tab-batch-copy.vitest.ts	1
 tests/frontend/ui/tabs-split-graph.vitest.ts	2
-tests/frontend/ui/tabs.vitest.ts	31
+tests/frontend/ui/tabs.vitest.ts	28
 tests/frontend/ui/terminal-page-slot.vitest.ts	1
 tests/frontend/ui/topbar-icons.vitest.ts	1
 tests/frontend/ui/views/command-bar.vitest.ts	2

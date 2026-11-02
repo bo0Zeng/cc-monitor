@@ -26,6 +26,7 @@
 //! 在被 `cancel` 掉时（future 被丢）把这个位置上（`mod.rs::answer_grep_cancellable` 的守卫），阻塞线程上的这一趟随即停。
 
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -216,7 +217,12 @@ fn look_at(path: &Path, len: u64, args: &GrepArgs, caps: Caps, g: &mut Grepped) 
         g.stopped = Stopped::Bytes;
         return;
     }
-    let Ok(body) = Ro::read(path) else {
+    // 看过大小之后又长过单份上界的：读里那一道 `warn!` 说是哪一份，这里记进读不了。
+    let one = Cap {
+        bytes: caps.file_max_bytes,
+        over: Over::SkipAndSay,
+    };
+    let Ok(body) = Ro::read_capped(path, one) else {
         g.unreadable += 1;
         return;
     };
