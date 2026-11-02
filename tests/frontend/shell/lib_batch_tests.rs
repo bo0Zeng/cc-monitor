@@ -72,7 +72,11 @@ fn every_payload_names_its_machine_on_the_wire() {
         let payloads = batch_to_payloads(lines, &origin, &mut SkipRuns::default());
         assert_eq!(payloads.len(), 1);
         let wire = serde_json::to_value(&payloads[0]).unwrap();
-        assert_eq!(wire["origin"], serde_json::json!(want), "那台的名字原样上线：{wire}");
+        assert_eq!(
+            wire["origin"],
+            serde_json::json!(want),
+            "那台的名字原样上线：{wire}"
+        );
     }
 }
 

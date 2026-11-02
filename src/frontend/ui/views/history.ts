@@ -538,7 +538,7 @@ export class HistoryView {
 
   /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）；那台上次没读到 ⇒ 标「离线」。 */
   private machineCheck(m: Machine, changed: (refetch: boolean) => void): HTMLElement {
-    const c = checkbox(isLocalOrigin(m) ? copyText("history.filter.local") : m, !this.prefs.off.includes(m), (on) => {
+    const c = checkbox(machineWord(m), !this.prefs.off.includes(m), (on) => {
       this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
       changed(false);
       this.restart();
@@ -604,7 +604,7 @@ export class HistoryView {
         );
       } else if (st?.is === "stale") {
         // 读不到、行照那台上一次的副本出：说清是几时读到的，不冒充读到。
-        strips.push(strip("warn", copyText("history.list.machineStale", { machine: isLocalOrigin(m) ? copyText("history.filter.local") : m, at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
+        strips.push(strip("warn", copyText("history.list.machineStale", { machine: machineWord(m), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
       } else if (st?.is === "ok" && st.notice) {
         strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: again }));
       }
@@ -658,7 +658,7 @@ export class HistoryView {
   /** 一行都没有：还在读 ⇒ 骨架；带着字或筛选 ⇒「没有匹配」＋［清除筛选］；否则说还没有会话。 */
   private emptyList(loading: boolean): HTMLElement {
     if (loading) {
-      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => (isLocalOrigin(m) ? copyText("history.filter.local") : m)).join(` ${copyText("cssMarks.sep.dot")} `) }));
+      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map(machineWord).join(` ${copyText("cssMarks.sep.dot")} `) }));
       return skeletonRows(6);
     }
     this.listHead.replaceChildren();
@@ -1331,6 +1331,11 @@ function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, s
     set(now + (ev.key === "ArrowLeft" ? -LIST_STEP : LIST_STEP), true);
   });
   return el;
+}
+
+/** 筛选 · 提示条里称呼一台：本机叫「本机」，远端照名字。 */
+function machineWord(m: Machine): string {
+  return isLocalOrigin(m) ? copyText("history.filter.local") : m;
 }
 
 function groupKey(g: HistoryGroup): string {
