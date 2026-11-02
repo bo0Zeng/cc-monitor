@@ -113,7 +113,7 @@ const MAX_INPUT_ROWS = 6;
 
 /** 常用键：页上的字 · 送什么。 */
 const KEYS: readonly { label: string; what: TerminalSend }[] = [
-  { label: copyText("terminal.key.esc"), what: { key: "esc" } },
+  { label: copyText("kit.dock.escKey"), what: { key: "esc" } },
   { label: copyText("terminal.key.ctrlC"), what: { key: "ctrl-c" } },
   { label: copyText("terminal.key.up"), what: { key: "up" } },
   { label: copyText("terminal.key.down"), what: { key: "down" } },
@@ -207,7 +207,7 @@ export class TerminalPage {
     this.el.className = s.term;
     this.head = el("div");
     this.head.className = s.termHead;
-    this.dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
+    this.dot = statusDot("running", copyText("backend.status.connected"), "compact");
     this.title = el("span");
     this.title.className = s.termTitle;
     this.where = el("span");
@@ -275,7 +275,7 @@ export class TerminalPage {
     boxRow.append(this.box, this.sendBtn);
     const keys = el("div");
     keys.className = s.termKeys;
-    const keysLabel = el("span", "", copyText("terminal.input.keys"));
+    const keysLabel = el("span", "", copyText("mobKeys.add.key"));
     keysLabel.className = s.termKeysLabel;
     keys.appendChild(keysLabel);
     for (const k of KEYS) {
@@ -634,7 +634,7 @@ export class TerminalPage {
   private paint(): void {
     const w = this.host.active();
     if (!w || this.sid === null) {
-      this.body.replaceChildren(emptyState({ icon: "terminal", text: copyText("terminal.empty.noSession") }));
+      this.body.replaceChildren(emptyState({ icon: "terminal", text: copyText("beEmpty.line.none") }));
       return;
     }
     if (this.phase === "none" && w.kind === "slot") {
@@ -667,7 +667,7 @@ export class TerminalPage {
     }
     if (this.phase === "error") {
       this.body.replaceChildren(
-        banner("error", this.error, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })], this.errorDetail),
+        banner("error", this.error, [button({ label: copyText("accountChip.menu.refresh"), size: "compact", onClick: () => void this.refresh() })], this.errorDetail),
       );
       return;
     }
@@ -700,7 +700,7 @@ export class TerminalPage {
       bars.push(banner("warn", copyText("terminal.bar.liveStopped", { why: this.live.said }), [button({ label: copyText("terminal.bar.liveRetry"), size: "compact", onClick: () => this.startLive() })]));
     }
     if (this.shotError !== null)
-      bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })], this.shotDetail));
+      bars.push(banner("warn", this.shotError, [button({ label: copyText("accountChip.menu.refresh"), size: "compact", onClick: () => void this.refresh() })], this.shotDetail));
     this.bar.replaceChildren(...bars);
     if (this.painted !== this.shot) {
       renderScreen(this.pre, this.shot?.lines ?? []);
@@ -741,7 +741,7 @@ export class TerminalPage {
       t.className = this.note.tone === "ok" ? s.termNoteOk : s.termNoteError;
       this.noteEl.appendChild(t);
       const retry = this.note.retry;
-      if (retry) this.noteEl.appendChild(button({ label: copyText("terminal.input.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
+      if (retry) this.noteEl.appendChild(button({ label: copyText("front.act.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
       // 那一端写了详情 ⇒ 跟［复制详情］（与同一个原因的那条黄条同一颗）。
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
       if (copy) this.noteEl.appendChild(copy);

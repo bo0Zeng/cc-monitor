@@ -109,7 +109,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-ctx";
     if (s.context.tone === "warn") b.classList.add("is-high");
-    b.textContent = copyText("gridMonitor.renderBadges.ctx", { ctx: s.context.text });
+    b.textContent = copyText("usageHud.chip.ctx", { ctx: s.context.text });
     b.title = s.context.percent === null ? copyText("gridMonitor.renderBadges.ctxTokensHint") : copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   }
@@ -179,11 +179,11 @@ export class GridMonitorView {
     const back = document.createElement("button");
     back.type = "button";
     back.className = "grid-monitor-back";
-    back.textContent = copyText("gridMonitor.build.back");
+    back.textContent = copyText("mobKit.act.back");
     back.addEventListener("click", () => this.close());
     const title = document.createElement("span");
     title.className = "grid-monitor-title";
-    title.textContent = copyText("gridMonitor.build.title");
+    title.textContent = copyText("main.cmd.openGrid");
     this.summaryEl = document.createElement("span");
     this.summaryEl.className = "grid-monitor-summary";
     bar.append(back, title, this.summaryEl);
@@ -303,7 +303,7 @@ export class GridMonitorView {
       }
     }
 
-    const emptyText = sessions.length === 0 ? copyText("gridMonitor.render.empty") : this.board === null ? this.failed : null;
+    const emptyText = sessions.length === 0 ? copyText("beEmpty.line.none") : this.board === null ? this.failed : null;
     if (emptyText !== null) {
       if (!this.emptyEl) {
         this.emptyEl = document.createElement("div");
@@ -418,7 +418,7 @@ export class GridMonitorView {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "grid-monitor-peek-close";
-    closeBtn.textContent = copyText("gridMonitor.renderPeek.close");
+    closeBtn.textContent = copyText("acct.val.full");
     closeBtn.title = copyText("gridMonitor.renderPeek.closeHint");
     closeBtn.addEventListener("click", () => this.select(selected.sessionId)); // toggle off
     head.append(jump, closeBtn);
@@ -442,8 +442,8 @@ export class GridMonitorView {
     };
     if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
     const doing = selected.face.name;
-    addFact(copyText("gridMonitor.fact.status"), selected.needs ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs }) : doing);
-    if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
+    addFact(copyText("backend.column.status"), selected.needs ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, needs: selected.needs }) : doing);
+    if (peek?.model) addFact(copyText("session.model.title"), peek.model);
     this.peekEl.appendChild(facts);
 
     // 子运行名单：照那台写好的三组序摆，头那一句照抄那台写好的

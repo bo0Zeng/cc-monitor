@@ -75,7 +75,7 @@ export function remoteOpen(open: ((abs: string) => void) | null): (o: OwnItem, a
     const b = document.createElement("button");
     b.type = "button";
     b.className = "settings-data-item-open";
-    b.textContent = copyText("dataPage.own.openRemote");
+    b.textContent = copyText("extPage.button.openFiles");
     b.disabled = !o.exists || open === null;
     if (open === null) b.title = copyText("acctPage.offline.hover");
     if (o.exists && open !== null) b.addEventListener("click", () => open(abs));

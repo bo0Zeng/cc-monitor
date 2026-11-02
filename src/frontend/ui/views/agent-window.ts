@@ -287,7 +287,7 @@ export class AgentWindow {
   /** 照此刻的运行表把标题区 · 说明 · 派出的 · 结束线 · 路径 · 系统标题 · 状态栏重画一遍。 */
   paint(now = Date.now()): void {
     // 运行表还没到（窗口先开、那一帧后到）⇒ 成品未到那一态：骨架字。
-    const r: RunInfo = this.info ?? { run: this.run, state: "unknown", status_text: copyText("runs.state.unknown"), label_text: copyText("runs.label.unnamed") };
+    const r: RunInfo = this.info ?? { run: this.run, state: "unknown", status_text: copyText("sessionState.unseen.name"), label_text: copyText("newSession.label.agent") };
     const kids = kidsOf(this.runs, this.run);
     const chain = chainOf(this.runs, r);
     const parent = chain.length > 0 ? chain[chain.length - 1] : null;
@@ -342,7 +342,7 @@ export class AgentWindow {
         top.appendChild(n);
       }
       if (w.refresh) {
-        const b = button({ label: copyText("agentWindow.why.refresh"), size: "compact", onClick: () => void this.pull() });
+        const b = button({ label: copyText("accountChip.menu.refresh"), size: "compact", onClick: () => void this.pull() });
         b.classList.add(s.awWhyAct);
         top.appendChild(b);
       }

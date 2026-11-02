@@ -476,7 +476,7 @@ export class TabBarPrefs {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "pin-revived-hint-btn";
-      btn.textContent = copyText("tabBarPrefs.pin.resume");
+      btn.textContent = copyText("history.row.resume");
       // 与右键菜单的「Resume」同一个动作，入口放在用户正看着的地方。
       btn.addEventListener("click", () => void this.host.resumeTab(sid));
       box.appendChild(btn);

@@ -156,7 +156,7 @@ export async function landOpened(origin: Machine, req: SessionOpenReq, o: Opened
     awaitArrival(origin, o.arrival, o.cwd, copyText("sessionOpen.arrived.title"), done && ((sid) => done(sid, o)));
   } else if (open && (o.landed === "running" || o.landed === "idle")) {
     const body = o.session === null ? "" : copyText("sessionOpen.attached.body", { machine: machineName(origin), name: o.session });
-    toast(copyText("sessionOpen.attached.title"), body, { level: "info" });
+    toast(copyText("machineAliases.rc.tagBlock"), body, { level: "info" });
   }
   return true;
 }
@@ -187,7 +187,7 @@ function sayEnd(origin: Machine, req: SessionOpenReq, how: OpenHow, end: Exclude
         detail: end.detail,
         action: [
           {
-            label: alt === null ? copyText("sessionOpen.account.useBase") : copyText("sessionOpen.account.useAlt", { alt }),
+            label: alt === null ? copyText("sessionOpen.account.useBase") : copyText("newSession.account.useAlt", { alt }),
             run: () => void again({ ...req, account: chosenAccount(alt) }),
           },
           ...login,

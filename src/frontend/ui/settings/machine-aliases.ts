@@ -59,7 +59,7 @@ export function localShell(): Shell | null {
 export function buildUnknownOsAliasBlock(): HTMLElement {
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = "unknown";
-  wrap.appendChild(el("summary", "", copyText("machineAliases.manager.title")));
+  wrap.appendChild(el("summary", "", copyText("newSession.label.alias")));
   wrap.appendChild(el("p", "settings-hint", copyText("machineAliases.unknownOs.said")));
   const install = button({ label: copyText("machineAliases.access.connect"), hint: copyText("machineAliases.unknownOs.said") });
   install.disabled = true;
@@ -222,7 +222,7 @@ function allowResultText(ps: string, r: { policy: ExecPolicy; setError: string |
 function rcOptionLabel(c: StartupFile): string {
   const tags: string[] = [];
   if (c.block.present) tags.push(copyText("machineAliases.rc.tagBlock"));
-  else if (c.sourced) tags.push(copyText("machineAliases.rc.tagSourced"));
+  else if (c.sourced) tags.push(copyText("machineAliases.rc.tagBlock"));
   if (!c.exists) tags.push(copyText("machineAliases.rc.tagNew"));
   return tags.length ? `${c.path}（${tags.join("；")}）` : c.path;
 }
@@ -240,7 +240,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   // 只本机挂的几格（平台格 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
   const local = isLocalOrigin(opts.origin());
   const group = el("div", "cfg");
-  const row = cfgRow(copyText("machineAliases.manager.title"), true);
+  const row = cfgRow(copyText("newSession.label.alias"), true);
   const wrap = row.element;
   wrap.classList.add("machine-aliases");
   wrap.dataset.shell = shell;
@@ -306,7 +306,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const uninstallPanel = (t: StartupFile, code: HTMLElement): HTMLElement[] => {
     const go = button({ label: copyText("machineAliases.rc.uninstall"), hint: copyText("machineAliases.rc.uninstallHint"), onClick: quiet(() => void runRc("remove", t.path)) });
     const acts = el("div", "cfg-acts");
-    acts.append(go, button({ label: copyText("machineAliases.form.cancel"), onClick: quiet(() => togglePanel("uninstall")) }));
+    acts.append(go, button({ label: copyText("kit.dialog.cancel"), onClick: quiet(() => togglePanel("uninstall")) }));
     return [
       el("div", "cfg-sub", shell === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub")),
       el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: t.shown })),
@@ -326,7 +326,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     }
     const code = el("pre", "cfg-code");
     code.dataset.role = "block-text";
-    code.textContent = copyText("machineAliases.aliasPreview.asking");
+    code.textContent = copyText("backend.buildCells.querying");
     if (panelOpen === "preview") {
       panel.append(el("div", "cfg-panel-title", t.block.present ? copyText("machineAliases.access.previewOn", { path: t.shown }) : copyText("machineAliases.access.previewOff", { path: t.shown })), code);
     } else {
@@ -351,7 +351,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
             chosen = c.path;
             togglePanel("preview");
           }),
-          linkBtn(local ? copyText("machineAliases.rc.uninstall") : copyText("machineCard.aliases.uninstall"), () => {
+          linkBtn(local ? copyText("machineAliases.rc.uninstall") : copyText("machineAliases.rc.uninstall"), () => {
             chosen = c.path;
             togglePanel("uninstall");
           }, true),
@@ -426,7 +426,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const renderStatus = (): void => {
     const on = cands.filter((c) => c.block.present);
     const names = [...new Set(cands.flatMap((c) => c.block.conflictingFunctions.map((f) => f.name)))];
-    const tail = names.length ? copyText("machineAliases.status.clashTail", { names: names.join(copyText("accountsMcp.list.sep")) }) : "";
+    const tail = names.length ? copyText("machineAliases.status.clashTail", { names: names.join(copyText("kit.text.sep")) }) : "";
     const t = target();
     let dot: CfgDot;
     if (on.length) {
@@ -462,7 +462,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       cands = got.rcCandidates;
     } catch (e) {
       sayFailure(accessWarn, copyText("machineAliases.readBack.failed"), e);
-      row.setStatus("warn", copyText("machineAliases.status.readFailed"));
+      row.setStatus("warn", copyText("machineAliases.readBack.failed"));
     }
     renderAccess();
   };
@@ -560,7 +560,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     const ps = psName(host);
     const confirm = {
       title: copyText("machineAliases.policy.title", { ps }),
-      action: copyText("machineAliases.policy.action"),
+      action: copyText("mobDrawer.settings.aria"),
       body: copyText("machineAliases.policy.confirm", { ps }),
     };
     if (!(await (opts.confirm ?? confirmDialog)(confirm))) return;
@@ -648,7 +648,7 @@ function buildPsExtras(row: CfgRow, origin: () => Machine): PsExtras {
         await commands.cc_set_auto_launch({ enabled });
         return true;
       } catch (e) {
-        failToast(copyText("machineAliases.ps.saveFailed"), e);
+        failToast(copyText("remote.save.failed"), e);
         return false;
       }
     },

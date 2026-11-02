@@ -44,7 +44,7 @@ export function buildBriefCard(text: string, time: string, from: string | null):
         const open = body.dataset.clamped === "1";
         if (open) delete body.dataset.clamped;
         else body.dataset.clamped = "1";
-        more.textContent = open ? copyText("agentWindow.brief.less") : copyText("agentWindow.brief.more");
+        more.textContent = open ? copyText("kit.dock.close") : copyText("agentWindow.brief.more");
       },
     });
     more.classList.add(s.briefMore);

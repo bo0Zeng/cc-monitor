@@ -42,7 +42,7 @@ export class MainEmpty {
         icon: "terminal",
         text: f.line,
         hint: f.hint,
-        ...(this.unhooked ? { action: button({ label: copyText("main.empty.connect"), icon: "settings", size: "compact", onClick: () => this.connect() }) } : {}),
+        ...(this.unhooked ? { action: button({ label: copyText("front.act.connect"), icon: "settings", size: "compact", onClick: () => this.connect() }) } : {}),
       }),
     );
   }

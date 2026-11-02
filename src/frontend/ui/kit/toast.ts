@@ -365,7 +365,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   if (copyBtn) row.appendChild(copyBtn);
   acts.appendChild(
     button({
-      label: copyText("kit.toast.close"),
+      label: copyText("kit.drawer.close"),
       kind: "icon",
       size: "compact",
       icon: "close",

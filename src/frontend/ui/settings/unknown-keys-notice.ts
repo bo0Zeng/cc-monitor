@@ -15,7 +15,7 @@ import { copyText } from "../copy-table";
 export function unknownKeysMessage(keys: readonly string[]): string | null {
   if (keys.length === 0) return null;
   return (
-    copyText("unknownKeysNotice.unknownKeysMessage.message", { keysCount: keys.length, keys: keys.join(copyText("unknownKeysNotice.unknownKeysMessage.listSep")) })
+    copyText("unknownKeysNotice.unknownKeysMessage.message", { keysCount: keys.length, keys: keys.join(copyText("kit.text.sep")) })
   );
 }
 

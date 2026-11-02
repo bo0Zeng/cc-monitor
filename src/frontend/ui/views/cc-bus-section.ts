@@ -47,7 +47,7 @@ export class CcBusSection {
 
     const label = document.createElement("span");
     label.className = "settings-label";
-    label.textContent = copyText("ccBus.build.machine");
+    label.textContent = copyText("newSession.label.machine");
     row.appendChild(label);
 
     this.originSel = document.createElement("select");
@@ -88,7 +88,7 @@ export class CcBusSection {
     {
       const opt = document.createElement("option");
       opt.value = LOCAL;
-      opt.textContent = copyText("ccBus.machine.local");
+      opt.textContent = copyText("detail.label.local");
       this.originSel.appendChild(opt);
     }
     if (origins.length === 0) {
@@ -129,7 +129,7 @@ export class CcBusSection {
     this.statusEl.textContent = [
       copyText("ccBus.summary.registered", { n: st.agents.length }),
       copyText("ccBus.summary.notOnline"),
-    ].join(copyText("ccBus.summary.sep"));
+    ].join(copyText("kit.text.sep"));
     if (st.agents.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
@@ -194,7 +194,7 @@ export class CcBusSection {
     try {
       const online = await agentOnline(origin, id);
       stateEl.dataset.state = online ? "yes" : "no";
-      stateEl.textContent = online ? copyText("ccBus.check.online") : copyText("ccBus.check.offline");
+      stateEl.textContent = online ? copyText("ccBus.check.online") : copyText("machinePage.state.down");
     } catch (e) {
       // 查失败 ≠ 不在线：要分开，否则网络抖一下就报成 agent 死了
       stateEl.dataset.state = "error";
@@ -221,7 +221,7 @@ export class CcBusSection {
       for (const m of msgs.slice(-20)) {
         const line = document.createElement("div");
         line.className = "cc-bus-msg-line";
-        const none = copyText("ccBus.inbox.missing");
+        const none = copyText("acct.val.none");
         const [ts, from] = [m.ts || none, m.from || none];
         line.textContent = copyText("ccBus.inbox.line", { ts, from, act: m.act_said, title: m.title, text: m.text });
         box.appendChild(line);

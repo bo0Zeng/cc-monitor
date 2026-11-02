@@ -39,12 +39,12 @@ export function hitMeta(h: FindHit, scope: FindScope = "all"): string {
   // 种类由那台给（`history-find` 的 `kind`）：你 · agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）· 工具 · 那一家。
   const who =
     h.kind === "user"
-      ? copyText("sessionFind.who.user")
+      ? copyText("machineForm.field.user")
       : h.kind === "report"
         ? copyText("sessionFind.who.report")
         : h.kind === "tool"
           ? copyText("sessionFind.who.tool")
-          : copyText("sessionFind.who.assistant");
+          : copyText("history.searchHit.agent");
   const time = h.tsText;
   if (h.turn > 0 && time) return copyText("sessionFind.hit.meta", { who, n: h.turn, time });
   if (h.turn > 0) return copyText("sessionFind.hit.metaNoTime", { who, n: h.turn });
@@ -95,7 +95,7 @@ export class SessionFindPanel {
     bar.className = s.sfBar;
     this.modeTabs = tabs<FindMode>({
       items: [
-        { key: "search", label: copyText("sessionFind.box.searchLabel") },
+        { key: "search", label: copyText("mobChats.search.open") },
         { key: "outline", label: OUTLINE_LABEL },
       ],
       current: "search",
@@ -106,11 +106,11 @@ export class SessionFindPanel {
       },
     });
     const close = button({
-      label: copyText("sessionFind.box.closeHint"),
+      label: copyText("kit.drawer.close"),
       kind: "icon",
       icon: "close",
       size: "compact",
-      hint: copyText("sessionFind.box.closeHint"),
+      hint: copyText("kit.drawer.close"),
       onClick: () => this.close(),
     });
     bar.append(this.modeTabs, close);

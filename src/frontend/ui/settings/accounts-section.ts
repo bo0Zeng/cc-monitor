@@ -93,11 +93,11 @@ export class AccountsSection {
     right.className = "acct-head-actions";
     this.newBtn = button({ label: copyText("acctPage.head.new"), icon: "plus", size: "compact", onClick: () => this.toggleForm() });
     const refresh = button({
-      label: copyText("acctPage.head.refresh"),
+      label: copyText("accountChip.menu.refresh"),
       kind: "icon",
       icon: "refresh",
       size: "compact",
-      hint: copyText("acctPage.head.refresh"),
+      hint: copyText("accountChip.menu.refresh"),
       onClick: () => void this.reload(),
     });
     right.append(this.newBtn, refresh);
@@ -214,7 +214,7 @@ export class AccountsSection {
     if (!s.available) {
       setDisabled(this.newBtn, copyText("acctPage.offline.hover"));
       const last = s.last ?? null;
-      const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload() });
+      const retry = button({ label: copyText("front.act.retry"), size: "compact", onClick: () => void this.reload() });
       const text = last
         ? copyText("acctPage.offline.bar", { machine, seen: last.seen.said })
         : copyText("acctPage.offline.noLast", { machine, why: s.error ?? "" });
@@ -263,7 +263,7 @@ export class AccountsSection {
     box.className = "acct-box acct-enable";
     const t = document.createElement("div");
     t.className = "acct-enable-title";
-    t.textContent = copyText("acctPage.notEnabled.title");
+    t.textContent = copyText("accountChip.label.disabled");
     const hint = document.createElement("div");
     hint.className = "acct-enable-hint";
     hint.textContent = copyText("acctPage.notEnabled.hint");
@@ -306,12 +306,12 @@ export class AccountsSection {
     if (fails.length === 0) return null;
     const first = fails[0];
     const text = first.account ? copyText("acctPage.verify.bar", { name: first.account, what: first.text }) : copyText("acctPage.verify.barGlobal", { what: first.text });
-    const more = fails.length > 1 ? copyText("acctPage.verify.andMore", { n: fails.length - 1 }) : "";
+    const more = fails.length > 1 ? copyText("kit.dialog.more", { n: fails.length - 1 }) : "";
     const actions: HTMLElement[] = [button({ label: copyText("acctPage.verify.fix"), size: "compact", onClick: () => void this.repair(f.origin, machine) })];
     if (this.repaired.has(f.origin)) {
       actions.push(
         button({
-          label: copyText("acctPage.verify.more"),
+          label: copyText("history.row.more"),
           kind: "icon",
           icon: "more",
           size: "compact",
@@ -412,7 +412,7 @@ export class AccountsSection {
     nm.textContent = accountLabel(a.name);
     line1.appendChild(nm);
     const isDef = a.name === f.state.meta?.effectiveDefault;
-    if (isDef) line1.appendChild(tag(copyText("acctPage.row.default")));
+    if (isDef) line1.appendChild(tag(copyText("resumeSelect.option.defaultBare")));
     if (q?.login === "needsKey") {
       const t = tag(copyText("acctPage.row.keyNotSaved"));
       t.dataset.shade = "error";
@@ -518,10 +518,10 @@ export class AccountsSection {
     };
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) {
-      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "icon", icon: "copy", size: "compact", onClick: () => copyCmds(cmds) });
-      line(copyText("acctPage.detail.commands"), mono(cmds.join(copyText("kit.text.sep"))), copy);
+      const copy = button({ label: copyText("beFiles.batch.verbCopy"), kind: "icon", icon: "copy", size: "compact", onClick: () => copyCmds(cmds) });
+      line(copyText("detail.label.command"), mono(cmds.join(copyText("kit.text.sep"))), copy);
     }
-    if (accountRowKind(a) === "apikey") line(copyText("acctPage.detail.apikey"), this.keyEditor(origin, a, readonly));
+    if (accountRowKind(a) === "apikey") line(copyText("acctNew.key.label"), this.keyEditor(origin, a, readonly));
     // 默认模型：键 ＝ 这台 ＋ 这个号（选中即存；第一项 ＝ 跟着这一家自己的默认）。选项是这一家认得的模型（后端画像）；
     // 盘上存的那个不在里面 ⇒ 照样多列它一项（不丢用户自己写的）。
     const profile = accountsAgentProfile();
@@ -592,13 +592,13 @@ export class AccountsSection {
     const form = document.createElement("div");
     form.className = "acct-key-form";
     form.hidden = true;
-    const base = field({ label: copyText("acctNew.base.label"), placeholder: copyText("acctNew.base.example"), noteOnDemand: true });
+    const base = field({ label: copyText("machineForm.field.host"), placeholder: copyText("acctNew.base.example"), noteOnDemand: true });
     const keyF = field({ label: copyText("acctNew.key.label"), noteOnDemand: true });
     const keyIn = keyF.input as HTMLInputElement;
     keyIn.type = "password";
     keyIn.autocomplete = "off";
-    const save = button({ label: copyText("acctPage.detail.keySave"), kind: "primary", size: "compact" });
-    const cancel = button({ label: copyText("acctNew.form.cancel"), size: "compact" });
+    const save = button({ label: copyText("rsFilewinShell.editor.save"), kind: "primary", size: "compact" });
+    const cancel = button({ label: copyText("kit.dialog.cancel"), size: "compact" });
     form.append(base.root, keyF.root, buttonRow(cancel, save));
     change.addEventListener("click", () => {
       form.hidden = false;
@@ -640,7 +640,7 @@ export class AccountsSection {
   private async setDefault(origin: Machine, a: Account): Promise<void> {
     try {
       await accountsSetDefault(origin, a.name);
-      toast(copyText("acctPage.default.done", { name: a.name }), "");
+      toast(copyText("acctPage.head.default", { name: a.name }), "");
       void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
       failToast(copyText("acctPage.default.failed", { name: a.name }), e, { level: "error" });
@@ -661,10 +661,10 @@ export class AccountsSection {
       body: next ? copyText("acctPage.remove.next", { name: next }) : undefined,
       rows: [
         {
-          label: copyText("acctPage.remove.cut"),
-          items: [copyText("acctPage.remove.login"), copyText("acctPage.remove.settings"), ...(cmds.length ? [copyText("acctPage.remove.commands", { names: cmds.join(" ") })] : [])],
+          label: copyText("beFiles.batch.verbDelete"),
+          items: [copyText("acctPage.remove.login"), copyText("mobDrawer.settings.aria"), ...(cmds.length ? [copyText("acctPage.remove.commands", { names: cmds.join(" ") })] : [])],
         },
-        { label: copyText("acctPage.remove.keep"), items: [copyText("acctPage.remove.sessions")] },
+        { label: copyText("kit.interrupts.keep"), items: [copyText("acctPage.remove.sessions")] },
       ],
     });
     if (!yes) return;
@@ -766,7 +766,7 @@ function mono(t: string): HTMLElement {
 }
 
 function revealLabel(origin: Machine): string {
-  return isLocalOrigin(origin) ? copyText("acctPage.menu.revealLocal") : copyText("acctPage.menu.revealRemote");
+  return isLocalOrigin(origin) ? copyText("data.item.reveal") : copyText("acctPage.menu.revealRemote");
 }
 
 /** 一个号在那台额度账上的显示态（出过数的那一格；账号库有、没出过数 ⇒ 无采样那一形）。 */
@@ -780,9 +780,9 @@ function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | 
 /** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 未登录`。 */
 function kindLine(a: Account): string {
   const kind = accountRowKind(a);
-  if (kind === "apikey") return a.baseUrl ? copyText("acctPage.row.apikeyAt", { host: hostOf(a.baseUrl) }) : copyText("acctPage.row.apikey");
+  if (kind === "apikey") return a.baseUrl ? copyText("acctPage.row.apikeyAt", { host: hostOf(a.baseUrl) }) : copyText("acctNew.key.label");
   if (kind === "notLoggedIn") return copyText("acctPage.row.notLoggedIn");
-  return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acctPage.row.subNoEmail");
+  return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acct.kind.sub");
 }
 
 /** `5h 63% ↻18:30` · `7d 41%`；用满 `5h ✕ ↻19:00`（红）· 被拒没用满 `5h 58% · 被拒`（红）；按量号 `按量`；没采样 `—`。 */

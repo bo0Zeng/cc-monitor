@@ -92,7 +92,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   };
 
   for (const t of f.sessions) {
-    const r = row(statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact"));
+    const r = row(statusDot("needs-you", copyText("tabBar.needs.label"), "compact"));
     r.dataset.row = "session";
     const l1 = lineOne();
     if (isRemoteOrigin(t.origin)) l1.appendChild(tag(t.origin));

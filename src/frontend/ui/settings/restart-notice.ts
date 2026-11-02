@@ -103,7 +103,7 @@ export function createRestartBar(): HTMLElement {
   bar.append(text, restartNowButton());
   const render = (list: string[]): void => {
     bar.hidden = list.length === 0;
-    text.textContent = list.length === 0 ? "" : copyText("restartNotice.render.pending", { n: list.length, list: list.join(copyText("restartNotice.render.listSep")) });
+    text.textContent = list.length === 0 ? "" : copyText("restartNotice.render.pending", { n: list.length, list: list.join(copyText("kit.text.sep")) });
   };
   render(restartReasons());
   subscribeRestart(render);

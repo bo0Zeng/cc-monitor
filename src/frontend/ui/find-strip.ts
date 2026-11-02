@@ -125,15 +125,15 @@ export class FindStrip {
     this.input.addEventListener("input", () => this.armAuto());
     this.box.appendChild(this.input);
 
-    this.tools = checkbox(copyText("findStrip.box.tools"), false, (on) => {
+    this.tools = checkbox(copyText("history.filter.tools"), false, (on) => {
       this.withTools = on;
       if (this.input.value.trim()) void this.run();
     });
     this.toolsBox = this.tools.querySelector("input")!;
     this.scopeEl = segmented<FindScope>({
       items: [
-        { key: "all", label: copyText("sessionFind.scope.all") },
-        { key: "user", label: copyText("sessionFind.scope.user") },
+        { key: "all", label: copyText("extPage.filter.all") },
+        { key: "user", label: copyText("machineForm.field.user") },
       ],
       current: windowScope,
       label: copyText("sessionFind.scope.label"),
@@ -368,7 +368,7 @@ export class FindStrip {
     }
     this.head.textContent =
       n === 0
-        ? copyText("findStrip.status.none", { q })
+        ? copyText("kit.menu.noMatch", { q })
         : this.total > n
           ? copyText("findStrip.status.truncated", { total: this.total, n })
           : copyText("findStrip.status.count", { n });
@@ -458,7 +458,7 @@ export class FindStrip {
     landed.then(settle, (e: unknown) => {
       row.el.dataset.unjumpable = "1";
       const retry = button({
-        label: copyText("sessionFind.jump.retry"),
+        label: copyText("front.act.retry"),
         kind: "ghost",
         size: "compact",
         onClick: (ev) => {

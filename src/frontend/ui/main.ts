@@ -604,7 +604,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const chord = action === null ? null : dispatcher.effectiveChord(action);
     return chord ? `${name} · ${KeybindingDispatcher.prettyChord(chord)}` : name;
   };
-  const settingsTrigger = headButton("settings-trigger", "settings", copyText("main.cmd.openSettings"), hintWithKey(copyText("main.topbar.settingsHint"), "app.open-settings"), () => {
+  const settingsTrigger = headButton("settings-trigger", "settings", copyText("mobDrawer.settings.aria"), hintWithKey(copyText("mobDrawer.settings.aria"), "app.open-settings"), () => {
     void openSettingsWindow(settingsTrigger); // 开独立设置窗口；点了有反馈
   });
 
@@ -646,7 +646,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     paintNeedsTitle();
     planTrigger.dataset.needs = String(needsBook.plans().length > 0);
   });
-  const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
+  const planTrigger = headButton("plan-trigger", "plan", copyText("plan.page.title"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
   planNeeds.subscribe(() => sessionHead.render());
 
   // 多 agent 并排监控入口（视图在上面建）。
@@ -686,9 +686,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     const g = tabs.groupCommandState();
     if (g === null) return [];
     const kw = copyText("main.cmd.groupKeywords");
-    const out: Command[] = [{ id: "group-new", group: "current", icon: "list", title: copyText("main.cmd.groupNew"), keywords: kw, run: () => tabs.foundGroupFromCommand() }];
+    const out: Command[] = [{ id: "group-new", group: "current", icon: "list", title: copyText("tabMenu.collection.new"), keywords: kw, run: () => tabs.foundGroupFromCommand() }];
     if (g.groups > 0) out.push({ id: "group-join", group: "current", icon: "list", title: copyText("main.cmd.groupJoin"), keywords: kw, run: () => tabs.openGroupMenuFromCommand() });
-    if (g.grouped > 0) out.push({ id: "group-leave", group: "current", icon: "list", title: copyText("main.cmd.groupLeave"), keywords: kw, run: () => tabs.leaveGroupFromCommand() });
+    if (g.grouped > 0) out.push({ id: "group-leave", group: "current", icon: "list", title: copyText("tabMenu.collection.remove"), keywords: kw, run: () => tabs.leaveGroupFromCommand() });
     return out;
   };
 
@@ -705,25 +705,25 @@ window.addEventListener("DOMContentLoaded", async () => {
     cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => tabs.attachInTerminal(sid)));
     if (cur !== null && curOrigin !== null) {
       cmds.push(
-        { id: "find", group: "current", icon: "search", title: copyText("main.cmd.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
+        { id: "find", group: "current", icon: "search", title: copyText("sessionHead.act.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
         { id: "head-buttons", group: "current", icon: "sliders", title: copyText("sessionHead.edit.open"), hint: chordHint("sessionHead.edit"), run: () => sessionHead.openEditor() },
-        { id: "toggle-tasks", group: "current", icon: "tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
-        { id: "toggle-agents", group: "current", icon: "agent", title: copyText("main.cmd.agents"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
-        { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
-        { id: "pop-out", group: "current", icon: "popOut", title: copyText("main.cmd.popOut"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
-        { id: "open-cwd", group: "current", icon: "folder", title: copyText("main.cmd.openCwd"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
+        { id: "toggle-tasks", group: "current", icon: "tasks", title: copyText("tasksPanel.page.title"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
+        { id: "toggle-agents", group: "current", icon: "agent", title: copyText("newSession.label.agent"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
+        { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("sessionHead.act.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
+        { id: "pop-out", group: "current", icon: "popOut", title: copyText("history.menu.openWindow"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
+        { id: "open-cwd", group: "current", icon: "folder", title: copyText("tabBarView.tab.cwdHint"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
         // ↗：一直列着，做不了灰着写那一句（与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }, tabs.activeTab()?.face ?? null),
+        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("terminal.head.front"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }, tabs.activeTab()?.face ?? null),
         tabs.isPinned(cur)
-          ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
-          : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
+          ? { id: "unpin", group: "current", icon: "pin", title: copyText("tabMenu.pin.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
+          : { id: "pin", group: "current", icon: "pin", title: copyText("tabMenu.pin.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
         // 改标题：栏上就地改（同双击标题 · 右键「改标题」，`tab-rename.ts`）。
         { id: "rename", group: "current", icon: "text", title: copyText("history.menu.rename"), run: () => {
           const t = tabs.activeTab();
           if (t) renameTab(t);
         } },
         ...groupCommands(),
-        { id: "proc-expand", group: "current", icon: "expand", title: copyText("main.cmd.procExpand"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
+        { id: "proc-expand", group: "current", icon: "expand", title: copyText("stream.proc.toggle"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
         { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },
       );
     }
@@ -740,10 +740,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       startSetCommand(() => newSplit, () => hereNow().origin, setHost),
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
       { id: "open-terminals", group: "open", icon: "terminal", title: copyText("main.cmd.openTerminals"), keywords: copyText("main.cmd.terminalsKeywords"), run: () => overlays.open("terminals") },
-      { id: "open-plan", group: "open", icon: "plan", title: copyText("main.cmd.openPlan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
+      { id: "open-plan", group: "open", icon: "plan", title: copyText("plan.page.title"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
       { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
-      { id: "open-settings", group: "open", icon: "settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
+      { id: "open-settings", group: "open", icon: "settings", title: copyText("mobDrawer.settings.aria"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
       { id: "open-sftp", group: "open", icon: "files", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "keys", group: "open", icon: "keyboard", title: copyText("main.cmd.keys"), keywords: copyText("main.cmd.keysKeywords"), hint: chordHint("app.keys"), run: () => keysOverview.open() },
       { id: "refresh", group: "open", icon: "refresh", title: copyText("main.cmd.refresh"), keywords: copyText("main.cmd.refreshKeywords"), run: () => tabs.refreshAll() },
@@ -785,7 +785,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     cmdkHint.className = "status-cmdk";
     cmdkHint.appendChild(icon("command", "compact"));
     const label = document.createElement("span");
-    label.textContent = copyText("main.cmdk.label");
+    label.textContent = copyText("detail.label.command");
     cmdkHint.appendChild(label);
     // kbd 可重建：改键热应用后经 refreshCmdkChord 刷新。
     refreshCmdkChord = (): void => {

@@ -117,7 +117,7 @@ export class ContextLimitsSection {
       this.paintCount(r.prefs.contextLimits);
       emit(SETTINGS_APPLIED_EVENT).catch((e: unknown) => console.warn("[context-limits] 通知不到主窗口：", e));
     } catch (e) {
-      sayFailure(this.status, copyText("contextLimits.editor.saveFailed"), e);
+      sayFailure(this.status, copyText("remote.save.failed"), e);
     }
   }
 }

@@ -131,14 +131,14 @@ const GROUP_ORDER: readonly CommandGroup[] = ["needs", "current", "machine", "op
 
 /** 每一段的标题（骨架字，不随数据变）。 */
 const GROUP_TITLE: Record<CommandGroup | "sessions" | "commands", () => string> = {
-  needs: () => copyText("commandBar.group.needs"),
+  needs: () => copyText("tabBar.needs.label"),
   current: () => copyText("commandBar.group.current"),
-  machine: () => copyText("commandBar.group.machine"),
-  open: () => copyText("commandBar.group.open"),
+  machine: () => copyText("newSession.label.machine"),
+  open: () => copyText("mobTerms.row.attach"),
   window: () => copyText("commandBar.group.window"),
-  account: () => copyText("commandBar.group.account"),
-  sessions: () => copyText("commandBar.group.sessions"),
-  commands: () => copyText("commandBar.group.commands"),
+  account: () => copyText("newSession.label.account"),
+  sessions: () => copyText("mobDrawer.item.sessions"),
+  commands: () => copyText("detail.label.command"),
 };
 
 function groupTitle(g: CommandGroup | "sessions" | "commands"): string {
@@ -209,7 +209,7 @@ export class CommandBarView {
     this.input.setAttribute("aria-label", copyText("commandBar.build.placeholder"));
     this.input.addEventListener("input", () => this.applyFilter());
     this.input.addEventListener("keydown", (e) => this.onInputKeydown(e));
-    head.append(this.input, kbd(copyText("commandBar.key.esc")));
+    head.append(this.input, kbd(copyText("kit.dock.escKey")));
 
     this.listEl = document.createElement("div");
     this.listEl.className = s.cbList;
@@ -226,7 +226,7 @@ export class CommandBarView {
     this.allCommands = this.listCommands();
     this.block = null;
     this.handle = panelDialog({
-      label: copyText("commandBar.build.ariaLabel"),
+      label: copyText("mobKeys.action.palette"),
       size: "palette",
       content: [head, this.listEl, foot],
       first: this.input,
@@ -280,7 +280,7 @@ export class CommandBarView {
     if (secs.length === 0) {
       const empty = document.createElement("div");
       empty.className = s.cbEmpty;
-      empty.textContent = copyText("commandBar.renderList.none");
+      empty.textContent = copyText("history.list.noMatch");
       this.listEl.appendChild(empty);
       return;
     }

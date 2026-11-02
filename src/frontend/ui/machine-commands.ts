@@ -34,8 +34,8 @@ export interface MachineActions {
 
 const TITLE: Record<MenuAct, () => string> = {
   open_terminal: () => copyText("commandBar.machine.openTerminal"),
-  new_session: () => copyText("commandBar.machine.newSession"),
-  files: () => copyText("commandBar.machine.files"),
+  new_session: () => copyText("main.cmd.newSession"),
+  files: () => copyText("mobDrawer.item.files"),
   machine_status: () => copyText("commandBar.machine.status"),
   add_machine: () => copyText("commandBar.machine.add"),
 };
@@ -84,7 +84,7 @@ export function machineBlock(hit: MachineHit, menu: MachineMenu, sessions: reado
   const mine = sessions.filter((c) => c.session?.origin === origin).map((c, i) => ({ ...c, hint: String(i + 1) }));
   const pick = hit.nth !== null ? mine[hit.nth - 1] : undefined;
   const sections = [{ title: "", items: [head, ...actions] }];
-  if (mine.length > 0) sections.push({ title: copyText("commandBar.group.sessions"), items: mine });
+  if (mine.length > 0) sections.push({ title: copyText("mobDrawer.item.sessions"), items: mine });
   return {
     sections,
     select: pick?.id ?? actions.find((a) => !a.disabled)?.id ?? null,
