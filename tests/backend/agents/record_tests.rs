@@ -65,7 +65,11 @@ fn incoming_message_bodies_go_out_as_trees() {
         let r = said(sp);
         let wire = serde_json::to_value(&r).unwrap();
         let s = &wire["who"]["speaker"];
-        assert_eq!(s["doc"], serde_json::to_value(md_core::parse(md)).unwrap(), "{s}");
+        assert_eq!(
+            s["doc"],
+            serde_json::to_value(md_core::parse(md)).unwrap(),
+            "{s}"
+        );
         assert!(s.get("body").is_none(), "原文不上线：{s}");
     }
     let none = said(Speaker::Coordinator {

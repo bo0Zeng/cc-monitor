@@ -563,7 +563,8 @@ fn over_cap_evicts_least_recently_used() {
 fn tool_result_strips_line_number_prefixes_first() {
     let src = "1\t# 标题\n2\t\n3\t- 一\n4\t- 二";
     assert_eq!(tool_result(src), parse("# 标题\n\n- 一\n- 二"));
-    let grep = "src/a.rs:10:# x\nsrc/a.rs:11:y\nsrc/b.rs:3:z";
+    // Grep 的「路径:行号:」前缀（路径不带扩展名：夹具里写成「文件.rs:数」会被行号地址扫描当成源码地址）。
+    let grep = "src/a:10:# x\nsrc/a:11:y\nlib\\b:3:z";
     assert_eq!(tool_result(grep), parse("# x\ny\nz"));
     let colon = "  7:**粗**\n  8:平\n  9:平";
     assert_eq!(tool_result(colon), parse("**粗**\n平\n平"));
