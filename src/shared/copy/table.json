@@ -10046,7 +10046,7 @@
     "beTerminal.no.notYours": {
       "kind": "body",
       "role": "片段",
-      "zh": "手机端内部会话",
+      "zh": "属于别的前端 · 只读",
       "args": []
     },
     "beTerminal.no.notManaged": {
@@ -14822,8 +14822,11 @@
     "beAsk.choice.allowAlways": {
       "kind": "action",
       "role": "按钮",
-      "zh": "允许 · {rule}",
-      "args": ["rule"]
+      "zh": "允许，且{rule}",
+      "args": ["rule"],
+      "waive": {
+        "C-W21": "{rule} 是 Claude Code 给的建议原句（允许访问 /w（本次会话）一类），「允许，且」把它接成一个选项名"
+      }
     },
     "beAsk.choice.deny": {
       "kind": "action",
@@ -14978,7 +14981,7 @@
     "beAsk.auto.say": {
       "kind": "body",
       "role": "片段",
-      "zh": "有推荐项选推荐项 · 没有就选最合适的 · 然后继续",
+      "zh": "有推荐就选推荐项 · 没有就选最合适的 · 然后继续",
       "args": []
     },
     "beAsk.answer.notFound": {

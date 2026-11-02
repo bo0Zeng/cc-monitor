@@ -47,11 +47,11 @@
           "can": {
             "end": {
               "no": "not_yours",
-              "said": "手机端内部会话"
+              "said": "属于别的前端 · 只读"
             },
             "input": {
               "no": "not_yours",
-              "said": "手机端内部会话"
+              "said": "属于别的前端 · 只读"
             }
           },
           "clients": [],

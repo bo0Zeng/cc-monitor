@@ -88,7 +88,7 @@
         "text": "状态不明",
         "what": "/w/a.ts",
         "why": "noWriter",
-        "whyText": "无进程在运行该会话"
+        "whyText": "会话未在运行"
       },
       {
         "at": "t4",
@@ -99,7 +99,7 @@
         "text": "状态不明",
         "what": null,
         "why": "noWriter",
-        "whyText": "无进程在运行该会话"
+        "whyText": "会话未在运行"
       }
     ],
     "permissionMode": "acceptEdits",
