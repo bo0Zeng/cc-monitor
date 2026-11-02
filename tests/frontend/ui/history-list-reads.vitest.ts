@@ -23,6 +23,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { fetchBrowse, fetchList, type HistoryList } from "../../../src/frontend/ui/history-list-reads";
 import type { HistoryBrowseReq } from "../../../src/frontend/ui/generated/HistoryBrowseReq";
 import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -47,7 +48,7 @@ beforeEach(() => invokeMock.mockReset());
 describe("跨语言金样（后端出、这里读）", () => {
   it("一台的成品就是生成的那个类型：带 context 的父会话 · 说不清在不在跑的 · 读不了的那一组 · 那台的名字", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(golden)));
-    const v: HistoryList = await fetchList(undefined, {});
+    const v: HistoryList = await fetchList("dev", {});
     expect(v.rows.map((r) => r.sessionId)).toEqual(golden.order);
     expect(v.truncated).toBe(false);
     expect(v.rows.some((r) => r.context === true)).toBe(true);
@@ -60,11 +61,11 @@ describe("跨语言金样（后端出、这里读）", () => {
 describe("回包", () => {
   it("不带记号问却回了「没变」· 先后里有没给的行 ⇒ 抛；窗外还有 ⇒ truncated", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply({ ...empty, whole: false, same: true, order: null, head: null })));
-    await expect(fetchList(undefined, {})).rejects.toThrow(ReplyUnreadable);
+    await expect(fetchList(LOCAL, {})).rejects.toThrow(ReplyUnreadable);
     invokeMock.mockImplementation(() => Promise.resolve(chanReply({ ...empty, order: ["s-x"] })));
-    await expect(fetchList(undefined, {})).rejects.toThrow(ReplyUnreadable);
+    await expect(fetchList(LOCAL, {})).rejects.toThrow(ReplyUnreadable);
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(whole([{ sessionId: "a" }], 9))));
-    await expect(fetchList(undefined, {})).resolves.toMatchObject({ total: 9, truncated: true });
+    await expect(fetchList(LOCAL, {})).resolves.toMatchObject({ total: 9, truncated: true });
   });
 });
 
@@ -74,14 +75,14 @@ describe("问的是谁、带了什么", () => {
       .filter((c) => c[0] === "chan_call")
       .map((c) => c[1] as ChanCallArgs)
       .map((a) => [a.origin, a.op, chanArgsJson(a), typeof a.leftMs]);
-  it("一律只问 <local>；只带给了的那几格", async () => {
+  it("一律只问 <local>；那台总带（本机逐字 <local>），别的只带给了的那几格", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(empty)));
-    await expect(fetchList(undefined, {})).resolves.toEqual(flatEmpty);
+    await expect(fetchList(LOCAL, {})).resolves.toEqual(flatEmpty);
     await fetchList("dev", { query: "回调", sort: "created", withinDays: 7, hidden: true });
     await fetchList("dev", { query: "回" });
     await fetchList("dev", { sid: "s-1" });
     expect(calls()).toEqual([
-      ["<local>", "history-list", {}, "number"],
+      ["<local>", "history-list", { origin: "<local>" }, "number"],
       ["<local>", "history-list", { origin: "dev", query: "回调", sort: "created", within_days: 7, hidden: true }, "number"],
       ["<local>", "history-list", { origin: "dev", query: "回" }, "number"],
       // 独立查看窗按会话 ID 要那一行。

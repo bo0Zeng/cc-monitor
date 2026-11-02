@@ -49,7 +49,6 @@ type OnLineClass = "入口" | "真事件" | "活卡定稿" | "渲染管线";
 /** `(被调者, 类, 真事件的事件名 | null, 理由)` —— `onLine` 上今天每一个吃记录的调用。 */
 const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, string]> = [
   ["this.ensureTab", "入口", null, "按 sid 找 / 建 tab（远端「收到行 ⇒ 复活」也在这里）"],
-  ["originFromWire", "入口", null, "线上 origin 的唯一一处表示法换算"],
   // 去重集合是 tab 渲染那一半的格，只经流视图（8a ④ 一个口子）：has · add · 连着跳过的那一段 addRange 收进 `admit`。
   ["this.view.admit", "入口", null, "按 (sid, seq) 去重（快照与实时的重叠区，`INVARIANTS §25a`；连同 monitor 连着见过、都不可显示的 `skipped_from` 那一段）"],
   // 活卡定稿（记录到了 ⇒ 整轮覆盖）挪进了后端（`src/backend/stream/live.rs`，后端发撤卡）：`onLine` 上一行都不许再有。

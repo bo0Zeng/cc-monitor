@@ -874,14 +874,12 @@ pub(crate) fn main_replay() -> Option<Arc<event_replay::EventReplay>> {
 /// **这里不解释记录**：这一行在界面里是什么（`record`）、进不进界面（有没有 `record`）、
 /// 它自己的 `cwd`，都是那台后端给的成品（`agents/claudecode/`）；本函数只组载荷、记「连着的不可显示那一段」，`seq` 透传。
 ///
-/// `origin`：数据来源。载荷上的 `origin` 字段由它派生：本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字
-/// （issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
+/// `origin`：数据来源，原样写到每条载荷上（本机逐字 `"<local>"`；远端是那台的名字，前端据它给 Tab 标题加 `[host]` 前缀）。
 pub(crate) fn batch_to_payloads(
     lines: Vec<stream_source::JsonlLine>,
     origin: &crate::origin::Origin,
     runs: &mut SkipRuns,
 ) -> Vec<ui_contract::JsonlLinePayload> {
-    let label = origin.host_name().map(str::to_string);
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
         let skipped = runs.pending(&line.session_id, line.seq);
@@ -894,7 +892,7 @@ pub(crate) fn batch_to_payloads(
                     path: line.path.to_string_lossy().into_owned(),
                     // P5.1：后端给每行编行号（流不重放历史，与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
-                    origin: label.clone(),
+                    origin: origin.clone(),
                     record,
                     skipped_from: skipped,
                     end: line.end,
