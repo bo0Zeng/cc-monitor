@@ -342,12 +342,6 @@ fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenW
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
-}
-
 /// `last-seen-read`：帧面入口（只读）；那一句按看的那一台的时区（请求信封的 `tz`）写。
 pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastSeen> {
     let path = store_path()
@@ -355,13 +349,13 @@ pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastS
     read_at(
         &path,
         req,
-        &crate::common::time::TextClock::new(now_ms() / 1000, tz),
+        &crate::common::time::TextClock::new(crate::common::time::now_secs(), tz),
     )
 }
 
 /// `last-seen-write`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
 pub(crate) fn answer_write(req: &LastSeenWriteReq, own: &Own) -> Answer<LastSeenWritten> {
-    write_at(own, req, now_ms())
+    write_at(own, req, crate::common::time::now_ms())
 }
 
 #[cfg(test)]

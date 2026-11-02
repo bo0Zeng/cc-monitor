@@ -30,6 +30,7 @@ use super::skill_ledger::{Record, RecordReq};
 use crate::common::door::{self, Door, Refused};
 use crate::common::said::IntoNote as _;
 use crate::common::said::Said;
+use crate::common::time::now_ms;
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
@@ -1269,7 +1270,7 @@ pub(crate) fn token_of(v: &Value) -> String {
 }
 
 /// 备份落点：`<家>/.cc-monitor/backups/<毫秒>-<种类>-<名字>`（名字里别的字符换成 `_`）。回（家下相对段, 绝对路径）。
-fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u128) -> (String, String) {
+fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u64) -> (String, String) {
     let safe: String = name
         .chars()
         .map(|c| {
@@ -1287,13 +1288,6 @@ fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u128) -> (String,
     );
     let abs = door::join_under(&home.display().to_string(), &rel);
     (rel, abs)
-}
-
-fn now_ms() -> u128 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
 }
 
 // ───────────────────────── 卸（在被卸的那一台上） ─────────────────────────

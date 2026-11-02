@@ -158,10 +158,7 @@ pub async fn install(
     on: &(dyn Fn(deploy::Step) + Send + Sync),
 ) -> Result<Installed, Said> {
     let slots = checked(&req.slots, &req.machine)?;
-    let now = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = crate::common::time::now_secs();
     deploy::install(host, &slots, &load, &req.machine, now, on)
         .await
         .map(|p| installed_of(&p))
