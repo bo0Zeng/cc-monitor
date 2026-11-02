@@ -448,6 +448,8 @@ pub(crate) const SUBCOMMANDS: &[&str] = &[
     "--history-find",
     // `history-image`（按引用取回一张图）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--history-image",
+    // `prose-hl`（拉一段正文的代码高亮）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--prose-hl",
     "--history-index",
     // `history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 打版本号时统一 bump。
