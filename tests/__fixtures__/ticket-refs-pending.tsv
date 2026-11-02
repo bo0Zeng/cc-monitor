@@ -131,7 +131,6 @@ tests/backend/plan/fixture.rs	45
 tests/backend/plan/needs_tests.rs	9
 tests/backend/plan/owners_tests.rs	9
 tests/backend/plan/product_tests.rs	55
-tests/backend/plan/refs_tests.rs	11
 tests/backend/platform/fs/ro_tests.rs	1
 tests/backend/stream/drain_tests.rs	1
 tests/common/acct-core/lib_tests.rs	1

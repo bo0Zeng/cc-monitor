@@ -46,7 +46,7 @@ fn pb_reply(refs: Value) -> Value {
     json!({
         "pb": "0.5.4", "shape": 6, "workspace": WS, "repo": "alpha",
         "refs": refs,
-        "nodes": {"A1": {"title": "甲功能"}, "A1-1": {"title": "甲的读入"}, "A1-2": {"title": "甲的写出"}}
+        "nodes": {"A1": {"title": "甲功能"}, "a1-1": {"title": "甲的读入"}, "a1-2": {"title": "甲的写出"}}
     })
 }
 
@@ -57,18 +57,18 @@ fn strs(v: &[&str]) -> Vec<String> {
 #[test]
 fn two_refs_each_get_their_title_with_utf16_offsets() {
     // 「😀 」在前：码位 2 个、UTF-16 3 个 ⇒ 下标要换。
-    let text = "😀 看 A1-1，再看 A1-2/1";
-    let a = text.chars().position(|c| c == 'A').unwrap() as u64;
+    let text = "😀 看 a1-1，再看 a1-2/1";
+    let a = text.chars().position(|c| c == 'a').unwrap() as u64;
     let b = text
         .char_indices()
-        .filter(|(_, c)| *c == 'A')
+        .filter(|(_, c)| *c == 'a')
         .nth(1)
         .map(|(i, _)| text[..i].chars().count())
         .unwrap() as u64;
     let fake = Fake::new(|_| {
         pb_reply(json!([
-            {"start": a, "end": a + 4, "ids": ["A1-1"]},
-            {"start": b, "end": b + 6, "ids": ["A1-2", "A1-1"]}
+            {"start": a, "end": a + 4, "ids": ["a1-1"]},
+            {"start": b, "end": b + 6, "ids": ["a1-2", "a1-1"]}
         ]))
     });
     let got = refs_in(&Memo::new(16), &at(), &strs(&[text]), &|o| fake.ask(o));
@@ -79,12 +79,12 @@ fn two_refs_each_get_their_title_with_utf16_offsets() {
     let cut = |s: u32, e: u32| String::from_utf16(&u16s[s as usize..e as usize]).unwrap();
     assert_eq!(
         cut(r[0].start, r[0].end),
-        "A1-1",
+        "a1-1",
         "UTF-16 下标切出来是编号本身"
     );
     assert_eq!(r[0].label, "甲的读入");
-    assert_eq!(cut(r[1].start, r[1].end), "A1-2/1");
-    assert_eq!(r[1].ids, strs(&["A1-2", "A1-1"]));
+    assert_eq!(cut(r[1].start, r[1].end), "a1-2/1");
+    assert_eq!(r[1].ids, strs(&["a1-2", "a1-1"]));
     assert_eq!(
         r[1].label,
         format!(
@@ -109,12 +109,12 @@ fn empty_reply_leaves_every_text_without_refs() {
 
 #[test]
 fn a_batch_asks_pb_once_and_offsets_land_in_their_own_text() {
-    let texts = strs(&["第一段 A1", "", "第三段说 A1-2 与 A1-1"]);
+    let texts = strs(&["第一段 A1", "", "第三段说 a1-2 与 a1-1"]);
     let fake = Fake::new(|one: &str| {
         // 替身自己在接好的那一段里找编号（只为造一份合乎 pb 形状的回答，判据不判它）。
         let cps: Vec<char> = one.chars().collect();
         let mut refs = Vec::new();
-        for id in ["A1-2", "A1-1"] {
+        for id in ["a1-2", "a1-1"] {
             let pat: Vec<char> = id.chars().collect();
             for s in 0..cps.len().saturating_sub(pat.len() - 1) {
                 if cps[s..s + pat.len()] == pat[..] {
@@ -131,7 +131,7 @@ fn a_batch_asks_pb_once_and_offsets_land_in_their_own_text() {
     assert_eq!(fake.asked.borrow().len(), 1, "一批只问一次 pb");
     assert_eq!(
         fake.asked.borrow()[0],
-        format!("第一段 A1{SEAM}第三段说 A1-2 与 A1-1"),
+        format!("第一段 A1{SEAM}第三段说 a1-2 与 a1-1"),
         "空段不交，余下的用接缝接好"
     );
     assert_eq!(got.len(), 3);
@@ -230,15 +230,15 @@ fn slice_is_the_claimed_blocks_then_the_cwds_then_none() {
 /// 标题照 pb 的写；一处都没有的那棵 ⇒ `null`。
 #[test]
 fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
-    let tree = md_core::parse("😀 先看 **A1-1**，`A1` 在代码里");
+    let tree = md_core::parse("😀 先看 **a1-1**，`A1` 在代码里");
     let plain = md_core::parse("没有编号");
     let fake = Fake::new(|one: &str| {
         let cps: Vec<char> = one.chars().collect();
-        let pat: Vec<char> = "A1-1".chars().collect();
+        let pat: Vec<char> = "a1-1".chars().collect();
         let s = (0..cps.len())
             .find(|&s| cps[s..].starts_with(&pat))
             .unwrap();
-        pb_reply(json!([{"start": s, "end": s + 4, "ids": ["A1-1"]}]))
+        pb_reply(json!([{"start": s, "end": s + 4, "ids": ["a1-1"]}]))
     });
     let out = answer(
         &[doc()],
@@ -252,7 +252,7 @@ fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
     assert_eq!(
         fake.asked.borrow().as_slice(),
         [format!(
-            "人说的{SEAM}😀 先看 A1-1，\u{FFFC} 在代码里{SEAM}没有编号"
+            "人说的{SEAM}😀 先看 a1-1，\u{FFFC} 在代码里{SEAM}没有编号"
         )],
         "一批只问一次；树投成字，代码换成占位"
     );
@@ -263,7 +263,7 @@ fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
         &[md_core::RefAt {
             start,
             end: start + 4,
-            ids: vec!["A1-1".into()],
+            ids: vec!["a1-1".into()],
             label: "甲的读入".into(),
         }],
     );
@@ -278,7 +278,7 @@ fn answer_without_a_slice_never_asks_pb() {
         &[doc()],
         "no-such-session",
         Some("/elsewhere"),
-        &strs(&["A1", "A1-1"]),
+        &strs(&["A1", "a1-1"]),
         &[md_core::parse("A1")],
         &Memo::new(4),
         &|_, _| {
