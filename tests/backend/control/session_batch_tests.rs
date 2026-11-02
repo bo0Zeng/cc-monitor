@@ -145,7 +145,9 @@ fn deps_with<T>(
 /// 生产那一份名单（`listed_on`：tmux 指向不存在的私有 socket ＋ 沙箱里的托管家）与 `terminal-end` 那一条；假子进程（`sh`），不起真 claude。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stop_ends_a_session_living_in_a_hosted_terminal() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::{read_frame, Ctl, Frame, Want};
     let (own, data) = sandbox_own("batch-stop");
     let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
@@ -218,7 +220,9 @@ async fn stop_ends_a_session_living_in_a_hosted_terminal() {
 /// （这台装没装 tmux 随机器，另一个 sid 与 `run` 在下一条里用替身钉。）
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn where_names_the_hosted_terminal_a_session_lives_in() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::Want;
     let (own, data) = sandbox_own("batch-where");
     let script = r#"printf 'ready\r\n'; while :; do read x; done"#;
@@ -613,7 +617,7 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
 /// 给了托管的家 ⇒ 这台能托管（每个平台都是，Windows 也是）；没给 ⇒ 不能。
 #[test]
 fn a_given_hosting_home_hosts_on_every_platform() {
-    let (own, _data) = crate::host::managed::run::tests::sandbox_own("batch-hosts");
+    let (own, _data) = crate::host::managed::run::test_support::sandbox_own("batch-hosts");
     assert!(hosts_with(Some(&own)));
     assert!(!hosts_with(None));
 }

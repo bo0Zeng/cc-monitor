@@ -502,7 +502,7 @@ fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
     let src = guard_core::addr::repo_root().join("src/backend");
     let ccm: String = [
         "control/ccm/mod.rs",
-        "ccm_line/argv.rs",
+        "host/ccm_line/argv.rs",
         "control/ccm/plan.rs",
     ]
     .iter()

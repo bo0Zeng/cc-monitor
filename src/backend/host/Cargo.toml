@@ -13,14 +13,35 @@ workspace = true
 
 [features]
 # 只给上层测试用的那几样（ccm 行的拆分夹具 · 托管终端的沙箱夹具）：上层的 `[dev-dependencies]` 开它。
-test-support = []
+# 托管终端的夹具把数据目录建在测试进程的沙箱根底下 ⇒ 随它带上 `test-home`。
+test-support = ["dep:test-home"]
 
 [dependencies]
 backend-agents = { path = "../agents" }
 backend-wire = { path = "../wire" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
+# `--account-dir` 那一格认不认（账号目录的形）。
+acct-core = { path = "../../common/acct-core" }
+# 终端名单那一行的线上形（宿主 · 输入归谁）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 托管终端与瘦客户端之间那条本机通道（Unix 套接字 · Windows 命名管道）。
+own-chan = { path = "../../common/own-chan" }
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+# 托管终端自己持的那一屏（重放 · 抓屏 · 回滚）。
+vt100.workspace = true
+test-home = { path = "../../common/test-home", optional = true }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 宿主名单那条判据起私有 tmux server（平台层的 `test-support`）。
+backend-platform = { path = "../platform", features = ["test-support"] }

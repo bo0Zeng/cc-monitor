@@ -13,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// 协议版本。加只发不等回话的动词不升；加要对方回话的动词 · 改了已有动词的意思升（新的一方按对方的 `proto` 说话）。
 /// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）；3 ＝ 认 `interrupt`（[`INTERRUPT_SINCE`]）。
-pub(crate) const PROTO: u32 = 3;
+pub const PROTO: u32 = 3;
 /// 托管进程从这一版起认 `say`（回 `said`）：`welcome` 报的比它低 ⇒ 是旧托管进程，不说。
 pub(crate) const SAY_SINCE: u32 = 2;
 /// 托管进程从这一版起认 `interrupt`（回 `interrupted`）：低于它 ⇒ 不说、照实报旧版。
@@ -30,7 +30,7 @@ pub(crate) const KIND_IN: u8 = 2;
 
 /// 一帧。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Frame {
+pub enum Frame {
     Ctl(Ctl),
     /// 伪终端原始输出（托管 → 各端）。
     Out(Vec<u8>),
@@ -41,7 +41,7 @@ pub(crate) enum Frame {
 /// 接上的是哪一种端。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum WhoKind {
+pub enum WhoKind {
     /// 一个真终端里的瘦客户端（用户的终端窗口 · ssh 进来的终端 · 手机的 SSH 终端）。
     Terminal,
     /// 后端（桌面终端页 · 手机抓屏 · 实时预览 · 打标）。
@@ -50,7 +50,7 @@ pub(crate) enum WhoKind {
 
 /// `hello` 里报的身份。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Who {
+pub struct Who {
     pub(crate) kind: WhoKind,
     /// 后端那一端替哪个前端问（`desktop` · `mobile`）；瘦客户端不填。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,37 +60,37 @@ pub(crate) struct Who {
 /// 接上要什么：只看，还是要输入（最新连上、要输入的真终端持有）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Want {
+pub enum Want {
     View,
     Input,
 }
 
 /// 行 × 列。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Size {
-    pub(crate) rows: u16,
-    pub(crate) cols: u16,
+pub struct Size {
+    pub rows: u16,
+    pub cols: u16,
 }
 
 /// 输入此刻在谁手里（给每一端看的那一份：`mine` 按收的那一端算）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Holder {
+pub struct Holder {
     /// 持有那一端的连接号（托管进程里唯一，不复用）。
-    pub(crate) client: u64,
-    pub(crate) kind: WhoKind,
+    pub client: u64,
+    pub kind: WhoKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) front: Option<String>,
+    pub front: Option<String>,
     /// 内核报的对端进程号（问不出 ⇒ 没有）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) pid: Option<u32>,
-    pub(crate) mine: bool,
+    pub pid: Option<u32>,
+    pub mine: bool,
 }
 
 /// `clients` 回的一行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ClientRow {
+pub struct ClientRow {
     pub(crate) client: u64,
-    pub(crate) kind: WhoKind,
+    pub kind: WhoKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) front: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,14 +99,14 @@ pub(crate) struct ClientRow {
     pub(crate) since_ms: i64,
     /// 最近一次送来东西的时刻（unix 毫秒）。
     pub(crate) last_ms: i64,
-    pub(crate) holder: bool,
+    pub holder: bool,
     pub(crate) mine: bool,
 }
 
 /// 控制帧（种 [`KIND_CTL`] 的载荷）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "kebab-case")]
-pub(crate) enum Ctl {
+pub enum Ctl {
     // ── 上行（各端 → 托管）──
     /// 接上后第一帧。
     Hello {
@@ -214,7 +214,7 @@ pub(crate) fn encode(f: &Frame) -> Vec<u8> {
 
 /// 读帧那一下的坏结局（读的那一方据此断线）。
 #[derive(Debug)]
-pub(crate) enum Bad {
+pub enum Bad {
     Io(std::io::Error),
     TooLong(u32),
     Kind(u8),
@@ -261,7 +261,7 @@ fn frame_of(kind: u8, body: &[u8]) -> Result<Frame, Bad> {
 }
 
 /// 读一帧：`Ok(None)` ＝ 对端在帧边界上关了。
-pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option<Frame>, Bad> {
+pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option<Frame>, Bad> {
     let mut head = [0u8; 4];
     match r.read_exact(&mut head).await {
         Ok(_) => {}
@@ -280,10 +280,7 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option
 }
 
 /// 写一帧。
-pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
-    w: &mut W,
-    f: &Frame,
-) -> std::io::Result<()> {
+pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, f: &Frame) -> std::io::Result<()> {
     w.write_all(&encode(f)).await
 }
 

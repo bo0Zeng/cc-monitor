@@ -209,7 +209,7 @@ impl Drop for Client {
 pub(crate) async fn session(
     sock: &std::path::Path,
     name: &str,
-    mut outer: Outer,
+    outer: Outer,
     list: &(dyn Fn() -> Vec<(String, String)> + Sync),
     mut queued: UnboundedReceiver<Option<String>>,
 ) -> Result<Left, Said> {
@@ -314,7 +314,7 @@ pub(crate) async fn session(
 }
 
 /// 不持有时底行那一句：名单那一句（[`hold::said_of`]，同一处写）＋「 · 回车接管」。
-pub(crate) fn held_line(holder: Option<&Holder>) -> String {
+pub fn held_line(holder: Option<&Holder>) -> String {
     let said = match holder {
         None => hold::said_of(HolderWho::None, false),
         Some(h) => hold::said_of(hold::who_of(h.kind, h.front.as_deref()), h.mine),
@@ -1045,14 +1045,14 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
 }
 
 /// 底行那一句的耳朵：盯 `id` 那个托管终端那条会话的队，那一句变了就说（`ccm` 入口交 `history::session_queue::host_line_ears`）。
-pub(crate) type QueueEars = fn(
+pub type QueueEars = fn(
     &crate::platform::fs::Own,
     &str,
     Box<dyn Fn(Option<String>) + Send>,
 ) -> Result<crate::platform::watch_file::Watching, String>;
 
 /// `ccm --attach <名|句柄>` 认到托管终端时走这里：接上、切换、直到断开或结束。交回进程退出码。
-pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars) -> i32 {
+pub async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars) -> i32 {
     let mut id = first.to_string();
     loop {
         let sock = match super::home::sock_of(own, &id) {

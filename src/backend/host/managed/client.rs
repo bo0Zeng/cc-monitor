@@ -13,7 +13,7 @@ fn bad(why: &str) -> std::io::Error {
 }
 
 /// 连上、设好期限、说 `hello`（只看：后端从不改尺寸；`front` ＝ 替哪个前端问）。
-pub(crate) fn open(sock: &Path, front: Option<&str>) -> std::io::Result<own_chan::BlockingStream> {
+pub fn open(sock: &Path, front: Option<&str>) -> std::io::Result<own_chan::BlockingStream> {
     let s = own_chan::connect_blocking(sock)?;
     #[allow(
         clippy::disallowed_methods,
@@ -42,10 +42,7 @@ pub(crate) fn send(s: &own_chan::BlockingStream, f: &Frame) -> std::io::Result<(
 }
 
 /// 从这条连接上读一帧（`buf` 存着上一回剩下的半帧）。断了 ⇒ `UnexpectedEof`。
-pub(crate) fn next_frame(
-    s: &own_chan::BlockingStream,
-    buf: &mut Vec<u8>,
-) -> std::io::Result<Frame> {
+pub fn next_frame(s: &own_chan::BlockingStream, buf: &mut Vec<u8>) -> std::io::Result<Frame> {
     let mut chunk = vec![0u8; 64 * 1024];
     loop {
         if let Some((f, used)) = wire::decode(buf).map_err(|e| bad(&e.to_string()))? {
@@ -61,7 +58,7 @@ pub(crate) fn next_frame(
 }
 
 /// 说再见是礼貌：写不出去也不影响已经问到的。
-pub(crate) fn bye(s: &own_chan::BlockingStream) {
+pub fn bye(s: &own_chan::BlockingStream) {
     if let Err(e) = send(s, &Frame::Ctl(Ctl::Bye)) {
         tracing::debug!("托管口：说再见没说成：{e}");
     }
@@ -103,7 +100,7 @@ fn upto<T>(
 
 /// 写 sid 进那个托管终端的事实，等托管进程写完才回：同一条连接上 `tag` 之后紧跟一个 `clients`，
 /// 托管进程按收到的先后逐帧做完（写事实在处理 `tag` 那一下当场做）⇒ `clients` 有了回音，事实已在盘上。
-pub(crate) fn tag(sock: &Path, sid: &str) -> std::io::Result<()> {
+pub fn tag(sock: &Path, sid: &str) -> std::io::Result<()> {
     let tag = Ctl::Tag {
         sid: sid.to_string(),
         agent: String::new(),
@@ -114,7 +111,7 @@ pub(crate) fn tag(sock: &Path, sid: &str) -> std::io::Result<()> {
 }
 
 /// 连着的各端（问的这一条自己不算：去掉 `mine` 那一行）。
-pub(crate) fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
+pub fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
     ask(sock, vec![Ctl::Clients], |c| match c {
         Ctl::ClientsAre { clients } => Some(clients.into_iter().filter(|r| !r.mine).collect()),
         _ => None,
@@ -124,7 +121,7 @@ pub(crate) fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
 /// 往会话说一句（会话输入队投递那一下）：不持有输入，托管进程照写、不换持有者。
 /// 回 `true` ＝ 写进去了；`false` ＝ 持有者输入行里有没交的字、没写（投递照排着）。
 /// 先读 `welcome`：托管进程是不认 `say` 的旧版本（proto 低于 [`wire::SAY_SINCE`]）⇒ 不说、报 `Unsupported`（那个托管终端要重开）。
-pub(crate) fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
+pub fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
     let text = String::from_utf8(bytes.to_vec()).map_err(|_| bad("say: not utf-8"))?;
     let s = open(sock, None)?;
     let mut buf = Vec::new();
@@ -161,7 +158,7 @@ fn speaks(
 
 /// 中断这一轮（会话 ■，A3-3-32-10）：托管进程往伪终端写一个 ESC，不看持有者、不看半句；等它回 `interrupted` 才回。
 /// 旧托管进程（proto 低于 [`wire::INTERRUPT_SINCE`]）⇒ 不说、报 `Unsupported`。
-pub(crate) fn interrupt(sock: &Path) -> std::io::Result<()> {
+pub fn interrupt(sock: &Path) -> std::io::Result<()> {
     let s = open(sock, None)?;
     let mut buf = Vec::new();
     speaks(&s, &mut buf, wire::INTERRUPT_SINCE, "interrupt")?;
@@ -174,13 +171,13 @@ pub(crate) fn interrupt(sock: &Path) -> std::io::Result<()> {
 }
 
 /// 抓回来的一屏：回滚里最近 `back` 行 ＋ 当屏（`color` ⇒ 行里带 SGR）、尺寸、光标（行 · 列）。
-pub(crate) struct Captured {
-    pub(crate) lines: Vec<String>,
-    pub(crate) size: Size,
-    pub(crate) cursor: [u16; 2],
+pub struct Captured {
+    pub lines: Vec<String>,
+    pub size: Size,
+    pub cursor: [u16; 2],
 }
 
-pub(crate) fn capture(sock: &Path, back: usize, color: bool) -> std::io::Result<Captured> {
+pub fn capture(sock: &Path, back: usize, color: bool) -> std::io::Result<Captured> {
     ask(sock, vec![Ctl::Capture { back, color }], |c| match c {
         Ctl::Captured {
             lines,
@@ -197,7 +194,7 @@ pub(crate) fn capture(sock: &Path, back: usize, color: bool) -> std::io::Result<
 }
 
 /// 结束这个终端（子进程组挂断）：等到 `ended`（或托管进程收尾断开）才回。
-pub(crate) fn end(sock: &Path) -> std::io::Result<()> {
+pub fn end(sock: &Path) -> std::io::Result<()> {
     let s = open(sock, None)?;
     send(&s, &Frame::Ctl(Ctl::End))?;
     let mut buf = Vec::new();

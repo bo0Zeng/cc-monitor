@@ -2,9 +2,11 @@
 //!
 //! 核原文：「撞名判据改为『右边只认 ccm 表』」。异源：一侧是真解析器 `argv::parse_layered` ＋ 真分流 `route` 的行为，另一侧是 claude 自己的 `--help` ——
 //! 固定快照 `tests/__fixtures__/claude-help.snapshot.txt`（首行记版本）；PATH 上有 `claude` 时再加读真的一份（只许跑 `--help`）。
+//!
+//! 分流问 control（`ccm::route`）与入口（`stream::entry::is_backend_word`）：宿主口是独立的包（`backend-host`）、够不到上层 ⇒ 挂在主 crate（`cross/host.rs`）。
 
-use super::tests::parse;
-use super::*;
+use crate::ccm_line::argv::test_support::parse;
+use crate::ccm_line::argv::{flag, is_ccm_word, Parsed};
 use std::collections::BTreeSet;
 
 const SNAPSHOT: &str = include_str!("../../__fixtures__/claude-help.snapshot.txt");
@@ -150,15 +152,27 @@ fn route_asks_the_entry_whether_a_word_belongs_to_the_backend() {
     );
 }
 
-/// 自己的名字认的是这份二进制的名字（`ccm` · `cc-monitor-backend` · 落盘的 `cc-monitor-backend-<build>`），
-/// 不是编进这一段的那个包叫什么：这一段换了包，认的名字也不跟着变。
+/// `ccm -- --host-run <句柄> -- <命令>` 落在 ccm 那一侧（不进后端的一次性查询面），由它在起会话那一套之前接走；
+/// 不紧跟打头的 `--` 不算。
 #[test]
-fn own_names_are_the_binary_names_whatever_package_this_code_sits_in() {
-    use crate::ccm_line::is_own_name;
-    for own in ["ccm", "cc-monitor-backend", "cc-monitor-backend-p11b"] {
-        assert!(is_own_name(own), "`{own}` 没认成自己");
-    }
-    for other in ["claude", "backend-host", "cc-monitor"] {
-        assert!(!is_own_name(other), "`{other}` 被认成了自己");
-    }
+fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
+    let a: Vec<String> = ["--", "--host-run", "h1", "--", "sh"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    // 不进后端的一次性查询面（那一面只认子命令闸门 `stream::cli::is_subcommand`），落在 ccm 那一侧、由它在起会话那一套之前接走。
+    assert_eq!(
+        crate::control::ccm::route("ccm", &a, crate::stream::entry::is_backend_word),
+        crate::control::ccm::Entry::Ccm(a.clone())
+    );
+    assert_eq!(crate::control::ccm::host_run_args(&a), Some(&a[2..]));
+    let not: Vec<String> = ["--host-run", "h1", "--", "sh"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        crate::control::ccm::host_run_args(&not),
+        None,
+        "不紧跟打头的 `--` 不算"
+    );
 }

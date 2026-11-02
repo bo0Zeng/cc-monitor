@@ -70,7 +70,9 @@ fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
 /// 假子进程（`sh`）、沙箱数据目录，不起真 claude。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn terminal_end_ends_a_hosted_terminal_where_there_is_no_tmux() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::{read_frame, Ctl, Frame, Want};
     let (own, data) = sandbox_own("end-cmd");
     let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;

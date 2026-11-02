@@ -84,3 +84,8 @@ mod said_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/wire/listen_on_control_tests.rs"]
 mod listen_on_control_tests;
+
+// 宿主口判据里要问控制面的那几条（名单那一形 · 持有者那一句 · 回滚上限；宿主口那个包够不到这里）。
+#[cfg(test)]
+#[path = "../../../tests/backend/host/on_control_tests.rs"]
+mod host_on_control_tests;

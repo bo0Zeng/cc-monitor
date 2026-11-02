@@ -779,7 +779,9 @@ async fn next_hosted(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Frame {
 /// 回执之后一个真终端接上抢走输入 ⇒ 画面一字未变也推下一帧，`input.holder.who` 是 `terminal-window`；子进程退了 ⇒ 结束帧 `gone`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_hosted_terminal_follows_live_and_a_holder_change_pushes_a_frame() {
-    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
     use crate::host::managed::wire::{write_frame, Frame as HostFrame, Want};
     let (own, _data) = sandbox_own("follow-hosted");
     let (sock, task) = start(

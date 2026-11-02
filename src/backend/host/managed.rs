@@ -2,37 +2,41 @@
 //!
 //! 后端对托管终端不留进程内状态：名单（[`rows`]）与打标（[`tag_pid`]）都是问的那一刻凭盘现做 ⇒ 后端重启 · 升级之后照样认得。
 
-pub(crate) mod attach;
-pub(crate) mod bin;
-pub(crate) mod client;
-pub(crate) mod hold;
-pub(crate) mod home;
+pub mod attach;
+pub mod bin;
+pub mod client;
+pub mod hold;
+pub mod home;
 pub(crate) mod keys;
-pub(crate) mod run;
-pub(crate) mod screen;
+pub mod run;
+pub mod screen;
 pub(crate) mod serve;
-pub(crate) mod wire;
+pub mod wire;
 
 use super::TermRow;
 use crate::platform::fs::Own;
 
-/// 托管名单的家：启动入口装一次（看守起来那一下 · 一次性那一形），之后名单与打标照它的数据目录。没装（判据）⇒ 名单空、不打标。
+/// 托管名单的家：上层起来那一下装一次（看守 `observe::watcher` · 一次性那一形 `stream::cli` · ccm 那一趟 `control::ccm`），
+/// 之后名单与打标照它的数据目录。没装（判据）⇒ 名单空、不打标。
 static HOME: std::sync::OnceLock<Own> = std::sync::OnceLock::new();
 
-/// 装一次（拿启动入口造的写句柄；第二次装的不换）。
-pub(crate) fn install(own: &Own) {
+/// 装一次（拿上层起来那一下造的写句柄；第二次装的不换）。
+pub fn install(own: &Own) {
     if HOME.set(own.clone()).is_err() {
         tracing::debug!("托管名单的家已经装过了，留着第一份");
     }
 }
 
+/// 托管那一臂的名单：行 ＋ 连着它们的真终端（`(托管 id, 接上, 最近动静)`，秒）。
+pub type Hosted = (Vec<TermRow>, Vec<(String, u64, u64)>);
+
 /// 这台此刻的托管终端（每行 `host` 是 [`crate::wire::TerminalHost::Managed`]）＋ 连着它们的真终端（`(托管 id, 接上, 最近动静)`，秒）。
-pub(crate) fn listed() -> (Vec<TermRow>, Vec<(String, u64, u64)>) {
+pub fn listed() -> Hosted {
     HOME.get().map(listed_at).unwrap_or_default()
 }
 
 /// [`listed`] 的本体：数据目录由调用方给。每个托管终端问一次 `clients`（谁连着 · 谁持有输入）；问不到 ⇒ 那一行照列、持有者当没有。
-pub(crate) fn listed_at(own: &Own) -> (Vec<TermRow>, Vec<(String, u64, u64)>) {
+pub fn listed_at(own: &Own) -> Hosted {
     let secs = |ms: i64| u64::try_from(ms / 1000).unwrap_or(0);
     let mut rows = Vec::new();
     let mut clients = Vec::new();
@@ -60,7 +64,7 @@ pub(crate) fn listed_at(own: &Own) -> (Vec<TermRow>, Vec<(String, u64, u64)>) {
 }
 
 /// 只要行（判据 · 不看连着谁的那几处）。
-pub(crate) fn rows_at(own: &Own) -> Vec<TermRow> {
+pub fn rows_at(own: &Own) -> Vec<TermRow> {
     listed_at(own).0
 }
 
@@ -86,7 +90,7 @@ fn row_of(f: home::Facts, input: super::Input) -> TermRow {
 }
 
 /// 装好的那一个家（没装 ⇒ `None`）：要把数据目录一路交下去的那几处（`terminal-end`）从这里取，判据交自己的沙箱。
-pub(crate) fn installed() -> Option<&'static Own> {
+pub fn installed() -> Option<&'static Own> {
     HOME.get()
 }
 
@@ -103,26 +107,26 @@ fn sock(id: &str) -> std::io::Result<std::path::PathBuf> {
 }
 
 /// 结束 `own` 底下的 `id`（子进程组挂断，等到它收尾）；后端替谁持有着它的输入 ⇒ 先交还。
-pub(crate) fn end_at(own: &Own, id: &str) -> std::io::Result<()> {
+pub fn end_at(own: &Own, id: &str) -> std::io::Result<()> {
     hold::release(id);
     client::end(&sock_at(own, id)?)
 }
 
 /// 替 `front` 接管 `id` 的输入（[`hold::take`]）。
-pub(crate) fn take(id: &str, front: &str) -> std::io::Result<()> {
+pub fn take(id: &str, front: &str) -> std::io::Result<()> {
     hold::take(&sock(id)?, id, front)
 }
 
 /// 抓 `id` 一屏（[`client::capture`]）。
-pub(crate) fn capture(id: &str, back: usize, color: bool) -> std::io::Result<client::Captured> {
+pub fn capture(id: &str, back: usize, color: bool) -> std::io::Result<client::Captured> {
     client::capture(&sock(id)?, back, color)
 }
 
 /// 打标的结局：（这条会话的容器，这次真写了没有）—— 同 `control::identity_tag::tag_seen` 交回的那一对。
-pub(crate) type Tagged = (Option<crate::wire::SessionContainer>, bool);
+pub type Tagged = (Option<crate::wire::SessionContainer>, bool);
 
 /// 宿主口「打标」托管那一臂：`pid` 住在托管终端里 ⇒ 把 `sid` 写进那个托管终端的事实；不在 ⇒ `None`（交 tmux 那一臂）。
-pub(crate) fn tag_pid(pid: u32, sid: &str) -> Option<Tagged> {
+pub fn tag_pid(pid: u32, sid: &str) -> Option<Tagged> {
     tag_pid_at(HOME.get()?, pid, sid)
 }
 
