@@ -657,7 +657,9 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⇒ 「钥匙对、表里没这一行」仍是 404，与 403 可分。钥匙不进上游（转上去的是剥之后的路径）、不进 tee、不进日志。
     let (target, scope) = match door::admit(&head, &relay.door) {
         door::Verdict::Pass(rest, scope) => (rest, scope),
-        refused => {
+        refused @ (door::Verdict::Browser
+        | door::Verdict::NotLoopbackHost
+        | door::Verdict::BadKey) => {
             let (status, reason, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
             // ⚠ 只印是哪一问拒的，**永不印请求头 / 路径**（`K9` 裁定四第 1 条；路径里可能正是一把错钥匙）。
             eprintln!("[relay] refused at the door: {status}");

@@ -29,7 +29,7 @@ impl crate::wire::typed::Handle for RotationFacts {
             let cx = &cx;
 
             let ctx = crate::faces::rotation_face::Ctx::here();
-            facts_with(&ctx, &req, crate::accounts::quota::now_unix(), &cx.tz)
+            facts_with(&ctx, &req, crate::common::time::now_secs(), &cx.tz)
         }
     }
 }

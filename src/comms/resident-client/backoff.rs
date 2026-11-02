@@ -5,8 +5,16 @@
 use std::time::Duration;
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "重连退避的下界：客户端自己定的数，管掉线之后到下一次重连的那一段等待"
+)]
 pub const RECONNECT_MIN: Duration = Duration::from_secs(2);
 /// 重连退避上界：指数退避封顶，避免长断网时无意义地拉长重连间隔。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "重连退避的上界：客户端自己定的数，管掉线之后到下一次重连的那一段等待"
+)]
 pub const RECONNECT_MAX: Duration = Duration::from_secs(30);
 
 /// **开一条链路（拨号 ＋ 在那台开出那条 exec）多久一步进展都没有就放弃、隔 [`RECONNECT_MIN`] 再拨**。
@@ -18,17 +26,33 @@ pub const RECONNECT_MAX: Duration = Duration::from_secs(30);
 /// 10 秒放弃：前 7 秒里补发得勤（网回来至多再等 4 秒），之后丢下、隔下界重拨一拨新的，网回来到重拨上至多 5 秒。
 /// 代价：一步要 10 秒以上的链路（单程就要好几秒的那种）接不上。
 /// 到期限都没进展的那一拨没够到那一台（没有一次登录落到它身上），不涨退避（循环里那份退避的 `reached`）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "拨号每一步进展的期限：客户端自己定的数，管开一条链路时两步之间的那一段等待"
+)]
 pub const DIAL_WITHIN: Duration = Duration::from_secs(10);
 
 /// **连接自己的心跳**：流上这么久没来一个字节 ⇒ 问一句活（`ping`）。健康的空闲连接每这么久一个来回（与 SSH 保活同一个数，
 /// 问活的回话把 SSH 保活的计时也续上，空闲时线上的包数不变）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "心跳的空闲阈值：客户端自己定的数，管流上没字节到问一句活之间的那一段等待"
+)]
 pub const HEARTBEAT_IDLE: Duration = Duration::from_secs(10);
 
 /// 一问的期限下限：这条流还没量到往返、或量到的往返很短时，问活之后这么久一个字节都没来 ⇒ 这一问算没答。
 /// 测试连接那一问也用它。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "一问的期限下限：客户端自己定的数，管问活之后等回话的那一段"
+)]
 pub const PING_WITHIN: Duration = Duration::from_secs(5);
 
 /// 一问的期限上限：往返量得再长，一问也至多等这么久。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "一问的期限上限：客户端自己定的数，管问活之后等回话的那一段"
+)]
 pub const PING_CEIL: Duration = Duration::from_secs(30);
 
 /// 连着这么多问都没来一个字节 ⇒ 判这条流死了、收掉重接。一问没答只再问一句：那台忙（负载高、写盘被堵）时回话晚到，
@@ -78,4 +102,8 @@ impl PingWindow {
 ///
 /// ⚠ 30 秒的取法：要明显长于「起流 + 首批帧」的正常耗时（冷启动实测约 0.9 s @30ms RTT、
 /// 约 6 s @200ms RTT，见），又要短到不至于让一次真实的网络抖动被当成 flapping。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "连接算站住的最短存活：客户端自己定的数，管退避清不清零那一判，不是一次等待的期限"
+)]
 pub const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);

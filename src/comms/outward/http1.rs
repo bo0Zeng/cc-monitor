@@ -224,7 +224,7 @@ impl BodyView {
     pub fn take_dropped(&mut self) -> u64 {
         match self {
             BodyView::Chunked(v) => std::mem::take(&mut v.dropped),
-            _ => 0,
+            BodyView::Empty { .. } | BodyView::Length { .. } | BodyView::UntilClose => 0,
         }
     }
 }

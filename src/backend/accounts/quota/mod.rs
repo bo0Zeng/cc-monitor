@@ -21,13 +21,6 @@ pub(crate) fn reset_since_seen(resets_at: Option<u64>, now: u64) -> bool {
     resets_at.is_some_and(|t| t <= now)
 }
 
-/// 此刻（unix 秒）。
-pub(crate) fn now_unix() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/quota/layer_guard.rs"]
 mod layer_guard;

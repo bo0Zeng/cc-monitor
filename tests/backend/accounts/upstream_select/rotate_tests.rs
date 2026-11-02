@@ -14,7 +14,7 @@ const UUID_B: &str = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const AGENT: &str = "claude-code";
 
 fn now() -> u64 {
-    crate::accounts::quota::now_unix()
+    crate::common::time::now_secs()
 }
 
 /// 续令牌一律发到本机一个绑着不听的口（拨了必被拒），绝不发到那一家的真端点。
