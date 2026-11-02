@@ -754,8 +754,8 @@ mod os {
         fn AssignProcessToJobObject(job: RawHandle, process: RawHandle) -> i32;
         fn TerminateJobObject(job: RawHandle, exit_code: u32) -> i32;
         fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
-        fn CloseHandle(h: RawHandle) -> i32;
     }
+    use crate::platform::win_proc::CloseHandle;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     /// `SetInformationJobObject` 的信息类 `JobObjectExtendedLimitInformation`。

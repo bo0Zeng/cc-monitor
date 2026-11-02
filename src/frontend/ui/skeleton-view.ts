@@ -682,9 +682,6 @@ export class SkeletonView {
     el.dataset.skeletonLo = String(lo);
     el.dataset.skeletonHi = String(hi);
     el.style.height = `${this.ledger.heightOf(lo, hi)}px`;
-    // `.stream-content > *` 统一挂了 `content-visibility: auto` ＋ 120px 兜底；占位的高度是显式的，
-    // 不要容器尺寸约束来插手（styles.css 在 U1 手里拆，这里只能内联）。
-    el.style.contentVisibility = "visible";
     this.timeline.insert({ seq: lo - 0.5, element: el, kind: "card" });
     const gap: Gap = { lo, hi, el, fetching };
     const at = this.gaps.findIndex((x) => x.lo > lo);

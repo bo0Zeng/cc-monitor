@@ -142,10 +142,9 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
 /**
  * ★ **`npx stylelint "src/**\/*.css"` 的报错（除 `no-descending-specificity`）== 本表**（两向，多重集）。
  * 键是「文件 :: 规则 :: 报错原文去掉行号」（行号随别处增删漂移）。新写出一条 ⇒ 红（改掉它，不许抄进来）；
- * 修掉一条 ⇒ 红（删那一行）。今天剩的三条都是重复选择器：两块合成一块要逐条核中间那段的级联先后，没做。
+ * 修掉一条 ⇒ 红（删那一行）。今天剩的两条都是重复选择器：两块合成一块要逐条核中间那段的级联先后，没做。
  */
 const STYLELINT_KNOWN: readonly string[] = [
-  'src/frontend/ui/styles.css :: no-duplicate-selectors :: Duplicate selector ".branch-fold-body-inner > *"',
   'src/frontend/ui/styles/settings.css :: no-duplicate-selectors :: Duplicate selector ".cfg-list"',
   'src/frontend/ui/styles/settings.css :: no-duplicate-selectors :: Duplicate selector ".cfg-list-row"',
 ];
