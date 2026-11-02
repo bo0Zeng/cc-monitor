@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Hidden
 import com.ccmonitor.mobile.core.wire.gen.HiddenBy
 import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Life
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
@@ -83,6 +84,7 @@ class ProductsTest {
         assertEquals("从父会话分出来的", r.label)
         assertEquals("今天", r.sectionText)
         assertEquals("00:00", r.atText)
+        assertEquals("行照实写是哪台答的", "dev", r.origin)
         assertEquals("/h/.claude/projects/-w/0000aaaa-0000-4000-8000-000000000005.jsonl", r.jsonlPath)
     }
 
@@ -99,7 +101,7 @@ class ProductsTest {
         val head = hand.head!!
         assertEquals(false, HistoryList.page(hand)!!.truncated)
         assertEquals(true, HistoryList.page(hand.copy(head = head.copy(total = head.total + 1)))!!.truncated)
-        assertEquals(mapOf("held" to "h1"), HistoryList.args(ListAsk(), "h1"))
+        assertEquals(mapOf("origin" to LOCAL, "held" to "h1"), HistoryList.args(ListAsk(), "h1"))
     }
 
     /** 不带记号那一问的整份回包（行照给的先后）。 */

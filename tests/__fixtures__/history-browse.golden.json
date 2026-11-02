@@ -2,7 +2,7 @@
  "about": "几台各自排好的成品（machines）照历史页的并法（按 at 并行 · 按 order 并组 · 分段 · 分叉挂父会话 · 按项目开合）并成一列，逐条记下（expect）。后端 history-browse 的并法照它对拍。",
  "machines": [
   {
-   "origin": null,
+   "origin": "<local>",
    "head": {
     "groups": [
      {
@@ -17,7 +17,8 @@
       "lastActivity": 900,
       "atText": "12:00",
       "order": 900,
-      "failed": null
+      "failed": null,
+      "origin": "<local>"
      },
      {
       "key": "claude:/w/q",
@@ -31,7 +32,8 @@
       "lastActivity": 500,
       "atText": "12:00",
       "order": 500,
-      "failed": null
+      "failed": null,
+      "origin": "<local>"
      }
     ],
     "notice": null
@@ -40,6 +42,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "a1",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -118,6 +121,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "k1",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -198,6 +202,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "g1",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -278,6 +283,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "a2",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -356,6 +362,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "o1",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -436,6 +443,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "x1",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -516,6 +524,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "a3",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -594,6 +603,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "cx",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -673,6 +683,7 @@
     {
      "agent": "claude",
      "agentTag": null,
+     "origin": "<local>",
      "sessionId": "k2",
      "projectDir": "-w-p",
      "projectPath": "/w/p",
@@ -1161,17 +1172,17 @@
    "forks": [],
    "expect": [
     "sec:今天",
-    "r:|a1:forks=1",
+    "r:<local>|a1:forks=1",
     "r:dev|d1",
     "r:box|b1",
-    "r:|a2",
+    "r:<local>|a2",
     "sec:昨天",
-    "r:|o1:orphan",
-    "r:|x1:orphan",
+    "r:<local>|o1:orphan",
+    "r:<local>|x1:orphan",
     "r:dev|d2",
     "sec:九月",
-    "r:|a3",
-    "r:|cx:forks=1",
+    "r:<local>|a3",
+    "r:<local>|cx:forks=1",
     "r:dev|d3"
    ]
   },
@@ -1185,34 +1196,34 @@
    },
    "forks": [
     {
-     "origin": null,
+     "origin": "<local>",
      "sid": "a1"
     },
     {
-     "origin": null,
+     "origin": "<local>",
      "sid": "k1"
     },
     {
-     "origin": null,
+     "origin": "<local>",
      "sid": "cx"
     }
    ],
    "expect": [
     "sec:今天",
-    "r:|a1:forks=1(open)",
-    "r:|k1:child:forks=1(open)",
-    "r:|g1:child",
+    "r:<local>|a1:forks=1(open)",
+    "r:<local>|k1:child:forks=1(open)",
+    "r:<local>|g1:child",
     "r:dev|d1",
     "r:box|b1",
-    "r:|a2",
+    "r:<local>|a2",
     "sec:昨天",
-    "r:|o1:orphan",
-    "r:|x1:orphan",
+    "r:<local>|o1:orphan",
+    "r:<local>|x1:orphan",
     "r:dev|d2",
     "sec:九月",
-    "r:|a3",
-    "r:|cx:forks=1(open)",
-    "r:|k2:child",
+    "r:<local>|a3",
+    "r:<local>|cx:forks=1(open)",
+    "r:<local>|k2:child",
     "r:dev|d3"
    ]
   },
@@ -1226,9 +1237,9 @@
    },
    "forks": [],
    "expect": [
-    "g:|claude:/w/p:false",
+    "g:<local>|claude:/w/p:false",
     "g:dev|claude:/w/p:false",
-    "g:|claude:/w/q:false",
+    "g:<local>|claude:/w/q:false",
     "g:dev|claude:/w/q:false",
     "g:box|dir:-w-x:false",
     "g:box|claude:/w/p:false"
@@ -1242,7 +1253,7 @@
     "open": false,
     "except": [
      {
-      "origin": null,
+      "origin": "<local>",
       "key": "claude:/w/p"
      },
      {
@@ -1253,19 +1264,19 @@
    },
    "forks": [
     {
-     "origin": null,
+     "origin": "<local>",
      "sid": "a1"
     }
    ],
    "expect": [
-    "g:|claude:/w/p:true",
-    "r:|a1:forks=1(open)",
-    "r:|k1:child:forks=1",
-    "r:|o1",
-    "r:|x1",
-    "r:|cx:forks=1",
+    "g:<local>|claude:/w/p:true",
+    "r:<local>|a1:forks=1(open)",
+    "r:<local>|k1:child:forks=1",
+    "r:<local>|o1",
+    "r:<local>|x1",
+    "r:<local>|cx:forks=1",
     "g:dev|claude:/w/p:false",
-    "g:|claude:/w/q:false",
+    "g:<local>|claude:/w/q:false",
     "g:dev|claude:/w/q:true",
     "r:dev|d2",
     "g:box|dir:-w-x:false",
@@ -1287,15 +1298,15 @@
    },
    "forks": [],
    "expect": [
-    "g:|claude:/w/p:true",
-    "r:|a1:forks=1",
-    "r:|o1",
-    "r:|x1",
-    "r:|cx:forks=1",
+    "g:<local>|claude:/w/p:true",
+    "r:<local>|a1:forks=1",
+    "r:<local>|o1",
+    "r:<local>|x1",
+    "r:<local>|cx:forks=1",
     "g:dev|claude:/w/p:false",
-    "g:|claude:/w/q:true",
-    "r:|a2",
-    "r:|a3",
+    "g:<local>|claude:/w/q:true",
+    "r:<local>|a2",
+    "r:<local>|a3",
     "g:dev|claude:/w/q:true",
     "r:dev|d2",
     "g:box|dir:-w-x:true",
@@ -1313,17 +1324,17 @@
    },
    "forks": [],
    "expect": [
-    "g:|claude:/w/p:true",
-    "r:|a1:forks=1",
-    "r:|o1",
-    "r:|x1",
-    "r:|cx:forks=1",
+    "g:<local>|claude:/w/p:true",
+    "r:<local>|a1:forks=1",
+    "r:<local>|o1",
+    "r:<local>|x1",
+    "r:<local>|cx:forks=1",
     "g:dev|claude:/w/p:true",
     "r:dev|d1",
     "r:dev|d3",
-    "g:|claude:/w/q:true",
-    "r:|a2",
-    "r:|a3",
+    "g:<local>|claude:/w/q:true",
+    "r:<local>|a2",
+    "r:<local>|a3",
     "g:dev|claude:/w/q:true",
     "r:dev|d2",
     "g:box|dir:-w-x:true",

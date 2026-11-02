@@ -10,14 +10,15 @@ import { statusDot } from "../kit/status-dot";
 import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
 import { isLive } from "../face-can";
+import { isLocalOrigin, type Machine } from "../ipc/origin";
 import type { HistoryGroup, HistoryRow } from "../history-list-reads";
 import type { Hit, SessionHits } from "./history-search";
 import { plainSnippet } from "../find-strip";
 import s from "./history.module.css";
 
 /** 一行的键（同一个会话在两台上是两行）。 */
-export function rowKey(r: { origin?: string; sessionId: string }): string {
-  return `${r.origin ?? ""}\u0000${r.sessionId}`;
+export function rowKey(r: { origin: Machine; sessionId: string }): string {
+  return `${r.origin}\u0000${r.sessionId}`;
 }
 
 /** 行上那几个动作（页面实现）。 */
@@ -31,8 +32,8 @@ export interface RowHooks {
 }
 
 /** 机器标签（与主窗口标签页上的同一个样子：图标 ＋ 名字）；本机不画。 */
-export function machineTag(origin: string | undefined): HTMLElement | null {
-  if (!origin) return null;
+export function machineTag(origin: Machine): HTMLElement | null {
+  if (isLocalOrigin(origin)) return null;
   const t = tag(origin);
   t.classList.add(s.hvMachine);
   t.prepend(icon("machine", "compact"));
@@ -201,7 +202,7 @@ export function groupHead(
 ): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvGroup;
-  el.dataset.key = `${g.origin ?? ""}\u0000${g.key}`;
+  el.dataset.key = `${g.origin}\u0000${g.key}`;
   el.setAttribute("role", "treeitem");
   el.setAttribute("aria-expanded", String(o.open));
   el.tabIndex = -1;

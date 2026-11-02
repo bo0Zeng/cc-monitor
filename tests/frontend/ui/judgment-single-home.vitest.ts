@@ -849,8 +849,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bare: NONE,
     is_local: "J36",
     is_remote: "J36",
-    // 块的两个构造函数（`record.rs`）：字节数跟着正文 / 内容算，界面照 `bytes` 写大小，TS 侧没有孪生。
+    // 块的三个构造函数（`record.rs`）：字节数跟着正文 / 内容算，界面照 `bytes` 写大小，TS 侧没有孪生。
     text: NONE,
+    prose: NONE,
     tool_result: NONE,
     // 几台的搜索结果合一份 · 最近优先那一个排序（本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份，TS 侧没有孪生。
     merge: "J15",

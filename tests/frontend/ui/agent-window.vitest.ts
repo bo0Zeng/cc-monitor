@@ -9,6 +9,7 @@ import { liveFace } from "../../test-support/session-faces";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FollowEvent } from "../../../src/frontend/ui/events";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
+import type { Doc } from "../../../src/frontend/ui/generated/Doc";
 
 const h = vi.hoisted(() => ({
   sink: null as ((e: unknown) => void) | null,
@@ -72,9 +73,12 @@ const T0 = Date.parse("2026-10-01T10:00:00Z");
 function brief(text: string): unknown {
   return { record: { agent: "claude", t: "said", id: "u0", at: "2026-10-01T10:00:00Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "agentTask" }, text } } };
 }
-function say(uuid: string, text: string): unknown {
+/** 助手说的一段：后端交的是块树（`prose`）；只给一句字 ⇒ 一段落，`bytes` 是那句字的字节数。 */
+function say(uuid: string, body: string | Doc): unknown {
+  const doc: Doc = typeof body === "string" ? { blocks: [{ t: "p", k: [body] }], segs: [] } : body;
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body).length : 0;
   return {
-    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "text", text }], model: "m", autoReply: false },
+    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "prose", doc, bytes }], model: "m", autoReply: false },
   };
 }
 
@@ -210,7 +214,7 @@ describe("agent 窗口", () => {
     expect(pill.hidden).toBe(true);
   });
 
-  it("代码块的高亮推迟到滚进视口（与主窗口 / 查看窗同一套）：几百轮的子运行开窗不当场把每一段代码都高亮一遍", async () => {
+  it("公式推迟到滚进视口（与主窗口 / 查看窗同一套）：几百轮的子运行开窗不当场把每一条公式都排一遍", async () => {
     const seen: Array<{ root: Element | null; els: Element[] }> = [];
     class FakeIO {
       private readonly mine: { root: Element | null; els: Element[] };
@@ -226,11 +230,11 @@ describe("agent 窗口", () => {
     }
     vi.stubGlobal("IntersectionObserver", FakeIO);
     try {
-      h.pages = [{ rows: [brief("查一下"), say("c1", "改好了：\n\n```ts\nconst a = 1;\n```")] }, { rows: [] }];
+      h.pages = [{ rows: [brief("查一下"), say("c1", { blocks: [{ t: "p", k: ["改好了："] }, { t: "math", tex: "a^2" }], segs: [] })] }, { rows: [] }];
       const { root } = await open();
       const scroll = root.querySelector<HTMLElement>(".session-viewer-stream")!;
-      const block = root.querySelector<HTMLElement>(".code-block");
-      expect(block?.classList.contains("code-pending"), "还没滚进视口：先不高亮").toBe(true);
+      const block = root.querySelector<HTMLElement>("[data-math-pending]");
+      expect(block, "还没滚进视口：公式先只留占位").not.toBeNull();
       const io = seen.find((x) => x.root === scroll);
       expect(io, "看的是这扇窗自己的滚动容器").toBeDefined();
       expect(io!.els.some((el) => el.contains(block)), "那张卡交给它等着滚进视口").toBe(true);

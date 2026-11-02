@@ -22,7 +22,7 @@
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import type { RecordAt } from "./cards/index";
@@ -63,21 +63,19 @@ const PIECE_BUDGET_MS = 120_000;
 const DRIFT_BUDGET_MS = 30_000;
 
 /** 一条记录行（后端 `body::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
-function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
-  const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, record: v.record };
-  if (!isLocalOrigin(origin)) p.origin = origin;
-  // 末字节照抄；认不出的几行并成的那一条，末字节是并进来的最后那一行之后、不是第 `seq` 行之后 ⇒ 不带。
+function payloadOf(origin: Machine, v: RecordLine): JsonlLinePayload {
+  const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, origin, record: v.record };  // 末字节照抄；认不出的几行并成的那一条，末字节是并进来的最后那一行之后、不是第 `seq` 行之后 ⇒ 不带。
   if (v.end !== null && v.record.t !== "unread") p.end = v.end;
   return p;
 }
 
 /** `history-page` 的一页 ⇒ `(载荷, 续点)`。 */
-export function pageOf(origin: Origin, v: HistoryPage): { payloads: JsonlLinePayload[]; next: number; nextSeq: number; eof: boolean } {
+export function pageOf(origin: Machine, v: HistoryPage): { payloads: JsonlLinePayload[]; next: number; nextSeq: number; eof: boolean } {
   return { payloads: v.lines.map((l) => payloadOf(origin, l)), next: v.next, nextSeq: v.nextSeq, eof: v.eof };
 }
 
 /** `history-lines` 的一段 ⇒ [`SessionLinesPage`]。 */
-export function linesOf(origin: Origin, v: HistoryLines): SessionLinesPage {
+export function linesOf(origin: Machine, v: HistoryLines): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
 }
 
@@ -92,7 +90,7 @@ async function asked<T>(reply: Promise<T>): Promise<T> {
 
 /** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。交折起那一行的声明。 */
 export async function readRange(
-  origin: Origin,
+  origin: Machine,
   jsonlPath: string,
   offset: number,
   until: number,
@@ -103,7 +101,7 @@ export async function readRange(
 
 /** [`readRange`] 的本体：`view` ＝ 交给后端的声明（`null` ＝ 全文）。 */
 async function readRangeAs(
-  origin: Origin,
+  origin: Machine,
   jsonlPath: string,
   offset: number,
   until: number,
@@ -135,7 +133,7 @@ interface RowPlaces {
  * 主窗口 tab 与查看器同一处。
  */
 export async function readRecordById(
-  origin: Origin,
+  origin: Machine,
   jsonlPath: string,
   places: RowPlaces | null,
   { id, seq }: RecordAt,
@@ -148,7 +146,7 @@ export async function readRecordById(
 
 /** **按行号取一段** `[from, until)`（`until` 缺 ＝ 到末尾，一段 ≤ 1 MiB）。`leftMs` ＝ 那一件事还剩多少。交折起那一行的声明。 */
 export async function readLines(
-  origin: Origin,
+  origin: Machine,
   jsonlPath: string,
   from: number,
   until: number | undefined,
@@ -163,13 +161,13 @@ export async function readLines(
 export type RunWhich = { run: string; tool?: string } | { run?: string; tool: string };
 
 /** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
-export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
+export async function loadRunPage(origin: Machine, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
   const budget = budgetWithin(PIECE_BUDGET_MS);
   return await asked(callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
 }
 
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
-export async function readBranch(origin: Origin, jsonlPath: string): Promise<BranchOff> {
+export async function readBranch(origin: Machine, jsonlPath: string): Promise<BranchOff> {
   const off: string[] = [];
   let at: number | null = 0;
   let end = 0;
@@ -183,7 +181,7 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
-export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]> {
+export async function readRecordDrift(origin: Machine): Promise<RecordDriftFace[]> {
   const budget = budgetWithin(DRIFT_BUDGET_MS);
   const { faces } = await asked(callTyped(origin, "drift-report", {}, budget));
   return faces;
@@ -191,6 +189,6 @@ export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]
 
 /** **本机与各台的漂移账**：只问本机后端一条（它经各台的常驻流问到、并好再答）。 */
 export async function readDriftOfAll(): Promise<DriftOfAll> {
-  const { machines } = await asked(callTyped(LOCAL_ORIGIN, "drift-merge", {}, budgetWithin(DRIFT_BUDGET_MS)));
+  const { machines } = await asked(callTyped(LOCAL, "drift-merge", {}, budgetWithin(DRIFT_BUDGET_MS)));
   return machines;
 }

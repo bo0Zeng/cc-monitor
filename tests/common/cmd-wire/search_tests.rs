@@ -83,24 +83,20 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         ],
         down.clone(),
     );
-    let order: Vec<(&str, Option<String>)> = m
+    let order: Vec<(&str, String)> = m
         .sessions
         .iter()
-        .map(|s| {
-            (
-                s.row.row.session_id.as_str(),
-                s.origin.as_ref().map(ToString::to_string),
-            )
-        })
+        .map(|s| (s.row.row.session_id.as_str(), s.origin.to_string()))
         .collect();
-    // 倒序；同一刻照台的先后（本机那一台先交）。
+    // 倒序；同一刻照台的先后（本机那一台先交）；本机那几行照实写 `"<local>"`。
+    let (pi, here) = ("pi".to_string(), crate::LOCAL.to_string());
     assert_eq!(
         order,
         [
-            ("rem-new", Some("pi".to_string())),
-            ("tie-b", None),
-            ("tie-a", Some("pi".to_string())),
-            ("local-old", None)
+            ("rem-new", pi.clone()),
+            ("tie-b", here.clone()),
+            ("tie-a", pi),
+            ("local-old", here)
         ]
     );
     // 金样那一行自己摆着 1 处命中：4 行 × 1 ＋ moreHits 2 ＋ 2。

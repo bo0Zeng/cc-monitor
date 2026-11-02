@@ -424,11 +424,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("要本机真实历史数据（只读），改记录解析时人工重算的台账；跑法住它自己的头注"),
     ),
     (
-        "tests/frontend/ui/render.vitest.ts",
-        "!process.env.W2_COST",
-        Trigger::Manual("读数不是判据：`W2_COST=1` 时才量慢路与快路的墙钟（墙钟不当判据）"),
-    ),
-    (
         "tests/shots/proc-start.vitest.ts",
         "process.platform===\"\"",
         Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里读 `/proc` 的那一句；Linux 上门禁与 quick-check 的整套 vitest 跑它"),

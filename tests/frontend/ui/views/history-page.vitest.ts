@@ -78,7 +78,7 @@ import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-suppor
 import { answerAskDialog, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const NOW = Date.now();
@@ -118,7 +118,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
 }
 
 type Rec = Record<string, unknown>;
-/** 每台的会话与组（`origin` 缺 = 本机）；`fail` 里的那几台读不到（`""` = 本机）；`notice` ＝ 那台说注解没并上的那一句。 */
+/** 每台的会话与组（替身照那台补上 `origin`）；`fail` 里的那几台读不到（本机逐字 `<local>`）；`notice` ＝ 那台说注解没并上的那一句。 */
 let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; stale: Set<string>; notice: Record<string, string>; search: "ok" | "fail"; searchAt: (origin: string) => Searched };
 
 /**
@@ -127,21 +127,21 @@ let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fai
  */
 function browse(args: Rec): Rec {
   const machines: [string, Rec[]][] = [];
-  if (args.here) machines.push(["", world.local]);
+  if (args.here) machines.push([LOCAL, world.local.map((r) => ({ ...r, origin: LOCAL }))]);
   if ((args.remotes as string[]).includes("dev")) machines.push(["dev", world.dev.map((r) => ({ ...r, origin: "dev" }))]);
   const q = String(args.query ?? "");
   const head = machines.map(([o, rs]) => {
     // `stale` 里的那台：读不到、行照上一次的副本出。
-    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : world.fail.has(o) ? { is: "failed", why: `${o || "本机"} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
+    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : world.fail.has(o) ? { is: "failed", why: `${o} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
     const n = read.is !== "failed" ? rs.filter((r) => !q || String(r.label).includes(q)).length : 0;
-    return { ...(o ? { origin: o } : {}), total: n, read };
+    return { origin: o, total: n, read };
   });
   const ok = machines.filter(([o]) => !world.fail.has(o));
   const rows = ok.flatMap(([, rs]) => rs.filter((r) => !q || String(r.label).includes(q))).sort((a, b) => Number(b.at) - Number(a.at));
-  const id = (r: Rec, sid = r.sessionId) => `${String(r.origin ?? "")}\u0000${String(sid)}`;
+  const id = (r: Rec, sid = r.sessionId) => `${String(r.origin)}\u0000${String(sid)}`;
   const present = new Set(rows.map((r) => id(r)));
   const nested = (r: Rec) => r.forkedFromSessionId !== undefined && present.has(id(r, r.forkedFromSessionId));
-  const forks = new Set((args.forks as { origin?: string; sid: string }[]).map((f) => `${f.origin ?? ""}\u0000${f.sid}`));
+  const forks = new Set((args.forks as { origin: string; sid: string }[]).map((f) => `${f.origin}\u0000${f.sid}`));
   const lines: Rec[] = [];
   const push = (r: Rec, child: boolean): void => {
     const kids = rows.filter((k) => k.forkedFromSessionId !== undefined && id(k, k.forkedFromSessionId) === id(r));
@@ -150,7 +150,7 @@ function browse(args: Rec): Rec {
     if (open) for (const k of kids) push(k, true);
   };
   const sections: Rec[] = [];
-  const groups = ok.flatMap(([o]) => (o ? world.groups.dev.map((g) => ({ ...g, origin: o })) : world.groups.local));
+  const groups: Rec[] = ok.flatMap(([o]) => (o === LOCAL ? world.groups.local : world.groups.dev).map((g) => ({ ...g, origin: o })));
   if (args.by === "time") {
     let sec = "";
     for (const r of rows.filter((r) => !nested(r))) {
@@ -158,12 +158,12 @@ function browse(args: Rec): Rec {
       push(r, false);
     }
   } else {
-    const fold = args.groups as { open: boolean; except: { origin?: string; key: string }[] };
+    const fold = args.groups as { open: boolean; except: { origin: string; key: string }[] };
     for (const g of groups) {
-      const flipped = fold.except.some((e) => (e.origin ?? "") === String(g.origin ?? "") && e.key === g.key);
+      const flipped = fold.except.some((e) => e.origin === g.origin && e.key === g.key);
       const open = q !== "" || fold.open !== flipped;
       lines.push({ kind: "group", group: g, open });
-      if (open) for (const r of rows.filter((r) => r.group === g.key && String(r.origin ?? "") === String(g.origin ?? "") && !nested(r))) push(r, false);
+      if (open) for (const r of rows.filter((r) => r.group === g.key && r.origin === g.origin && !nested(r))) push(r, false);
     }
   }
   const range = args.range as { from: number; limit: number };
@@ -230,7 +230,7 @@ beforeEach(() => {
     notice: {},
     search: "ok",
     searchAt: (o) =>
-      o === LOCAL_ORIGIN
+      o === LOCAL
         ? {
             sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", label: "标题 a", starred: false, hidden: null, updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
             unreadable: 0,
@@ -250,7 +250,7 @@ beforeEach(() => {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       const per = (args.machines as string[]).map((o) => [o, world.searchAt(o)] as const);
       const got = per.filter((p): p is readonly [string, Exclude<Searched, "down">] => p[1] !== "down");
-      const ss: Record<string, unknown>[] = got.flatMap(([o, r]) => r.sessions.map((x) => ({ ...x, ...(o === LOCAL_ORIGIN ? {} : { origin: o }), atText: "12:00", spanText: "12:00–12:00" })));
+      const ss: Record<string, unknown>[] = got.flatMap(([o, r]) => r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00" })));
       return chanReply({
         totalHits: ss.reduce((n, x) => n + (x.hits as unknown[]).length + (x.moreHits as number), 0),
         sessionCount: ss.length,
@@ -392,7 +392,7 @@ describe("推送叫回来的重问", () => {
     await flush();
     expect(calls("history-browse").map((a) => a.fresh)).toEqual([[], ["dev"]]);
     invokeMock.mock.calls.length = 0;
-    v.onListMoved(LOCAL_ORIGIN);
+    v.onListMoved(LOCAL);
     await flush();
     expect(calls("history-browse").map((a) => a.fresh)).toEqual([[]]);
     // 页里的动作之后不另问：那台的推送会叫回来。
@@ -410,7 +410,7 @@ describe("推送叫回来的重问", () => {
     invokeMock.mock.calls.length = 0;
     v.onListMoved("dev");
     v.close();
-    v.onListMoved(LOCAL_ORIGIN);
+    v.onListMoved(LOCAL);
     await flush();
     expect(calls("history-browse")).toEqual([]);
     // 筛掉的那台记在本机界面偏好里，别带进后面几条。
@@ -463,7 +463,7 @@ describe("内容搜索", () => {
     const base = world.searchAt;
     world.searchAt = (o) => {
       const r = base(o);
-      if (r === "down" || o !== LOCAL_ORIGIN) return r;
+      if (r === "down" || o !== LOCAL) return r;
       return { ...r, sessions: r.sessions.map((x) => ({ ...x, label: "改过的名", starred: true, hidden: { by: "self", said: "占位理由" } })) };
     };
     const v = await opened();
@@ -499,7 +499,7 @@ describe("行上的动作照 can 画", () => {
     expect(byText('[role="option"]', "Codex")).toBeTruthy();
     byText("button", copyText("history.row.resume"))!.click();
     await flush();
-    expect(vi.mocked(openSession).mock.calls[0].slice(0, 2)).toEqual([LOCAL_ORIGIN, { what: { kind: "resume", sid: "cx" }, local: true }]);
+    expect(vi.mocked(openSession).mock.calls[0].slice(0, 2)).toEqual([LOCAL, { what: { kind: "resume", sid: "cx" }, local: true }]);
     v.close();
   });
 });
@@ -537,7 +537,7 @@ describe("分叉", () => {
     byText("button", copyText("history.row.forks", { n: 1 }))!.click();
     await flush();
     // 展开交后端摊：下一问带上展开了的那一行。
-    expect(calls("history-browse").map((a) => a.forks)).toEqual([[{ sid: "dad" }]]);
+    expect(calls("history-browse").map((a) => a.forks)).toEqual([[{ origin: "<local>", sid: "dad" }]]);
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["dad", "kid"]);
     expect(rows()[1].dataset.child).toBe("true");
     v.close();
@@ -564,7 +564,7 @@ describe("按项目", () => {
     invokeMock.mock.calls.length = 0;
     heads()[0].click();
     await flush();
-    expect(calls("history-browse").map((a) => [a.by, a.groups])).toEqual([["project", { open: false, except: [{ key: "claude:/w/p" }] }]]);
+    expect(calls("history-browse").map((a) => [a.by, a.groups])).toEqual([["project", { open: false, except: [{ origin: "<local>", key: "claude:/w/p" }] }]]);
     expect(titles()).toEqual(["标题 a"]);
     byText("button", copyText("history.list.expandAll"))!.click();
     await flush();
@@ -715,7 +715,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     main.click();
     await flush();
     expect(vi.mocked(openSession).mock.calls.map((c) => c.slice(0, 2))).toEqual([
-      [LOCAL_ORIGIN, { what: { kind: "resume", sid: "a" }, account: { kind: "named", name: "home" }, run: "tmux", local: true }],
+      [LOCAL, { what: { kind: "resume", sid: "a" }, account: { kind: "named", name: "home" }, run: "tmux", local: true }],
     ]);
     v.close();
   });
@@ -727,7 +727,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     vi.mocked(openSession).mockResolvedValueOnce(false);
     inHead(copyText("history.row.resume"))!.click();
     await flush();
-    expect(vi.mocked(openSession).mock.calls.map((c) => c.slice(0, 2))).toEqual([[LOCAL_ORIGIN, { what: { kind: "resume", sid: "a" }, local: true }]]);
+    expect(vi.mocked(openSession).mock.calls.map((c) => c.slice(0, 2))).toEqual([[LOCAL, { what: { kind: "resume", sid: "a" }, local: true }]]);
     expect(v.isVisible()).toBe(true);
     inHead(copyText("history.row.resume"))!.click();
     await flush();
@@ -906,7 +906,7 @@ describe("列表顶上的提示条 · 空着时说什么", () => {
   beforeEach(() => localStorage.clear());
 
   it("本机读不出 ⇒ 红条［重试］再问（不同步远端）；那台说清单不全 ⇒ 黄条［重试］带它的 fresh；没有截断那一句（滚到哪问到哪）", async () => {
-    world.fail.add("");
+    world.fail.add(LOCAL);
     world.dev = [row({ sessionId: "b" })];
     world.notice.dev = "partial";
     const v = await opened();
@@ -1040,7 +1040,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     expect(
       calls("history-search-merge").map((a) => [a.machines, (a.search as Record<string, unknown>).include_tools]),
       "勾上工具 ⇒ 再问本机后端一次（两台都在里头）、带上工具",
-    ).toEqual([[[LOCAL_ORIGIN, "dev"], true]]);
+    ).toEqual([[[LOCAL, "dev"], true]]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
     v.close();
   });
