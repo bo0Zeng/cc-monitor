@@ -1,0 +1,26 @@
+# 宿主口（终端住在哪种宿主里：tmux · 托管）与 ccm 这一行的词（旗标 · 解析 · 自己叫什么）。只引 agents · 帧面零件 · 纯工具 · 平台四层。
+[package]
+name = "backend-host"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（ccm 行的拆分夹具 · 托管终端的沙箱夹具）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+
+[dependencies]
+backend-agents = { path = "../agents" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }

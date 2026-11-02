@@ -159,6 +159,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-dial"
+version = "0.0.0"
+dependencies = [
+ "backend-common",
+ "backend-platform",
+ "backend-wire",
+ "test-home",
+]
+
+[[package]]
 name = "backend-files"
 version = "0.0.0"
 dependencies = [
@@ -181,6 +191,17 @@ dependencies = [
  "tracing",
  "win-path-core",
  "zip",
+]
+
+[[package]]
+name = "backend-host"
+version = "0.0.0"
+dependencies = [
+ "backend-agents",
+ "backend-common",
+ "backend-platform",
+ "backend-wire",
+ "test-home",
 ]
 
 [[package]]
@@ -449,7 +470,9 @@ dependencies = [
  "acct-core",
  "backend-agents",
  "backend-common",
+ "backend-dial",
  "backend-files",
+ "backend-host",
  "backend-platform",
  "backend-plugin",
  "backend-relay",
