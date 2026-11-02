@@ -112,6 +112,16 @@ export function tableProblems(table: Table): string[] {
   return p;
 }
 
+/** 同一句只住一个键：按 zh 分桶，住在两个以上键下的那一句报一行（键照字典序）。 */
+export function sameTextKeys(table: Table): string[] {
+  const byZh = new Map<string, string[]>();
+  for (const [key, e] of Object.entries(table)) byZh.set(e.zh, [...(byZh.get(e.zh) ?? []), key]);
+  return [...byZh.entries()]
+    .filter(([, keys]) => keys.length > 1)
+    .map(([zh, keys]) => `「${zh}」住在 ${keys.length} 个键下：${[...keys].sort().join(" · ")}`)
+    .sort();
+}
+
 /** 用 TypeScript 编译器读一份源码里的全部 `copyText` 调用点。 */
 export function refsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
   const refs: Ref[] = [];
@@ -182,6 +192,11 @@ describe("CP2a · 文案表：形状", () => {
     const { bad, unused } = roleProblems(table);
     expect(bad, "role 写错或与 kind 搭不上").toEqual([]);
     expect(unused, "搭配表里这几格表里一条都没有 —— 删掉那一格（或那个角色）").toEqual([]);
+  });
+
+  it("同一句只住一个键（zh 相同的几个键并成一个）", () => {
+    const same = sameTextKeys(table);
+    expect(same.slice(0, 20), `同文不同键 ${same.length} 句（印前 20 句）`).toEqual([]);
   });
 });
 
@@ -263,6 +278,12 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(one.bad).toEqual([]);
     expect(one.unused).toContain("按钮 · action");
     expect(one.unused).not.toContain("说明 · body");
+  });
+
+  it("同文：两个键同一句（kind 不同也算）恰报那一句；改成异文 ⇒ 空", () => {
+    const twin: Table = { ...t, "a.b.d": { ...t["a.b.c"], kind: "title", role: "标题" } };
+    expect(sameTextKeys(twin)).toEqual(["「你好 {name}」住在 2 个键下：a.b.c · a.b.d"]);
+    expect(sameTextKeys({ ...twin, "a.b.d": { ...twin["a.b.d"], zh: "再见 {name}" } })).toEqual([]);
   });
 
   it("引用：真调用读得出 key 与参数；四种绕法各被逮住", () => {
