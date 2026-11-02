@@ -1059,6 +1059,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     refresh_body: NONE,
     secret_in: NONE,
     same_secret: NONE,
+    // 中转口的钥匙：给门造比对口（定长时间）· 宿主取明文；TS 侧零处碰钥匙。
+    matches: NONE,
+    expose_for_relay_key: NONE,
     field_value: NONE,
     FILE_NAME: NONE,
     from_field_value: NONE,
