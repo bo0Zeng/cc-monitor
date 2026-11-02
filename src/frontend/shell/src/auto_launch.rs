@@ -19,6 +19,8 @@
 use crate::platform::own_fs::OwnState;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use host_core::Capped;
+use relay_route_core::{Cap, Over};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,12 +47,26 @@ impl Default for AutoLaunchConfig {
 /// 数据目录里那份文件的名字（PowerShell 别名块 `cc.ps1.tpl` 照同一个名字读）。
 const FILE: &str = "auto-launch.json";
 
-/// 读 auto-launch.json。文件不存在或损坏时返回 default。
+/// 那份文件的读上限：里面只有一个开关和一条 exe 路径（几百字节）。超了当坏了的那一份：照缺省起、日志说是哪一份；
+/// 路径那一格 monitor 每次启动都重记，下一次写就换成好的。
+const MAX: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::SkipAndSay,
+};
+
+/// 读 auto-launch.json。文件不存在、读不出、超了上限或损坏时返回 default。
 pub fn load(own: &OwnState) -> AutoLaunchConfig {
-    let Ok(s) = own.path(FILE).and_then(std::fs::read_to_string) else {
+    let Ok(file) = own.path(FILE) else {
         return AutoLaunchConfig::default();
     };
-    serde_json::from_str(&s).unwrap_or_default()
+    match host_core::read_capped(&file, MAX) {
+        Ok(Capped::Whole(s)) => serde_json::from_str(&s).unwrap_or_default(),
+        Ok(Capped::TooBig) => {
+            tracing::warn!("{} 超过读上限 {} 字节，照缺省起", file.display(), MAX.bytes);
+            AutoLaunchConfig::default()
+        }
+        Ok(Capped::Absent) | Err(_) => AutoLaunchConfig::default(),
+    }
 }
 
 /// 写 auto-launch.json：monitor 自己的状态，经 `own_fs` 原子写（临时件先落盘再换名上位），crash 不丢 monitor exe 路径记录。

@@ -115,12 +115,27 @@ struct LinuxStat {
     start: u64,
 }
 
+/// `/proc/<pid>/stat` 的读上限：一行 52 格数字加一个至多 15 字节的名字，几百字节。超了跳过（当读不出）、日志说是哪一份。
+#[cfg(target_os = "linux")]
+const STAT_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
+
 #[cfg(target_os = "linux")]
 fn linux_stat(pid: u32) -> Option<LinuxStat> {
     if pid == 0 {
         return None;
     }
-    let line = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let file = format!("/proc/{pid}/stat");
+    let line = match host_core::read_capped(std::path::Path::new(&file), STAT_CAP) {
+        Ok(host_core::Capped::Whole(line)) => line,
+        Ok(host_core::Capped::TooBig) => {
+            tracing::warn!("{file} 超过读上限 {} 字节，当读不出", STAT_CAP.bytes);
+            return None;
+        }
+        Ok(host_core::Capped::Absent) | Err(_) => return None,
+    };
     let (open, close) = (line.find('(')?, line.rfind(')')?);
     let rest: Vec<&str> = line.get(close + 1..)?.split_whitespace().collect();
     // 右括号之后：state(3) ppid(4) … starttime(22)

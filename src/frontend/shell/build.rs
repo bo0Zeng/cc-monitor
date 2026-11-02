@@ -56,6 +56,10 @@ fn emit_target_triple() {
 /// `static [u8; N]`：有地址、进 `.rodata`、字节按定义连续，拆不成立即数 ⇒ 扫字节是结构性成立的事，不是启发式。
 /// 读不到 / 0 个 / 多个都给 `None`（调用方各自决定怎么说）。
 fn file_build_id(p: &Path) -> Option<String> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "构建脚本读仓里 / OUT_DIR 的构建产物，不在用户机器上跑"
+    )]
     let bytes = std::fs::read(p).ok()?;
     match deploy_contract::identity_of_bytes(&bytes, STAMP_MARKS) {
         deploy_contract::RemoteIdentity::Stamp(id) => Some(id),
@@ -374,6 +378,10 @@ fn embed_native_filewin() {
 }
 
 /// 读一份单值清单，读不到就给空串（「没有这个文件」与「文件是空的」在这里同义：都不可信）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "构建脚本读仓里 / OUT_DIR 的构建产物，不在用户机器上跑"
+)]
 fn read_trimmed(p: &Path) -> String {
     std::fs::read_to_string(p)
         .map(|s| s.trim().to_string())

@@ -371,6 +371,13 @@ impl Loading {
     }
 }
 
+/// 系统 CJK 字体那一份的读上限：常见的那几份（Noto Sans CJK · 微软雅黑 · 宋体的 `.ttc`）20 MiB 上下。
+/// 超了降级：不挂 CJK 兜底（中日韩字画成方框），结局 [`Attempt::ReadFailed`] 照实带出去、进日志。
+const CJK_FONT_CAP: host_core::Cap = host_core::Cap {
+    bytes: 64 * 1024 * 1024,
+    over: host_core::Over::DegradeAndSay,
+};
+
 /// 一份字体的数据。
 fn data(bytes: Vec<u8>, index: u32) -> Arc<egui::FontData> {
     Arc::new(egui::FontData {
@@ -404,8 +411,8 @@ fn definitions(candidates: &[String], faces: &Faces) -> (egui::FontDefinitions, 
         if !std::path::Path::new(path).is_file() {
             continue;
         }
-        match std::fs::read(path) {
-            Ok(bytes) => {
+        match host_core::read_capped_bytes(std::path::Path::new(path), CJK_FONT_CAP) {
+            Ok(host_core::Capped::Whole(bytes)) => {
                 let n = bytes.len();
                 // `.ttc` 里选哪张 face：现打过 0..4 四张，**覆盖率一模一样** ⇒ 用 0。
                 defs.font_data.insert("cc-cjk".to_owned(), data(bytes, 0));
@@ -418,6 +425,19 @@ fn definitions(candidates: &[String], faces: &Faces) -> (egui::FontDefinitions, 
                 attempt = Some(Attempt::Loaded {
                     path: path.clone(),
                     bytes: n,
+                });
+            }
+            Ok(host_core::Capped::TooBig) => {
+                attempt = Some(Attempt::ReadFailed {
+                    path: path.clone(),
+                    err: format!("over the {} byte cap", CJK_FONT_CAP.bytes),
+                });
+            }
+            // 判过 `is_file` 之后又没了：照读不出说。
+            Ok(host_core::Capped::Absent) => {
+                attempt = Some(Attempt::ReadFailed {
+                    path: path.clone(),
+                    err: std::io::Error::from(std::io::ErrorKind::NotFound).to_string(),
                 });
             }
             Err(e) => {

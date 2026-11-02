@@ -8,8 +8,7 @@ use crate::spawn_managed::{ConsolePolicy, Lifetime};
 #[cfg(windows)]
 use copy_core::{Discard, Why};
 
-/// `CreateProcess` 的 `CREATE_NO_WINDOW`。**不是字节上限**（登记在
-/// `byte_cap_registry` 的排除表里）。
+/// `CreateProcess` 的 `CREATE_NO_WINDOW`。是位掩码，**不是字节上限**（读上限一律是 `relay_route_core::Cap`）。
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
