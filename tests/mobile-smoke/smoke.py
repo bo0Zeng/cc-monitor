@@ -571,7 +571,7 @@ def files_page():
     tap_last(rn)
     if not wait(f"ren{T}", 15) or "ren" + T not in sh(f"ls ~/work/{d}"):
         raise Step.Fail("改名没落到那台")
-    pick_act(f"ren{T}", t("beFiles.batch.verbDelete")); time.sleep(1)
+    pick_act(f"ren{T}", t("rsFilewinWriteops.label.delete")); time.sleep(1)
     confirm_delete()
     time.sleep(3)
     if "ren" + T in sh(f"ls ~/work/{d}"):
@@ -956,14 +956,14 @@ def deploy_steps():
     with Step("1c-升级后端"):
         old_bin, old_id = older_backend()
         rig("land", old_bin)
-        if not wait(t("machineState.problem.needsUpdate", machine=MACHINE), 60):
+        if not wait(t("front.title.update", machine=MACHINE), 60):
             raise Step.Fail(f"那台是旧版 {old_id}，却没说要更新")
         shot("1c-要更新")
         deploy_and_time(t("front.act.update"), "1c")
         end = ui.within(60)
-        while time.time() < end and ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
+        while time.time() < end and ui.find(t("front.title.update", machine=MACHINE)) is not None:
             time.sleep(1)
-        if ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
+        if ui.find(t("front.title.update", machine=MACHINE)) is not None:
             raise Step.Fail("换了常驻还说要更新（接上的不是这一版）")
     if landing_id() != build_id():
         # 升级那一步没走完、那台还是旧版：放回这一版再往下走（后面几步不该跟着它红）。
@@ -1167,7 +1167,7 @@ def terminal_steps():
         if not wait(mark, 5):
             raise Step.Fail(f"抓屏框里没有那一屏的「{mark}」")
         shot("9d-抓屏框")
-        tap(t("beFiles.batch.verbCopy"))
+        tap(t("render.codeBlock.copy"))
         end = ui.within(10)
         while time.time() < end and ui.find(t("mobCapture.dialog.title")) is not None:
             time.sleep(0.5)
@@ -1646,10 +1646,10 @@ def walk():
         tap("work")
         if not wait(tree, 15):
             raise Step.Fail(f"work 里没有 {tree}")
-        pick_act(tree, t("beFiles.batch.verbDelete")); time.sleep(1)
+        pick_act(tree, t("rsFilewinWriteops.label.delete")); time.sleep(1)
         confirm_delete()
-        title = t("beFiles.batch.head", action=t("beFiles.batch.verbDelete"), n=1)
-        done = t("beFiles.batch.done", action=t("beFiles.batch.verbDelete"), n=1)
+        title = t("beFiles.batch.head", action=t("rsFilewinWriteops.label.delete"), n=1)
+        done = t("beFiles.batch.done", action=t("rsFilewinWriteops.label.delete"), n=1)
         time.sleep(1)
         if not wait(title, 10):
             raise Step.Fail("删除那一组没上卡（或杀之前已做完：树不够大）")
@@ -1738,7 +1738,7 @@ def walk():
         try:
             if not wait(t("link.machine.offline", machine=MACHINE), 60):
                 raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
-            pick_act(ro, t("beFiles.batch.verbDelete"))
+            pick_act(ro, t("rsFilewinWriteops.label.delete"))
             said = t("acctPage.offline.hover")
             if not wait(said, 10):
                 raise Step.Fail(f"断着点删除，底部没说「{said}」")

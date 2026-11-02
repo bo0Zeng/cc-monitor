@@ -680,7 +680,7 @@ function tooOld(deploy: () => unknown): (w: World) => void {
       labels: [],
       chain: [],
       tmux: false,
-      face: frontFace(copyText("machineState.problem.needsUpdate", { machine: "devbox" }), copyText("front.body.update"), "warn", [{ kind: "update" }]),
+      face: frontFace(copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), "warn", [{ kind: "update" }]),
     });
     w.commands.deploy_remote_backend = deploy;
     // 换上了就重拨那条流（主窗口 `reconnect`）。

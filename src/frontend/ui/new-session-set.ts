@@ -82,7 +82,7 @@ export function setPage(refresh: () => void): SetPage {
   const nameBox = el("div", s.nsBox);
   nameBox.append(nameInput, switchBtn);
   // 打开的是存好的那一组才有：直接删 ＋ toast［撤销］（撤得回不确认）。
-  const deleteBtn = button({ label: copyText("beFiles.batch.verbDelete"), kind: "icon", size: "compact", icon: "close" });
+  const deleteBtn = button({ label: copyText("rsFilewinWriteops.label.delete"), kind: "icon", size: "compact", icon: "close" });
   deleteBtn.dataset.role = "set-delete";
   const nameCell = el("div", s.nsSetName);
   nameCell.append(nameBox, deleteBtn);

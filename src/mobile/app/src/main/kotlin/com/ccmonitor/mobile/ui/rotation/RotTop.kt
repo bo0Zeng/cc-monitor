@@ -218,7 +218,7 @@ private fun MoreSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         item?.let { st ->
             SheetHead(st.id, null)
-            PickRow(copyText("beFiles.batch.verbCopy"), "rot-more-copy", onClick = {
+            PickRow(copyText("render.codeBlock.copy"), "rot-more-copy", onClick = {
                 onDismiss()
                 board.copy(st.id)
             })
@@ -234,7 +234,7 @@ private fun MoreSheet(
             })
             val busy = st.inUse.size
             PickRow(
-                copyText("beFiles.batch.verbDelete"),
+                copyText("rsFilewinWriteops.label.delete"),
                 "rot-more-delete",
                 enabled = busy == 0,
                 onClick = {
@@ -365,7 +365,7 @@ internal fun RotAsks(
 ) {
     when (val ask = ui.ask) {
         null -> Unit
-        is RotAsk.Delete -> Confirm(copyText("rot.ask.deleteTitle", "name" to ask.id), copyText("rot.ask.deleteBody"), copyText("beFiles.batch.verbDelete"), board)
+        is RotAsk.Delete -> Confirm(copyText("rot.ask.deleteTitle", "name" to ask.id), copyText("rot.ask.deleteBody"), copyText("rsFilewinWriteops.label.delete"), board)
         is RotAsk.Name -> AskName(ask, board)
     }
 }

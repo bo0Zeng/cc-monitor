@@ -1153,7 +1153,7 @@ export class HistoryView {
     }
     const label = labelOf(r);
     // 正文那一段（哪台的记录 · 说不清在不在跑多一句）由核心按行写好（`deleteAsk`）。
-    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("beFiles.batch.verbDelete"), danger: true, body: r.deleteAsk });
+    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("rsFilewinWriteops.label.delete"), danger: true, body: r.deleteAsk });
     if (!ok) return;
     try {
       await deleteSession(r.origin, r.sessionId);

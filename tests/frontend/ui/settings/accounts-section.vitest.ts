@@ -322,7 +322,7 @@ describe("删号", () => {
     expect(spec.action).toBe(copyText("acctPage.remove.action", { name: "work" }));
     expect(spec.danger).toBe(true);
     expect(spec.body).toBe(copyText("acctPage.remove.next", { name: "personal" }));
-    expect(spec.rows?.map((r) => r.label)).toEqual([copyText("beFiles.batch.verbDelete"), copyText("kit.interrupts.keep")]);
+    expect(spec.rows?.map((r) => r.label)).toEqual([copyText("rsFilewinWriteops.label.delete"), copyText("kit.interrupts.keep")]);
     expect(spec.rows?.[1].items).toEqual([copyText("acctPage.remove.sessions")]);
     expect(accountsRemove).toHaveBeenCalledWith("devbox", { name: "work", force: true });
     expect(setModelForAccount).toHaveBeenCalledWith("devbox", "work", null);

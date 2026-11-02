@@ -266,7 +266,7 @@ export class MachineCard {
 
     // 删除按钮（legend 右侧）
     const removeBtn = button({
-      label: copyText("beFiles.batch.verbDelete"),
+      label: copyText("rsFilewinWriteops.label.delete"),
       kind: "danger-text",
       size: "compact",
       hint: copyText("machineList.menu.remove"),

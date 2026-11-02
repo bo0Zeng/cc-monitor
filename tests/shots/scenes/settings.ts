@@ -138,7 +138,7 @@ function installingWorld(): World {
 const localRefused = {
   state: "older",
   word: copyText("machineState.word.needsUpdate"),
-  said: copyText("machineState.problem.needsUpdate", { machine: copyText("detail.label.local") }),
+  said: copyText("front.title.update", { machine: copyText("detail.label.local") }),
   // 壳起不来那几样只有［重试］（`local_backend_host::local_backend`）。
   fixes: [{ fix: "retry", label: copyText("front.act.retry") }],
   next: copyText("rsLocalBackendHost.start.refusedNext", {

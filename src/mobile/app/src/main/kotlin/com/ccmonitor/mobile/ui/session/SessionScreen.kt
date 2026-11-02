@@ -603,7 +603,7 @@ private fun CaptureDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("beFiles.batch.verbCopy")) } },
+        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("render.codeBlock.copy")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 }

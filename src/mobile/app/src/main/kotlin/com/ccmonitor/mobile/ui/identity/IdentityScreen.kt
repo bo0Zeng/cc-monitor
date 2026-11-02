@@ -204,7 +204,7 @@ private fun IdentityRow(
         DangerConfirmDialog(
             title = { Text(copyText("mobIdentity.delete.title")) },
             text = { Text(identityDeleteWarning(identity.label, identity.isKeystoreBacked())) },
-            confirm = copyText("beFiles.batch.verbDelete"),
+            confirm = copyText("rsFilewinWriteops.label.delete"),
             onConfirm = {
                 showDeleteConfirm = false
                 onDelete()
@@ -232,7 +232,7 @@ private fun IdentityRow(
         )
         Row(Modifier.padding(start = Touch.iconBar), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconTextButton(Ph.Copy, copyText("mobIdentity.row.copyKey"), onClick = onCopy)
-            IconTextButton(Ph.Trash, copyText("beFiles.batch.verbDelete"), onClick = { showDeleteConfirm = true }, danger = true)
+            IconTextButton(Ph.Trash, copyText("rsFilewinWriteops.label.delete"), onClick = { showDeleteConfirm = true }, danger = true)
         }
     }
 }

@@ -636,7 +636,7 @@ private fun ResetDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
                 lines.changed?.let { ResetLine(copyText("dataPage.chore.diff"), it) }
-                lines.deleted?.let { ResetLine(copyText("beFiles.batch.verbDelete"), it) }
+                lines.deleted?.let { ResetLine(copyText("rsFilewinWriteops.label.delete"), it) }
             }
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         },

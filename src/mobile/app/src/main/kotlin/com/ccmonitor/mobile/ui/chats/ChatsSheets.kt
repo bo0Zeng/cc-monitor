@@ -218,7 +218,7 @@ internal fun DeleteDialog(
     DangerConfirmDialog(
         title = { Text(copyText("history.delete.title", "label" to row.label), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { Column { deleteBody(machine, row.canDelete).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) } } },
-        confirm = copyText("beFiles.batch.verbDelete"),
+        confirm = copyText("rsFilewinWriteops.label.delete"),
         onConfirm = {
             onDelete()
             onDismiss()

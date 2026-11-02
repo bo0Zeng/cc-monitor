@@ -120,7 +120,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
 
   const btnRow = document.createElement("div");
   btnRow.className = "settings-row settings-row-end paste-block-actions";
-  const copyBtn = button({ label: copyText("beFiles.batch.verbCopy") });
+  const copyBtn = button({ label: copyText("render.codeBlock.copy") });
   copyBtn.classList.add("paste-block-copy");
   btnRow.appendChild(copyBtn);
   root.appendChild(btnRow);

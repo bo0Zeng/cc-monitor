@@ -32,7 +32,7 @@ export function installGlobalClickDelegation(): void {
         // 调度：一次性 —— 1.2s 后把「已复制」还原成「复制」
         window.setTimeout(() => {
           btn.classList.remove("copied");
-          btn.textContent = copyText("beFiles.batch.verbCopy");
+          btn.textContent = copyText("render.codeBlock.copy");
         }, 1200);
       },
       () => {
@@ -40,7 +40,7 @@ export function installGlobalClickDelegation(): void {
         if (pre) window.getSelection()?.selectAllChildren(pre);
         btn.textContent = copyText("detail.act.failed");
         // 调度：一次性 —— 1.2s 后把「失败」还原成「复制」
-        window.setTimeout(() => (btn.textContent = copyText("beFiles.batch.verbCopy")), 1200);
+        window.setTimeout(() => (btn.textContent = copyText("render.codeBlock.copy")), 1200);
       },
     );
   });

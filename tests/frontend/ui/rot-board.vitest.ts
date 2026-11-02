@@ -159,11 +159,11 @@ describe("第一行：下拉与「⋯」", () => {
     expect(root.textContent).toContain(copyText("rot.tag.forNewHere"));
     root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.more.label")}"]`)!.click();
     const said = menu();
-    for (const k of ["beFiles.batch.verbCopy", "rot.more.rename", "rot.more.forNew", "beFiles.batch.verbDelete", "rot.more.create", "rot.more.add"] as const)
+    for (const k of ["render.codeBlock.copy", "rot.more.rename", "rot.more.forNew", "rsFilewinWriteops.label.delete", "rot.more.create", "rot.more.add"] as const)
       expect(said.some((t) => t.startsWith(copyText(k))), k).toBe(true);
     const item = (k: Parameters<typeof copyText>[0]) => items().find((e) => e.textContent?.startsWith(copyText(k)))!;
     expect(item("rot.more.forNew").disabled).toBe(true);
-    expect(item("beFiles.batch.verbDelete").disabled).toBe(true);
+    expect(item("rsFilewinWriteops.label.delete").disabled).toBe(true);
     item("rot.more.create").click();
     expect(a.create).toHaveBeenCalledOnce();
   });

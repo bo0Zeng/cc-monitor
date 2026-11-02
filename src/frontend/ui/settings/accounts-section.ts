@@ -518,7 +518,7 @@ export class AccountsSection {
     };
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) {
-      const copy = button({ label: copyText("beFiles.batch.verbCopy"), kind: "icon", icon: "copy", size: "compact", onClick: () => copyCmds(cmds) });
+      const copy = button({ label: copyText("render.codeBlock.copy"), kind: "icon", icon: "copy", size: "compact", onClick: () => copyCmds(cmds) });
       line(copyText("detail.label.command"), mono(cmds.join(copyText("kit.text.sep"))), copy);
     }
     if (accountRowKind(a) === "apikey") line(copyText("acctNew.key.label"), this.keyEditor(origin, a, readonly));
@@ -661,7 +661,7 @@ export class AccountsSection {
       body: next ? copyText("acctPage.remove.next", { name: next }) : undefined,
       rows: [
         {
-          label: copyText("beFiles.batch.verbDelete"),
+          label: copyText("rsFilewinWriteops.label.delete"),
           items: [copyText("acctPage.remove.login"), copyText("mobDrawer.settings.aria"), ...(cmds.length ? [copyText("acctPage.remove.commands", { names: cmds.join(" ") })] : [])],
         },
         { label: copyText("kit.interrupts.keep"), items: [copyText("acctPage.remove.sessions")] },

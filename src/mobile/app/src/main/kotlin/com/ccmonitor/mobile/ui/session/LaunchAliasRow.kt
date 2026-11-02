@@ -82,7 +82,7 @@ internal fun MovedLaunchDialog(
                         m.shownLines().forEach { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             SecondaryButton(onClick = { scope.launch { clipboard.copyPlainText(m.clipText()) } }) {
-                                Text(copyText("beFiles.batch.verbCopy"))
+                                Text(copyText("render.codeBlock.copy"))
                             }
                             if (!m.command.isNullOrBlank() && m !in made) {
                                 SecondaryButton(onClick = {

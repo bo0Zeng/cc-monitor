@@ -35,7 +35,7 @@ describe("↗ 结局 ⇒ 浮层", () => {
 
   it("出口自己那一跳的失败", () => {
     expect(shape({ kind: "too-old" }), "本机后端不认这一问 ⇒ 要更新").toEqual({
-      title: copyText("machineState.problem.needsUpdate", { machine: "gpu-01" }),
+      title: copyText("front.title.update", { machine: "gpu-01" }),
       body: copyText("front.body.update"),
       hint: null,
       tone: "amber",

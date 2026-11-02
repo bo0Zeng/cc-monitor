@@ -22,7 +22,7 @@ import { el } from "./kit/el";
 import s from "./md-view.module.css";
 
 /** 代码块复制钮上的字：每块都一样，不随树里的值变。 */
-const COPY_LABEL = copyText("beFiles.batch.verbCopy");
+const COPY_LABEL = copyText("render.codeBlock.copy");
 
 /** 拉一段的高亮：交这一段的代码块（先序），回 `hl[n]` 对第 n 块。 */
 export type HlPull = (codes: readonly HlCode[]) => Promise<SegHl>;

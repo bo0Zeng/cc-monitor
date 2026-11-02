@@ -8207,13 +8207,13 @@
       "zh": "{path} 不是普通文件 · 未复制",
       "args": ["path"]
     },
-    "beFiles.batch.verbCopy": {
+    "render.codeBlock.copy": {
       "kind": "action",
       "role": "按钮",
       "zh": "复制",
       "args": []
     },
-    "beFiles.batch.verbDelete": {
+    "rsFilewinWriteops.label.delete": {
       "kind": "action",
       "role": "按钮",
       "zh": "删除",

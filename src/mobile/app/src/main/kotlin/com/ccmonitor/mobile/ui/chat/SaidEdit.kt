@@ -284,7 +284,7 @@ internal fun SaidMenu(
 ) {
     val actions =
         if (recorded) {
-            listOf(SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit), SheetAction(Ph.Copy, copyText("beFiles.batch.verbCopy"), onClick = onCopy))
+            listOf(SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit), SheetAction(Ph.Copy, copyText("render.codeBlock.copy"), onClick = onCopy))
         } else {
             listOf(SheetAction(Ph.ArrowCounterClockwise, copyText("mobChat.outbox.cancel"), onClick = onRecall))
         }

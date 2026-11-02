@@ -185,11 +185,11 @@ export function firstRow(spec: TopSpec): HTMLElement {
       if (item) {
         const busy = item.inUse.length;
         items.push(
-          { label: copyText("beFiles.batch.verbCopy"), onClick: () => ops.copy(item.id) },
+          { label: copyText("render.codeBlock.copy"), onClick: () => ops.copy(item.id) },
           { label: copyText("rot.more.rename"), onClick: () => ops.rename(item.id, item.rev) },
           { label: copyText("rot.more.forNew"), enabled: !item.forNew, onClick: () => ops.forNew(item.id) },
           {
-            label: copyText("beFiles.batch.verbDelete"),
+            label: copyText("rsFilewinWriteops.label.delete"),
             danger: true,
             enabled: busy === 0,
             why: busy > 0 ? copyText("rot.more.inUse", { n: busy }) : undefined,

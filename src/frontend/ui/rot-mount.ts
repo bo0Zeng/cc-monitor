@@ -222,7 +222,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       void (async () => {
         const ok = await confirmFn({
           title: copyText("rot.ask.deleteTitle", { name: id }),
-          action: copyText("beFiles.batch.verbDelete"),
+          action: copyText("rsFilewinWriteops.label.delete"),
           danger: true,
           body: copyText("rot.ask.deleteBody"),
         });
