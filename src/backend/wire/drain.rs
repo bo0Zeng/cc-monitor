@@ -27,10 +27,10 @@ use std::sync::Mutex;
     clippy::disallowed_methods,
     reason = "流模式收场的退出排空期限（`wire::drain::DRAIN_DEADLINE`）：只在收场时装一次，到点说出哪几条没做完再退"
 )]
-pub(crate) const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
+pub const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
 
 /// 退出闸：在飞的阻塞命令（带名字）＋ 关没关。进程里只有一个（[`DRAIN`]）；判据另造实例。
-pub(crate) struct Drain {
+pub struct Drain {
     /// 锁只在一句里活着，绝不跨 await。
     state: Mutex<DrainState>,
     /// 在飞的归零那一刻叫醒等的人（[`Drain::drained`]）。
@@ -47,7 +47,7 @@ struct DrainState {
 
 /// 一张票：拿着它的阻塞命令还在跑。**票 move 进阻塞闭包**，闭包跑完（成功 / 失败 / panic 展开）才落 ——
 /// 外层 async 任务被 `abort` 不影响它（阻塞线程还在跑，票还在它手里）。
-pub(crate) struct Ticket(&'static Drain, u64);
+pub struct Ticket(&'static Drain, u64);
 
 impl Drop for Ticket {
     fn drop(&mut self) {
@@ -63,7 +63,7 @@ impl Drop for Ticket {
 }
 
 impl Drain {
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Drain {
             state: Mutex::new(DrainState {
                 next: 0,
@@ -75,7 +75,7 @@ impl Drain {
     }
 
     /// 取一张票（`what` = 这一条是什么，到点没排空时说给人听）。闸关了 ⇒ `None`（调用方回 `shutting_down`，一个字节不动）。
-    pub(crate) fn enter(&'static self, what: String) -> Option<Ticket> {
+    pub fn enter(&'static self, what: String) -> Option<Ticket> {
         let mut g = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if g.closed {
             return None;
@@ -87,14 +87,14 @@ impl Drain {
     }
 
     /// 关闸，回关的那一刻在飞几条。关过再关无害。
-    pub(crate) fn close(&self) -> usize {
+    pub fn close(&self) -> usize {
         let mut g = self.state.lock().unwrap_or_else(|e| e.into_inner());
         g.closed = true;
         g.live.len()
     }
 
     /// 此刻在飞几条。
-    pub(crate) fn in_flight(&self) -> usize {
+    pub fn in_flight(&self) -> usize {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -103,7 +103,7 @@ impl Drain {
     }
 
     /// 此刻在飞的是哪几条（按起跑先后）。
-    pub(crate) fn in_flight_names(&self) -> Vec<String> {
+    pub fn in_flight_names(&self) -> Vec<String> {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -114,7 +114,7 @@ impl Drain {
     }
 
     /// 等在飞的归零。先登记等待、再看计数 ⇒ 「看的那一刻还有、紧接着最后一张票落下」那一下不会漏醒。
-    pub(crate) async fn drained(&self) {
+    pub async fn drained(&self) {
         loop {
             let woke = self.idle.notified();
             tokio::pin!(woke);
@@ -128,18 +128,18 @@ impl Drain {
 }
 
 /// 本进程的那一个退出闸。
-pub(crate) static DRAIN: Drain = Drain::new();
+pub static DRAIN: Drain = Drain::new();
 
 /// 闸关了之后新来的阻塞命令回的**协议级**码（与命令无关、只有入方向判得了 —— 同 `not_cancellable`）。
 pub const SHUTTING_DOWN: &str = "shutting_down";
 
 /// 停机信号的监听，**建的那一刻就登记好**（不是等第一次被 poll 才登记 ⇒ 建完之后到的信号不会漏）。
-/// 住 `platform::signal`（平台 cfg 只许住那一层）；这里转一手给 `main.rs`。
+/// 住 `platform::signal`（平台 cfg 只许住那一层）；这里转一手给进程入口 `stream/entry.rs`。
 pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'static {
     crate::platform::signal::shutdown_listener()
 }
 
-/// 🔴 **流模式后端的收场 —— 三个退出口都走这一个**（`main.rs`：stdio 那条 · 常驻收信号 · 最后一个客户走了且退出行为是「结束」）。
+/// 🔴 **流模式后端的收场 —— 三个退出口都走这一个**（`stream/entry.rs`：stdio 那条 · 常驻收信号 · 最后一个客户走了且退出行为是「结束」）。
 ///
 /// 关闸 → 说一句在飞几条 → 等它们做完再 `exit(0)`；等的时候**再来一次停机信号 ⇒ 不等了**；
 /// **到 [`DRAIN_DEADLINE`] 仍没排空 ⇒ 说出哪几条没做完，退**。
@@ -153,7 +153,7 @@ where
 }
 
 /// [`exit_after_drain`] 的本体，期限由参数给（生产恒 [`DRAIN_DEADLINE`]；判据给一个短的，量「到点就退」那一形）。
-pub(crate) async fn exit_after_drain_within<W>(
+pub async fn exit_after_drain_within<W>(
     why: &str,
     writer: Option<W>,
     deadline: std::time::Duration,
@@ -208,6 +208,6 @@ where
         }
         _ = writing => {}
     }
-    // 必须显式 exit（不能让 runtime 自然 drop）：理由全文在 `main.rs::main` 末尾那段 —— stdin 的阻塞读会让 drop 永远等下去。
+    // 必须显式 exit（不能让 runtime 自然 drop）：理由全文在 `stream/entry.rs::run` 末尾那段 —— stdin 的阻塞读会让 drop 永远等下去。
     std::process::exit(0)
 }

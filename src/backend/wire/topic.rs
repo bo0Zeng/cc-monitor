@@ -212,6 +212,4 @@ impl TopicExt for Topic {
     }
 }
 
-#[cfg(test)]
-#[path = "../../../tests/backend/wire/topic_tests.rs"]
-pub(super) mod tests;
+// 主题表的判据读命令表与各族的面（上层）⇒ 挂主 crate（`cross/wire.rs`）；全部主题那一份住 `wire::test_support::ALL`。

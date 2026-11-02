@@ -9,35 +9,28 @@
 //! - 要碰本连接的票表与应答通道的那几条（帧面硬臂）登记成 `typed::frame::<X>("一句话")`、只实现 [`Command`]：
 //!   分派在 `dispatch` 那条硬臂，硬臂那一发经 [`answer`] 一处（入参按类型收 · 回包按类型写 · 失败照码表）。
 
-pub(crate) use super::spec::{needs, Needs};
+pub use super::spec::{needs, Needs};
 use super::spec::{CommandSpec, Outcome};
 use crate::common::said::Said;
 use crate::wire::spec::Settle as _;
 use crate::wire::Request;
 
-/// 测试档才要的 TS 派生（生成类型 · 形状指纹）；发布二进制里它什么都不要求。
-#[cfg(test)]
-pub(crate) trait Wire: ts_rs::TS + 'static {}
-#[cfg(test)]
-impl<T: ts_rs::TS + 'static> Wire for T {}
-#[cfg(not(test))]
-pub(crate) trait Wire {}
-#[cfg(not(test))]
-impl<T> Wire for T {}
-
 /// 一条 typed 命令的三个类型。入参住 cmd-wire 的那几条（有 Rust 客户端）名字 · 入参 · 回包写 [`by_call!`]，
 /// 从 `cmd_wire::Call` 那一张表来；只有后端自己用的那几条在这里写一处。
-pub(crate) trait Command: 'static {
+/// 入参 · 回包的 TS 派生只在测试档要（生成类型 · 形状指纹）：界写在算形状那一处（`test_support::shape_of`），不写在这里
+/// —— 这里写了，dev 侧开的特性会在 `cargo test` 那一趟并进主 crate 的普通编、那一趟的类型没有 TS。
+pub trait Command: 'static {
     /// 线上命令名。
     const NAME: &'static str;
     /// 收不收入方向载荷（CLI 面据此决定读不读 stdin；同 [`CommandSpec::takes_input`]）。
     const TAKES_INPUT: bool = true;
-    type Req: serde::de::DeserializeOwned + Wire;
-    type Reply: serde::Serialize + Wire;
+    type Req: serde::de::DeserializeOwned + 'static;
+    type Reply: serde::Serialize + 'static;
     type Err: Codes;
 }
 
 /// `impl Command` 里那三格从入参类型的 `cmd_wire::Call` 取：`by_call!(入参);`。
+#[macro_export]
 macro_rules! by_call {
     ($req:ty) => {
         const NAME: &'static str = <$req as cmd_wire::Call>::NAME;
@@ -45,30 +38,20 @@ macro_rules! by_call {
         type Reply = <$req as cmd_wire::Call>::Reply;
     };
 }
-pub(crate) use by_call;
-
-/// [`Codes::Data`] 的约束：测试档要算得出 TS 形状（`tests::DataTys`）；发布二进制里它什么都不要求。
-#[cfg(test)]
-pub(crate) trait DataTypes: tests::DataTys {}
-#[cfg(test)]
-impl<T: tests::DataTys> DataTypes for T {}
-#[cfg(not(test))]
-pub(crate) trait DataTypes {}
-#[cfg(not(test))]
-impl<T> DataTypes for T {}
+pub use crate::by_call;
 
 /// [`Codes::Data`] 那一格：[`Codes::DATA`] 里每个码都带 `T` 这一形。
-pub(crate) struct Each<T>(std::marker::PhantomData<T>);
+pub struct Each<T>(std::marker::PhantomData<T>);
 
 /// 不收入参的那几条命令的入参：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NoArgs {}
+pub struct NoArgs {}
 
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
-pub(crate) trait Codes: Sized {
+pub trait Codes: Sized {
     /// 全部码，声明次序。
     const ALL: &'static [&'static str];
     /// 投出去的那一份。
@@ -76,14 +59,14 @@ pub(crate) trait Codes: Sized {
     /// 下层交上来的码 ⇒ 这一条的那个变体（只认不带 `data` 的那几种）；不在码表里 ⇒ 原样交回那一句（调用方定落哪一格）。
     fn of_code(code: &str, said: String) -> Result<Self, String>;
     /// 带 `data` 的那几个码（声明次序）。读它的只有形状指纹与协议参考（测试档）。
-    #[cfg_attr(not(test), allow(dead_code))]
     const DATA: &'static [&'static str];
-    /// 那几个码的 `data` 类型：元组，与 [`Codes::DATA`] 逐位对上（[`Each`] ＝ 每个码都带同一形）。测试档拿它算形状指纹与协议参考。
-    type Data: DataTypes;
+    /// 那几个码的 `data` 类型：元组，与 [`Codes::DATA`] 逐位对上（[`Each`] ＝ 每个码都带同一形）。测试档拿它算形状指纹与协议参考
+    /// （要算得出 TS 形状的那道界在 `test_support::shape_of`）。
+    type Data;
 }
 
 /// 同 [`of_fail`]，交成闭包（`map_err` 那一格）：句子后面跟着的契约诊断先拆进原话（[`crate::wire::spec::fail`]）。
-pub(crate) fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
+pub fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
     move |f| {
         let code = f.code_or_fallback().to_string();
         of_fail(crate::wire::spec::fail(&code, f), fallback)
@@ -93,7 +76,7 @@ pub(crate) fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said)
 /// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
 /// （这一条自己的那一格失败：资产域那扇门把文件管理那一族的码原样交上来，外层命令的码表不必都有），那一句照旧，原码与原话进原话。
 /// 原话跟着那一句走（[`crate::common::contract::joined`]），投出去时照原样拆回复制详情。
-pub(crate) fn of_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
+pub fn of_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
     let code = f.code_or_fallback().to_string();
     let (message, raw) = (f.said.clone(), f.raw.clone());
     E::of_code(&code, crate::common::contract::joined(f.said, f.raw)).unwrap_or_else(|_| {
@@ -108,7 +91,7 @@ pub(crate) fn of_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
 
 /// 同 [`of_fail`]，那一句照这一条自己的「码 → 句」表换（`said` 按落定的码给句子；`None` ⇒ 照下层那句）：下层那句进原话。
 /// 码表外的码先落 `fallback` 那一格再查表（同投出去时的码）。
-pub(crate) fn of_fail_said<E: Codes>(
+pub fn of_fail_said<E: Codes>(
     f: Said,
     fallback: fn(String) -> E,
     said: impl FnOnce(&str) -> Option<String>,
@@ -130,28 +113,28 @@ pub(crate) fn of_fail_said<E: Codes>(
 
 /// 文件管理面（同 `faces::launch_account_face::Files`）：生产那一份住 `stream/inbound`（`LocalFiles`），由命令表那一行递进来
 /// —— 写面只有 `stream/inbound/` 够得着（`readonly_guard` 第三层），本文件不点它的名。
-pub(crate) type Files = &'static (dyn crate::common::door::Door + Sync);
+pub type Files = &'static (dyn crate::common::door::Door + Sync);
 
 /// 两台之间那几件的枢纽问**这台自己**的那一跳（生产 = `doors::hub_here`，由命令表那一行递进来，同 [`Files`]）：
 /// 按引起这一趟的请求时区与写句柄造一份。
-pub(crate) type Hub = fn(&crate::Tz, &crate::platform::Own) -> std::sync::Arc<dyn Here>;
+pub type Hub = fn(&crate::common::time::Tz, &crate::platform::Own) -> std::sync::Arc<dyn Here>;
 
 /// 这台自己的那几条内层命令（生产 = `stream/inbound/doors.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
 /// 资产域的枢纽（`assets::hub`）经它问这台自己；实现在命令表那一层，这里只是那一口的形状。
-pub(crate) trait Here: Send + Sync {
+pub trait Here: Send + Sync {
     fn ask(
         &self,
         cmd: &str,
         args: serde_json::Value,
     ) -> Result<serde_json::Value, crate::common::said::Said>;
     /// 看的人那一台的时区（引起这一趟的那条请求的信封 `tz`）：问别台时原样转过去，那台回的「几点」照它写。
-    fn viewer_tz(&self) -> crate::Tz;
+    fn viewer_tz(&self) -> crate::common::time::Tz;
 }
 
 /// 一条命令的本体：只有这一种签名。它要的能力写在 [`Handle::Needs`]（`spec::needs` 里那几样），
 /// 分派那一层（[`super::spec::invoke`]）按它把能力交进 `cx.needs`；阻塞还是异步在登记那一行说（[`blocking`] · [`asynchronous`]）。
 /// 阻塞档的本体是同步代码包在 `async move` 里：分派把它放进阻塞池、在那条线程上跑完（开跑之后打不断）。
-pub(crate) trait Handle: Command {
+pub trait Handle: Command {
     /// 它要的能力（`spec::needs::Nothing` · `Files` · `Own` · `FilesOwn` · `Face` · `OwnHub`）。
     type Needs: Needs;
     fn run(
@@ -161,16 +144,16 @@ pub(crate) trait Handle: Command {
 }
 
 /// 信封里除了 `args` 那几样：看的那一台的时区 · 分派那一层换算好的截止时刻。
-pub(crate) struct Cx<N: Needs = needs::Nothing> {
-    pub(crate) tz: crate::common::time::Tz,
-    pub(crate) until: Option<crate::platform::child::Until>,
+pub struct Cx<N: Needs = needs::Nothing> {
+    pub tz: crate::common::time::Tz,
+    pub until: Option<crate::platform::child::Until>,
     /// 分派那一层按 [`Handle::Needs`] 交进来的那几样。
-    pub(crate) needs: N::Given,
+    pub needs: N::Given,
 }
 
 impl<N: Needs> Cx<N> {
     /// 拆成信封那两样（不带能力的那一份，交给只认 `&Cx` 的下层）＋ 交进来的能力。
-    pub(crate) fn split(self) -> (Cx, N::Given) {
+    pub fn split(self) -> (Cx, N::Given) {
         (
             Cx {
                 tz: self.tz,
@@ -186,18 +169,21 @@ impl<N: Needs> Cx<N> {
 /// 按码定了 `data` 形状的那几个码写成 `Var = "code" => 类型`：变体多带那一份，投出去时进失败信封的 `data`。
 /// 码表恒以 `bad_args` 打头、枚举里恒有 `BadArgs`：入参解不出来是每条 typed 命令都会回的（[`take`]），
 /// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
+/// 包根导出（`#[macro_export]` 只落得在包根），调用处照旧写 `crate::wire::typed::codes!`（下面那一行 `pub use`）；
+/// 展开里那一句的类型直写 `::backend_common::said::Said`（调用方都引纯工具那一层，同 `common` 的 `upgrade!`）。
+#[macro_export]
 macro_rules! codes {
     ($(#[$m:meta])* $vis:vis enum $name:ident { $($body:tt)* }) => {
-        $crate::wire::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] [] [] $($body)*);
+        $crate::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] [] [] $($body)*);
     };
     // 带 `data` 的那一种。
     (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*] [$($dat:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal => $data:ty $(, $($rest:tt)*)?) => {
-        $crate::wire::typed::codes!(@munch $attrs $vis $name
+        $crate::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String, $data),]
             [$($arms)* $name::$var(said, data) => match ::serde_json::to_value(&data) {
-                Ok(d) => $crate::wire::spec::fail($code, said).with_data(d),
-                Err(_) => $crate::wire::spec::fail($code, said),
+                Ok(d) => $crate::spec::fail($code, said).with_data(d),
+                Err(_) => $crate::spec::fail($code, said),
             },]
             [$($codes)* $code,]
             [$($of)*]
@@ -207,9 +193,9 @@ macro_rules! codes {
     // 只有那一句的那一种。
     (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*] [$($dat:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal $(, $($rest:tt)*)?) => {
-        $crate::wire::typed::codes!(@munch $attrs $vis $name
+        $crate::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String),]
-            [$($arms)* $name::$var(said) => $crate::wire::spec::fail($code, said),]
+            [$($arms)* $name::$var(said) => $crate::spec::fail($code, said),]
             [$($codes)* $code,]
             [$($of)* ($code, $var)]
             [$($dat)*]
@@ -224,7 +210,7 @@ macro_rules! codes {
             BadArgs(String),
             $($vars)*
         }
-        impl $crate::wire::typed::Codes for $name {
+        impl $crate::typed::Codes for $name {
             const ALL: &'static [&'static str] = &["bad_args", $($codes)*];
             #[allow(unreachable_patterns, clippy::match_single_binding)]
             fn of_code(code: &str, said: String) -> Result<Self, String> {
@@ -234,9 +220,9 @@ macro_rules! codes {
                     _ => return Err(said),
                 })
             }
-            fn into_said(self) -> $crate::common::said::Said {
+            fn into_said(self) -> ::backend_common::said::Said {
                 match self {
-                    $name::BadArgs(said) => $crate::wire::spec::fail("bad_args", said),
+                    $name::BadArgs(said) => $crate::spec::fail("bad_args", said),
                     $($arms)*
                 }
             }
@@ -245,11 +231,11 @@ macro_rules! codes {
         }
     };
 }
-pub(crate) use codes;
+pub use crate::codes;
 
 /// 怎么跑：登记那一行说。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum How {
+pub enum How {
     /// 同步阻塞（读盘 · 扫全库 · 起进程）：进阻塞池，开跑之后打不断（`cancel` 命中回 `not_cancellable`）。
     Blocking,
     /// 真异步：交给独立 task，`cancel` 能在 await 点打断。
@@ -263,21 +249,21 @@ pub(crate) enum How {
 
 /// 一条登记命令跑起来的那一份（类型擦掉之后）。
 #[derive(Clone, Copy)]
-pub(crate) struct Typed {
-    pub(crate) how: How,
+pub struct Typed {
+    pub how: How,
     /// 拿不拿文件管理写句柄（[`super::spec::needs::Face`]）：判据拿它对写面登记的命令表。
-    #[cfg(test)]
-    pub(crate) face: bool,
+    #[cfg(any(test, feature = "test-support"))]
+    pub face: bool,
     /// 按声明把能力交进去、装成交出去跑的那一份（帧面硬臂 ⇒ `None`）。
-    pub(crate) go: fn(&super::spec::Hands) -> Option<super::spec::Prepared>,
-    /// 生成类型与形状指纹用（测试档）。
-    #[cfg(test)]
-    pub(crate) shape: fn() -> tests::Shape,
+    pub go: fn(&super::spec::Hands) -> Option<super::spec::Prepared>,
+    /// 生成类型与形状指纹用（测试档）：本包填 `None`，登记那一行在主 crate 的测试档补上（`test_support::Shaped`）。
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) shaped: Option<fn() -> test_support::Shape>,
 }
 
 impl Typed {
     /// 帧面硬臂那一档（只在帧面：CLI 面不派生、不进 [`super::spec::invoke`]）。
-    pub(crate) fn on_frame_arm(&self) -> bool {
+    pub fn on_frame_arm(&self) -> bool {
         matches!(self.how, How::Frame | How::FrameBlocking)
     }
 }
@@ -305,7 +291,7 @@ fn find_culprit_key<R: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Op
 }
 
 /// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
-pub(crate) fn sanitize_de_error<R: serde::de::DeserializeOwned>(
+pub fn sanitize_de_error<R: serde::de::DeserializeOwned>(
     v: &serde_json::Value,
     raw: &str,
 ) -> String {
@@ -338,7 +324,7 @@ pub(crate) fn sanitize_de_error<R: serde::de::DeserializeOwned>(
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`。
 /// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
-pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Said> {
+pub fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Said> {
     let v = if args.is_null() {
         serde_json::Value::Object(Default::default())
     } else {
@@ -394,7 +380,7 @@ fn go_frame(_: &super::spec::Hands) -> Option<super::spec::Prepared> {
 
 /// 帧面硬臂那一档（[`How::Frame`]）的一发：入参按类型收 → `run` → 应答帧（成功带回包；失败照码表投，详情里带命令名）。
 /// `dispatch` 的硬臂调本体时都经这里（本体签名里只有类型，没有 `args`）。
-pub(crate) fn answer<C: Command>(
+pub fn answer<C: Command>(
     id: &str,
     args: &serde_json::Value,
     run: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
@@ -414,7 +400,7 @@ pub(crate) fn answer<C: Command>(
 
 /// 帧面硬臂那一档交给通用 spawn 那一路的一份（异步：`cancel` 能在 await 点打断）：入参按类型收 → 本体 future → 结局。
 /// 本体拿到的是入参与信封那两样（[`Cx`]），硬臂要的本连接那几样由它在闭包里带进去。
-pub(crate) fn answer_async<C, F, Fut>(run: F) -> super::spec::DataHandler
+pub fn answer_async<C, F, Fut>(run: F) -> super::spec::DataHandler
 where
     C: Command,
     F: FnOnce(C::Req, Cx) -> Fut + Send + 'static,
@@ -434,7 +420,7 @@ where
 }
 
 /// 同 [`answer_async`]，入参已在硬臂里就地收好（要在读循环里当场生效的那一半先做了，如 `stream-watch` 换名单）：只剩等结局那一半交出去。
-pub(crate) fn answer_later<C, Fut>(fut: Fut) -> super::spec::DataHandler
+pub fn answer_later<C, Fut>(fut: Fut) -> super::spec::DataHandler
 where
     C: Command,
     Fut: std::future::Future<Output = Result<C::Reply, C::Err>> + Send + 'static,
@@ -443,7 +429,7 @@ where
 }
 
 /// 同 [`answer_async`]，本体交进阻塞池（[`How::FrameBlocking`]：开跑之后打不断）。
-pub(crate) fn answer_blocking<C, F>(run: F) -> super::spec::BlockingHandler
+pub fn answer_blocking<C, F>(run: F) -> super::spec::BlockingHandler
 where
     C: Command,
     F: FnOnce(C::Req, Cx) -> Result<C::Reply, C::Err> + Send + 'static,
@@ -460,22 +446,22 @@ where
 }
 
 /// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] / [`answer_async`] 调）。
-pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
+pub const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
     spec::<C, needs::Nothing>(summary, How::Frame, go_frame)
 }
 
 /// 同 [`frame`]，那条硬臂把本体交进阻塞池（[`answer_blocking`]）。
-pub(crate) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec {
+pub const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec {
     spec::<C, needs::Nothing>(summary, How::FrameBlocking, go_frame)
 }
 
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。
-pub(crate) const fn blocking<C: Handle>(summary: &'static str) -> CommandSpec {
+pub const fn blocking<C: Handle>(summary: &'static str) -> CommandSpec {
     spec::<C, C::Needs>(summary, How::Blocking, go_blocking::<C>)
 }
 
 /// 异步档的一行登记。
-pub(crate) const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec {
+pub const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec {
     spec::<C, C::Needs>(summary, How::Async, go_async::<C>)
 }
 
@@ -492,16 +478,17 @@ const fn spec<C: Command, N: Needs>(
         takes_input: C::TAKES_INPUT,
         run: Typed {
             how,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             face: N::FACE,
             go,
-            #[cfg(test)]
-            shape: tests::shape_of::<C>,
+            #[cfg(any(test, feature = "test-support"))]
+            shaped: None,
         },
     }
 }
 
-// 一条 typed 命令的形状（入参 · 回包的 TS 声明 ＋ 码表）与它的指纹：测试档才要，住测试树（`typed_tests.rs`）。
-#[cfg(test)]
-#[path = "../../../tests/backend/wire/typed_tests.rs"]
-pub(crate) mod tests;
+// 一条 typed 命令的形状（入参 · 回包的 TS 声明 ＋ 码表）与它的指纹：测试档才要，住测试树（`typed_support.rs`）。
+// 读登记表的那几条判据（形状表 · 界面命令表 · 走登记表跑一条）挂主 crate（`typed_tests.rs`）。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/wire/typed_support.rs"]
+pub mod test_support;

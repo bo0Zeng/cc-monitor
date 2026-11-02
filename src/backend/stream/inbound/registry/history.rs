@@ -7,30 +7,30 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
     //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。两条都是阻塞档（读写一份小文件）。
     //   「上次用哪个号起的」不单出一条：一条会话的号那一份成品（`session-account`）里带着。
-    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryAnnotateCmd>(
+    super::typed::blocking::<crate::history::history_annotations::HistoryAnnotateCmd>(
         "改一条历史注解",
     ),
-    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
+    super::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
         "删一条历史注解",
     ),
     // **组**（`history/groups.rs`）：组跟着组员走，每台注解文件的 `groups` 那一节只记这台有组员的那一片（名字带起名时刻，A95-3）；固定是会话注解的一格。
     //   这台那一半读一份小文件 ＋ 活会话表 ⇒ 阻塞档；几台并成一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻）⇒ 异步档；
     //   写：进出组只写组员那台，改名 · 解散由这台扇出给各片 ⇒ 异步档（扇出要 tokio 的反应堆）。
-    crate::wire::typed::blocking::<crate::history::groups::GroupsHereCmd>(
+    super::typed::blocking::<crate::history::groups::GroupsHereCmd>(
         "这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话",
     ),
-    crate::wire::typed::asynchronous::<crate::history::groups::GroupsReadCmd>(
+    super::typed::asynchronous::<crate::history::groups::GroupsReadCmd>(
         "问到各台的组那一半、并成一份",
     ),
-    crate::wire::typed::asynchronous::<crate::history::groups::GroupsWriteCmd>(
+    super::typed::asynchronous::<crate::history::groups::GroupsWriteCmd>(
         "建组 · 进出组 · 改名与解散扇出给各片",
     ),
     // agent 自问（`history/session_self.rs`）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
-    crate::wire::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
+    super::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
         "我是哪条会话 · 在哪几组 · 组员有谁",
     ),
     // 一段 Markdown 原文解析成块树（纯函数、不碰盘；长正文解析几毫秒 ⇒ 阻塞档，不占反应堆）。
-    crate::wire::typed::blocking::<crate::faces::md_doc_face::MdDocCmd>(
+    super::typed::blocking::<crate::faces::md_doc_face::MdDocCmd>(
         "一段 Markdown 原文解析成块树，两端照树排版（`as`：`prose` 照原文、`refs` 那几段解成计划格引用 · `tool_result` 先剥 Read / Grep 的行号前缀）",
     ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
@@ -49,82 +49,82 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
     //   远端那一份由本进程问那台的常驻（`--resident-call` ⇒ `history-listing`，带记号只拿变了的）、记着副本（`history/remote_listing.rs`）；
     //   并注解、筛、排都在这台。
-    crate::wire::typed::asynchronous::<crate::history::history_list::HistoryListCmd>(
+    super::typed::asynchronous::<crate::history::history_list::HistoryListCmd>(
         "历史页的平铺会话清单",
     ),
     // 历史页那一列（`history_browse.rs`）：几台的清单在这里并成一列（行按 `at`、组按 `order`、分叉挂父会话、按项目开合），界面只问看得见的那一窗。
     //   远端那几台读本进程记着的副本，`fresh` 里的那几台先同步一次（并着等）。扫这台在阻塞池里 ⇒ 异步档。
-    crate::wire::typed::asynchronous::<crate::history::history_browse::HistoryBrowseCmd>(
+    super::typed::asynchronous::<crate::history::history_browse::HistoryBrowseCmd>(
         "历史页那一列（几台并成一列）",
     ),
     // 这台自己的清单按带键集合答（备忘住本进程、只在被问时比）：别的后端经 `--resident-call` 问它，记着副本。扫记录树在阻塞池里 ⇒ 异步档。
-    crate::wire::typed::asynchronous::<crate::history::remote_listing::HistoryListingCmd>(
+    super::typed::asynchronous::<crate::history::remote_listing::HistoryListingCmd>(
         "这台的清单（按记号只给变了的）",
     ),
     // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；
     //   几台合一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻，扫盘在阻塞池里）⇒ 异步档。
-    crate::wire::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
-    crate::wire::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
+    super::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
+    super::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
         "问到各台搜一遍、合成一份",
     ),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
+    super::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
     // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session`）。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>(
+    super::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>(
         "这条会话的记录还在不在",
     ),
     // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
+    super::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
     // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。同族同档、同一个只读宿主。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryImageCmd>("按引用取回一张图"),
+    super::typed::blocking::<crate::faces::history_face::HistoryImageCmd>("按引用取回一张图"),
     // 拉一段正文的代码高亮（树里的代码块不带高亮，两端建一段时交那一段的代码块来问）。算高亮吃 CPU ⇒ 阻塞档。
-    crate::wire::typed::blocking::<crate::faces::prose_hl_face::ProseHlCmd>("拉一段正文的代码高亮"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
+    super::typed::blocking::<crate::faces::prose_hl_face::ProseHlCmd>("拉一段正文的代码高亮"),
+    super::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
         "按字节分页读一份会话",
     ),
     // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/query/body.rs`）。同族同档、同一个只读宿主。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryPageCmd>(
+    super::typed::blocking::<crate::faces::history_face::HistoryPageCmd>(
         "按字节分页读，出记录行",
     ),
     // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
     // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/recognize/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryTurnsCmd>("一轮的摘要"),
-    crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
+    super::typed::blocking::<crate::faces::history_face::HistoryTurnsCmd>("一轮的摘要"),
+    super::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
         "这台上需手动的会话清单",
     ),
     // 各台需手动的清单合成一个先后：这台自己问到各台的 `sessions-needs`（别的台经 `--resident-call`），排好再答 ⇒ 异步档（同 `history-search-merge`）。
-    crate::wire::typed::asynchronous::<crate::faces::history_face::NeedsMergeCmd>(
+    super::typed::asynchronous::<crate::faces::history_face::NeedsMergeCmd>(
         "问到各台的需手动、合成一个先后",
     ),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `stream::cli::STREAM_ONLY`）。
-    crate::wire::typed::frame::<crate::control::asks::NeedsAsk>(
+    super::typed::frame::<crate::control::asks::NeedsAsk>(
         "答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）",
     ),
     // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
-    crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
+    super::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
         "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回「别处已答」（`gone` ＋ 那一句）",
     ),
     // 会话事实（`observe/recognize/facts.rs`）。只收路径：接着上一次算由后端按路径留着（`observe::record_scan`）。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
-    crate::wire::typed::blocking::<crate::faces::history_face::UserInputsCmd>("「人说过的话」清单"),
+    super::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
+    super::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
+    super::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
+    super::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
+    super::typed::blocking::<crate::faces::history_face::UserInputsCmd>("「人说过的话」清单"),
     // 尾段那张图 ＋ 手上那一份（`held`）续不续得上 ＋ 第一页正文，一问交回（续传的判定只在这里）。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryTailCmd>(
+    super::typed::blocking::<crate::faces::history_face::HistoryTailCmd>(
         "一份会话的尾段：手上那一份怎么接，连第一页正文",
     ),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
-    crate::wire::typed::blocking::<crate::faces::fork_face::SessionFork>(
+    super::typed::blocking::<crate::faces::fork_face::SessionFork>(
         "从某条消息处分叉出一个新会话",
     ),
     // 手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
-    crate::wire::typed::blocking::<crate::stream::resync_face::ResyncCmd>(
+    super::typed::blocking::<crate::stream::resync_face::ResyncCmd>(
         "手动对齐：重发这条流上的会话状态",
     ),
     // ── 功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
@@ -134,7 +134,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
-    crate::wire::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
+    super::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
 ];
 
 // ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────

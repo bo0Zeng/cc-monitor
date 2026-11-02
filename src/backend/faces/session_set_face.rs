@@ -69,7 +69,7 @@ fn live_here() -> Vec<Live> {
 fn no_tmux() -> Result<(), crate::common::said::Said> {
     match crate::control::terminals::tmux_here() {
         Some(false) => Err(crate::common::said::Said::new(
-            crate::NO_TMUX,
+            crate::wire::NO_TMUX,
             copy_core::copy_text("beSessionNew.place.noTmux", &[]),
         )),
         _ => Ok(()),

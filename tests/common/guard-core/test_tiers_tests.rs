@@ -63,6 +63,9 @@ const SUPPORT: &[&str] = &[
     "tests/common/guard-core/rules/mod.rs", // 规则的入口：快照 · 取人群 · 两向相等 · 耗时
     "tests/backend/relay/relay_support.rs", // 中转宿主的判据夹具：本包与上层判据经 `test-support` 共用
     "tests/backend/cross/relay.rs",         // 只挂中转那几条上层判据，自己没有测试
+    "tests/backend/cross/wire.rs",          // 只挂帧面零件那几条上层判据，自己没有测试
+    "tests/backend/wire/wire_support.rs", // 帧面零件的判据夹具（全部主题 · 二前端读的字段表 · 带一行字的记录）：本包与上层判据经 `test-support` 共用
+    "tests/backend/wire/typed_support.rs", // typed 命令的形状与指纹：本包登记不带形状，主 crate 测试档补上、读形状的判据经 `test-support` 读
     "tests/backend/agents/mainline_support.rs", // 主线外清单的对照：适配层的包与上层判据经 `test-support` 共用
     "tests/backend/agents/fake/rewind_io.rs", // 假 agent 的终端接上控制面回退那一串的口子（挂在 control 底下）
     "tests/backend/observe/runs_testing.rs",  // 往运行簿里直接记一个在跑的子运行

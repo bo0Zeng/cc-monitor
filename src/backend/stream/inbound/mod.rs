@@ -48,6 +48,7 @@ pub(crate) mod files_face;
 pub(crate) mod files_session_face;
 pub(crate) mod files_write_face;
 mod sniff;
+mod typed; // 各族登记一行 typed 命令经它：测试档在这里给那一行补形状
 pub mod views;
 
 // 协议零件住 `wire`（这一层与各族命令表、各门照短名用它们；不转出）。
@@ -111,6 +112,78 @@ pub fn command_names() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = REGISTRY.iter().map(|s| s.name).collect();
     names.sort_unstable();
     names
+}
+
+// ── 第四面：本机到底缺什么（hello 的 `unavailable` 那一格） ───────────
+// 它们不是「分派」，是 hello 帧的**内容**，同 `commands` 从 [`REGISTRY`] 派生；两个码住 `wire`（[`NO_TMUX`] · [`NO_UNIX_MODE`]）。
+use crate::wire::{NO_TMUX, NO_UNIX_MODE};
+
+/// unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
+/// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 [`REGISTRY`] 的 `codes` 现推。
+pub(crate) fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<crate::wire::Unavailable> {
+    if unix_mode_bits {
+        return Vec::new();
+    }
+    REGISTRY
+        .iter()
+        .filter(|s| s.codes.contains(&NO_UNIX_MODE))
+        .map(|s| crate::wire::Unavailable {
+            command: s.name.to_string(),
+            code: NO_UNIX_MODE.to_string(),
+        })
+        .collect()
+}
+
+/// 这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
+///
+/// # 这里为什么没有一张手写的「命令 → 它依赖什么」表
+///
+/// 那件事 [`REGISTRY`] 已经说过了：**谁会回 `no_tmux`，谁就依赖 tmux**。
+/// 再手写一张 = 第二份真相，而两份真相里迟早有一份是旧的（本工作区最贵的那一类病）。
+/// ⇒ 直接从 `codes` 派生。副作用正是要的：以后**新加**一条会回 `no_tmux` 的命令，
+/// 它自动进这张表，没有人需要记得来改这里。
+///
+/// # `tmux` 的三态各自落在哪（🔴 这一格是本函数唯一容易假绿的地方）
+///
+/// · `Some(false)`（**确证没有**）⇒ 列进表；
+/// · `Some(true)` ⇒ 不列；
+/// · `None`（**判不出来**）⇒ **不列**。
+///
+/// 「不知道」有两条压法，两条都坏、但坏得不一样：压成**做不到** ⇒ 客户端灰掉按钮 ⇒
+/// **能用的功能从界面上消失，而这种消失没有任何回音**（用户只会以为它不支持）；
+/// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
+/// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
+/// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
+pub(crate) fn unavailable_from(tmux: Option<bool>) -> Vec<crate::wire::Unavailable> {
+    let mut out = Vec::new();
+    if tmux == Some(false) {
+        for spec in REGISTRY {
+            if spec.codes.contains(&NO_TMUX) {
+                out.push(crate::wire::Unavailable {
+                    command: spec.name.to_string(),
+                    code: NO_TMUX.to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// 生产入口 —— hello 那一帧填的就是它（真填：`stream/entry.rs::build_hello`）。
+/// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
+///
+/// 🔴 **这一趟探测的结果会被用很久。**
+/// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
+/// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
+/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
+/// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
+pub(crate) fn unavailable_here() -> Vec<crate::wire::Unavailable> {
+    let mut out = unavailable_from(crate::platform::tmux::tmux_present(
+        crate::platform::tmux::TMUX_PLATFORM,
+        std::env::var_os("PATH").as_deref(),
+    ));
+    out.extend(unix_mode_unavailable(cfg!(unix)));
+    out
 }
 
 /// 这条连接的「在看哪几个会话」那一口（`stream-watch`）：交给这条连接自己那份 watcher（`main` 接线），回刚进名单的那几个从第几行起上流。
@@ -713,6 +786,9 @@ pub(crate) fn hands(own: Option<&crate::platform::Own>) -> spec::Hands<'_> {
 
 /// 命令表按族分住 `registry/` 下各一份（每份一张 `SPECS`），在编译期拼回一张 [`REGISTRY`]。
 pub(crate) mod registry {
+    // 各族登记一行 typed 命令经它（测试档补形状那一层）。
+    use super::typed;
+
     pub(super) mod accounts;
     pub(super) mod aliases;
     pub(super) mod assets;

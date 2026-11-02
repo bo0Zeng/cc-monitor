@@ -5,11 +5,11 @@ use crate::wire::typed::{self, Command, Cx, Handle, NoArgs};
 
 typed::codes! {
     /// `ping` · `cancel` 没有别的码。
-    pub(crate) enum NoErr {}
+    pub enum NoErr {}
 }
 
 /// `ping`：问活，零载荷、零出参。
-pub(crate) struct Ping;
+pub struct Ping;
 
 impl Command for Ping {
     const NAME: &'static str = "ping";
@@ -31,16 +31,16 @@ impl Handle for Ping {
 
 /// `cancel` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CancelReq {
+pub struct CancelReq {
     /// 要撤的那条命令的 `id`；撤不存在的也回 `ok`。
-    pub(crate) target: String,
+    pub target: String,
 }
 
 /// `cancel`：撤掉一条在跑的命令（结果是 `cancelled` 帧，应答只回 ok；撤不动的回 `not_cancellable`）。
-pub(crate) struct Cancel;
+pub struct Cancel;
 
 impl Command for Cancel {
     const NAME: &'static str = "cancel";
@@ -51,11 +51,11 @@ impl Command for Cancel {
 
 typed::codes! {
     /// `stream-watch` 没有别的码。
-    pub(crate) enum StreamWatchErr {}
+    pub enum StreamWatchErr {}
 }
 
 /// `stream-watch`：这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。入参 [`crate::wire::WatchAsk`] · 回包 [`crate::wire::WatchReply`]。
-pub(crate) struct StreamWatch;
+pub struct StreamWatch;
 
 impl Command for StreamWatch {
     const NAME: &'static str = "stream-watch";
