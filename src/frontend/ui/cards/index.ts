@@ -15,9 +15,8 @@
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
 import { makeYieldToMain } from "../yield-to-main";
-import { enhancePending, forgetEnhance, renderMarkdown, renderPlainText } from "../render";
-import { mountDoc, type HlPull } from "../md-view";
-import { budgetWithin, callTyped } from "../ipc/chan-caller";
+import { enhancePending, fetchDoc, forgetEnhance, hlPullOf, mountWhole, renderPlainText } from "../render";
+import { mountDoc, type DocView, type HlPull } from "../md-view";
 import { docText } from "../height-estimate";
 import type { Doc } from "../generated/Doc";
 import { buildSlashCommandCard } from "./slash";
@@ -135,7 +134,7 @@ function childRunsOf(rec: LineRecord): ChildRuns {
 import type { LineRecord } from "../generated/LineRecord";
 import type { Block } from "../generated/Block";
 import { copyText } from "../copy-table";
-import { noteProse } from "../plan-refs";
+import { noteDoc, noteProse } from "../plan-refs";
 
 // 本文件内部也用这些名字，所以 import + re-export 都要有：只写 `export type { … } from` 不会把名字带进本地作用域。
 export type { Block, LineRecord };
@@ -266,11 +265,14 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
             element: buildCompactSummaryCard(said.text, speaker.charsText, time),
           };
         case "agentMessage":
-          return { kind: "card", element: buildAgentBar(speaker, time, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined) };
+          return {
+            kind: "card",
+            element: buildAgentBar(speaker, time, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined, hlPullOf(ctx.origin)),
+          };
         case "peerSession":
-          return { kind: "card", element: buildPeerBar(speaker, time) };
+          return { kind: "card", element: buildPeerBar(speaker, time, hlPullOf(ctx.origin)) };
         case "coordinator":
-          return { kind: "card", element: buildCoordinatorBar(speaker, time) };
+          return { kind: "card", element: buildCoordinatorBar(speaker, time, hlPullOf(ctx.origin)) };
         case "taskNotification":
           return { kind: "card", element: buildNoticeLine(speaker) };
         case "interrupt":
@@ -471,7 +473,7 @@ function renderBlock(
 ): HTMLElement | null {
   switch (block.type) {
     case "prose":
-      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy, hlFrom(ctx.origin));
+      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy, hlPullOf(ctx.origin));
     case "text":
       return buildPlainTextBlock(block.text);
     case "thinking": {
@@ -481,13 +483,7 @@ function renderBlock(
       return makeCollapsible(
         "block-thinking",
         buildThinkingLine(copyText("cards.thinking.title"), firstLineOf(block.text.trim(), 160).line),
-        () => {
-          const body = document.createElement("div");
-          body.className = "block-body block-body-md";
-          // 展开那一刻才建（点开 ＝ 就在眼前）⇒ 一律当场高亮：批里建的卡早被 `enhanceCard` 标过，这时才长出来的占位没人再补。
-          body.innerHTML = renderMarkdown(block.text);
-          return body;
-        },
+        () => buildThinkingBody(block.text, ctx.origin),
       );
     }
     case "tool_use": {
@@ -508,7 +504,7 @@ function renderBlock(
       // 折叠会误以为 LLM 还在输出）。内容是核心那一格（`steps[id].ask`）；没有 throw → 回退通用折叠卡。
       if (card === "interactive") {
         try {
-          const el = buildInteractiveCard(step?.ask, { lazy: ctx.lazy });
+          const el = buildInteractiveCard(step?.ask, { lazy: ctx.lazy, pull: hlPullOf(ctx.origin) });
           ctx.toolUseElements.set(block.id, el); // result 回填靶（同 buildToolUseCard）
           return el;
         } catch (e) {
@@ -714,7 +710,7 @@ function injectOrBuildToolResult(
   const sizeOrNothing = (): string => (block.bytes > 0 ? ` · ${size}` : "");
   const bodyInto = (el: HTMLElement): void => {
     if (text !== null) {
-      buildResultBody(el, text, size, toolName, mdByDefault);
+      buildResultBody(el, text, size, toolName, mdByDefault, ctx.origin);
       return;
     }
     const host = el.closest("details") ?? el;
@@ -728,7 +724,7 @@ function injectOrBuildToolResult(
         el,
         (rec) =>
           blocksOf(rec).find((b): b is ToolResultBlock => b.type === "tool_result" && b.for === block.for)?.content,
-        (content) => buildResultBody(el, renderResultContent(content), size, toolName, mdByDefault),
+        (content) => buildResultBody(el, renderResultContent(content), size, toolName, mdByDefault, ctx.origin),
       );
     };
     host.addEventListener("toggle", open);
@@ -903,6 +899,7 @@ function buildResultBody(
   size: string,
   toolName: string,
   mdByDefault: boolean,
+  origin: Origin,
 ): void {
   // 秤 6（表第 6 行）：本函数下面建的每个闭包（`renderMode` /
   // 两个 click 监听 / `onToggle`）都捕获 `text`，而它们经 DOM 监听器被卡片长期持有。
@@ -948,7 +945,7 @@ function buildResultBody(
       if (!textBodyEl) textBodyEl = buildTextBody(text, size);
       bodyHost.appendChild(textBodyEl);
     } else {
-      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text, size);
+      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text, size, origin);
       bodyHost.appendChild(mdBodyEl);
     }
   };
@@ -981,13 +978,6 @@ function buildResultBody(
 /** 大 output 阈值（字节估算）—— 超过先只渲染前 N 行 */
 const LARGE_TEXT_BYTES = 200_000;
 
-/** 拉一段高亮的期限：算的是一段（≤ 两万字）的代码，过了就停在纯字。 */
-const HL_BUDGET_MS = 30_000;
-
-/** 问那台后端拉一段的高亮。 */
-function hlFrom(origin: Origin): HlPull {
-  return (codes) => callTyped(origin, "prose-hl", { codes: [...codes] }, budgetWithin(HL_BUDGET_MS));
-}
 
 /** 进了视口（或附近一屏）那一下；环境里没有 IntersectionObserver ⇒ 当场。 */
 function onceVisible(el: HTMLElement): Promise<void> {
@@ -1011,32 +1001,52 @@ function onceVisible(el: HTMLElement): Promise<void> {
  * 急路（实时）当场排公式；惰路（批量重放）留占位，卡进视口由 `enhanceCard` 补。点开补的那几段就在眼前，当场排。
  * 代码高亮按段问那台后端（`prose-hl`）：急路建好就问；惰路等这块进了视口才问（批量建几百张卡不一齐发）。
  */
-function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined, pull: HlPull): HTMLElement {
+function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined, pull: HlPull, askRefs = true): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
-  const view = mountDoc(doc, lazy ? (codes) => onceVisible(div).then(() => pull(codes)) : pull);
-  div.append(view.root);
-  if (!lazy) enhancePending(view.root);
-  if (view.built() >= view.segCount) return div;
-  const more = document.createElement("button");
-  more.type = "button";
-  more.className = "block-body-show-full";
-  more.textContent = copyText("cards.text.showAll", { size });
-  more.addEventListener(
-    "click",
-    () => {
-      more.disabled = true;
-      const step = makeYieldToMain(() => {
-        view.buildNext();
-        enhancePending(view.root);
-        if (view.built() < view.segCount) step();
-        else more.remove();
-      });
-      step();
-    },
-    { once: true },
-  );
-  div.append(more);
+  const lazyPull: HlPull = lazy ? (codes) => onceVisible(div).then(() => pull(codes)) : pull;
+  /** 每排出一段之后挂上的（计划格引用的标题，`plan-refs.ts` 给）。 */
+  let decorate: (root: HTMLElement) => void = () => undefined;
+  /** 照 `d` 排进这一块，至少排到第 `upTo` 段（换上标好引用的树时照原来已排的段数重排）。 */
+  const show = (d: Doc, upTo: number, fresh: boolean): DocView => {
+    const view = mountDoc(d, lazyPull);
+    while (view.built() < upTo && view.buildNext());
+    div.replaceChildren(view.root);
+    if (!lazy || !fresh) enhancePending(view.root);
+    decorate(view.root);
+    if (view.built() < view.segCount) div.append(moreOf(view));
+    return view;
+  };
+  const moreOf = (view: DocView): HTMLElement => {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "block-body-show-full";
+    more.textContent = copyText("cards.text.showAll", { size });
+    more.addEventListener(
+      "click",
+      () => {
+        more.disabled = true;
+        const step = makeYieldToMain(() => {
+          view.buildNext();
+          enhancePending(view.root);
+          decorate(view.root);
+          if (view.built() < view.segCount) step();
+          else more.remove();
+        });
+        step();
+      },
+      { once: true },
+    );
+    return more;
+  };
+  let view = show(doc, 1, true);
+  // 回复里提到的计划格：后端认出来会回一棵标好引用节点的树，照它重排这一块（`plan-refs.ts`）。工具结果不问。
+  if (askRefs) {
+    noteDoc(div, doc, (marked, dress) => {
+      decorate = dress;
+      view = show(marked, view.built(), false);
+    });
+  }
   return div;
 }
 
@@ -1078,79 +1088,38 @@ function buildTextBody(text: string, size: string): HTMLElement {
   return pre;
 }
 
-function buildMarkdownBody(text: string, size: string): HTMLElement {
-  const div = document.createElement("div");
-  div.className = "block-body block-body-result block-body-md";
-  // Read / Grep 类工具输出带行号前缀（`<n>\t...` 或 `<n>:...`），
-  // 行首不是 `#` 等 markdown token → marked 不识别。
-  // MD 模式先 strip 这些前缀让结构暴露出来。
-  const cleaned = stripLineNumberPrefix(text);
-  // 大文本 markdown 渲染昂贵——同样做截断 + 显示完整按钮
-  if (cleaned.length > LARGE_TEXT_BYTES) {
-    const head = cleaned
-      .split("\n")
-      .slice(0, LARGE_TEXT_HEAD_LINES)
-      .join("\n");
-    div.innerHTML = renderMarkdown(head);
-    const expand = document.createElement("button");
-    expand.type = "button";
-    expand.className = "block-body-show-full";
-    expand.textContent = copyText("cards.text.showAll", { size });
-    expand.addEventListener(
-      "click",
-      () => {
-        div.innerHTML = renderMarkdown(cleaned);
-      },
-      { once: true },
-    );
-    const wrap = document.createElement("div");
-    wrap.className = "block-body-truncated-wrap";
-    wrap.append(div, expand);
-    return wrap;
-  }
-  div.innerHTML = renderMarkdown(cleaned);
-  return div;
+/**
+ * 思考展开那一刻才问后端解析（`md-doc`），回来照树排、公式当场排：批里建的卡早被 `enhanceCard` 标过，这时才长出来的占位没人再补。
+ * 没问成 ⇒ 照原文的字。
+ */
+function buildThinkingBody(text: string, origin: Origin): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "block-body block-body-md";
+  fetchDoc(origin, text, "prose").then(
+    (doc) => body.replaceChildren(mountWhole(doc, false, hlPullOf(origin))),
+    (e: unknown) => {
+      console.warn("[md-doc] 没问成：", e);
+      body.textContent = text;
+    },
+  );
+  return body;
 }
 
 /**
- * 启发式 strip 行号前缀，给 Markdown 渲染用。
- *
- * 支持两种典型格式：
- * - **Read tool**：每行 `<digits>\t<content>` （cat -n 风格）
- * - **Grep tool**：每行 `<digits>:<content>` 或 `<path>:<digits>:<content>`
- *
- * 判断逻辑：如果**绝大多数非空行**（≥ 80%）符合 `^\s*\d+[:\t]` 模式，
- * 视为带行号前缀，整体 strip；否则原样返回。
- *
- * 这样的代价：极少数 markdown 文本本身就是 "1: 标题" 这种列表格式的会被误 strip，
- * 但这种情况渲染效果差异不大（仍然能看），可接受。
+ * 工具结果的 Markdown 模式：原文交后端解析（`md-doc {as: tool_result}`：Read / Grep 那种行号前缀后端先剥），回来的树照回复正文卡那样排
+ * （长的按 `segs` 分段、只排第 0 段，下面一颗「展开 {大小}」）。没问成 ⇒ 照原文的字。
  */
-function stripLineNumberPrefix(text: string): string {
-  const lines = text.split("\n");
-  let nonEmpty = 0;
-  let withPrefix = 0;
-  const PREFIX = /^\s*\d+[:\t]/;
-  // Grep "<path>:<n>:<content>" — path 含 `/` 或 `\` 或 `:`，先 strip path 段
-  const GREP_PATH = /^[^\s:]+[/\\][^\s:]*?:\d+:/;
-  for (const line of lines) {
-    if (line.trim() === "") continue;
-    nonEmpty += 1;
-    if (PREFIX.test(line) || GREP_PATH.test(line)) withPrefix += 1;
-  }
-  if (nonEmpty < 3) return text; // 太短不判断
-  if (withPrefix / nonEmpty < 0.8) return text;
-
-  return lines
-    .map((line) => {
-      if (line.trim() === "") return line;
-      // 优先 strip Grep 完整路径前缀（含或不含 path 段）
-      const m1 = line.match(/^[^\s:]+[/\\][^\s:]*?:\d+:(.*)$/);
-      if (m1) return m1[1] ?? "";
-      const m2 = line.match(/^\s*\d+[:\t](.*)$/);
-      if (m2) return m2[1] ?? "";
-      return line;
-    })
-    .join("\n");
+function buildMarkdownBody(text: string, size: string, origin: Origin): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "block-body block-body-result block-body-md";
+  fetchDoc(origin, text, "tool_result").then(
+    (doc) => div.replaceChildren(buildProseBlock(doc, size, false, hlPullOf(origin), false)),
+    (e: unknown) => {
+      console.warn("[md-doc] 没问成：", e);
+      div.textContent = text;
+    },
+  );
+  return div;
 }
 
 // 哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）；这里只记人手动切过的那一种。

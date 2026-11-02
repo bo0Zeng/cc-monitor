@@ -93,7 +93,8 @@ fn record_fields_decide_first() {
             from: Some("a9".into()),
             name: None,
             handback: true,
-            body: Some("甲乙丙".into())
+            body: Some("甲乙丙".into()),
+            doc: None,
         })
     );
     assert_eq!(
@@ -106,7 +107,8 @@ fn record_fields_decide_first() {
             from: Some("a9".into()),
             name: Some("乙路".into()),
             handback: false,
-            body: Some("甲".into())
+            body: Some("甲".into()),
+            doc: None,
         }
     );
     // 后台任务通知：框里的几格抽出来；没有框只有字段的那一形也认。
@@ -227,7 +229,8 @@ fn the_sub_agent_side() {
         ))
         .speaker,
         Speaker::Coordinator {
-            body: Some("甲乙".into())
+            body: Some("甲乙".into()),
+            doc: None,
         }
     );
     assert_eq!(
@@ -237,13 +240,15 @@ fn the_sub_agent_side() {
         ))
         .speaker,
         Speaker::Coordinator {
-            body: Some("丙".into())
+            body: Some("丙".into()),
+            doc: None,
         }
     );
     assert_eq!(
         said(&rec(co, sc(json!({"isMeta": true})))).speaker,
         Speaker::Coordinator {
-            body: Some("甲乙".into())
+            body: Some("甲乙".into()),
+            doc: None,
         }
     );
     // 子 agent 自己的后台任务通知：前面多四句固定话。
@@ -326,7 +331,8 @@ fn named_frames_without_record_fields() {
             from: Some("e5".into()),
             name: None,
             handback: false,
-            body: Some("甲".into())
+            body: Some("甲".into()),
+            doc: None,
         }
     );
     assert_eq!(
@@ -336,7 +342,8 @@ fn named_frames_without_record_fields() {
         .speaker,
         Speaker::PeerSession {
             from: Some("会话乙".into()),
-            body: Some("甲".into())
+            body: Some("甲".into()),
+            doc: None,
         }
     );
     // 斜杠命令：三个标签顺序随版本漂，转义要解。
@@ -581,7 +588,10 @@ fn speech_is_what_the_human_said() {
         Speaker::compact("x"),
         Speaker::AgentTask,
         Speaker::System { body: None },
-        Speaker::Coordinator { body: None },
+        Speaker::Coordinator {
+            body: None,
+            doc: None,
+        },
         Speaker::Interrupt,
         Speaker::ToolResult,
         Speaker::CommandOutput,
@@ -700,12 +710,17 @@ fn the_index_kind_is_the_wire_kind() {
             name: None,
             handback: false,
             body: None,
+            doc: None,
         },
         Speaker::PeerSession {
             from: None,
             body: None,
+            doc: None,
         },
-        Speaker::Coordinator { body: None },
+        Speaker::Coordinator {
+            body: None,
+            doc: None,
+        },
         Speaker::AgentTask,
         Speaker::System { body: None },
         Speaker::compact("x"),

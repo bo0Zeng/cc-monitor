@@ -409,7 +409,7 @@ fn plain(k: &[Inl]) -> String {
             Inl::N(InlNode::M { tex }) => out.push_str(tex),
             Inl::N(InlNode::Img { alt, .. }) => out.push_str(alt),
             Inl::N(InlNode::Br) => out.push(' '),
-            Inl::N(InlNode::Fn { .. }) => {}
+            Inl::N(InlNode::Fn { .. } | InlNode::Ref { .. }) => {}
         }
     }
     out

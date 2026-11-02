@@ -469,8 +469,11 @@ pub enum LineDiffKind {
 pub enum StepAsk {
     /// 在问人：一道或几道题，每道题几个选项。
     Questions { questions: Vec<AskQuestion> },
-    /// 交一份计划等人批（正文是 Markdown 原文）＋ 卡片标题那三态写好的字。
-    Plan { text: String, title: PlanTitle },
+    /// 交一份计划等人批：正文解析好的块树（后端 `md_core::parse` 解一次，两端照树排版；原文不上线）＋ 卡片标题那三态写好的字。
+    Plan {
+        doc: crate::md::Doc,
+        title: PlanTitle,
+    },
 }
 
 /// 计划卡的标题（[`StepAsk::Plan`]）：三态都由核心写好、状态格打头（同钉条第一行「等批准 · 计划」）；
@@ -683,9 +686,14 @@ pub enum Speaker {
         name: Option<String>,
         handback: bool,
         /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
+        #[serde(default, skip_serializing)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         body: Option<String>,
+        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        doc: Option<crate::md::Doc>,
     },
     /// 另一个会话（另一个实例）发来的话。
     PeerSession {
@@ -693,16 +701,26 @@ pub enum Speaker {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         from: Option<String>,
         /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
+        #[serde(default, skip_serializing)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         body: Option<String>,
+        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        doc: Option<crate::md::Doc>,
     },
     /// （子 agent 那一侧）主会话后来发给它的话。
     Coordinator {
         /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
+        #[serde(default, skip_serializing)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         body: Option<String>,
+        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        doc: Option<crate::md::Doc>,
     },
     /// （子 agent 那一侧）主会话派给它的活。
     AgentTask,

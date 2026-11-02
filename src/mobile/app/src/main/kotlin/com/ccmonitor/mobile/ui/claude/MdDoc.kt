@@ -308,17 +308,31 @@ private class Ctx(
             is InlNode.B -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { n.k.forEach { inline(it) } }
             is InlNode.I -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { n.k.forEach { inline(it) } }
             is InlNode.Del -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { n.k.forEach { inline(it) } }
+            // 树里只有放行的 scheme（http · https · mailto）才成链接；点了交系统去开。
+            is InlNode.A -> withLink(LinkAnnotation.Url(n.href, style.link)) { n.k.forEach { inline(it) } }
+            else -> leaf(n)
+        }
+    }
+
+    /** 不套别的行内的那几种：行内代码 · 公式 · 图 · 换行 · 脚注号 · 计划格引用。 */
+    private fun AnnotatedString.Builder.leaf(n: InlNode) {
+        when (n) {
             is InlNode.C -> withStyle(style.code) { append(n.x) }
             is InlNode.M -> {
                 pushStringAnnotation(MATH_TAG, n.tex)
                 appendInlineContent(MATH_TAG + n.tex, n.tex)
                 pop()
             }
-            // 树里只有放行的 scheme（http · https · mailto）才成链接；点了交系统去开。
-            is InlNode.A -> withLink(LinkAnnotation.Url(n.href, style.link)) { n.k.forEach { inline(it) } }
             is InlNode.Img -> withStyle(style.faint) { append(n.alt) }
             InlNode.Br -> append('\n')
             is InlNode.Fn -> withStyle(style.fnRef) { append(n.n.toString()) }
+            // 计划格引用：编号原样，后端写好的标题跟在后面、淡色（手机不接点）。
+            is InlNode.Ref -> {
+                append(n.x)
+                if (n.label.isNotEmpty()) withStyle(style.faint) { append(" ${n.label}") }
+            }
+            // 套行内的那几种在 `node` 里排完了，到不了这里。
+            is InlNode.B, is InlNode.I, is InlNode.Del, is InlNode.A -> Unit
         }
     }
 }

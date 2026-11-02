@@ -4777,6 +4777,38 @@ type Words = string;
 
 码：`bad_args` · `not_in_session`
 
+#### `md-doc`
+
+一段 Markdown 原文解析成块树，两端照树排版（`as`：`prose` 照原文、`refs` 那几段解成计划格引用 · `tool_result` 先剥 Read / Grep 的行号前缀）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --md-doc`
+
+入参 `MdDocReq` · 回包 `Doc`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type MdAlign = "none" | "left" | "center" | "right";
+type MdAs = "prose" | "tool_result";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdDocReq = { text: string, as: MdAs, 
+/**
+ * 原文里提到的格（pb 给的 UTF-16 起止，计划格的正文带着）：那几段解成引用节点，标题留空、由界面照编号写。只认 `prose`。
+ */
+refs: Array<PlanRef>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
+type PlanRef = { start: number, end: number, ids: Array<string>, };
+```
+
+码：`bad_args`
+
 #### `history-list`
 
 历史页的平铺会话清单。
@@ -4908,7 +4940,15 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 /**
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin: Machine, };
+origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+ */
+deleteAsk: Words, };
 type HistorySort = "activity" | "created";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -5151,7 +5191,15 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 /**
  * 问的是哪一台（与入参 `origin` 同一个机器名；这台逐字 `"<local>"`）。
  */
-origin: Machine, };
+origin: Machine, 
+/**
+ * 这一行的项目目录在问的这一端打得开（`face_core::history_asks::reveal_of` 判）。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文（`face_core::history_asks::delete_ask` 写）。
+ */
+deleteAsk: Words, };
 type HistoryRowId = { 
 /**
  * 哪台（这台逐字 `"<local>"`）。
@@ -5654,6 +5702,15 @@ type MergedRow = {
  */
 origin: Machine, 
 /**
+ * 这一行的项目目录在问的这一端打得开：[`merge`] 只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
+ * 手机核心合的那一份不读这一格，不补。
+ */
+reveal: boolean, 
+/**
+ * 删除确认的正文：同上，[`merge`] 只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
+ */
+deleteAsk: Words, 
+/**
  * 行尾那一格。
  */
 atText: string, 
@@ -5957,7 +6014,7 @@ tail?: boolean | null,
  */
 before?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6125,17 +6182,17 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "peerSession", from?: string, 
+doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "coordinator", 
+doc?: Doc, } | { "kind": "coordinator", 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
@@ -6144,7 +6201,7 @@ body?: string, } | { "kind": "compactSummary",
  * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
-type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", doc: Doc, title: PlanTitle, };
 type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
@@ -6423,7 +6480,7 @@ from?: number | null,
  */
 until?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6607,17 +6664,17 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "peerSession", from?: string, 
+doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "coordinator", 
+doc?: Doc, } | { "kind": "coordinator", 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
@@ -6626,7 +6683,7 @@ body?: string, } | { "kind": "compactSummary",
  * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
-type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", doc: Doc, title: PlanTitle, };
 type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
@@ -6921,7 +6978,7 @@ offset?: number | null,
  */
 until?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -7097,17 +7154,17 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "peerSession", from?: string, 
+doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "coordinator", 
+doc?: Doc, } | { "kind": "coordinator", 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
@@ -7116,7 +7173,7 @@ body?: string, } | { "kind": "compactSummary",
  * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
-type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", doc: Doc, title: PlanTitle, };
 type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
@@ -7364,7 +7421,7 @@ until?: number | null,
  */
 seq?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -7548,17 +7605,17 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "peerSession", from?: string, 
+doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "coordinator", 
+doc?: Doc, } | { "kind": "coordinator", 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
@@ -7567,7 +7624,7 @@ body?: string, } | { "kind": "compactSummary",
  * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
-type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", doc: Doc, title: PlanTitle, };
 type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
@@ -9434,7 +9491,7 @@ n: number,
  */
 held?: Held, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -9610,17 +9667,17 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "peerSession", from?: string, 
+doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "coordinator", 
+doc?: Doc, } | { "kind": "coordinator", 
 /**
- * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
  * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
  */
@@ -9629,7 +9686,7 @@ body?: string, } | { "kind": "compactSummary",
  * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
-type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", doc: Doc, title: PlanTitle, };
 type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
@@ -16908,9 +16965,21 @@ dir: string, };
 入参 `PlanRefsReq` · 回包 `PlanMsgRefs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
+type Doc = { blocks: Array<MdBlock>, 
+/**
+ * 长正文分段：第 i 段（i ≥ 1）从 `blocks[segs[i-1]]` 起；只有一段时为空。
+ */
+segs: Array<number>, };
+type Inl = string | InlNode;
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type MdAlign = "none" | "left" | "center" | "right";
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
+type MdNote = { n: number, blocks: Array<MdBlock>, };
 type PlanMsgRef = { start: number, end: number, ids: Array<string>, label: string, };
-type PlanMsgRefs = { workspace: string | null, slice: string | null, refs: Array<Array<PlanMsgRef>>, };
-type PlanRefsReq = { sid: string, texts: Array<string>, };
+type PlanMsgRefs = { workspace: string | null, slice: string | null, refs: Array<Array<PlanMsgRef>>, docs: Array<Doc | null>, };
+type PlanRefsReq = { sid: string, texts: Array<string>, docs: Array<Doc>, };
 ```
 
 码：`bad_args`
@@ -17287,6 +17356,7 @@ alias?: string | null, };
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
+| `--md-doc` | ＝ 帧命令 `md-doc`：一段 Markdown 原文解析成块树，两端照树排版（`as`：`prose` 照原文、`refs` 那几段解成计划格引用 · `tool_result` 先剥 Read / Grep 的行号前缀） |
 | `--monitor-board` | ＝ 帧命令 `monitor-board`：监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句） |
 | `--monitor-board-here` | ＝ 帧命令 `monitor-board-here`：监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答） |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |

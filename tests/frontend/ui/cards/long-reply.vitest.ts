@@ -13,6 +13,7 @@ import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecor
 import type { Doc } from "../../../../src/frontend/ui/generated/Doc";
 import type { MdBlock } from "../../../../src/frontend/ui/generated/MdBlock";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { __mathSettledForTests } from "../../../../src/frontend/ui/render";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { sizeText } from "../../../../src/frontend/ui/format";
 
@@ -89,8 +90,9 @@ describe("正文卡读树", () => {
     expect(body.querySelector("composer")).toBeNull();
   });
 
-  it("急路（实时）：公式当场排好，不留占位", () => {
+  it("急路（实时）：公式当场排好（KaTeX 头一回要载，等它落地），不留占位", async () => {
     const el = cardOf(reply(MIXED), false);
+    await __mathSettledForTests();
     expect(el.querySelectorAll("[data-math-pending]").length).toBe(0);
     expect(el.querySelector(".katex")).not.toBeNull();
   });

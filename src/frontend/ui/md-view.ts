@@ -8,6 +8,7 @@
  *   拉不到 ⇒ 照纯字。
  * - 公式只出占位 `data-math-pending`，进视口由 `render.ts::enhanceCard` 排（KaTeX 只住那一处）。
  * - 长正文按 `segs` 分段：`mountDoc` 只建第 0 段，`buildNext` 一段段往下接。
+ * - 计划格引用（`ref`）只排编号那几个字、带上 `data-ref-*`，怎么点由宿主接（[`refSlots`]）。
  */
 import type { Doc } from "./generated/Doc";
 import type { HlCode } from "./generated/HlCode";
@@ -317,5 +318,28 @@ function inline(k: Inl): Node {
       return el("br");
     case "fn":
       return el("sup", s.mdFnRef, String(k.n));
+    case "ref": {
+      // 计划格引用：编号原样是字；怎么点、标题怎么摆是宿主的事（回复正文跟一枚淡色标题 · 计划页换成格链接），宿主照这几个属性认。
+      const r = el("span", "", k.x);
+      r.dataset.refIds = k.ids.join(" ");
+      r.dataset.refLabel = k.label;
+      return r;
+    }
   }
+}
+
+/** 树里排出来的计划格引用（[`inline`] 的 `ref` 那一种）：编号的那几个字 · 那几格 · 后端写好的标题（空 ⇒ 宿主照编号写）。 */
+export interface RefSlot {
+  readonly el: HTMLElement;
+  readonly ids: readonly string[];
+  readonly label: string;
+}
+
+/** `root` 里排出来的计划格引用，照先后。 */
+export function refSlots(root: ParentNode): RefSlot[] {
+  return [...root.querySelectorAll<HTMLElement>("[data-ref-ids]")].map((e) => ({
+    el: e,
+    ids: (e.dataset.refIds ?? "").split(" ").filter((x) => x !== ""),
+    label: e.dataset.refLabel ?? "",
+  }));
 }

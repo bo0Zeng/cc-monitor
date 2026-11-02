@@ -1,6 +1,8 @@
 /**
- * 会话消息里的编号带标题：界面只排后端给的（`plan-refs` 的 `{start, end, ids, label}`），不认编号、不拼标签。
- * 替身回两处 ⇒ 编号原样、各跟一个淡色标题；回空 ⇒ 正文逐字原样；点标题 ⇒ 开计划页那一格；同一帧几块 ⇒ 只问一次。
+ * 会话消息里的编号带标题：界面只排后端给的，不认编号、不拼标签。
+ * - 回复正文：送后端交过的树，回来的是标好引用节点的树（`ref`：编号原样 ＋ 标题）⇒ 照它重排那一块，编号后面跟一枚淡色标题；
+ * - 人说的话：送原文，回来的是几处 `{start, end, ids, label}` ⇒ 照原文排，编号后面跟标题。
+ * 回空 ⇒ 正文逐字原样；点标题 ⇒ 开计划页那一格；同一帧几块 ⇒ 只问一次。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -10,31 +12,54 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undef
 
 import { emit } from "@tauri-apps/api/event";
 import { fetchMsgRefs } from "../../../src/frontend/ui/plan-reads";
-import { askRefs, noteProse, __refsSettledForTests } from "../../../src/frontend/ui/plan-refs";
-import { renderMarkdown } from "../../../src/frontend/ui/render";
+import { askRefs, __refsSettledForTests } from "../../../src/frontend/ui/plan-refs";
 import { PLAN_OPEN_EVENT } from "../../../src/frontend/ui/window-events";
+import type { Doc } from "../../../src/frontend/ui/generated/Doc";
+import type { Inl } from "../../../src/frontend/ui/generated/Inl";
 import type { PlanMsgRefs } from "../../../src/frontend/ui/generated/PlanMsgRefs";
 import { renderMessage, type LineRecord, type RenderContext } from "../../../src/frontend/ui/cards";
 
 const fetchMock = fetchMsgRefs as unknown as ReturnType<typeof vi.fn>;
 const emitMock = emit as unknown as ReturnType<typeof vi.fn>;
 
-/** 一张卡：里面几块回复正文（像 `buildProseBlock` 那样先照原文渲好，再记下原文）。 */
-function card(...texts: string[]): HTMLElement {
-  const c = document.createElement("div");
-  for (const t of texts) {
-    const b = document.createElement("div");
-    b.className = "block-text";
-    b.innerHTML = renderMarkdown(t);
-    noteProse(b, t);
-    c.appendChild(b);
-  }
-  return c;
+const ctx = (): RenderContext => ({
+  parentPath: "/p/s.jsonl",
+  origin: "devbox",
+  toolUseNames: new Map(),
+  toolUseElements: new Map(),
+  pendingToolResults: new Map(),
+});
+
+/** 一段的树。 */
+const para = (...k: Inl[]): Doc => ({ blocks: [{ t: "p", k }], segs: [] });
+/** 引用节点（后端插好的那一种）。 */
+const ref = (x: string, label: string, ids: string[] = [x]): Inl => ({ t: "ref", x, ids, label });
+
+/** 一张回复卡：几块回复正文（像后端那样交树）。 */
+function card(...docs: Doc[]): HTMLElement {
+  const rec = {
+    agent: "claude",
+    t: "reply",
+    id: "a",
+    at: "2026-01-01T00:00:00.000Z",
+    blocks: docs.map((doc) => ({ type: "prose", doc, bytes: 1 })),
+    autoReply: false,
+    draw: "card",
+    human: false,
+  };
+  const r = renderMessage(rec as never as LineRecord, ctx());
+  if (r.kind !== "card") throw new Error(r.kind);
+  return r.element;
 }
 
-/** 看得见的字（markdown 段落之间的换行不算）。 */
-function words(el: HTMLElement): string {
+/** 看得见的字（段落之间的换行不算）。 */
+function words(el: Element): string {
   return (el.textContent ?? "").replace(/\n/g, "");
+}
+
+/** 卡里各块回复正文看得见的字。 */
+function blockWords(c: Element): string[] {
+  return [...c.querySelectorAll(".block-text")].map(words);
 }
 
 /** UTF-16 下标（后端换好的那一种）：这一段在原文里第几次出现的起止。 */
@@ -49,65 +74,76 @@ beforeEach(() => {
   emitMock.mockClear();
 });
 
-describe("plan-refs 回来的处照排", () => {
-  it("两处 ⇒ 编号原样，各跟一个标题", async () => {
-    const text = "😀 先看 **A1-1**，再看 A1-2/1 的写法。";
-    const reply: PlanMsgRefs = {
-      workspace: "/w",
-      slice: "alpha",
-      refs: [
-        [
-          { ...at(text, "A1-1"), ids: ["A1-1"], label: "甲的读入" },
-          { ...at(text, "A1-2/1"), ids: ["A1-2", "A1-1"], label: "甲的写出、甲的读入" },
-        ],
-      ],
-    };
-    fetchMock.mockResolvedValueOnce(reply);
-    const c = card(text);
+describe("回复正文：后端回标好引用的树，照它重排", () => {
+  it("★ 两处 ⇒ 编号原样，各跟一个标题（粗体里的那一处照旧粗）", async () => {
+    const doc = para("😀 先看 ", { t: "b", k: ["A1-1"] }, "，再看 A1-2/1 的写法。");
+    const marked = para("😀 先看 ", { t: "b", k: [ref("A1-1", "甲的读入")] }, "，再看 ", ref("A1-2/1", "甲的写出、甲的读入", ["A1-2", "A1-1"]), " 的写法。");
+    fetchMock.mockResolvedValueOnce({ workspace: "/w", slice: "alpha", refs: [], docs: [marked] } satisfies PlanMsgRefs);
+    const c = card(doc);
+    expect(blockWords(c)).toEqual(["😀 先看 A1-1，再看 A1-2/1 的写法。"]);
     askRefs(c, "devbox", "sid-1");
     await __refsSettledForTests();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]).toEqual(["devbox", "sid-1", [text]]);
-    const tails = [...c.querySelectorAll<HTMLButtonElement>("button")];
+    expect(fetchMock.mock.calls[0]).toEqual(["devbox", "sid-1", [], [doc]]);
+    const tails = [...c.querySelectorAll<HTMLButtonElement>(".block-text button")];
     expect(tails.map((b) => b.textContent)).toEqual(["甲的读入", "甲的写出、甲的读入"]);
-    // 编号原样留在正文里、标题紧跟其后（粗体里的那一处照旧粗）。
-    expect(c.querySelector("strong")?.textContent).toBe("A1-1甲的读入");
-    expect(tails[1].previousSibling?.textContent?.endsWith("A1-2/1")).toBe(true);
-    expect(words(c)).toBe("😀 先看 A1-1甲的读入，再看 A1-2/1甲的写出、甲的读入 的写法。");
+    expect(c.querySelector(".block-text strong")?.textContent).toBe("A1-1甲的读入");
+    expect(tails[1].previousSibling?.textContent).toBe("A1-2/1");
+    expect(blockWords(c)).toEqual(["😀 先看 A1-1甲的读入，再看 A1-2/1甲的写出、甲的读入 的写法。"]);
   });
 
-  it("回空 ⇒ 正文逐字原样", async () => {
-    const text = "这里提到 A1 但图上没有，`A2` 在代码里。";
-    fetchMock.mockResolvedValueOnce({ workspace: null, slice: null, refs: [[]] } satisfies PlanMsgRefs);
-    const c = card(text);
-    const before = c.innerHTML;
-    askRefs(c, "devbox", "sid-1");
-    await __refsSettledForTests();
-    expect(c.innerHTML).toBe(before);
+  it("回空（认不出片 · 一处都没有）⇒ 正文逐字原样", async () => {
+    const doc = para("这里提到 A1 但图上没有，", { t: "c", x: "A2" }, " 在代码里。");
+    const replies: PlanMsgRefs[] = [
+      { workspace: null, slice: null, refs: [], docs: [null] },
+      { workspace: "/w", slice: "alpha", refs: [], docs: [null] },
+    ];
+    for (const reply of replies) {
+      fetchMock.mockResolvedValueOnce(reply);
+      const c = card(doc);
+      const before = c.innerHTML;
+      askRefs(c, "devbox", "sid-1");
+      await __refsSettledForTests();
+      expect(c.innerHTML).toBe(before);
+    }
   });
 
   it("点标题 ⇒ 开计划页、选中那一格（头一个编号）", async () => {
-    const text = "见 A1-2/1。";
     fetchMock.mockResolvedValueOnce({
       workspace: "/w",
       slice: "alpha",
-      refs: [[{ ...at(text, "A1-2/1"), ids: ["A1-2", "A1-1"], label: "甲的写出、甲的读入" }]],
+      refs: [],
+      docs: [para("见 ", ref("A1-2/1", "甲的写出、甲的读入", ["A1-2", "A1-1"]), "。")],
     } satisfies PlanMsgRefs);
-    const c = card(text);
+    const c = card(para("见 A1-2/1。"));
     askRefs(c, "devbox", "sid-1");
     await __refsSettledForTests();
-    c.querySelector("button")!.click();
+    c.querySelector<HTMLButtonElement>(".block-text button")!.click();
     expect(emitMock).toHaveBeenCalledWith(PLAN_OPEN_EVENT, { origin: "devbox", workspace: "/w", slice: "alpha", id: "A1-2" });
   });
 
+  it("长回复：后来点开的那几段里的引用也挂上标题", async () => {
+    const doc: Doc = { blocks: [0, 1, 2].map((i) => ({ t: "p" as const, k: [`第${i}段 A${i}`] })), segs: [1, 2] };
+    const marked: Doc = { blocks: [0, 1, 2].map((i) => ({ t: "p" as const, k: [`第${i}段 `, ref(`A${i}`, `标${i}`)] })), segs: [1, 2] };
+    fetchMock.mockResolvedValueOnce({ workspace: "/w", slice: "alpha", refs: [], docs: [marked] } satisfies PlanMsgRefs);
+    const c = card(doc);
+    askRefs(c, "devbox", "sid-1");
+    await __refsSettledForTests();
+    const tails = () => [...c.querySelectorAll(".block-text button:not(.block-body-show-full)")].map((b) => b.textContent);
+    expect(tails()).toEqual(["标0"]);
+    c.querySelector<HTMLButtonElement>(".block-body-show-full")!.click();
+    await vi.waitFor(() => expect(tails()).toEqual(["标0", "标1", "标2"]));
+  });
+
   it("同一帧几张卡 · 几块 ⇒ 只问一次，回来的各落各的那一块", async () => {
-    const a = "甲说 A1。";
-    const b = "乙说 A1-1。";
-    const cc = "丙什么都没说。";
+    const a = para("甲说 A1。");
+    const b = para("乙说 A1-1。");
+    const cc = para("丙什么都没说。");
     fetchMock.mockResolvedValueOnce({
       workspace: "/w",
       slice: "alpha",
-      refs: [[{ ...at(a, "A1"), ids: ["A1"], label: "甲功能" }], [{ ...at(b, "A1-1"), ids: ["A1-1"], label: "甲的读入" }], []],
+      refs: [],
+      docs: [para("甲说 ", ref("A1", "甲功能"), "。"), para("乙说 ", ref("A1-1", "甲的读入"), "。"), null],
     } satisfies PlanMsgRefs);
     const c1 = card(a, b);
     const c2 = card(cc);
@@ -115,12 +151,12 @@ describe("plan-refs 回来的处照排", () => {
     askRefs(c2, "devbox", "sid-1");
     await __refsSettledForTests();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][2]).toEqual([a, b, cc]);
-    expect(words(c1)).toBe("甲说 A1甲功能。乙说 A1-1甲的读入。");
-    expect(words(c2)).toBe(cc);
+    expect(fetchMock.mock.calls[0][3]).toEqual([a, b, cc]);
+    expect(blockWords(c1)).toEqual(["甲说 A1甲功能。", "乙说 A1-1甲的读入。"]);
+    expect(blockWords(c2)).toEqual(["丙什么都没说。"]);
   });
 
-  it("没记原文的块（思考 · 工具输出）不送；问没成 ⇒ 原样", async () => {
+  it("没记过的块（思考 · 工具输出）不送；问没成 ⇒ 原样", async () => {
     const c = document.createElement("div");
     c.innerHTML = "<div class='block-text'>A1</div>";
     askRefs(c, "devbox", "sid-1");
@@ -128,7 +164,7 @@ describe("plan-refs 回来的处照排", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     fetchMock.mockRejectedValueOnce(new Error("断了"));
-    const d = card("说 A1。");
+    const d = card(para("说 A1。"));
     const before = d.innerHTML;
     askRefs(d, "devbox", "sid-1");
     await __refsSettledForTests();
@@ -136,15 +172,8 @@ describe("plan-refs 回来的处照排", () => {
   });
 });
 
-// 人说的话（用户气泡）：同一个口子 —— 与回复正文同一批送，回来的照同一种排法；气泡照原文排（不过 markdown），折起的粘贴块不送。
+// 人说的话（用户气泡）：同一个口子 —— 与回复正文同一批送；气泡照原文排（不过 markdown），折起的粘贴块不送。
 describe("用户气泡里的编号", () => {
-  const ctx = (): RenderContext => ({
-    parentPath: "/p/s.jsonl",
-    origin: "devbox",
-    toolUseNames: new Map(),
-    toolUseElements: new Map(),
-    pendingToolResults: new Map(),
-  });
   const said = (text: string, pasted: object[] = []): HTMLElement => {
     const rec = { agent: "claude", t: "said", id: "u", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } };
     const r = renderMessage(rec as never as LineRecord, ctx());
@@ -159,11 +188,12 @@ describe("用户气泡里的编号", () => {
 
   it("气泡与回复同一批问一次；编号原样跟标题，星号照原文不变粗，点了开计划页", async () => {
     const text = "看 *A1-1* 再说\n第二行";
-    const reply = "回 A1。";
+    const reply = para("回 A1。");
     fetchMock.mockResolvedValueOnce({
       workspace: "/w",
       slice: "alpha",
-      refs: [[{ ...at(text, "A1-1"), ids: ["A1-1"], label: "甲的读入" }], [{ ...at(reply, "A1"), ids: ["A1"], label: "甲功能" }]],
+      refs: [[{ ...at(text, "A1-1"), ids: ["A1-1"], label: "甲的读入" }]],
+      docs: [para("回 ", ref("A1", "甲功能"), "。")],
     } satisfies PlanMsgRefs);
     const u = said(text);
     const a = card(reply);
@@ -171,14 +201,14 @@ describe("用户气泡里的编号", () => {
     askRefs(a, "devbox", "sid-1");
     await __refsSettledForTests();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][2]).toEqual([text, reply]);
+    expect(fetchMock.mock.calls[0].slice(2)).toEqual([[text], [reply]]);
     const body = u.querySelector(".card-body")!;
     expect(body.querySelector("em, strong")).toBeNull();
     expect(body.querySelectorAll("br").length).toBe(1);
     expect(body.textContent).toBe("看 *A1-1甲的读入* 再说第二行");
     body.querySelector("button")!.click();
     expect(emitMock).toHaveBeenCalledWith(PLAN_OPEN_EVENT, { origin: "devbox", workspace: "/w", slice: "alpha", id: "A1-1" });
-    expect(words(a)).toBe("回 A1甲功能。");
+    expect(blockWords(a)).toEqual(["回 A1甲功能。"]);
   });
 
   it("带粘贴块：露在外面的几段送，折起的那一块不送", async () => {
@@ -193,6 +223,7 @@ describe("用户气泡里的编号", () => {
         const i = t.search(/A[12]\b/);
         return i < 0 ? [] : [{ start: i, end: i + 2, ids: [t.slice(i, i + 2)], label: `标${t.slice(i, i + 2)}` }];
       }),
+      docs: [],
     }));
     askRefs(u, "devbox", "sid-1");
     await __refsSettledForTests();
