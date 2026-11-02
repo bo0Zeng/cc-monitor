@@ -50,7 +50,7 @@ fn a_v4_mapped_loopback_is_loopback_and_a_localhost_subdomain_is_not() {
         assert!(upstream_is_loopback(yes), "{yes:?}");
     }
     assert!(usable("http://[::ffff:127.0.0.1]:8080").is_ok());
-    for no in ["::ffff:10.0.0.1", "a.localhost"] {
+    for no in ["::ffff:192.0.2.1", "a.localhost"] {
         assert!(!upstream_is_loopback(no), "{no:?}");
     }
 }

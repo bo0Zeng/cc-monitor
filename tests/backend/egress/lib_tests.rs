@@ -267,7 +267,7 @@ fn staying_on_this_machine_is_the_loopback_fact_plus_localhost_names() {
         ("localhost", true, true),
         ("a.localhost", false, true),
         ("localhost.", false, true),
-        ("::ffff:10.0.0.1", false, false),
+        ("::ffff:192.0.2.1", false, false),
         ("localhost.evil", false, false),
     ] {
         assert_eq!(upstream_url_core::upstream_is_loopback(h), fact, "{h}");
