@@ -165,7 +165,21 @@ dependencies = [
  "backend-common",
  "backend-platform",
  "backend-wire",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "guard-core",
+ "relay-route-core",
+ "resident-client",
+ "russh",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
  "test-home",
+ "tokio",
+ "tracing",
+ "ts-rs",
 ]
 
 [[package]]
@@ -197,11 +211,23 @@ dependencies = [
 name = "backend-host"
 version = "0.0.0"
 dependencies = [
+ "acct-core",
  "backend-agents",
  "backend-common",
  "backend-platform",
  "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "own-chan",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
  "test-home",
+ "tokio",
+ "tracing",
+ "vt100",
 ]
 
 [[package]]
