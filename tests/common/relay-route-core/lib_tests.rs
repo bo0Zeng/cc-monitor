@@ -29,7 +29,7 @@ fn what_base_url_builds_the_inverse_accepts_and_parse_restores() {
     }
 }
 
-/// 注入的地址**不随会话变**：恰好两段，退役的第 3 段（先前装 sid / 启动器铸的 nonce）那一形逆一侧拒。
+/// 注入的地址**不随会话变**：恰好两段，带第 3 段（会话 id / 启动器铸的 nonce）的那一形逆一侧拒。
 /// 守的要求：「启动器不造会话 id、不往环境变量 / 中转地址里塞任何会话身份」。
 #[test]
 fn the_injected_address_carries_no_session_segment() {

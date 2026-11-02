@@ -256,7 +256,7 @@ pub struct SessionAdded {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub name: Option<String>,
-    /// Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺。
+    /// 可选字段（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub path: Option<String>,
@@ -296,7 +296,7 @@ pub struct SessionPrimed {
     pub lines: Option<u64>,
 }
 
-/// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，天然稀疏）。
+/// 会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，天然稀疏）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -340,7 +340,7 @@ pub struct Overflow {
     pub said: Words,
 }
 
-/// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
+/// **入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
 ///
 /// 失败时 `code` · `said` · `detail` · `data` 四格就是 [`crate::failed::Failed`] 那一形（[`Reply::refused`] 装 · [`Reply::failed`] 取），不发明第二种错误 JSON。成功时前三格都省略。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -363,7 +363,7 @@ pub struct Reply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub detail: Option<String>,
-    /// U6b-3：命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
+    /// 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub data: Option<Value>,
@@ -393,7 +393,7 @@ impl Reply {
     }
 }
 
-/// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号。
+/// 某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -1110,7 +1110,7 @@ pub enum SessionContainer {
 }
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
-///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
+///（用户定的：做不到的事先协商）。
 ///
 /// # 它为什么是一张**负向**表（这一格是本结构最贵的判断，不是口味）
 ///
