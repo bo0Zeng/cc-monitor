@@ -1309,8 +1309,8 @@ fn inexhaustive_wire_matches(prod: &str) -> Vec<String> {
 /// ★ `X1` —— 对 `CallError` / `Item` / `Reach` 的 `match` 必须穷尽，零 `_ =>`。
 ///
 /// 两包的 `wildcard_enum_match_arm = "deny"` 挡住了大半：通配臂盖住两个以上变体就编不过。
-/// 它挡不住的那一形是**通配臂只盖住剩下的一个变体**（那归 `match_wildcard_for_single_variants`，两包没开）——
-/// 本条只为这一形留着。什么时候删：两包 `Cargo.toml` 开了 `match_wildcard_for_single_variants` 那天。
+/// 它挡不住的那一形是**通配臂只盖住剩下的一个变体**（那归 `clippy::match_wildcard_for_single_variants`，两包没开）——
+/// 本条只为这一形留着。什么时候删：两包 `Cargo.toml` 开了 `clippy::match_wildcard_for_single_variants` 那天。
 ///
 /// **买不到**：① 类型对不对（本条按**名字**认，不做类型检查）；
 /// ② `_ =>` 之外的兜底写法（`other =>`、`e if true =>`；盖两个以上变体的由开关挡）；
@@ -1371,8 +1371,8 @@ fn silent_drop_sites(prod: &str) -> Vec<String> {
 /// **回推优先 · 推不动才丢 · 丢必须说**。
 /// `let _ = …send(…)` 是「推不动就当没发生」—— 订阅方**看不出**中间少了东西，
 /// 而流的语义整个塌在这一点上。`try_send` 那一形由两包的 `clippy.toml` 挡（发 `Gap` 那一处就地放行）；
-/// 这一形名单挡不住：`send` 返回 `Result` 时 `let _ =` 不触发 `unused_must_use`。
-/// 什么时候删：两包 `Cargo.toml` 开了 `let_underscore_must_use` 那天。
+/// 这一形名单挡不住：`send` 返回 `Result` 时 `let _ =` 不触发 rustc 的 `#[must_use]` 告警。
+/// 什么时候删：两包 `Cargo.toml` 开了 `clippy::let_underscore_must_use` 那天。
 ///
 /// **买不到**：① 别的丢弃写法（`if ch.capacity() == 0 { return; }` · `.ok()`）；
 /// ② **`§9` 逐字**：SSH 那条路上回推到底推不推得回去**判不了** ——
