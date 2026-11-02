@@ -232,7 +232,7 @@ pub(super) mod tests {
     /// 上游选择的模块路径（`crate::` 之后的段），由它的根目录现算。
     /// 上游选择的根（盘上现推）交给兄弟判据用 —— `creds_guard` 拿它核
     /// 「中转日志白名单圈的账号那棵，恰好是上游选择这棵子树」，不自己再写第二把推法。
-    pub(in crate::relay) fn upstream_selection_root_from_disk() -> String {
+    pub(in crate::accounts) fn upstream_selection_root_from_disk() -> String {
         upstream_selection_root(&crate_production())
     }
 
@@ -707,12 +707,30 @@ pub(super) mod tests {
             .iter()
             .find(|(rel, _)| *rel == domain_mod_rs)
             .unwrap_or_else(|| panic!("扫不到账号域根 `{domain_mod_rs}`"));
-        let hub_lines: Vec<&str> = hub
+        let all_lines: Vec<&str> = hub
             .1
             .lines()
             .map(str::trim)
             .filter(|l| !l.is_empty())
             .collect();
+        // 挂判据的三行桩（`#[cfg(test)]` ＋ `#[path = …]` ＋ 私有的 `mod …;`）不是代码：中转宿主那几条引到账号域的判据挂在这里。
+        let mut hub_lines: Vec<&str> = Vec::new();
+        let mut i = 0;
+        while i < all_lines.len() {
+            let stub = all_lines[i] == "#[cfg(test)]"
+                && all_lines
+                    .get(i + 1)
+                    .is_some_and(|l| l.starts_with("#[path = \""))
+                && all_lines
+                    .get(i + 2)
+                    .is_some_and(|l| l.starts_with("mod ") && l.ends_with(';'));
+            if stub {
+                i += 3;
+            } else {
+                hub_lines.push(all_lines[i]);
+                i += 1;
+            }
+        }
         // 块数 = 上游选择那一块 ＋ 其余文件的顶层名（`manage/…` 算一块）。
         let blocks: BTreeSet<String> = on_disk
             .iter()

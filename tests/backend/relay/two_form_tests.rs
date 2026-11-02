@@ -1,10 +1,12 @@
 //! 中转对「只许直通的那把钥匙」与「先试协议升级、被拒再发普通请求」那一形的组合判据：
 //! 真中转 ＋ 生产段的上游选择 ＋ 记头名的假上游（只记请求行与头名，不记值）。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use crate::common::net::LOOPBACK;
-use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
+use crate::relay::test_support::{
+    listen, serve, Taps, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE,
+};
+use comms_outward::{Relay, TeeSink};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::AtomicUsize;
@@ -70,16 +72,6 @@ pub(super) fn spawn_name_upstream(reply: &'static str) -> NameUpstream {
 pub(super) const SSE_OK: &str =
     "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {}\n\n";
 
-/// tap 口收到的每一件。
-#[derive(Default)]
-pub(super) struct Taps(pub(super) Mutex<Vec<TapEvent>>);
-impl TapPort for Taps {
-    fn offer(&self, ev: TapEvent) -> bool {
-        self.0.lock().expect("lock").push(ev);
-        true
-    }
-}
-
 /// 起一个中转：上游选择是生产段那一份（空表 ＋ `upstreams`），tee 落 `taps`。
 pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketAddr {
     let relay = Arc::new(Relay::new(
@@ -88,9 +80,9 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
             upstreams,
             crate::platform::fs::Own::for_tests(),
         )),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(taps),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -125,8 +117,8 @@ pub(super) fn all_to(up: SocketAddr) -> Upstreams {
 fn the_pass_key_reaches_passthrough_but_is_refused_on_substitute_routes() {
     let up = spawn_name_upstream(SSE_OK);
     let relay = spawn_relay_with(all_to(up.addr), Arc::new(Taps::default()));
-    let pass = super::key::key_tests::test_pass_key();
-    let full = super::key::key_tests::TEST_KEY;
+    let pass = crate::relay::test_support::test_pass_key();
+    let full = crate::relay::test_support::TEST_KEY;
     let post = |key: &str, route: &str| {
         send_raw(
             relay,
@@ -196,7 +188,7 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
     );
     let taps = Arc::new(Taps::default());
     let relay = spawn_relay_with(ups, Arc::clone(&taps));
-    let key = super::key::key_tests::test_pass_key();
+    let key = crate::relay::test_support::test_pass_key();
     let key = key.as_str();
     const SID: &str = "019a0000-0000-7000-8000-00000000c0de";
     const CHILD: &str = "019a0000-0000-7000-8000-0000000c41d0";
