@@ -10,7 +10,7 @@
  * **构造零 I/O**：这一栏第一次露出来（机器页切到这一栏 ⇒ [`CONFIG_SHOWN_EVENT`]）才问；再露出来重读一遍。
  */
 import { copyText } from "../copy-table";
-import { isLocalOrigin, type Origin } from "../ipc/origin";
+import { isLocalOrigin, type Machine } from "../ipc/origin";
 import { button } from "../kit/button";
 import { confirmDialog } from "../kit/dialog";
 import { failToast } from "../kit/toast";
@@ -51,7 +51,7 @@ function link(label: string, onClick: () => void, danger = false): HTMLButtonEle
 }
 
 /** 「共用 MCP」那一行：各号共用的那几条 · 两边都改了的选一版 · 删一条（问一句）· 停止 / 开回同步。 */
-function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow; load(): void } {
+function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRow; load(): void } {
   const row = cfgRow(copyText("cfgPage.mcp.title"), false);
   row.element.dataset.anchor = "shared-mcp";
   row.element.dataset.role = "mcp-row";
@@ -148,7 +148,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
 }
 
 /** 「装在这台的扩展」那一行：数那台那一列（只数、不判）· 点开列名字 ·［去扩展页］。 */
-function buildExtRow(origin: () => Origin, machine: () => string, go: (el: HTMLElement) => void): { row: CfgRow; load(): void } {
+function buildExtRow(origin: () => Machine, machine: () => string, go: (el: HTMLElement) => void): { row: CfgRow; load(): void } {
   const row = cfgRow(copyText("cfgPage.ext.title", { machine: machine() }), false);
   row.element.dataset.role = "ext-row";
   const goBtn = (): HTMLElement => button({ label: copyText("cfgPage.ext.go"), size: "compact", onClick: () => go(row.element) });

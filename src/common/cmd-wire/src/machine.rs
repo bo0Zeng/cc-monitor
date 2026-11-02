@@ -87,9 +87,8 @@ use crate::cells::Tone;
 /// 本机那台机器的哨兵值。
 ///
 /// 这个字面量的家。界面经生成物 `src/frontend/ui/generated/judgment-rules.ts` 的 `LOCAL` 拿它
-/// （生成器 `payload_judgment_rules.rs`，`ipc/origin.ts` 转出）。
-/// 还有一份待删的抄写：`src/frontend/ui/backend-policy.ts`（TS）；
-/// 删之前由 `origin_tests.rs` 的 `the_sentinel_agrees_with_the_ts_copy` 钉着与本常量逐字节相同。
+/// （生成器 `payload_judgment_rules.rs`，`ipc/origin.ts` 转出）；生成物里那一份与本常量逐字节相同，
+/// 由 `origin_tests.rs` 的 `the_sentinel_agrees_with_the_generated_ts` 钉着。
 pub const LOCAL: &str = "<local>";
 
 /// 机器键里不能当名字给人看的那几个（哨兵）。别的键就是那台在机器表里的名字。

@@ -89,18 +89,12 @@ fn without_a_channel_nothing_is_made_up() {
 
 /// ★★ ② 退出行为与崩溃读数的那几句话**只有一个家：文案表**。
 ///
-/// 人群：前端那两份（`backend-policy.ts` 取文 · `backend-section.ts` 画格子）＋ Rust 这两份
+/// 人群：前端画格子的 `backend-section.ts` ＋ Rust 这两份
 /// （本文件的被测模块 · `backend_control.rs`）。表里 `backendPolicy.*` 的每一句都不许在人群里以原文出现 ——
 /// 出现 = 抄了第二份，下一次改文案一定只改到一处。
 #[test]
 fn the_backend_policy_copy_has_exactly_one_home() {
     let homes: Vec<(&str, String)> = vec![
-        (
-            "src/frontend/ui/backend-policy.ts",
-            guard_core::strip_comment_lines(include_str!(
-                "../../../src/frontend/ui/backend-policy.ts"
-            )),
-        ),
         (
             "src/frontend/ui/settings/backend-section.ts",
             guard_core::strip_comment_lines(include_str!(
@@ -121,7 +115,7 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         ),
     ];
     for (name, src) in &homes {
-        // `backend-policy.ts` 只剩本机那个常量与它的头注（剥完 ~300 字节）⇒ 地板 200：只防「读空了 / 读错了文件」。
+        // 地板 200：只防「读空了 / 读错了文件」。
         assert!(
             src.len() > 200,
             "{name} 只读到 {} 字节 —— 人群坏了",

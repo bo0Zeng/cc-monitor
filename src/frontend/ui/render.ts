@@ -2,7 +2,7 @@ import "katex/dist/katex.min.css";
 import { fillImage } from "./cards/attach-strip";
 import { mountDoc, type HlPull } from "./md-view";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { Doc } from "./generated/Doc";
 import type { MdAs } from "./generated/MdAs";
 import type { PlanRef } from "./generated/PlanRef";
@@ -52,7 +52,7 @@ const DOC_BUDGET_MS = 10_000;
  * 界面手上有原文的那几处（思考展开 · 工具结果切到 Markdown · 计划格正文）问后端要树（`md-doc`）：`as` 选读法，
  * `refs` 是原文里提到的格（pb 给的 UTF-16 起止，只计划格正文带），解成引用节点。
  */
-export function fetchDoc(origin: Origin, text: string, as: MdAs, refs: readonly PlanRef[] = []): Promise<Doc> {
+export function fetchDoc(origin: Machine, text: string, as: MdAs, refs: readonly PlanRef[] = []): Promise<Doc> {
   return callTyped(origin, "md-doc", { text, as, refs: [...refs] }, budgetWithin(DOC_BUDGET_MS));
 }
 
@@ -60,7 +60,7 @@ export function fetchDoc(origin: Origin, text: string, as: MdAs, refs: readonly 
 const HL_BUDGET_MS = 30_000;
 
 /** 问那台后端拉代码块的高亮（`prose-hl`，按内容算、按内容缓存：哪一格的代码都是这一条）。 */
-export function hlPullOf(origin: Origin): HlPull {
+export function hlPullOf(origin: Machine): HlPull {
   return (codes) => callTyped(origin, "prose-hl", { codes: [...codes] }, budgetWithin(HL_BUDGET_MS));
 }
 

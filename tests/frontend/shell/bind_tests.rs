@@ -1129,7 +1129,7 @@ fn the_pick_probe_command_line_parses() {
 }
 
 /// ★ 登记着的那个 shell 一退，这一条当场就没了：内核在进程退出那一刻叫醒，不是隔一阵扫一遍。
-/// 登记从盘上读回来（monitor 起来那一刻的那条路）；替身是一个 `sleep` 子进程，杀掉它之后等条件（上限只是兜底的那个数）；没有扫描间隔可等 —— 周期唤醒由 `rust_timer_registry` 那张表管着。
+/// 登记从盘上读回来（monitor 起来那一刻的那条路）；替身是一个 `sleep` 子进程，杀掉它之后等条件（上限只是兜底的那个数）；没有扫描间隔可等 —— 周期唤醒由 `src/frontend/clippy.toml` 的定时器那一组挡着。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_registration_goes_away_the_moment_its_shell_exits() {

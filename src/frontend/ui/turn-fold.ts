@@ -36,7 +36,7 @@ import type { FoldFail } from "./generated/FoldFail";
 import type { FoldSegment } from "./generated/FoldSegment";
 import type { TurnRow } from "./generated/TurnRow";
 import type { TurnSpan } from "./generated/TurnSpan";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { clockNow } from "./duration-format";
 import { foldCaret } from "./kit/fold";
@@ -59,8 +59,8 @@ const LINE_PX_FALLBACK = 40;
 const MAX_FAILURES = 3;
 
 /** 这份会话在哪（路径要等首条行回填 ⇒ 每次现取；拿不到 ⇒ 这一趟不要）。 */
-export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
-type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
+export type TurnsWhere = () => { origin: Machine; jsonlPath: string } | null;
+type Read = (origin: Machine, path: string, from: number) => Promise<TurnsResult>;
 /**
  * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有边界按后端给的行号认；折着的段告诉它（按 0 高、不物化）；
  * 展开一段后叫它物化露出来的那部分。

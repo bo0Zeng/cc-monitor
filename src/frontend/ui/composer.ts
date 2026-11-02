@@ -20,7 +20,7 @@ import { sentOf, type TerminalSent } from "./terminal-reads";
 import { fullTitle } from "./session-face";
 import { terminalFrontAvailable } from "./terminal-front";
 import type { Tab } from "./tab-model";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { QueueList } from "./generated/QueueList";
 import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
 import { AttachRow } from "./attach-row";
@@ -60,7 +60,7 @@ class DraftBook {
 /** 输入框要的几口（缺省走通道；测试换成假的）。 */
 export interface ComposerReads {
   /** 那台的附件那几口（判收不收 · 逐块传 · 提交 · 撤）。 */
-  io(origin: Origin): AttachIo;
+  io(origin: Machine): AttachIo;
   /** 读那条会话此刻的名单（`session-queue-read`）。 */
   read: QueueReadFn;
   /** 撤队里一条（`session-queue-cancel`）。 */
@@ -72,7 +72,7 @@ export interface ComposerReads {
 export const CHANNEL_COMPOSER: ComposerReads = { io: channelIo, read: CHANNEL_READ, cancel: CHANNEL_CANCEL, watch: CHANNEL_WATCH };
 
 /** ■：中断那条会话这一轮（`session-interrupt`）；回包同送字送键。没送成 ⇒ 抛（那一句后端写好）。 */
-export type InterruptFn = (origin: Origin, sid: string) => Promise<TerminalSent>;
+export type InterruptFn = (origin: Machine, sid: string) => Promise<TerminalSent>;
 
 /** ■ 的期限（同送字送键）。 */
 const INTERRUPT_BUDGET_MS = 20_000;
@@ -121,7 +121,7 @@ export class Composer {
   /** 此刻那条会话的名单（那台那一份；还没读到 ⇒ `null`）与它是哪一条。 */
   private queue: QueueList | null = null;
   private queueOf: string | null = null;
-  private watching: { origin: Origin; stop: () => void } | null = null;
+  private watching: { origin: Machine; stop: () => void } | null = null;
   /** 此刻离线的那几台 ⇒ 连接层写好的离线那一句（机器成品 `offlineSaid`）。 */
   private readonly offline = new Map<string, string>();
   private note: Note | null = null;
@@ -379,7 +379,7 @@ export class Composer {
     this.paint();
   }
 
-  private watch(origin: Origin): void {
+  private watch(origin: Machine): void {
     if (this.watching?.origin === origin) return;
     this.unwatch();
     this.watching = { origin, stop: this.reads.watch(origin, (m) => this.queueMoved(origin, m)) };
@@ -390,7 +390,7 @@ export class Composer {
     this.watching = null;
   }
 
-  private queueMoved(origin: Origin, m: QueueMoved): void {
+  private queueMoved(origin: Machine, m: QueueMoved): void {
     const t = this.host.active();
     if (!t || t.origin !== origin) return;
     const got = m.got.get(t.sessionId);

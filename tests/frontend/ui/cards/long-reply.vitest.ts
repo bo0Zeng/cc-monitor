@@ -8,7 +8,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root.ts";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { Doc } from "../../../../src/frontend/ui/generated/Doc";
 import type { MdBlock } from "../../../../src/frontend/ui/generated/MdBlock";
@@ -35,7 +35,7 @@ afterEach(() => {
 
 const ctx = (lazy = false) => ({
   parentPath: "/p/s.jsonl",
-  origin: LOCAL_ORIGIN,
+  origin: LOCAL,
   toolUseNames: new Map(),
   toolUseElements: new Map(),
   pendingToolResults: new Map(),

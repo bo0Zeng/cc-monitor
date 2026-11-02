@@ -28,7 +28,7 @@ import type { HistoryIndexReq } from "./generated/HistoryIndexReq";
 import type { HistoryTurns } from "./generated/HistoryTurns";
 import type { UserInputs } from "./generated/UserInputs";
 import type { UserInputRow } from "./generated/UserInputRow";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { TurnRow } from "./generated/TurnRow";
 import type { SessionFacts as WireFacts } from "./generated/SessionFacts";
 import type { HistoryFactsReq } from "./generated/HistoryFactsReq";
@@ -158,7 +158,7 @@ export function failureOf(e: CallError): OutlineFailure {
  * `scope: "user"` ＝ 只搜用户说的（那台判，与 `history-search` 同名同义）；这时不带工具那一格（用户说的话没有工具输出）。
  */
 export async function findInSession(
-  origin: Origin,
+  origin: Machine,
   jsonlPath: string,
   query: string,
   includeTools: boolean,
@@ -177,7 +177,7 @@ export async function findInSession(
 }
 
 /** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）；那台按页给（一页有字节上限），照 `next` 一页一页接着问、拼成一份。 */
-export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffset: number): Promise<UserInputsResult> {
+export async function listUserInputs(origin: Machine, jsonlPath: string, fromOffset: number): Promise<UserInputsResult> {
   try {
     const entries: UserInputEntry[] = [];
     let at: number | null = fromOffset;
@@ -200,7 +200,7 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
 export type TurnsResult = { available: true; from: number; end: number; turns: TurnRow[] } | { available: false; reason: string };
 
 /** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）；照 `next` 一页一页接着问、拼成一份。 */
-export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
+export async function readTurns(origin: Machine, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
   try {
     const turns: TurnRow[] = [];
     let at: number | null = fromOffset;
@@ -222,7 +222,7 @@ export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: n
  * `want` ＝ 只要前这么多行（正在看的 tab 只要尾段之上那一截：每页 `limit` ＝ 还差几行，够了就停；`end` 是最后一行的末字节，续传从那里接）。
  * 要不到 ⇒ `available:false`（退回尾部窗口）。
  */
-export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number, want?: number): Promise<SessionIndexResult> {
+export async function readSessionIndex(origin: Machine, jsonlPath: string, fromOffset: number, want?: number): Promise<SessionIndexResult> {
   try {
     const pages: HistoryIndex[] = [];
     let rows = 0;
@@ -248,7 +248,7 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
 /**
  * **会话事实**：要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
  */
-export async function readSessionFacts(origin: Origin, jsonlPath: string): Promise<FactsResult> {
+export async function readSessionFacts(origin: Machine, jsonlPath: string): Promise<FactsResult> {
   try {
     const args: HistoryFactsReq = { path: jsonlPath };
     const budget = budgetWithin(READ_BUDGET_MS);
@@ -273,7 +273,7 @@ export type { RecordProbe };
  * 与「不在」分开处置 —— 折成 `present:false` 会把一条接得上的 resume 拦掉。期限 30 秒。
  */
 export async function probeSessionRecord(
-  origin: Origin,
+  origin: Machine,
   sid: string,
   configDir?: string,
 ): Promise<RecordProbe> {

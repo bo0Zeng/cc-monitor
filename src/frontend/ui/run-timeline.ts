@@ -4,7 +4,7 @@
  * 读失败只在尾巴上挂一句，已画出来的不擦。回退掉的那几条按那份记录的主线外清单折起来（第一页到了冷读一次 `history-branch`）。
  */
 import type { LineRecord } from "./generated/LineRecord";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { loadRunPage, readBranch, type RunPage, type RunWhich } from "./record-reads";
 import { BranchFolder } from "./branch-fold";
 import { markCardId } from "./render-stream-record";
@@ -22,7 +22,7 @@ export type RunRender = (
 export const RUN_PAGES_PER_REFRESH = 8;
 
 export interface RunTimelineDeps {
-  origin: Origin;
+  origin: Machine;
   /** 父记录路径（派出它的那个会话的记录）。 */
   parent: string;
   which: RunWhich;

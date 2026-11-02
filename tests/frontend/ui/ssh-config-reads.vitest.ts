@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { importSshHosts } from "../../../src/frontend/ui/ssh-config-reads";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -47,7 +47,7 @@ describe("请求", () => {
     });
     await importSshHosts([{ host: "pi.local", user: "pi", port: 22 }]);
     expect(seen).toEqual([
-      { op: "ssh-config-import", origin: LOCAL_ORIGIN, body: { known: [{ host: "pi.local", user: "pi", port: 22 }] } },
+      { op: "ssh-config-import", origin: LOCAL, body: { known: [{ host: "pi.local", user: "pi", port: 22 }] } },
     ]);
   });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {

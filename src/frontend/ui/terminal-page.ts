@@ -41,7 +41,7 @@ import {
   type TerminalShot,
 } from "./terminal-reads";
 import type { TermInput } from "./generated/TermInput";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { banner } from "./kit/banner";
@@ -53,11 +53,11 @@ import s from "./terminal-page.module.css";
 
 /** 终端页要的几条读写（缺省走通道；测试换成假的）。 */
 export interface TerminalReads {
-  list(origin: Origin): Promise<TerminalRow[]>;
-  shot(origin: Origin, terminal: string): Promise<TerminalShot>;
-  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent>;
+  list(origin: Machine): Promise<TerminalRow[]>;
+  shot(origin: Machine, terminal: string): Promise<TerminalShot>;
+  send(origin: Machine, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent>;
   /** 订实时画面。 */
-  follow(origin: Origin, terminal: string, events: FollowEvents): Follow;
+  follow(origin: Machine, terminal: string, events: FollowEvents): Follow;
 }
 
 export const CHANNEL_READS: TerminalReads = {
@@ -69,8 +69,8 @@ export const CHANNEL_READS: TerminalReads = {
 
 /** 托管终端的接管 · 交还（缺省走通道；测试换成假的）：回那一行此刻的输入那一格。 */
 export interface InputHolds {
-  take(origin: Origin, terminal: string): Promise<TermInput>;
-  release(origin: Origin, terminal: string): Promise<TermInput>;
+  take(origin: Machine, terminal: string): Promise<TermInput>;
+  release(origin: Machine, terminal: string): Promise<TermInput>;
 }
 
 export const CHANNEL_HOLDS: InputHolds = { take: takeInput, release: releaseInput };
@@ -84,13 +84,13 @@ function liveOf(why: FollowStop): Live {
 }
 
 /** 看的是谁：当前标签页那个会话 · 占位标签页的那个终端（哪台 · 句柄 · tmux 会话名 · 标题）。 */
-export type Watched = { kind: "tab"; tab: Tab } | { kind: "slot"; origin: Origin; terminal: string; name: string; title: string };
+export type Watched = { kind: "tab"; tab: Tab } | { kind: "slot"; origin: Machine; terminal: string; name: string; title: string };
 
 /** 按会话各记一份的那几样（没送的字）用的键：标签页 ⇒ 会话 ID；占位 ⇒ 那台 ＋ 句柄。 */
 function keyOf(w: Watched): string {
   return w.kind === "tab" ? w.tab.sessionId : `\u0000${w.origin}\u0000${w.terminal}`;
 }
-const originOf = (w: Watched): Origin => (w.kind === "tab" ? w.tab.origin : w.origin);
+const originOf = (w: Watched): Machine => (w.kind === "tab" ? w.tab.origin : w.origin);
 const labelOf = (w: Watched): string => (w.kind === "tab" ? fullTitle(w.tab) : w.title);
 const machineWord = (w: Watched): string => machineName(originOf(w));
 
@@ -135,7 +135,7 @@ export class TerminalPage {
   private visible = false;
   /** 正在看的那一个（`keyOf`；`null` ＝ 没有当前标签页）。 */
   private sid: string | null = null;
-  private origin: Origin | undefined = undefined;
+  private origin: Machine | undefined = undefined;
   private row: TerminalRow | null = null;
   private shot: TerminalShot | null = null;
   /** 画面上此刻画着的是哪一张（同一张不重画）。 */
@@ -546,7 +546,7 @@ export class TerminalPage {
    * 送一下（送字送键 · 带附件说一句同一条路）并照回话说一句：送到了（一会儿就走）· 不知道 · 被拒（下一步照后端判好的 `acts` 摆：
    * 给不给［重试］· 重抓一屏 · 重读名单）。没送成 · 送不了 · 送的时候切走了 ⇒ `null`。
    */
-  private async deliver(go: (origin: Origin) => Promise<TerminalSent>, retry: TerminalSend | null): Promise<TerminalSent | null> {
+  private async deliver(go: (origin: Machine) => Promise<TerminalSent>, retry: TerminalSend | null): Promise<TerminalSent | null> {
     const w = this.host.active();
     const row = this.row;
     const origin = this.origin;

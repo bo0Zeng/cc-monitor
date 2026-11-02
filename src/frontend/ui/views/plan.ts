@@ -31,7 +31,7 @@ import { commands } from "../ipc/commands";
 import { ChanError } from "../../../comms/inward/chan";
 import { ControlError, machineName, offlineSaid } from "../control-said";
 import { saidOf } from "../kit/detail";
-import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
+import { LOCAL, isRemoteOrigin, type Machine } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
@@ -78,14 +78,14 @@ function loadPrefs(): Prefs {
 }
 
 /** 一台此刻的样子。 */
-type Machine =
+type MachineView =
   | { state: "loading"; prev: PlanList | null }
   | { state: "ok"; list: PlanList; at: number }
   | { state: "failed"; offline: boolean; prev: PlanList | null; at: number | null };
 
 /** 页头一枚片：哪台 · 哪个工作区 · 叫什么。 */
 interface SliceRef {
-  origin: Origin;
+  origin: Machine;
   workspace: string;
   name: string;
 }
@@ -99,11 +99,11 @@ export class PlanView {
   /** 主窗口里这个会话的标签页（拿标题、状态点）；不在 ⇒ `null`。 */
   tabOf: (sid: string) => Tab | null = () => null;
   /** 这台那几个标签页的项目目录（新计划框的工作区下拉列在已有工作区后面）。 */
-  cwdsOf: (origin: Origin) => readonly string[] = () => [];
+  cwdsOf: (origin: Machine) => readonly string[] = () => [];
   /** 切到主窗口里的这个会话（并关掉计划页）。 */
   switchTo: (sid: string) => void = () => {};
   /** 那台离线 ⇒［重新连接］。 */
-  reconnect: (origin: Origin) => void = () => {};
+  reconnect: (origin: Machine) => void = () => {};
   /** 会话的［恢复 ▾］菜单（接手的会话停了那一条）。 */
   resume: (anchor: HTMLElement, sid: string) => void = () => {};
   /** 计划的账（开页先拿上一份画 · 会话头那一枚标）；问到的 `plan-list` 交给它。 */
@@ -119,8 +119,8 @@ export class PlanView {
   private readonly root: HTMLElement;
   private isOpen = false;
   private prefs: Prefs = loadPrefs();
-  private machines: Origin[] = [LOCAL_ORIGIN];
-  private per = new Map<Origin, Machine>();
+  private machines: Machine[] = [LOCAL];
+  private per = new Map<Machine, MachineView>();
   private reads = new Map<string, Read>();
   private current: SliceRef | null = null;
   private filter: PlanFilter = "all";
@@ -133,7 +133,7 @@ export class PlanView {
   /** 按组看（标签页组菜单「在计划里看这一组接的块」）：块表只留这一组的会话接手的那几块；`null` ⇒ 不筛。 */
   private group: { id: string; name: string } | null = null;
   /** 从组菜单进来、还没落到哪一片：各台 `plan-list` 回来再照组员挑。 */
-  private groupMembers: readonly { origin: Origin; sid: string }[] | null = null;
+  private groupMembers: readonly { origin: Machine; sid: string }[] | null = null;
 
   private headEl!: HTMLElement;
   private subEl!: HTMLElement;
@@ -147,7 +147,7 @@ export class PlanView {
     this.detail = new CellDetail({
       select: (id) => this.select(id),
       who: (w) => this.whoChip(w),
-      origin: () => this.current?.origin ?? LOCAL_ORIGIN,
+      origin: () => this.current?.origin ?? LOCAL,
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
       returnCell: (slice, cell) => openReturn(this.review, slice, cellTarget(slice, cell)),
@@ -164,7 +164,7 @@ export class PlanView {
       },
     });
     this.review = {
-      origin: () => this.current?.origin ?? LOCAL_ORIGIN,
+      origin: () => this.current?.origin ?? LOCAL,
       workspace: () => this.current?.workspace ?? "",
       who: (w) => this.whoChip(w),
       sessionName: (w) => {
@@ -192,7 +192,7 @@ export class PlanView {
     this.isOpen = true;
     dispatcher.pushOverlay(this.layer);
     this.render();
-    this.machines = [LOCAL_ORIGIN, ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
+    this.machines = [LOCAL, ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
     // 关着时「需手动」的账已问过各台：先拿那一份画（问回来再换；那台这会儿离线就留着它、整体变淡）。
     for (const m of this.machines) {
       const known = this.book?.list(m);
@@ -202,7 +202,7 @@ export class PlanView {
   }
 
   /** 开计划页并选中某一片的某一格（会话头那一枚标 · 文件窗口「在计划里看」）。 */
-  async openAt(origin: Origin, workspace: string, slice: string, cell: string | null): Promise<void> {
+  async openAt(origin: Machine, workspace: string, slice: string, cell: string | null): Promise<void> {
     this.current = { origin, workspace, name: slice };
     this.selected = cell;
     this.atItem = null;
@@ -212,7 +212,7 @@ export class PlanView {
   }
 
   /** 开计划页按组看（标签页组菜单）：落到组员接手的块所在的那一片（照各台 `plan-list` 的 `bySession`），块表只留这一组的。 */
-  async openForGroup(gid: string, name: string, members: readonly { origin: Origin; sid: string }[]): Promise<void> {
+  async openForGroup(gid: string, name: string, members: readonly { origin: Machine; sid: string }[]): Promise<void> {
     this.group = { id: gid, name };
     this.groupMembers = members;
     this.selected = null;
@@ -265,7 +265,7 @@ export class PlanView {
   }
 
   /** 那台推来「这几个工作区的计划变了」（或整台可能漏了）。 */
-  onChanged(origin: Origin, change: { moved: readonly PlanMoved[]; all: boolean }): void {
+  onChanged(origin: Machine, change: { moved: readonly PlanMoved[]; all: boolean }): void {
     if (!this.isOpen) return;
     const known = this.per.get(origin);
     const listed = known?.state === "ok" ? known.list : null;
@@ -280,7 +280,7 @@ export class PlanView {
   }
 
   /** 逐台问 `plan-list`（`fresh` ＝ 认过的目录也重问 pb）；哪台先答先画。之后读选中的那一片所在的工作区。 */
-  private refresh(fresh: boolean, only?: Origin): void {
+  private refresh(fresh: boolean, only?: Machine): void {
     const seq = ++this.seq;
     for (const m of only !== undefined ? [only] : this.machines) {
       const was = this.per.get(m);
@@ -322,7 +322,7 @@ export class PlanView {
   private afterList(): void {
     const all = this.allSlices();
     if (this.groupMembers) {
-      const lists = new Map<Origin, PlanList>();
+      const lists = new Map<Machine, PlanList>();
       for (const x of all) lists.set(x.ref.origin, x.list);
       const hit = sliceForGroup(lists, this.groupMembers);
       if (hit) this.current = hit;
@@ -348,7 +348,7 @@ export class PlanView {
     return this.machines.every((m) => this.per.get(m)?.state !== "loading");
   }
 
-  private read(origin: Origin, workspace: string): void {
+  private read(origin: Machine, workspace: string): void {
     const key = `${origin}\u0000${workspace}`;
     const was = this.reads.get(key);
     const prev = was?.state === "ok" ? was.doc : (was?.prev ?? null);
@@ -584,7 +584,7 @@ export class PlanView {
       label: copyText("plan.auto.label"),
       on: ws.auto,
       onChange: async (on) => {
-        const origin = this.current?.origin ?? LOCAL_ORIGIN;
+        const origin = this.current?.origin ?? LOCAL;
         this.autoFail = null;
         try {
           await planCommand(origin, ws.workspace, on ? "continue" : "pause");
@@ -610,14 +610,14 @@ export class PlanView {
   }
 
   /** 一台的目录：读到过的工作区 · 会话的项目目录。 */
-  private dirsOf(origin: Origin): { known: string[]; cwds: string[] } {
+  private dirsOf(origin: Machine): { known: string[]; cwds: string[] } {
     const st = this.per.get(origin);
     const list = st?.state === "ok" ? st.list : (st?.prev ?? null);
     return { known: (list?.workspaces ?? []).map((w) => w.workspace), cwds: [...this.cwdsOf(origin)] };
   }
 
   private newPlan(): void {
-    const origin = this.current?.origin ?? LOCAL_ORIGIN;
+    const origin = this.current?.origin ?? LOCAL;
     const d = this.dirsOf(origin);
     const dir = this.current?.workspace ?? d.known[0] ?? d.cwds[0] ?? "";
     openNewPlan(
@@ -879,13 +879,13 @@ export class PlanView {
       box.appendChild(skeletonRows(6));
       return box;
     }
-    const local = this.per.get(LOCAL_ORIGIN);
+    const local = this.per.get(LOCAL);
     if (local?.state === "ok" && local.list.pb.state !== "ok") {
       const [head, ...rest] = (local.list.pb.said ?? "").split("\n");
       // 找不到 pb ⇒ 去本机设置里填 pb 路径那一行。
       const set: HTMLButtonElement | undefined =
         local.list.pb.state === "missing"
-          ? button({ label: copyText("plan.empty.setPb"), kind: "ghost", onClick: () => void openSettingsWindow(set, pbDirOf(LOCAL_ORIGIN)) })
+          ? button({ label: copyText("plan.empty.setPb"), kind: "ghost", onClick: () => void openSettingsWindow(set, pbDirOf(LOCAL)) })
           : undefined;
       return emptyState({ icon: "warning", text: head, hint: rest.join(copyText("kit.text.sep")) || undefined, action: set });
     }
@@ -900,7 +900,7 @@ export class PlanView {
     const list = (this.prefs.dirs[""] ??= []);
     if (!list.includes(d)) list.push(d);
     this.savePrefs();
-    this.refresh(true, LOCAL_ORIGIN);
+    this.refresh(true, LOCAL);
   }
 
   // ───────────────────────── 大纲 ─────────────────────────

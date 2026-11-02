@@ -773,7 +773,10 @@ impl Doc {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "这一页用到的（输入 · 文本 · 可见范围 · 行的尺寸 …）全是这一下的值，合成一个类型只是换个地点再列一次"
+    )]
     fn body(
         &mut self,
         ui: &mut Ui,
@@ -891,7 +894,10 @@ impl Doc {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "这一页用到的（可见范围 · 行的尺寸 · 选中 …）全是这一下的值，合成一个类型只是换个地点再列一次"
+    )]
     fn paint(
         &mut self,
         ui: &mut Ui,

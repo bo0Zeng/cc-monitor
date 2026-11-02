@@ -10,8 +10,8 @@
  * ## ⚠⚠ 两条一起，缺一条就是安慰剂
  *
  * 1. **人群** —— 只读一个文件、只剥整行注释的话，文案搬家 / 拼串 / 进一张 i18n 表 ⇒ 它**零命中地绿**。
- *    ⇒ 人群是 `backend-section.ts` **+** `backend-policy.ts`，而且**反过来要求**：
- *    那四句的唯一一个家是 `backend-policy.ts`，`backend-section.ts` 里一句都不许有。
+ *    ⇒ 人群是 `backend-section.ts` **+** 文案表，而且**反过来要求**：
+ *    那四句的唯一一个家是文案表，`backend-section.ts` 里一句都不许有。
  * 2. **会红的反向锚点**：「无人监护」在这两个文件里出现 **0** 次 ⇒ 它当场红。
  *
  * ⚠ 判据的边界（照旧如实登记）：它扫的是**字面量与那个纯函数的四张脸**，
@@ -116,7 +116,7 @@ import { srcDirOf } from "../../../test-support/repo-root";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
 // 「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 import { nonEmpty } from "../../../test-support/non-empty";
@@ -141,10 +141,10 @@ const FACE: Record<string, GoldenFace> = Object.fromEntries(
 
 /**
  * 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。**
- * 家搬进了文案表 ⇒ 人群 +1（`table.json`），而「唯一一个家」从 `backend-policy.ts` 换成表。
+ * 「唯一一个家」是文案表（`table.json`），画格子的 `backend-section.ts` 里一句都不许有。
  */
 const TABLE_REL = "../../../shared/copy/table.json";
-const COPY_POPULATION = ["backend-section.ts", "../backend-policy.ts", TABLE_REL] as const;
+const COPY_POPULATION = ["backend-section.ts", TABLE_REL] as const;
 
 function readPopulation(): { name: string; src: string }[] {
   return COPY_POPULATION.map((rel) => ({
@@ -182,13 +182,13 @@ describe("P2s backend 开关区", () => {
     }
     // ⚠ 人群含 `HEALTH_*` 四句 —— 它们与那三句同一条规矩。
     //   Rust 那侧另有 `the_backend_policy_copy_has_exactly_one_home`，两侧各有一条不是重复：
-    //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
+    //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是 `backend-section.ts` 与文案表。
     // 人群 +1：「读不出来」那一句（三句变四句）。
     // HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
     const tableZh = (key: string): string =>
       (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
     // 健康那六句的取文口搬到了后端（`backend_policy.rs::health_face`，key 归 `rsBackendPolicy.health.*`）——
-    //   前端这两份里更不许出现它们的原文（界面只排版后端给的成品）。
+    //   `backend-section.ts` 里更不许出现它们的原文（界面只排版后端给的成品）。
     const literals = [
       EXIT_KILLS,
       EXIT_UNATTENDED,
@@ -226,7 +226,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
-    expect(rows.map((r) => r.dataset.origin)).toEqual([LOCAL_ORIGIN, "甲机"]);
+    expect(rows.map((r) => r.dataset.origin)).toEqual([LOCAL, "甲机"]);
   });
 
   it("每台机各查各的状态", async () => {
@@ -236,7 +236,7 @@ describe("P2s backend 开关区", () => {
     const asked = calls
       .filter((c) => c.name === "backend_status")
       .map((c) => (c.args as { origin: string }).origin);
-    expect(asked.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
+    expect(asked.sort()).toEqual([LOCAL, "甲机"].sort());
     expect(s.element.querySelector(".backend-row-state")?.textContent).toContain(copyText("backend.status.connected"));
   });
 
@@ -353,7 +353,7 @@ describe("P2s backend 开关区", () => {
       .filter((c) => c.name === "backend_exit_policy")
       .map((c) => (c.args as { origin: string }).origin);
     expect(asked.sort(), "每台机都该各问各的").toEqual(
-      [LOCAL_ORIGIN, "甲机"].sort(),
+      [LOCAL, "甲机"].sort(),
     );
   });
 
@@ -406,7 +406,7 @@ describe("P2s backend 开关区", () => {
     expect(
       sets.map((c) => c.args),
       "改勾没交后端写",
-    ).toEqual([{ origin: LOCAL_ORIGIN, kill: true }]);
+    ).toEqual([{ origin: LOCAL, kill: true }]);
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
     ).toBe(EXIT_KILLS);
@@ -596,7 +596,7 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     });
     await flush();
     await flush();
-    const localStop = stopOf(s, LOCAL_ORIGIN);
+    const localStop = stopOf(s, LOCAL);
     expect(localStop, "本机那一行的「停」找不到 —— 下面整段空转").toBeTruthy();
     // 答否 ⇒ 问了、说了几条、没停。
     localStop!.click();
@@ -662,7 +662,7 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     const s = new BackendSection({ headless: true, confirm: () => true, interrupts: () => Promise.resolve(null) });
     await flush();
     await flush();
-    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL_ORIGIN}"]`);
+    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL}"]`);
     const said = () => r?.querySelector<HTMLElement>("[data-stop-said]")?.textContent ?? null;
     const stop = [...(r?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
       (x) => x.textContent === zh("backend.buildCells.stop"),

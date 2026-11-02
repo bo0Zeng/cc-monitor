@@ -24,7 +24,7 @@ import { describe, it, expect } from "vitest";
 import { buildInteractiveCard, settleInteractive } from "../../../../src/frontend/ui/cards/interactive";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { __mathSettledForTests } from "../../../../src/frontend/ui/render";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import type { StepAsk } from "../../../../src/frontend/ui/generated/StepAsk";
@@ -32,7 +32,7 @@ import type { StepAsk } from "../../../../src/frontend/ui/generated/StepAsk";
 describe("交互等待类工具：不许被折进过程那几步", () => {
   const ctx = () => ({
     parentPath: "/p/s.jsonl",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),
@@ -96,7 +96,7 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
       draw: "card",
       human: false,
     } as unknown as LineRecord;
-    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false };
+    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false };
     const r = renderMessage(rec, ctx as never);
     expect(r.kind).toBe("card");
     const el = (r as { element: HTMLElement }).element;

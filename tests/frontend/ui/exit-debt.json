@@ -14,7 +14,7 @@
   "groups": [
     {
       "kind": "首登",
-      "why": "换成两句那一趟第一次跑看见的存量：取了报错那一档或带插值的键（key）· 按码判的分支里取文（branch），还没逐格分归哪一批；扫描跟进同文件里取文的小函数之后（按码判的分支里调它也算一处）现形的那几处同记在这一档；条件拿 isRemoteOrigin / isLocalOrigin / LOCAL_ORIGIN 分本机远端挑字，扫描认得这一形之后现形的那几处也记在这一档",
+      "why": "换成两句那一趟第一次跑看见的存量：取了报错那一档或带插值的键（key）· 按码判的分支里取文（branch），还没逐格分归哪一批；扫描跟进同文件里取文的小函数之后（按码判的分支里调它也算一处）现形的那几处同记在这一档；条件拿 isRemoteOrigin / isLocalOrigin / LOCAL 分本机远端挑字，扫描认得这一形之后现形的那几处也记在这一档",
       "cells": [
         ["src/frontend/filewin/src/batch.rs", "key", 1],
         ["src/frontend/filewin/src/bigfile.rs", "branch", 2],

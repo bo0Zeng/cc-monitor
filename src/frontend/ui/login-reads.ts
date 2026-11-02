@@ -10,7 +10,7 @@
  * 判 · 拼句 · 能不能接着粘全在后端：失败回包的 `data.again` 说「接着粘 · 重新开始 · 没法再来」，这里只把它原样交出去，不按码分。
  */
 import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import type { ManualItem } from "./generated/ManualItem";
 import type { LoginStartReq } from "./generated/LoginStartReq";
@@ -51,7 +51,7 @@ function failedOf(e: unknown, cmd: "login-start" | "login-finish"): LoginFailed 
  * 起一趟登录。`browserHere` ＝ 打开登录链接的浏览器在不在那台：桌面连本机 ⇒ 在，连远端 ⇒ 不在（后端照它答 `auto`）。
  * 同一个目标再起一趟，后端替掉旧的。
  */
-export async function loginStart(origin: Origin, target: LoginStartReq): Promise<LoginStarted> {
+export async function loginStart(origin: Machine, target: LoginStartReq): Promise<LoginStarted> {
   try {
     return await callTyped(origin, "login-start", { ...target, browserHere: isLocalOrigin(origin) }, budgetWithin(START_BUDGET_MS));
   } catch (e) {
@@ -60,7 +60,7 @@ export async function loginStart(origin: Origin, target: LoginStartReq): Promise
 }
 
 /** 把登录页上给的那一段原样交回去。成了 ⇒ 返回；没成 ⇒ 抛 [`LoginFailed`]（照 `again` 画）。 */
-export async function loginFinish(origin: Origin, job: string, pasted: string): Promise<void> {
+export async function loginFinish(origin: Machine, job: string, pasted: string): Promise<void> {
   try {
     await callTyped(origin, "login-finish", { job, pasted }, budgetWithin(FINISH_BUDGET_MS));
   } catch (e) {
@@ -69,7 +69,7 @@ export async function loginFinish(origin: Origin, job: string, pasted: string): 
 }
 
 /** 撤掉这一趟（尽力：撤不了也不拦着关抽屉）。 */
-export async function loginCancel(origin: Origin, job: string): Promise<void> {
+export async function loginCancel(origin: Machine, job: string): Promise<void> {
   try {
     await callTyped(origin, "login-cancel", { job }, budgetWithin(CANCEL_BUDGET_MS));
   } catch (e) {

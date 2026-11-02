@@ -8,7 +8,7 @@
  * 认不出机器的组员（旧组员表只记 sid：那条会话此刻没有标签、也没固定过）· 指着不存在的组的条目丢掉，回给调用方记一行。
  */
 import type { HereGroup } from "./generated/HereGroup";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 /** 盘上读到的旧三格（只取迁要的那几样；盘上可能是任何东西）。 */
 export interface OldTabGroups {
@@ -16,7 +16,7 @@ export interface OldTabGroups {
   present: boolean;
   groups: Array<{ id: string; name: string; collapsed: boolean }>;
   groupOf: Map<string, string>;
-  pinned: Array<{ sid: string; origin: Origin }>;
+  pinned: Array<{ sid: string; origin: Machine }>;
 }
 
 function str(v: unknown): string {
@@ -60,8 +60,8 @@ export function oldTabGroups(cfg: unknown): OldTabGroups {
 /** 迁要的四件事：向本机要一组（回整份记录）· 会话那台进组 · 会话那台固定 · 删盘上那三格。 */
 export interface MigrateIo {
   make(name: string): Promise<HereGroup>;
-  join(origin: Origin, sid: string, group: HereGroup): Promise<void>;
-  pin(origin: Origin, sid: string): Promise<void>;
+  join(origin: Machine, sid: string, group: HereGroup): Promise<void>;
+  pin(origin: Machine, sid: string): Promise<void>;
   dropOld(): Promise<void>;
 }
 
@@ -78,7 +78,7 @@ export interface Migrated {
  */
 export async function migrateTabGroups(
   old: OldTabGroups,
-  origins: ReadonlyMap<string, Origin>,
+  origins: ReadonlyMap<string, Machine>,
   io: MigrateIo,
 ): Promise<Migrated> {
   if (!old.present) return { done: false, lost: [], collapsed: [] };
@@ -86,7 +86,7 @@ export async function migrateTabGroups(
   const ids = new Map<string, HereGroup>();
   let ok = true;
   // 只建有组员能落地的那几组（一个组员都没有的组不住任何一台）。
-  const landing = new Map<string, Array<{ origin: Origin; sid: string }>>();
+  const landing = new Map<string, Array<{ origin: Machine; sid: string }>>();
   const where = new Map(old.pinned.map((p) => [p.sid, p.origin]));
   for (const [sid, o] of origins) where.set(sid, o);
   for (const [sid, gid] of old.groupOf) {

@@ -11,7 +11,7 @@ import { tag } from "./kit/badge";
 import { icon, type IconName } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
-import { isRemoteOrigin, type Origin } from "./ipc/origin";
+import { isRemoteOrigin, type Machine } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
 import type { BookSession, PlanNeedItem } from "./needs-book";
 import type { NeedsCell } from "./generated/NeedsCell";
@@ -36,7 +36,7 @@ const SEP = copyText("kit.text.sep");
 /** 一个在等的会话（已照「需手动」的序排好）。 */
 export interface PanelSession {
   sid: string;
-  origin: Origin;
+  origin: Machine;
   title: string;
   /** `等批准 · 已等 4 分钟` 那一句（[`waitingNow`]）。 */
   state: string;
@@ -48,7 +48,7 @@ export interface PanelSession {
 
 /** 计划那一侧的一条（`NeedsBook.plans()` 第 `i` 条）：落在哪一格（没有 ⇒ `null`）· 哪一片 · 哪个工作区 · 哪台。 */
 export interface PanelPlan {
-  origin: Origin;
+  origin: Machine;
   workspace: string;
   slice: string;
   cell: NeedsCell | null;
@@ -63,17 +63,17 @@ export function planRows(items: readonly PlanNeedItem[]): PanelPlan[] {
 export interface PanelFacts {
   sessions: readonly PanelSession[];
   plans: readonly PanelPlan[];
-  manual: readonly { origin: Origin; item: ManualItem }[];
+  manual: readonly { origin: Machine; item: ManualItem }[];
   /** 这一问没问到的那几台（不计；那一句在悬停里）。 */
-  offline: readonly { origin: Origin; said: string }[];
+  offline: readonly { origin: Machine; said: string }[];
   /** 会话外那一截读不出的那几台（那台那一句）。 */
-  unreadable: readonly { origin: Origin; said: string }[];
+  unreadable: readonly { origin: Machine; said: string }[];
 }
 
 export interface PanelActs {
   answer(sid: string): void;
   plan(i: number): void;
-  login(origin: Origin, item: ManualItem): void;
+  login(origin: Machine, item: ManualItem): void;
 }
 
 /** 画一份浮层内容（`selected` ＝ 键盘选着第几行；浮层开着时数据变了按同一个下标重画）。 */

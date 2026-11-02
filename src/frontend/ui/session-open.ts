@@ -6,7 +6,7 @@
  */
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, machineName, refusalIn } from "./ipc/chan-caller";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
@@ -43,7 +43,7 @@ export type OpenEnd =
   | { kind: "unreachable"; said: string; detail: string };
 
 /** 只问、只分结局，不出声。 */
-export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<OpenEnd> {
+export async function askOpen(origin: Machine, req: SessionOpenReq): Promise<OpenEnd> {
   try {
     return { kind: "opened", opened: await callTyped(origin, "session-open", req, budgetWithin(OPEN_BUDGET_MS)) };
   } catch (e) {
@@ -70,7 +70,7 @@ export interface OpenHow {
 
 /** 占位标签页那一件（`launch-slot.ts` 画它）：哪台 · 起在哪个目录（那台展开过的）· 起在哪个 tmux 会话（开窗起的 ⇒ `null`）· 等它报到那一问（回包原样）。 */
 export interface SlotSpec {
-  origin: Origin;
+  origin: Machine;
   cwd: string;
   tmuxName: string | null;
   arrival: ArriveAsk;
@@ -86,7 +86,7 @@ export function setLaunchSlots(fn: ((spec: SlotSpec) => boolean) | null): void {
 export type ArriveSaid = ArriveEnd | { kind: "unknown"; said: string; detail: string };
 
 /** 问那台等这一条报到（`arrival` 原样交回）。只问、不出声。 */
-export async function askArrive(origin: Origin, ask: ArriveAsk, within: number = ARRIVE_BUDGET_MS): Promise<ArriveSaid> {
+export async function askArrive(origin: Machine, ask: ArriveAsk, within: number = ARRIVE_BUDGET_MS): Promise<ArriveSaid> {
   try {
     return await callTyped(origin, "session-arrive", ask, budgetWithin(within));
   } catch (e) {
@@ -98,7 +98,7 @@ export async function askArrive(origin: Origin, ask: ArriveAsk, within: number =
  * 起了一家之后：主窗口里有目录 ⇒ 交占位标签页（它自己问、照回包画）；否则问那台等报到 ——
  * 报到了 ⇒ 交 `onArrived`（缺 ⇒ 说 `title` ＋「已报出此会话」）；没见到 ⇒ 那台那一句原样上屏。
  */
-export function awaitArrival(origin: Origin, ask: ArriveAsk, cwd: string | null, title: string, onArrived?: (sid: string) => void): void {
+export function awaitArrival(origin: Machine, ask: ArriveAsk, cwd: string | null, title: string, onArrived?: (sid: string) => void): void {
   if (cwd !== null && slots?.({ origin, cwd, tmuxName: ask.session, arrival: ask })) return;
   void askArrive(origin, ask).then((end) => {
     if (end.kind === "arrived") {
@@ -115,7 +115,7 @@ export function awaitArrival(origin: Origin, ask: ArriveAsk, cwd: string | null,
 /** 在飞的那几条（`origin` ＋ sid / 终端名）：再点不重发。 */
 const inFlight = new Set<string>();
 
-function flightKey(origin: Origin, what: OpenWhat): string | null {
+function flightKey(origin: Machine, what: OpenWhat): string | null {
   const id = what.kind === "resume" ? what.sid : what.kind === "look" ? (what.sid ?? what.session) : undefined;
   return id === undefined ? null : `${origin}\u0000${what.kind}\u0000${id}`;
 }
@@ -127,7 +127,7 @@ function lines(said: string): [string, string] {
 }
 
 /** 起 · 恢复 · 接回一次：问、说、开、交等报到。回「成了没有」（没成的那一路已经出过声）。 */
-export async function openSession(origin: Origin, req: SessionOpenReq, how: OpenHow = {}): Promise<boolean> {
+export async function openSession(origin: Machine, req: SessionOpenReq, how: OpenHow = {}): Promise<boolean> {
   const key = flightKey(origin, req.what);
   if (key !== null) {
     if (inFlight.has(key)) return false;
@@ -147,7 +147,7 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
 }
 
 /** 那台答了「成了」之后：说附带的那一句 · 照 `landed` 开那一行 · 起了一家就等它报到。回「成了没有」（要开的那一行开不出 ⇒ 已说过、`false`）。 */
-export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
+export async function landOpened(origin: Machine, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
   if (o.note !== null) toast(o.note, "", { level: "info" });
   const open = o.line !== null && ((req.what.kind !== "new" && req.what.kind !== "resume") || BACKGROUND_OPENS.has(o.landed));
   if (open && !(await openLine(origin, o.line!, o.cwd, o.sid))) return false;
@@ -165,7 +165,7 @@ export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened,
  * 没成的那几形各说一句；按钮只有两种：选不了号 ⇒ 改用那台给的替代（没有 ⇒ 不指定账号）＋［登录…］（开那个号的登录抽屉）·
  * 不是这个会话的 ⇒ 对齐后重试。
  */
-function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<OpenEnd, { kind: "opened" }>): void {
+function sayEnd(origin: Machine, req: SessionOpenReq, how: OpenHow, end: Exclude<OpenEnd, { kind: "opened" }>): void {
   if (end.kind === "pending") {
     toast(...lines(end.said), { level: "info" });
     return;
@@ -208,7 +208,7 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
  * 开那一行：本机带起始目录（`null` ⇒ 壳照家目录开）、远端经 ssh。开不了 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］
  * （不自动写剪贴板）；找不到终端 ⇒ 照实说、给设置入口。`sid` ＝ 这个终端显示的那条会话（远端那一行带上它，↗ 先在本机找）。
  */
-async function openLine(origin: Origin, line: string, cwd: string | null, sid: string | null): Promise<boolean> {
+async function openLine(origin: Machine, line: string, cwd: string | null, sid: string | null): Promise<boolean> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(line, cwd);
     else await openTerminal(origin, line, sid);

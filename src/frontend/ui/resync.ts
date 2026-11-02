@@ -10,7 +10,7 @@
 import { copyText } from "./copy-table";
 import { resync, type Resynced } from "./control-said";
 import { toast, failToast } from "./kit/toast";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 
 /** 对齐的结果 ⇒ 一句话：对齐差异 ＋补读了几条（0 ⇒「没有漏的」）。 */
 export function resyncSaid(r: Resynced): string {
@@ -24,13 +24,13 @@ export function resyncSaid(r: Resynced): string {
 }
 
 /** 一台的结果：对上了（差异），或没问到（原因）。 */
-export type MachineResynced = { origin: Origin; r: Resynced } | { origin: Origin; why: string };
+export type MachineResynced = { origin: Machine; r: Resynced } | { origin: Machine; why: string };
 
 /**
  * tab 栏「重新读取」：每台（去重）发一次整机 `resync`，各台并行、互不等；一台失败不拖别的台。
  * 整机那一趟后端会让每个在跟的会话从游标补读。
  */
-export function resyncMachines(origins: Iterable<Origin>): Promise<MachineResynced[]> {
+export function resyncMachines(origins: Iterable<Machine>): Promise<MachineResynced[]> {
   return Promise.all(
     [...new Set(origins)].map((origin) =>
       resync(origin).then(
@@ -57,7 +57,7 @@ export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
  * 关卡 2 拒了 ⇒ 那条失败提示带「对齐后重试」：点它 ⇒ 只对 `sid` 那一个会话对齐（没有 sid 就整机）⇒ 再做一次 `again`（再过一次关卡）。
  * `said` 是调用方已经说好的那句失败。
  */
-export function offerResyncRetry(origin: Origin, sid: string | undefined, headline: string, said: string, again: () => Promise<void>): void {
+export function offerResyncRetry(origin: Machine, sid: string | undefined, headline: string, said: string, again: () => Promise<void>): void {
   toast(headline, [said, copyText("resync.retry.hint")].filter((l) => l !== "").join("\n"), {
     onClick: () =>
       void (async () => {

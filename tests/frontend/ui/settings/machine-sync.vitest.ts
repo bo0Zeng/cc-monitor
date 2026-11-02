@@ -24,7 +24,7 @@ import {
   setCurrentMachine,
   __resetMachineContextForTests,
 } from "../../../../src/frontend/ui/machine-context";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -96,11 +96,11 @@ describe("S4a 跨分节机器同步", () => {
     busSel.dispatchEvent(new Event("change"));
     await settle();
 
-    setCurrentMachine(LOCAL_ORIGIN);
+    setCurrentMachine(LOCAL);
     await settle();
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
-    // store 与选择器现在是同一个表示（本机 = `LOCAL_ORIGIN`），原先那处换算没有了。
-    expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
+    // store 与选择器现在是同一个表示（本机 = `LOCAL`），原先那处换算没有了。
+    expect(getCurrentMachine()).toBe(LOCAL);
   });
 
   it("切到清单里没有的机器 → 原地不动（清单还没加载 / 那台已被删）", async () => {

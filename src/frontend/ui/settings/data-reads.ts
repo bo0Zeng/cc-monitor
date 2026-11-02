@@ -11,7 +11,7 @@ import type { DataReport } from "../generated/DataReport";
 import type { FootprintClient } from "../generated/FootprintClient";
 import type { SeenAt } from "../generated/SeenAt";
 import { commands } from "../ipc/commands";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { recallSeen, rememberSeen } from "../last-seen";
 import { saidOf } from "../kit/detail";
 
@@ -28,8 +28,8 @@ const DATA_BUDGET_MS = 30_000;
 const MARK_BUDGET_MS = 10_000;
 
 /** 记下「待办」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
-export async function markChore(origin: Origin, args: ChoresMarkReq): Promise<void> {
-  const target = isLocalOrigin(origin) ? LOCAL_ORIGIN : origin;
+export async function markChore(origin: Machine, args: ChoresMarkReq): Promise<void> {
+  const target = isLocalOrigin(origin) ? LOCAL : origin;
   try {
     await callTyped(target, "chores-mark", args, budgetWithin(MARK_BUDGET_MS));
   } catch (e) {
@@ -38,13 +38,13 @@ export async function markChore(origin: Origin, args: ChoresMarkReq): Promise<vo
 }
 
 /** 问那台（本机带 monitor 那几条事实）。问不到 / 形状不对 ⇒ 抛一句人话。 */
-export async function readDataReport(origin: Origin): Promise<DataReport> {
+export async function readDataReport(origin: Machine): Promise<DataReport> {
   const local = isLocalOrigin(origin);
   // monitor 那几条事实本侧不认识形状、原样带过去（monitor `footprint_client.rs` 写，后端按 `FootprintClient` 收，多一格就 bad_args）。
   const req = local ? { client: (await commands.footprint_client_facts()) as unknown as FootprintClient } : {};
   let report: DataReport;
   try {
-    report = await callTyped(local ? LOCAL_ORIGIN : origin, "data-report", req, budgetWithin(DATA_BUDGET_MS));
+    report = await callTyped(local ? LOCAL : origin, "data-report", req, budgetWithin(DATA_BUDGET_MS));
   } catch (e) {
     throw new Error(saidOf(e));
   }
@@ -56,7 +56,7 @@ export async function readDataReport(origin: Origin): Promise<DataReport> {
  * 那台上次读成的那一份（本机后端记着的，跨重启还在；后端按回包类型核过）＋ 上次读数那一格（本机后端写好的「采样于 …」）；
  * 没有 / 存档不是这一版 ⇒ `null`。
  */
-export async function recallDataReport(origin: Origin): Promise<{ report: DataReport; seen: SeenAt } | null> {
+export async function recallDataReport(origin: Machine): Promise<{ report: DataReport; seen: SeenAt } | null> {
   const seen = await recallSeen(origin, "data");
   if (seen === null) return null;
   if (seen.state === "unreadable") {
@@ -71,11 +71,11 @@ export async function recallDataReport(origin: Origin): Promise<{ report: DataRe
  * 每台读成的那一份记成那台「上次的」。没问到的那台带那一句（`said`）。本机后端问不到 ⇒ 抛一句人话。
  * 期限：各台同时问，一台一次 stat 一批、读几份小文件 ＋ 回程，30 秒。
  */
-export async function readChores(machines: Origin[]): Promise<ChoresMerged> {
+export async function readChores(machines: Machine[]): Promise<ChoresMerged> {
   const client = machines.some(isLocalOrigin) ? ((await commands.footprint_client_facts()) as unknown as FootprintClient) : null;
   let got: ChoresMerged;
   try {
-    got = await callTyped(LOCAL_ORIGIN, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
+    got = await callTyped(LOCAL, "chores-merge", { machines, client }, budgetWithin(DATA_BUDGET_MS));
   } catch (e) {
     throw new Error(saidOf(e));
   }

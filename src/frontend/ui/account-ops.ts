@@ -19,7 +19,7 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { AccountAddArgs } from "./generated/AccountAddArgs";
 import type { AccountChange } from "./generated/AccountChange";
 import type { AccountInitArgs } from "./generated/AccountInitArgs";
@@ -45,7 +45,7 @@ const READ_BUDGET_MS = 20_000;
 
 /** 建账号库。 */
 export async function accountsInit(
-  origin: Origin,
+  origin: Machine,
   args: AccountInitArgs,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -57,7 +57,7 @@ export async function accountsInit(
 
 /** 新建一个号（API 号的 key 在 `args.key` 里，只在这一发里出现一次；预演时别带它）。 */
 export async function accountsAdd(
-  origin: Origin,
+  origin: Machine,
   args: AccountAddArgs,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -69,7 +69,7 @@ export async function accountsAdd(
 
 /** 设这台的默认号（那台账号库清单里 `isDefault` 那一格；跟随时没有上次的号就落它）。 */
 export async function accountsSetDefault(
-  origin: Origin,
+  origin: Machine,
   name: string,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -86,7 +86,7 @@ export async function accountsSetDefault(
 
 /** 删一个号。 */
 export async function accountsRemove(
-  origin: Origin,
+  origin: Machine,
   args: AccountRemoveArgs,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -98,7 +98,7 @@ export async function accountsRemove(
 
 /** 修复。 */
 export async function accountsRepair(
-  origin: Origin,
+  origin: Machine,
   args: AccountRepairArgs,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -110,7 +110,7 @@ export async function accountsRepair(
 
 /** 按备份还原（`backup` 缺席 ⇒ 最近一份还没还原过的）。 */
 export async function accountsRollback(
-  origin: Origin,
+  origin: Machine,
   args: AccountRollbackArgs,
 ): Promise<AccountChange> {
   return settleTyped(
@@ -126,7 +126,7 @@ export async function accountsRollback(
 }
 
 /** 核对（先补上缺的共享链接，再报补不上的）。 */
-export async function accountsVerify(origin: Origin): Promise<VerifyReport> {
+export async function accountsVerify(origin: Machine): Promise<VerifyReport> {
   return settleTyped(
     origin,
     "accounts-verify",
@@ -136,7 +136,7 @@ export async function accountsVerify(origin: Origin): Promise<VerifyReport> {
 
 /** 在终端里起 claude 登录 `name` 那一行（那台后端出、已 quote；「⋯」里的逃生口用）。 */
 export async function accountsLoginCmd(
-  origin: Origin,
+  origin: Machine,
   name: string,
 ): Promise<string> {
   const v = await settleTyped(
@@ -153,7 +153,7 @@ export async function accountsLoginCmd(
 }
 
 /** 这台各号共用的用户级 MCP 此刻的样子（只读）。 */
-export async function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
+export async function accountsMcpRead(origin: Machine): Promise<AccountMcpView> {
   return settleTyped(
     origin,
     "accounts-mcp-read",
@@ -163,7 +163,7 @@ export async function accountsMcpRead(origin: Origin): Promise<AccountMcpView> {
 
 /** 从各号共用的用户级 MCP 里删一条（所有号一起撤）。 */
 export async function accountsMcpRemove(
-  origin: Origin,
+  origin: Machine,
   name: string,
 ): Promise<AccountMcpView> {
   return settleTyped(
@@ -180,7 +180,7 @@ export async function accountsMcpRemove(
 
 /** 两边都改了的那一条用哪一版：`from` = 那个号里的；`null` = 共享的那一版。 */
 export async function accountsMcpPick(
-  origin: Origin,
+  origin: Machine,
   name: string,
   from: string | null,
 ): Promise<AccountMcpView> {
@@ -194,7 +194,7 @@ export async function accountsMcpPick(
 
 /** 停 / 开各号之间同步（停了已同步的不删；开回来那一刻同步一趟）。 */
 export async function accountsMcpSync(
-  origin: Origin,
+  origin: Machine,
   on: boolean,
 ): Promise<AccountMcpView> {
   return settleTyped(

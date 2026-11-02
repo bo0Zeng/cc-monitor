@@ -950,68 +950,6 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
     );
 }
 
-/// ★★ （monitor 侧那半）**一行都不许放宽已有判据。**
-///
-/// # 为什么只对**断言那几行**取指纹，而不是整张表
-///
-/// 「加行是收紧、动断言是放宽」这句话**本身不是机检**。
-/// 若对整张表取 md5 ⇒ **合法加行也会红** ⇒ 下一个人就会把它调松（那是最坏的结局）。
-/// ⇒ 指纹只覆盖那几行**断言**，表体排除在外。
-///
-/// ⚠ 量法说明：这里**不是**用 `grep` 数加行 ——
-/// 每条锚点都要求**恰好一处**、且是整行相等（`pin_line`），
-/// 比 md5 更好的地方是：它红的时候会告诉你**哪一行变了**。
-#[test]
-fn this_item_loosened_none_of_the_ratchets_it_touched() {
-    // `(文件, 那一行, 恰好几处, 它在守什么)`
-    //
-    // ⚠ **次数逐条给**（`KP4` 第四轮买牙的两个价钱之一）：`write_site_registry.rs` 里
-    // 那句默认拒绝**真的有两处** —— 一处管写盘落点、一处管起进程落点，两张表各一条。
-    // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
-    let pins: &[(&str, &str, usize, &str)] = &[
-        // 平台例外表那一针（`backend_client_guard_tests.rs`）随那张表数到 0 摘了：表连同那条判据删了，壳里平台形态只许住 `platform/`。
-        // 🔴 **`write_site_registry.rs` 剖成了两份，下面按新住址逐条重排。**
-        //
-        // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。
-        // 剖分之后那两张表各自成了一份文件：
-        //   · 写盘落点那张 → `write_site_registry_tests.rs`
-        //   · 起进程落点那张 → `write_site_registry_spawn_sites.rs`
-        // ⇒ 「`missing.is_empty(),` 恰好 2 次」拆成**两行各 1 次**。
-        // **针的总处数一格没变（4 → 4）**，只是按文件分开数了 ——
-        // 而分开数比合起来数**更严**：原来一份文件里写两次、另一份写零次也能凑够 2。
-        (
-            "write_site_registry_tests.rs",
-            "missing.is_empty(),",
-            1,
-            "写盘落点那张表的**默认拒绝**：人群从源码派生，不申报就红。\
-                 往表里加了两行 —— **加行是收紧**，而这一条是「不申报会不会红」本身。",
-        ),
-        (
-            "write_site_registry_spawn_sites.rs",
-            "missing.is_empty(),",
-            1,
-            "起进程落点那张表的**默认拒绝**（同上，另一张表）。",
-        ),
-    ];
-    for (file, line, want, why) in pins {
-        let raw: &str = match *file {
-            "backend_client_guard_tests.rs" => include_str!("backend_client_guard_tests.rs"),
-            "write_site_registry_tests.rs" => include_str!("write_site_registry_tests.rs"),
-            "write_site_registry_spawn_sites.rs" => {
-                include_str!("write_site_registry_spawn_sites.rs")
-            }
-            other => panic!("本表里出现了没接语料的文件：{other}"),
-        };
-        let n = raw.lines().filter(|l| l.trim() == *line).count();
-        assert_eq!(
-            n, *want,
-            "`{file}` 里 `{line}` 出现 {n} 次（应恰好 {want} 次）。\n\
-                 说法：{why}\n\
-                 ★ 变少 = 那条棘轮被改写或删掉了（**放宽**）；变多 = 结构变了，回来重判。"
-        );
-    }
-}
-
 /// ★★ **跨 crate 字面量对拍**：常驻开关的 env 名两侧必须逐字一样。
 ///
 /// 漂了**不会报错**：起出来的后端会把它当成「没设」而走 stdio 那条路，
@@ -1137,7 +1075,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 那处起进程的落点**刻意不在分母里**：它 exec 的是
 /// `resolve_beside_this_exe` 找到的本机后端，**不是我们刚写出来的那个文件**
 /// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
-/// 全树起进程的落点现打 21 处、其中 monitor 侧 12 处（与 `write_site_registry::tests::SPAWNS` 对拍相同）——
+/// monitor 侧起进程只经 `spawn_managed`（`src/frontend/clippy.toml` 起进程那一组挡别处的 `Command::new`）——
 /// 本条只管其中的 **2** 处。
 #[test]
 fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
@@ -1463,9 +1401,8 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    真调 `local_backend::supervise_with_stdio(..)` 起后端，只把二进制来历换成
 ///    **第四种**取法（例如一个新环境变量）⇒ 三条来历字面量一条都不出现
 ///    ⇒ 它不进人群，本条与两条姊妹守卫**全不出声**。
-///    ⚠ 它也**不会被别的网接住**：`write_site_registry::spawn_sites::SPAWNS` 登记的是
-///    **生产侧** spawn 落点，而这样一条测试调的正是那个**已登记**的落点
-///    ⇒ `every_local_spawn_is_declared` 照样绿。
+///    ⚠ 它也**不会被别的网接住**：起进程那一组 clippy 名单只管**生产段**，测试段整段放开，
+///    而这样一条测试调的又正是生产侧那个合法的落点 ⇒ clippy 照样绿。
 ///
 ///    **为什么不换成「按调用派生」的判准**（`调了 supervise* / spawn_detached
 ///    且没 fail-closed 地要 shim`）—— 在同一个扫描面上量过：
@@ -2246,19 +2183,16 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     );
 }
 
-/// ★★ **登记表的说法必须覆盖那处 `sleep` 的每一个用途。**
+/// ★★ **放行理由必须覆盖那处 `sleep` 的每一个用途。**
 ///
-/// 那处 `sleep` 住 `adopt_with`，`adopt_with` 有**两个**调用方：
-/// `probe_and_attach_after_spawn` 等**刚脱离起来的那个 backend** 把回环口 bind 上；
-/// `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn**，
-/// 它等的是 `stream-busy` 那张牌被还回来。`rust_timer_registry` 那一行只写一件就只说清了一半。
+/// 那处 `sleep` 住 `listen_pause`，它有**两个**调用方：接管刚脱离起来的那个后端（等它把口听上）·
+/// 监护刚起的那一个（等它说上话）。理由只写一件就只说清了一半。
 ///
-/// ★ **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，
-/// 判据在替一个不存在的性质背书。而「说法」是散文，散文不会自己红
-/// ⇒ 本条把它变成机检：**调用方的名字从生产码里派生**（不写死），
-/// 逐个要求登记表那一行点得到。多一个调用方而不去改那行说法 ⇒ 当场红。
+/// ★ 理由就是那处放行的诚实边界 —— 说法与代码不是一回事时，放行在替一个不存在的性质背书。
+/// 而理由是散文，散文不会自己红 ⇒ 本条把它变成机检：**调用方的名字从生产码里派生**（不写死），
+/// 逐个要求那一处 `#[expect(…, reason = "…")]` 点得到。多一个调用方而不去改理由 ⇒ 当场红。
 #[test]
-fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
+fn the_one_wait_here_names_every_caller_in_its_reason() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
@@ -2317,35 +2251,33 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
         callers.len()
     );
 
-    // 登记表那一行必须点到每一个。
-    // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
-    // 按字节切会切在字符中间，那是 CRASH 不是读数）。
-    // 那张登记表跟着测试段搬进了 `rust_timer_registry_tests.rs`。
-    let reg_lines: Vec<&str> = include_str!("rust_timer_registry_tests.rs")
-        .lines()
-        .collect();
-    let at = reg_lines
+    // 那一处放行的理由（`listen_pause` 头上那个 `#[expect(clippy::disallowed_methods, reason = "…")]`）必须点到每一个。
+    // 按**行**切（不按字节偏移切 —— 中文在这份文件里到处都是，按字节切会切在字符中间）。
+    let lines: Vec<&str> = prod.lines().collect();
+    let def = lines
         .iter()
-        .position(|l| l.trim() == "\"src/local_backend_host.rs\",")
-        .expect("登记表里没有 `src/local_backend_host.rs` 那一条 —— 它被删了？");
-    let entry: String = reg_lines[at..]
+        .position(|l| l.trim_start().starts_with("fn listen_pause("))
+        .expect("生产段里没有 `fn listen_pause(`");
+    let open = lines[..def]
         .iter()
-        .take_while(|l| l.trim() != "),")
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
+        .rposition(|l| l.trim_start().starts_with("#[expect("))
+        .expect("`listen_pause` 头上没有 `#[expect(` —— 那一处 `sleep` 的放行不见了");
+    let reason: String = lines[open..def]
+        .iter()
+        .find_map(|l| l.trim_start().strip_prefix("reason = \""))
+        .expect("`listen_pause` 头上那个 `#[expect(` 没写 `reason`")
+        .to_string();
     assert!(
-        entry.len() > 200,
-        "切出来的那条登记只有 {} 字节 —— 切错了，下面整段在空转",
-        entry.len()
+        reason.len() > 100,
+        "切出来的放行理由只有 {} 字节 —— 切错了，下面整段在空转",
+        reason.len()
     );
     for c in &callers {
         assert!(
-            entry.contains(c.as_str()),
-            "`rust_timer_registry` 那一行没有点到 `{c}` —— 而它是那处 `sleep` 的调用方之一。\n\
-                 ★ 那张表对 `wait-for-condition` 这一类的要求逐字是「**说清等什么**、上限是多少」，\n\
-                 而两个调用方等的**不是同一件事**（一个等刚脱离的那个听上口、一个等刚被监护的那个说上话）。\n\
-                 ⇒ 只写其中一个 = 登记表在替一个不存在的性质背书。\n\
+            reason.contains(c.as_str()),
+            "`listen_pause` 那一处放行的理由没有点到 `{c}` —— 而它是那处 `sleep` 的调用方之一。\n\
+                 ★ 理由要说清等什么、上限是多少，而两个调用方等的**不是同一件事**\n\
+                 （一个等刚脱离的那个听上口、一个等刚被监护的那个说上话）⇒ 只写其中一个 = 理由在替一个不存在的性质背书。\n\
                  抽到的调用方全体：{callers:?}"
         );
     }

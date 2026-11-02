@@ -13,7 +13,7 @@ import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import type { HealthFace } from "../generated/HealthFace";
-import type { Origin } from "../ipc/origin";
+import { LOCAL, type Machine } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -24,7 +24,6 @@ import { resyncSaid } from "../resync";
 import { emit } from "@tauri-apps/api/event";
 import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
-import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { machineName } from "../control-said";
@@ -68,7 +67,7 @@ function exitAnswerOf(v: ExitPolicy): ExitAnswer {
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
 /** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（那一句 monitor 写好）。 */
-async function askExitPolicy(origin: Origin): Promise<ExitAnswer> {
+async function askExitPolicy(origin: Machine): Promise<ExitAnswer> {
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
@@ -77,7 +76,7 @@ async function askExitPolicy(origin: Origin): Promise<ExitAnswer> {
 }
 
 /** 交那台机器写那个值：后端 `exit-policy-set`，经通道；回**写完读回来**的那一份。失败就抛。 */
-async function putExitPolicy(origin: Origin, kill: boolean): Promise<ExitAnswer> {
+async function putExitPolicy(origin: Machine, kill: boolean): Promise<ExitAnswer> {
   try {
     return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
@@ -89,7 +88,7 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<ExitAnswer>
 export type BackendLog = LogTail;
 
 /** 问那台机器的后端要它的诊断文件尾部（经通道、只读面）。失败就抛（一句人话）。 */
-async function askBackendLog(origin: Origin): Promise<BackendLog> {
+async function askBackendLog(origin: Machine): Promise<BackendLog> {
   try {
     return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
   } catch (e) {
@@ -129,7 +128,7 @@ export interface CellsExtra {
 }
 
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
-interface Machine {
+interface MachineEntry {
   origin: string;
   title: string;
 }
@@ -153,14 +152,14 @@ export class BackendSection {
 
   /** 停之前那一问 · 数会话那一问（注入缝：判据换成同步答 / 假数据）。 */
   private readonly confirm: ConfirmFn;
-  private readonly interrupts: (origin: Origin) => Promise<Interrupts | null>;
+  private readonly interrupts: (origin: Machine) => Promise<Interrupts | null>;
 
   constructor(
     opts: {
       headless?: boolean;
       hosted?: boolean;
       confirm?: ConfirmFn;
-      interrupts?: (origin: Origin) => Promise<Interrupts | null>;
+      interrupts?: (origin: Machine) => Promise<Interrupts | null>;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
       /** 每次问完本机后端起没起来（只本机那一行带）。 */
@@ -283,13 +282,13 @@ export class BackendSection {
    * 不 trim / 重复 label 后缀化 / 远端总开关关着时一个都没注册 / 启动后新增的机器不在注册表里。
    * 本机永远在第一行：它只是不走 ssh 的那一台。
    */
-  private async machines(): Promise<Machine[]> {
+  private async machines(): Promise<MachineEntry[]> {
     try {
       const origins = await commands.backend_machines();
       return origins.map((origin) => ({ origin, title: machineName(origin) }));
     } catch (e) {
       console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);
-      return [{ origin: LOCAL_ORIGIN, title: machineName(LOCAL_ORIGIN) }];
+      return [{ origin: LOCAL, title: machineName(LOCAL) }];
     }
   }
 
@@ -311,7 +310,7 @@ export class BackendSection {
    * 一台机那一行：名字 ＋ 四格。每一格是带 `data-col` 的容器，里面沿用 `.backend-row-*` 类名（判据按类名找）；
    * 分栏这一维走 `data-*`，不新造 CSS 类。
    */
-  private buildRow(m: Machine): HTMLElement {
+  private buildRow(m: MachineEntry): HTMLElement {
     const row = document.createElement("div");
     row.className = "backend-row";
     row.dataset.origin = m.origin;

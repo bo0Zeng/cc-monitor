@@ -3,7 +3,7 @@
  * 界面只交「这一窗此刻列着哪几条」，版面照回包摆。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL } from "./ipc/origin";
 import { settleTyped } from "./control-said";
 import type { MonitorAsk } from "./generated/MonitorAsk";
 import type { MonitorBoard } from "./generated/MonitorBoard";
@@ -14,5 +14,5 @@ const BOARD_BUDGET_MS = 20_000;
 /** 问这几条、合一份。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
 export async function readMonitorBoard(sessions: readonly MonitorAsk[]): Promise<MonitorBoard> {
   const req = { sessions: [...sessions] };
-  return settleTyped(LOCAL_ORIGIN, "monitor-board", callTyped(LOCAL_ORIGIN, "monitor-board", req, budgetWithin(BOARD_BUDGET_MS)));
+  return settleTyped(LOCAL, "monitor-board", callTyped(LOCAL, "monitor-board", req, budgetWithin(BOARD_BUDGET_MS)));
 }

@@ -9,7 +9,7 @@
  * 一个订阅者抛异常不挡其余订阅者。零 DOM、零 IPC。
  */
 import type { AccountsState } from "./accounts";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { QuotaRead } from "./acct-words";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { SessionAccountReply } from "./generated/SessionAccountReply";
@@ -56,13 +56,13 @@ export class Slice<T> {
 
 /** 一个会话的号：会话那台写好的那一份（`session-account`；状态栏按钮 · 号徽章照它画）。 */
 export interface SessionAccountEntry {
-  origin: Origin;
+  origin: Machine;
   read: SessionAccountReply;
 }
 
 /** 一个会话在它那台的轮换（`rotation-view` 那一份；中转没见过这个会话 ⇒ `read: null`）。 */
 export interface SessionRotationEntry {
-  origin: Origin;
+  origin: Machine;
   read: RotationViewReply | null;
 }
 
@@ -86,14 +86,14 @@ export type QuotaSlot = QuotaRead | QuotaFailed | QuotaPending;
 
 /** 窗口级的几格（每个窗口一份 —— 各窗口本来就是各自的 JS 环境）。 */
 export const appStore = {
-  /** 设置窗「当前在看哪台机器」（本机 = `LOCAL_ORIGIN`）。 */
-  machine: new Slice<Origin>(LOCAL_ORIGIN),
+  /** 设置窗「当前在看哪台机器」（本机 = `LOCAL`）。 */
+  machine: new Slice<Machine>(LOCAL),
   /** 每台机器最近一次问回来的账号清单（`account-reads.ts` 每问一次换一份）：只给同步画的那几处（头像号色 · 号牌字 · chip）读，要用清单的地方现问。 */
-  accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
+  accounts: new Slice<ReadonlyMap<Machine, AccountsState>>(new Map()),
   /** 每个会话的号（按 sid；还没问回来 ⇒ 不在里面）。 */
   sessionAccount: new Slice<ReadonlyMap<string, SessionAccountEntry>>(new Map()),
   /** 每台的额度账（{@link QuotaSlot}：读到的账 · 整问失败那一句；还没问回来 ⇒ 不在里面）。只有 `acct-center.ts` 写；读经 {@link quotaOf} / {@link quotaReadOf}。 */
-  quota: new Slice<ReadonlyMap<Origin, QuotaRead | QuotaFailed>>(new Map()),
+  quota: new Slice<ReadonlyMap<Machine, QuotaRead | QuotaFailed>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
 };
@@ -106,12 +106,12 @@ export function putIn<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K, value: V): 
 }
 
 /** 那台的额度账此刻是哪一形（没有那一格 ⇒ 还没问回来）。 */
-export function quotaOf(origin: Origin): QuotaSlot {
+export function quotaOf(origin: Machine): QuotaSlot {
   return appStore.quota.get().get(origin) ?? { state: "pending" };
 }
 
 /** 那台读到的账；整问失败 · 还没问回来 ⇒ `null`（只要号的用量那几处用它）。 */
-export function quotaReadOf(origin: Origin): QuotaRead | null {
+export function quotaReadOf(origin: Machine): QuotaRead | null {
   const q = quotaOf(origin);
   return q.state === "failed" || q.state === "pending" ? null : q;
 }

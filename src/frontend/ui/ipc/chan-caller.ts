@@ -14,7 +14,7 @@ import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { decodeJson } from "./decode";
 import { KEYS_NOT_NAMES } from "../generated/judgment-rules";
-import type { Origin } from "./origin";
+import type { Machine } from "./origin";
 import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
 
 /**
@@ -23,7 +23,7 @@ import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
  * 回的不是 JSON ⇒ 抛（`readJson`，认不出）。
  */
 export async function callTyped<K extends keyof TypedCommands>(
-  origin: Origin,
+  origin: Machine,
   cmd: K,
   req: TypedCommands[K]["req"],
   budget: Budget,
@@ -73,13 +73,13 @@ export function refusalOf(body: Uint8Array): { code: string; said: string; data?
 }
 
 /** 每台最近一份机器状态成品里的 `name`（`machine-feed` 收到一份记一份；名字只有后端那一台成品这一个来处）。 */
-const names = new Map<Origin, string>();
+const names = new Map<Machine, string>();
 
 /** 每台最近一份成品里的 `offlineSaid`（那台离线那一句，连接层写的）。 */
-const offlines = new Map<Origin, string>();
+const offlines = new Map<Machine, string>();
 
 /** 收到一台的成品：记下它的名字与离线那一句（只由 `machine-feed` 调）。 */
-export function noteMachine(origin: Origin, m: { readonly name: string; readonly offlineSaid: string }): void {
+export function noteMachine(origin: Machine, m: { readonly name: string; readonly offlineSaid: string }): void {
   names.set(origin, m.name);
   offlines.set(origin, m.offlineSaid);
 }
@@ -88,7 +88,7 @@ export function noteMachine(origin: Origin, m: { readonly name: string; readonly
  * 那台离线那一句：照那台成品的 `offlineSaid` 原样摆（连接层写好的，出口不另取字）。
  * 成品还没到 ⇒ `null`：不知道 ≠ 离线，出口照自己「成品未到」那一态画。
  */
-export function offlineSaid(origin: Origin): string | null {
+export function offlineSaid(origin: Machine): string | null {
   return offlines.get(origin) ?? null;
 }
 
@@ -96,12 +96,12 @@ export function offlineSaid(origin: Origin): string | null {
  * 一句话里怎么称呼这台机器：照那台成品的 `name`（这一窗订着机器状态时记下的），本机远端同一条路。成品还没到 ⇒
  * 那个键能当名字（就是机器表里那台的名字）就叫键本身；不能（{@link KEYS_NOT_NAMES} 里的哨兵）⇒ 机器不明。
  */
-export function machineName(origin: Origin): string {
+export function machineName(origin: Machine): string {
   return names.get(origin) ?? (KEYS_NOT_NAMES.includes(origin) ? copyText("control.machine.unsure") : origin);
 }
 
 /** 那台回了、回的东西认不出那一句（[`ReplyUnreadable`] 的 `message`；不抛、只要那一句的几处直接取）。 */
-export function unreadableSaid(origin: Origin): string {
+export function unreadableSaid(origin: Machine): string {
   return copyText("peerVersion.said.unreadable", { machine: machineName(origin) });
 }
 
@@ -111,7 +111,7 @@ export function unreadableSaid(origin: Origin): string {
  */
 export class ReplyUnreadable extends Error {
   readonly detail = "";
-  constructor(origin: Origin, why: string) {
+  constructor(origin: Machine, why: string) {
     super(unreadableSaid(origin));
     this.name = "ReplyUnreadable";
     console.warn(`reply unreadable from ${origin}: ${why}`);

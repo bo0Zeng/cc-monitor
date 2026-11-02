@@ -309,10 +309,13 @@ strip = true
 members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
-# 两条 lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。
+# lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。
 [workspace.lints.clippy]
 # 「现在」只有一处（禁的路径与理由住 `clippy.toml`）：别处直接问系统钟 ⇒ clippy 红。
 disallowed_methods = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
 
 [workspace.lints.rust]
 # 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。

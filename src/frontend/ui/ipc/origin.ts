@@ -12,11 +12,6 @@ import type { Machine } from "../generated/Machine";
 export { LOCAL };
 export type { Machine };
 
-/** 过渡名：界面读者全部改读 `LOCAL` 之后删。 */
-export const LOCAL_ORIGIN = LOCAL;
-/** 过渡名：界面读者全部改读 `Machine` 之后删。 */
-export type Origin = Machine;
-
 /** 这是本机那台吗。 */
 export function isLocalOrigin(origin: Machine): boolean {
   return origin === LOCAL;

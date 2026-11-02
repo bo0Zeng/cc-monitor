@@ -3,12 +3,12 @@
  * 一个子运行至多一个窗口（窗口名按「会话 ＋ 运行」定，已开着就拉到前面）；错开叠放由壳按「从哪扇窗开的」定。
  */
 import { commands } from "./ipc/commands";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { RunInfo } from "./generated/RunInfo";
 import { agentWindowTitle } from "./runs";
 
 export interface OpenAgentWindow {
-  origin: Origin;
+  origin: Machine;
   sid: string;
   run: RunInfo;
   /** 会话叫什么（系统标题那一段）。 */

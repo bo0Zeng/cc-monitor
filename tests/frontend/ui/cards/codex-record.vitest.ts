@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { renderMessage, type RenderContext } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 
 const golden = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-codex.golden.jsonl"), "utf8")
@@ -17,7 +17,7 @@ const golden = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-codex.
 function renderAll() {
   const ctx: RenderContext = {
     parentPath: "/p/rollout.jsonl",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

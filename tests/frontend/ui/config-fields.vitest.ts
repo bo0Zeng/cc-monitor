@@ -51,7 +51,7 @@ vi.mock("../../../src/frontend/ui/keybindings/actions", () => ({
 
 import { readClaudeDir, setClaudeDirOverride } from "../../../src/frontend/ui/paths";
 import { DEFAULT_AGENT } from "../../../src/frontend/ui/agent-profile";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { getKeybindings, setKeybindings } from "../../../src/frontend/ui/keybindings/store";
 import { loadConfig } from "../../../src/frontend/ui/config";
 
@@ -70,8 +70,8 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
     await setClaudeDirOverride(null);
     await setClaudeDirOverride("  /b  ");
     expect(prefs.sets).toEqual([
-      [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "" } }],
-      [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "/b" } }],
+      [LOCAL, { agentHomes: { [DEFAULT_AGENT]: "" } }],
+      [LOCAL, { agentHomes: { [DEFAULT_AGENT]: "/b" } }],
     ]);
     expect(store.edits, "数据目录还写进了 config.json").toEqual([]);
     prefs.homes = {};

@@ -3,7 +3,7 @@
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { AccountRow } from "./generated/AccountRow";
 import type { ListMeta } from "./generated/ListMeta";
@@ -23,8 +23,8 @@ export type AccountsMeta = Omit<ListMeta, MetaOptional> & Partial<Pick<ListMeta,
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
-  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
-  origin: Origin;
+  /** 哪台机器（本机 = `LOCAL`）。 */
+  origin: Machine;
   available: boolean;
   error: string | null;
   /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的；那一句 monitor 写好、在 `error`）；其余失败 ⇒ `false`。 */

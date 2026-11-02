@@ -10,7 +10,7 @@ import type { Launch } from "./generated/Launch";
 import { toast, failToast, noteMessage } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 import { openSession } from "./session-open";
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
 import type { FrontResult } from "./front-result";
@@ -255,10 +255,10 @@ function failedAsk(e: unknown): FrontResult {
  * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那一张。
  * 回切过去了 · 那一张 · 出口自己那一跳的失败（`front-result.ts` 照摆）。
  */
-export async function bringTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
+export async function bringTerminalToFront(origin: Machine, sessionId: string): Promise<FrontResult> {
   let placed: SessionWindow;
   try {
-    placed = await callTyped(LOCAL_ORIGIN, "session-window", { machine: origin, sid: sessionId }, budgetWithin(WINDOW_ASK_MS));
+    placed = await callTyped(LOCAL, "session-window", { machine: origin, sid: sessionId }, budgetWithin(WINDOW_ASK_MS));
   } catch (e) {
     return failedAsk(e);
   }
@@ -274,14 +274,14 @@ export function forgetSession(sessionId: string): void {
 }
 
 /** 报给壳「主窗口此刻在看这几个会话」（整份换；失败只记日志）：没在看的会话，它的行不上流（壳合成每台的名单）。 */
-export function reportWatching(sessions: { origin: Origin; sessionId: string }[]): void {
+export function reportWatching(sessions: { origin: Machine; sessionId: string }[]): void {
   void commands.watch_sessions({ sessions }).catch((e: unknown) => {
     console.warn("[tabs] 报「在看哪个会话」失败：", e);
   });
 }
 
 /** 报给壳「主窗口手上有这几个 tab」（整份换；失败只记日志）：壳随名单报给各台，那台不在说的它答已结束。 */
-export function reportKept(sessions: { origin: Origin; sessionId: string }[]): void {
+export function reportKept(sessions: { origin: Machine; sessionId: string }[]): void {
   void commands.kept_sessions({ sessions }).catch((e: unknown) => {
     console.warn("[tabs] 报「手上有哪几个 tab」失败：", e);
   });

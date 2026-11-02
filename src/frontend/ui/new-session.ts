@@ -22,7 +22,7 @@ import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { machineName, offlineSaid } from "./control-said";
 import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf } from "./agent-profile";
 import { fetchAccounts } from "./account-reads";
@@ -53,7 +53,7 @@ export const FOCUS_SESSION_EVENT = "new-session-focus";
 
 export interface NewSessionSpec {
   /** 预选的那台（缺 ⇒ 本机）。 */
-  origin?: Origin;
+  origin?: Machine;
   /** 机器那一格锁定（机器卡入口）。 */
   lockMachine?: boolean;
   /** 预填的工作目录（缺 ⇒ 那台最近用过的第一个）。 */
@@ -78,7 +78,7 @@ export interface NewSessionSpec {
 
 /** 一台机器那一项：连没连上。 */
 interface MachineOpt {
-  origin: Origin;
+  origin: Machine;
   up: boolean;
 }
 
@@ -95,7 +95,7 @@ async function listMachines(): Promise<MachineOpt[]> {
   }
   const opts = got.map(([origin, m]) => ({ origin, up: m.state === "up" }));
   const local = opts.filter((m) => isLocalOrigin(m.origin));
-  return [...(local.length > 0 ? local : [{ origin: LOCAL_ORIGIN, up: false }]), ...opts.filter((m) => !isLocalOrigin(m.origin))];
+  return [...(local.length > 0 ? local : [{ origin: LOCAL, up: false }]), ...opts.filter((m) => !isLocalOrigin(m.origin))];
 }
 
 /** 账号那一格的一项。`ready: false` ⇒ 选不了（`why` 是那台写好的那一句，`login` ⇒ 给［登录…］）。 */
@@ -107,11 +107,11 @@ interface AccountOpt {
   login: boolean;
   quota: string | null;
   /** 号在哪一台（头像照那台账号库的号色画）。 */
-  origin: Origin;
+  origin: Machine;
 }
 
 /** 那台的号（那台说进选号表的那几个：`newSession`）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
-async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[] | null> {
+async function listAccounts(origin: Machine, agent: string): Promise<AccountOpt[] | null> {
   if (!agentHasAccounts(agent)) return null;
   let list: Account[];
   let def: string | null;
@@ -146,7 +146,7 @@ function accountOption(a: AccountOpt): SelectOption {
 }
 
 /** 机器那一项：远端带机器标记；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
-function machineOption(m: MachineOpt, chosen: Origin): SelectOption {
+function machineOption(m: MachineOpt, chosen: Machine): SelectOption {
   const name = machineName(m.origin);
   return {
     value: m.origin,
@@ -306,7 +306,7 @@ function moreFields(forking: boolean): { tmuxInput: HTMLInputElement; tmuxRow: R
 }
 
 /** 终端窗口那一张的灰字：本机 · 远端有 tmux · 远端没 tmux。 */
-function windowNote(origin: Origin, hasTmux: boolean): string {
+function windowNote(origin: Machine, hasTmux: boolean): string {
   if (isLocalOrigin(origin)) return copyText("newSession.place.windowNoteLocal");
   return hasTmux ? copyText("newSession.place.windowNote", { machine: machineName(origin) }) : copyText("newSession.place.noTmux");
 }
@@ -332,7 +332,7 @@ function fieldRow(field: string | null, rows: Record<"cwd" | "tmuxName" | "comma
   }
 }
 
-const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
+const dialogTitle = (spec: NewSessionSpec, origin: Machine): string => {
   if (spec.fork) return copyText("newSession.title.fork");
   if (spec.ask) return spec.ask.title;
   return spec.lockMachine ? copyText("newSession.title.onMachine", { machine: machineName(origin) }) : copyText("newSession.title.plain");
@@ -341,7 +341,7 @@ const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
 /** 打开起新会话框。取消 ⇒ 什么都不起不写。 */
 export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const fork = spec.fork ?? null;
-  let origin: Origin = spec.origin ?? LOCAL_ORIGIN;
+  let origin: Machine = spec.origin ?? LOCAL;
   let facts: OpenFacts | null = null;
   let factsFailed: string | null = null;
   let agent = spec.agent ?? DEFAULT_AGENT;
@@ -401,7 +401,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   form.appendChild(single);
   const sets = setPage(() => paintPage());
   /** 一组页读的是哪台的（`null` ＝ 还没读）。 */
-  let setsOf: Origin | null = null;
+  let setsOf: Machine | null = null;
   /** 打开时点名的那一组（只第一次读时用）。 */
   let openSet = spec.set ?? null;
   if (paged) form.appendChild(sets.el);
@@ -986,7 +986,7 @@ function safeLauncher(agent: string): string {
 }
 
 /** 那台偏好里那一家的启动命令（`prefs-read`；和默认启动器一样 / 没设 / 问不到 ⇒ 空，表示用默认）。 */
-async function configuredCommand(origin: Origin, agent: string): Promise<string> {
+async function configuredCommand(origin: Machine, agent: string): Promise<string> {
   try {
     const c = ((await readPrefs(origin)).prefs.launchers[agent] ?? "").trim();
     return c === safeLauncher(agent) ? "" : c;
@@ -996,7 +996,7 @@ async function configuredCommand(origin: Origin, agent: string): Promise<string>
 }
 
 /** 不在主窗口里起的：报到了说一句「已启动」＋［切过去］（主窗口里起的由占位标签页接着）。 */
-function landing(origin: Origin): OpenHow {
+function landing(origin: Machine): OpenHow {
   return {
     onArrived: (sid: string, o: Opened) => {
       const name = o.session ?? o.cwd?.split("/").filter(Boolean).pop() ?? o.cwd ?? "";

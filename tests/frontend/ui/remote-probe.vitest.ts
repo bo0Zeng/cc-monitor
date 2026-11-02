@@ -37,7 +37,7 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import { probeMachine } from "../../../src/frontend/ui/remote-probe";
 import { PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/generated/shell-names";
 import type { ProbeCell } from "../../../src/frontend/ui/generated/ProbeCell";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const host = (over: Partial<Host>): Host => ({
@@ -88,11 +88,11 @@ describe("请求与进度", () => {
     const r = await probeMachine(form, (c) => drawn.push(c));
     expect(fake.order).toEqual(["subscribe", "call"]);
     const sub = fake.subs[0]!;
-    expect(sub.origin).toBe(LOCAL_ORIGIN);
+    expect(sub.origin).toBe(LOCAL);
     const ticket = sub.kind.slice(`${PROBE_PROGRESS_KIND}/`.length);
     expect(sub.kind).toBe(`${PROBE_PROGRESS_KIND}/${ticket}`);
     expect(body).toEqual({
-      origin: LOCAL_ORIGIN,
+      origin: LOCAL,
       op: "remote-probe",
       args: { ticket, machine: form },
     });

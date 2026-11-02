@@ -66,11 +66,11 @@ describe("金样：后端出的成品，TS 读得懂", () => {
 
 // ★ 源码那一侧：「装」只问本机（枢纽），不经前端中继 —— 人群 = `ext-reads.ts` 里每一处 `chan.call(` / `callTyped(`；内层命令一条都不许界面直问。
 describe("装只问本机（枢纽）；内层命令界面一条都不直问", () => {
-  it("ext-reads.ts：枢纽那两条的第一参恰是 LOCAL_ORIGIN，内层命令零出现", () => {
+  it("ext-reads.ts：枢纽那两条的第一参恰是 LOCAL，内层命令零出现", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/ext-reads.ts"), "utf8");
     const calls = [...src.matchAll(/(?:chan\.call|callTyped)\(\s*([^,]+),\s*"([^"]+)"/g)].map((m) => [m[1].trim(), m[2]]);
     expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-note-set", "ext-uninstall-apply", "ext-uninstall-preview"]);
-    expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list" || op === "ext-note-set").every(([o]) => o === "LOCAL_ORIGIN")).toBe(true);
+    expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list" || op === "ext-note-set").every(([o]) => o === "LOCAL")).toBe(true);
     const inner = ["mcp-read", "mcp-sync-source", "mcp-sync-preview", "mcp-sync-apply", "skill-read", "skill-install-plan", "skill-install-apply", "cc-bus-install", "cc-bus-install-state"];
     expect(inner.filter((op) => src.includes(`"${op}"`))).toEqual([]);
   });

@@ -5,7 +5,7 @@
  * 机器从列表删掉（撤销条到点）⇒ 交本机后端清掉那台（`last-seen-write` 带 `forget`）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import type { SeenKind } from "./generated/SeenKind";
 import type { LastSeen } from "./generated/LastSeen";
 
@@ -17,20 +17,20 @@ const BUDGET_MS = 10_000;
 type SeenValue = { [K in SeenKind]: Extract<NonNullable<LastSeen[K]>, { state: "kept" }>["value"] };
 
 /** 读成了一份 ⇒ 交本机后端记下（失败只进日志：它只是缓存）。 */
-export async function rememberSeen<K extends SeenKind>(origin: Origin, kind: K, value: SeenValue[K]): Promise<void> {
+export async function rememberSeen<K extends SeenKind>(origin: Machine, kind: K, value: SeenValue[K]): Promise<void> {
   if (isLocalOrigin(origin)) return;
   try {
-    await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, kind, value }, budgetWithin(BUDGET_MS));
+    await callTyped(LOCAL, "last-seen-write", { origin, kind, value }, budgetWithin(BUDGET_MS));
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的 ${kind} 没记下：`, e);
   }
 }
 
 /** 那台上次读成的那一份（`data` 那一样后端按回包类型核过，不是这一版就说读不懂）；没有 / 问不到 ⇒ `null`。 */
-export async function recallSeen<K extends SeenKind>(origin: Origin, kind: K): Promise<LastSeen[K] | null> {
+export async function recallSeen<K extends SeenKind>(origin: Machine, kind: K): Promise<LastSeen[K] | null> {
   if (isLocalOrigin(origin)) return null;
   try {
-    const got = await callTyped(LOCAL_ORIGIN, "last-seen-read", { origin }, budgetWithin(BUDGET_MS));
+    const got = await callTyped(LOCAL, "last-seen-read", { origin }, budgetWithin(BUDGET_MS));
     return got[kind];
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的上次值问不到：`, e);
@@ -39,10 +39,10 @@ export async function recallSeen<K extends SeenKind>(origin: Origin, kind: K): P
 }
 
 /** 那台从列表删掉了 ⇒ 交本机后端清掉它的上次值（失败只进日志：它只是缓存，最多 64 台、超了丢最旧）。 */
-export async function forgetSeen(origin: Origin): Promise<void> {
+export async function forgetSeen(origin: Machine): Promise<void> {
   if (isLocalOrigin(origin)) return;
   try {
-    await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, forget: true }, budgetWithin(BUDGET_MS));
+    await callTyped(LOCAL, "last-seen-write", { origin, forget: true }, budgetWithin(BUDGET_MS));
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的上次值没清掉：`, e);
   }

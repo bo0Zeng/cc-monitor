@@ -181,8 +181,6 @@ monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知�
 - 与后端共用的只放在共享 crate `src/common/` 里；
 - 壳自己的 `platform/` 住壳要的平台原语：文件原语（不覆盖改名 · 置可执行位 · 只给本人的目录）、控制台输出的解码（Windows 按那台的 OEM 代码页）、窗口与单实例。
 
-monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_read_surface_registry` 的机检为准。
-
 Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo check` 抓不住、运行时第一次调用才 panic。规矩与找全消费者的做法见 INVARIANTS §8 · [CONTRIBUTING.md § 3.1](CONTRIBUTING.md)。
 
 ### 2.5 `platform/`：判据是跨 target 编译
@@ -191,16 +189,16 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 「怎么读到这个事实」下沉 `platform/`（Linux 读 `/proc`，Windows 读 Win32），「什么叫同一个活进程」留通用层、两平台共用一张判定（`liveness::is_same_live_process`）。连规则也下沉，就成了每个平台一套规则。
 
-### 2.6 零轮询：一律事件驱动，四张账本
+### 2.6 零轮询：一律事件驱动，四道挡
 
-零轮询由四张登记表覆盖，口径是「每一处周期唤醒都说清事件源在哪、谁退役它」：
+零轮询由四道挡覆盖，口径是「每一处周期唤醒都说清事件源在哪、谁退役它」：
 
-| 账本 | 管哪一块 |
+| 哪一道 | 管哪一块 |
 |---|---|
 | `no_timer_guard`（后端） | 后端里不许有自己醒过来的构件，零容忍 |
 | `polling_registry` | 界面 TS 与 `src/shared/` 下的 shell |
-| `rust_timer_registry` 的 `REGISTERED` | monitor Rust 里的 `sleep` / `interval` |
-| `rust_timer_registry` 的 shell 那一条 | monitor Rust 拼出来的 shell 循环（前三张都看不见它）：零命中，带一条合成的正控 |
+| `src/frontend/clippy.toml` 定时器那一组 | monitor Rust 里的 `sleep` / `recv_timeout` / `interval`：用一处就在那一处 `expect` 写理由 |
+| `polling_registry` 的 shell 形唤醒那一条 | monitor Rust 拼出来的 shell 循环（前三道都看不见它）：零命中，带一条合成的正控 |
 
 后端也不产出自带节拍的 shell 串（`no_timer_guard` 的 `f09_external_beat` 零命中）。期限一律由发起那件事的一方给一个绝对时刻，下游只收紧，通信层自己没有期限常量。
 

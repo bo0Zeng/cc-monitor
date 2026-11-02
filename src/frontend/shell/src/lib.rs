@@ -18,6 +18,20 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 都在 `setup()` 里 `app.manage`；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+// 生产段的禁用名单住 `src/frontend/clippy.toml`，放行逐处写在调用点；测试段的夹具要自己定期限、读写盘、起进程、丢结果 ⇒ 测试段整段放开。
+// 这一行是整包唯一许写 `allow` 的地方：测试段用不用得到名单上的调用随判据增减，写成 `expect` 会在用不到时报。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果"
+    )
+)]
+
 // `adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
 //   起会话事实只住后端适配层（`src/backend/agents/<名>/resume.rs`，注册表 `Adapter.launch`），monitor 读它生成的
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
@@ -32,6 +46,7 @@ mod backend_policy;
 use crate::detail::Shell as _;
 use comms_inward::{backend_route, origin};
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
@@ -147,9 +162,6 @@ mod frame_tally;
 mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/）
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/atomic_replace_registry.rs"]
-mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/bus_identity_registry.rs"]
 mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（整体 #[cfg(test)]）
 #[cfg(test)]
@@ -162,27 +174,12 @@ mod capability_registry;
 #[path = "../../../../tests/frontend/shell/comm_boundary_registry.rs"]
 mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C3 · X1 · X4
 #[cfg(test)]
-// audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
-#[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
-mod e2e_gate_registry;
-// F10（出口④）：本机读面清账 + 递减棘轮。
-// ⚠ 注释写在上一行而不是行尾：行尾放不下，而 `rustfmt`
-//   会把跟在带行尾注释那一行后面的注释块**缩进对齐到那一列**
-//   （形状同下面 `plugin_class_registry` 那一段）—— 09-10
-//   fmt 那道门当场判过一次，别再拉回顶格。
-// 〔订正 2026-09-10（v3.7.0）—— 本行原话逐字：
-//  「F10（出口④）：本机读面清账 + 递减棘轮（**正题被 F05b 挡着**）」。
-//  括号里那句今天不成立：F05b 已经做完并随 v3.7.0 发出去了
-//  （09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-//  `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个）。
-//  今天挡着正题的是后端侧一批有名有姓的缺口，逐条写在
-//  那张表**自己每一行**里 —— 这里刻意不抄第二份（定框 E12）。〕
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/command_home_registry.rs"]
 mod command_home_registry; // Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/local_read_surface_registry.rs"]
-mod local_read_surface_registry;
+// audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
+#[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
+mod e2e_gate_registry;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lockfile_conflict_guard.rs"]
 mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须为空（超集不算）
@@ -208,9 +205,6 @@ mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产
 #[path = "../../../../tests/frontend/shell/quote_singleton_guard.rs"]
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/rust_timer_registry.rs"]
-mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/scanning_guard_registry.rs"]
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 #[cfg(test)]
@@ -220,14 +214,11 @@ mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘�
 #[path = "../../../../tests/frontend/shell/shared_crate_registry.rs"]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 #[cfg(test)]
+// audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免。
 #[path = "../../../../tests/frontend/shell/shell_lint_registry.rs"]
-mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
-                         // 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/swallow_registry.rs"]
-mod swallow_registry;
+mod shell_lint_registry;
 // TL3（审计 F 🔴-2）：同步 IPC 命令的调用闭包里零 `block_on` / 零同步连后端（`INVARIANTS §10`；整体 cfg(test)）。
-//   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `local_read_surface_registry` 那一段）。
+//   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `plugin_class_registry` 那一段）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sync_command_registry.rs"]
 mod sync_command_registry;
@@ -240,9 +231,6 @@ mod snapshot_resume;
 #[path = "../../../../tests/frontend/shell/tmux_backend_gate_guard.rs"]
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod utils;
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/write_site_registry.rs"]
-mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
 use copy_core::copy_text;
 use std::sync::Arc;
@@ -552,7 +540,7 @@ pub fn run() {
             // 仍应置前，这里补一次 set_focus 还原默认体验。
             if !std::env::args().any(|a| a == "--background") {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_focus();
+                    window.set_focus().discard(Why::WindowBestEffort);
                 }
             }
 
@@ -1008,7 +996,10 @@ fn kept_sessions(
 /// 拖拽撕离（tear-off）：`x` / `y` 为可选的**逻辑屏幕坐标**（CSS px），来自前端
 /// mouseup 的 `e.screenX/screenY`。两者皆 `Some` 时新窗口在该落点打开（双屏拖出体验）；
 /// 任一为 `None`（右键菜单 / Ctrl+Shift+N 老调用方）则维持默认居中行为，不破坏旧路径。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Tauri 命令的参数就是界面 invoke 交来的那几格（加窗口与应用句柄），收成结构体要改界面那一侧的调用形"
+)]
 #[tauri::command]
 async fn open_session_in_new_window(
     app: tauri::AppHandle,
@@ -1034,10 +1025,11 @@ async fn open_session_in_new_window(
             None => format!("viewer-{session_id}"),
         };
         if let Some(w) = app.get_webview_window(&label) {
-            let _ = w.unminimize();
-            let _ = w.show();
-            let _ = w.set_focus();
-            let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
+            w.unminimize().discard(Why::WindowBestEffort);
+            w.show().discard(Why::WindowBestEffort);
+            w.set_focus().discard(Why::WindowBestEffort);
+            w.request_user_attention(Some(tauri::UserAttentionType::Informational))
+                .discard(Why::WindowBestEffort);
             return Ok(());
         }
         let run_q = run
@@ -1102,9 +1094,9 @@ async fn open_terminal_in_new_window(
         let origin_s = origin.to_string();
         let label = terminal_window_label(&origin_s, &terminal);
         if let Some(w) = app.get_webview_window(&label) {
-            let _ = w.unminimize();
-            let _ = w.show();
-            let _ = w.set_focus();
+            w.unminimize().discard(Why::WindowBestEffort);
+            w.show().discard(Why::WindowBestEffort);
+            w.set_focus().discard(Why::WindowBestEffort);
             return Ok(());
         }
         let (o, t, n, ti) = (
@@ -1224,9 +1216,9 @@ async fn open_settings_window(
         use tauri::Manager;
         let label = SETTINGS_WINDOW_LABEL;
         if let Some(w) = app.get_webview_window(label) {
-            let _ = w.unminimize();
-            let _ = w.show();
-            let _ = w.set_focus();
+            w.unminimize().discard(Why::WindowBestEffort);
+            w.show().discard(Why::WindowBestEffort);
+            w.set_focus().discard(Why::WindowBestEffort);
             if let Some(t) = target {
                 let to = tauri::EventTarget::webview_window(label);
                 if let Err(e) = app.emit_to(to, "settings-target", t) {
@@ -1289,10 +1281,12 @@ async fn bring_terminal_to_front(
     labels: Vec<String>,
     chain: Vec<bind::ChainLink>,
     tmux: bool,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
+    app: tauri::AppHandle,
 ) -> Result<Option<cmd_wire::front::FrontTold>, cmd_wire::failed::Failed> {
+    // 状态经 `AppHandle` 取、不收 `tauri::State<'_, …>` 参数：带引用参数的 async 命令，`#[tauri::command]` 的展开里
+    //   有一句丢结果的 `let _`（核返回类型是不是 `Result`），落在本函数的返回类型上，吞结果那条 lint 报在这里。下面两条同。
+    let bind = app.state::<Arc<bind::BindRegistry>>().inner().clone();
     let r: Result<Option<cmd_wire::front::FrontTold>, Said> = async move {
-        let bind = bind_state.inner().clone();
         let outcome =
             tokio::task::spawn_blocking(move || bind::bring_session_window(&labels, &chain, &bind))
                 .await
@@ -1375,9 +1369,8 @@ fn get_log_file_info(
 /// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
 /// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
 #[tauri::command]
-async fn open_log_file(
-    state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<(), cmd_wire::failed::Failed> {
+async fn open_log_file(app: tauri::AppHandle) -> Result<(), cmd_wire::failed::Failed> {
+    let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
     let r: Result<(), Said> = async move {
         let path = state
             .current_log_file()
@@ -1393,9 +1386,8 @@ async fn open_log_file(
 
 /// 用资源管理器打开 log 目录。
 #[tauri::command]
-async fn open_log_dir(
-    state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<(), cmd_wire::failed::Failed> {
+async fn open_log_dir(app: tauri::AppHandle) -> Result<(), cmd_wire::failed::Failed> {
+    let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
     let r: Result<(), Said> = async move {
         let dir = state.log_dir();
         // 目录可能还不存在（log_enabled=false 时不创建）

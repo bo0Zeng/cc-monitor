@@ -20,15 +20,24 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsoleLook {
     /// 显示在这个可见窗口里。
-    #[cfg_attr(not(windows), allow(dead_code))] // 只有 Windows 上的小助手答得出它
+    #[cfg_attr(
+        all(not(windows), not(test)),
+        expect(dead_code, reason = "只有 Windows 上的小助手答得出它")
+    )]
     Shown(isize),
     /// 借到了，那个控制台不显示在任何可见窗口里（隐藏的控制台 · 不把伪控制台挂到自己窗口下的终端程序）。
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(
+        all(not(windows), not(test)),
+        expect(dead_code, reason = "只有 Windows 上的小助手答得出它")
+    )]
     Hidden,
     /// 系统不给借（提权的进程 · 本进程自己挂着控制台）。
     Denied,
     /// 它没有控制台 / 进程没了。
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(
+        all(not(windows), not(test)),
+        expect(dead_code, reason = "只有 Windows 上的小助手答得出它")
+    )]
     None,
 }
 

@@ -35,7 +35,15 @@
 //! 独立的包 `backend-plugin`：只引平台层（引了 control · observe 或别的上层就编不过）。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许上层的 `common::time::now`（`clippy.toml`）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
 
 // 包里照旧写 `crate::plugin::…` · `crate::platform::…`。
 extern crate self as plugin;

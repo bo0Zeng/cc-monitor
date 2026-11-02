@@ -17,7 +17,7 @@ import { field } from "../kit/field";
 import { button, buttonRow, setButtonLabel } from "../kit/button";
 import { checkbox, radio } from "../kit/switch";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { saidOf } from "../kit/detail";
 
 /** 接入方式 —— `§4.4` 那个岔口的两支。 */
@@ -46,7 +46,7 @@ export interface NewAccountForm {
  * 不合法 / 预演没过时主按钮是灰的，就算被绕过 `disabled` 点了也不交出去。`onCancel`：表单收起。
  */
 export function renderNewAccountForm(
-  origin: Origin,
+  origin: Machine,
   machine: string,
   hooks: { onCreate: (req: NewAccountRequest) => void | Promise<void>; onCancel: () => void; confirm?: ConfirmFn },
 ): NewAccountForm {

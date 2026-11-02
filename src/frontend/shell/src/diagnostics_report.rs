@@ -176,8 +176,12 @@ async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machi
 pub async fn diagnostics_report(
     config_unknown: Vec<String>,
     drift: Vec<DriftIn>,
-    state: tauri::State<'_, std::sync::Arc<crate::logging::LoggingState>>,
+    app: tauri::AppHandle,
 ) -> Result<DiagnosticsReport, cmd_wire::failed::Failed> {
+    // 状态经 `AppHandle` 取、不收 `tauri::State<'_, …>` 参数：理由见 `lib.rs::bring_terminal_to_front` 那一句。
+    let state = tauri::Manager::state::<std::sync::Arc<crate::logging::LoggingState>>(&app)
+        .inner()
+        .clone();
     let r: Result<DiagnosticsReport, Said> = async move {
         let log_file = state.log_file_info().current_file;
         let local = cmd_wire::LOCAL;

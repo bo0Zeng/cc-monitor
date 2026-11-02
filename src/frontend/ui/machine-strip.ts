@@ -12,7 +12,7 @@ import type { LocalBackend } from "./generated/LocalBackend";
 import { statusDot, type MachineDotState } from "./kit/status-dot";
 import { localBackendFace } from "./local-backend-face";
 import { machineName } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { isLocalOrigin, LOCAL } from "./ipc/origin";
 import { attachTooltip } from "./kit/tooltip";
 import { copyText } from "./copy-table";
 
@@ -72,13 +72,13 @@ export class MachineStrip {
    */
   local(l: LocalBackend): void {
     const face = localBackendFace(l);
-    this.localDown = face && { name: machineName(LOCAL_ORIGIN), dot: face.dot, word: face.word, said: face.problem, fixes: face.fixes };
+    this.localDown = face && { name: machineName(LOCAL), dot: face.dot, word: face.word, said: face.problem, fixes: face.fixes };
     this.paint();
   }
 
   private paint(): void {
     const list: [string, Line][] = [
-      ...(this.localDown ? [[LOCAL_ORIGIN, this.localDown] as [string, Line]] : []),
+      ...(this.localDown ? [[LOCAL, this.localDown] as [string, Line]] : []),
       ...[...this.machines].filter(([o]) => !(this.localDown && isLocalOrigin(o))),
     ];
     if (list.length > MAX_ROWS && !this.open) {

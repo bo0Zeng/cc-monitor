@@ -29,7 +29,7 @@ import { setPlace } from "../session-hidden-cmds";
 import { placesOf, type TabPlace, type TabPlaces } from "../session-hidden";
 import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
 import { SETTINGS_APPLIED_EVENT } from "./events";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 
 function applied(): void {
   emit(SETTINGS_APPLIED_EVENT).catch((e: unknown) =>
@@ -41,7 +41,7 @@ function applied(): void {
  * 子会话 · 分身会话那两行：名字短、说明在悬停；分段按钮读回那台之前灰着、一段都不选（缺省只住那台后端，这里不存一份），
  * 改了交那台、画写完读回的那一份，失败退回、行下一句。回两行与「读回了」那一下（读不懂 ⇒ 照读回的画、仍灰着：那台也拒写）。
  */
-function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: Prefs, writable: boolean) => void } {
+function placeRows(origin: Machine): { rows: HTMLElement[]; fill: (prefs: Prefs, writable: boolean) => void } {
   const specs: { which: keyof TabPlaces; label: string; tip: string; role: string }[] = [
     { which: "childTab", label: copyText("settings.machine.childTab"), tip: copyText("settings.machine.childTabTip"), role: "child-tab" },
     { which: "bgTab", label: copyText("settings.machine.bgTab"), tip: copyText("settings.machine.bgTabTip"), role: "bg-tab" },
@@ -104,7 +104,7 @@ function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: Prefs, 
 
 /** 那台那几格（`name` ＝ 那台在界面上的名字，说明里用）。建好不问；`load()` 才问那台（机器页第一次可见时宿主调）。 */
 export function machineLaunchRows(
-  origin: Origin,
+  origin: Machine,
   name: string,
 ): { rows: HTMLElement[]; load: () => void } {
   // ── 启动程序 ──

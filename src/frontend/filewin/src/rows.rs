@@ -641,7 +641,10 @@ pub struct InlineCell<'a> {
 ///
 /// 🔴 这是**唯一**一条画文件列表的路。行与行之间不留缝（`item_spacing.y = 0`），
 /// 一行恰好一个行高（`theme::Metrics::row_h`）⇒ 「滚到第 i 行」的偏移是 `i × 行高`（[`row_pitch`]），算出来的，不是找出来的。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "这份文件列表用到的（输入 · 行 · 选中 · 样子 · 最后一行 …）全是这一下的值，合成一个类型只是换个地点再列一次"
+)]
 pub fn show_file_rows_with_tail(
     ui: &mut Ui,
     rows: &[Listed],

@@ -12,6 +12,20 @@
 //! 「整行可点」那块矩形后登记、横向拉满整行宽的话，**行上那颗按钮编得过、画得出、永远点不到**
 //! ⇒ 整行那块矩形**让开按钮那一段**，判据两侧都钉（点按钮要回按钮、点空白处双击要回那一行）。
 
+// 生产段的禁用名单住 `src/frontend/clippy.toml`，放行逐处写在调用点；测试段的夹具要自己读写盘、起进程、丢结果 ⇒ 测试段整段放开。
+// 这一行是整包唯一许写 `allow` 的地方：测试段用不用得到名单上的调用随判据增减，写成 `expect` 会在用不到时报。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己读写盘、起进程、收尾时丢结果"
+    )
+)]
+
 // 🔴**大文件模式**：只排视口内的行。
 pub mod batch;
 pub mod bigfile;

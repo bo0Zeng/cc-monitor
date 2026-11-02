@@ -11,7 +11,15 @@
 //! 零读者的项 rustc 当场报 `dead_code`（门禁 `deadcode-backend` 那一格数的就是它）。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许 `common::time::now`（`clippy.toml`）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+// 测试段收尾时丢结果不写理由（清临时目录 · 停替身进程）；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
 mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]

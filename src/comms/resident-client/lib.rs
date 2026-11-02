@@ -15,14 +15,16 @@
 //!
 //! 有计时器（期限 · 退避），属客户端那一侧：不进后端的判据人群（`no_timer_guard`）。
 
-// 生产段的禁用名单住上一层 `src/comms/clippy.toml`，放行逐处写在调用点；测试段的夹具要自己定期限 ⇒ 测试段整段放开。
+// 生产段的禁用名单住上一层 `src/comms/clippy.toml`，放行逐处写在调用点；测试段的夹具要自己定期限、丢结果 ⇒ 测试段整段放开。
 // 这一行是整包唯一许写 `allow` 的地方：测试段用不用得到名单上的调用随判据增减，写成 `expect` 会在用不到时报。
 #![cfg_attr(
     test,
     allow(
         clippy::allow_attributes,
         clippy::disallowed_methods,
-        reason = "测试段放开禁用名单：夹具自己定期限"
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、收尾时丢结果"
     )
 )]
 

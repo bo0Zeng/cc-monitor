@@ -29,7 +29,7 @@ import { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { TabGroup } from "../../../src/frontend/ui/tab-bar-prefs";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 
@@ -62,7 +62,7 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     pinned: false,
     group: null, // 组员关系是 tab 自己的属性
     cwd: "/w",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     background: false,
     activity: null,
     forkedFromSessionId: null,
@@ -97,7 +97,7 @@ function rig(n: number, grouped = 0): Rig {
   for (let i = 0; i < n; i++) {
     const sid = `s${i}`;
     const remote = i % 2 === 1;
-    store.tabs.set(sid, fakeTab(sid, { origin: remote ? "pi" : LOCAL_ORIGIN }));
+    store.tabs.set(sid, fakeTab(sid, { origin: remote ? "pi" : LOCAL }));
     store.orderedIds.push(sid);
     if (remote) putIn(appStore.sessionAccount, sid, { origin: "pi", read: lastAccount(i % 4 === 1 ? "alice" : "bob") });
   }

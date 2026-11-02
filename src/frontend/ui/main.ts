@@ -11,10 +11,9 @@
  * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
-// `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
-// `origin::LOCAL`，两处由 `origin_tests.rs::the_sentinel_agrees_with_the_ts_copy` 钉着）。
+// `LOCAL`：本机那台的线上名，只住 `cmd-wire`（`cmd_wire::LOCAL`），界面经 `ipc/origin` 从生成物拿。
 import { hiddenPushed } from "./session-hidden";
-import { LOCAL_ORIGIN, isLocalOrigin, type Origin } from "./ipc/origin";
+import { LOCAL, isLocalOrigin, type Machine } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { icon } from "./kit/icon";
@@ -182,16 +181,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   const chores = new StatusChores({
     machines: async () => {
       const got: unknown = await commands.backend_machines();
-      return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
+      return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL];
     },
-    read: (ms) => readChores(ms as Origin[]),
+    read: (ms) => readChores(ms as Machine[]),
     open: () => void openSettingsWindow(undefined, dest.CHORES),
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
   // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
   // 一个会话都没有时正文区中央那一块；同一份「开始用」也告诉它本机终端接上没有。
-  const empty = new MainEmpty(() => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN)));
+  const empty = new MainEmpty(() => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL)));
   streamRoot.appendChild(empty.el);
   const readStart = async (): Promise<Readiness | null> => {
     const r = await readReadiness();
@@ -227,7 +226,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   let activeTab: () => Tab | null = () => null;
   let watched: () => Watched | null = () => null;
   // 「终端」视图问哪几台：同会话流订的那几台（机器表变了跟着换）。
-  let boardMachines: Origin[] = [LOCAL_ORIGIN];
+  let boardMachines: Machine[] = [LOCAL];
   const terminalPage = new TerminalPage({
     active: () => watched(),
     front: (sid) => tabs.frontFor(sid),
@@ -431,7 +430,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   usageHud.host = {
     openSettings: () => {
       const sid = tabs.activeSessionId();
-      void openSettingsWindow(undefined, dest.contextLimitsOf((sid === null ? null : tabs.originOf(sid)) ?? LOCAL_ORIGIN));
+      void openSettingsWindow(undefined, dest.contextLimitsOf((sid === null ? null : tabs.originOf(sid)) ?? LOCAL));
     },
     retry: () => tabs.retryActiveFacts(),
   };
@@ -457,7 +456,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const openAcctPanel = (sid: string | null, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
-  tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
+  tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL));
   tabs.onOpenHere = (sid) => {
     tabs.switchTo(sid);
     mainDrawer.open("terminal");
@@ -482,22 +481,22 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     mainDrawer.dock.show("terminal");
   };
-  const activeOrigin = (): Origin | null => {
+  const activeOrigin = (): Machine | null => {
     const sid = tabs.activeSessionId();
     return sid === null ? null : tabs.originOf(sid);
   };
   const accountChipDeps = {
-    openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL_ORIGIN)),
+    openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL)),
     togglePanel: openAcctPanel,
     // 切号后立刻重问那一台有 tab 的会话的号（与默认号比在那一份里），不等那台推 `changed/accounts`。
-    onDefaultChanged: (origin: Origin) => reaskSessionAccounts(origin),
+    onDefaultChanged: (origin: Machine) => reaskSessionAccounts(origin),
   };
   const accountChip = new AccountChip(accountChipDeps);
   status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
   // 那台连上 / 那台账号清单变了 ⇒ 那台有 tab 的会话的号重问 ＋ chip（经通道订的 `changed/accounts`，下面 `bindEvents` 的 `onChanged`）；不给 ⇒ 各台。
-  const onAccountsChanged = (origin?: Origin): void => {
+  const onAccountsChanged = (origin?: Machine): void => {
     reaskSessionAccounts(origin);
     void accountChip.refresh();
   };
@@ -539,7 +538,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     accountChip.setActive(cur);
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
-    followActive(cur, panelHost, LOCAL_ORIGIN);
+    followActive(cur, panelHost, LOCAL);
     if (a.sid !== null) noticeRepaint(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
 
@@ -657,9 +656,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 远端文件入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（openSftpFromTopbar）；终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
   // 栏顶最前一颗拆分按钮「＋ ⌄」：新建会话（框起在此刻那个标签页的那台、那个目录）· 那台存好的几组（`set-menu.ts`）。
-  const hereNow = (): { origin: Origin; cwd?: string } => {
+  const hereNow = (): { origin: Machine; cwd?: string } => {
     const t = tabs.activeTab();
-    return t ? { origin: t.origin, cwd: t.projectDir ?? undefined } : { origin: LOCAL_ORIGIN };
+    return t ? { origin: t.origin, cwd: t.projectDir ?? undefined } : { origin: LOCAL };
   };
   const setHost: SetMenuHost = {
     newSession: () => void openNewSession(hereNow()),
@@ -763,7 +762,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
+        openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL)),
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",
@@ -771,7 +770,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         icon: "account",
         title: copyText("acct.cmd.default"),
         keywords: copyText("acct.cmd.default"),
-        run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL_ORIGIN),
+        run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL),
       },
     );
     return cmds;
@@ -907,7 +906,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   （`backend_machines`：本机恒第一，远端是此刻起了流的那几台；问不到 ⇒ 至少订本机）。机器表变了（加 · 删 · 改名）壳对齐完远端流
   //   在本机 `changed/machines` 上说一声 ⇒ 再问、新来的补订、没了的退订（`bindEvents` 的 `machines`），不重启。
   let machinesSettled = false;
-  const onMachinesMoved = (now: readonly Origin[], added: readonly Origin[], dropped: readonly Origin[]): void => {
+  const onMachinesMoved = (now: readonly Machine[], added: readonly Machine[], dropped: readonly Machine[]): void => {
     // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
     tabs.setMachines(now);
     boardMachines = [...now];
@@ -961,7 +960,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
       // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告紧跟着到）。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, null, meta.hidden);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL, meta.background, null, meta.hidden);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
     },
@@ -1040,7 +1039,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
   }, {
     machines: {
-      ask: async () => (await commands.backend_machines()) as Origin[],
+      ask: async () => (await commands.backend_machines()) as Machine[],
       plan: (origin) => ({
         streams: [{ origin, kind: "session-lines" }],
         // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。

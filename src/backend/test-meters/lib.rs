@@ -6,8 +6,12 @@
 //!
 //! 体住 `tests/backend/`（这里只挂）；三样都不引后端里任何一层。
 
-// 测试档的量具可以直接问系统钟（同各包测试段）。
-#![allow(clippy::disallowed_methods)]
+// 测试档的量具可以直接问系统钟、收尾时丢结果不写理由（同各包测试段）。
+#![allow(
+    clippy::disallowed_methods,
+    clippy::let_underscore_must_use,
+    clippy::unused_result_ok
+)]
 
 #[path = "../../../tests/backend/alloc_probe.rs"]
 pub mod alloc_probe;

@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped, noteMachine } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
@@ -41,7 +41,7 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
     // 没有事件通道（宿主不是壳）⇒ 只靠打开 / 刷新时问 `backend_status`。
     console.warn("[local-backend] 订不上推送：", e);
   }
-  commands.backend_status({ origin: LOCAL_ORIGIN }).then(
+  commands.backend_status({ origin: LOCAL }).then(
     (s) => {
       if (!dropped && !pushed && s.local) cb(s.local);
     },
@@ -58,7 +58,7 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
  * 只要此刻那一份、不跟着变的（起新会话框的机器清单）用它；要跟着变的订 {@link onMachineState}。
  */
 export async function readMachines(): Promise<Record<string, MachineState>> {
-  const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
+  const r = await callTyped(LOCAL, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
   for (const [origin, m] of Object.entries(r.machines)) noteMachine(origin, m);
   return r.machines;
 }
@@ -76,7 +76,7 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
   let dropped = false;
   const readAll = async (): Promise<void> => {
     try {
-      const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
+      const r = await callTyped(LOCAL, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
       if (dropped) return;
       for (const [origin, m] of Object.entries(r.machines)) cb(origin, m);
       fleet?.(r.empty);
@@ -84,7 +84,7 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
       console.warn("[machine-state] 问不到远端各台：", e);
     }
   };
-  subscribeTopics([LOCAL_ORIGIN], fleet ? ["machine", "empty"] : ["machine"], (_o, changes) => {
+  subscribeTopics([LOCAL], fleet ? ["machine", "empty"] : ["machine"], (_o, changes) => {
     if (dropped) return;
     const c = changes.get("machine");
     const e = changes.get("empty");

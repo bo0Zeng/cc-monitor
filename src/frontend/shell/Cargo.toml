@@ -104,6 +104,16 @@ path = "src/main.rs"
 # 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。
 duplicate_macro_attributes = "deny"
 
+[lints.clippy]
+# 定时器 · 写盘 · 读 · 起进程 · 取 home 那几组住 `src/frontend/clippy.toml`；真要用的那一处就地 `expect` 写理由。
+disallowed_methods = "deny"
+# 放行一律 `expect` 带理由（测试段在 `src/lib.rs` 根上一行放开）。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
+
 # 截图台架的无头壳（`src/shots_shell.rs`）：只在这个特性下编，发版构建（`tauri build` · `cargo build --release`）不开它。
 # 台架那一处（`tests/shots/real/pool.mjs`）按 `cargo build --features shots --example ccm-shots-shell` 编；判据 `shots_feature_guard_tests.rs` 钉着。
 [features]

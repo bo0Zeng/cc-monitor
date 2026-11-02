@@ -71,7 +71,7 @@ vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (..
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
 import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/machine-context";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
@@ -421,11 +421,11 @@ describe("登录与指路", () => {
   });
 
   it("本机那一页：标题「本机 上的账号」，读的是本机", async () => {
-    setCurrentMachine(LOCAL_ORIGIN);
-    fetchAccounts.mockResolvedValue(state({ origin: LOCAL_ORIGIN }));
+    setCurrentMachine(LOCAL);
+    fetchAccounts.mockResolvedValue(state({ origin: LOCAL }));
     const el = await mount();
     expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: copyText("control.machine.unsure") }));
-    expect(fetchAccounts.mock.calls[0][0]).toBe(LOCAL_ORIGIN);
+    expect(fetchAccounts.mock.calls[0][0]).toBe(LOCAL);
   });
 });
 

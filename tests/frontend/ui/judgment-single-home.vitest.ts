@@ -617,13 +617,13 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J36: {
     what: "这一趟问的是不是本机（本机 ＝ 具名的 `\"<local>\"`，不是「没说」）",
     // 类型的家从 `comms-inward` 挪进契约 crate `cmd-wire`（`Machine`，第 8 批）；界面那一侧是 `ipc/origin.ts` 的两个判法。
-    //   哨兵值两侧逐字节相等由 `origin_tests.rs` 钉（Rust `LOCAL` ⇄ 界面 `backend-policy.ts::LOCAL_ORIGIN`）。
+    //   哨兵值：界面的 `LOCAL` 出自生成物 `generated/judgment-rules.ts`，与 `cmd_wire::LOCAL` 逐字节相等由 `origin_tests.rs` 钉。
     homes: ["cmd-wire::LOCAL", "cmd-wire::is_local", "cmd-wire::is_remote"],
     status: "mirror",
     defs: ["isLocalOrigin", "isRemoteOrigin"],
     needles: [],
     parity: {
-      via: "src/frontend/ui/backend-policy.ts",
+      via: "src/frontend/ui/generated/judgment-rules.ts",
       tests: ["tests/comms/inward/origin_tests.rs"],
     },
     why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",

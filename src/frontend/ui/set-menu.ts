@@ -14,7 +14,7 @@ import { saidOf } from "./kit/detail";
 import { readProfiles } from "./profiles-reads";
 import { planSet, type SetPlan } from "./set-reads";
 import { startSet } from "./set-start";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { SetOut } from "./generated/SetOut";
 import type { Command } from "./views/command-bar";
 
@@ -56,7 +56,7 @@ function rowsCard(plan: SetPlan): HTMLElement {
 }
 
 /** 开组菜单：先列「新建会话…」与这台存好的几组（各自转圈），每组的 `set-plan` 答回来就地换成那一项。 */
-export async function openSetMenu(anchor: HTMLElement, origin: Origin, host: SetMenuHost): Promise<void> {
+export async function openSetMenu(anchor: HTMLElement, origin: Machine, host: SetMenuHost): Promise<void> {
   const head: MenuItem[] = [{ label: copyText("main.cmd.newSession"), icon: "plus", onClick: () => host.newSession() }];
   const label = copyText("setMenu.open.label");
   let sets: SetOut[];
@@ -96,7 +96,7 @@ function headIcon(cls: string, role: string, name: Parameters<typeof icon>[0], l
 }
 
 /** 栏顶拆分按钮「＋ ⌄」（两半贴着，样子在 `styles.css` 的 `.tab-bar-split`）。`origin` 现取（起在哪台跟着宿主此刻的那台）。 */
-export function newSessionSplit(origin: () => Origin, host: SetMenuHost): HTMLElement {
+export function newSessionSplit(origin: () => Machine, host: SetMenuHost): HTMLElement {
   const root = document.createElement("span");
   root.className = "tab-bar-split";
   root.dataset.role = "new-split";
@@ -110,7 +110,7 @@ export function newSessionSplit(origin: () => Origin, host: SetMenuHost): HTMLEl
 }
 
 /** 命令面板「起一组…」：开栏顶那张组菜单（同一份菜单、同一个起法），锚在 `anchor()` 交的那颗按钮上。 */
-export function startSetCommand(anchor: () => HTMLElement, origin: () => Origin, host: SetMenuHost): Command {
+export function startSetCommand(anchor: () => HTMLElement, origin: () => Machine, host: SetMenuHost): Command {
   return {
     id: "start-set",
     group: "open",

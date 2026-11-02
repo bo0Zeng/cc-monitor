@@ -27,7 +27,15 @@
 //!   （门禁 `androidbuild` · `mobile` 两格编手机两个 target）。
 
 // 测试段可以用会自己醒来的构件（夹具的期限）；生产段的放行逐处写在调用点（`../clippy.toml`）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
 use std::sync::{Arc, Mutex};
 
 use copy_core::Discard;

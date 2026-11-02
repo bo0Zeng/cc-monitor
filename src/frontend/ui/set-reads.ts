@@ -9,7 +9,7 @@
  * 存组 · 改名 · 删组走配置文件那一口（`profiles-reads.ts` 的 `writeProfiles`）。判定全在那台后端，这里只发、只收。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { RowEdit } from "./generated/RowEdit";
 import type { SetPlan } from "./generated/SetPlan";
 import type { SetLaunched } from "./generated/SetLaunched";
@@ -22,11 +22,11 @@ const PLAN_BUDGET_MS = 15_000;
 const LAUNCH_BUDGET_MS = 120_000;
 
 /** 存好的那一组（`name`）或框里那几行（`rows`）补足的样子。只读，那台一个字节不写。 */
-export function planSet(origin: Origin, which: { name: string } | { rows: RowEdit[] }): Promise<SetPlan> {
+export function planSet(origin: Machine, which: { name: string } | { rows: RowEdit[] }): Promise<SetPlan> {
   return callTyped(origin, "set-plan", which, budgetWithin(PLAN_BUDGET_MS));
 }
 
 /** 照存好的那一组补足、立刻起（补足是幂等的：连点两下不多起）。 */
-export function launchSet(origin: Origin, name: string): Promise<SetLaunched> {
+export function launchSet(origin: Machine, name: string): Promise<SetLaunched> {
   return callTyped(origin, "set-launch", { name }, budgetWithin(LAUNCH_BUDGET_MS));
 }

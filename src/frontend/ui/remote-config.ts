@@ -2,7 +2,7 @@
 // 这里只经 `machines-read` / `machines-try` / `machines-set` 读写 ＋ 反查 / 筛选纯函数。
 // 一台在界面里是后端读回的那一行（`MachineRow`：后端算好的名字 ＋ 那一台原样）；名字只认后端那一格，界面不再自己算。
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { isLocalOrigin, LOCAL } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import type { Host } from "./generated/Host";
 import type { MachineEdit } from "./generated/MachineEdit";
@@ -44,7 +44,7 @@ export function sftpEligibleHosts(cfg: RemoteConfig): MachineRow[] {
 /** 读本机后端的机器表 → RemoteConfig。读不懂 ⇒ 空表 ＋ 那一句；问不到 ⇒ 空表（记一句日志）。永不抛。 */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
-    return remoteConfigOf(await callTyped(LOCAL_ORIGIN, "machines-read", {}, budgetWithin(MACHINES_BUDGET_MS)));
+    return remoteConfigOf(await callTyped(LOCAL, "machines-read", {}, budgetWithin(MACHINES_BUDGET_MS)));
   } catch (e) {
     console.warn("readRemoteConfig failed:", e);
     return { hosts: [] };
@@ -85,12 +85,12 @@ export interface RemoteHostsPatch {
 export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<RemoteConfig | null> {
   const edits = remoteHostsEdits(patch);
   if (edits.length === 0) return null;
-  return remoteConfigOf((await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS))).machines);
+  return remoteConfigOf((await callTyped(LOCAL, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS))).machines);
 }
 
 /** 忘掉这台记下的主机指纹（拨号核心那份库里删这台的行；下回连上照首见记）。拒 / 问不到 ⇒ 抛。 */
 export async function forgetHostKeys(origin: string): Promise<void> {
-  await callTyped(LOCAL_ORIGIN, "host-keys-forget", { machine: origin }, budgetWithin(MACHINES_BUDGET_MS));
+  await callTyped(LOCAL, "host-keys-forget", { machine: origin }, budgetWithin(MACHINES_BUDGET_MS));
 }
 
 /**
@@ -99,7 +99,7 @@ export async function forgetHostKeys(origin: string): Promise<void> {
 export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineFault | null> {
   const edits = remoteHostsEdits(patch);
   if (edits.length === 0) return null;
-  return (await callTyped(LOCAL_ORIGIN, "machines-try", { edits }, budgetWithin(MACHINES_BUDGET_MS))).fault;
+  return (await callTyped(LOCAL, "machines-try", { edits }, budgetWithin(MACHINES_BUDGET_MS))).fault;
 }
 
 /**

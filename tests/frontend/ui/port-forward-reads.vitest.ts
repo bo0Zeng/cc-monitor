@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { listForwards, startForward, stopForward } from "../../../src/frontend/ui/port-forward-reads";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -48,9 +48,9 @@ describe("请求", () => {
     await stopForward("fwd-1");
     expect(await listForwards()).toHaveLength(1);
     expect(seen).toEqual([
-      { op: "forward-start", origin: LOCAL_ORIGIN, body: { origin: "dev", localPort: "15432", remoteHost: "localhost", remotePort: "5432" } },
-      { op: "forward-stop", origin: LOCAL_ORIGIN, body: { id: "fwd-1" } },
-      { op: "forward-list", origin: LOCAL_ORIGIN, body: {} },
+      { op: "forward-start", origin: LOCAL, body: { origin: "dev", localPort: "15432", remoteHost: "localhost", remotePort: "5432" } },
+      { op: "forward-stop", origin: LOCAL, body: { id: "fwd-1" } },
+      { op: "forward-list", origin: LOCAL, body: {} },
     ]);
   });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {

@@ -25,7 +25,7 @@ import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-ba
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs, SessionFacts } from "../../../src/frontend/ui/session-reads";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
@@ -76,7 +76,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     group: null,
     hidden: null,
     lineage: NO_LINEAGE,
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
@@ -189,10 +189,10 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
   it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行不汇总（不是一组，没有后端数好的计数）", async () => {
     const r = bar([tab("a"), tab("b", { hidden: BG, ...waiting, needs: approve() })]);
     // 那台的整份里照样有它（隐藏不影响需手动：后端那一侧列它，`sessions-needs` 判据管）。
-    const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("b", approve())]) });
+    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("b", approve())]) });
     r.view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => r.view.planNeedsChanged());
-    await needs.book.refresh(LOCAL_ORIGIN);
+    await needs.book.refresh(LOCAL);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
@@ -257,7 +257,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     const h = new TabHide(store, prefs as unknown as TabBarPrefs, host);
     return { h, host, store, prefs, said, answer };
   }
-  const item = (sid: string): SessionItem => ({ machine: LOCAL_ORIGIN, sid });
+  const item = (sid: string): SessionItem => ({ machine: LOCAL, sid });
   const flushAll = (): Promise<void> => new Promise((x) => setTimeout(x, 0));
 
   it("★ 隐藏一个：交本机后端一条 `hide`、照回包出那一条（带［撤销］）、栏上先不挪；撤销把回包里那几问原样交回", async () => {
@@ -477,7 +477,7 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
     let answer: (v: unknown) => void = () => {};
     vi.mocked(readPrefs).mockReturnValue(new Promise((r) => (answer = r)) as never);
     vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } } as never);
-    const m = machineLaunchRows(LOCAL_ORIGIN, "m-1");
+    const m = machineLaunchRows(LOCAL, "m-1");
     document.body.append(...m.rows);
     m.load();
     await new Promise((r) => setTimeout(r, 0));
@@ -495,7 +495,7 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
     expect([grey("child-tab"), grey("bg-tab")]).toEqual(["false", "false"]);
     seg("child-tab").querySelector<HTMLElement>("[data-key=hide]")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(vi.mocked(setPrefs)).toHaveBeenCalledWith(LOCAL_ORIGIN, { childTab: "hide" });
+    expect(vi.mocked(setPrefs)).toHaveBeenCalledWith(LOCAL, { childTab: "hide" });
     expect(on("child-tab"), "画写完读回的那一份").toBe("show");
     expect(seg("child-tab").textContent).toContain(copyText("settings.machine.childTab"));
   });

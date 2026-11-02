@@ -10,7 +10,7 @@
  */
 import { accountAvatarEl } from "./account-color";
 import { copyText } from "./copy-table";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { el } from "./kit/el";
 import { button } from "./kit/button";
@@ -104,7 +104,7 @@ export interface BoardSpec {
   list: RotationStrategiesReply | null;
   state: BoardState;
   acts: BoardActs;
-  origin: Origin;
+  origin: Machine;
   /** 设置窗第一行右边那台的名字。 */
   machine?: string;
 }
@@ -128,7 +128,7 @@ export function nameIn(view: RotationViewReply | null | undefined, account: stri
 }
 
 /** 号的头像（号色照视图里那一格；视图里没有 ⇒ 中性的头像）。 */
-export function avatar(view: RotationViewReply | null | undefined, account: string, origin: Origin): HTMLElement {
+export function avatar(view: RotationViewReply | null | undefined, account: string, origin: Machine): HTMLElement {
   const plate = acctIn(view, account);
   return accountAvatarEl(account, { size: 16, origin, color: plate?.color ?? null, plate: plate?.text });
 }
