@@ -758,7 +758,7 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
         panic!("{r:?}")
     };
     assert!(
-        matches!(blocks[0], Block::Text { bytes: 3000, .. }),
+        matches!(blocks[0], Block::Prose { bytes: 3000, .. }),
         "{:?}",
         blocks[0]
     );

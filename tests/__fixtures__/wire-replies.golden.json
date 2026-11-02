@@ -602,7 +602,7 @@
       }
     },
     "history-lines": {
-      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1}}]}",
+      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]}}]}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -616,10 +616,34 @@
               "agent": "agent-x",
               "at": "at-x",
               "atMs": 7,
+              "attachments": [
+                {
+                  "bytes": 7,
+                  "class": "folder",
+                  "classText": "classText-x",
+                  "gone": true,
+                  "name": "name-x",
+                  "rel": "rel-x",
+                  "sizeText": "sizeText-x"
+                }
+              ],
               "blocks": [
                 {
-                  "text": "text-x",
-                  "type": "text"
+                  "bytes": 7,
+                  "doc": {
+                    "blocks": [
+                      {
+                        "k": [
+                          "k-x"
+                        ],
+                        "t": "p"
+                      }
+                    ],
+                    "segs": [
+                      7
+                    ]
+                  },
+                  "type": "prose"
                 }
               ],
               "cwd": "cwd-x",
@@ -639,18 +663,22 @@
                   "kind": "launched",
                   "lines": 7,
                   "ok": true,
-                  "patch": [
-                    {
-                      "lines": [
-                        "lines-x"
-                      ],
-                      "newLines": 7,
-                      "newStart": 7,
-                      "oldLines": 7,
-                      "oldStart": 7
-                    }
-                  ],
-                  "patchTruncated": true,
+                  "patch": {
+                    "added": 7,
+                    "notice": "notice-x",
+                    "removed": 7,
+                    "rows": [
+                      {
+                        "kind": "add",
+                        "newNo": 7,
+                        "oldNo": 7,
+                        "text": "text-x"
+                      }
+                    ],
+                    "shown": 7,
+                    "stat": "stat-x",
+                    "truncated": true
+                  },
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,
@@ -809,7 +837,7 @@
       }
     },
     "history-read": {
-      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
+      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
       "sample": {
         "eof": true,
         "next": 7,
@@ -822,10 +850,34 @@
               "agent": "agent-x",
               "at": "at-x",
               "atMs": 7,
+              "attachments": [
+                {
+                  "bytes": 7,
+                  "class": "folder",
+                  "classText": "classText-x",
+                  "gone": true,
+                  "name": "name-x",
+                  "rel": "rel-x",
+                  "sizeText": "sizeText-x"
+                }
+              ],
               "blocks": [
                 {
-                  "text": "text-x",
-                  "type": "text"
+                  "bytes": 7,
+                  "doc": {
+                    "blocks": [
+                      {
+                        "k": [
+                          "k-x"
+                        ],
+                        "t": "p"
+                      }
+                    ],
+                    "segs": [
+                      7
+                    ]
+                  },
+                  "type": "prose"
                 }
               ],
               "cwd": "cwd-x",
@@ -845,18 +897,22 @@
                   "kind": "launched",
                   "lines": 7,
                   "ok": true,
-                  "patch": [
-                    {
-                      "lines": [
-                        "lines-x"
-                      ],
-                      "newLines": 7,
-                      "newStart": 7,
-                      "oldLines": 7,
-                      "oldStart": 7
-                    }
-                  ],
-                  "patchTruncated": true,
+                  "patch": {
+                    "added": 7,
+                    "notice": "notice-x",
+                    "removed": 7,
+                    "rows": [
+                      {
+                        "kind": "add",
+                        "newNo": 7,
+                        "oldNo": 7,
+                        "text": "text-x"
+                      }
+                    ],
+                    "shown": 7,
+                    "stat": "stat-x",
+                    "truncated": true
+                  },
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,
@@ -986,7 +1042,7 @@
       }
     },
     "history-tail": {
-      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
+      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -1008,10 +1064,34 @@
               "agent": "agent-x",
               "at": "at-x",
               "atMs": 7,
+              "attachments": [
+                {
+                  "bytes": 7,
+                  "class": "folder",
+                  "classText": "classText-x",
+                  "gone": true,
+                  "name": "name-x",
+                  "rel": "rel-x",
+                  "sizeText": "sizeText-x"
+                }
+              ],
               "blocks": [
                 {
-                  "text": "text-x",
-                  "type": "text"
+                  "bytes": 7,
+                  "doc": {
+                    "blocks": [
+                      {
+                        "k": [
+                          "k-x"
+                        ],
+                        "t": "p"
+                      }
+                    ],
+                    "segs": [
+                      7
+                    ]
+                  },
+                  "type": "prose"
                 }
               ],
               "cwd": "cwd-x",
@@ -1031,18 +1111,22 @@
                   "kind": "launched",
                   "lines": 7,
                   "ok": true,
-                  "patch": [
-                    {
-                      "lines": [
-                        "lines-x"
-                      ],
-                      "newLines": 7,
-                      "newStart": 7,
-                      "oldLines": 7,
-                      "oldStart": 7
-                    }
-                  ],
-                  "patchTruncated": true,
+                  "patch": {
+                    "added": 7,
+                    "notice": "notice-x",
+                    "removed": 7,
+                    "rows": [
+                      {
+                        "kind": "add",
+                        "newNo": 7,
+                        "oldNo": 7,
+                        "text": "text-x"
+                      }
+                    ],
+                    "shown": 7,
+                    "stat": "stat-x",
+                    "truncated": true
+                  },
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,

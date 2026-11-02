@@ -4,7 +4,7 @@
 //! 公共四格 ＋ 时刻字：`agent`（哪一家）· `id`（会话内非空、唯一）· `at`（记录时刻）· `timeText`（看的那一台钟上的 `HH:MM`，出口那一下写，界面照抄）· `t`（哪一类）。
 //! `t` 的闭集：`said`（人那一侧说的；一轮中途插进来的那一句也是它）· `reply`（代理的回复）· `retry`（一次要重试的上游失败）· `title`（会话标题）·
 //! `unread`（这一家的这一行适配层认不出：写好的一句 ＋ 原文摘录）。
-//! 内容块 [`Block`] 是两家共有的词：正文 · 推理 · 工具调用 · 工具结果 · 图片。
+//! 内容块 [`Block`] 是两家共有的词：正文（助手那一句是解析好的块树，[`reply_blocks`]）· 推理 · 工具调用 · 工具结果 · 图片。
 //!
 //! 不在这一形里的：链（上一条是谁 —— 主线外清单另给，`mainline`）· 会话事实（分叉血缘、用量、花费 —— `history-facts`）· 原文（线上不带）。
 
@@ -15,6 +15,17 @@ pub use cmd_wire::record::{excerpt_of, unread_text};
 pub(crate) use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 
 pub(crate) use cmd_wire::record::Draw;
+
+/// 助手那一行的内容块：正文块解析成块树（[`Block::Prose`]，两家适配层都经它，解析只有 `md_core::parse` 一处）；别的块照原样。
+pub(crate) fn reply_blocks(blocks: Vec<Block>) -> Vec<Block> {
+    blocks
+        .into_iter()
+        .map(|b| match b {
+            Block::Text { text, .. } => Block::prose(&text, md_core::parse(&text)),
+            b => b,
+        })
+        .collect()
+}
 
 /// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
 /// 钟面那两格留给出口（[`RecordExt::stamp`]）。
@@ -100,13 +111,13 @@ fn draw_of(body: &Body) -> Draw {
             if *auto_reply {
                 return Draw::None;
             }
-            let shown =
-                |b: &&Block| !matches!(b, Block::Text { text, .. } if text.trim().is_empty());
+            // 助手的正文都是树（[`reply_blocks`]）：解析出来一块都没有（空 · 只剩空白）⇒ 不算。
+            let shown = |b: &&Block| !matches!(b, Block::Prose { doc, .. } if doc.blocks.is_empty());
             let mut any = false;
             for b in blocks.iter().filter(shown) {
                 any = true;
                 match b {
-                    Block::Text { .. } => return Draw::Card,
+                    Block::Prose { .. } => return Draw::Card,
                     Block::ToolUse { id, .. } if cards.get(id) == Some(&ToolCard::Interactive) => {
                         return Draw::Card
                     }
