@@ -65,7 +65,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "WRITE_FLUSH_BYTES",
-        "**步长**不是体量：后端写者帧一直排着时自上次 flush 起写满这么多字节就照 flush 一次（`main.rs::writer_task`），流本身多长不受它限。",
+        "**步长**不是体量：后端写者帧一直排着时自上次 flush 起写满这么多字节就照 flush 一次（`stream/writer.rs::writer_task`），流本身多长不受它限。",
     ),
     (
         "BUDGET",
@@ -173,7 +173,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "DROP_AFTER",
-        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）· 会话血缘清旧条目的门槛（`lineage.rs`，90 天没被用到）；决定哪几条被清，不限任何读写的体量。",
+        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的会话，换过号的也算）· 会话血缘清旧条目的门槛（`lineage.rs`，90 天没被用到）；决定哪几条被清，不限任何读写的体量。",
     ),
     (
         "STALE_AFTER",
@@ -1002,45 +1002,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // 插件市场枚举那两个上限随插件只读列表整块删了（界面上没有可做的事）。
-    // 任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
-    (
-        "src/backend/observe/tasks_query.rs",
-        "TASK_FILE_CAP_BYTES",
-        "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
-        "跳过+说清",
-    ),
     // 别名预览（`ccm-print`）入参里一个参数最长多少。
     (
         "src/backend/control/ccm/mod.rs",
         "PRINT_MAX_WORD_BYTES",
         "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
         "拒收+回错",
-    ),
-    // 账号库管理读盘那一步：清单与撤销清单各一个上限（读的是这台自己的账号库，超了就读不动、如实报）。
-    (
-        "src/backend/accounts/manage/scan.rs",
-        "MAX_MANIFEST_BYTES",
-        "读账号清单（账号库那一个读口：账号页 · 起会话 · 改账号库都经它）",
-        "硬报错",
-    ),
-    (
-        "src/backend/accounts/manage/scan.rs",
-        "MAX_UNDO_BYTES",
-        "回滚时读一份备份里的撤销清单（每一行一条路径）",
-        "跳过+说清",
-    ),
-    // 账号之间同步用户级 MCP 读盘那一步：清单 · 共享集合一个上限，各号配置文件一个上限（同适配层读那份文件的量级）。
-    (
-        "src/backend/accounts/manage/mcp_share_exec.rs",
-        "MAX_SMALL_BYTES",
-        "同步之前读账号清单与各号共用的 MCP 那份文件",
-        "硬报错",
-    ),
-    (
-        "src/backend/accounts/manage/mcp_share_exec.rs",
-        "MAX_CONFIG_BYTES",
-        "同步之前读一个号的配置文件（会被项目历史与 MCP 配置撑大）",
-        "跳过+说清",
     ),
     // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
     (
@@ -1054,13 +1021,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_HOOK_FILE_BYTES",
         "`footprint-report` 查钩子字样时读的那份 settings 文件多大",
         "跳过+说清",
-    ),
-    // cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
-    (
-        "src/backend/observe/cc_bus_hooks.rs",
-        "SETTINGS_CAP_BYTES",
-        "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
-        "降级+说清",
     ),
     // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
     (
@@ -1300,12 +1260,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_CONFIG_BYTES",
         "读 Claude 的账号配置文件",
         "硬报错",
-    ),
-    (
-        "src/backend/history/live_table.rs",
-        "MAX_SESSION_FILE_BYTES",
-        "读单个 `sessions/<PID>.json`",
-        "跳过+说清",
     ),
     // ⚠HTTP 中转带进来的第一处上限。它被用在**两个方向**上，
     // 两处的处置**都是**「拒收+回错」，只是回的码不同 —— 逐字记下来，免得下一个人
