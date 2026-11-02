@@ -2554,9 +2554,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.WindowShow::class.java to com.ccmonitor.mobile.core.wire.gen.WindowShow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.WirePath::class.java to com.ccmonitor.mobile.core.wire.gen.WirePath.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.WirePathObjValue::class.java to com.ccmonitor.mobile.core.wire.gen.WirePathObjValue.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireSessionActivity::class.java to com.ccmonitor.mobile.core.wire.gen.WireSessionActivity.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireSessionContainer::class.java to com.ccmonitor.mobile.core.wire.gen.WireSessionContainer.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireTerminalHost::class.java to com.ccmonitor.mobile.core.wire.gen.WireTerminalHost.ADAPTER,
         )
     }
 }
