@@ -1690,9 +1690,10 @@ fn e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned() {
         }
     }
     // 另一半的守门人还在（恰好一处定义）。
-    let gate_reg =
-        std::fs::read_to_string(root.join("tests/common/guard-core/rules/e2e_gate_registry_tests.rs"))
-            .expect("读 e2e_gate_registry_tests.rs");
+    let gate_reg = std::fs::read_to_string(
+        root.join("tests/common/guard-core/rules/e2e_gate_registry_tests.rs"),
+    )
+    .expect("读 e2e_gate_registry_tests.rs");
     if let Err(e) = crate::find_pinned(
         &code_only(&gate_reg, Lang::Rust),
         "fn every_e2e_suite_is_either_gated_or_registered_as_exempt(",
