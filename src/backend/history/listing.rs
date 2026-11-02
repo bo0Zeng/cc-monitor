@@ -24,6 +24,7 @@ use std::time::UNIX_EPOCH;
 /// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
+///
 /// 历史清单的行与全文搜索的命中同一个函数。
 pub(crate) fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
     let live = matches!(life, WireLife::Live { .. });
@@ -200,13 +201,14 @@ pub(crate) fn list_sessions_for(
     Ok(rows)
 }
 
-/// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ `(目录名, 那一目录的会话行 | 读不了的那一句)`。
+/// 平铺清单的每个记录目录：`(目录名, 那一目录的会话行 | 读不了的那一句)`。
+pub(crate) type DirSessions = Vec<(String, Result<Vec<serde_json::Value>, String>)>;
+
+/// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ [`DirSessions`]。
 /// 会话行同 [`list_sessions_for`]，`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
 /// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
 /// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects_into`]）。
-pub(crate) fn sessions_by_dir(
-    agent_home: &Path,
-) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
+pub(crate) fn sessions_by_dir(agent_home: &Path) -> Result<Option<DirSessions>, String> {
     sessions_by_dir_for(agent_home, None)
 }
 
@@ -214,7 +216,7 @@ pub(crate) fn sessions_by_dir(
 pub(crate) fn sessions_by_dir_for(
     agent_home: &Path,
     only: Option<&str>,
-) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
+) -> Result<Option<DirSessions>, String> {
     let Some(root) = records_root(agent_home) else {
         return Ok(None);
     };
@@ -493,7 +495,7 @@ impl ListingEntry {
 }
 
 /// 后端一起来就后台把清单缓存热好（一条一次性线程，降到低优先级；不是定时器，扫完就退）：
-/// 第一次打开历史页 / 按 sid 打开查看窗时不必再等整台从头扫一遍。远端流后端与本机常驻后端同一个调用点（`main.rs`）。
+/// 第一次打开历史页 / 按 sid 打开查看窗时不必再等整台从头扫一遍。远端流后端与本机常驻后端同一个调用点（`stream/entry.rs` 的 `run`）。
 pub fn warm_listing_in_background(agent_home: PathBuf) {
     let spawned = std::thread::Builder::new()
         .name("listing-warm".into())
@@ -653,7 +655,7 @@ pub(crate) fn records_root(agent_home: &Path) -> Option<PathBuf> {
 /// 注册表里没有记录树那一家时，按路径读的那几条拒的那一句。
 pub(crate) const NO_TREE: &str = "no agent here keeps a record tree";
 
-/// 帧面那几条要的「这台的 agent 家目录」—— 与 `main.rs` 那一句**同一个出处**。
+/// 帧面那几条要的「这台的 agent 家目录」—— 与 `stream/entry.rs` 的 `resolve_agent_home` **同一个出处**。
 ///
 /// 问注册表里后端盯着的那一家（`agents::home_at`），照进程环境解。
 pub(crate) fn agent_home() -> std::path::PathBuf {

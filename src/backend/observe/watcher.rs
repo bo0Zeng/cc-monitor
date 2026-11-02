@@ -124,9 +124,10 @@ enum WatchEvent {
     TmuxProbeDue,
     /// 外部戳一下：与 [`WatchEvent::TmuxProbeDue`] 走同一段（立刻重探 tmux、同一条差分 / 发帧路径），
     /// 来源是事件（tmux hook → `--tmux-notify` → `SIGUSR1` → 这里）。分成两个变体是为了分得出来源：
-    /// 「还有没有人在戳」是判 hook 通路活着没有的唯一线索。
+    /// 「还有没有人在戳」是判 hook 通路活着没有的唯一线索。事件源 `SIGUSR1` 只在 unix 上有，它跟着只在那一臂存在。
+    #[cfg(unix)]
     Poke,
-    /// 显式停机：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`] 发它。
+    /// 显式停机：`stream/entry.rs` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`] 发它。
     /// 主循环没有定期醒来复查 `sink.is_closed()`，没有它 reader 线程会一直等在 `recv()` 上，「没人听就停读」这条性质就丢了。
     Shutdown,
     /// 别台那条常驻流上的事（本机后端那几条 feed 交的，[`relay`]）：投给每条连接。
@@ -271,7 +272,7 @@ fn spawn_pid_watcher(
     );
 }
 
-/// watcher 看见、控制面去做的那三件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那三个函数）。
+/// watcher 看见、控制面去做的那三件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `stream/entry.rs` 接上控制面那三个函数）。
 /// 三件的时机都只有观测侧有：「tmux server 起来了」是 socket 目录 inotify 看到的；`(pid, sid)` 只在 pidfile 出现 / 改写那一刻同时在手。
 #[derive(Clone, Copy)]
 pub struct Reactions {
@@ -995,7 +996,7 @@ pub struct WatcherPoke(std::sync::mpsc::Sender<WatchEvent>);
 
 impl WatcherPoke {
     /// **P5：显式停机。** 删掉 8s ticker 之后，`sink.is_closed()` 那道复查再没有定期
-    /// 醒来的机会 ⇒ 必须由 `main` 在 writer 结束时主动说一声，reader 线程才会退出
+    /// 醒来的机会 ⇒ 必须由 `stream/entry.rs` 在 writer 结束时主动说一声，reader 线程才会退出
     /// `recv()`。**这件事漏做不会红任何测试**（进程退出时线程随之消亡），
     /// 所以它和删 ticker 是同一步、不许拆开。
     pub fn shutdown(&self) {
@@ -1169,7 +1170,7 @@ pub fn spawn(
     // 进程里第一份 watcher 的那一本记下来，给只读着用的那几处（[`run_book`]）。
     RUN_BOOK.get_or_init(|| book.clone());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
-    // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
+    // 起来之前就能交给 `stream/entry.rs`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
     let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let poke = WatcherPoke(events_tx.clone());
@@ -1217,7 +1218,9 @@ pub fn relay(frame: Frame) {
     }
 }
 
-/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
+/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下。
+/// 只在 unix 上有：调它的只有 `stream/entry.rs` 的 SIGUSR1 处理器。
+#[cfg(unix)]
 pub fn poke_all() {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
         w.send(WatchEvent::Poke).discard(Why::PeerGone);
@@ -1722,7 +1725,13 @@ fn watch_loop(
             }
             // P4：`Poke` 与 `TmuxProbeDue` 走**同一段**——`tmux_inflight` 那道去重顺带
             // 免疫了「信号合并 / 一串 hook 同时打进来」：多次戳只会落一次探测。
+            //   `Poke` 只在 unix 上有 ⇒ 别处这一臂只剩 `TmuxProbeDue`。
+            #[cfg(unix)]
             WatchEvent::TmuxProbeDue | WatchEvent::Poke => {
+                start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
+            }
+            #[cfg(not(unix))]
+            WatchEvent::TmuxProbeDue => {
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
             }
             WatchEvent::TmuxObserved(probe) => {
@@ -3585,7 +3594,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
     let announced = !state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
-    // [`Reactions::tag`]（控制面那一手，`main.rs` 接上）。放在冒名检查**之后**。
+    // [`Reactions::tag`]（控制面那一手，`stream/entry.rs` 接上）。放在冒名检查**之后**。
     //
     // 这一次探测的**结局**不再丢：它同时就是「这条会话住在什么容器里」的答案
     // （回值的头一格，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
@@ -4933,7 +4942,7 @@ pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
 }
 
 /// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
-/// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
+/// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `stream/entry.rs` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
     let dir = pidfile_dir(agent_home);
     let Ok(entries) = Ro::read_dir(&dir) else {

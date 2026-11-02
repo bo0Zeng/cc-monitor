@@ -543,6 +543,13 @@ fn run_helper(req: &HelperRequest) -> Option<String> {
     got
 }
 
+/// 小助手的答话收多少：它答的是一行（几个数 · 一个标题），远到不了这么多；超了 ⇒ 当没答成（记一行日志）。
+#[cfg(any(windows, test))]
+const HELPER_ANSWER_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::HardError,
+};
+
 /// 等小助手答完（至多 `wait`），回它的标准输出；起不来 / 到点没答完 ⇒ `None`。
 /// 🔴 **到点不掐它**：小助手自己有预算（[`TAB_BUDGET`]，到点写回标题、答话、退出），掐断它会把记号留在终端标题上；
 /// 它的输出由一条读线程收完、再替它收尸，monitor 这一侧只是不再等。
@@ -552,17 +559,26 @@ pub(crate) fn ask_helper(
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
 ) -> Option<String> {
     use copy_core::{Discard, Why};
-    use std::io::Read;
     let mut child = spawn().ok()?;
     let mut out = child.stdout.take()?;
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let read = out.read_to_end(&mut buf);
+        let read = match relay_route_core::read_capped_from(&mut out, HELPER_ANSWER_CAP) {
+            Ok(relay_route_core::CappedAll::All(buf)) => Ok(buf),
+            Ok(relay_route_core::CappedAll::OverCap) => {
+                // 余下的读掉、不存：不读完它会卡在写上、退不了。
+                std::io::copy(&mut out, &mut std::io::sink()).discard(Why::Drain);
+                Err(std::io::Error::other(format!(
+                    "answer over the {}-byte cap",
+                    HELPER_ANSWER_CAP.bytes
+                )))
+            }
+            Err(e) => Err(e),
+        };
         // 替到点没等完的小助手收尸（它自己有预算、到点退出）。
         child.wait().discard(Why::Reap);
         // monitor 到点已经不等了，就没人要它。
-        tx.send(read.map(|_| buf)).discard(Why::PeerGone);
+        tx.send(read).discard(Why::PeerGone);
     });
     #[expect(
         clippy::disallowed_methods,

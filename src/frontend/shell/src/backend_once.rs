@@ -39,13 +39,20 @@ pub(crate) fn capture_full(
     // 那时再怎么等都等不到它退出 —— 「等它退出再读」是个会自锁的顺序。
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            // 〔E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
-            let read = match pipe {
-                Some(mut s) => s.read_to_end(&mut buf).err().map(|e| e.to_string()),
-                None => None,
-            };
-            (buf, read)
+            // 读错 · 超上限都**带回来**：吞掉的话，读坏了与「没输出」长得一样（都判成没装）。
+            // 两根管子上各是一行 JSON（答话 · 失败信封）⇒ 上限同帧行那一道；超了余下的读掉、不存（不读完它会卡在写上）。
+            let cap = crate::stream_source::BACKEND_FRAME_LINE_CAP;
+            match pipe {
+                Some(mut s) => match relay_route_core::read_capped_from(&mut s, cap) {
+                    Ok(relay_route_core::CappedAll::All(buf)) => (buf, None),
+                    Ok(relay_route_core::CappedAll::OverCap) => {
+                        std::io::copy(&mut s, &mut std::io::sink()).discard(Why::Drain);
+                        (Vec::new(), Some(format!("output over the {}-byte cap", cap.bytes)))
+                    }
+                    Err(e) => (Vec::new(), Some(e.to_string())),
+                },
+                None => (Vec::new(), None),
+            }
         })
     };
     let out = drain(

@@ -7,7 +7,7 @@
 
 use copy_core::copy_text;
 use copy_core::said::Said;
-use relay_route_core::{Cap, Over};
+use relay_route_core::{Cap, Over, Regular};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -203,36 +203,24 @@ enum Link {
     Refuse,
 }
 
-/// 带上限的整份读只这一份实现。读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
+/// 带上限的整份读：先看类型 · 再看长度 · 再读，都在 `relay_route_core::read_capped_regular`（手机核心读本机文件同一份）；
+/// 这里只定跟不跟链接（元数据怎么取 · 怎么打开）与那一句。读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
 fn read_whole(path: &Path, limit: Cap, link: Link) -> Result<Vec<u8>, Said> {
-    let cap = limit.bytes;
     let io = |e: io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
-    // 先看类型再打开：打开一个 FIFO 会卡住等写端。
     let meta = match link {
         Link::Follow => std::fs::metadata(path),
         Link::Refuse => std::fs::symlink_metadata(path),
     }
     .map_err(io)?;
-    if !meta.is_file() {
-        return Err(copy_text("reason.fs.notRegular", &[]).into());
-    }
-    // 先看长度再决定读不读：拒一份巨型文件之前不先读 `cap + 1` 进内存。
-    // 早退不取代下面那道 `take(cap + 1)`：看长度与读之间文件还会长，两道一起才完整。
-    if meta.len() > cap {
-        return Err(over_cap(path, limit, Some(meta.len())));
-    }
-    let f = match link {
+    let open = || match link {
         Link::Follow => std::fs::File::open(path),
         Link::Refuse => nofollow_read().open(path),
+    };
+    match relay_route_core::read_capped_regular(&meta, open, limit).map_err(io)? {
+        Regular::Whole(buf) => Ok(buf),
+        Regular::NotRegular => Err(copy_text("reason.fs.notRegular", &[]).into()),
+        Regular::OverCap(size) => Err(over_cap(path, limit, size)),
     }
-    .map_err(io)?;
-    let mut buf = Vec::new();
-    // 读到 cap + 1 就知道超了，不读满整份（可能无界）。
-    f.take(cap + 1).read_to_end(&mut buf).map_err(io)?;
-    if buf.len() as u64 > cap {
-        return Err(over_cap(path, limit, None));
-    }
-    Ok(buf)
 }
 
 /// 超出上限那一句（量得出实际大小就带上）；[`Over::SkipAndSay`] 那一档在这里 `warn!` 是哪一份。
@@ -308,12 +296,6 @@ impl RoFile {
 impl Read for RoFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
-    }
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        self.0.read_to_end(buf)
-    }
-    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-        self.0.read_to_string(buf)
     }
 }
 
