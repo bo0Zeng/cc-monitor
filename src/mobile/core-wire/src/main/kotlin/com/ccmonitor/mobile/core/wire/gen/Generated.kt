@@ -25308,7 +25308,6 @@ data class StepResult(
     val file: String? = null,
     val patch: LineDiff? = null,
     val text: String,
-    val timed: String? = null,
     val preview: String? = null,
     val chars: Int? = null,
     val kind: ResultKind? = null,
@@ -25329,13 +25328,12 @@ data class StepResult(
             Field("file", { opt(Str) }, optional = true, nullable = true),
             Field("patch", { opt(LineDiff.ADAPTER) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
-            Field("timed", { opt(Str) }, optional = true, nullable = true),
             Field("preview", { opt(Str) }, optional = true, nullable = true),
             Field("chars", { opt(Int32) }, optional = true, nullable = true),
             Field("kind", { opt(ResultKind.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as LineDiff?, a[10] as String, a[11] as String?, a[12] as String?, a[13] as Int?, a[14] as ResultKind?) },
-            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.text, v.timed, v.preview, v.chars, v.kind) },
+            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as LineDiff?, a[10] as String, a[11] as String?, a[12] as Int?, a[13] as ResultKind?) },
+            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.text, v.preview, v.chars, v.kind) },
         )
     }
 }
