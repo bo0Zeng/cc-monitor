@@ -32,6 +32,8 @@ fn the_plugin_gets_its_argv_verbatim_and_a_whitelisted_env() {
 fn the_first_line_skips_blank_lines() {
     assert_eq!(first_line(b"\n  \nerr-1\nerr-2\n"), "err-1");
     assert_eq!(first_line(b"   \n"), "");
+    // 两头空白去掉（`\r\n` 行尾的 `\r` 也不进诊断）。
+    assert_eq!(first_line(b"\n  err-3 \r\n"), "err-3");
 }
 
 /// 非 UTF-8 的输出不许让取诊断这一步炸掉。

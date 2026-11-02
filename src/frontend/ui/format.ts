@@ -51,8 +51,7 @@ function unit(u: number, n: string): string {
  * - `more`：那一行 trim 之后比 `max` 长。
  *
  * 空白的口径与 `String.prototype.trim` 相同（JS 的 `\s` 就是 WhiteSpace ∪ LineTerminator）。
- * 调用方：`cards/index.ts::firstLinePreview`；点名的第三处（agent 标签取首行）住
- * `tab-session-facts.ts` 的旁路记账员，那一处没有改过来。
+ * 调用方：`queue-row.ts`（排队那一行的头）。思考那一行不经这里：后端写好 `preview`（`agents::beat::thinking`），界面照抄。
  */
 export function firstLineOf(text: string, max: number): { line: string; more: boolean } {
   const ws = /\s/;

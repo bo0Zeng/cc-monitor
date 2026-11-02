@@ -863,7 +863,7 @@ mod specimens {
             rec(Body::Reply {
                 blocks: vec![
                     Block::prose("t", md_core::parse("t")),
-                    Block::Thinking { text: s("t") },
+                    crate::agents::beat::thinking(s("t")),
                     Block::ToolUse {
                         id: s("c"),
                         name: s("Bash"),

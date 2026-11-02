@@ -363,28 +363,14 @@ pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
 /// 结果首行预览至多几个字（按字符；协议上的定长，两个前端都不再截）。
 const PREVIEW_MAX: usize = 60;
 
-/// 第一条非空行、去掉两头空白、至多 [`PREVIEW_MAX`] 字，截了以「…」收尾（留 59 字 ＋「…」）；没有非空行 ⇒ `None`。
+/// 第一条非空行、去掉两头空白、留 [`PREVIEW_MAX`] 字，截了接「…」；没有非空行 ⇒ `None`。
 fn preview_of(text: &str) -> Option<String> {
-    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
-    Some(match line.char_indices().nth(PREVIEW_MAX) {
-        Some(_) => {
-            let cut = line
-                .char_indices()
-                .nth(PREVIEW_MAX - 1)
-                .map_or(line.len(), |(i, _)| i);
-            format!("{}…", &line[..cut])
-        }
-        None => line.to_string(),
-    })
+    copy_core::first_line(text).map(|l| copy_core::clip(l, PREVIEW_MAX))
 }
 
 /// 压成一行（换行与连串空白 ⇒ 一个空格）并截到 [`ARG_MAX`] 字。
 fn one_line(s: &str) -> String {
-    let joined = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    match joined.char_indices().nth(ARG_MAX) {
-        Some((i, _)) => format!("{}…", &joined[..i]),
-        None => joined,
-    }
+    copy_core::clip_flat(s, ARG_MAX)
 }
 
 /// 人拒了这一步时 Claude Code 回给模型的固定句（结果正文的开头）。

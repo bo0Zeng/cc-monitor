@@ -60,42 +60,9 @@ pub(crate) fn user_input_given(kind: &str, v: &Value, beat: &Beat) -> Option<Use
     })
 }
 
-/// 把空白串压成一个空格，再 trim。
-fn collapse_ws(s: &str) -> String {
-    let mut out = String::with_capacity(s.len().min(EXCERPT_MAX * 8));
-    let mut gap = false;
-    for c in s.chars() {
-        if c.is_whitespace() {
-            gap = true;
-            continue;
-        }
-        if gap && !out.is_empty() {
-            out.push(' ');
-        }
-        gap = false;
-        out.push(c);
-    }
-    out
-}
-
-/// 摘要：**先截断再折叠**（44 万字符的一条整段折叠要 11.56 ms，只为取 80 个字）。
-///
-/// 边界：前缀里几乎全是空白（640 个空格 + 正文）时截过再折叠会少字 ⇒ 折叠后不够长就退回整条
-/// ⇒ 摘要语义不因「先截断」而变。这一支只在病态输入上走。
+/// 摘要：压过空白、截到 [`EXCERPT_MAX`] 字（`copy_core::clip_flat` 只走到够数为止，44 万字的一条不整段压）。
 pub(crate) fn excerpt(text: &str) -> String {
-    let cap = EXCERPT_MAX * 8;
-    let head = match text.char_indices().nth(cap) {
-        Some((i, _)) => &text[..i],
-        None => text,
-    };
-    let mut flat = collapse_ws(head);
-    if flat.chars().count() < EXCERPT_MAX && head.len() < text.len() {
-        flat = collapse_ws(text);
-    }
-    match flat.char_indices().nth(EXCERPT_MAX) {
-        Some((i, _)) => format!("{}…", &flat[..i]),
-        None => flat,
-    }
+    copy_core::clip_flat(text, EXCERPT_MAX)
 }
 
 #[cfg(test)]
