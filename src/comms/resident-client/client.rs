@@ -537,7 +537,12 @@ impl InboundClient {
     /// 回的那个 future 到「对端处理完这条流结束」（它收掉这条流、读那一半见了底，[`InboundClient::note_read_end`]）才完成。
     #[cfg(any(test, feature = "test-support"))]
     pub fn close_write(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
-        if self.writes.try_send(WriteJob::CloseWrite).is_err() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "只编进测试档的关写半边：入不了队就记一行 debug，不是丢帧"
+        )]
+        let queued = self.writes.try_send(WriteJob::CloseWrite);
+        if queued.is_err() {
             // 队列满 / 写任务已退。**说出来** —— 调用方会以为已经关了。
             tracing::debug!("inbound_client close_write 未能入队（写队列满或写任务已退）");
         }
@@ -711,7 +716,12 @@ impl InboundClient {
             None,
         );
         // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
-        if self.writes.try_send(WriteJob::Line(line)).is_err() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "超时补发撤单是尽力收尾：入不了队就收掉那一问并记一行 debug，丢的是收尾不是帧"
+        )]
+        let queued = self.writes.try_send(WriteJob::Line(line));
+        if queued.is_err() {
             self.take_pending(&id);
             tracing::debug!("超时补发 cancel 未能入队（队列满或已断连）：target={target}");
         }
