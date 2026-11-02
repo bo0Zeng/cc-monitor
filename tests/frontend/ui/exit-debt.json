@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1688,
+  "ceiling": 1694,
   "groups": [
     {
       "kind": "首登",
@@ -114,7 +114,7 @@
         ["src/frontend/ui/control-said.ts", "key", 2],
         ["src/frontend/ui/duration-format.ts", "key", 5],
         ["src/frontend/ui/end-confirm.ts", "key", 2],
-        ["src/frontend/ui/entry-viewer.ts", "branch", 2],
+        ["src/frontend/ui/entry-viewer.ts", "branch", 4],
         ["src/frontend/ui/entry-viewer.ts", "key", 2],
         ["src/frontend/ui/file-window.ts", "key", 1],
         ["src/frontend/ui/find-strip.ts", "branch", 2],
@@ -248,7 +248,7 @@
         ["src/frontend/ui/views/grid-monitor.ts", "key", 6],
         ["src/frontend/ui/views/history-rows.ts", "branch", 6],
         ["src/frontend/ui/views/history-rows.ts", "key", 4],
-        ["src/frontend/ui/views/history.ts", "branch", 23],
+        ["src/frontend/ui/views/history.ts", "branch", 27],
         ["src/frontend/ui/views/history.ts", "key", 19],
         ["src/frontend/ui/views/keys-overview.ts", "branch", 6],
         ["src/frontend/ui/views/keys-overview.ts", "key", 1],
