@@ -1070,7 +1070,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
     (
-        "src/backend/stderr_log.rs",
+        "src/backend/stderr_log/mod.rs",
         "CAP_BYTES",
         "脱离常驻那条载体的本机后端 stderr 诊断文件每一份的大小（当前 ＋ 旧的一份 ⇒ 盘上 ≤ 两倍）",
         "丢弃+带身份报告",
