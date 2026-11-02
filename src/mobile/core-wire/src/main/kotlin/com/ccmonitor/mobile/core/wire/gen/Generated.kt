@@ -24613,7 +24613,7 @@ sealed interface Speaker {
 
 @Suppress("UNCHECKED_CAST")
 data class SshCommand(
-    val prelude: String,
+    val window: String,
     val line: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -24621,11 +24621,11 @@ data class SshCommand(
     companion object {
         val ADAPTER: JsonAdapter<SshCommand> = obj(
             listOf(
-            Field("prelude", { Str }, optional = false, nullable = false),
+            Field("window", { Str }, optional = false, nullable = false),
             Field("line", { Str }, optional = false, nullable = false),
             ),
             { a -> SshCommand(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.prelude, v.line) },
+            { v -> arrayOf(v.window, v.line) },
         )
     }
 }

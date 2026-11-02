@@ -217,7 +217,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-input", "784f0b16"),
     ("terminal-preview", "631ce4ab"),
     ("terminal-release-input", "6d107b5b"),
-    ("terminal-ssh", "7a259cfd"),
+    ("terminal-ssh", "73493166"),
     ("terminal-take-input", "6d107b5b"),
     ("terminal-unfollow", "7ffb2c4f"),
     ("terminals-board", "e1302f77"),
