@@ -12,6 +12,7 @@
 //! 到点那一趟丢掉、那一台的常驻流随之收，结局那一格照分派的那个数说等了多久、最后一步是哪一句。拨号 · 握手 · 一问的期限是连常驻那一层自己的（客户端那一侧）。
 
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 use resident_client::client::CallError;
 use resident_client::feed::{
     self, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
@@ -516,7 +517,7 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
         Some(Arc::new(link)),
         Desk::new(|_| Vec::new(), |_| {}),
         feed::sink(move |e| {
-            let _ = tx.send(Ev::Feed(e));
+            tx.send(Ev::Feed(e)).discard(Why::PeerGone); // 这一趟已收场（结局出了 · 到点被丢）⇒ 没人要这一下
         }),
     ));
     let ssh_up = Segs::default().reached(3);

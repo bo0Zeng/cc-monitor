@@ -1450,12 +1450,7 @@ pub(crate) fn facts_at(
     // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
     facts.background = crate::history::live_table::now(home)
         .background_since(sid)
-        .map(|born| {
-            let now = crate::common::time::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-            facts::background_of(&facts.bg_tasks, born, now)
-        });
+        .map(|born| facts::background_of(&facts.bg_tasks, born, crate::common::time::now_ms()));
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts::settle_pending(&mut facts, holders.is_some());
     // 状态一句会走的那一截：照 pidfile 此刻那一态 ＋ 上面这几格写（不活 ⇒ 不带）。
@@ -1464,9 +1459,7 @@ pub(crate) fn facts_at(
             .doing_one(sid)
             .flatten(),
         &facts,
-        crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+        crate::common::time::now_ms(),
     );
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
     facts::settle_notices(&mut facts, tz);

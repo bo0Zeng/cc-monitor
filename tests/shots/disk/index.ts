@@ -192,7 +192,7 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话各一条，带它载入的那份策略副本 ＋ 新会话默认用哪份 `forNew`）──
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第四版：每个会话各一条，引用它载入的那份策略副本（副本按版本只存一份）＋ 新会话默认用哪份 `forNew`）──
 
 export interface RotationSessionSpec {
   agent?: string;
@@ -270,11 +270,28 @@ export function putRotation(
   book: { forNew?: string; sessions?: Record<string, RotationSessionSpec>; strategies?: Record<string, string> },
 ): void {
   const sessions = Object.entries(book.sessions ?? {});
+  // 副本按版本只存一份（键 `<id>@<rev>`；同一键内容不同 ⇒ 键尾加 `~<n>`，同后端的写法），会话只写键。
+  const copies: Record<string, unknown> = {};
+  const keyOf = (c: { id: string; rev: string }): string => {
+    const base = `${c.id}@${c.rev}`;
+    for (let n = 1; ; n++) {
+      const k = n === 1 ? base : `${base}~${n}`;
+      if (copies[k] === undefined) copies[k] = c;
+      if (JSON.stringify(copies[k]) === JSON.stringify(c)) return k;
+    }
+  };
+  const rows = sessions.map(([sid, s]) => {
+    const src = s.strategy !== undefined ? book.strategies?.[s.strategy] : undefined;
+    const uses =
+      s.strategy !== undefined && src !== undefined
+        ? keyOf(copyOf(s.strategy, src, s.stale) as { id: string; rev: string })
+        : undefined;
+    return { sid, s, uses };
+  });
   d.files[".cc-monitor/rotation.json"] = json({
-    version: 3,
+    version: 4,
     sessions: Object.fromEntries(
-      sessions.map(([sid, s]) => {
-        const src = s.strategy !== undefined ? book.strategies?.[s.strategy] : undefined;
+      rows.map(({ sid, s, uses }) => {
         return [
           sid,
           {
@@ -283,7 +300,7 @@ export function putRotation(
             current: s.current,
             since: Math.round(s.since),
             seen: Math.round(s.seen ?? s.since),
-            ...(s.strategy !== undefined && src !== undefined ? { uses: copyOf(s.strategy, src, s.stale) } : {}),
+            ...(uses !== undefined ? { uses } : {}),
             ...(s.temp ? { temp: s.temp } : {}),
             ...(s.off ? { off: s.off } : {}),
             ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
@@ -291,6 +308,7 @@ export function putRotation(
         ];
       }),
     ),
+    ...(Object.keys(copies).length > 0 ? { copies } : {}),
     ...(book.forNew ? { forNew: book.forNew } : {}),
   });
 }

@@ -6478,7 +6478,7 @@ data class FactsCost(
 
 @Suppress("UNCHECKED_CAST")
 data class FactsLine(
-    val `for`: WireSessionActivity,
+    val `for`: SessionActivity,
     val text: String,
     val clock: FactsClock?,
     val peek: String?,
@@ -6488,12 +6488,12 @@ data class FactsLine(
     companion object {
         val ADAPTER: JsonAdapter<FactsLine> = obj(
             listOf(
-            Field("for", { WireSessionActivity.ADAPTER }, optional = false, nullable = false),
+            Field("for", { SessionActivity.ADAPTER }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             Field("clock", { opt(FactsClock.ADAPTER) }, optional = false, nullable = true),
             Field("peek", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> FactsLine(a[0] as WireSessionActivity, a[1] as String, a[2] as FactsClock?, a[3] as String?) },
+            { a -> FactsLine(a[0] as SessionActivity, a[1] as String, a[2] as FactsClock?, a[3] as String?) },
             { v -> arrayOf(v.`for`, v.text, v.clock, v.peek) },
         )
     }
@@ -11102,7 +11102,7 @@ sealed interface Life {
 
     @Suppress("UNCHECKED_CAST")
     data class Live(
-        val activity: WireSessionActivity? = null,
+        val activity: SessionActivity? = null,
     ) : Life, Ordered {
         override val `is`: String get() = "live"
         override var wireOrder: IntArray? = null
@@ -11132,9 +11132,9 @@ sealed interface Life {
                 Variant("live", Life.Live::class.java, obj(
                         listOf(
                         Field("is", { tag("live") }, optional = false, nullable = false),
-                        Field("activity", { opt(WireSessionActivity.ADAPTER) }, optional = true, nullable = true),
+                        Field("activity", { opt(SessionActivity.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Life.Live(a[1] as WireSessionActivity?) },
+                        { a -> Life.Live(a[1] as SessionActivity?) },
                         { v -> arrayOf("live", v.activity) },
                     )),
                 Variant("reconnectable", Life.Reconnectable::class.java, obj(
@@ -20644,6 +20644,7 @@ data class RotLog(
     val to: String,
     val cause: RotLogCause,
     val why: String? = null,
+    val saw: RotSaw? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20655,9 +20656,10 @@ data class RotLog(
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Str) }, optional = true, nullable = true),
+            Field("saw", { opt(RotSaw.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotLog(a[0] as Long, a[1] as String, a[2] as String, a[3] as RotLogCause, a[4] as String?) },
-            { v -> arrayOf(v.at, v.from, v.to, v.cause, v.why) },
+            { a -> RotLog(a[0] as Long, a[1] as String, a[2] as String, a[3] as RotLogCause, a[4] as String?, a[5] as RotSaw?) },
+            { v -> arrayOf(v.at, v.from, v.to, v.cause, v.why, v.saw) },
         )
     }
 }
@@ -20750,6 +20752,7 @@ data class RotLogRow(
     val to: String,
     val cause: RotLogCause,
     val why: String? = null,
+    val saw: RotSaw? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20762,9 +20765,10 @@ data class RotLogRow(
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Str) }, optional = true, nullable = true),
+            Field("saw", { opt(RotSaw.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotLogRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as RotLogCause, a[5] as String?) },
-            { v -> arrayOf(v.because, v.at, v.from, v.to, v.cause, v.why) },
+            { a -> RotLogRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as RotLogCause, a[5] as String?, a[6] as RotSaw?) },
+            { v -> arrayOf(v.because, v.at, v.from, v.to, v.cause, v.why, v.saw) },
         )
     }
 }
@@ -20895,6 +20899,54 @@ data class RotRow(
             ),
             { a -> RotRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as List<RotCell>, a[5] as List<String>, a[6] as List<RotMark>) },
             { v -> arrayOf(v.account, v.row, v.line, v.hover, v.cells, v.rules, v.marks) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotSaw(
+    val accounts: List<RotSawAcct>,
+    val pace: Double? = null,
+    val spread: Double? = null,
+    val context: Long? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotSaw> = obj(
+            listOf(
+            Field("accounts", { arr(RotSawAcct.ADAPTER) }, optional = false, nullable = false),
+            Field("pace", { opt(Dbl) }, optional = true, nullable = true),
+            Field("spread", { opt(Dbl) }, optional = true, nullable = true),
+            Field("context", { opt(U64) }, optional = true, nullable = true),
+            ),
+            { a -> RotSaw(a[0] as List<RotSawAcct>, a[1] as Double?, a[2] as Double?, a[3] as Long?) },
+            { v -> arrayOf(v.accounts, v.pace, v.spread, v.context) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotSawAcct(
+    val id: String,
+    val used5h: Double,
+    val resets5h: Long? = null,
+    val rate5h: Double? = null,
+    val others: Double? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotSawAcct> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("used5h", { Dbl }, optional = false, nullable = false),
+            Field("resets5h", { opt(U64) }, optional = true, nullable = true),
+            Field("rate5h", { opt(Dbl) }, optional = true, nullable = true),
+            Field("others", { opt(Dbl) }, optional = true, nullable = true),
+            ),
+            { a -> RotSawAcct(a[0] as String, a[1] as Double, a[2] as Long?, a[3] as Double?, a[4] as Double?) },
+            { v -> arrayOf(v.id, v.used5h, v.resets5h, v.rate5h, v.others) },
         )
     }
 }
@@ -22524,6 +22576,18 @@ data class SessionAct(
     }
 }
 
+enum class SessionActivity(val wire: String) {
+    WORKING("working"),
+    NEEDS_YOU("needs_you"),
+    IDLE("idle"),
+    BACKGROUND_WORK("background_work"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionActivity> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class SessionAdded(
     val sid: String,
@@ -22536,7 +22600,7 @@ data class SessionAdded(
     val path: String? = null,
     val face: SessionFace,
     val hidden: Hidden? = null,
-    val container: WireSessionContainer? = null,
+    val container: SessionContainer? = null,
     val pid: Int,
     val label: String,
     val labelProject: String? = null,
@@ -22556,12 +22620,12 @@ data class SessionAdded(
             Field("path", { opt(Str) }, optional = true, nullable = true),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             Field("hidden", { opt(Hidden.ADAPTER) }, optional = true, nullable = true),
-            Field("container", { opt(WireSessionContainer.ADAPTER) }, optional = true, nullable = true),
+            Field("container", { opt(SessionContainer.ADAPTER) }, optional = true, nullable = true),
             Field("pid", { Int32 }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
             Field("label_project", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionAdded(a[0] as String, a[1] as String, a[2] as Boolean?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as SessionFace, a[9] as Hidden?, a[10] as WireSessionContainer?, a[11] as Int, a[12] as String, a[13] as String?) },
+            { a -> SessionAdded(a[0] as String, a[1] as String, a[2] as Boolean?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as SessionFace, a[9] as Hidden?, a[10] as SessionContainer?, a[11] as Int, a[12] as String, a[13] as String?) },
             { v -> arrayOf(v.sid, v.agentKind, v.background, v.attachable, v.cwd, v.projectDir, v.name, v.path, v.face, v.hidden, v.container, v.pid, v.label, v.labelProject) },
         )
     }
@@ -22846,6 +22910,61 @@ data class SessionCommandsReq(
             { a -> SessionCommandsReq(a[0] as String) },
             { v -> arrayOf(v.sid) },
         )
+    }
+}
+
+sealed interface SessionContainer {
+    /** 判别格（`host`）那个词。 */
+    val host: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Tmux(
+        val terminal: String? = null,
+    ) : SessionContainer, Ordered {
+        override val host: String get() = "tmux"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Managed(
+        val terminal: String? = null,
+    ) : SessionContainer, Ordered {
+        override val host: String get() = "managed"
+        override var wireOrder: IntArray? = null
+    }
+    data object None : SessionContainer {
+        override val host: String get() = "none"
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionContainer> =
+            tagged<SessionContainer>(
+                "host",
+                listOf(
+                Variant("tmux", SessionContainer.Tmux::class.java, obj(
+                        listOf(
+                        Field("host", { tag("tmux") }, optional = false, nullable = false),
+                        Field("terminal", { opt(Str) }, optional = true, nullable = true),
+                        ),
+                        { a -> SessionContainer.Tmux(a[1] as String?) },
+                        { v -> arrayOf("tmux", v.terminal) },
+                    )),
+                Variant("managed", SessionContainer.Managed::class.java, obj(
+                        listOf(
+                        Field("host", { tag("managed") }, optional = false, nullable = false),
+                        Field("terminal", { opt(Str) }, optional = true, nullable = true),
+                        ),
+                        { a -> SessionContainer.Managed(a[1] as String?) },
+                        { v -> arrayOf("managed", v.terminal) },
+                    )),
+                Variant("none", SessionContainer.None::class.java, obj(
+                        listOf(
+                        Field("host", { tag("none") }, optional = false, nullable = false),
+                        ),
+                        { SessionContainer.None },
+                        { arrayOf("none") },
+                    )),
+                ),
+            )
     }
 }
 
@@ -24546,7 +24665,7 @@ sealed interface Speaker {
 
 @Suppress("UNCHECKED_CAST")
 data class SshCommand(
-    val prelude: String,
+    val window: String,
     val line: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -24554,11 +24673,11 @@ data class SshCommand(
     companion object {
         val ADAPTER: JsonAdapter<SshCommand> = obj(
             listOf(
-            Field("prelude", { Str }, optional = false, nullable = false),
+            Field("window", { Str }, optional = false, nullable = false),
             Field("line", { Str }, optional = false, nullable = false),
             ),
             { a -> SshCommand(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.prelude, v.line) },
+            { v -> arrayOf(v.window, v.line) },
         )
     }
 }
@@ -25814,6 +25933,16 @@ data class TerminalHoldReq(
     }
 }
 
+enum class TerminalHost(val wire: String) {
+    TMUX("tmux"),
+    MANAGED("managed"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalHost> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class TerminalInputReq(
     val terminal: String? = null,
@@ -25846,7 +25975,7 @@ data class TerminalInputReq(
 @Suppress("UNCHECKED_CAST")
 data class TerminalItem(
     val terminal: String,
-    val host: WireTerminalHost,
+    val host: TerminalHost,
     val name: String,
     val title: String,
     val program: String,
@@ -25865,7 +25994,7 @@ data class TerminalItem(
         val ADAPTER: JsonAdapter<TerminalItem> = obj(
             listOf(
             Field("terminal", { Str }, optional = false, nullable = false),
-            Field("host", { WireTerminalHost.ADAPTER }, optional = false, nullable = false),
+            Field("host", { TerminalHost.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("title", { Str }, optional = false, nullable = false),
             Field("program", { Str }, optional = false, nullable = false),
@@ -25878,7 +26007,7 @@ data class TerminalItem(
             Field("last_activity", { U64 }, optional = false, nullable = false),
             Field("can", { TerminalCan.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> TerminalItem(a[0] as String, a[1] as WireTerminalHost, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as TermSession?, a[7] as StartedBy, a[8] as List<Attached>, a[9] as TermInput, a[10] as TermState, a[11] as Long, a[12] as TerminalCan) },
+            { a -> TerminalItem(a[0] as String, a[1] as TerminalHost, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as TermSession?, a[7] as StartedBy, a[8] as List<Attached>, a[9] as TermInput, a[10] as TermState, a[11] as Long, a[12] as TerminalCan) },
             { v -> arrayOf(v.terminal, v.host, v.name, v.title, v.program, v.cwd, v.session, v.startedBy, v.clients, v.input, v.state, v.lastActivity, v.can) },
         )
     }
@@ -27248,83 +27377,6 @@ data class WirePathObjValue(
             { a -> WirePathObjValue(a[0] as String) },
             { v -> arrayOf(v.b16) },
         )
-    }
-}
-
-enum class WireSessionActivity(val wire: String) {
-    WORKING("working"),
-    NEEDS_YOU("needs_you"),
-    IDLE("idle"),
-    BACKGROUND_WORK("background_work"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<WireSessionActivity> = enumOf(entries) { it.wire }
-    }
-}
-
-sealed interface WireSessionContainer {
-    /** 判别格（`host`）那个词。 */
-    val host: String
-
-    @Suppress("UNCHECKED_CAST")
-    data class Tmux(
-        val terminal: String? = null,
-    ) : WireSessionContainer, Ordered {
-        override val host: String get() = "tmux"
-        override var wireOrder: IntArray? = null
-    }
-    @Suppress("UNCHECKED_CAST")
-    data class Managed(
-        val terminal: String? = null,
-    ) : WireSessionContainer, Ordered {
-        override val host: String get() = "managed"
-        override var wireOrder: IntArray? = null
-    }
-    data object None : WireSessionContainer {
-        override val host: String get() = "none"
-    }
-
-    companion object {
-        val ADAPTER: JsonAdapter<WireSessionContainer> =
-            tagged<WireSessionContainer>(
-                "host",
-                listOf(
-                Variant("tmux", WireSessionContainer.Tmux::class.java, obj(
-                        listOf(
-                        Field("host", { tag("tmux") }, optional = false, nullable = false),
-                        Field("terminal", { opt(Str) }, optional = true, nullable = true),
-                        ),
-                        { a -> WireSessionContainer.Tmux(a[1] as String?) },
-                        { v -> arrayOf("tmux", v.terminal) },
-                    )),
-                Variant("managed", WireSessionContainer.Managed::class.java, obj(
-                        listOf(
-                        Field("host", { tag("managed") }, optional = false, nullable = false),
-                        Field("terminal", { opt(Str) }, optional = true, nullable = true),
-                        ),
-                        { a -> WireSessionContainer.Managed(a[1] as String?) },
-                        { v -> arrayOf("managed", v.terminal) },
-                    )),
-                Variant("none", WireSessionContainer.None::class.java, obj(
-                        listOf(
-                        Field("host", { tag("none") }, optional = false, nullable = false),
-                        ),
-                        { WireSessionContainer.None },
-                        { arrayOf("none") },
-                    )),
-                ),
-            )
-    }
-}
-
-enum class WireTerminalHost(val wire: String) {
-    TMUX("tmux"),
-    MANAGED("managed"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<WireTerminalHost> = enumOf(entries) { it.wire }
     }
 }
 

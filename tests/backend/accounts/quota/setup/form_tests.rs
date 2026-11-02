@@ -376,6 +376,60 @@ fn an_edit_is_applied_where_the_form_says() {
     }
 }
 
+/// 这一组的意图都不问账号库：号都当在库里。
+fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<Value, String> {
+    super::apply(form, settings, edit, &|_| true)
+}
+
+/// ★ 恢复默认：那一格的键从那一行（或总体）删掉，别的键不动；分段那一格整格删（几窗一起）；本来就没设 ⇒ 原样。
+/// `v: null` 不是恢复默认（可空的那一格设成空的那一项）。清掉库里没有的号：开会话的号那一行 · 库里有的照留、照原先后。
+#[test]
+fn a_cell_goes_back_to_default_and_missing_accounts_are_pruned() {
+    let f = full_form();
+    let s = json!({"caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]}, "force": 20,
+                   "accounts": [{"start": true}, {"id": "gone", "delay": 1}, {"id": "a", "delay": 5, "caps": {"5h": [], "7d": []}}, {"id": "b"}]});
+    let reset = |key: &str, row: Option<usize>| {
+        apply(
+            &f,
+            &s,
+            &RotEdit::Reset {
+                key: key.into(),
+                row,
+            },
+        )
+        .expect("ok")
+    };
+    let a = reset("delay", Some(2));
+    assert_eq!(
+        a["accounts"][2],
+        json!({"id": "a", "caps": {"5h": [], "7d": []}})
+    );
+    assert_eq!(a["accounts"][1], s["accounts"][1], "别的行不动");
+    assert_eq!(
+        reset("caps", Some(2))["accounts"][2],
+        json!({"id": "a", "delay": 5})
+    );
+    let top = reset("force", None);
+    assert!(top.get("force").is_none() && top["caps"] == s["caps"]);
+    assert_eq!(reset("delay", Some(3)), s, "没设过 ⇒ 原样");
+    assert!(apply(
+        &f,
+        &s,
+        &RotEdit::Reset {
+            key: "delay".into(),
+            row: Some(9)
+        }
+    )
+    .is_err());
+    let here = |id: &str| id != "gone";
+    let pruned = super::apply(&f, &s, &RotEdit::Prune {}, &here).expect("ok");
+    assert_eq!(
+        pruned["accounts"],
+        json!([{"start": true}, {"id": "a", "delay": 5, "caps": {"5h": [], "7d": []}}, {"id": "b"}])
+    );
+    assert_eq!(pruned["caps"], s["caps"]);
+}
+
 /// 编辑器那一份的声明（显示条件 · 同第一窗 · 记号都在里面）。
 fn editor_form() -> Vec<Cell> {
     super::super::script::parse(super::super::editor::SOURCE)

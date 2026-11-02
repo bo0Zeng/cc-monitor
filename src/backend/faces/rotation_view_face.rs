@@ -426,9 +426,9 @@ pub(crate) fn view_with(
                 .cloned()
                 .ok_or_else(|| session_gone(false))?;
             let shelved = s.uses.as_ref().and_then(|c| shelf::find(&all, &c.id));
-            let form = s.uses.as_ref().map(setup::form_of).unwrap_or_default();
+            let form = s.uses.as_deref().map(setup::form_of).unwrap_or_default();
             let agent = s.agent.clone();
-            let plan = Adopted::of(s.uses.as_ref());
+            let plan = Adopted::of(s.uses.as_deref());
             (s, plan, shelved, form, agent)
         }
         RotTarget::Strategy { strategy } => {

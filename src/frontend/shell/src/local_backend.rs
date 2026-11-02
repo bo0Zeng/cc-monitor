@@ -487,11 +487,10 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// 后半今天做不了，理由是**两道现成的闸**，两道这里都不改：
 /// - `nothing_in_the_production_path_wakes_itself_up`（本文件，`C12` 的源码钉）：
 ///   **本模块生产段一个 `thread::sleep` 都不许有**；
-/// - `rust_timer_registry::every_periodic_wake_in_the_rust_tree_is_registered`：
-///   monitor Rust 树里**每一处** `sleep` 都要在那张登记表里有一条，
-///   而那张表住 `tests/frontend/shell/rust_timer_registry.rs`。
+/// - `src/frontend/clippy.toml` 的定时器那一组：monitor 里**每一处** `sleep` 都要就地放行、
+///   在那一处的放行理由里写清等什么、多久一步、上限多少。
 ///
-/// ⇒ 加一句退避 = 同时动那两处，其中第二处是**第三个文件**。**如实记为没做到，交回 PM 裁。**
+/// ⇒ 加一句退避 = 同时动那两处。**如实记为没做到，交回 PM 裁。**
 /// ⚠ **别读大**：没有退避买到的仍然是真的（重试本身要花几百微秒一趟、次数上限是真的、
 /// 两件事真的分开了），但它**比 go/cargo 那条路弱** —— 机器很忙、那个孩子迟迟排不上
 /// execve 时，8 趟连着打完可能仍在同一个窗口里。这一格**量不到**（要真机 + 真负载），

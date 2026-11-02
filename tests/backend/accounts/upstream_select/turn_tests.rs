@@ -508,7 +508,7 @@ fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
     };
     let stale = hop.entry(&own, &turn).expect("会话记下了");
     assert_eq!(stale.current, "a");
-    let plan = crate::accounts::quota::rules::Adopted::of(stale.uses.as_ref());
+    let plan = crate::accounts::quota::rules::Adopted::of(stale.uses.as_deref());
     let facts = hop.accts(SID, &stale, &hop.store.now(), &plan.settings, &none, t + 1);
     let d = hop.judge_session(SID, &stale, &plan, &facts, t + 1, &[]);
     assert_eq!(
@@ -1085,4 +1085,52 @@ fn a_hold_past_a_day_says_claude_code_will_not_resume_by_itself() {
     assert_eq!(held(Some(t + 24 * 3600)), None, "正好 24 小时还在内");
     assert_eq!(held(Some(t + 3600)), None);
     assert_eq!(held(None), None, "说不出停到几点");
+}
+
+/// ★ 一判换号 ⇒ 记的那一条带着那一判看的事实：每号 5 小时用量 · 重置 · 用速 · 别的会话压在上面的，本会话用速 · 起伏 · 上下文。
+#[test]
+fn a_switch_logs_the_facts_it_saw() {
+    use crate::accounts::quota::rules::decide::{Decision, Me, Pick, Sigma};
+    let t = now();
+    let mut a = acct("a", 91.234, Some(0.51234), t);
+    a.others = Some(0.2);
+    let b = acct("b", 12.0, None, t);
+    let me = Me {
+        pace: Some(1234.4),
+        spread: Some(0.4567),
+        context: Some(80_000),
+        ..Me::default()
+    };
+    let d = Decision {
+        pick: Pick::Use("b".into()),
+        sigma: Sigma {
+            current: "b".into(),
+            me,
+            ..Sigma::default()
+        },
+        skipped: Vec::new(),
+        order: vec!["b".into()],
+        why: Vec::new(),
+        from_temp: false,
+        tn: None,
+        wake_at: None,
+        strategy_error: None,
+        warm: Vec::new(),
+        warm_dropped: Vec::new(),
+    };
+    let mut s = book::Session::fresh("claude-code", "a", t);
+    super::apply(&mut s, &d, &[a, b], t, None);
+    let saw = s.log.last().and_then(|l| l.saw.clone()).expect("记了事实");
+    assert_eq!(
+        serde_json::to_value(&saw).expect("json"),
+        serde_json::json!({
+            "accounts": [
+                {"id": "a", "used5h": 91.23, "resets5h": t + 5 * 3600, "rate5h": 0.5123, "others": 0.2},
+                {"id": "b", "used5h": 12.0, "resets5h": t + 5 * 3600}
+            ],
+            "pace": 1234.0,
+            "spread": 0.457,
+            "context": 80_000
+        })
+    );
 }

@@ -220,6 +220,54 @@ pub struct RotLog {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub why: Option<String>,
+    /// 那一判看的事实摘要（事后核每一次为什么换）；没记 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub saw: Option<RotSaw>,
+}
+
+/// 一判看的事实摘要：各号的 5 小时窗 ＋ 本会话量出来的；量不到的格缺。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RotSaw {
+    pub accounts: Vec<RotSawAcct>,
+    /// 本会话用速：折合输入 token / 分。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub pace: Option<f64>,
+    /// 本会话用速的起伏（σ/μ）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub spread: Option<f64>,
+    /// 本会话上下文（token）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub context: Option<u64>,
+}
+
+/// 摘要里的一个号：5 小时用量 · 重置时刻 · 用速（点 / 分）· 别的会话压在它上面的用速（点 / 分）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RotSawAcct {
+    pub id: String,
+    pub used5h: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub resets5h: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub rate5h: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub others: Option<f64>,
 }
 
 /// 后端看得见的换号原因。
@@ -927,7 +975,7 @@ pub struct RotSeg {
     pub v: f64,
 }
 
-/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
+/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 恢复默认 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出 · 清掉账号库里没有的号。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -941,6 +989,14 @@ pub enum RotEdit {
         row: Option<usize>,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         v: Value,
+    },
+    /// 恢复默认：那一格的键从那一行删掉（`row` 缺 ⇒ 从总体删；分段那一格几窗一起删），回到跟总体或声明里的默认。
+    /// 不借 `set` 的 `v: null`：可空的那一格，`null` 是「设成空的那一项」。
+    Reset {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        row: Option<usize>,
     },
     /// 分段那一窗此刻生效的段里：`at` ＋ `seg` ⇒ 第 `at` 段换成 `seg`；只 `at` ⇒ 删第 `at` 段；只 `seg` ⇒ 加一段（压过它盖住的）。写成那一行自己的。
     Seg {
@@ -971,6 +1027,8 @@ pub enum RotEdit {
     Add { account: String },
     /// 移出一行。
     Remove { row: usize },
+    /// 号列表里这台账号库没有的号一并移出（开会话的号那一行与库里有的照留、照原先后）。
+    Prune {},
 }
 
 /// `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `stale`）。

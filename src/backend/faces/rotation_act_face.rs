@@ -98,7 +98,7 @@ fn lineup_by<'a>(
 
 /// 这个会话照它载入的副本判一次、推演到 `end`。
 fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judged {
-    let plan = Adopted::of(s.uses.as_ref());
+    let plan = Adopted::of(s.uses.as_deref());
     let row = ctx.row(&s.agent);
     judged(ctx, sid, s, &plan, &row, now, end)
 }
@@ -276,7 +276,7 @@ pub(crate) fn use_now_with(
             &[("acct", &req.account)],
         )));
     }
-    let plan = Adopted::of(s.uses.as_ref());
+    let plan = Adopted::of(s.uses.as_deref());
     let row = ctx.row(&s.agent);
     let facts = ctx.hop.accts(
         &req.sid,
@@ -286,7 +286,8 @@ pub(crate) fn use_now_with(
         &row,
         now,
     );
-    let sigma = match decide::use_now(&turn::sigma_of(&s), &facts, now, &req.account) {
+    let sigma = match decide::use_now(&ctx.hop.sigma(&req.sid, &s, now), &facts, now, &req.account)
+    {
         Ok(x) => x,
         Err(_) if s.off.contains(&req.account) => {
             return Err(RotationUseNowErr::Unusable(
@@ -327,6 +328,7 @@ pub(crate) fn use_now_with(
                     to: req.account.clone(),
                     cause: book::Cause::UseNow,
                     why: None,
+                    saw: Some(turn::saw_of(&sigma, &facts, now)),
                 });
             }
             x.temp.clone_from(&sigma.temp);

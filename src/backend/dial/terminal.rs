@@ -283,8 +283,8 @@ pub(crate) fn answer_in(
 /// 按给定的机器表 · 本机终端方言 · 找 ssh 客户端的结果 · 这台 `~/.ssh/config` 里非通配的别名渲。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
 /// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
-/// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 回包另带前奏（`opened_windows::prelude`，开窗时接在那一行前面，开的那个 shell
-/// 记下窗口标签）；那一行本身不带它（开不了窗时复制出去的只有那一行）。
+/// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 开窗那一串另带前奏与收尾（`opened_windows::window`：开的那个 shell
+/// 记下窗口标签，那条 ssh 一退就删）；`line` 本身不带它们（开不了窗时复制出去的只有那一行）。
 pub(crate) fn answer_with(
     req: &TerminalSshReq,
     hosts: &[Host],
@@ -319,21 +319,22 @@ pub(crate) fn answer_with(
         serde_json::json!({ "command": command }),
     )?;
     let line = render(&dial, powershell, ssh_path(ssh, powershell)?, true)?;
-    let prelude = match (&req.sid, opened) {
-        (Some(sid), Some(dir)) => super::opened_windows::prelude(
+    let window = match (&req.sid, opened) {
+        (Some(sid), Some(dir)) => super::opened_windows::window(
             powershell,
             &dir.join(sid.as_str()),
             &req.machine.to_string(),
+            &line,
         ),
-        _ => String::new(),
+        _ => line.clone(),
     };
-    Ok(SshCommand { prelude, line })
+    Ok(SshCommand { window, line })
 }
 
-/// 没有前奏的那一形（登录 shell · 本机）。
+/// 开窗跑的就是那一行（登录 shell · 本机 · 没给 `sid`）。
 fn plain(line: String) -> SshCommand {
     SshCommand {
-        prelude: String::new(),
+        window: line.clone(),
         line,
     }
 }

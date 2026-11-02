@@ -953,7 +953,7 @@ fn start_detached(
 
 /// 等刚起的那个后端听上口：等的是**那件事本身**（套接字上连得上、握得上手），每隔 [`LISTEN_WAIT_INTERVAL_MS`] 问一次。
 /// 三个出口：听上了 ⇒ 接上；那个进程先退了 ⇒ 当场照实报它怎么退的（不等满期限）；到发起方给的期限还没人 ⇒ 报等了多久、等的是哪个口。
-/// **登记住址** `tests/frontend/shell/rust_timer_registry.rs`（`wait-for-condition` 那一类：说清等什么、上限是多少）。
+/// 这一停归 `src/frontend/clippy.toml` 的定时器那一组管：等什么、上限多少写在 [`listen_pause`] 那一处的放行理由里。
 const LISTEN_WAIT_INTERVAL_MS: u64 = 20;
 
 /// 刚起完之后等它听上的期限（发起方 [`start_detached`] 交给 [`probe_and_attach_after_spawn`]）。
@@ -1030,6 +1030,10 @@ fn adopt_with(
 }
 
 /// [`wait_listening`] 两次探问之间停的那一下（常驻那条等它听上口 · 被监护那条等它说上话，停法同一个）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "等刚起的那个后端听上口（接管刚起的那一个 · 监护刚起的那一个说上话）：20ms 一步，期限 `AFTER_SPAWN_LISTEN_WITHIN`（60s），那一命先退了当场停、听上了就走。没人在听的口 `connect` 当场回拒、不替我们等，登记上那一刻也没有可等的事件；有了就去掉"
+)]
 fn listen_pause() {
     std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
 }

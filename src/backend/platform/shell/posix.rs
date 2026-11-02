@@ -43,6 +43,11 @@ pub fn note_own_window(file: &str, part: &str, machine: &str) -> String {
     )
 }
 
+/// 收尾：`line` 跑完（怎么退的都一样）删掉 [`note_own_window`] 写的那一份 `file`（已成词）：`<line>; rm -f -- <file>`。
+pub fn then_forget_own_window(line: &str, file: &str) -> String {
+    format!("{line}; rm -f -- {file}")
+}
+
 /// `cd <已 quote 的目录>`（只进目录，不跟别的命令）。
 pub(crate) fn cd(quoted_dir: &str) -> String {
     format!("cd {quoted_dir}")

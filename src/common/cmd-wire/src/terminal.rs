@@ -45,7 +45,7 @@ pub struct UnfollowReq {
     pub ticket: String,
 }
 
-/// `terminal-ssh` 的回包：前奏 ＋ 那一行。开窗跑两段接起来的那一串；开不了窗时复制出去的只有 `line`。
+/// `terminal-ssh` 的回包：开窗跑的那一整串 ＋ 那一行。开窗只跑 `window`；开不了窗时复制出去的只有 `line`。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -53,9 +53,9 @@ pub struct UnfollowReq {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct SshCommand {
-    /// 只给 cc-monitor 自己开的窗、接在 `line` 前面跑的一段（跑它的 shell 把窗口标签记进本机后端的家；里面是本机数据目录的
-    /// 绝对路径与这台终端方言的写法）。入参没给 `sid` · 记录目录不在 ⇒ 空串。
-    pub prelude: String,
+    /// cc-monitor 自己开的窗里跑的那一整串，本机后端拼好：入参给了 `sid`、记录目录也在 ⇒ 前奏（跑它的 shell 把窗口标签记进本机后端的家）
+    /// ＋ `line` ＋ 收尾（那条 ssh 一退就删掉那份记录；里面是本机数据目录的绝对路径与这台终端方言的写法）；否则就是 `line`。
+    pub window: String,
     /// 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
     pub line: String,
 }

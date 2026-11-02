@@ -149,7 +149,7 @@ impl Home {
         rotation::face_change(&ctx.hop.store, &self.own(), |b| {
             f(b.sessions
                 .get_mut(sid)
-                .and_then(|s| s.uses.as_mut())
+                .and_then(|s| s.uses.as_mut().map(std::sync::Arc::make_mut))
                 .expect("会话载入了一份"))
         })
         .expect("w");
@@ -1325,6 +1325,78 @@ fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
         v.board.rows[1].line,
         copy_core::copy_text("rot.acct.missing", &[])
     );
+}
+
+/// ★ 号列表 `[a, gone, b]`、账号库 `[a, b, c, api]`（两头各缺一个）：看板逐行号名照它自己在列表里的 id，库里没有的 gone 照实出一行，
+/// 库里有、列表里没有的 c · api 不进设置格；对第三行设一格 ⇒ 落在 b 那一行（文件里与看板上都是），gone 那一行不沾。
+#[test]
+fn every_board_row_names_its_own_listed_account_and_edits_land_on_it() {
+    let home = Home::new("gap-both");
+    let ctx = home.ctx();
+    home.settings_of(
+        "by-list",
+        json!({"accounts": [{"id": "a"}, {"id": "gone"}, {"id": "b"}]}),
+    );
+    let rows = |v: &RotationViewReply| -> Vec<(String, usize)> {
+        v.board
+            .rows
+            .iter()
+            .map(|r| (r.account.clone(), r.row))
+            .collect()
+    };
+    let v = strategy_view(&ctx, &home, "by-list");
+    assert_eq!(
+        rows(&v),
+        [("a".to_string(), 0), ("gone".into(), 1), ("b".into(), 2)]
+    );
+    assert_eq!(
+        v.accounts[..v.listed]
+            .iter()
+            .map(|a| a.fact.account.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "gone", "b"]
+    );
+    let rev = shelf::all(ctx.setup.dir().as_deref())
+        .iter()
+        .find(|s| s.id == "by-list")
+        .expect("那一份")
+        .rev
+        .clone();
+    crate::faces::rotation_edit_face::settings_with(
+        &ctx,
+        &home.own(),
+        &crate::faces::rotation_edit_face::RotationSettingsReq {
+            strategy: "by-list".into(),
+            edit: crate::faces::rotation_edit_face::RotEdit::Set {
+                key: "delay".into(),
+                row: Some(v.board.rows[2].row),
+                v: json!(30),
+            },
+            if_rev: rev,
+        },
+    )
+    .expect("设得上");
+    let src =
+        std::fs::read_to_string(home.root.join(shelf::DIR_NAME).join("by-list.rhai")).expect("读");
+    assert_eq!(
+        crate::accounts::quota::setup::script::parse(&src)
+            .expect("读得懂")
+            .head
+            .settings["accounts"],
+        json!([{"id": "a"}, {"id": "gone"}, {"id": "b", "delay": 30}])
+    );
+    let v = strategy_view(&ctx, &home, "by-list");
+    let delay = |i: usize| {
+        v.board.rows[i]
+            .cells
+            .iter()
+            .find(|c| c.key == "delay")
+            .cloned()
+            .expect("delay")
+    };
+    assert_eq!(v.board.rows[2].account, "b");
+    assert_eq!((delay(2).v, delay(2).from), (json!(30), form::RotFrom::Own));
+    assert_ne!(delay(1).from, form::RotFrom::Own, "gone 那一行不沾");
 }
 
 /// ★ 中转账本里没有的会话：上游是自设的 ⇒ 照实写额度看不到 · 换号不适用（手机照抄这一句）；不是 ⇒ 照旧「后端未见过该会话」。码都是 `no_session`。

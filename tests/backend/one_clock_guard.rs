@@ -235,21 +235,9 @@ const STILL: &[&str] = &[
     "accounts/manage/exec.rs",
     "accounts/manage/mcp_share_exec.rs",
     "accounts/quota/mod.rs",
-    "assets/aliases/page.rs",
-    "assets/asset_catalog.rs",
-    "assets/cc_bus_install.rs",
-    "assets/ext.rs",
-    "control/asks/hook.rs",
-    "control/asks/mod.rs",
     "control/ccm/mod.rs",
-    "control/deploy_plan.rs",
-    "control/terminals.rs",
-    "faces/history_face.rs",
-    "faces/plan_face.rs",
     "faces/read_face.rs",
-    "files/commit.rs",
     "files/write.rs",
-    "footprint/last_seen.rs",
 ];
 
 /// 一份生产源码里 C6 认得出的命中：另定的读口（[`READER_NAMES`]）· 就地换算（`now()` 之后 3 行内接 `UNIX_EPOCH` 再接 `.as_millis()` / `.as_secs()`）。

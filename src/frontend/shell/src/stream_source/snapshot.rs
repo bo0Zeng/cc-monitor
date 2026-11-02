@@ -204,6 +204,10 @@ pub(super) async fn snapshot_dispatcher(
                         );
                         last_err = e;
                         if attempt == 1 {
+                            #[expect(
+                                clippy::disallowed_methods,
+                                reason = "快照读失败之后重试前停 1s，只重试一次（第一次失败之后），不是节拍。后端能回「什么时候可以再问」就改成等它、去掉这一停"
+                            )]
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         }
                     }

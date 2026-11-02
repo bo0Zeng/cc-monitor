@@ -21,7 +21,7 @@ mod fallback;
 mod linux;
 
 #[cfg(not(target_os = "linux"))]
-pub(crate) use fallback::{absolute, watch_opens, writers_of, OpenEar};
+pub use fallback::{absolute, watch_opens, writers_of, OpenEar};
 #[cfg(target_os = "linux")]
 pub use linux::{absolute, watch_opens, writers_of, OpenEar};
 

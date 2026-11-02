@@ -20,19 +20,6 @@ const MAX_TERMINALS: usize = 16;
 /// 进程链最多几级（父进程表成环 / 读坏了也停得下来）。
 const MAX_CHAIN: usize = 32;
 
-/// `secs` 秒合进程表 `start` 几格（同一台上比先后用）：Windows 是 FILETIME（100ns 一格），别处是 Linux `/proc` 的 USER_HZ 滴答。
-pub(crate) const fn start_ticks(secs: u64) -> u64 {
-    #[cfg(windows)]
-    let per_sec = crate::platform::proc::FILETIME_TICKS_PER_SEC;
-    #[cfg(not(windows))]
-    let per_sec = crate::platform::proc::USER_HZ;
-    secs * per_sec
-}
-
-/// 本机开的那个终端里，开窗那一刻起的 ssh 最晚比那个 shell 晚起几秒（终端起 shell · 载入 profile · 跑前奏，随后就是那一条 ssh）。
-/// 晚过这么久才起的 ssh 是那条退了之后人在同一个窗口里又敲的，连的可能是别台 ⇒ 不当开的那一条。
-pub(crate) const OPENED_SSH_WITHIN_SECS: u64 = 30;
-
 /// 那台看到的那条连接（`SSH_CONNECTION` 四段）：对面 ＝ 这台电脑这一端。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Wanted {
@@ -287,7 +274,7 @@ fn one(w: &Wanted, t: &Tables) -> Found {
 pub(crate) enum OpenedHere {
     /// 那个 shell 还是它，它自己就是 ssh（shell 把 ssh exec 了：进程号与起始时刻不变）或底下开着 ssh ⇒ 从那个 ssh 往上的进程链。
     Chain(Vec<Link>),
-    /// 那个 shell 还在，底下没有开窗那一刻起的 ssh（ssh 退了、窗口还开着；或人在窗口里后来又敲了一条，见 [`OPENED_SSH_WITHIN_SECS`]）。
+    /// 那个 shell 还在，它自己不是、底下也没有 ssh。
     NoSsh,
     /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）。
     Gone,
@@ -311,26 +298,24 @@ pub(crate) fn shell_still_there(
     labelled_shell(label, procs).is_some()
 }
 
-/// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 开窗那一刻起的里面最早的那个（前奏之后起的那一个）。
-/// 连的是哪台不看（不读命令行）：认的是「开窗那一刻起的那一条」，它还开着就是连着记下的那台。
+/// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 最早起的那个。
+/// 连的是哪台不看（不读命令行 · 不比起始时刻）：记录只在开窗那条 ssh 开着时在（`dial/opened_windows.rs::window` 的收尾），
+/// 读得到记录、底下开着的就是那一条，连着记下的那台。
 pub(crate) fn opened_chain(
     label: &crate::common::seen_terminal::WindowLabel,
     procs: &HashMap<u32, Proc>,
 ) -> OpenedHere {
-    let (pid, start) = (label.pid, label.start);
+    let pid = label.pid;
     let Some(shell) = labelled_shell(label, procs) else {
         return OpenedHere::Gone;
     };
     let ssh = |p: &Proc| named(&p.name, crate::platform::SSH_CLIENT_NAMES);
-    let latest = start.saturating_add(start_ticks(OPENED_SSH_WITHIN_SECS));
     let at = if ssh(shell) {
         Some(pid)
     } else {
         procs
             .iter()
-            .filter(|(c, p)| {
-                **c != pid && p.ppid == pid && ssh(p) && (start..=latest).contains(&p.start)
-            })
+            .filter(|(c, p)| **c != pid && p.ppid == pid && ssh(p))
             .min_by_key(|(c, p)| (p.start, **c))
             .map(|(c, _)| *c)
     };

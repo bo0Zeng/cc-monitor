@@ -2293,6 +2293,8 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.RotPlate::class.java to com.ccmonitor.mobile.core.wire.gen.RotPlate.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotRefused::class.java to com.ccmonitor.mobile.core.wire.gen.RotRefused.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotRow::class.java to com.ccmonitor.mobile.core.wire.gen.RotRow.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.RotSaw::class.java to com.ccmonitor.mobile.core.wire.gen.RotSaw.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.RotSawAcct::class.java to com.ccmonitor.mobile.core.wire.gen.RotSawAcct.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotSeg::class.java to com.ccmonitor.mobile.core.wire.gen.RotSeg.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotStale::class.java to com.ccmonitor.mobile.core.wire.gen.RotStale.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.RotStrategyError::class.java to com.ccmonitor.mobile.core.wire.gen.RotStrategyError.ADAPTER,
@@ -2363,6 +2365,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.SessionAccountReplyWhen::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAccountReplyWhen.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAccountReq::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAccountReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAct::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAct.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.SessionActivity::class.java to com.ccmonitor.mobile.core.wire.gen.SessionActivity.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAdded::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAdded.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReply::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReply.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReq::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReq.ADAPTER,
@@ -2376,6 +2379,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.SessionCommand::class.java to com.ccmonitor.mobile.core.wire.gen.SessionCommand.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionCommands::class.java to com.ccmonitor.mobile.core.wire.gen.SessionCommands.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionCommandsReq::class.java to com.ccmonitor.mobile.core.wire.gen.SessionCommandsReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.SessionContainer::class.java to com.ccmonitor.mobile.core.wire.gen.SessionContainer.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionDot::class.java to com.ccmonitor.mobile.core.wire.gen.SessionDot.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionFace::class.java to com.ccmonitor.mobile.core.wire.gen.SessionFace.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionFacts::class.java to com.ccmonitor.mobile.core.wire.gen.SessionFacts.ADAPTER,
@@ -2485,6 +2489,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.TerminalEnded::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalEnded.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalFollowEnd::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalFollowEnd.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalHoldReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalHoldReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalHost::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalHost.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalInputReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalInputReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalItem::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalItem.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalOutcome::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalOutcome.ADAPTER,
@@ -2551,9 +2556,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.WindowShow::class.java to com.ccmonitor.mobile.core.wire.gen.WindowShow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.WirePath::class.java to com.ccmonitor.mobile.core.wire.gen.WirePath.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.WirePathObjValue::class.java to com.ccmonitor.mobile.core.wire.gen.WirePathObjValue.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireSessionActivity::class.java to com.ccmonitor.mobile.core.wire.gen.WireSessionActivity.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireSessionContainer::class.java to com.ccmonitor.mobile.core.wire.gen.WireSessionContainer.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.WireTerminalHost::class.java to com.ccmonitor.mobile.core.wire.gen.WireTerminalHost.ADAPTER,
         )
     }
 }

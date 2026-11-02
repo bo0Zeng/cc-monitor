@@ -18,6 +18,7 @@
 //! FNV-1a 64（[`crate::common::digest::Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
 
 use crate::common::said::IntoNote as _;
+use crate::common::time::now_secs;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -682,13 +683,6 @@ pub fn machine_label() -> String {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "?".into());
     format!("{user}@{host}")
-}
-
-fn now_secs() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// 生成这台的 id：（家目录, 称呼, 纳秒, pid）的摘要。只在目录文件不存在时调一次。

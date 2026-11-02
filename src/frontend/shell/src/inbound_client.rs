@@ -71,7 +71,7 @@ pub fn local_client() -> Option<Arc<InboundClient>> {
 }
 
 /// 本机后端那条流还没登记时，等它多久：`LOCAL_WAIT_TRIES × LOCAL_WAIT_INTERVAL_MS` ≈ 3 s。
-/// **`wait-for-condition`**（登记在 `rust_timer_registry`）：等的是一次性条件（本机那条流的 hello 到了），
+/// **`wait-for-condition`**（`src/frontend/clippy.toml` 的定时器那一组 ＋ 下面那一处的放行理由）：等的是一次性条件（本机那条流的 hello 到了），
 /// 等到就走、等不到就如实报。对端就在本机，从起进程到 hello 是毫秒级。
 const LOCAL_WAIT_TRIES: u32 = 60;
 const LOCAL_WAIT_INTERVAL_MS: u64 = 50;
@@ -87,6 +87,10 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
             return Ok(c);
         }
         if attempt + 1 < LOCAL_WAIT_TRIES {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "等本机常驻后端那条流的 hello 到（入方向客户端登记上）：50ms 一步、至多 60 步（≤3s），等到就走、等不到照实报本机后端不在；没有要问的时不跑。登记上那一下有可等的通知了就去掉"
+            )]
             tokio::time::sleep(std::time::Duration::from_millis(LOCAL_WAIT_INTERVAL_MS)).await;
         }
     }
