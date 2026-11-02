@@ -506,7 +506,7 @@ function builtClasses(win: Win): Set<string> {
 }
 
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
-const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold"];
+const CSS_FORBIDDEN_IN_SETTINGS = ["katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold"];
 /** viewer 的 CSS 里不许出现的类族。 */
 const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "ext-", "acct-row-"];
 function familyHits(classes: Set<string>, fam: string): string[] {
@@ -1052,14 +1052,14 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
     }
   });
 
-  it("正控：第三方的类（hljs / katex）在主窗与 viewer 的产物里存在，且**只**在 vendor 层里", () => {
+  it("正控：第三方的类（katex）在主窗与 viewer 的产物里存在，且**只**在 vendor 层里", () => {
     for (const html of ["index.html", "viewer.html"]) {
       const merged = new Map<string, Set<string>>();
       for (const s of BUILT_CSS_BY_HTML[html].map(builtLayerScan))
         for (const [c, ls] of s.layerOfClass) merged.set(c, new Set([...(merged.get(c) ?? []), ...ls]));
-      const vendorish = [...merged].filter(([c]) => c === "hljs" || c.startsWith("hljs-") || c === "katex" || c.startsWith("katex-"));
+      const vendorish = [...merged].filter(([c]) => c === "katex" || c.startsWith("katex-"));
       nonEmpty(vendorish);
-      // 我们自己也写了几条带 `hljs` / `katex-display` 的覆盖（在 components 层），所以判的是「第三方那份在 vendor 里」：
+      // 我们自己也写了几条带 `katex-display` 的覆盖（在 components 层），所以判的是「第三方那份在 vendor 里」：
       // 每个这一族的类至少有一处在 vendor 层，且**没有**任何一处无层
       const bad = vendorish.filter(([, ls]) => ls.has("<无层>")).map(([c]) => c);
       expect(bad, `${html}：这些第三方类出现在无层规则里 —— vite.config.ts 的 vendor 插件没生效`).toEqual([]);

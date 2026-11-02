@@ -235,7 +235,9 @@ fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
     let fake = Fake::new(|one: &str| {
         let cps: Vec<char> = one.chars().collect();
         let pat: Vec<char> = "A1-1".chars().collect();
-        let s = (0..cps.len()).find(|&s| cps[s..].starts_with(&pat)).unwrap();
+        let s = (0..cps.len())
+            .find(|&s| cps[s..].starts_with(&pat))
+            .unwrap();
         pb_reply(json!([{"start": s, "end": s + 4, "ids": ["A1-1"]}]))
     });
     let out = answer(
@@ -249,7 +251,9 @@ fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
     );
     assert_eq!(
         fake.asked.borrow().as_slice(),
-        [format!("人说的{SEAM}😀 先看 A1-1，\u{FFFC} 在代码里{SEAM}没有编号")],
+        [format!(
+            "人说的{SEAM}😀 先看 A1-1，\u{FFFC} 在代码里{SEAM}没有编号"
+        )],
         "一批只问一次；树投成字，代码换成占位"
     );
     assert_eq!(out.refs, vec![Vec::new()]);

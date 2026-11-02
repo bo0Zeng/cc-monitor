@@ -110,14 +110,18 @@ impl Unmark<'_> {
                 MdBlock::P { k } | MdBlock::H { k, .. } => self.inls(k),
                 MdBlock::Code { x, .. } => *x = self.plain(x),
                 MdBlock::Math { tex } => *tex = self.plain(tex),
-                MdBlock::List { items, .. } => items.iter_mut().for_each(|i| self.blocks(&mut i.blocks)),
+                MdBlock::List { items, .. } => {
+                    items.iter_mut().for_each(|i| self.blocks(&mut i.blocks))
+                }
                 MdBlock::Quote { blocks } | MdBlock::Alert { blocks, .. } => self.blocks(blocks),
                 MdBlock::Table { head, rows, .. } => {
                     for cell in head.iter_mut().chain(rows.iter_mut().flatten()) {
                         self.inls(cell);
                     }
                 }
-                MdBlock::Notes { items } => items.iter_mut().for_each(|i| self.blocks(&mut i.blocks)),
+                MdBlock::Notes { items } => {
+                    items.iter_mut().for_each(|i| self.blocks(&mut i.blocks))
+                }
                 MdBlock::Rule => {}
             }
         }
@@ -151,10 +155,15 @@ impl Unmark<'_> {
         let mut text = String::new();
         while let Some(o) = rest.find(OPEN) {
             let after = &rest[o + OPEN.len_utf8()..];
-            let Some((n, tail)) = after.split_once(CLOSE).and_then(|(n, t)| Some((n.parse::<usize>().ok()?, t))) else {
+            let Some((n, tail)) = after
+                .split_once(CLOSE)
+                .and_then(|(n, t)| Some((n.parse::<usize>().ok()?, t)))
+            else {
                 break;
             };
-            let Some((x, r)) = self.kept.get(n) else { break };
+            let Some((x, r)) = self.kept.get(n) else {
+                break;
+            };
             text.push_str(&rest[..o]);
             if !text.is_empty() {
                 out.push(Inl::S(std::mem::take(&mut text)));
@@ -243,7 +252,9 @@ impl<'a> Walk<'a> {
                     self.seam();
                     self.gap();
                 }
-                MdBlock::List { items, .. } => items.iter_mut().for_each(|i| self.blocks(&mut i.blocks)),
+                MdBlock::List { items, .. } => {
+                    items.iter_mut().for_each(|i| self.blocks(&mut i.blocks))
+                }
                 MdBlock::Quote { blocks } | MdBlock::Alert { blocks, .. } => self.blocks(blocks),
                 MdBlock::Table { head, rows, .. } => {
                     for cell in head.iter_mut().chain(rows.iter_mut().flatten()) {
@@ -251,7 +262,9 @@ impl<'a> Walk<'a> {
                         self.inls(cell);
                     }
                 }
-                MdBlock::Notes { items } => items.iter_mut().for_each(|i| self.blocks(&mut i.blocks)),
+                MdBlock::Notes { items } => {
+                    items.iter_mut().for_each(|i| self.blocks(&mut i.blocks))
+                }
             }
         }
     }
@@ -288,7 +301,12 @@ impl<'a> Walk<'a> {
         }
         bounds.push((u, s.len()));
         let n = u;
-        let byte = |at: usize| bounds.binary_search_by_key(&at, |p| p.0).ok().map(|i| bounds[i].1);
+        let byte = |at: usize| {
+            bounds
+                .binary_search_by_key(&at, |p| p.0)
+                .ok()
+                .map(|i| bounds[i].1)
+        };
         let mut cut = 0usize;
         while let Some(r) = self.refs.get(self.next) {
             if r.start >= start + n {
@@ -298,7 +316,9 @@ impl<'a> Walk<'a> {
             if r.start < start + cut || r.end > start + n {
                 continue;
             }
-            let (Some(c), Some(a), Some(b)) = (byte(cut), byte(r.start - start), byte(r.end - start)) else {
+            let (Some(c), Some(a), Some(b)) =
+                (byte(cut), byte(r.start - start), byte(r.end - start))
+            else {
                 continue;
             };
             if a > c {
