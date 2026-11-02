@@ -85,13 +85,17 @@ impl Home {
             auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
             ..Default::default()
         };
-        let book = acct_core::AccountBook {
+        self.hop_of(acct_core::AccountBook {
             accounts: subs
                 .iter()
                 .map(|id| row(id, false))
                 .chain(apis.iter().map(|id| row(id, true)))
                 .collect(),
-        };
+        })
+    }
+
+    /// 照这一张号表。
+    fn hop_of(&self, book: acct_core::AccountBook) -> Hop {
         Hop::new(
             Arc::new(RotationStore::with_nodes(
                 Some(self.root.join(rotation::FILE_NAME)),
@@ -408,6 +412,37 @@ fn an_undeclared_send_is_recognized_only_by_a_single_identity_match() {
     );
     let bare = serde_json::to_vec(&serde_json::json!({"model": "m"})).expect("json");
     assert_eq!(one.recognize(AGENT, &bare), None);
+}
+
+/// ★ 账号 0（清单里那一条不设配置目录的 `~/.claude`：账号库每次写清单都合成它）不经选号 ⇒ 不是轮换里的号：
+/// 事实里没有它；会话恰好起在账号 0 上时，开会话的号那一条照样拼得出。
+#[test]
+fn account_zero_is_not_a_rotation_account() {
+    let home = Home::new("zero");
+    home.sub("a", 3_600, Some(UUID_A));
+    home.sub("b", 3_600, Some(UUID_B));
+    let row = |id: &str| book_row(id, Some(home.dir(id)), false);
+    let hop = home.hop_of(acct_core::AccountBook {
+        accounts: vec![book_row(acct_core::BARE_ACCOUNT, None, false), row("a"), row("b")],
+    });
+    let ids: Vec<String> = hop
+        .facts(AGENT, &no_row, now(), &crate::Tz::default())
+        .into_iter()
+        .map(|f| f.account)
+        .collect();
+    assert_eq!(ids, ["a", "b"]);
+    assert_eq!(
+        hop.fact_one(
+            AGENT,
+            &hop.library(),
+            acct_core::BARE_ACCOUNT,
+            &no_row,
+            now(),
+            &crate::Tz::default()
+        )
+        .account,
+        acct_core::BARE_ACCOUNT
+    );
 }
 
 /// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。换号那几族的判据共用。
