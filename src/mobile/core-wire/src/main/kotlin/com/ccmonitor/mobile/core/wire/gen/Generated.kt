@@ -5553,7 +5553,7 @@ data class DriftEntry(
         val ADAPTER: JsonAdapter<DriftEntry> = obj(
             listOf(
             Field("key", { Str }, optional = false, nullable = false),
-            Field("count", { Lng }, optional = false, nullable = false),
+            Field("count", { U64 }, optional = false, nullable = false),
             Field("first_sample", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> DriftEntry(a[0] as String, a[1] as Long, a[2] as String?) },
@@ -19505,9 +19505,9 @@ data class QuotaWarmReq(
 @Suppress("UNCHECKED_CAST")
 data class QuotaWindow(
     val name: String,
-    val used: Long? = null,
+    val used: Double? = null,
     val resetsAt: Long? = null,
-    val warnedAt: Long? = null,
+    val warnedAt: Double? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19515,11 +19515,11 @@ data class QuotaWindow(
         val ADAPTER: JsonAdapter<QuotaWindow> = obj(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
-            Field("used", { opt(Lng) }, optional = true, nullable = true),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
-            Field("warnedAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("used", { opt(Dbl) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
+            Field("warnedAt", { opt(Dbl) }, optional = true, nullable = true),
             ),
-            { a -> QuotaWindow(a[0] as String, a[1] as Long?, a[2] as Long?, a[3] as Long?) },
+            { a -> QuotaWindow(a[0] as String, a[1] as Double?, a[2] as Long?, a[3] as Double?) },
             { v -> arrayOf(v.name, v.used, v.resetsAt, v.warnedAt) },
         )
     }

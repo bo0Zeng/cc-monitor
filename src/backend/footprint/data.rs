@@ -4,7 +4,7 @@
 //!   每处说改了什么、撤回在哪一页（页 · 栏 · 锚点，界面照它跳）。
 //! - `todo`：「待办」各件（[`super::chores`]）；其中「要装」那一类来自 [`needs_install`]：你自己装、cc-monitor 只查的那几样里，
 //!   这台**确实缺**的（查不动的不算缺，不报；tmux 一律可选、不进这里）；`required` ＝ 缺了起不了会话。
-//! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `control::terminals::rows_here`）。
+//! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `host::tmux::rows_here`）。
 //! - `counts`：「待办」各类的件数（[`super::chores::counts`]）；跨台合计由本机后端 `chores-merge` 出，界面不自己数。
 //! - `rank`：几台排先后的键（设置窗那一页按它排各台）。
 //!

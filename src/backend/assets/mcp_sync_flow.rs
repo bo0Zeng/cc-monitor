@@ -21,7 +21,7 @@ use crate::common::door::{self, Door, Refused};
 use crate::common::said::IntoNote as _;
 use crate::common::said::Said;
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 
 /// 一条定义里装密钥的那几格换成空位：交回（换好的那一条, [(字段, 键)]）。**纯**；不是对象的原样交回、没有空位。
 pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {

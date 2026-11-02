@@ -12,7 +12,6 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 use crate::assets::hub_wire::{CcBusInstalled, CcBusState};

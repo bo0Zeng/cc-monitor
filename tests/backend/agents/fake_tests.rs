@@ -550,15 +550,17 @@ fn the_fixture_agent_never_ships() {
     let at = lines.iter().position(|l| *l == decl).unwrap_or_else(|| {
         panic!("`agents/mod.rs` 里找不到 `{decl}` —— 夹具家的模块声明改了形状，本条在空转")
     });
-    let attrs: Vec<&str> = lines[..at]
+    // 声明上面紧挨着的是挂载属性（`#[path = …]`），再往上那一行整行是它的 `cfg` 门。
+    let gate = r#"#[cfg(any(test, feature = "test-support"))]"#;
+    let above = lines[..at]
         .iter()
         .rev()
-        .take_while(|l| l.starts_with("#["))
+        .find(|l| guard_core::path_attr(l).is_none())
         .copied()
-        .collect();
-    assert!(
-        attrs.contains(&r#"#[cfg(any(test, feature = "test-support"))]"#),
-        "`{decl}` 上面那串属性里没有只在测试档 · `test-support` 下编的 `#[cfg(…)]` —— 夹具 agent 会被编进生产二进制。\n属性：{attrs:?}"
+        .unwrap_or_default();
+    assert_eq!(
+        above, gate,
+        "`{decl}`（连它的挂载属性）上面那一行不是只在测试档 · `test-support` 下编的 `#[cfg(…)]` —— 夹具 agent 会被编进生产二进制"
     );
     // ③ 主 crate 的生产依赖不给适配层开 `test-support`（只许 `[dev-dependencies]` 开）。
     let manifest = std::fs::read_to_string(guard_core::addr::backend_src_root().join("Cargo.toml"))
@@ -568,10 +570,12 @@ fn the_fixture_agent_never_ships() {
     for l in manifest.lines().map(str::trim) {
         if l.starts_with('[') {
             section = l;
-        } else if section == "[dependencies]" && l.starts_with("backend-agents") {
+        } else if section == "[dependencies]"
+            && l.split_once('=').map(|(k, _)| k.trim()) == Some("backend-agents")
+        {
             seen = true;
             assert!(
-                !l.contains("test-support"),
+                !guard_core::contains_word(l, "test-support"),
                 "主 crate 的生产依赖给 `backend-agents` 开了 `test-support` —— 夹具 agent 会被编进生产二进制：{l}"
             );
         }

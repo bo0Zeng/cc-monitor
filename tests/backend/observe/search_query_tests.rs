@@ -1,6 +1,5 @@
 use super::test_support::{lines_into, opts_from_words};
 use super::*;
-use crate::wire::SessionFaceExt as _;
 
 /// 一个会话的命中那一行，按 JSON 看（判据按格名比）。
 fn hits_v(

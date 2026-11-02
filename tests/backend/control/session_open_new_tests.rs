@@ -1,5 +1,6 @@
 //! `session-open` 新起那一形：每一格不行时说是哪一格、什么都不起不写；都过了才写分支记录、才起（替身记下被调了什么；tmux 一个都不起）。
 
+use super::new::{dir_answer, OpenDirErr, OpenDirReq};
 use super::*;
 use crate::control::session_batch::{Listed, TermEntry};
 use serde_json::json;

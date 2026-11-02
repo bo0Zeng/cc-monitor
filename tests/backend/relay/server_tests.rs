@@ -3136,7 +3136,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
     std::fs::write(&stub, STUB_LAUNCHER).expect("写桩启动器");
 
     // 起两发：同一条起会话路径，**只有账号段不同**。
-    for (acct, want_key) in [("acct-a", "KEY-FOR-A"), ("acct-b", "KEY-FOR-B")] {
+    for acct in ["acct-a", "acct-b"] {
         let url = format!(
             "http://127.0.0.1:{}/s/claude-code/{acct}",
             relay.addr.port()

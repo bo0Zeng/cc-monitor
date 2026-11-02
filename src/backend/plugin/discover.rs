@@ -4,11 +4,11 @@
 //! 本层进了 `agent_boundary_guard::CORE_FILES`，插件的候选路径里带着 agent 的名字 ⇒ 写死在这里当场会红。
 //! 不能只靠 `PATH`：backend 可能由 app 经 SSH exec 起（非登录 shell），用户级的 `bin` 目录未必在 `PATH` 里 ⇒ 固定候选先走一遍，`PATH` 只当兜底。
 
+use crate::platform::fs::is_executable;
 #[cfg(test)]
 use crate::platform::fs::windows_launchable_name;
-use crate::platform::fs::{is_executable, Ro};
 use copy_core::copy_text;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// 找不到时说**查过哪些地方** —— 纯函数。
 ///

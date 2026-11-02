@@ -1188,11 +1188,12 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     use crate::control::terminals as t;
     use crate::control::terminals_wire::SentResult;
+    use crate::host::tmux::{parse_clients, parse_rows};
     let g: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/terminals.golden.json")).unwrap();
-    let (mut rows, _) = t::parse_rows(g["terminals-list"]["panes"].as_str().unwrap());
-    let clients = t::parse_clients(g["terminals-list"]["clients"].as_str().unwrap());
-    rows.extend(t::parse_rows("$4\t%4\t1\t1\tbare\t1\t400\tsid-d\t\t\tclaude\t/s\t\n").0);
+    let (mut rows, _) = parse_rows(g["terminals-list"]["panes"].as_str().unwrap());
+    let clients = parse_clients(g["terminals-list"]["clients"].as_str().unwrap());
+    rows.extend(parse_rows("$4\t%4\t1\t1\tbare\t1\t400\tsid-d\t\t\tclaude\t/s\t\n").0);
     assert_eq!(
         wire(&t::list_reply(&rows, &clients, false, Some("mobile"))),
         r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":{"kind":"shared"},"last_activity":100,"name":"demo-cc","program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":{"kind":"shared"},"last_activity":300,"name":"other","program":"vim","started_by":{"client":"desktop","mine":false},"state":"idle","terminal":"tmux-3","title":"vim"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/q","host":"tmux","input":{"kind":"shared"},"last_activity":200,"name":"pipe-x","program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":true},"state":"program_exited","terminal":"tmux-2-2","title":"bash"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":{"kind":"shared"},"last_activity":400,"name":"bare","program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude"}]}"##

@@ -15,7 +15,7 @@ use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
 use crate::observe::query::{body, jlen, tail, ENVELOPE_BYTES};
 use crate::wire::typed::{self, codes, of_fail_with, Command};
 use crate::wire::SessionFaceExt as _;
-pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList, SessionsNeedsReq};
+pub(crate) use cmd_wire::needs::{NeedsList, SessionsNeedsReq};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{HistoryImage, HistoryLines, HistoryRead, HistoryReadReq};
 pub(crate) use cmd_wire::session::{Held, HistoryTail, HistoryTailReq, TailHow};

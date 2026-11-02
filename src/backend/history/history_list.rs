@@ -113,7 +113,7 @@ fn session_row(
         session_id: sid.to_string(),
         project_path: cwd.to_string(),
         project_name: last_segment(cwd).unwrap_or(project_dir).to_string(),
-        title: label_of(None, r.ai_title.as_deref(), &r.first_user_excerpt, cwd, sid),
+        title: label_of(None, r.ai_title.as_deref(), &r.first_user_excerpt, cwd),
         ai_title: r.ai_title.clone(),
         first_user_excerpt: r.first_user_excerpt.clone(),
         started_at: r.started_at_ms,
@@ -136,7 +136,7 @@ fn session_row(
 /// 合成历史的一条会话 ⇒ 清单的一行（判不了活 ⇒ `isLive: null`）。
 fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> RawRow {
     let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
-    let title = label_of(None, None, &excerpt, &s.cwd, &s.sid);
+    let title = label_of(None, None, &excerpt, &s.cwd);
     RawRow {
         agent: kind.into(),
         session_id: s.sid.clone(),
@@ -164,13 +164,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
 }
 
 /// 叫这一行什么（[`crate::history::search_rules::session_label`]，与标签页 · 通知同一个）。
-fn label_of(
-    custom: Option<&str>,
-    title: Option<&str>,
-    first: &str,
-    project: &str,
-    sid: &str,
-) -> String {
+fn label_of(custom: Option<&str>, title: Option<&str>, first: &str, project: &str) -> String {
     let facts = crate::history::search_rules::LabelFacts {
         custom: custom.map(str::to_string),
         bg_name: None,
@@ -489,7 +483,6 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         raw.ai_title.as_deref(),
         &raw.first_user_excerpt,
         &raw.project_path,
-        &raw.session_id,
     );
     let face = crate::wire::SessionFace::of(crate::wire::Life::of_wire(&raw.life));
     Finished {
