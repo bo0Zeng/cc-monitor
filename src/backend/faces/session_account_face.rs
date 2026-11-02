@@ -43,7 +43,7 @@ impl crate::wire::typed::Handle for SessionAccountCmd {
     {
         async move {
             let ctx = crate::faces::rotation_face::Ctx::here();
-            let now = crate::accounts::quota::now_unix();
+            let now = crate::common::time::now_secs();
             let quota = crate::faces::rotation_face::quota_read_with(&ctx, now, &cx.tz);
             let facts = facts_here(&ctx, &req.sid);
             Ok(product(&facts, &quota))

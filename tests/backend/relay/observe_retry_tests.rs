@@ -464,7 +464,7 @@ impl Home {
         for (id, uuid, token) in [("a", UUID_A, "fake-access-of-a"), ("b", UUID_B, B_TOKEN)] {
             let dir = root.join("accts").join(id);
             std::fs::create_dir_all(&dir).expect("mkdir");
-            let far = (crate::accounts::quota::now_unix() + 3600) * 1000;
+            let far = (crate::common::time::now_secs() + 3600) * 1000;
             std::fs::write(
                 dir.join(".credentials.json"),
                 format!(
@@ -917,7 +917,7 @@ fn a_throttled_answer_is_handed_down_as_is_and_the_account_stays_usable() {
 fn a_throttled_answer_under_a_hard_limit_is_not_turned_into_a_limit_reply() {
     let home = Home::new("throttled-hold");
     home.set_default_at(&["b"], Some(90), "stop");
-    let now = crate::accounts::quota::now_unix();
+    let now = crate::common::time::now_secs();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let b_at_95: Vec<(String, String)> = [
         ("anthropic-ratelimit-unified-status", "allowed_warning"),
@@ -945,7 +945,7 @@ fn a_throttled_answer_under_a_hard_limit_is_not_turned_into_a_limit_reply() {
 fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     let home = Home::new("brief");
     home.set_default(&["b"], None);
-    let now = crate::accounts::quota::now_unix();
+    let now = crate::common::time::now_secs();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let rejected = [(
         "anthropic-ratelimit-unified-status".to_string(),
@@ -1276,7 +1276,7 @@ fn the_relay_refreshes_when_it_last_saw_a_session_once_a_day() {
     use std::sync::atomic::{AtomicU64, Ordering};
     let home = Home::new("seen");
     let (up, got) = spawn_judging_upstream(|_| sse_200(""));
-    let t0 = crate::accounts::quota::now_unix();
+    let t0 = crate::common::time::now_secs();
     let clock = Arc::new(AtomicU64::new(t0));
     let relay = home.relay_clocked(up, Arc::clone(&clock));
     assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
@@ -1460,7 +1460,7 @@ fn a_launch_that_says_no_rotation_stays_on_the_account_it_names_whatever_new_ses
         "s-warm",
         crate::agents::pick_route(Some(&crate::agents::AgentKind::new("claude"))).unwrap(),
         None,
-        crate::accounts::quota::now_unix(),
+        crate::common::time::now_secs(),
     )
     .expect("起之前记一条");
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";

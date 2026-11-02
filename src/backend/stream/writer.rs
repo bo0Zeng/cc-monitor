@@ -1,5 +1,5 @@
 //! 一条流的写者：应答 · 出方向 · tap 三路排空，一帧一行写进那一端（stdio 那条载体是 stdout，常驻那条是套接字的写半边）。
-//! 两条载体都由 `main.rs` 起它；优先序与 flush 的口径只在这里一份。
+//! 两条载体都由 `stream/entry.rs` 起它；优先序与 flush 的口径只在这里一份。
 
 use crate::observe;
 use crate::stream::inbound::views::{to_line_viewed, StreamView};
@@ -22,7 +22,7 @@ pub const WRITE_FLUSH_BYTES: usize = 64 * 1024;
 /// 公平轮询会让应答排在成千上万行后面，客户端那头看起来就是「命令没反应」。
 /// 应答量极小（一条命令一两帧），优先它不会饿死行。
 ///
-/// `reply_rx` 永远不会返回 `None`（`main` 自己留着一个 sender 到进程结束），
+/// `reply_rx` 永远不会返回 `None`（起它的那一处 `stream/entry.rs` 自己留着一个 sender，写者结束之后才放），
 /// 所以这个 select 不会退化成 `None` 忙转。
 ///
 /// `tz` ＝ 这条流看的那一台的时区（起流的 `--tz` / attach 行的 `tz`）：出方向的每一帧写出去之前按它写钟面（[`Frame::stamp`]）。

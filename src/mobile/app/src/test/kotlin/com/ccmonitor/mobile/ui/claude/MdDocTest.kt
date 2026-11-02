@@ -11,6 +11,7 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import com.ccmonitor.mobile.core.wire.gen.AlertKind
 import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.MdAlign
@@ -216,6 +217,7 @@ class MdDocTest {
         val pyCode = py.doc.blocks.single()
         // 先序：列表里的那块是第 0 块，顶层那块是第 1 块。
         val doc = Doc(listOf(MdBlock.List(null, true, listOf(MdItem(null, listOf(bashCode)))), pyCode), emptyList())
+        assertEquals(listOf(bashCode, pyCode).map { (it as MdBlock.Code).x }, codesOf(doc, 0).map { it.x })
         val pieces = layoutSeg(doc, 0, SegHl(listOf(bash.hl!!.hl[0], py.hl!!.hl[0])), style)
         val nested = ((pieces[0] as MdPiece.Bullets).items[0].pieces[0]) as MdPiece.Code
         assertEquals(listOf(0 until 2), nested.text.spansOf(style.hl[4]))
@@ -235,20 +237,51 @@ class MdDocTest {
         assertEquals(1 until 3, segRange(doc, 1))
         assertEquals(3 until 4, segRange(doc, 2))
 
-        val st = MdDocState(doc, null, style)
+        val st = MdDocState(doc, style)
         assertEquals(3, st.segCount)
         assertEquals(1, st.built)
         assertEquals(listOf(1), st.pieces.map { it.size })
-        assertTrue(st.buildNext(null))
-        assertTrue(st.buildNext(case("bash 代码块").hl))
+        assertTrue(st.buildNext())
+        assertTrue(st.buildNext())
         assertEquals(listOf(1, 2, 1), st.pieces.map { it.size })
+        assertEquals(0, (st.pieces[2].single() as MdPiece.Code).text.spanStyles.size)
+        st.paint(2, case("bash 代码块").hl!!)
         assertEquals(3, (st.pieces[2].single() as MdPiece.Code).text.spanStyles.size)
-        assertFalse(st.buildNext(null))
+        assertFalse(st.buildNext())
         assertEquals(3, st.built)
 
-        val single = MdDocState(case("标题").doc, null, style)
+        val single = MdDocState(case("标题").doc, style)
         assertEquals(1, single.segCount)
-        assertFalse(single.buildNext(null))
+        assertFalse(single.buildNext())
+    }
+
+    @Test
+    fun aTreeWithTwoSegmentsOfCodeIsColouredOncePainted() {
+        val doc =
+            Doc(
+                listOf(MdBlock.Code("rust", "let a", false), MdBlock.Code("rust", "let b", false)),
+                listOf(1),
+            )
+        val st = MdDocState(doc, style)
+        st.buildNext()
+        // 先出字：拉到之前两段的代码都是纯字。
+        assertTrue(st.pieces.flatten().all { (it as MdPiece.Code).text.spanStyles.isEmpty() })
+        assertEquals(listOf(HlCode(lang = "rust", x = "let a")), codesOf(doc, 0))
+        assertEquals(listOf(HlCode(lang = "rust", x = "let b")), codesOf(doc, 1))
+        st.paint(0, SegHl(listOf(listOf(0L, 3L, 0L))))
+        st.paint(1, SegHl(listOf(listOf(0L, 3L, 0L))))
+        for (seg in st.pieces) {
+            val code = seg.single() as MdPiece.Code
+            assertEquals(code.text.text, listOf(0 until 3), code.text.spansOf(style.hl[0]))
+        }
+    }
+
+    @Test
+    fun paintingASegmentNotBuiltYetChangesNothing() {
+        val doc = Doc(listOf(MdBlock.Code("rust", "a", false), MdBlock.Code("rust", "b", false)), listOf(1))
+        val st = MdDocState(doc, style)
+        st.paint(1, SegHl(listOf(listOf(0L, 1L, 0L))))
+        assertEquals(1, st.built)
     }
 
     @Test

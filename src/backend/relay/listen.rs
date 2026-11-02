@@ -209,7 +209,7 @@ fn refuse_and_keep(mut s: std::net::TcpStream) -> Spare {
 }
 
 /// 起中转那一段：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。失败时**该说的那一句已经说了**。
-/// 先前与独立 `--relay` 那一形共用；那一形删了，只剩 [`host`] 一个调用方。
+/// 唯一的调用方是 [`host`]。
 fn prepare(
     port: u16,
     get: &dyn Fn(&str) -> Option<String>,

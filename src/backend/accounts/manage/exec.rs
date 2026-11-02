@@ -399,10 +399,7 @@ fn backup_id(r: &Roots) -> String {
 
 /// 此刻的 UTC 时间：`iso` ⇒ `YYYY-MM-DDTHH:MM:SSZ`（清单的 `updatedAt`）；否则 `YYYYMMDD-HHMMSS`（备份名）。
 pub(crate) fn utc_stamp(iso: bool) -> String {
-    let secs = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let secs = crate::common::time::now_secs() as i64;
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     let (y, m, d) = crate::common::time::civil_from_days(days);
     let (hh, mm, ss) = (rem / 3600, rem % 3600 / 60, rem % 60);

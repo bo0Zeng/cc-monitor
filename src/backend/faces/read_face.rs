@@ -65,7 +65,7 @@ pub(crate) fn log_tail(
     path: Option<&std::path::Path>,
     max: u64,
 ) -> Result<LogTail, crate::common::said::Said> {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::{Seek, SeekFrom};
     let Some(path) = path else {
         return Ok(LogTail {
             path: None,
@@ -81,9 +81,9 @@ pub(crate) fn log_tail(
         .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?
         .len();
     let from = size.saturating_sub(max);
-    let mut buf = Vec::new();
-    f.seek(SeekFrom::Start(from))
-        .and_then(|_| f.take(max).read_to_end(&mut buf))
+    let buf = f
+        .seek(SeekFrom::Start(from))
+        .and_then(|_| relay_route_core::read_window(&mut f, max))
         .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
     let body = if from > 0 {
         buf.iter()
@@ -338,7 +338,7 @@ impl crate::wire::typed::Handle for AccountsListCmd {
             );
             let quota = crate::faces::rotation_face::quota_read_with(
                 &crate::faces::rotation_face::Ctx::here(),
-                crate::accounts::quota::now_unix(),
+                crate::common::time::now_secs(),
                 &cx.tz,
             );
             with_quota(&mut v, &quota, kind);
@@ -627,9 +627,7 @@ pub(crate) fn dress_ask(
     sid: &str,
     off: Option<&crate::common::cells::Words>,
 ) -> Option<crate::observe::recognize::facts::Needs> {
-    let now = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let now = crate::common::time::now_ms();
     let mut needs = crate::observe::recognize::facts::dress_ask_with(
         needs,
         crate::control::asks::pending(sid).into_iter().next(),

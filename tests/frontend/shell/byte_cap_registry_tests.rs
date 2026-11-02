@@ -278,6 +278,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它不限整份正文多大、不截任何东西 —— 只定一段多长（超长代码块切开的几块照样整份交）。",
     ),
     (
+        "HL_CACHE_BYTES",
+        "**缓存预算**不是上限：拉一段高亮那条命令（`faces/prose_hl_face.rs`）常驻的高亮缓存最多占多少字节，\
+             满了先淘汰最久没用的那条（下次再算一遍）。它不限任何上行或下行的量、不丢用户的东西；上行的代码原文另有 `PROSE_HL_REQ_CAP`（拒收+回错）。",
+    ),
+    (
         "OWN_FILE_MODE",
         "**权限位**不是体量：后端文件管理面在 `~/.cc-monitor` 里新建文件时给的 unix 权限（0o600，只给本人），\
              不限任何字节总量、不截任何东西。",
@@ -1643,46 +1648,7 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
-    // `files-read-chunk` 一块读多少是入参 `len`，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）、越界 `bad_args`。
-    // ⚠ 不是静默截断：回 `offset` / `size` / `eof`，调用方循环读到 `eof` —— 一个字节都不丢。
-    (
-        "src/backend/files/mod.rs",
-        "len",
-        "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
-             调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
-    ),
-    // `query::body::read_page` 的一页上限是入参；唯一调用点
-    // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
-    // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
-    (
-        "src/backend/observe/query/body.rs",
-        "page as u64",
-        "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
-             读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
-    ),
-    // `read_face::log_tail` 的上限是入参 `max`，唯一调用点给的是 `min(调用方要的, LOG_TAIL_BYTES)`（已在 `CAPS` 里）。
-    // ⚠ 不是静默截断：从 `size − max` 起读、应答带 `truncated`（前面还有没回的）。
-    (
-        "src/backend/faces/read_face.rs",
-        "max",
-        "`log_tail` 的上限是入参，`backend-log` 那一臂给的是封顶 `LOG_TAIL_BYTES`（已在 `CAPS` 里）；\
-             读的是尾部，应答 `truncated` 说清前面还有 —— 截断且说清。",
-    ),
-    (
-        "src/backend/platform/fs/ro.rs",
-        "cap + 1",
-        "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
-             调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
-    ),
-    (
-        "src/common/host-core/src/atomic.rs",
-        "cap.saturating_add(1)",
-        "`read_capped` 是两个前端共用的有界读助手，上限是入参；\
-             调用方给的是声明表那一行的读上限（`relay_route_core::CONFIG_FILE` 那一行的 `Cap`：数与超了怎么办都写在声明里）；\
-             多读一个字节只为分辨读满与其实还有，超了回 `TooBig`、不当完整的用。",
-    ),
-    // ⚠ 这一处的 `n` 与上面两条**不同族**，
-    //    差别要写清楚，否则下一个人会以为它也是「调用方给具名常量」那一档：
+    // ⚠ 这一处的 `n` 不是「调用方给具名常量」那一档，差别要写清楚：
     //    `n` 是**下游 `Content-Length` 给的、敌手可控的**值，**不是**任何具名常量。
     //    真正的上限是**它旁边那个 `cap` 参数**，而调用点给的 `cap` 是具名常量 `BODY_CAP`
     //    （已在 `CAPS` 里，拒收+回错 ⇒ 413）。

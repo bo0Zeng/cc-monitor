@@ -20,11 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
-        "src/common/cmd-wire/src/md.rs",
-        "SegHl",
-        "一段的高亮回包：读者是后端拉一段高亮的那条命令（接上之前只有生成的 TS · Kotlin 读；接上那一刀删这一行）",
-    ),
-    (
         "src/common/cmd-wire/src/attach.rs",
         "AttachWant",
         "附件那一排的进口形：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，后端那棵 workspace，不在扫描面里）",
@@ -98,11 +93,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "src/comms/resident-client/feed.rs",
         "set_transport",
         "手机那一侧一台常驻流的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，后端那棵 workspace，不在 monitor 的扫描面里）与本 crate 的判据",
-    ),
-    (
-        "src/comms/inward/line.rs",
-        "read_capped_all_sync",
-        "带上限的同步整读：今天的读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/install.rs`，后端那棵 workspace，不在扫描面里）；后端与壳的同步整读随后改经它",
     ),
     (
         "src/common/batch-core/src/lib.rs",

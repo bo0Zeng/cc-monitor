@@ -163,7 +163,7 @@ fn spawn_tls_stub(answer: Answer) -> TlsStub {
                     let head = http1::parse_request(&raw).expect("假上游收到的该是 HTTP 请求");
                     let len = match head.content_length() {
                         http1::BodyLen::Exact(n) => n,
-                        _ => 0,
+                        http1::BodyLen::Absent | http1::BodyLen::Unparsable => 0,
                     };
                     let mut body = vec![0u8; len];
                     if tls.read_exact(&mut body).is_err() {

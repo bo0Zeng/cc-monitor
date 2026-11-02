@@ -10026,6 +10026,25 @@ data class HistoryTurnsReq(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class HlCode(
+    val lang: String?,
+    val x: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HlCode> = obj(
+            listOf(
+            Field("lang", { opt(Str) }, optional = false, nullable = true),
+            Field("x", { Str }, optional = false, nullable = false),
+            ),
+            { a -> HlCode(a[0] as String?, a[1] as String) },
+            { v -> arrayOf(v.lang, v.x) },
+        )
+    }
+}
+
 enum class HolderWho(val wire: String) {
     TERMINAL_WINDOW("terminal-window"),
     DESKTOP("desktop"),
@@ -18581,6 +18600,23 @@ data class ProfilesWriteReq(
             ),
             { a -> ProfilesWriteReq(a[0] as List<ProfileOp>, a[1] as String?) },
             { v -> arrayOf(v.changes, v.ifRev) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ProseHlReq(
+    val codes: List<HlCode>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ProseHlReq> = obj(
+            listOf(
+            Field("codes", { arr(HlCode.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> ProseHlReq(a[0] as List<HlCode>) },
+            { v -> arrayOf(v.codes) },
         )
     }
 }

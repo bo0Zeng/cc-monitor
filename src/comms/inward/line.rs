@@ -1,5 +1,5 @@
-//! 带上限的读：读一行（[`read_capped_line`]）· 读整份（异步 [`read_capped_all`] · 同步 [`read_capped_all_sync`]）。
-//! 后端 · 常驻客户端 · 壳 · 手机读对端与本机文件的字节只经这一份。
+//! 带上限的异步读：读一行（[`read_capped_line`]）· 读整份（[`read_capped_all`]）。
+//! 后端 · 常驻客户端 · 壳 · 手机异步地读对端的字节只经这一份；同步那一形住 `relay_route_core`（[`relay_route_core::read_capped_from`]）。
 //!
 //! 上限在读的时候生效：超了之后不再往缓冲里塞字节（读完再判的话，喂一条几百 MiB 无换行的流内存就跟着涨）。
 //! 超了一律回「超限」，不截断：截下前 `cap.bytes` 字节当一行 · 一份用，正是上限要挡的。超了之后怎么办（拒收 · 丢弃并报告 …）
@@ -70,14 +70,8 @@ where
     }
 }
 
-/// 一次带上限读整份的结果。
-#[derive(Debug)]
-pub enum CappedAll {
-    /// 流尽，一共不超过 `cap.bytes` 字节。
-    All(Vec<u8>),
-    /// 超过 `cap.bytes`：读到第 `cap.bytes + 1` 个字节就停，读进来的整份丢掉。
-    OverCap,
-}
+/// 一次带上限读整份的结果：与同步那一形（`relay_route_core::read_capped_from`）同一个类型。
+pub use relay_route_core::CappedAll;
 
 /// 读到流尽，至多 `cap.bytes` 字节。多读一个字节分得出「正好到上限」与「超了」。
 pub async fn read_capped_all<R>(mut rd: R, cap: Cap) -> std::io::Result<CappedAll>
@@ -90,31 +84,6 @@ where
         let room = (cap.bytes + 1).saturating_sub(out.len() as u64);
         let want = chunk.len().min(usize::try_from(room).unwrap_or(usize::MAX));
         let n = rd.read(&mut chunk[..want]).await?;
-        if n == 0 {
-            return Ok(CappedAll::All(out));
-        }
-        out.extend_from_slice(&chunk[..n]);
-        if out.len() as u64 > cap.bytes {
-            return Ok(CappedAll::OverCap);
-        }
-    }
-}
-
-/// [`read_capped_all`] 的同步那一形（读本机文件 · 同步句柄）：读到流尽，至多 `cap.bytes` 字节，超了回 [`CappedAll::OverCap`]、不截断。
-pub fn read_capped_all_sync<R>(mut rd: R, cap: Cap) -> std::io::Result<CappedAll>
-where
-    R: std::io::Read,
-{
-    let mut out = Vec::new();
-    let mut chunk = [0u8; 8 * 1024];
-    loop {
-        let room = (cap.bytes + 1).saturating_sub(out.len() as u64);
-        let want = chunk.len().min(usize::try_from(room).unwrap_or(usize::MAX));
-        let n = match rd.read(&mut chunk[..want]) {
-            Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        };
         if n == 0 {
             return Ok(CappedAll::All(out));
         }

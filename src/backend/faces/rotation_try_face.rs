@@ -46,7 +46,7 @@ impl crate::wire::typed::Handle for RotationTry {
                     .id(),
             };
             let row = ctx.row(agent);
-            let now = crate::accounts::quota::now_unix();
+            let now = crate::common::time::now_secs();
             let mut facts: Vec<Acct> = ctx
                 .hop
                 .facts(agent, &row, now, &cx.tz)
