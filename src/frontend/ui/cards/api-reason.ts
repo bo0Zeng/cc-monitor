@@ -14,7 +14,7 @@ export function reasonWord(reason: ApiReason | undefined): string {
     case "network":
       return copyText("apiError.reason.network");
     case "auth":
-      return copyText("apiError.reason.auth");
+      return copyText("acct.tag.login");
     case "context":
       return copyText("apiError.reason.context");
     default:

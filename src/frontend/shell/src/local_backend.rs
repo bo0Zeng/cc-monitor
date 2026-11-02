@@ -1077,7 +1077,7 @@ pub fn extract_embedded_to(
     let tmp = bin.stage(&name, bytes).map_err(|e| {
         Unplaced::Write(Said::with_raw(
             copy_text(
-                "rsLocalBackend.extract.writeFailed",
+                "beOwnState.write.tmpWriteFailed",
                 &[
                     (
                         "tmp",
@@ -1095,7 +1095,7 @@ pub fn extract_embedded_to(
     })?;
     let args = serde_json::json!({
         "dest": dest.to_string_lossy(),
-        "machine": copy_text("rsLocalBackend.place.thisMachine", &[]),
+        "machine": copy_text("detail.label.local", &[]),
     });
     match ask(&tmp, &args)
         .map_err(unasked)
@@ -1383,7 +1383,7 @@ impl StdioRoute {
     pub(crate) fn local() -> Self {
         StdioRoute {
             origin: crate::origin::Origin::local(),
-            place: copy_text("rsLocalBackend.place.thisMachine", &[]),
+            place: copy_text("detail.label.local", &[]),
             out: crate::local_lines::StdioOut::Local,
         }
     }

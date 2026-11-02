@@ -163,12 +163,12 @@ pub fn unowned_mark() -> String {
 
 /// 列名。
 pub fn column_label() -> String {
-    copy_text("rsFilewinPlan.col.title", &[])
+    copy_text("plan.progress.cell", &[])
 }
 
 /// 读不成那一片时「格」一列每一格写的字。
 pub fn unreadable_mark() -> String {
-    copy_text("rsFilewinPlan.cell.unreadable", &[])
+    copy_text("acct.val.none", &[])
 }
 
 /// 被几格声明的那一段灰色读数「共用 · 也在 {编号 标题}」（「格」一列标题后面 · 预览头那一行）；「编号 标题」照抄后端拼好的。
@@ -181,7 +181,7 @@ pub fn dup_text(o: &Owner) -> String {
                 .iter()
                 .map(|d| d.label.as_str())
                 .collect::<Vec<_>>()
-                .join(&copy_text("rsFilewinPlan.cell.listSep", &[])),
+                .join(&copy_text("plan.page.listSep", &[])),
         )],
     )
 }
@@ -192,7 +192,7 @@ pub fn owner_line(slice: &str, o: &Owner) -> String {
     if let Some(b) = &o.block {
         parts.push(copy_text("rsFilewinPlan.owner.block", &[("block", b)]));
     }
-    parts.join(&copy_text("rsFilewinRows.tip.sep", &[]))
+    parts.join(&copy_text("kit.text.sep", &[]))
 }
 
 /// 右键菜单那一项的字。

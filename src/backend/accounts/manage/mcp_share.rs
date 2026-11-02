@@ -48,7 +48,7 @@ impl Store {
         let root: Value =
             serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| {
                 copy_text(
-                    "beAcctMcpShare.store.badJson",
+                    "beAcctMcpShare.read.badJson",
                     &[("line", &e.line().to_string())],
                 )
             })?;

@@ -292,7 +292,7 @@ impl Progress {
             .iter()
             .filter(|j| j.state() == State::Running && j.shown())
         {
-            let transfers = copy_text("rsFilewinWorkspace.closeAsk.transfers", &[]);
+            let transfers = copy_text("attach.chip.sending", &[]);
             match &j.trip {
                 Trip::Upload { board, items, .. } => {
                     let name = board
@@ -580,7 +580,7 @@ impl Job {
             State::Failed => ph::X_CIRCLE,
             State::Stopped => ph::STOP_CIRCLE,
         };
-        let sep = copy_text("rsFilewinProgress.detail.sep", &[]);
+        let sep = copy_text("kit.text.sep", &[]);
         fn fails_of<W: std::fmt::Display>(failed: &[(String, W)], sep: &str) -> String {
             failed
                 .iter()
@@ -805,7 +805,7 @@ impl Job {
                             _ => None,
                         },
                         button: Some((
-                            copy_text("rsFilewinProgress.action.retry", &[]),
+                            copy_text("front.act.retry", &[]),
                             Ok(Act::RetryDownload {
                                 row: self.id,
                                 src: src.clone(),

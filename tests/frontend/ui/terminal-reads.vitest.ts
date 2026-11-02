@@ -154,7 +154,7 @@ describe("抓一屏：失败怎么说", () => {
     type Fixable = ChanError & { action?: { label: string; run: () => void } };
     answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
     const e: Fixable = await failureOf(() => previewShot("devbox", { sid: "sid-a" }));
-    expect(e.action?.label).toBe(copyText("control.channel.refresh"));
+    expect(e.action?.label).toBe(copyText("accountChip.menu.refresh"));
     const asked: string[] = [];
     invokeMock.mockImplementation(async (_cmd: string, a: ChanCallArgs) => {
       asked.push(`${a.origin}:${a.op}`);

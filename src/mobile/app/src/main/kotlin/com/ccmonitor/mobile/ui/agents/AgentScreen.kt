@@ -118,7 +118,7 @@ private fun Head(
         Line(listOfNotNull(x.lead, clock(x.line)).joinToString(copyText("kit.text.sep")))
         x.note?.let { Line(it, small = true) }
         if (x.refresh == true) {
-            SecondaryButton(onClick = onRefresh, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("agentWindow.why.refresh")) }
+            SecondaryButton(onClick = onRefresh, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("accountChip.menu.refresh")) }
         }
     }
     if (info.state == RunState.FAILED) info.error?.takeIf { it.isNotEmpty() }?.let { ErrorRaw(it) }

@@ -71,18 +71,18 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
             action: match run {
                 Launch::Tmux => copy_text("tabBatch.verb.startTmux", &[]),
                 Launch::Direct => copy_text("tabBatch.verb.startWindow", &[]),
-                Launch::Managed => copy_text("tabBatch.verb.start", &[]),
+                Launch::Managed => copy_text("history.row.resume", &[]),
             },
             one_done: |t| copy_text("tabBatch.one.resumed", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.resumeFailed", &[("title", t)]),
         },
         SessionsOp::Hide => Verb {
-            action: copy_text("tabBatch.verb.hide", &[]),
+            action: copy_text("history.menu.hide", &[]),
             one_done: |t| copy_text("tabBar.hide.done", &[("title", t)]),
             one_failed: |t| copy_text("tabBar.hide.failed", &[("title", t)]),
         },
         SessionsOp::Unhide => Verb {
-            action: copy_text("tabBatch.verb.unhide", &[]),
+            action: copy_text("history.menu.unhide", &[]),
             one_done: |t| copy_text("tabBatch.one.unhidden", &[("title", t)]),
             one_failed: |t| copy_text("tabBar.unhide.failed", &[("title", t)]),
         },
@@ -92,12 +92,12 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
             one_failed: |t| copy_text("tabBatch.one.hideUndoFailed", &[("title", t)]),
         },
         SessionsOp::Pin => Verb {
-            action: copy_text("tabBatch.verb.pin", &[]),
+            action: copy_text("tabMenu.pin.pin", &[]),
             one_done: |t| copy_text("tabBatch.one.pinned", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.pinFailed", &[("title", t)]),
         },
         SessionsOp::Unpin => Verb {
-            action: copy_text("tabBatch.verb.unpin", &[]),
+            action: copy_text("tabMenu.pin.unpin", &[]),
             one_done: |t| copy_text("tabBar.unpinned.toast", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.unpinFailed", &[("title", t)]),
         },

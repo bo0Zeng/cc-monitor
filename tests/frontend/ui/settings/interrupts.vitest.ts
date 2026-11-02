@@ -41,7 +41,7 @@ describe("会打断什么", () => {
       copyText("interrupts.item.liveBrief", { machine: "devbox" }),
       copyText("interrupts.item.forwards", { n: 2 }),
     ]);
-    expect(rows[1]).toEqual({ label: copyText("interrupts.row.keep"), items: [copyText("interrupts.item.sessionsRun")] });
+    expect(rows[1]).toEqual({ label: copyText("kit.interrupts.keep"), items: [copyText("interrupts.item.sessionsRun")] });
   });
 });
 

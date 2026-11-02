@@ -71,7 +71,7 @@ const projOf = (cwd: string): string => cwd.split("/").filter(Boolean).pop() ?? 
 
 /** 那一行 · 那一页的标题：正在启动 · 未报到 · 问不到那台 ⇒ 状态不明。 */
 const titleOf = (sl: Slot): string =>
-  sl.missed === null ? copyText("launch.placeholder.title") : sl.missed.unknown ? copyText("launch.slot.unknownTitle") : copyText("launch.slot.missedTitle");
+  sl.missed === null ? copyText("launch.placeholder.title") : sl.missed.unknown ? copyText("runs.state.unknown") : copyText("launch.slot.missedTitle");
 
 export class LaunchSlots {
   private readonly slots = new Map<number, Slot>();

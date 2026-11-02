@@ -221,7 +221,7 @@ def prepare():
     smoke.launch(fresh=True)
     tap(t("mobIdentity.page.title")); time.sleep(1)
     smoke.open_import()
-    tap(t("mobIdentity.import.name")); smoke.typed("smoke")
+    tap(t("machineForm.field.name")); smoke.typed("smoke")
     tap(t("mobIdentity.import.pem")); time.sleep(0.5)
     smoke.type_key(key)
     tap(t("mobIdentity.import.ok"))
@@ -233,7 +233,7 @@ def prepare():
     smoke.drawer(t("mobDrawer.item.sessions"))
     if not wait_listed(45):
         raise Red("会话列表没出来（没连上）")
-    smoke.drawer(t("mobDrawer.item.newSession"))
+    smoke.drawer(t("newSession.title.plain"))
     tap(t("chat.input.placeholder")); smoke.typed(f"{D} start")
     smoke.hide_keyboard()
     tap(t("mobChat.input.send"))
@@ -538,7 +538,7 @@ def add_host_via(name, host, port, jump=None):
     if jump:
         tap(f"{jump} ({smoke.host_alias()})")
         time.sleep(0.5)
-    tap(t("mobHostEdit.page.save"))
+    tap(t("rsFilewinShell.editor.save"))
     time.sleep(2)
 
 
@@ -617,7 +617,7 @@ def item5():
     up_at = time.time() - t0 if ready else None
     answered = None
     if ready:
-        smoke.drawer(t("mobDrawer.item.newSession"))
+        smoke.drawer(t("newSession.title.plain"))
         wait("Claude Code", 60)
         tap(t("chat.input.placeholder")); smoke.typed(title)
         smoke.hide_keyboard()

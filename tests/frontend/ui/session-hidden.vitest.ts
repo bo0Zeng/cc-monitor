@@ -395,16 +395,16 @@ describe("菜单：右键两项 · 批量两项", () => {
     const h = menuHost(t);
     new TabMenu(h, {} as TabSessionActions).open(new MouseEvent("contextmenu"), "a");
     expect(labels()).toContain(copyText("tabMenu.pin.pin"));
-    press(copyText("tabBar.menu.hide"));
+    press(copyText("history.menu.hide"));
     expect(h.hide).toHaveBeenCalledWith(["a"]);
     document.body.innerHTML = "";
     const u = tab("u", { hidden: BG });
     const hu = menuHost(u);
     new TabMenu(hu, {} as TabSessionActions).open(new MouseEvent("contextmenu"), "u");
-    expect(labels()).not.toContain(copyText("tabBar.menu.hide"));
+    expect(labels()).not.toContain(copyText("history.menu.hide"));
     expect(labels()).not.toContain(copyText("tabMenu.pin.pin"));
     expect(labels()).not.toContain(copyText("tabMenu.collection.add"));
-    press(copyText("tabBar.menu.unhide"));
+    press(copyText("history.menu.unhide"));
     expect(hu.unhide).toHaveBeenCalledWith(["u"]);
   });
 
@@ -443,7 +443,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
-    expect(h.el.querySelector("[data-head=hidden]")?.textContent).toBe(copyText("sessionHead.kin.hidden"));
+    expect(h.el.querySelector("[data-head=hidden]")?.textContent).toBe(copyText("history.row.hidden"));
     const p = h.el.querySelector<HTMLButtonElement>("[data-head=parent]")!;
     expect(p.textContent).toBe(copyText("sessionHead.kin.parent", { title: "主·名" }));
     p.click();

@@ -56,7 +56,7 @@ fn entries_become_owners_by_name_with_label_status_block_and_double_claims() {
     // 预览头那一行：仓库 · 权力范围，不带签收时刻（pb 0.5 不给）。
     assert_eq!(
         owner_line("alpha", r)
-            .matches(&copy_text("rsFilewinRows.tip.sep", &[]))
+            .matches(&copy_text("kit.text.sep", &[]))
             .count(),
         1
     );

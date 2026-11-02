@@ -2187,9 +2187,9 @@ fn escape_never_closes_the_editor_and_closing_a_dirty_one_asks_first() {
     );
     for label in [
         copy_text("rsFilewinShell.editor.unsaved", &[("name", "app.conf")]),
-        copy_text("rsFilewinShell.editor.keep", &[]),
+        copy_text("kit.dialog.cancel", &[]),
         copy_text("rsFilewinShell.editor.discard", &[]),
-        copy_text("rsFilewinShell.editor.saveClose", &[]),
+        copy_text("rsFilewinShell.editor.save", &[]),
     ] {
         assert!(
             crate::copy::testing::painted_contains(&painted, &label),
@@ -2509,7 +2509,7 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
     let name = crate::rows::column_label(crate::source::SortBy::Name);
     let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
     for want in [
-        copy_core::copy_static!("rsFilewinShell.frame.terminal"),
+        copy_core::copy_static!("mobDrawer.item.terminal"),
         "srv",
         "data",
         "子目录",
@@ -3518,7 +3518,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     assert_eq!(
         w.prompt_error().as_deref(),
         Some(&*copy_core::copy_text(
-            "rsFilewinWriteops.inline.exists",
+            "addMachine.err.taken",
             &[("name", "exists.txt")]
         )),
         "名字被占了，那一格下面说的不对"
@@ -3746,7 +3746,7 @@ fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
     for want in [
         "这份不是文本".to_string(),
         copy_text("rsFilewinEditPage.action.download", &[]),
-        copy_text("rsFilewinEditPage.action.retry", &[]),
+        copy_text("front.act.retry", &[]),
     ] {
         assert!(
             painted.iter().any(|t| *t == want),

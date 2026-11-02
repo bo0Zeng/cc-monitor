@@ -67,7 +67,7 @@ class SmokeTest {
         // 用 runCatching 包住是因为 root 尚未注册时 fetchSemanticsNodes() 是抛异常而非返回空列表。
         // 落点看这台手机上的状态：从没进过服务器 ⇒ 服务器列表；进过 ⇒ 那台上空的新对话（`AppNavHost.launchDestination`）。
         // 两种根屏各认一个首次组合就无条件发出的锚（不经 DB）：列表的标题、聊天屏顶栏的抽屉按钮。字照文案表取。
-        val anchors = listOf(copyText("mobHosts.page.title"), copyText("mobDrawer.open.aria"))
+        val anchors = listOf(copyText("detail.label.machine"), copyText("mobDrawer.open.aria"))
 
         fun rendered(a: String) =
             runCatching {

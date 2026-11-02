@@ -88,7 +88,7 @@ describe("批量菜单", () => {
     open();
     const close = buttons().find((b) => labelOf(b) === copyText("tabBatch.menu.close", { n: 0 }));
     expect(close?.disabled, "一个都关不了 ⇒ 置灰").toBe(true);
-    expect(close?.querySelector("[data-part=why]")?.textContent, "灰着的第二行说为什么").toBe(copyText("tabBatch.why.live"));
+    expect(close?.querySelector("[data-part=why]")?.textContent, "灰着的第二行说为什么").toBe(copyText("backend.status.connected"));
   });
 
   const reply = (over: Record<string, unknown> = {}) => ({ results: [], said: "S-合好", failed: true, lines: ["L-一"], copyDetail: "D-详", windows: [], ...over });
@@ -156,7 +156,7 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     expect(vi.mocked(failToast)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(failToast).mock.calls[0][0]).toBe(copyText("tabBatch.stop.title", { n: 3 }));
+    expect(vi.mocked(failToast).mock.calls[0][0]).toBe(copyText("tabBatch.menu.stop", { n: 3 }));
   });
 
   it("远端那几行机器只出一次：确认框里标题不带 `[机器]` 前缀，机器写在括号里", async () => {

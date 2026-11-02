@@ -371,7 +371,7 @@ pub(crate) struct Ran {
     pub(crate) stderr: String,
 }
 
-/// tmux 自己说的那句话（stderr）：去首尾空白、截到 [`SAID_CAP`] 字节（截在字符边界上，截了标 `…`）；
+/// tmux 自己说的那句话（stderr）：去首尾空白、截到 [`SAID_CAP`] 字（截了接 `…`）；
 /// 一个字都没说 ⇒ 「（tmux 没说原因）」。
 pub(crate) fn said_of(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
@@ -379,17 +379,10 @@ pub(crate) fn said_of(stderr: &[u8]) -> String {
     if text.is_empty() {
         return copy_text("beLaunch.said.silent", &[]);
     }
-    if text.len() <= SAID_CAP {
-        return text.to_string();
-    }
-    let mut end = SAID_CAP;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", &text[..end])
+    copy_core::clip(text, SAID_CAP)
 }
 
-/// tmux 原话进原因时的上限（字节）。tmux 的报错是一行短话；上限只防一个坏掉的 tmux 灌进一整屏。
+/// tmux 原话进原因时的上限（字）。tmux 的报错是一行短话；上限只防一个坏掉的 tmux 灌进一整屏。
 const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**

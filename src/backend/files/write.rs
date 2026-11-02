@@ -62,7 +62,7 @@ pub enum WriteRefusal {
     ///
     /// 与 [`WriteRefusal::Io`] 分开是因为调用方的下一步不同：`io_failed` 说「重试才有意义」，
     /// 而这一档**重试一万次也一样** —— 压成 `io_failed` 就是在说假话。
-    /// 线上码 [`NO_UNIX_MODE`] 同时是 `files-chmod` 声明过的命令级码，`lib.rs` 那条
+    /// 线上码 [`NO_UNIX_MODE`] 同时是 `files-chmod` 声明过的命令级码，`stream::inbound` 那条
     /// target 轴的现推读的就是它（待拍 3）。
     Unsupported(String),
     /// 读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
@@ -85,10 +85,10 @@ pub const BAD_NAME: &str = "bad_name";
 
 /// 命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
-/// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，填 `hello.unavailable` 用），
+/// ⚠ 这是这个字面量在后端的**第二份**（另一份是帧面零件那个包的 `wire::NO_UNIX_MODE`，填 `hello.unavailable` 用），
 /// 但它**不是第二个源头** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
-/// 不去借 `lib.rs` 那一份：文件管理那一块是独立的包，只依赖纯工具与平台两层，
-/// 够不到主 crate 的根。
+/// 不去借 `wire` 那一份：文件管理那一块是独立的包，只依赖纯工具与平台两层，
+/// 够不到帧面零件那一层。
 /// 两份逐字相等由 `target_parity_guard::every_target_has_the_same_commands_except_the_registered_gaps` 钉着。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
@@ -2408,7 +2408,7 @@ pub fn delete_session_with(
     face.delete_file(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.session.deleteFailed",
+                "beFilesWrite.delete.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("why", &io_reason(e.kind())),

@@ -297,7 +297,7 @@ impl FileWindow {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 for (content, label) in [
-                    (false, copy_text("rsFilewinShell.search.byName", &[])),
+                    (false, copy_text("acctNew.name.label", &[])),
                     (true, copy_text("rsFilewinShell.search.byContent", &[])),
                 ] {
                     let on = self.search_content == content;

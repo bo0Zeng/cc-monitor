@@ -19,7 +19,7 @@ export function accountColorOf(name: string, origin: Machine = LOCAL): number | 
 
 /** 号牌上那一两个字（那台后端写好）；那台没给 ⇒ `—`（不在这里另取）。 */
 export function accountPlateOf(name: string, origin: Machine = LOCAL): string {
-  return rowOf(name, origin)?.plate ?? copyText("accounts.sessionBadge.none");
+  return rowOf(name, origin)?.plate ?? copyText("acct.val.none");
 }
 
 // ------------------------------------------------------------ 视图 helper

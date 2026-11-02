@@ -48,8 +48,9 @@ const O = "<local>";
 const SID = "s1";
 
 /** 壳交来的一格：那一处（这个会话 · 某个运行）此刻只有这一张卡。 */
-function opened(no: number, rid: string, blocks: LiveCardNow["blocks"], run?: string): SessionLiveCardsPayload {
-  return { origin: O, live: { sid: SID, ...(run ? { run } : {}), cards: [{ card: no, rid, phase: "streaming", clipped: false, blocks, head: "核心·头", body: `核心·正文·${rid}`, last: `核心·最近·${rid}` }] } };
+function opened(no: number, rid: string, run?: string): SessionLiveCardsPayload {
+  const card: LiveCardNow = { card: no, rid, phase: "streaming", clipped: false, head: "核心·头", body: [{ t: "p", k: [`核心·正文·${rid}`] }], last: `核心·最近·${rid}` };
+  return { origin: O, live: { t: "whole", whole: { sid: SID, ...(run ? { run } : {}), cards: [card] } } };
 }
 
 /** 后端写好的状态字（夹具用记号，界面照抄才对得上：不许按 `state` 自己挑）。 */
@@ -100,13 +101,13 @@ describe("运行表 × 活卡", () => {
       () => null,
     );
     live.onRuns(SID, table([run("w1", "running", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]));
-    live.onCards(opened(1, "r1", [{ kind: "tool", tool: "Bash" }], "w1"));
-    live.onCards(opened(2, "r2", [{ kind: "thinking" }], "w2"));
-    live.onCards(opened(0, "r0", [{ kind: "text", text: "主" }]));
+    live.onCards(opened(1, "r1", "w1"));
+    live.onCards(opened(2, "r2", "w2"));
+    live.onCards(opened(0, "r0"));
 
     const main = live.cardsOf(SID);
     expect(main.map((c) => c.messageId)).toEqual(["r0"]);
-    expect(main.map((c) => c.body)).toEqual(["核心·正文·r0"]);
+    expect(main.map((c) => c.body)).toEqual([[{ t: "p", k: ["核心·正文·r0"] }]]);
     expect(live.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
     expect(live.liveLastOf(SID, "w2"), "「最近」那一截照核心写好的").toBe("核心·最近·r2");
 
@@ -124,7 +125,7 @@ describe("面板照帧里写好的三组与 chip 的字排", () => {
     const rows = () => [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => r.dataset.run);
     expect(rows()).toEqual(["c", "a", "d"]);
     expect([...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent)).toEqual([
-      copyText("agentsPanel.group.running"),
+      copyText("runs.state.running"),
       copyText("agentsPanel.group.recent"),
       "核心·更早 ×1",
     ]);
@@ -245,7 +246,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(panelText).not.toContain("额度打断");
 
     expect(groupsIn(panel)).toEqual([
-      copyText("agentsPanel.group.running"),
+      copyText("runs.state.running"),
       copyText("agentsPanel.group.recent"),
       "核心·更早 ×1",
     ]);

@@ -59,8 +59,8 @@ function placeRows(origin: Machine): { rows: HTMLElement[]; fill: (prefs: Prefs,
     const paint = (): void => {
       const seg = segmented<TabPlace>({
         items: [
-          { key: "show", label: copyText("settings.machine.tabShow") },
-          { key: "hide", label: copyText("settings.machine.tabHide") },
+          { key: "show", label: copyText("sessionHead.act.display") },
+          { key: "hide", label: copyText("history.menu.hide") },
         ],
         current: places?.[sp.which] ?? null,
         label: sp.label,
@@ -176,8 +176,8 @@ export function machineLaunchRows(
   const paintWhere = (): void => {
     const seg = segmented<ResumeWhere>({
       items: [
-        { key: "managed", label: copyText("settings.machine.resumeManaged") },
-        { key: "tmux", label: copyText("settings.machine.resumeTmux") },
+        { key: "managed", label: copyText("newSession.place.managed") },
+        { key: "tmux", label: copyText("mobTerms.row.tmux") },
         { key: "as_started", label: copyText("settings.machine.resumeAsStarted") },
       ],
       current: where,

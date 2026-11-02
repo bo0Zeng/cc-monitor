@@ -156,7 +156,7 @@ impl SessionFaceExt for SessionFace {
     }
 
     fn of(life: Life) -> Self {
-        let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
+        let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
         let ended_why = |name: &Words| {
             Words(copy_core::copy_text(
                 "tabBatch.why.ended",
@@ -247,7 +247,7 @@ impl SessionFaceExt for SessionFace {
                 }
             }
             Life::Unclear => {
-                let name = Words(copy_core::copy_text("beSession.activity.unclear", &[]));
+                let name = Words(copy_core::copy_text("runs.state.unknown", &[]));
                 SessionFace {
                     dot: SessionDot::Unknown,
                     life: WireLife::Unclear,
@@ -284,17 +284,17 @@ fn live_face(
     host: Option<Housed>,
     reading: bool,
 ) -> SessionFace {
-    let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
+    let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
     let (dot, key, tone, order) = match activity {
         Some(SessionActivity::NeedsYou) => (
             SessionDot::NeedsYou,
-            Words(copy_core::copy_text("beSession.activity.needsYou", &[])),
+            Words(copy_core::copy_text("beSession.needs.unknown", &[])),
             Tone::Need,
             0,
         ),
         Some(SessionActivity::Working) => (
             SessionDot::Running,
-            Words(copy_core::copy_text("beSession.activity.working", &[])),
+            Words(copy_core::copy_text("backend.status.connected", &[])),
             Tone::Now,
             1,
         ),
@@ -322,7 +322,7 @@ fn live_face(
         ),
         None => (
             SessionDot::Idle,
-            Words(copy_core::copy_text("beSession.activity.unclear", &[])),
+            Words(copy_core::copy_text("runs.state.unknown", &[])),
             Tone::Plain,
             3,
         ),

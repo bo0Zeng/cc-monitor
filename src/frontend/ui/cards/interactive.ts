@@ -42,7 +42,7 @@ function buildAskCard(questions: AskQuestion[]): HTMLElement {
 
   const title = document.createElement("div");
   title.className = "block-ask-title";
-  title.textContent = copyText("interactive.ask.title");
+  title.textContent = copyText("beSession.needs.answer");
   root.appendChild(title);
 
   for (const q of questions) {

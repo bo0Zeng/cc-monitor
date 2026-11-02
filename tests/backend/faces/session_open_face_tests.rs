@@ -164,7 +164,7 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
     let d = claude.model_default.expect("Claude 有「默认」那一项");
     assert_eq!(
         (d.value.as_str(), d.text),
-        ("default", t("beSessionNew.model.default"))
+        ("default", t("resumeSelect.option.defaultBare"))
     );
     assert!(
         claude.models.iter().all(|c| c.value != "default"),

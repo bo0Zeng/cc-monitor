@@ -56,7 +56,7 @@ export class ResumeSelect {
     this.custom.type = "text";
     this.custom.className = "settings-input settings-input-mono";
     this.custom.dataset.role = "resume-custom";
-    this.custom.placeholder = copyText("resumeSelect.custom.hint");
+    this.custom.placeholder = copyText("detail.label.command");
     this.custom.spellcheck = false;
     this.custom.autocomplete = "off";
     this.custom.hidden = true;

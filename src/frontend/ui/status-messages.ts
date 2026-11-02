@@ -38,7 +38,7 @@ export class StatusMessages {
   private readonly trigger: HTMLElement;
 
   constructor() {
-    this.trigger = chip({ text: copyText("statusBar.messages.label"), icon: "bell", onClick: () => this.toggle() });
+    this.trigger = chip({ text: copyText("kit.toast.region"), icon: "bell", onClick: () => this.toggle() });
     this.trigger.dataset.role = "status-messages";
     this.el = document.createElement("span");
     this.el.className = s.smChip;
@@ -69,7 +69,7 @@ export class StatusMessages {
     const head = document.createElement("div");
     head.className = s.smHead;
     const t = document.createElement("span");
-    t.textContent = copyText("statusBar.messages.title");
+    t.textContent = copyText("kit.toast.region");
     const keep = document.createElement("span");
     keep.className = s.smKeep;
     keep.textContent = copyText("statusBar.messages.keep", { n: TOAST_RECORD_MAX });
@@ -80,7 +80,7 @@ export class StatusMessages {
     box.append(head, list);
     this.fill(list);
     const opened = openPopover(this.trigger, box, {
-      label: copyText("statusBar.messages.title"),
+      label: copyText("kit.toast.region"),
       align: "start",
       onClose: () => {
         this.list = null;

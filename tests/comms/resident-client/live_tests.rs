@@ -97,7 +97,7 @@ fn one_card_grows_block_by_block_and_ends_awaiting_the_record() {
     let mid = b.cards_of("s1", None);
     assert_eq!(mid.cards.len(), 1);
     assert_eq!(mid.cards[0].phase, LivePhase::Streaming);
-    let think = copy_text("liveCard.block.thinking", &[]);
+    let think = copy_text("runs.last.think", &[]);
     assert_eq!(texts(&b, "s1", None), [[think.clone(), "你好".to_string()]]);
     for x in &fs[3..] {
         b.apply(x);
@@ -202,7 +202,7 @@ fn a_sub_run_card_lives_under_its_run_and_cards_keep_their_arrival_order() {
     assert_eq!(sub.run.as_deref(), Some("a1"));
     assert_eq!(
         texts(&b, "s1", Some("a1")),
-        [[copy_text("liveCard.block.thinking", &[]), "子".to_string()]]
+        [[copy_text("runs.last.think", &[]), "子".to_string()]]
     );
     // 后开的卡排在后面；先开的那张再来一张整卡也不挪位。
     b.apply(&card("s1", 1, "m2", &[], None)[0]);
@@ -249,7 +249,7 @@ fn each_card_comes_with_its_head_body_and_last_line_written() {
     assert_eq!(c.head, copy_text("liveCard.state.streaming", &[]));
     assert_eq!(
         c.body,
-        [p(&copy_text("liveCard.block.thinking", &[])), p("你好")],
+        [p(&copy_text("runs.last.think", &[])), p("你好")],
         "思考块一句、文字照树"
     );
     assert_eq!(c.last, Some(copy_text("runs.last.say", &[])));

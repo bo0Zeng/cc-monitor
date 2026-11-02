@@ -100,7 +100,7 @@ fun RotationScreen(
             val down = linkState as? LinkLine.Down
             when {
                 // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
-                down != null -> DownBox(offline ?: copyText("sessionState.unseen.name"))
+                down != null -> DownBox(offline ?: copyText("runs.state.unknown"))
                 !ui.loaded -> Skeleton(sid != null)
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
@@ -160,7 +160,7 @@ private fun RotTopBar(
         },
         title = {
             Column {
-                Text(copyText("mobRot.top.title"), style = MaterialTheme.typography.titleMedium)
+                Text(copyText("machinePage.tab.rot"), style = MaterialTheme.typography.titleMedium)
                 if (second.isNotEmpty()) {
                     Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -193,7 +193,7 @@ private fun ReadFailed(
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             CopyDetailButton(text, detail)
-            SecondaryButton(onClick = retry) { Text(copyText("rot.read.retry")) }
+            SecondaryButton(onClick = retry) { Text(copyText("front.act.retry")) }
         }
     }
 }

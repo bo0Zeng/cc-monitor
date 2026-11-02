@@ -1341,7 +1341,7 @@ mod tests {
             serde_json::from_str(&super::pick_menu_json(rows, &off)).unwrap();
         assert_eq!(
             v["more"][0]["why"],
-            copy_core::copy_text("rsFilewinChrome.link.readOnly", &[])
+            copy_core::copy_text("acctPage.offline.hover", &[])
         );
         assert_eq!(
             super::pick_menu_json("{", &up),

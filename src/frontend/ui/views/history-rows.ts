@@ -62,7 +62,7 @@ export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
   if (isLive(r.face) && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
-  else if (live && isLive(r.face)) badges.push(badge(copyText("history.row.live"), "live"));
+  else if (live && isLive(r.face)) badges.push(badge(copyText("runs.state.running"), "live"));
   return badges;
 }
 
@@ -225,7 +225,7 @@ export function groupHead(
     el.appendChild(f);
     el.appendChild(
       button({
-        label: copyText("history.group.retry"),
+        label: copyText("front.act.retry"),
         size: "compact",
         onClick: (ev) => {
           ev.stopPropagation();
@@ -238,7 +238,7 @@ export function groupHead(
     c.className = s.hvGroupCount;
     c.textContent = copyText("history.group.count", { n: g.count });
     el.appendChild(c);
-    if (g.hasLive) el.appendChild(statusDot("running", copyText("history.row.live"), "compact"));
+    if (g.hasLive) el.appendChild(statusDot("running", copyText("runs.state.running"), "compact"));
     const add = button({
       label: copyText("history.group.newSession"),
       size: "compact",
@@ -281,11 +281,11 @@ function hitLine(hit: Hit, onOpen: () => void): HTMLElement {
 function whoOf(kind: string): string {
   switch (kind) {
     case "user":
-      return copyText("history.searchHit.you");
+      return copyText("machineForm.field.user");
     case "tool":
-      return copyText("history.searchHit.tool");
+      return copyText("sessionFind.who.tool");
     case "report":
-      return copyText("history.searchHit.report");
+      return copyText("sessionFind.who.report");
     default:
       return copyText("history.searchHit.agent");
   }

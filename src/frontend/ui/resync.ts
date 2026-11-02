@@ -45,7 +45,7 @@ export function resyncMachines(origins: Iterable<Machine>): Promise<MachineResyn
 export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
   return rs
     .map((m) => {
-      const machine = isLocalOrigin(m.origin) ? copyText("resync.machines.local") : m.origin;
+      const machine = isLocalOrigin(m.origin) ? copyText("detail.label.local") : m.origin;
       return "r" in m
         ? copyText("resync.machines.ok", { machine, said: resyncSaid(m.r) })
         : copyText("resync.machines.failed", { machine, why: m.why });

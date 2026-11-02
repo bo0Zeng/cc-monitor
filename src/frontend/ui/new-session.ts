@@ -139,7 +139,7 @@ async function listAccounts(origin: Machine, agent: string): Promise<AccountOpt[
 /** 账号那一项：头像 · 名字 · 灰字（`默认 · 5h 63%` · 需登录）。 */
 function accountOption(a: AccountOpt): SelectOption {
   const note: string[] = [];
-  if (a.isDefault) note.push(copyText("newSession.account.default"));
+  if (a.isDefault) note.push(copyText("resumeSelect.option.defaultBare"));
   if (a.quota) note.push(a.quota);
   if (!a.ready && a.why) note.push(a.why);
   return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
@@ -152,9 +152,9 @@ function machineOption(m: MachineOpt, chosen: Machine): SelectOption {
     value: m.origin,
     label: accountLabel(name),
     lead: isLocalOrigin(m.origin) ? undefined : () => tag(name),
-    note: m.up ? undefined : copyText("newSession.machine.down"),
+    note: m.up ? undefined : copyText("machinePage.state.down"),
     enabled: m.up || m.origin === chosen,
-    why: copyText("newSession.machine.down"),
+    why: copyText("machinePage.state.down"),
   };
 }
 
@@ -380,7 +380,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // 机器
   const machineSel = select({
-    label: copyText("newSession.label.machine"),
+    label: copyText("detail.label.machine"),
     options: [machineOption({ origin, up: true }, origin)],
     value: origin,
     onChange: (v) => {
@@ -393,7 +393,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (onSet) paintPage();
     },
   });
-  const machineRow = row(copyText("newSession.label.machine"), machineSel.el, false);
+  const machineRow = row(copyText("detail.label.machine"), machineSel.el, false);
   form.appendChild(machineRow.root);
 
   // 单个页那几格住 `single`；一组页是另一份（`new-session-set.ts`），换页只换哪一份露着。
@@ -462,7 +462,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // agent（那台能起的多于一家才出）
   const agentSel = select({
-    label: copyText("newSession.label.agent"),
+    label: copyText("beProfile.slot.agent"),
     options: [],
     onChange: (v) => {
       agent = v;
@@ -471,13 +471,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       void paintAccounts().then(() => handle.refresh());
     },
   });
-  const agentRow = row(copyText("newSession.label.agent"), agentSel.el, false);
+  const agentRow = row(copyText("beProfile.slot.agent"), agentSel.el, false);
   agentRow.root.hidden = true;
   single.appendChild(agentRow.root);
 
   // 账号
   const accountSel = select({
-    label: copyText("newSession.label.account"),
+    label: copyText("beProfile.slot.account"),
     options: [],
     onChange: () => {
       // 人改了这一格 ⇒ 盖过别名。
@@ -486,13 +486,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       handle.refresh();
     },
   });
-  const accountRow = row(copyText("newSession.label.account"), accountSel.el, false);
+  const accountRow = row(copyText("beProfile.slot.account"), accountSel.el, false);
   accountRow.root.hidden = true;
   single.appendChild(accountRow.root);
 
   // 轮换：用哪份策略（缺省新会话用的那份）· 不轮换 · 那台的各份策略（标题 ＝ 文件名，灰字 ＝ 说明第一行）。读不出那台的策略目录 ⇒ 不出这一行。
-  const rotSel = select({ label: copyText("rot.new.label"), options: [], menuWidth: 340 });
-  const rotRow = row(copyText("rot.new.label"), rotSel.el, false);
+  const rotSel = select({ label: copyText("machinePage.tab.rot"), options: [], menuWidth: 340 });
+  const rotRow = row(copyText("machinePage.tab.rot"), rotSel.el, false);
   rotRow.root.hidden = true;
   single.appendChild(rotRow.root);
   let rotSeq = 0;
@@ -521,12 +521,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   // 运行于
   const places = el("div");
   places.className = s.nsPlaces;
-  const placeRow = row(copyText("newSession.label.place"), places, false);
+  const placeRow = row(copyText("resumeMenu.group.run"), places, false);
   placeRow.root.hidden = ask !== null;
   single.appendChild(placeRow.root);
   // 只列那台答的 `hosts` 里有的（托管 · tmux；终端窗口恒在）。
   const managedRadio = placeRadio(places, "managed", copyText("newSession.place.managed"));
-  const tmuxRadio = placeRadio(places, "tmux", copyText("newSession.place.tmux"));
+  const tmuxRadio = placeRadio(places, "tmux", copyText("resumeMenu.hint.tmux"));
   const windowRadio = placeRadio(places, "window", copyText("newSession.place.window"));
   managedRadio.note.textContent = copyText("newSession.place.managedNote");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
@@ -538,8 +538,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   promptInput.rows = 3;
   promptInput.spellcheck = false;
   promptInput.value = spec.prompt ?? "";
-  promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
-  const promptRow = row(copyText("newSession.label.prompt"), promptInput);
+  promptInput.setAttribute("aria-label", copyText("beProfile.slot.say"));
+  const promptRow = row(copyText("beProfile.slot.say"), promptInput);
   single.appendChild(promptRow.root);
   if (ask) paintRuns(ask.runs);
 
@@ -651,7 +651,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintTop = (): void => {
     top.replaceChildren();
     if (!up()) {
-      const again = button({ label: copyText("newSession.machine.reconnect"), size: "compact" });
+      const again = button({ label: copyText("history.list.reconnect"), size: "compact" });
       again.addEventListener("click", () => {
         // 同机器条那一颗（`machine-wake`）：拒了 ⇒ 框顶写那一句；连上了框顶随那台的成品自己换。
         reconnectRefused = null;
@@ -880,7 +880,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   const handle = formDialog({
     title: dialogTitle(spec, origin),
-    action: copyText("newSession.action.create"),
+    action: copyText("mobTerms.new.detached"),
     body: form,
     narrow: true,
     focusAction: ask === null,
@@ -910,7 +910,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     single.hidden = onSet;
     sets.el.hidden = !onSet;
     tabs.set(onSet);
-    handle.setAction(onSet ? sets.action() : copyText("newSession.action.create"));
+    handle.setAction(onSet ? sets.action() : copyText("mobTerms.new.detached"));
     handle.refresh();
   }
 
@@ -1003,7 +1003,7 @@ function landing(origin: Machine): OpenHow {
       toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
         level: "info",
         action: {
-          label: copyText("newSession.switch.action"),
+          label: copyText("history.row.switch"),
           run: () => void emit(FOCUS_SESSION_EVENT, { origin, sid }).catch(() => {}),
         },
       });

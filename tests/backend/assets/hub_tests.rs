@@ -639,7 +639,7 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
     assert!(
         e.said
             .starts_with(&copy_core::backend_differs(&copy_core::copy_text(
-                "beExt.machine.here",
+                "detail.label.local",
                 &[]
             ))),
         "{}",

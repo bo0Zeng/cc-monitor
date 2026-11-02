@@ -1221,9 +1221,8 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 
 // === 文本抽取 / snippet / 截断：**一份都不在这里** ===
 //
-// 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
-// `user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
-// `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
+// 🔴 那几个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
+// `user_text` · `make_snippet` · `find_ci` · `tail_chars` · `truncate_plain`；截断 · 压空白本身住 `copy-core`）
 // 与它们的单元测试只有一个家：通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
 

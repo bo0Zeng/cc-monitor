@@ -194,7 +194,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   title.textContent = r.label;
   const out: Node[] = [project, sep, title];
   if (live) {
-    const b = tag(copyText("history.row.live"));
+    const b = tag(copyText("runs.state.running"));
     b.dataset.emph = "live";
     out.push(b);
   }
@@ -241,10 +241,10 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   if (live && terminalFrontAvailable()) {
     out.push(
       button({
-        label: copyText("tabBarView.tab.terminalHint"),
+        label: copyText("terminal.head.front"),
         kind: "icon",
         icon: "front",
-        hint: copyText("tabBarView.tab.terminalHint"),
+        hint: copyText("terminal.head.front"),
         onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );

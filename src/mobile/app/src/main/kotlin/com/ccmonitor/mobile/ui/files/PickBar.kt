@@ -45,12 +45,12 @@ internal fun PickBar(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhIconButton(Ph.X, copyText("mobKit.act.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(copyText("mobFiles.pick.count", "n" to n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        PhIconButton(Ph.X, copyText("kit.drawer.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(copyText("tabBatch.menu.head", "n" to n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         menu.bar.forEach { e -> SecondaryButton(onClick = { onPick(e) }) { Text(e.text, color = ink(e)) } }
         if (menu.more.isNotEmpty()) {
             Box {
-                PhIconButton(Ph.DotsThree, copyText("rsFilewinChrome.command.more"), onClick = { more = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                PhIconButton(Ph.DotsThree, copyText("history.row.more"), onClick = { more = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                     menu.more.forEach { e ->
                         DropdownMenuItem(

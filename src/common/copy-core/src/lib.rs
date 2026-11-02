@@ -31,6 +31,7 @@ mod duration;
 mod path;
 mod peer;
 mod size;
+mod text;
 pub use civil::civil_from_days;
 pub use count::{count_short, count_text};
 pub use discard::{Discard, Why};
@@ -41,6 +42,7 @@ pub use peer::{
 };
 pub use reason::{code_reason, io_reason, sftp_status_reason, spawn_reason};
 pub use size::size_text;
+pub use text::{clip, clip_flat, collapse_ws, first_line};
 pub mod detail;
 pub mod discard;
 pub mod reason;

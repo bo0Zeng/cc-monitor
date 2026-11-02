@@ -148,7 +148,7 @@ impl Card {
         for b in blocks {
             let body: Vec<MdBlock> = match b.kind {
                 BlockKind::Text => b.md.clone().unwrap_or_default(),
-                BlockKind::Thinking => vec![line(copy_text("liveCard.block.thinking", &[]))],
+                BlockKind::Thinking => vec![line(copy_text("runs.last.think", &[]))],
                 BlockKind::Tool => vec![line(tool_use(b.tool.as_deref()))],
                 BlockKind::Other => Vec::new(),
             };

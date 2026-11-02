@@ -32,7 +32,7 @@ export async function restartNow(deps: RestartDeps = {}): Promise<boolean> {
   if (rows.length > 0) {
     const ok = await (deps.confirm ?? confirmDialog)({
       title: copyText("restartNow.dialog.title"),
-      action: copyText("backend.restart.action"),
+      action: copyText("backend.buildCells.restart"),
       danger: false,
       rows,
     });

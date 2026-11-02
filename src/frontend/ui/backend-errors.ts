@@ -18,7 +18,7 @@ export function uiErrorActions(p: UiErrorPayload): ToastAction[] {
   const origin = p.reconnect;
   if (origin !== undefined) {
     out.push({
-      label: copyText("errorToast.showErrorToast.reconnect"),
+      label: copyText("history.list.reconnect"),
       run: () => void commands.backend_start({ origin }).catch((err) => console.warn("backend_start failed:", err)),
     });
   }

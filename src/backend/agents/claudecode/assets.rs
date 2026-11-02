@@ -712,7 +712,7 @@ pub(crate) const BUILTIN_COMMANDS: &[crate::agents::BuiltinCommand] = &[
     },
     crate::agents::BuiltinCommand {
         name: "compact",
-        text: || copy_text("beSessionCommands.builtin.compact", &[]),
+        text: || copy_text("mobPlus.row.compact", &[]),
         needs_args: false,
         confirm: false,
     },

@@ -84,11 +84,9 @@ pub struct Done {
     pub waited_secs: Option<u64>,
 }
 
-/// 取第一行非空内容（拿来当诊断）。
+/// 取第一行非空内容、去两头空白（拿来当诊断）；没有 ⇒ 空串。
 pub fn first_line(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes)
-        .lines()
-        .find(|l| !l.trim().is_empty())
+    copy_core::first_line(&String::from_utf8_lossy(bytes))
         .unwrap_or("")
         .to_string()
 }

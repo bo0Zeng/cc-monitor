@@ -378,7 +378,7 @@ fn maps_reasoning_empty_and_nonempty() {
     );
     assert_eq!(
         blocks_of(&rec(&think).unwrap()),
-        json!([{"type": "thinking", "text": "想了想"}])
+        json!([{"type": "thinking", "text": "想了想", "preview": "想了想"}])
     );
 }
 

@@ -527,7 +527,7 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
         // 真机 summary 恒 [] ⇒ 空文本给空 blocks（免一个空的推理块）。
         K::Reasoning => reply(match reasoning_text(v) {
             t if t.is_empty() => Vec::new(),
-            text => vec![Block::Thinking { text }],
+            text => vec![crate::agents::beat::thinking(text)],
         }),
         K::ToolCall => reply(vec![Block::ToolUse {
             id: call_id(v).unwrap_or("").to_string(),

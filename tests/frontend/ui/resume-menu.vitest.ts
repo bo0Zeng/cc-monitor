@@ -121,7 +121,7 @@ describe("菜单怎么摆", () => {
   it("账号 · 运行于两组单选 ＋ 在此目录新建会话；跟随时勾在上次的号上，运行于勾在那台答的默认上", () => {
     const items = resumeMenuItems({ accounts: LIST, pick: defaultPick(), machineRun: "direct", newInDir: () => {} });
     expect(shape(items)).toEqual([
-      `[${copyText("resumeMenu.group.account")}]`,
+      `[${copyText("beProfile.slot.account")}]`,
       `✓work|${copyText("resumeMenu.account.quotaLast", { quota: "5h 41%" })}`,
       "home",
       copyText("resumeMenu.account.base"),

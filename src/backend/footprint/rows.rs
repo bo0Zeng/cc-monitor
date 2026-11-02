@@ -468,7 +468,7 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
 /// 「这东西从哪来」。用上 `ToolSpec::source`。
 pub fn source_label(s: &ToolSource) -> String {
     match s {
-        ToolSource::EmbeddedText { .. } => copy_text("rsConfigSurface.source.embeddedText", &[]),
+        ToolSource::EmbeddedText { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
         ToolSource::RepoDir { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
         ToolSource::EmbeddedBinary { .. } => {
             copy_text("rsConfigSurface.source.embeddedBinary", &[])
@@ -493,7 +493,7 @@ pub fn host_label(h: HostScope) -> String {
     // 也顺便更正我 commit 里那句"用户看 $PROFILE 与 ~/.local/bin/ccm 分不出哪台"
     // ——只有一半成立，ccm 那行的 why 早就写着"远端"。
     match h {
-        HostScope::Client => copy_text("rsConfigSurface.host.client", &[]),
+        HostScope::Client => copy_text("detail.label.local", &[]),
         HostScope::Remote => copy_text("rsConfigSurface.host.remote", &[]),
         HostScope::Either => copy_text("rsConfigSurface.host.either", &[]),
         HostScope::ProjectDir => copy_text("rsConfigSurface.host.projectDir", &[]),
@@ -865,7 +865,7 @@ pub fn build_settings_scopes(
             let [user, user_local] = (f.user_settings)(agent_home);
             vec![
                 scope_row(
-                    &copy_text("rsConfigSurface.scope.user", &[]),
+                    &copy_text("beSessionCommands.scope.user", &[]),
                     user,
                     &copy_text("rsConfigSurface.scope.userNote", &[]),
                     has_hooks,

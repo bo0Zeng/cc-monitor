@@ -186,7 +186,7 @@ describe("账号表", () => {
     expect(el.querySelector(".acct-head-sub")!.textContent).toBe(copyText("acctPage.head.default", { name: "work" }));
     expect([...el.querySelectorAll("[data-account]")].map((r) => (r as HTMLElement).dataset.account)).toEqual(["work", "personal", "api"]);
     const nameLine = (n: string) => rowOf(el, n).querySelector(".acct-row-name")!.textContent;
-    expect(nameLine("work")).toBe(`work${copyText("acctPage.row.default")}`);
+    expect(nameLine("work")).toBe(`work${copyText("resumeSelect.option.defaultBare")}`);
     expect(nameLine("personal")).toBe("personal");
     const slots = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-slot")];
     expect(slots("work")[0].textContent).toBe("5h ✕ " + copyText("acct.reset.at", { at: "13:00" }));
@@ -322,7 +322,7 @@ describe("删号", () => {
     expect(spec.action).toBe(copyText("acctPage.remove.action", { name: "work" }));
     expect(spec.danger).toBe(true);
     expect(spec.body).toBe(copyText("acctPage.remove.next", { name: "personal" }));
-    expect(spec.rows?.map((r) => r.label)).toEqual([copyText("acctPage.remove.cut"), copyText("acctPage.remove.keep")]);
+    expect(spec.rows?.map((r) => r.label)).toEqual([copyText("rsFilewinWriteops.label.delete"), copyText("kit.interrupts.keep")]);
     expect(spec.rows?.[1].items).toEqual([copyText("acctPage.remove.sessions")]);
     expect(accountsRemove).toHaveBeenCalledWith("devbox", { name: "work", force: true });
     expect(setModelForAccount).toHaveBeenCalledWith("devbox", "work", null);
@@ -356,7 +356,7 @@ describe("各态", () => {
     expect(rowOf(el, "work")).toBeTruthy();
     readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "gpu-01", host: { label: "gpu-01" } }] });
     fetchAccounts.mockClear();
-    buttonNamed(el, copyText("acctPage.head.refresh")).click();
+    buttonNamed(el, copyText("accountChip.menu.refresh")).click();
     await settle();
     expect(el.textContent).toContain(copyText("acctPage.never.title", { machine: "devbox" }));
     expect(fetchAccounts).not.toHaveBeenCalled();
@@ -367,7 +367,7 @@ describe("各态", () => {
     fetchAccounts.mockResolvedValue(state({ available: false, error: "超时", last: { meta: META, accounts: [acct({ name: "work", isDefault: true })], seen } }));
     const el = await mount();
     expect(el.textContent).toContain(copyText("acctPage.offline.bar", { machine: "devbox", seen: seen.said }));
-    expect(buttonNamed(el, copyText("acctPage.offline.retry"))).toBeDefined();
+    expect(buttonNamed(el, copyText("front.act.retry"))).toBeDefined();
     expect(el.querySelector(".acct-table")!.getAttribute("data-readonly")).toBe("true");
     expect(rowOf(el, "work")).not.toBeNull();
   });
@@ -383,7 +383,7 @@ describe("各态", () => {
   it("没启用多账号 ⇒ 启用卡（名字框 ＋［启用］）", async () => {
     fetchAccounts.mockResolvedValue(state({ meta: { ...META, enabled: false }, accounts: [] }));
     const el = await mount();
-    expect(el.querySelector(".acct-enable")!.textContent).toContain(copyText("acctPage.notEnabled.title"));
+    expect(el.querySelector(".acct-enable")!.textContent).toContain(copyText("accountChip.label.disabled"));
     expect(buttonNamed(el, copyText("acctPage.notEnabled.enable"))).toBeDefined();
   });
 
@@ -465,12 +465,12 @@ describe("动作", () => {
   it("警告条［修复…］：预演出几步 ⇒ 确认框列出来，确认后才修；修过之后条上 ⋯ 里才有「恢复到修复之前」", async () => {
     accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     const el = await mount();
-    expect(buttonNamed(el, copyText("acctPage.verify.more"))).toBeUndefined();
+    expect(buttonNamed(el, copyText("history.row.more"))).toBeUndefined();
     buttonNamed(el, copyText("acctPage.verify.fix")).click();
     await settle();
     expect(confirmed[0].title).toBe(copyText("acctPage.verify.repairTitle", { machine: "devbox" }));
     expect(accountsRepair.mock.calls.map((c) => c[1])).toEqual([{ dryRun: true }, {}]);
-    expect(buttonNamed(el, copyText("acctPage.verify.more"))).toBeDefined();
+    expect(buttonNamed(el, copyText("history.row.more"))).toBeDefined();
   });
 
   it("★ 新建订阅号：交给那台 accounts-add，建好就开登录抽屉（不开终端）", async () => {
@@ -512,7 +512,7 @@ describe("动作", () => {
     buttonNamed(row, copyText("acctPage.detail.keyChange")).click();
     const key = row.querySelector<HTMLInputElement>(".acct-key-form input[type=password]")!;
     key.value = "sk-ant-NEW";
-    buttonNamed(row, copyText("acctPage.detail.keySave")).click();
+    buttonNamed(row, copyText("rsFilewinShell.editor.save")).click();
     await settle();
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", undefined);
     expect(row.querySelector(".acct-key")!.textContent).toContain("••••••••c3d4gw.example.com");
@@ -531,7 +531,7 @@ describe("动作", () => {
     const base = [...inputs].find((i) => i.type !== "password")!;
     base.value = " http://gw.example.com ";
     row.querySelector<HTMLInputElement>(".acct-key-form input[type=password]")!.value = "sk-ant-NEW";
-    buttonNamed(row, copyText("acctPage.detail.keySave")).click();
+    buttonNamed(row, copyText("rsFilewinShell.editor.save")).click();
     await settle();
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", " http://gw.example.com ");
     expect(base.closest("[data-error]")?.textContent).toContain(said);

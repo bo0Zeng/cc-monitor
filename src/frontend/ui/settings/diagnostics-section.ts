@@ -114,7 +114,7 @@ export class DiagnosticsSection {
     // ── 文件 ──
     const head = document.createElement("div");
     head.className = "diag-files-title";
-    head.textContent = copyText("diagnostics.files.title");
+    head.textContent = copyText("mobDrawer.item.files");
     root.appendChild(head);
     const card = document.createElement("div");
     card.className = "diag-files";
@@ -277,7 +277,7 @@ export class DiagnosticsSection {
     try {
       await commands.set_diagnostics_config({ cfg });
     } catch (e) {
-      sayFailure(this.saveError, copyText("diagnostics.save.failedLine"), e);
+      sayFailure(this.saveError, copyText("remote.save.failed"), e);
       this.saveError.hidden = false;
       this.levelSelect.value = cur.log_level;
       return false;
@@ -299,13 +299,13 @@ export class DiagnosticsSection {
         fileText(copyText("diagnostics.files.today"), today ? (info.current_file_shown ?? today) : copyText("diagnostics.files.noFile", { dir: info.dir_shown })),
       );
       if (today) {
-        const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(today) });
-        const dir = button({ label: copyText("diagnostics.files.openDir"), kind: "icon", icon: "folder", size: "compact", onClick: () => void openDir() });
+        const open = button({ label: copyText("mobTerms.row.attach"), size: "compact", onClick: () => void openFile(today) });
+        const dir = button({ label: copyText("data.item.reveal"), kind: "icon", icon: "folder", size: "compact", onClick: () => void openDir() });
         this.todayRow.append(...sizeOf(info.current_size_text), open, dir);
       }
       const latest = info.backend_stderr[0];
       if (latest) {
-        const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(latest.path) });
+        const open = button({ label: copyText("mobTerms.row.attach"), size: "compact", onClick: () => void openFile(latest.path) });
         this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), latest.shown), ...sizeOf(latest.size_text), open);
       } else {
         // 没有就只说没有，不摆按钮。
@@ -327,7 +327,7 @@ export function unknownSaid(r: DiagnosticsReport): string {
     else if (m.records > 0) parts.push(copyText("diagnostics.unknown.machine", { machine: m.machine, n: m.records }));
   }
   if (r.configUnknown > 0) parts.push(copyText("diagnostics.unknown.config", { n: r.configUnknown }));
-  if (parts.length === 0) return copyText("diagnostics.unknown.none");
+  if (parts.length === 0) return copyText("hostKey.compare.none");
   return copyText("diagnostics.unknown.line", { parts: parts.join(copyText("kit.text.sep")) });
 }
 

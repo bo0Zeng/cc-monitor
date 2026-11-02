@@ -102,7 +102,7 @@ export function backendLogLines(log: BackendLog): { head: string; body: string }
   const head = copyText("backend.log.head", { path: log.path, size: log.size_text });
   return {
     head: log.truncated ? `${head} ${copyText("backend.log.truncated")}` : head,
-    body: log.text === "" ? copyText("backend.log.empty") : log.text,
+    body: log.text === "" ? copyText("rsFilewinChrome.command.newFile") : log.text,
   };
 }
 
@@ -328,7 +328,7 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
-      toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
+      toast(copyText("resync.machines.title"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
       failToast(copyText("backend.resync.failed"), e);
@@ -371,7 +371,7 @@ export class BackendSection {
     const start = button({ label: copyText("backend.buildCells.start"), size: "compact", onClick: () => void this.act(origin, "start") });
     start.dataset.op = "start";
     start.style.display = "none";
-    col("state", ccRow(copyText("backend.cc.state"), help, [stop, restart, start]));
+    col("state", ccRow(copyText("backend.column.status"), help, [stop, restart, start]));
 
     // ── 随 cc-monitor 退出停止 ──（值问那台的后端要；问到之前开关不可拨。下面那一行是后端的成品 `said`。）
     const kill = toggleSwitch({
@@ -403,7 +403,7 @@ export class BackendSection {
     const log = button({ label: copyText("backend.buildCells.log"), size: "compact" });
     log.addEventListener("click", () => void this.toggleLog(origin, cells, log));
     // 事件驱动漏了一拍时的手动兜底：这台后端重跑起步那套对齐（会话 · 判死 · tmux · 身份标签 · 账号清单 · 监视）。
-    const realign = button({ label: copyText("backend.buildCells.resync"), size: "compact" });
+    const realign = button({ label: copyText("accountChip.menu.refresh"), size: "compact" });
     realign.addEventListener("click", () => void this.realign(origin, realign));
     const sp = document.createElement("span");
     sp.className = "machine-head-sp";
@@ -460,7 +460,7 @@ export class BackendSection {
       const more = document.createElement("details");
       more.dataset.healthExtra = "detail";
       const sum = document.createElement("summary");
-      sum.textContent = copyText("backend.health.detail");
+      sum.textContent = copyText("messages.record.expand");
       const body = document.createElement("div");
       body.className = "settings-hint";
       body.textContent = face.detail;
@@ -513,7 +513,7 @@ export class BackendSection {
           title: restart
             ? copyText("backend.restart.title", { machine: machineName(origin) })
             : copyText("backend.stop.title", { machine: machineName(origin) }),
-          action: restart ? copyText("backend.restart.action") : copyText("backend.stop.action"),
+          action: restart ? copyText("backend.buildCells.restart") : copyText("composer.input.stop"),
           danger: !restart,
           rows,
         }))
@@ -567,9 +567,9 @@ export class BackendSection {
     try {
       const records = await readRecordDrift(origin);
       const n = records.reduce((k, f) => k + f.entries.length, 0);
-      el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("backend.cc.driftNone");
+      el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("hostKey.compare.none");
     } catch {
-      el.textContent = copyText("backend.cc.driftUnread");
+      el.textContent = copyText("acct.val.unreadable");
     }
   }
 
@@ -582,7 +582,7 @@ export class BackendSection {
     try {
       const st = await commands.backend_status({ origin });
       const on = st.channel;
-      const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
+      const word = on ? copyText("backend.status.connected") : copyText("machinePage.state.down");
       const ver = this.stateOf?.(origin)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
@@ -603,7 +603,7 @@ export class BackendSection {
       this.paintHealth(origin, st.health);
       return on;
     } catch (e) {
-      state.textContent = copyText("backend.status.unknown");
+      state.textContent = copyText("runs.state.unknown");
       this.onChannel?.(origin, null);
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
       return null;

@@ -65,12 +65,12 @@ function rig(t: Tab | null = tab("a")): { h: SessionHead; host: { more: ReturnTy
     viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null,
     menuItem: vi.fn((_sid: string, id: string): MenuItem | null => {
       switch (id) {
-        case "popOut": return item("popOut", copyText("tabMenu.open.openInWindow"));
+        case "popOut": return item("popOut", copyText("history.menu.openWindow"));
         case "account": return item("account", copyText("acct.menu.open"));
         case "pin": return item("pin", copyText("tabMenu.pin.pin"));
         case "group": return { id: "group", label: copyText("tabMenu.collection.add"), submenu: [item("g-new", copyText("tabMenu.collection.new"))] };
-        case "close": return item("close", copyText("tabMenu.item.close"), { enabled: false, why: copyText("tabMenu.close.live") });
-        case "resume": return { id: "resume", label: copyText("tabMenu.item.resume"), submenu: [] };
+        case "close": return item("close", copyText("launch.slot.close"), { enabled: false, why: copyText("history.delete.liveHint") });
+        case "resume": return { id: "resume", label: copyText("history.row.resume"), submenu: [] };
         default: return null;
       }
     }),
@@ -203,7 +203,7 @@ describe("会话头那一排", () => {
     store.cfg = { sessionHead: { buttons: ["resume", "find"] } };
     const { h } = rig(tab("e", { face: goldenFace("ended") }));
     await h.loadButtons();
-    const resumes = [...h.el.querySelectorAll("button")].filter((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(copyText("sessionHead.act.resume")));
+    const resumes = [...h.el.querySelectorAll("button")].filter((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").startsWith(copyText("history.row.resume")));
     expect(resumes).toHaveLength(1);
     expect(heads(h)).toEqual(["find", "more"]);
   });
@@ -302,7 +302,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     const { h } = rig();
     await h.loadButtons();
     h.openEditor();
-    const reset = [...document.body.querySelectorAll<HTMLButtonElement>("[role=dialog] button")].find((b) => b.textContent === copyText("sessionHead.edit.reset"))!;
+    const reset = [...document.body.querySelectorAll<HTMLButtonElement>("[role=dialog] button")].find((b) => b.textContent === copyText("rot.cell.reset"))!;
     reset.click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "remove", path: ["sessionHead"] }]);

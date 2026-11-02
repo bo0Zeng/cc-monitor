@@ -224,15 +224,15 @@ pub struct ExtLegend {
 /// 一个点 / 一处那一句：「只在项目里」带上那几个项目。
 fn state_said(state: ExtState, places: &[ExtPlace]) -> String {
     match state {
-        ExtState::Same => copy_text("beExt.state.same", &[]),
+        ExtState::Same => copy_text("beExt.legend.same", &[]),
         ExtState::Differs => copy_text("beExt.state.differs", &[]),
-        ExtState::Missing => copy_text("beExt.state.missing", &[]),
+        ExtState::Missing => copy_text("reason.spawn.notInstalled", &[]),
         ExtState::Off => copy_text("beExt.state.off", &[]),
         ExtState::Project => {
             let dirs: Vec<&str> = places.iter().filter_map(|p| p.at.project()).collect();
             copy_text(
                 "beExt.state.project",
-                &[("dirs", &dirs.join(&copy_text("beExt.list.sep", &[])))],
+                &[("dirs", &dirs.join(&copy_text("kit.text.sep", &[])))],
             )
         }
     }
@@ -241,8 +241,8 @@ fn state_said(state: ExtState, places: &[ExtPlace]) -> String {
 /// 种类那一格的字。
 fn kind_said(kind: ExtKind) -> String {
     match kind {
-        ExtKind::Skill => copy_text("beExt.kind.skill", &[]),
-        ExtKind::Mcp => copy_text("beExt.kind.mcp", &[]),
+        ExtKind::Skill => copy_text("mobPlus.row.skills", &[]),
+        ExtKind::Mcp => copy_text("extPage.filter.mcp", &[]),
         ExtKind::Plugin => copy_text("beExt.kind.plugin", &[]),
     }
 }
@@ -270,8 +270,8 @@ fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
                 ExtState::Same => copy_text("beExt.legend.same", &[]),
                 ExtState::Differs => copy_text("beExt.legend.differs", &[]),
                 ExtState::Project => copy_text("beExt.legend.project", &[]),
-                ExtState::Off => copy_text("beExt.legend.off", &[]),
-                ExtState::Missing => copy_text("beExt.state.missing", &[]),
+                ExtState::Off => copy_text("beExt.state.off", &[]),
+                ExtState::Missing => copy_text("reason.spawn.notInstalled", &[]),
             },
         })
         .collect()
@@ -529,10 +529,10 @@ const PLUGIN_PARTS: &[&str] = &["skills", "commands", "agents", "hooks", "mcp"];
 fn part_label(key: &str) -> String {
     match key {
         "skills" => copy_text("beExt.part.skills", &[]),
-        "commands" => copy_text("beExt.part.commands", &[]),
-        "agents" => copy_text("beExt.part.agents", &[]),
+        "commands" => copy_text("detail.label.command", &[]),
+        "agents" => copy_text("beProfile.slot.agent", &[]),
         "hooks" => copy_text("beExt.part.hooks", &[]),
-        _ => copy_text("beExt.part.mcp", &[]),
+        _ => copy_text("extPage.filter.mcp", &[]),
     }
 }
 
@@ -560,7 +560,7 @@ fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
                 "beExt.detail.partValue",
                 &[
                     ("n", &names.len().to_string()),
-                    ("names", &names.join(&copy_text("beExt.list.sep", &[]))),
+                    ("names", &names.join(&copy_text("kit.text.sep", &[]))),
                 ],
             ),
         ));
@@ -575,7 +575,7 @@ fn plugin_line(a: &Asset) -> Option<String> {
     }
     let s = &a.summary;
     let on = if a.off {
-        copy_text("beExt.plugin.off", &[])
+        copy_text("machinePage.state.disabled", &[])
     } else {
         copy_text("beExt.plugin.on", &[])
     };
@@ -604,7 +604,7 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
     if a.kind == ExtKind::Skill {
         let n = |k: &str| s.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
         let mut out = vec![line(
-            copy_text("beExt.detail.files", &[]),
+            copy_text("mobDrawer.item.files", &[]),
             copy_text(
                 "beExt.detail.filesValue",
                 &[("files", &n("files")), ("bytes", &n("bytes"))],
@@ -1067,7 +1067,7 @@ fn bring_for(
         Source::Machine(col, a) => (
             col.m.key.clone(),
             if col.m.here {
-                copy_text("beExt.machine.here", &[])
+                copy_text("detail.label.local", &[])
             } else {
                 col.m.name.clone()
             },

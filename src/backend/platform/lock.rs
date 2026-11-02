@@ -51,7 +51,7 @@ pub fn hold(dir: &Path) -> Result<DirLock, Said> {
     let f = crate::platform::fs::Ro::open(dir).map_err(|e| {
         lock_fail(
             copy_text(
-                "bePlatformLock.hold.openFailed",
+                "rsPlatformFs.lock.openFailed",
                 &[
                     ("dir", &dir.display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),

@@ -24,7 +24,7 @@ fn each_common_io_kind_becomes_a_word_in_the_closed_set_and_the_rest_is_unknown(
         (K::StorageFull, "reason.io.full"),
         (K::QuotaExceeded, "reason.io.full"),
         (K::ResourceBusy, "reason.io.busy"),
-        (K::AlreadyExists, "reason.io.exists"),
+        (K::AlreadyExists, "beFiles.batch.mintSpent"),
         (K::Other, "reason.io.unknown"),
         (K::Interrupted, "reason.io.unknown"),
     ];
@@ -58,7 +58,7 @@ fn each_standard_sftp_status_becomes_a_word_in_the_closed_set_and_the_rest_is_un
         (5, "reason.code.bug"),
         (6, "reason.link.lost"),
         (7, "reason.link.lost"),
-        (8, "reason.sftp.unsupported"),
+        (8, "machineState.word.unsupported"),
         (99, "reason.io.unknown"),
     ];
     for (code, key) in cases {

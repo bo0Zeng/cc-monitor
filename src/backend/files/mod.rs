@@ -639,7 +639,7 @@ fn index_rebuild(req: wire::RebuildReq) -> Answer<wire::RebuildReply> {
         refused(
             "unreadable",
             copy_core::copy_text(
-                "beFilesRead.rebuild.rootUnreadable",
+                "beFilesRead.ls.unreadable",
                 &[("kind", &copy_core::io_reason(e.kind()))],
             ),
             &e,

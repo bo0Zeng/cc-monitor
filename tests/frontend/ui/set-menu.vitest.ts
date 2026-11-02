@@ -113,7 +113,7 @@ describe("起一组", () => {
     await startSet("local", "工具链");
     const [title, body, opts] = h.toast.mock.calls[0];
     expect([title, body, opts.more]).toEqual(["工具链", "SAID", ["DETAIL"]]);
-    expect(opts.action.label).toBe(copyText("setMenu.launched.retry"));
+    expect(opts.action.label).toBe(copyText("front.act.retry"));
     h.launchSet.mockResolvedValue(launched(0));
     opts.action.run();
     await flush();

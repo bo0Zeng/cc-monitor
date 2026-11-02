@@ -248,7 +248,7 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   resumeNote.dataset.note = "resume";
   const action = (): string => {
     if (ended(target())) return done ? copyText("plan.return.resumeSend") : copyText("plan.return.resumeTell");
-    return done ? copyText("plan.return.send") : copyText("plan.return.sendTell");
+    return done ? copyText("plan.return.send") : copyText("terminal.input.send");
   };
   const sync = (): void => {
     line.textContent = preview();

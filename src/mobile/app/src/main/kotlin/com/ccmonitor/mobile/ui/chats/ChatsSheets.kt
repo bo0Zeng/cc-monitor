@@ -72,7 +72,7 @@ fun FilterSheet(
                 listOf(ChatsView.TIME to copyText("history.page.byTime"), ChatsView.DIR to copyText("history.page.byProject")),
                 f.view,
             ) { v -> onFilters { it.copy(view = v) } }
-            Head(copyText("history.filter.machines"))
+            Head(copyText("detail.label.machine"))
             ui.choices.forEach { c ->
                 Row(
                     Modifier
@@ -83,12 +83,12 @@ fun FilterSheet(
                 ) {
                     Checkbox(checked = c.checked, onCheckedChange = null)
                     Text(c.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                    if (c.offline) Text(copyText("history.filter.offline"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (c.offline) Text(copyText("machinePage.state.down"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Head(copyText("history.filter.time"))
             Segments(
-                listOf(null to copyText("history.filter.timeAll"), WEEK to withinLabel(WEEK), MONTH to withinLabel(MONTH)),
+                listOf(null to copyText("extPage.filter.all"), WEEK to withinLabel(WEEK), MONTH to withinLabel(MONTH)),
                 f.withinDays,
             ) { d -> onFilters { it.copy(withinDays = d) } }
             Head(copyText("history.filter.sort"))
@@ -187,7 +187,7 @@ internal fun RenameDialog(
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("history.rename.title")) },
+        title = { Text(copyText("history.menu.rename")) },
         text = {
             OutlinedTextField(
                 value = text,
@@ -218,7 +218,7 @@ internal fun DeleteDialog(
     DangerConfirmDialog(
         title = { Text(copyText("history.delete.title", "label" to row.label), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { Column { deleteBody(machine, row.canDelete).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) } } },
-        confirm = copyText("history.delete.action"),
+        confirm = copyText("rsFilewinWriteops.label.delete"),
         onConfirm = {
             onDelete()
             onDismiss()

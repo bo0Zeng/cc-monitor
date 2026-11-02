@@ -92,7 +92,7 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
   it("★ 思考展开那一下问 md-doc（prose），回来的树照排、公式当场排", async () => {
     const text = "想想 \\(a+b\\)";
     callMock.mockImplementation(async (_o: string, cmd: string) => (cmd === "md-doc" ? doc("行内公式两种写法") : { hl: [] }));
-    const res = renderMessage({ agent: "claude", t: "reply", id: "u1", at: "2026-01-01T00:00:00Z", blocks: [{ type: "thinking", text }], autoReply: false } as never, ctx(true));
+    const res = renderMessage({ agent: "claude", t: "reply", id: "u1", at: "2026-01-01T00:00:00Z", blocks: [{ type: "thinking", text, preview: text }], autoReply: false } as never, ctx(true));
     expect(res.kind).toBe("steps");
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
@@ -104,9 +104,16 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
     expect(d.querySelector("[data-math-pending]")).toBeNull();
   });
 
+  it("收着时那一行照抄后端写好的 `preview`，界面不自己截", () => {
+    const res = renderMessage({ agent: "claude", t: "reply", id: "u3", at: "2026-01-01T00:00:00Z", blocks: [{ type: "thinking", text: "第一行\n第二行", preview: "后端写的那一行…" }], autoReply: false } as never, ctx());
+    const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
+    expect(d.textContent).toContain("后端写的那一行…");
+    expect(d.textContent).not.toContain("第一行");
+  });
+
   it("问没成 ⇒ 照原文的字", async () => {
     callMock.mockRejectedValue(new Error("断了"));
-    const res = renderMessage({ agent: "claude", t: "reply", id: "u2", at: "2026-01-01T00:00:00Z", blocks: [{ type: "thinking", text: "原文 **字**" }], autoReply: false } as never, ctx());
+    const res = renderMessage({ agent: "claude", t: "reply", id: "u2", at: "2026-01-01T00:00:00Z", blocks: [{ type: "thinking", text: "原文 **字**", preview: "原文 **字**" }], autoReply: false } as never, ctx());
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
     d.dispatchEvent(new Event("toggle"));

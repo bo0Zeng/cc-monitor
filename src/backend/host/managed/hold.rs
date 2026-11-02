@@ -58,8 +58,8 @@ pub fn said_of(who: HolderWho, mine: bool) -> String {
 pub(crate) fn word_of(who: HolderWho) -> String {
     match who {
         HolderWho::TerminalWindow => copy_text("beTerminal.who.terminalWindow", &[]),
-        HolderWho::Desktop => copy_text("beTerminal.who.desktop", &[]),
-        HolderWho::Mobile => copy_text("beTerminal.who.mobile", &[]),
+        HolderWho::Desktop => copy_text("beQueue.from.desktop", &[]),
+        HolderWho::Mobile => copy_text("beQueue.from.phone", &[]),
         HolderWho::None => String::new(),
     }
 }

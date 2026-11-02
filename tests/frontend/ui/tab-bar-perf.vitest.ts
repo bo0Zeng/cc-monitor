@@ -239,7 +239,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
     const owners = new Set(r.take().map((x) => ownerSid(r, x)));
     expect([...owners]).toEqual(["s3"]);
     // 号牌字是那台账号库那一行写好的格：carol 不在库里 ⇒ 不另取，画「—」。
-    expect(r.view.tabButtons.get("s3")!.acctBadge.textContent).toBe(copyText("accounts.sessionBadge.none"));
+    expect(r.view.tabButtons.get("s3")!.acctBadge.textContent).toBe(copyText("acct.val.none"));
   });
 });
 

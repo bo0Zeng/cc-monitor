@@ -3436,7 +3436,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
     assert!(
         matches!(hello_verdict(&seen, Some("b1"), &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains(&copy_core::copy_text(
             "rsLocalBackendHost.dataDir.slot",
-            &[("name", "CCM_DATA_DIR"), ("theirs", "/iso/a"), ("ours", copy_core::copy_static!("rsLocalBackendHost.dataDir.absent"))]
+            &[("name", "CCM_DATA_DIR"), ("theirs", "/iso/a"), ("ours", copy_core::copy_static!("hostKey.compare.none"))]
         ))),
         "它多一格（它住隔离的家，这一趟住默认的家）⇒ 该拒"
     );
@@ -3949,7 +3949,7 @@ fn the_local_backend_words_come_from_the_words_table() {
             said: copy_text("machineState.down.local", &[]),
             fixes: vec![cmd_wire::machine::FixButton {
                 fix: cmd_wire::machine::MachineFix::Retry,
-                label: copy_text("machineState.fix.retry", &[]),
+                label: copy_text("front.act.retry", &[]),
             }],
             next: Some("结束口上那个进程再重开（结构夹具）".to_string()),
         }

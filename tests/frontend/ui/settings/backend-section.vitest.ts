@@ -276,7 +276,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const state = (): string | null | undefined => s.element.querySelector(".backend-row-state")?.textContent;
-    expect(state()).toContain(copyText("backend.status.notConnected"));
+    expect(state()).toContain(copyText("machinePage.state.down"));
     // 起：命令返回时后端还没起来（channel:false），第三次才连上。
     statusQueue = [
       { channel: false, pid: null },
@@ -417,7 +417,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button:not([role=switch])")].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.stop"), copyText("backend.buildCells.restart"), copyText("backend.buildCells.start"), copyText("backend.buildCells.log"), copyText("backend.buildCells.resync")]);
+    expect([...row.querySelectorAll("button:not([role=switch])")].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.stop"), copyText("backend.buildCells.restart"), copyText("backend.buildCells.start"), copyText("backend.buildCells.log"), copyText("accountChip.menu.refresh")]);
     // 在跑 ⇒「启动」不露面；［停止…］［重启］在。
     expect(row.querySelector<HTMLElement>('[data-op="start"]')!.style.display).toBe("none");
     expect(row.querySelector(".backend-row-state")?.textContent).toBe(copyText("backend.status.connected"));
@@ -428,7 +428,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
-    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.resync"))!.click();
+    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === copyText("accountChip.menu.refresh"))!.click();
     calls.length = 0;
     ask(1);
     ask(0);
@@ -492,7 +492,7 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     );
     const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
     expect(more.tagName).toBe("DETAILS");
-    expect(more.querySelector("summary")?.textContent).toBe(copyText("backend.health.detail"));
+    expect(more.querySelector("summary")?.textContent).toBe(copyText("messages.record.expand"));
     expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
     for (const n of ["异常退出 4", "被拒 1", "未启动 0", "未读到 2"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();

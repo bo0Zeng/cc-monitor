@@ -2115,7 +2115,7 @@ fn the_badge_is_written_by_the_core() {
     assert_eq!(
         b(false, false, false, None, true),
         (
-            t("accounts.badge.notSignedIn"),
+            t("acct.tag.login"),
             true,
             t("accounts.badge.notSignedInHint")
         )

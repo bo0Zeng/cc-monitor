@@ -115,12 +115,12 @@ export class KeybindingsEditor implements OverlayHandle {
     titleBar.className = "kb-editor-titlebar";
     const title = document.createElement("span");
     title.className = "kb-editor-title";
-    title.textContent = copyText("keybindingEditor.build.title");
+    title.textContent = copyText("keys.title.main");
     titleBar.appendChild(title);
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "kb-editor-close";
-    closeBtn.title = copyText("keybindingEditor.build.closeHint");
+    closeBtn.title = copyText("kit.drawer.close");
     closeBtn.textContent = copyText("keybindingEditor.build.close");
     closeBtn.addEventListener("click", () => this.close());
     titleBar.appendChild(closeBtn);
@@ -208,7 +208,7 @@ export class KeybindingsEditor implements OverlayHandle {
     const recordBtn = document.createElement("button");
     recordBtn.type = "button";
     recordBtn.className = "kb-editor-btn-record";
-    recordBtn.textContent = copyText("keybindingEditor.buildActionRow.edit");
+    recordBtn.textContent = copyText("history.rename.action");
     recordBtn.disabled = !action.available;
     recordBtn.addEventListener("click", () => this.startRecording(action, chordCell));
     opCell.appendChild(recordBtn);
@@ -217,7 +217,7 @@ export class KeybindingsEditor implements OverlayHandle {
     resetBtn.type = "button";
     resetBtn.className = "kb-editor-btn-reset";
     resetBtn.appendChild(icon("reset", "compact"));
-    resetBtn.title = copyText("keybindingEditor.buildActionRow.resetHint");
+    resetBtn.title = copyText("rot.cell.reset");
     resetBtn.setAttribute("aria-label", resetBtn.title);
     resetBtn.disabled = !action.available;
     resetBtn.addEventListener("click", () => void this.resetOne(action));
@@ -310,7 +310,7 @@ export class KeybindingsEditor implements OverlayHandle {
       const pretty = KeybindingDispatcher.prettyChord(chord);
       const ok = await confirmDialog({
         title: copyText("keybindingEditor.applyChord.overrideTitle", { pretty }),
-        action: copyText("keybindingEditor.applyChord.overrideAction"),
+        action: copyText("rsFilewinBatch.btn.overwrite"),
         body: copyText("keybindingEditor.applyChord.confirmOverride", { pretty, ownerLabel }),
       });
       if (!ok) {
@@ -347,7 +347,7 @@ export class KeybindingsEditor implements OverlayHandle {
   private async onResetAll(): Promise<void> {
     const confirm = {
       title: copyText("keybindingEditor.onResetAll.title"),
-      action: copyText("keybindingEditor.onResetAll.action"),
+      action: copyText("rot.cell.reset"),
       body: copyText("keybindingEditor.onResetAll.confirmResetAll"),
     };
     if (!(await confirmDialog(confirm))) return;

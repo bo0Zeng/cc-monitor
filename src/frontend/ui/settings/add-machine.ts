@@ -79,7 +79,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
       { key: "manual", label: copyText("addMachine.tab.manual") },
     ],
     current: "ssh",
-    label: copyText("addMachine.dialog.title"),
+    label: copyText("mobHosts.fab.aria"),
     onChange: (k) => {
       tab = k;
       sshPane.hidden = k !== "ssh";
@@ -212,7 +212,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   const fHost = field({ label: copyText("machineForm.field.host"), help: copyText("machineCard.field.hostHint") });
   const fUser = field({ label: copyText("machineForm.field.user"), help: copyText("addMachine.field.userHelp") });
   const fPort = field({ label: copyText("machineForm.field.port"), value: "22", help: copyText("addMachine.field.portHelp") });
-  const fKey = field({ label: copyText("machineForm.field.key"), help: copyText("addMachine.field.keyHelp") });
+  const fKey = field({ label: copyText("mobIdentity.import.pem"), help: copyText("addMachine.field.keyHelp") });
   fKey.root.classList.add("add-machine-wide");
   grid.append(fName.root, fHost.root, fUser.root, fPort.root, fKey.root);
   const moreBody = document.createElement("div");
@@ -287,8 +287,8 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   };
 
   const handle = formDialog({
-    title: copyText("addMachine.dialog.title"),
-    action: copyText("addMachine.action.manual"),
+    title: copyText("mobHosts.fab.aria"),
+    action: copyText("mobPlus.sheet.title"),
     body,
     wide: true,
     blocked: () => check().why,
@@ -304,7 +304,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
     ask();
     const { cfgs } = check();
     handle.setAction(
-      tab === "manual" ? copyText("addMachine.action.manual") : copyText("addMachine.action.ssh", { n: cfgs.length }),
+      tab === "manual" ? copyText("mobPlus.sheet.title") : copyText("addMachine.action.ssh", { n: cfgs.length }),
     );
     handle.refresh();
   }

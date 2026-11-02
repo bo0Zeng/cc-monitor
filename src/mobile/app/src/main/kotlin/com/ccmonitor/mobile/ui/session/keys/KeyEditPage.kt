@@ -91,7 +91,7 @@ internal fun KeyEditPage(
     val title = if (d.id == null) copyText("mobKeys.edit.newTitle") else d.label.ifBlank { d.modifier?.let(::modName) ?: tapCap.orEmpty() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).settingsGroupScreenInsets()) {
         EditorTopBar(title = title, sub = groupName, onBack = onBack, action = {
-            Button(onClick = { onSave(d) }, enabled = d.canSave) { Text(copyText("mobKeys.edit.save")) }
+            Button(onClick = { onSave(d) }, enabled = d.canSave) { Text(copyText("rsFilewinShell.editor.save")) }
         })
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = tokens.spacing.lg),
@@ -327,7 +327,7 @@ private fun MoreDurations(
 ) {
     var open by remember { mutableStateOf(d.doubleTapMs != null || d.longPressMs != null) }
     HorizontalDivider(Modifier.padding(top = LocalAppTokens.current.spacing.sm), color = MaterialTheme.colorScheme.outlineVariant)
-    IconTextButton(if (open) Ph.CaretDown else Ph.CaretRight, copyText("mobKeys.edit.more"), onClick = { open = !open })
+    IconTextButton(if (open) Ph.CaretDown else Ph.CaretRight, copyText("history.row.more"), onClick = { open = !open })
     if (!open) return
     val spec = liveSpec(d, state)
     val doubleNow = spec.doubleTapMs.toInt()

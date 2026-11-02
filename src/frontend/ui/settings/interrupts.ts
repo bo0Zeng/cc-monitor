@@ -96,6 +96,6 @@ export function interruptRows(i: Interrupts | null, machine: string, act: Interr
   if (items.length === 0) return [];
   return [
     { label: brief ? copyText("interrupts.row.brief") : copyText("interrupts.row.untilStart"), items },
-    { label: copyText("interrupts.row.keep"), items: [copyText("interrupts.item.sessionsRun")] },
+    { label: copyText("kit.interrupts.keep"), items: [copyText("interrupts.item.sessionsRun")] },
   ];
 }

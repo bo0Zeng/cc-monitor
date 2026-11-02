@@ -805,7 +805,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
         (e.code.as_deref(), e.said.replace(&home, "<HOME>")),
         (
             Some("stale"),
-            "<HOME>/.cc-monitor/profiles.toml 在本页读取后被别处改过 · 本次未写入".to_string()
+            "<HOME>/.cc-monitor/profiles.toml · 已在别处改过 · 别名未写入".to_string()
         )
     );
 }

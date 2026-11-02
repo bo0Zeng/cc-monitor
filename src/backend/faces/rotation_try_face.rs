@@ -241,7 +241,7 @@ fn use_text(account: Option<&str>) -> String {
 fn seg_text(sendable: bool, reset: bool, at: &str, left: Option<f64>) -> String {
     match (sendable, reset, left) {
         (false, ..) => String::new(),
-        (true, true, _) => copy_core::copy_text("rot.sim.reset", &[("at", at)]),
+        (true, true, _) => copy_core::copy_text("acct.reset.at", &[("at", at)]),
         (true, false, Some(n)) => {
             copy_core::copy_text("rot.sim.left", &[("n", &format!("{}", n.round()))])
         }

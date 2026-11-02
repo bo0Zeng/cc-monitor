@@ -37,7 +37,7 @@ export const NO_FACTS: MachineFacts = { os: null, version: null };
  */
 export function machineMeta(at: "list" | "head", who: string | null, facts: MachineFacts): string {
   const os = who === null ? (OS_NAME[hostOs()] ?? facts.os) : facts.os;
-  const parts = [who ?? copyText("machinePage.meta.localBare")];
+  const parts = [who ?? copyText("detail.label.local")];
   if (os) parts.push(os);
   if (at === "head" && facts.version) parts.push(copyText("machinePage.meta.version", { ver: facts.version }));
   else if (at === "head" && facts.dev) parts.push(copyText("machineState.word.incomparable"));
@@ -127,7 +127,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     connFold = { open: () => setConn(true), toggle: () => setConn(body.hidden), el: body };
     top.appendChild(toggleBtn);
   }
-  const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+  const more = button({ label: copyText("history.row.more"), kind: "icon", icon: "more", hint: copyText("history.row.more") });
   /** 成品的复制详情（连着时是每条连接那一段；空 ⇒ ⋯ 里不出「复制详情」）。 */
   let detail = "";
   const copyItem: MenuItem = { label: copyText("detail.act.copy"), onClick: () => void copyDetail(detail) };
@@ -166,7 +166,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   const acct = document.createElement("div");
   const rot = document.createElement("div");
   const config = document.createElement("div");
-  tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("machinePage.tab.accounts"), element: acct });
+  tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("beProfile.slot.account"), element: acct });
   tabs.addRoute({ id: `${spec.pageId}#rot`, title: copyText("machinePage.tab.rot"), element: rot });
   tabs.addRoute({ id: `${spec.pageId}#config`, title: copyText("machinePage.tab.config"), element: config });
   root.appendChild(tabs.element);
@@ -193,7 +193,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     }
     if (connected === true) {
       setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
-      word.textContent = copyText("machinePage.state.up");
+      word.textContent = copyText("ccBus.check.online");
     } else if (connected === false) {
       setDot(dot, "failed", offlineLine);
       word.textContent = copyText("machinePage.state.down");

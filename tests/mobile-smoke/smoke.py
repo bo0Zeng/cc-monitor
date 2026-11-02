@@ -166,7 +166,7 @@ def foreground():
 def launch(fresh=False):
     start_app()
     if fresh:
-        if not wait(t("mobDrawer.server.bare"), 20):
+        if not wait(t("detail.label.machine"), 20):
             raise Step.Fail("App 没起来")
         return
     to_chat()
@@ -438,9 +438,9 @@ def add_host(name):
     hide_keyboard()
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     tap("smoke")
-    tap(t("mobHostEdit.page.save"))
+    tap(t("rsFilewinShell.editor.save"))
     end = ui.within(10)
-    while ui.find(t("mobHostEdit.page.save")) is not None and time.time() < end:
+    while ui.find(t("rsFilewinShell.editor.save")) is not None and time.time() < end:
         time.sleep(0.5)
 
 
@@ -478,7 +478,7 @@ def switch_model(name):
         raise Step.Fail(f"那台没给 claude 的模型：{facts!r}"[:200])
     pick = models[-1]
     hide_keyboard()
-    tap(t("mobDefaultButtons.label.command"))
+    tap(t("detail.label.command"))
     time.sleep(1.5)
     row = ui.find(pick["text"])
     if row is None:
@@ -528,7 +528,7 @@ def pick_act(name, label):
     """长按 [name] 进选择模式，点顶栏或 ⋯ 里的 [label]（哪件在顶栏、哪件进 ⋯ 照核心那张表，冒烟不抄表：顶栏没有就开 ⋯ 找）。"""
     long_press(name)
     if ui.find(label) is None:
-        tap(t("rsFilewinChrome.command.more"))
+        tap(t("history.row.more"))
     tap(label)
 
 
@@ -558,7 +558,7 @@ def files_page():
     if not wait(f"hello {T}", 15):
         raise Step.Fail("预览没出那一份的字")
     shot("11-预览")
-    tap(t("mobKit.act.close")); time.sleep(1)
+    tap(t("kit.drawer.close")); time.sleep(1)
     mk = t("rsFilewinWriteops.label.mkdir")
     tap(mk)
     type_in(f"new{T}"); hide_keyboard()
@@ -619,7 +619,7 @@ def files_page():
     tap(up)
     if not wait(t("rsFilewinBatch.btn.keepBoth"), 2 * FILES_ASK_S):
         raise Step.Fail("同名再传一次，没出冲突抽屉")
-    if ui.find(t("rsFilewinBatch.ask.title", action=t("rsFilewinBatch.verb.upload"), n=1, dir="")[:4]) is None:
+    if ui.find(t("rsFilewinBatch.ask.title", action=t("rsFilewinUpload.label.upload"), n=1, dir="")[:4]) is None:
         raise Step.Fail("冲突抽屉的标题不是「上传 1 项到 …」")
     shot("11-上传同名")
     tap(t("rsFilewinBatch.btn.keepBoth"))
@@ -704,7 +704,7 @@ def big_text():
     long_press(name)
     # 编辑在 ⋯ 里（文本那一种的顶栏只有下载 · 删除）：先开 ⋯，再从这一刻起量。
     if ui.find(t("rsFilewinEditor.label.edit")) is None:
-        tap(t("rsFilewinChrome.command.more"))
+        tap(t("history.row.more"))
     adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
     wins = lambda: adb("shell", "dumpsys", "window", "windows").count(PKG)
     base = wins()
@@ -956,14 +956,14 @@ def deploy_steps():
     with Step("1c-升级后端"):
         old_bin, old_id = older_backend()
         rig("land", old_bin)
-        if not wait(t("machineState.problem.needsUpdate", machine=MACHINE), 60):
+        if not wait(t("front.title.update", machine=MACHINE), 60):
             raise Step.Fail(f"那台是旧版 {old_id}，却没说要更新")
         shot("1c-要更新")
-        deploy_and_time(t("machineState.fix.update"), "1c")
+        deploy_and_time(t("front.act.update"), "1c")
         end = ui.within(60)
-        while time.time() < end and ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
+        while time.time() < end and ui.find(t("front.title.update", machine=MACHINE)) is not None:
             time.sleep(1)
-        if ui.find(t("machineState.problem.needsUpdate", machine=MACHINE)) is not None:
+        if ui.find(t("front.title.update", machine=MACHINE)) is not None:
             raise Step.Fail("换了常驻还说要更新（接上的不是这一版）")
     if landing_id() != build_id():
         # 升级那一步没走完、那台还是旧版：放回这一版再往下走（后面几步不该跟着它红）。
@@ -977,7 +977,7 @@ def deploy_steps():
         # 编辑在主机行尾的 ⋯ 里：先点 ⋯，再在弹出的那一列里点「编辑」。
         tap(t("mobHosts.row.more", label=MACHINE))
         time.sleep(1)
-        tap(t("mobHosts.row.edit"))
+        tap(t("rsFilewinEditor.label.edit"))
         for _ in range(4):
             if ui.find(t("mobHostEdit.backend.check")) is not None:
                 break
@@ -1029,7 +1029,7 @@ def terminal_steps():
         adb("shell", "input", "keyevent", "4")
         drawer(t("mobDrawer.item.terminal"))
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux"))
+        tap(t("mobDrawer.item.terminal"))
         if not wait(name, 15) or not any(n.get("text") == name for n in ui.nodes()):
             raise Step.Fail(f"tmux 会话列表里没有 {name}")
         attached = sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name)
@@ -1058,8 +1058,8 @@ def terminal_steps():
         drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
-        fill(t("mobTerms.new.name"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
+        tap(t("mobDrawer.item.terminal")); time.sleep(3)
+        fill(t("newSession.label.tmuxName"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
         # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
         for _ in range(6):
             if ui.find(t("mobTerms.new.detached")) is not None:
@@ -1079,11 +1079,11 @@ def terminal_steps():
         # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说。那台按整行比：台架登录用的那一行注释是台架起的、
         # 手机推的那一行带手机上的名字 ⇒ 头一回推是「已推送」、并进一行，再推是「已存在」、不动。两句哪句都行，要与台架盘上那份对得上。
         # 从终端屏起（上一步红了收拾回起点时不在终端屏）。
-        if ui.find(t("mobDefaultButtons.label.command")) is None:
+        if ui.find(t("detail.label.command")) is None:
             drawer(t("mobDrawer.item.terminal"))
             time.sleep(2)
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        tap(t("detail.label.command")); time.sleep(1.5)
         tap(t("mobPalette.item.key")); time.sleep(1.5)
         outcomes = {t("mobKeyPush.result.added"): "added", t("mobKeyPush.result.already"): "already"}
         blob = open(os.path.join(BOX, "sshd", "client_ed25519.pub")).read().split()[1]
@@ -1141,7 +1141,7 @@ def terminal_steps():
         drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux"))
+        tap(t("mobDrawer.item.terminal"))
         if not wait(pane, 15):
             raise Step.Fail(f"tmux 会话列表里没有 {pane}")
         # 手机上已有一个 tab 接着它（第 9 步那个）⇒ 点［打开］是切回那个 tab、不另接：台架那边接着它的终端有一个就行。
@@ -1154,7 +1154,7 @@ def terminal_steps():
             raise Step.Fail(f"点了「{t('mobTerms.row.attach')}」，台架 tmux 里没有接着 {pane} 的终端")
         time.sleep(2)
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        tap(t("detail.label.command")); time.sleep(1.5)
         # 面板最上是那台给的模型一组，「读取画面」在下面：往上滑到它露出来。
         for _ in range(6):
             if ui.find(t("mobPalette.item.capture")) is not None:
@@ -1167,23 +1167,23 @@ def terminal_steps():
         if not wait(mark, 5):
             raise Step.Fail(f"抓屏框里没有那一屏的「{mark}」")
         shot("9d-抓屏框")
-        tap(t("mobCapture.dialog.copy"))
+        tap(t("render.codeBlock.copy"))
         end = ui.within(10)
         while time.time() < end and ui.find(t("mobCapture.dialog.title")) is not None:
             time.sleep(0.5)
         if ui.find(t("mobCapture.dialog.title")) is not None:
-            raise Step.Fail(f"点了［{t('mobCapture.dialog.copy')}］框没关")
+            raise Step.Fail(f"点了［{t('render.codeBlock.copy')}］框没关")
 
         def marks():
             return rig("tmux", "capture-pane", "-p", "-S", "-300", "-t", pane).stdout.count(mark)
         before = marks()
         hide_keyboard()
         # ［粘贴］在常用那一组键条的最右头，屏宽放不下：按着键条往左滑到它露出来。
-        paste = t("mobKeys.action.paste")
+        paste = t("login.act.paste")
         for _ in range(4):
             if ui.find(paste) is not None:
                 break
-            row = ui.find(t("mobDefaultButtons.label.command"))
+            row = ui.find(t("detail.label.command"))
             y = ui.bounds(row)[3] + 120 if row is not None else 2260
             adb("shell", "input", "swipe", "900", str(y), "200", str(y), "300")
             time.sleep(1)
@@ -1221,7 +1221,7 @@ def walk():
             launch(fresh=True)
             tap(t("mobIdentity.page.title")); time.sleep(1)
             open_import()
-            fill(t("mobIdentity.import.name"), "smoke")
+            fill(t("machineForm.field.name"), "smoke")
             tap(t("mobIdentity.import.pem")); time.sleep(0.5)
             for line in key:
                 typed(line)
@@ -1242,7 +1242,7 @@ def walk():
             launch(fresh=True)
             tap(t("mobIdentity.page.title")); time.sleep(1)
             open_import()
-            fill(t("mobIdentity.import.name"), "smoke")
+            fill(t("machineForm.field.name"), "smoke")
             tap(t("mobIdentity.import.pem")); time.sleep(0.5)
             type_key(key)
             hide_keyboard(); tap(t("mobIdentity.import.ok"))
@@ -1259,7 +1259,7 @@ def walk():
             launch(fresh=True)
             tap(t("mobIdentity.page.title")); time.sleep(1)
             open_import()
-            fill(t("mobIdentity.import.name"), "smoke")
+            fill(t("machineForm.field.name"), "smoke")
             tap(t("mobIdentity.import.pem")); time.sleep(0.5)
             for line in key:
                 typed(line)
@@ -1284,7 +1284,7 @@ def walk():
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
         open_import()
-        fill(t("mobIdentity.import.name"), "smoke")
+        fill(t("machineForm.field.name"), "smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
         tap(t("mobIdentity.import.ok")); time.sleep(2)
@@ -1296,7 +1296,7 @@ def walk():
         if fab_under_notice(t("mobIdentity.fab.aria"), t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
         open_import()
-        fill(t("mobIdentity.import.name"), "smoke")
+        fill(t("machineForm.field.name"), "smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         # `input text` 敲进去是异步的、输入法还可能改字：type_key 读回框里的字逐字核过才往下走。
         type_key(key)
@@ -1321,7 +1321,7 @@ def walk():
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
             raise Step.Fail("历史清单没出新会话")
-        needs = [t("beSession.activity.needsYou")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
+        needs = [t("beSession.needs.unknown")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
         end = time.time() + 20
         while time.time() < end and row_text(f"{T} needs", needs) is None:
             time.sleep(1)
@@ -1332,7 +1332,7 @@ def walk():
     with Step("3-新建会话"):
         # 新建会话打开就是填好的（目录 ＝ 那台最近用过的第一个）；点目录 chip → 浏览… → 进一层 → 选这个目录，起在那一层。
         sh(f"mkdir -p ~/work/{T}dir")
-        drawer(t("mobDrawer.item.newSession"))
+        drawer(t("newSession.title.plain"))
         if not wait("~/work", 20):
             raise Step.Fail("目录 chip 没填上那台最近的目录")
         tap_until("~/work", t("newSession.recent.label"), what="目录抽屉")
@@ -1408,10 +1408,10 @@ def walk():
         name = tmux_name_of(f"{T} new session")
         hide_keyboard()
         tap(t("mobPlus.sheet.title"))
-        if not wait(t("mobPlus.row.commands"), 15):
+        if not wait(t("detail.label.command"), 15):
             raise Step.Fail("面板里没有「命令」那一行")
         shot("4c-面板")
-        tap(t("mobPlus.row.commands"))
+        tap(t("detail.label.command"))
         if not wait("/init", 10):
             raise Step.Fail("命令清单里没有 /init")
         shot("4c-命令清单")
@@ -1511,7 +1511,7 @@ def walk():
 
     with Step("4e-答提问") as st:
         st.back_to(f"{T} new session")
-        ask_up(f"{T} quiz go", t("needs.bar.answer"), t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
+        ask_up(f"{T} quiz go", t("beSession.needs.answer"), t("mobAsk.head.page", head=t("beSession.needs.answer"), i=1, n=2))
         tap("Red")
         shot("4e-提问第一题")
         tap(t("mobAsk.act.next")); time.sleep(1)
@@ -1536,7 +1536,7 @@ def walk():
         if not wait(t("askBlock.gone.elsewhere"), 20):
             raise Step.Fail("抽屉里没出「已在终端答过或已关闭」")
         shot("4g-别处先答了")
-        tap(t("mobKit.act.close"))
+        tap(t("kit.drawer.close"))
         time.sleep(1)
         if answer_key() is not None:
             raise Step.Fail("别处答完了钉条还在")
@@ -1648,8 +1648,8 @@ def walk():
             raise Step.Fail(f"work 里没有 {tree}")
         pick_act(tree, t("rsFilewinWriteops.label.delete")); time.sleep(1)
         confirm_delete()
-        title = t("rsFilewinBatch.row.title", action=t("beFiles.batch.verbDelete"), n=1)
-        done = t("beFiles.batch.done", action=t("beFiles.batch.verbDelete"), n=1)
+        title = t("beFiles.batch.head", action=t("rsFilewinWriteops.label.delete"), n=1)
+        done = t("beFiles.batch.done", action=t("rsFilewinWriteops.label.delete"), n=1)
         time.sleep(1)
         if not wait(title, 10):
             raise Step.Fail("删除那一组没上卡（或杀之前已做完：树不够大）")
@@ -1739,7 +1739,7 @@ def walk():
             if not wait(t("link.machine.offline", machine=MACHINE), 60):
                 raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
             pick_act(ro, t("rsFilewinWriteops.label.delete"))
-            said = t("rsFilewinChrome.link.readOnly")
+            said = t("acctPage.offline.hover")
             if not wait(said, 10):
                 raise Step.Fail(f"断着点删除，底部没说「{said}」")
             shot("8c-只读那一句")
@@ -1765,7 +1765,7 @@ def walk():
         names = {a.get("kind"): a.get("text") for a in (facts.get("data") or {}).get("agents") or []}
         if "codex" not in names or "claude" not in names:
             raise Step.Fail(f"那台没给两家：{names!r}")
-        drawer(t("mobDrawer.item.newSession"))
+        drawer(t("newSession.title.plain"))
         if not wait(names["claude"], 20):
             raise Step.Fail("新建会话没画 agent chip")
         tap_until(names["claude"], names["codex"], what="agent 抽屉里那台能起的几家")
@@ -1795,7 +1795,7 @@ def walk():
         items = (frames("sessions-needs", {}).get("data") or {}).get("items") or []
         if not any(i.get("kind") == "manual" for i in items) or not any(i.get("kind") == "session" for i in items):
             raise Step.Fail(f"台架那台的需手动里没有会话 ＋ 会外两样：{[i.get('kind') for i in items]!r}")
-        entry = t("tabBar.needs.aria", n=len(items))
+        entry = t("beGroups.count.needs", n=len(items))
         if not wait(entry, 30):
             raise Step.Fail(f"聊天屏右上没有「{entry}」")
         tap(entry)
@@ -1817,7 +1817,7 @@ def walk():
         # 那台断了 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画）。造法：停掉那台的常驻、落点挪开（重连 ensure 起不来），
         # 判完才放回去 —— 判的那几十秒里一直断着（先放回再判，手机早连回去了、入口照旧在）。
         launch()
-        entry = t("tabBar.needs.aria", n=len((frames("sessions-needs", {}).get("data") or {}).get("items") or []))
+        entry = t("beGroups.count.needs", n=len((frames("sessions-needs", {}).get("data") or {}).get("items") or []))
         if not wait(entry, 30):
             raise Step.Fail(f"断开之前聊天屏右上就没有「{entry}」")
         rig("backend", "off")
@@ -1833,7 +1833,7 @@ def walk():
         # 起不来的那几回手机记成那台「未装」：等人点［重试］（不自己重拨）。点它接回来，后面几步照常连着。
         drawer(t("mobDrawer.item.sessions"))
         if wait(t("remoteHealth.head.notDeployed"), 15):
-            tap(t("machineState.fix.retry"))
+            tap(t("front.act.retry"))
         end = ui.within(60)
         while time.time() < end and ui.find(t("remoteHealth.head.notDeployed")) is not None:
             time.sleep(1)
@@ -1861,7 +1861,7 @@ def report():
         time.sleep(3)
         tap(t("history.row.more"))
         time.sleep(1)
-        tap(t("mobChat.more.rotation"))
+        tap(t("machinePage.tab.rot"))
         if not wait("smoke-a", 20):
             raise Step.Fail("轮换屏没画出那条会话用的策略")
         if not wait(t("rot.h.order"), 10) or ui.find(t("rot.top.edit")) is None:
@@ -1899,9 +1899,9 @@ def report():
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
         drawer(t("mobDrawer.settings.aria"))
-        if not wait(t("mobSettings.entry.rotation"), 10):
+        if not wait(t("machinePage.tab.rot"), 10):
             raise Step.Fail("设置里没有「机器与账号 → 轮换」")
-        tap(t("mobSettings.entry.rotation"))
+        tap(t("machinePage.tab.rot"))
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
         # 设置页点号牌从底下拉出编辑小窗、改一格：当场存成那份的新版（没有「存成这份策略」那一步）；号牌上出那一项的记号。
@@ -1934,7 +1934,7 @@ def report():
         if was not in ("show", "hide"):
             raise Step.Fail(f"台架读不到那台的偏好：{was!r}")
         want = "hide" if was == "show" else "show"
-        seg = t("settings.machine.tabShow" if want == "show" else "settings.machine.tabHide")
+        seg = t("sessionHead.act.display" if want == "show" else "history.menu.hide")
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
         drawer(t("mobDrawer.settings.aria"))
@@ -1964,7 +1964,7 @@ def report():
         if not lit:
             raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
         # 拨回去，台架那台的偏好留成进来时那样。
-        tap_in_row(t("settings.machine.childTab"), t("settings.machine.tabShow" if was == "show" else "settings.machine.tabHide"))
+        tap_in_row(t("settings.machine.childTab"), t("sessionHead.act.display" if was == "show" else "history.menu.hide"))
 
     with Step("14-用量屏"):
         # 设置 → 点账号卡 ⇒ 用量屏：结论那一行 ＝ 台架那台 quota-read 的 verdict.text（没有结论 ⇒ 那台那一句）；
@@ -1976,7 +1976,7 @@ def report():
         if not wait(t("mobSettings.section.machine"), 15):
             raise Step.Fail("没进设置屏")
         tap("smokebox")  # 账号卡头那一行是那台的名字
-        if not wait(t("mobUsage.page.title"), 15):
+        if not wait(t("acct.hover.usage"), 15):
             raise Step.Fail("点账号卡没进用量屏")
         head = (q.get("verdict") or {}).get("text") or q.get("text")
         if head and not wait(head, 15):
@@ -2005,7 +2005,7 @@ def report():
 
         def rename(to):
             tap(t("history.menu.rename"))
-            if not wait(t("history.rename.title"), 10):
+            if not wait(t("history.menu.rename"), 10):
                 raise Step.Fail("改标题框没出来")
             adb("shell", "input", "keycombination", "113", "29")  # 框一出来就有焦点：Ctrl+A 全选、删掉
             adb("shell", "input", "keyevent", "67")

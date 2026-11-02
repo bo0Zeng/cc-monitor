@@ -313,7 +313,7 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
     };
     let title = batch_core::title_of(&plan);
     let count = copy_text(
-        "rsFilewinBatch.ask.count",
+        "beFiles.batch.clash",
         &[("n", &conflicts.len().to_string())],
     );
     let mut toggle = false;
@@ -347,7 +347,7 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
         }
     };
     use super::kit::Btn;
-    let cancel = copy_text("rsFilewinBatch.btn.cancel", &[]);
+    let cancel = copy_text("kit.dialog.cancel", &[]);
     if each {
         let hit = super::kit::dialog(
             ui.ctx(),

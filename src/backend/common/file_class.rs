@@ -71,14 +71,14 @@ pub fn class_of_name(name: &[u8], is_dir: bool) -> FileClass {
 pub fn label(c: FileClass) -> String {
     use copy_core::copy_text;
     match c {
-        FileClass::Folder => copy_text("beFilesKind.label.folder", &[]),
+        FileClass::Folder => copy_text("gridMonitor.fact.dir", &[]),
         FileClass::Text => copy_text("beFilesKind.label.text", &[]),
         FileClass::Code => copy_text("beFilesKind.label.code", &[]),
         FileClass::Image => copy_text("beFilesKind.label.image", &[]),
         FileClass::Archive => copy_text("beFilesKind.label.archive", &[]),
         FileClass::Pdf => copy_text("beFilesKind.label.pdf", &[]),
         FileClass::Link => copy_text("beFilesKind.label.link", &[]),
-        FileClass::Other => copy_text("beFilesKind.label.other", &[]),
+        FileClass::Other => copy_text("mobDrawer.item.files", &[]),
     }
 }
 

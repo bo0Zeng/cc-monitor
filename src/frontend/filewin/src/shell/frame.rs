@@ -356,7 +356,7 @@ impl FileWindow {
                 format!(
                     "{} {}",
                     egui_phosphor::regular::PLUS,
-                    copy_text("rsFilewinChrome.command.new", &[])
+                    copy_text("mobTerms.new.detached", &[])
                 ),
             ],
         ) {

@@ -382,7 +382,7 @@ pub fn death_detail(d: &Death) -> String {
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect::<Vec<_>>()
-                .join(&copy_text("rsBackendPolicy.death.listSep", &[]))
+                .join(&copy_text("kit.text.sep", &[]))
         ),
         Death::Refused { .. } => "它一个字节都没说就退出了".to_string(),
         Death::Crashed { .. } => "说过话之后异常终止".to_string(),
@@ -626,7 +626,7 @@ pub fn health_face(h: &Health) -> HealthFace {
 /// 一句话里怎么称呼这台机器：本机与远端的每一句都由同一个 `format!` 渲染，唯一不同的就是这里回的称呼。
 fn machine_label(origin: &str) -> String {
     if origin == cmd_wire::LOCAL {
-        copy_text("rsCcBus.machine.local", &[])
+        copy_text("detail.label.local", &[])
     } else {
         origin.to_string()
     }

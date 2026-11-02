@@ -182,15 +182,15 @@ export class TabMenu {
     const items: MenuItem[] = [];
 
     // ① 看它
-    items.push({ id: "popOut", icon: "popOut", label: copyText("tabMenu.open.openInWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
-    if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabMenu.open.cwd"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
+    items.push({ id: "popOut", icon: "popOut", label: copyText("history.menu.openWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
+    if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabBarView.tab.cwdHint"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
     // ↗ 一直在：做不了灰着、右边写那一句（A2-17-12-1：壳说这台 ↗ 不是真的 · 那台说没有终端可去）。
     if (t) {
       const why = frontWhy(t.face);
-      const front: MenuItem = { icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) };
+      const front: MenuItem = { icon: "front", label: copyText("terminal.head.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) };
       items.push(why === null ? front : { ...front, enabled: false, why, onClick: () => {} });
     }
-    if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
+    if (t) items.push({ icon: "terminal", label: copyText("sessionHead.act.terminal"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
 
     // ② 改标题 · 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
     items.push({ label: "", divider: true });
@@ -200,7 +200,7 @@ export class TabMenu {
       items.push({
         id: "hide",
         icon: "hidden",
-        label: copyText("tabBar.menu.unhide"),
+        label: copyText("history.menu.unhide"),
         title: hidden.by === "self" ? undefined : copyText("tabBar.unhide.ruleHint", { said: hidden.said }),
         onClick: () => this.host.unhide([sid]),
       });
@@ -215,18 +215,18 @@ export class TabMenu {
       });
     }
     if (hidden === null && this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
-    if (t && hidden === null) items.push({ id: "hide", icon: "hidden", label: copyText("tabBar.menu.hide"), title: copyText("tabBar.hidden.tip"), onClick: () => this.host.hide([sid]) });
+    if (t && hidden === null) items.push({ id: "hide", icon: "hidden", label: copyText("history.menu.hide"), title: copyText("tabBar.hidden.tip"), onClick: () => this.host.hide([sid]) });
     if (t && (isLive(t.face) || hasTerminal(t.face))) items.push(grey({ id: "autoAnswer", icon: "question", label: copyText("tabMenu.autoAnswer.label"), title: copyText("tabMenu.autoAnswer.tip"), submenu: autoAnswerItems(t, (min) => this.host.autoAnswer(sid, min)) }));
 
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });
-    if (t && unseen) items.push(grey({ icon: "history", label: copyText("tabMenu.item.resume") }));
+    if (t && unseen) items.push(grey({ icon: "history", label: copyText("history.row.resume") }));
     else if (t && canResume(t.face)) {
       // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
-      items.push({ id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
+      items.push({ id: "resume", icon: "history", label: copyText("history.row.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
     // 在终端里打开：远端两种宿主都出；本机只对托管终端那一行出（tmux 那一行有 ccm 开的那个窗口 ·［切到终端］）—— 问到了再定。
-    if (remote !== null || local) items.push(grey({ id: "attach", icon: "terminal", label: copyText("tabMenu.attach.label"), pending: true }));
+    if (remote !== null || local) items.push(grey({ id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), pending: true }));
     const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
     if (t && openPanel) items.push(grey({ id: "account", icon: "account", label: copyText("acct.menu.open"), onClick: () => openPanel(sid) }));
 
@@ -237,9 +237,9 @@ export class TabMenu {
       items.push({
         id: "close",
         icon: "close",
-        label: copyText("tabMenu.item.close"),
+        label: copyText("launch.slot.close"),
         enabled: closable,
-        why: !closable ? copyText("tabMenu.close.live") : unseen ? copyText("tabMenu.close.unseen", { machine: machineName(t.origin) }) : undefined,
+        why: !closable ? copyText("history.delete.liveHint") : unseen ? copyText("tabMenu.close.unseen", { machine: machineName(t.origin) }) : undefined,
         onClick: () => this.host.close(sid),
       });
     }
@@ -358,7 +358,7 @@ export class TabMenu {
     return {
       id: "attach",
       icon: "terminal",
-      label: copyText("tabMenu.attach.label"),
+      label: copyText("sessionHead.act.openTerm"),
       why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name: s.names[0] }) : undefined,
       onClick: () => void this.attach(origin, sid),
     };
@@ -366,7 +366,7 @@ export class TabMenu {
 
   /** 问不到那台（通道不在 / 超时）：［在终端里打开］停在灰着、第二行写原因（不悄悄摘掉）。 */
   private unresolved(): void {
-    updateMenuItem("attach", { id: "attach", icon: "terminal", label: copyText("tabMenu.attach.label"), enabled: false, why: copyText("tabMenu.probe.failed") });
+    updateMenuItem("attach", { id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), enabled: false, why: copyText("tabMenu.probe.failed") });
   }
 
   /** 每个标签页「恢复 ▸」里勾着的那一组（本窗开着时记）。 */
@@ -411,6 +411,6 @@ export class TabMenu {
     const gen = menuGeneration();
     const [accounts, s] = await Promise.all([this.resumeAccountsOf(origin, this.host.tab(sid)?.agent ?? null), where()]);
     if (gen !== menuGeneration() || (accounts.kind === "off" && s === undefined)) return;
-    updateMenuItem("resume", { id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts, s?.run) });
+    updateMenuItem("resume", { id: "resume", icon: "history", label: copyText("history.row.resume"), submenu: this.buildResumeSubmenu(sid, accounts, s?.run) });
   }
 }

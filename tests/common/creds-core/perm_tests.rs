@@ -314,7 +314,7 @@ fn the_windows_wording_follows_the_mask_and_names_the_account() {
     );
     // 两个主体各自一段。
     let two = with(vec![named(0x1), ace(true, "S-1-1-0", FA)]);
-    assert!(two.contains(&t("credsPerm.judge.listSep")), "{two}");
+    assert!(two.contains(&t("plan.page.listSep")), "{two}");
     // 属主那一句：翻得出名写名。
     let owner = wide_how(judge(&Protection::Windows {
         owner: OTHER.into(),

@@ -57,7 +57,7 @@ data class DrawerEntry(
 
 fun drawerEntries(): List<DrawerEntry> =
     listOf(
-        DrawerEntry(DrawerItem.NewConversation, Ph.PlusCircle, copyText("mobDrawer.item.newSession")),
+        DrawerEntry(DrawerItem.NewConversation, Ph.PlusCircle, copyText("newSession.title.plain")),
         DrawerEntry(DrawerItem.Conversations, Ph.Chats, copyText("mobDrawer.item.sessions")),
         DrawerEntry(DrawerItem.Files, Ph.FolderSimple, copyText("mobDrawer.item.files")),
         DrawerEntry(DrawerItem.Terminal, Ph.TerminalWindow, copyText("mobDrawer.item.terminal")),
@@ -104,7 +104,7 @@ const val DRAWER_TITLE = "cc-monitor"
 
 val RECENT_HEADER: String get() = copyText("mobDrawer.recent.title")
 
-fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("mobDrawer.server.bare") else copyText("mobDrawer.server.named", "name" to name)
+fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("detail.label.machine") else copyText("mobDrawer.server.named", "name" to name)
 
 /** 底行设置那颗（gear-six）念给读屏软件听的字。 */
 val SETTINGS_DESCRIPTION: String get() = copyText("mobDrawer.settings.aria")

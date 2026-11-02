@@ -138,7 +138,7 @@ describe("登记 ≠ 在线", () => {
     await flush();
     const el = row.querySelector<HTMLElement>(".cc-bus-online")!;
     expect(el.textContent).toContain("connection reset");
-    expect(el.textContent).not.toBe(copyText("ccBus.check.offline"));
+    expect(el.textContent).not.toBe(copyText("machinePage.state.down"));
     expect(el.dataset.state).toBe("error");
   });
 });
@@ -224,7 +224,7 @@ describe("收件箱", () => {
     (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
     await flush();
     const lines = [...row.querySelectorAll(".cc-bus-msg-line")].map((l) => l.textContent);
-    const none = copyText("ccBus.inbox.missing");
+    const none = copyText("acct.val.none");
     expect(lines).toEqual([
       copyText("ccBus.inbox.line", { ts: "2026-07-26T12:06:19Z", from: "peer-a", act: "SAID-ask", title: "要不要合", text: "hello" }),
       copyText("ccBus.inbox.line", { ts: none, from: none, act: "SAID-inform", title: "只有标题", text: "" }),

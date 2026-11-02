@@ -163,7 +163,7 @@ describe("消息流底下的输入框", () => {
     await flush();
     expect(box(c).value).toBe("later");
     expect(rows(c).length).toBe(1);
-    expect(rows(c)[0]).toContain(copyText("terminal.queue.sending"));
+    expect(rows(c)[0]).toContain(copyText("mobChat.delivery.sending"));
     expect(rows(c)[0]).toContain("later");
     const again = new Outbox(async () => Promise.reject(down()));
     expect(again.of("devbox", "s-1").map((o) => o.text)).toEqual(["later"]);

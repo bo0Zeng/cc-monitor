@@ -133,12 +133,12 @@ class ChatsViewTest {
     @Test
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
-        val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
+        val update = MachineFixButton(MachineFix.UPDATE, copyText("front.act.update"))
         val down = hostPart(snap(linkDown("远端 cc-monitor 未装", fixes = listOf(install))))
         assertEquals(install, down.bar?.fix)
         assertEquals("装一次会好 ⇒ 红条（不是断线那一条）", false, down.bar?.offline)
         assertNull(down.bar?.busy)
-        val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")))
+        val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")))
         assertNull(hostPart(snap(linkDown("m 离线", fixes = retry))).bar?.fix)
         val old = hostPart(snap(linkUp("box 后端要更新", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE)))
         assertEquals(update, old.bar?.fix)
@@ -243,7 +243,7 @@ class ChatsViewTest {
         val down = EMPTY_BOOK.copy(left = mapOf("1" to SessionLeft("1", unseen)), unseen = unseen)
         val by = hostPart(snap(linkDown("m 离线", "boom"), down, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
         assertEquals(Toned(unseen.name, unseen.tone) to SessionDot.UNKNOWN, by.getValue("1").status to by.getValue("1").dot)
-        assertEquals("名是状态不明，不是离线那一句", copyText("sessionState.unseen.name"), by.getValue("1").status.text)
+        assertEquals("名是状态不明，不是离线那一句", copyText("runs.state.unknown"), by.getValue("1").status.text)
         assertEquals("簿里没有、清单那一行又不作数 ⇒ 也照簿那一张", Toned(unseen.name, unseen.tone), by.getValue("4").status)
         assertEquals(SessionDot.ENDED, by.getValue("2").dot)
         assertEquals("已结束", by.getValue("2").status.text)

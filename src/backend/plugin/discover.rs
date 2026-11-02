@@ -31,7 +31,7 @@ pub(crate) fn not_installed_message(
                 &(if places.is_empty() {
                     copy_text("beDiscover.notInstalledMessage.noPlaces", &[])
                 } else {
-                    places.join(&copy_text("beDiscover.notInstalledMessage.placesSep", &[]))
+                    places.join(&copy_text("kit.text.sep", &[]))
                 })
                 .to_string(),
             ),

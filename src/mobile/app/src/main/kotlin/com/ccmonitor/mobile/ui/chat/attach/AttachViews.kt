@@ -158,8 +158,8 @@ internal class PlusTile(
 internal val PLUS_TILES =
     listOf(
         PlusTile(AttachSource.CAMERA, Ph.Camera, { copyText("mobAttach.plus.camera") }, ChatTestTags.PLUS_CAMERA),
-        PlusTile(AttachSource.IMAGE, Ph.Image, { copyText("mobAttach.plus.image") }, ChatTestTags.PLUS_IMAGE),
-        PlusTile(AttachSource.FILE, Ph.File, { copyText("mobAttach.plus.file") }, ChatTestTags.PLUS_FILE),
+        PlusTile(AttachSource.IMAGE, Ph.Image, { copyText("beFilesKind.label.image") }, ChatTestTags.PLUS_IMAGE),
+        PlusTile(AttachSource.FILE, Ph.File, { copyText("mobDrawer.item.files") }, ChatTestTags.PLUS_FILE),
     )
 
 /** ［+］面板头一排（[PLUS_TILES]；点一格 ⇒ 面板收起、开那个系统入口）。 */
@@ -347,7 +347,7 @@ private fun NoteBar(
         Text(n.text, Modifier.weight(1f).padding(horizontal = tokens.spacing.sm), style = MaterialTheme.typography.bodySmall)
         n.act?.let { a ->
             SecondaryButton(onClick = act, modifier = Modifier.testTag(ChatTestTags.ATTACH_ACT)) {
-                Text(if (a == AttachNote.Act.RETRY) copyText("mobAttach.act.retry") else copyText("mobAttach.act.repick"))
+                Text(if (a == AttachNote.Act.RETRY) copyText("front.act.retry") else copyText("mobAttach.act.repick"))
             }
         }
         Spacer(Modifier.width(tokens.spacing.xs))

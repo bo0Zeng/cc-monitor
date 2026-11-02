@@ -1753,7 +1753,7 @@ pub(crate) fn from_rows(
                     CwdWhy::Caller => None,
                 };
                 push(
-                    copy_text("beCcm.item.cwd", &[]),
+                    copy_text("newSession.label.cwd", &[]),
                     cwd,
                     from.unwrap_or_else(implicit),
                 );
@@ -1816,8 +1816,8 @@ pub(crate) fn from_rows(
             Item::Rotation => {
                 if let Some(f) = given(flags) {
                     push(
-                        copy_text("beCcm.item.rotation", &[]),
-                        copy_text("beCcm.value.noRotation", &[]),
+                        copy_text("machinePage.tab.rot", &[]),
+                        copy_text("rot.none.label", &[]),
                         f,
                     );
                 }
@@ -1845,7 +1845,7 @@ pub(crate) fn render_from(rows: &[FromRow]) -> String {
             Source::Flag => copy_text("beCcm.from.flag", &[]),
             Source::Alias(name) => copy_text("beCcm.from.alias", &[("name", name)]),
             Source::Inherit => copy_text("beCcm.from.inherit", &[]),
-            Source::Default => copy_text("beCcm.from.default", &[]),
+            Source::Default => copy_text("resumeSelect.option.defaultBare", &[]),
         };
         out.push_str(&format!(
             "# {}\n",

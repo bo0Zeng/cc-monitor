@@ -108,8 +108,8 @@ export class KeybindingDispatcher {
       else if (p === "BracketLeft") out.push("[");
       else if (p === "BracketRight") out.push("]");
       else if (p === "Backslash") out.push("\\");
-      else if (p === "ArrowUp") out.push(copyText("registry.prettyChord.up"));
-      else if (p === "ArrowDown") out.push(copyText("registry.prettyChord.down"));
+      else if (p === "ArrowUp") out.push(copyText("terminal.key.up"));
+      else if (p === "ArrowDown") out.push(copyText("terminal.key.down"));
       else if (p === "ArrowLeft") out.push(copyText("registry.prettyChord.left"));
       else if (p === "ArrowRight") out.push(copyText("registry.prettyChord.right"));
       else out.push(p); // Escape / Tab / F1-F12 / Arrow* 保持原样

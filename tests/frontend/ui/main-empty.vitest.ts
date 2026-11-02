@@ -37,7 +37,7 @@ describe("主窗口空态", () => {
     e.readiness(ready(false));
     expect(lines(e)).toEqual([face.line, face.hint]);
     const b = e.el.querySelector("button")!;
-    expect(b.textContent).toBe(copyText("main.empty.connect"));
+    expect(b.textContent).toBe(copyText("front.act.connect"));
     b.click();
     expect(connect).toHaveBeenCalledTimes(1);
     e.readiness(ready(true));
@@ -51,6 +51,6 @@ describe("主窗口空态", () => {
     const e = new MainEmpty(() => {});
     e.face({ line: "<b>x</b>", hint: "<i>y</i>", count: "" });
     expect(e.el.querySelector("b, i")).toBeNull();
-    expect(copyText("main.empty.connect")).not.toMatch(/[<>]/);
+    expect(copyText("front.act.connect")).not.toMatch(/[<>]/);
   });
 });

@@ -15,11 +15,7 @@ const DIFF_CELLS_MAX: usize = 4_000_000;
 
 /// 一行正文进行差的样子：去掉行尾的 `\r`，过长截到 [`DIFF_LINE_MAX`] 字。
 pub fn cell(text: &str) -> String {
-    let t = text.strip_suffix('\r').unwrap_or(text);
-    match t.char_indices().nth(DIFF_LINE_MAX) {
-        Some((i, _)) => format!("{}…", &t[..i]),
-        None => t.to_string(),
-    }
+    copy_core::clip(text.strip_suffix('\r').unwrap_or(text), DIFF_LINE_MAX)
 }
 
 /// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行。`stat` ＝「+N −M」那一句（调用方照过程那一行右侧那一句的写法给）；

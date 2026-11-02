@@ -914,7 +914,7 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
     let mut p = WritePrompt::for_chmod_many("/srv/data", &[&a, &d, &l]);
     assert_eq!(
         p.heading(),
-        copy_core::copy_text("rsFilewinWriteops.heading.chmodMany", &[("n", "3")])
+        copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "3")])
     );
     assert_eq!(p.text, "", "批量那个框也不许预填（读不到现值）");
     p.text = "750".into();
@@ -1112,7 +1112,7 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
     let has = |t: &str| painted.iter().any(|(s, _)| s == t);
     assert!(
         has(&copy_core::copy_text(
-            "rsFilewinWriteops.delete.titleMany",
+            "rsFilewinSelect.label.deleteMany",
             &[("n", "10")]
         )),
         "标题不对：{painted:?}"
@@ -1131,10 +1131,10 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
             &[("n", "2")]
         )) && has(copy_core::copy_static!("rsFilewinWriteops.delete.body"))
             && has(&copy_core::copy_text(
-                "rsFilewinWriteops.delete.titleMany",
+                "rsFilewinSelect.label.deleteMany",
                 &[("n", "10")]
             ))
-            && has(copy_core::copy_static!("rsFilewinWriteops.delete.cancel"))
+            && has(copy_core::copy_static!("kit.dialog.cancel"))
     );
     assert!(board.settle(false));
     assert_eq!(rx.try_recv().unwrap(), Vec::<WriteOp>::new(), "取消了还删");

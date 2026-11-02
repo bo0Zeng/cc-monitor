@@ -59,7 +59,7 @@ export function stripOf(
     span((e) => (e.className = s.acctSessStripWhy), h.because),
   );
   const open = button({
-    label: copyText("rot.strip.open"),
+    label: copyText("acct.menu.open"),
     kind: "ghost",
     size: "compact",
     onClick: () => host.openPanel(sid, entry.origin),
@@ -96,7 +96,7 @@ function paintNotice(
   el.replaceChildren(
     banner("warn", text, [
       button({
-        label: copyText("rot.strip.open"),
+        label: copyText("acct.menu.open"),
         kind: "secondary",
         size: "compact",
         onClick: () => host.openPanel(sid, entry.origin),

@@ -332,7 +332,7 @@ class RotationBoardTest {
             val ask = b.state.value.ask as RotAsk.Name
             assertEquals(copyText("rot.ask.createTitle"), ask.title)
             assertEquals(copyText("rot.ask.createNote"), ask.note)
-            assertEquals(copyText("rot.ask.createGo"), ask.action)
+            assertEquals(copyText("mobTerms.new.detached"), ask.action)
             b.named("夜里")
             assertEquals(mapOf("name" to "夜里"), link.calls(Rotation.ADD).single())
             assertEquals(mapOf("target" to mapOf("strategy" to "夜里"), "hours" to 12L), link.calls(Rotation.VIEW).last())

@@ -75,9 +75,9 @@ describe("〔S4〕viewer 顶栏的 ↗：与 tab 上那颗同一道门", () => {
     // 抽取器自检：顶栏右端真的读到了（隔壁那颗「打开目录」按钮在）。
     expect(code).toContain('hint: copyText("history.menu.openDir")');
     // 「切到终端」只在一处建，且就在门后面（在跑 ＆ 这台系统上 ↗ 的最后一跳不是桩）。
-    expect((code.match(/copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length, "「切到终端」那颗的字出现的份数（读屏名 ＋ 悬停）").toBe(2);
+    expect((code.match(/copyText\("terminal\.head\.front"\)/g) ?? []).length, "「切到终端」那颗的字出现的份数（读屏名 ＋ 悬停）").toBe(2);
     expect(
-      (code.match(/if \(live && terminalFrontAvailable\(\)\) \{\s*out\.push\(\s*button\(\{\s*label: copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length,
+      (code.match(/if \(live && terminalFrontAvailable\(\)\) \{\s*out\.push\(\s*button\(\{\s*label: copyText\("terminal\.head\.front"\)/g) ?? []).length,
       "「切到终端」没有挂在 terminalFrontAvailable 门后面 —— 非 Windows 上它又会渲出来",
     ).toBe(1);
   });

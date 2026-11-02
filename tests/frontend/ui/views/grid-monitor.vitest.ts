@@ -84,7 +84,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = fixed([
       snap({ sessionId: "l1", title: "本地会话", origin: LOCAL, running: "核心·在跑 2", face: liveFace("working") }),
-      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
+      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("mobDrawer.item.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
     ]);
     const view = new GridMonitorView(source);
     await openSettled(view);
@@ -207,7 +207,7 @@ describe("F91 GridMonitorView", () => {
     const view = new GridMonitorView(fixed([snap({ sessionId: "l1", context: { text: "核心·350k", tone: "plain", percent: null } })]));
     await openSettled(view);
     const b = document.querySelector<HTMLElement>(".badge-ctx");
-    expect(b?.textContent).toBe(copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·350k" }));
+    expect(b?.textContent).toBe(copyText("usageHud.chip.ctx", { ctx: "核心·350k" }));
     expect(b?.title).toBe(copyText("gridMonitor.renderBadges.ctxTokensHint"));
     expect(b?.classList.contains("is-high")).toBe(false);
     view.close();
@@ -345,7 +345,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const view = new GridMonitorView(fixed([]));
     await openSettled(view);
-    expect(document.querySelector(".grid-monitor-empty")?.textContent).toContain(copyText("gridMonitor.render.empty"));
+    expect(document.querySelector(".grid-monitor-empty")?.textContent).toContain(copyText("beEmpty.line.none"));
     expect(document.querySelector(".grid-monitor-summary")?.textContent).toBe("");
     view.close();
   });
@@ -361,8 +361,8 @@ describe("F91 GridMonitorView", () => {
     await openSettled(view);
     const ctx = [...document.querySelectorAll<HTMLElement>(".badge-ctx")];
     expect(ctx.length).toBe(2);
-    const hot = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·88" }));
-    const cool = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctx", { ctx: "核心·95" }));
+    const hot = ctx.find((e) => e.textContent === copyText("usageHud.chip.ctx", { ctx: "核心·88" }));
+    const cool = ctx.find((e) => e.textContent === copyText("usageHud.chip.ctx", { ctx: "核心·95" }));
     expect(hot?.classList.contains("is-high")).toBe(true);
     expect(cool?.classList.contains("is-high")).toBe(false);
     view.close();

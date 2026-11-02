@@ -321,14 +321,14 @@ export class DataPage {
       return sec;
     }
     if (!r.ok) {
-      sec.appendChild(note(copyText("dataPage.chores.offline", { machine: m.name })));
+      sec.appendChild(note(copyText("dataPage.placed.offline", { machine: m.name })));
       return sec;
     }
     const seen = this.recognized.get(m.origin) ?? [];
     if (seen.length) {
       const ok = document.createElement("div");
       ok.className = "data-recognized";
-      ok.textContent = copyText("dataPage.chores.recognized", { names: seen.join(copyText("dataPage.chores.sep")) });
+      ok.textContent = copyText("dataPage.chores.recognized", { names: seen.join(copyText("plan.page.listSep")) });
       sec.appendChild(ok);
     }
     const active = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined");
@@ -374,7 +374,7 @@ export class DataPage {
     try {
       await writeClipboard(text);
     } catch (e) {
-      failToast(copyText("dataPage.chore.copyFailed"), e, { level: "error" });
+      failToast(copyText("detail.act.failed"), e, { level: "error" });
       return;
     }
     for (const id of ids) this.copied.add(this.key(origin, id));
@@ -395,7 +395,7 @@ export class DataPage {
     try {
       await openOnMachine(origin, { revealFile: path });
     } catch (e) {
-      failToast(copyText("dataPage.chore.openFailed"), e, { level: "error" });
+      failToast(copyText("rot.fail.open"), e, { level: "error" });
     }
   }
 
@@ -438,7 +438,7 @@ export class DataPage {
     if (r && !r.ok) {
       const said = r.last ? copyText("dataPage.placed.stale", { machine: name, seen: r.last.seen.said }) : copyText("dataPage.placed.offline", { machine: name });
       this.offlineBar.replaceChildren(
-        banner("warn", said, [button({ label: copyText("dataPage.placed.retry"), size: "compact", onClick: () => void this.refresh() })]),
+        banner("warn", said, [button({ label: copyText("front.act.retry"), size: "compact", onClick: () => void this.refresh() })]),
       );
     }
     this.changedBox.replaceChildren();
@@ -449,7 +449,7 @@ export class DataPage {
     // 断开的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。
     const report = r.ok ? r.report : r.last?.report;
     if (!report) {
-      this.changedBox.appendChild(note(copyText("dataPage.placed.unknown")));
+      this.changedBox.appendChild(note(copyText("acct.val.unreadable")));
       return;
     }
     this.ownFiles.hidden = false;
@@ -457,7 +457,7 @@ export class DataPage {
     const actions = local ? (o: { exists: boolean }, abs: string) => localOpenButtons(abs, o.exists) : remoteOpen(r.ok ? (abs) => void this.openFile(origin, abs) : null);
     this.ownBody.replaceChildren(ownBlock(report.own, report.home, actions, local ? copyText("data.card.backend") : undefined));
     if (report.changedFiles.length === 0) {
-      this.changedBox.appendChild(note(copyText("dataPage.changed.none")));
+      this.changedBox.appendChild(note(copyText("hostKey.compare.none")));
       return;
     }
     for (const c of report.changedFiles) {

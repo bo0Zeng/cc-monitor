@@ -81,7 +81,7 @@ pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks
             "io_failed",
             Said::with_raw(
                 copy_text(
-                    "beBookmarks.store.mkdirFailed",
+                    "bePlan.review.mkdirFailed",
                     &[("dir", &dir.as_path().display().to_string())],
                 ),
                 e,

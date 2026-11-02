@@ -152,7 +152,7 @@ internal class ChatChips(
                 val can = t.face(s)?.can
                 val (model, permission) =
                     if (down) {
-                        (off ?: copyText("sessionState.unseen.name")).let { it to it }
+                        (off ?: copyText("runs.state.unknown")).let { it to it }
                     } else {
                         can?.model?.blocked() to can?.permission?.blocked()
                     }

@@ -228,7 +228,7 @@ export class TabBarView {
     this.rereadBtn = document.createElement("button");
     this.rereadBtn.type = "button";
     this.rereadBtn.className = "tab-bar-reread tab-bar-icon";
-    this.rereadBtn.setAttribute("aria-label", copyText("tabBar.head.refresh"));
+    this.rereadBtn.setAttribute("aria-label", copyText("accountChip.menu.refresh"));
     this.rereadBtn.appendChild(icon("refresh"));
     attachTooltip(this.rereadBtn, () => copyText("tabBar.reread.hint"));
     this.headEl.append(this.headActs, sp, this.rereadBtn);
@@ -237,10 +237,10 @@ export class TabBarView {
     this.needsEl.type = "button";
     this.needsEl.className = "tab-needs";
     this.needsEl.style.display = "none";
-    const needsDot = statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact");
+    const needsDot = statusDot("needs-you", copyText("beSession.needs.unknown"), "compact");
     const needsText = document.createElement("span");
     needsText.className = "tab-needs-text";
-    needsText.textContent = copyText("tabBar.needs.label");
+    needsText.textContent = copyText("beSession.needs.unknown");
     this.needsCount = document.createElement("span");
     this.needsCount.className = "tab-needs-count";
     const needsSp = document.createElement("span");
@@ -323,7 +323,7 @@ export class TabBarView {
     }
     const content = this.needsPanel(0);
     openPopover(this.needsEl, content, {
-      label: copyText("tabBar.needs.label"),
+      label: copyText("beSession.needs.unknown"),
       align: "start",
       onClose: () => {
         this.needsEl.classList.remove("is-open");
@@ -974,8 +974,8 @@ export class TabBarView {
     const ended = [...this.store.tabs.values()].filter((t) => t.group === gid && closesQuietly(t.face)).length;
     const nameEl = this.groupEls.get(gid)?.name;
     const items: MenuItem[] = [
-      { label: copyText("tabMenu.group.rename"), onClick: () => nameEl && this.beginGroupRename(gid, nameEl) },
-      { label: col.collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"), onClick: () => this.toggleGroup(gid) },
+      { label: copyText("rsFilewinWriteops.label.rename"), onClick: () => nameEl && this.beginGroupRename(gid, nameEl) },
+      { label: col.collapsed ? copyText("askBlock.fold.expand") : copyText("kit.dock.close"), onClick: () => this.toggleGroup(gid) },
       {
         label: copyText("tabMenu.group.collapseAll"),
         onClick: () => {
@@ -984,7 +984,7 @@ export class TabBarView {
         },
       },
       {
-        label: copyText("tabMenu.group.expandAll"),
+        label: copyText("history.list.expandAll"),
         onClick: () => {
           void this.prefs.setCollapsed(all, false);
           this.host.refreshTabBar();
@@ -1126,7 +1126,7 @@ export class TabBarView {
       return e;
     };
 
-    const dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
+    const dot = statusDot("running", copyText("backend.status.connected"), "compact");
     dot.classList.add("tab-dot");
     dot.removeAttribute("title"); // 悬停卡说状态；点上不挂原生提示
     const abbr = span("tab-abbr");
@@ -1137,7 +1137,7 @@ export class TabBarView {
     const proj = span("tab-proj");
     const bg = span("tab-gear");
     bg.appendChild(icon("background", "compact"));
-    bg.title = copyText("tabBarView.tab.bgHint");
+    bg.title = copyText("settings.machine.bgTab");
     bg.style.display = "none";
     const label = span("tab-label");
     titleEl.append(proj, bg, label);
@@ -1151,7 +1151,7 @@ export class TabBarView {
     // 图钉：纯展示、不可点（固定是右键菜单那一项的事）。可见性交给 `.pinned` 类。
     const pinBadge = span("tab-pin");
     pinBadge.appendChild(icon("pin", "compact"));
-    pinBadge.title = copyText("tabBarView.tab.pinHint");
+    pinBadge.title = copyText("tabBatch.why.pinned");
     const holdBadge = document.createElement("span");
     holdBadge.className = qs.tabHold;
     holdBadge.style.display = "none";
@@ -1171,10 +1171,10 @@ export class TabBarView {
     const cwdBtn = act("tab-cwd", "folder", copyText("tabBarView.tab.cwdHint"));
     acts.appendChild(cwdBtn);
     // ↗ 切到终端：一直渲，做不了灰着（`updateTabButton` 照 `frontWhy` 写）。
-    const frontBtn = act("tab-focus", "front", copyText("tabBarView.tab.terminalHint"));
+    const frontBtn = act("tab-focus", "front", copyText("terminal.head.front"));
     acts.appendChild(frontBtn);
-    acts.appendChild(act("tab-more", "more", copyText("tabBarView.tab.moreHint")));
-    acts.appendChild(act("tab-close", "close", copyText("tabBarView.tab.closeHint")));
+    acts.appendChild(act("tab-more", "more", copyText("history.row.more")));
+    acts.appendChild(act("tab-close", "close", copyText("launch.slot.close")));
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
@@ -1320,12 +1320,12 @@ function setShown(el: HTMLElement, on: boolean): void {
 function actHint(el: HTMLElement): string | null {
   if (el.classList.contains("tab-cwd")) return withKey(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd");
   if (el.classList.contains("tab-focus")) {
-    const hint = withKey(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front");
+    const hint = withKey(copyText("terminal.head.front"), "terminal.bring-front");
     const why = el.dataset.why;
-    return why ? `${copyText("tabBarView.tab.terminalHint")} · ${why}` : hint;
+    return why ? `${copyText("terminal.head.front")} · ${why}` : hint;
   }
-  if (el.classList.contains("tab-close")) return withKey(copyText("tabBarView.tab.closeHint"), "tab.close-archived");
-  if (el.classList.contains("tab-more")) return copyText("tabBarView.tab.moreHint");
+  if (el.classList.contains("tab-close")) return withKey(copyText("launch.slot.close"), "tab.close-archived");
+  if (el.classList.contains("tab-more")) return copyText("history.row.more");
   return null;
 }
 
@@ -1380,7 +1380,7 @@ function paintHead(g: GroupEls, label: string, members: readonly Tab[], counts: 
   if (g.name.textContent !== label) g.name.textContent = label;
   g.count.textContent = String(members.length);
   g.caret.setAttribute("aria-expanded", String(!collapsed));
-  g.caret.setAttribute("aria-label", collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"));
+  g.caret.setAttribute("aria-label", collapsed ? copyText("askBlock.fold.expand") : copyText("kit.dock.close"));
   g.wrap.classList.toggle("is-collapsed", collapsed);
   g.head.classList.toggle("is-current", current);
   g.wrap.classList.toggle("has-current", current);

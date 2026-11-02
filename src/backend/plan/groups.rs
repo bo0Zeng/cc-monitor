@@ -40,7 +40,7 @@ pub(crate) fn nobody() -> PlanBlockGroups {
 /// 读到的那几组 ⇒ 那一格：组名照排，一组都没有 ⇒「—」。
 fn of_groups(groups: Vec<PlanGroup>) -> PlanBlockGroups {
     let text = if groups.is_empty() {
-        copy_core::copy_text("plan.page.none", &[])
+        copy_core::copy_text("acct.val.none", &[])
     } else {
         let titles: Vec<&str> = groups.iter().map(|g| g.title.as_str()).collect();
         titles.join(&copy_core::copy_text("kit.text.sep", &[]))

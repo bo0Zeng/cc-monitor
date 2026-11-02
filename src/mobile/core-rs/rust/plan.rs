@@ -152,7 +152,7 @@ fn mine(sl: &Slice, read: &PlanRead, sid: &str) -> Option<Value> {
     if let Some(v) = sl.block(&b.block).and_then(|blk| blk.said.inside.as_ref()) {
         rows.push(json!({ "k": copy_text("plan.blocks.inside", &[]), "v": v }));
     }
-    Some(json!({ "head": copy_text("plan.overview.blocks", &[]), "rows": rows }))
+    Some(json!({ "head": copy_text("plan.blocks.block", &[]), "rows": rows }))
 }
 
 /// `plan-read` 里一片 ⇒ 大纲那一屏。

@@ -45,7 +45,7 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
             OursFault::Cancelled if *runs_on => {
                 copy_text("rsChanSaid.ours.cancelledRunsOn", &[("machine", name)])
             }
-            OursFault::Cancelled => copy_text("rsChanSaid.ours.cancelled", &[]),
+            OursFault::Cancelled => copy_text("reason.op.cancelled", &[]),
             OursFault::Misuse | OursFault::Broken => copy_text("rsShellCmd.self.crashed", &[]),
         },
     }

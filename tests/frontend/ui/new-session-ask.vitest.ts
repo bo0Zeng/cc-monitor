@@ -53,8 +53,8 @@ const choose = (b: HTMLButtonElement, label: string): void => {
   [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent?.includes(label))!.click();
 };
 const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*=nsRow]")!;
-const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
-const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
+const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("beProfile.slot.say")}"]`)!;
+const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("mobTerms.new.detached"))!;
 const opened = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-open").map((s) => s.body);
 
 const FACTS = { recent: [], tmux: true, hosts: ["tmux"], run: "direct", agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }], fork: null };
@@ -99,8 +99,8 @@ describe("问图框", () => {
     await flush();
     expect(dialog().textContent).toContain("问图 · 编码探测");
     expect(sel(copyText("newSession.label.alias")).dataset.value).toBe("look");
-    expect(rowOf(sel(copyText("newSession.label.account"))).hidden).toBe(true);
-    expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(true);
+    expect(rowOf(sel(copyText("beProfile.slot.account"))).hidden).toBe(true);
+    expect(rowOf(sel(copyText("beProfile.slot.agent"))).hidden).toBe(true);
     expect(rowOf(dialog().querySelector<HTMLInputElement>('input[type="radio"]')!).hidden).toBe(true);
     expect(prompt().value).toBe(LINE);
     prompt().value = `${LINE}卡在哪`;

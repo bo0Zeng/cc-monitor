@@ -41,7 +41,7 @@ describe("端口转发面板起一条", () => {
     const [local, , rport] = [...panel.querySelectorAll<HTMLInputElement>("input.pf-input")];
     local.value = " 15432x";
     rport.value = "";
-    [...panel.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("portForward.buildChrome.start"))!.click();
+    [...panel.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("backend.buildCells.start"))!.click();
     await flush();
     expect(started).toEqual([{ origin: "", localPort: " 15432x", remoteHost: "localhost", remotePort: "" }]);
     expect(toasts.map((t) => t.title)).toEqual(["后端那一句"]);
