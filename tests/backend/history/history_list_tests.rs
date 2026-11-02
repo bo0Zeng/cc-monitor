@@ -395,6 +395,42 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     assert_eq!(find(&w, S1)["customTitle"], "改过的");
 }
 
+/// ★ 判据 3（续）：「打开目录」与删除确认那一段字按问的是哪台由这里写好（界面照摆，不另判本机 / 远端）：
+/// 这台的行 ⇒ `reveal`、正文不点名机器；那一台的行 ⇒ 不出「打开目录」、正文点名那台；说不清在不在跑 ⇒ 正文多一句。
+#[test]
+fn rows_say_whether_the_folder_opens_here_and_what_deleting_says() {
+    let here = answer(json!({"hidden": true}));
+    let there = answer_from(
+        &listing(),
+        Some("dev"),
+        Ok(&ann()),
+        &ask(json!({"hidden": true})),
+        1_000,
+        &Default::default(),
+    );
+    let body = copy_core::copy_text("history.delete.body", &[]);
+    let remote = copy_core::copy_text("history.delete.bodyRemote", &[("machine", "dev")]);
+    let unsure = copy_core::copy_text("history.delete.unsure", &[]);
+    assert_eq!(find(&here, S3)["reveal"], true);
+    assert_eq!(find(&here, S3)["deleteAsk"], json!(body));
+    assert_eq!(find(&there, S3)["reveal"], false, "那一台的目录不在这台");
+    assert_eq!(find(&there, S3)["deleteAsk"], json!(remote));
+    let cx = |v: &Value| {
+        v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["agent"] == "codex")
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(cx(&here)["deleteAsk"], json!(format!("{body}\n{unsure}")));
+    assert_eq!(
+        cx(&there)["deleteAsk"],
+        json!(format!("{remote}\n{unsure}"))
+    );
+}
+
 /// ★ 判据 4 ＋ 5：筛（隐藏 · 时间 · 搜索词）与被筛掉的分叉父会话。
 #[test]
 fn filters_and_context_parents() {

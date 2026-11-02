@@ -282,6 +282,23 @@ async fn the_local_backend_asks_each_machine_itself_and_merges() {
         out["sessions"][0]["updatedAt"].is_i64() && out["sessions"][0]["face"]["order"].is_u64(),
         "{out}"
     );
+    // 合完逐行补那两格（照哪台答的）：这台的行目录打得开、正文不点名；那一台的不出「打开目录」、正文点名那台。
+    let row = |sid: &str| {
+        got.sessions
+            .iter()
+            .find(|r| r.row.row.session_id == sid)
+            .unwrap()
+    };
+    assert!(row("loc").reveal);
+    assert!(!row("rem-new").reveal, "那一台的目录不在这台");
+    assert_eq!(
+        row("loc").delete_ask,
+        face_core::history_asks::delete_ask(&Machine::local(), row("loc").row.row.can.delete)
+    );
+    assert_eq!(
+        row("rem-new").delete_ask.0,
+        copy_core::copy_text("history.delete.bodyRemote", &[("machine", "devbox")])
+    );
 }
 
 /// 问到别的台却没带期限 ⇒ `bad_args`（等多久只归发起方）；只问本机不要期限。本机那一台没答上 ⇒ 整次照它的码失败。

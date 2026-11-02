@@ -59,6 +59,8 @@ class HostChatsSyncTest {
         "untitled" to false,
         "spanText" to "09:00",
         "origin" to LOCAL,
+        "reveal" to false,
+        "deleteAsk" to "",
     )
 
     private val head = mapOf("total" to 2L, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null))

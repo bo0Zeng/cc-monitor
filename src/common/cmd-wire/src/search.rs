@@ -4,6 +4,7 @@
 //! 只并不判：每台的行由那台排好（最近优先）、写好时刻字（按问的那一方的时区）；这里只把几列按 `updatedAt` 并成一列（同一刻照台的先后）、
 //! 命中数 · 读不动的份数相加、不覆盖的那几家去重、远端的行添上那台的名字；结果头那一句（搜的词 · 命中几处 · 几个会话 · 截没截）与头底下那几句（读不动几份 · 只按标题的那几家）也在这里写一次。
 
+use crate::cells::Words;
 use crate::listing::{Can, ForkedFrom};
 use crate::Machine;
 use copy_core::copy_text;
@@ -144,6 +145,11 @@ pub struct MergedRow {
     pub row: SearchRow,
     /// 哪一台答的这一行（这台逐字 `"<local>"`）。
     pub origin: Machine,
+    /// 这一行的项目目录在问的这一端打得开：[`merge`] 只放缺省（`false`），本机后端合完照哪台答的补（`face_core::history_asks::reveal_of`）；
+    /// 手机核心合的那一份不读这一格，不补。
+    pub reveal: bool,
+    /// 删除确认的正文：同上，[`merge`] 只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
+    pub delete_ask: Words,
 }
 
 /// 没答上的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
@@ -186,6 +192,8 @@ pub fn merge(
                 .saturating_add(u64::from(row.row.more_hits));
             truncated |= row.row.hits_truncated;
             sessions.push(MergedRow {
+                reveal: false,
+                delete_ask: Words::default(),
                 row,
                 origin: machine.clone(),
             });
