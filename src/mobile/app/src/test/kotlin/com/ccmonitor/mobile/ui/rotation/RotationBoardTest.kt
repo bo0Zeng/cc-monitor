@@ -228,6 +228,22 @@ class RotationBoardTest {
     }
 
     @Test
+    fun `恢复默认：自己设的那一格才有（号那一行带行号，分段后面那一窗不另出）；清掉库里没有的号：号列表里有那台标了 missing 的号才有`() {
+        val v = Rotation.ofView(RotFixture.view())!!
+        assertEquals(RotEdit.reset("smart", null), resetEdit(v.board.all.first { it.key == "smart" }, null))
+        assertEquals(RotEdit.reset("caps", 1), resetEdit(cellOf(RotFixture.view(), 1, "caps", "5h"), 1))
+        assertNull("7 天同第一窗那一格照［同 5h］回去", resetEdit(cellOf(RotFixture.view(), 1, "caps", "7d"), 1))
+        assertNull("跟默认的不出", resetEdit(v.board.rows[2].cells.first { it.key == "outTotal" }, 2))
+        assertNull("都在库里 ⇒ 没有", pruneEdit(v))
+        val rows = (RotFixture.BOARD["rows"] as List<*>).map { it as Map<*, *> }
+        val gone =
+            Rotation.ofView(
+                RotFixture.view() + ("board" to mapOf("all" to RotFixture.BOARD["all"], "rows" to listOf(rows[0], rows[1] + ("missing" to true), rows[2]))),
+            )!!
+        assertEquals(RotEdit.prune(), pruneEdit(gone))
+    }
+
+    @Test
     fun `编辑小窗照那台给的格画：显示条件不满足的格不在（挂着的缩进）· 7 天同第一窗只出那颗钮 · 号名旁的记号`() {
         val v = Rotation.ofView(RotFixture.view())!!
         val keys = { i: Int -> paneCells(v.board.rows[i]).map { (c, indent) -> c.key + (if (indent) ">" else "") } }

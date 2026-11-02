@@ -12,6 +12,21 @@ import type { RotRow } from "../../../src/frontend/ui/generated/RotRow";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
+// 文案表这两条由合并树落（表是热点）；落之前夹具补上，落了以后这一块不起作用、随手删。
+vi.mock("../../../src/frontend/ui/copy-table", async (orig) => {
+  const real = await orig<typeof import("../../../src/frontend/ui/copy-table")>();
+  const extra: Record<string, string> = { "rot.cell.reset": "夹具·恢复默认", "rot.acct.prune": "夹具·清掉库里没有的号" };
+  const copyText = (k: Parameters<typeof real.copyText>[0], a?: Parameters<typeof real.copyText>[1]): string => {
+    try {
+      return real.copyText(k, a);
+    } catch (e) {
+      if (k in extra) return extra[k];
+      throw e;
+    }
+  };
+  return { ...real, copyText };
+});
+
 const NOW = 1_800_000_000;
 const fact = (account: string, u5: number, u7: number, blocked = false): RotAccount => ({
   account,
@@ -301,7 +316,7 @@ describe("号牌与点开一个号", () => {
     const root = draw(view(), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
     const keys = [...new Set(texts(pane, "span").filter((t) => t.startsWith("夹具")))];
-    expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·延迟"]);
+    expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·恢复默认", "夹具·延迟"]);
     expect([...pane.querySelectorAll<HTMLElement>('[data-inherited="true"]')].map((e) => e.textContent), "只有 from = all 的画虚线").toEqual(["夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·90"]);
     pane.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
     expect(a.edit.mock.calls).toEqual([[{ set: { key: "fallback", v: false, row: 2 } }]]);
@@ -452,5 +467,50 @@ describe("模拟（设置页：改一格就看得到接下来怎么换）", () =
     expect(root.textContent).toContain(copyText("rot.sim.skip", { account: "work" }));
     expect(root.querySelector('[data-hold="true"]')?.textContent).toBe(copyText("rot.sim.hold"));
     expect(root.querySelector('[data-drag="true"]')).toBeNull();
+  });
+});
+
+describe("恢复默认 · 清掉库里没有的号", () => {
+  const resets = (root: HTMLElement): string[] => [...root.querySelectorAll<HTMLElement>("[data-reset]")].map((e) => e.dataset.reset ?? "");
+
+  it("★ 总体那一格自己设的（from: own）⇒ 旁边有［恢复默认］，点了交 {reset: {key}}；跟默认的那一格没有", () => {
+    const a = acts();
+    const dflt: RotCell = { ...BOARD.all[0], key: "spare", label: "夹具·没设的", from: "default" };
+    const root = draw(view({ board: { ...BOARD, all: [BOARD.all[0], dflt] } }), state(), a);
+    expect(resets(root)).toEqual(["close"]);
+    const b = root.querySelector<HTMLButtonElement>('[data-reset="close"]')!;
+    expect(b.textContent?.trim()).toBe(copyText("rot.cell.reset"));
+    b.click();
+    expect(a.edit.mock.calls).toEqual([[{ reset: { key: "close" } }]]);
+  });
+
+  it("★ 号那一行：自己设的那一格 ⇒ 交 {reset: {key, row}}（行号照那一行带的）；跟总体 · 跟默认的那几格没有", () => {
+    const a = acts();
+    const pane = draw(view(), state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(resets(pane)).toEqual(["fallback"]);
+    pane.querySelector<HTMLButtonElement>('[data-reset="fallback"]')!.click();
+    expect(a.edit.mock.calls).toEqual([[{ reset: { key: "fallback", row: 2 } }]]);
+    const work = draw(view(), state({ open: "work" }), acts()).querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(resets(work)).toEqual([]);
+  });
+
+  it("★ 分段：第一窗自己设的才出（清的是整格）；后面那一窗另设的照［同第一窗］回去，不另出", () => {
+    const own5: RotCell = { ...each(false, "default")[0], from: "own" };
+    const own7: RotCell = { ...each(false, "default")[1], from: "own", same: "夹具·同 5h" };
+    const v = view({ board: { ...BOARD, rows: [BOARD.rows[0], BOARD.rows[1], row("lab", [own5, own7])] } });
+    const a = acts();
+    const pane = draw(v, state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
+    expect(resets(pane)).toEqual(["caps"]);
+    pane.querySelector<HTMLButtonElement>('[data-reset="caps"]')!.click();
+    expect(a.edit.mock.calls).toEqual([[{ reset: { key: "caps", row: 2 } }]]);
+  });
+
+  it("★ 号列表里有库里没有的号（missing）⇒ 号牌那一节有［清掉库里没有的号］，点了交 {prune: {}}；都在库里 ⇒ 没有", () => {
+    const a = acts();
+    const gone = { ...row("team", each(false, "default")), missing: true };
+    const root = draw(view({ board: { ...BOARD, rows: [BOARD.rows[0], gone, BOARD.rows[2]] } }), state(), a);
+    button(root, copyText("rot.acct.prune"))!.click();
+    expect(a.edit.mock.calls).toEqual([[{ prune: {} }]]);
+    expect(button(draw(view(), state(), acts()), copyText("rot.acct.prune"))).toBeUndefined();
   });
 });

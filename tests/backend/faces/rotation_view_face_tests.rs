@@ -1325,6 +1325,11 @@ fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
         v.board.rows[1].line,
         copy_core::copy_text("rot.acct.missing", &[])
     );
+    assert_eq!(
+        v.board.rows.iter().map(|r| r.missing).collect::<Vec<_>>(),
+        [false, true, false],
+        "库里没有的那一行带成品信号（界面照它出「清掉库里没有的号」，不比字）"
+    );
 }
 
 /// ★ 号列表 `[a, gone, b]`、账号库 `[a, b, c, api]`（两头各缺一个）：看板逐行号名照它自己在列表里的 id，库里没有的 gone 照实出一行，

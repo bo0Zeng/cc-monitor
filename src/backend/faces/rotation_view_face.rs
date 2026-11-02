@@ -949,6 +949,7 @@ fn board_of(
                     rules: cells.iter().map(rule_of).collect(),
                     cells,
                     marks: marks(i),
+                    missing: !here,
                 }
             })
             .collect(),

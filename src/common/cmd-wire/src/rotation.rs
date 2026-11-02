@@ -909,6 +909,10 @@ pub struct RotRow {
     pub cells: Vec<RotCell>,
     pub rules: Vec<String>,
     pub marks: Vec<RotMark>,
+    /// 这台账号库里没有这个号（号列表里留着的）：号列表那一节照它出「清掉库里没有的号」。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub missing: bool,
 }
 
 /// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，一个号一行、各带它的行号；与 `accounts` 前 `listed` 个一一对应）。

@@ -32,6 +32,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -108,9 +109,18 @@ internal fun CellRows(
                 if (cell.kind == RotFormKind.TOGGLE) Switch(checked = cell.v.value == true, onCheckedChange = { set(it) }) else NumberCell(cell, set)
             }
         }
+        resetEdit(cell, row)?.let { e ->
+            TextButton(onClick = { board.edit(e, id) }, modifier = Modifier.align(Alignment.End).testTag("rot-reset-$id")) { Text(copyText("rot.cell.reset")) }
+        }
         ui.cellFailed?.takeIf { it.cell == id }?.let { Text(it.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+/** 「恢复默认」那一发（同桌面）：自己设的那一格才有；分段后面那几窗另设的照［同第一窗］回去，不另出。 */
+internal fun resetEdit(
+    cell: RotCell,
+    row: Int?,
+): Map<String, Any?>? = if (cell.from == RotFrom.OWN && cell.same == null) RotEdit.reset(cell.key, row) else null
 
 internal fun cellId(
     cell: RotCell,
