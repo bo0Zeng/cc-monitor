@@ -40,24 +40,31 @@ private fun StringBuilder.line() {
 private fun StringBuilder.blocks(bs: List<MdBlock>) {
     for (b in bs) {
         line()
-        when (b) {
-            is MdBlock.P -> inlines(b.k)
-            is MdBlock.H -> inlines(b.k)
-            is MdBlock.Code -> append(b.x)
-            is MdBlock.Math -> append(b.tex)
-            is MdBlock.List -> b.items.forEach { blocks(it.blocks) }
-            is MdBlock.Quote -> blocks(b.blocks)
-            is MdBlock.Alert -> blocks(b.blocks)
-            is MdBlock.Table ->
-                (listOf(b.head) + b.rows).forEach { row ->
-                    line()
-                    row.forEachIndexed { i, cell ->
-                        if (i > 0) append(' ')
-                        inlines(cell)
-                    }
-                }
-            MdBlock.Rule -> Unit
-            is MdBlock.Notes -> b.items.forEach { blocks(it.blocks) }
+        block(b)
+    }
+}
+
+private fun StringBuilder.block(b: MdBlock) {
+    when (b) {
+        is MdBlock.P -> inlines(b.k)
+        is MdBlock.H -> inlines(b.k)
+        is MdBlock.Code -> append(b.x)
+        is MdBlock.Math -> append(b.tex)
+        is MdBlock.List -> b.items.forEach { blocks(it.blocks) }
+        is MdBlock.Quote -> blocks(b.blocks)
+        is MdBlock.Alert -> blocks(b.blocks)
+        is MdBlock.Table -> table(b)
+        MdBlock.Rule -> Unit
+        is MdBlock.Notes -> b.items.forEach { blocks(it.blocks) }
+    }
+}
+
+private fun StringBuilder.table(b: MdBlock.Table) {
+    (listOf(b.head) + b.rows).forEach { row ->
+        line()
+        row.forEachIndexed { i, cell ->
+            if (i > 0) append(' ')
+            inlines(cell)
         }
     }
 }
