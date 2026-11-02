@@ -220,9 +220,10 @@ impl Face {
     pub fn move_by_link(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
+            use copy_core::{Discard, Why};
             at::link(&from.dir, &from.name, &to.dir, &to.name)?;
             if let Err(e) = at::unlink(&from.dir, &from.name, 0) {
-                at::unlink(&to.dir, &to.name, 0).ok();
+                at::unlink(&to.dir, &to.name, 0).discard(Why::CleanupAfterFailure); // 撤掉刚建的那个名字；主错误（`unlink` 那一下）照回
                 return Err(e);
             }
             Ok(())
