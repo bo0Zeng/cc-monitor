@@ -50,7 +50,7 @@ A new session file appeared。
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
-| `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
+| `path` | string? | 可选字段（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
 | `face` | SessionFace | 宣告时这条会话的整份脸 |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `hidden` | Hidden? | 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线 |
@@ -434,7 +434,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 #### `Unavailable`
 
-`hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**。
+`hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么** （用户定的：做不到的事先协商）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -5926,7 +5926,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -6405,7 +6409,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -6908,7 +6916,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -7340,7 +7352,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -9370,7 +9386,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -10609,7 +10629,7 @@ type Words = string;
 type AgentHomeCheck = { state: AgentHomeState, };
 type AgentHomeCheckReq = { 
 /**
- * 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）。
+ * 要查的目录：绝对路径，或 `~` 打头（`~` · `~/…` · `~\…`，按这台家目录展开）。
  */
 path: string, };
 type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";

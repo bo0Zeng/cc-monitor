@@ -2394,6 +2394,7 @@ sealed interface Block {
     @Suppress("UNCHECKED_CAST")
     data class Thinking(
         val text: String,
+        val preview: String,
     ) : Block, Ordered {
         override val `type`: String get() = "thinking"
         override var wireOrder: IntArray? = null
@@ -2455,9 +2456,10 @@ sealed interface Block {
                         listOf(
                         Field("type", { tag("thinking") }, optional = false, nullable = false),
                         Field("text", { Str }, optional = false, nullable = false),
+                        Field("preview", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> Block.Thinking(a[1] as String) },
-                        { v -> arrayOf("thinking", v.text) },
+                        { a -> Block.Thinking(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("thinking", v.text, v.preview) },
                     )),
                 Variant("tool_use", Block.ToolUse::class.java, obj(
                         listOf(

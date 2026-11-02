@@ -12,7 +12,11 @@ bytes: number, } | { "type": "text", text: string,
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
-bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+bytes: number, } | { "type": "thinking", text: string, 
+/**
+ * 收着时那一行：正文头一个非空行、截到一行人话的字数（截了接「…」）；正文空 ⇒ 空串。两端照抄，不自己截。
+ */
+preview: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
