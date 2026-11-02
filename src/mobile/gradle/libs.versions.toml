@@ -23,8 +23,7 @@ androidxTestRules = "1.6.1"
 # --- 功能库 ---
 room = "2.8.5"
 moshi = "1.15.2"   # 运行时与 KSP 生成器同一版（core-claude 的线上类走生成的解码器）
-markwon = "4.6.2"
-prism4j = "2.0.0"   # 语法高亮：Prism4j（io.noties）；bundler 是 Java 注解处理器
+jlatexmath = "0.2.0"   # 正文公式画成图（ru.noties 的 Android 版 JLaTeXMath）
 tink = "1.24.0"
 # termlib 0.1.2：带捏合缩放持久化、竖滑照桌面终端处理滚轮的规矩走（鼠标上报 → 滚轮 · 备用屏 → 方向键 · 否则回滚区）的改动版，从仓内 maven 仓 libs/m2 解析
 # （见 settings.gradle.kts），不在 Maven Central。
@@ -69,16 +68,7 @@ tink-android = { group = "com.google.crypto.tink", name = "tink-android", versio
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
 moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
 connectbot-termlib = { group = "org.connectbot", name = "termlib", version.ref = "termlib" }
-# Markwon —— Markdown 渲染（View 系，经 AndroidView 进 Compose）。代码块语法高亮见下方 Prism4j。
-markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }
-markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version.ref = "markwon" }
-markwon-ext-strikethrough = { group = "io.noties.markwon", name = "ext-strikethrough", version.ref = "markwon" }
-markwon-linkify = { group = "io.noties.markwon", name = "linkify", version.ref = "markwon" }
-# 代码块语法高亮：syntax-highlight(Markwon) + Prism4j；bundler 用 annotationProcessor(Java APT)，不引 kapt。
-markwon-syntax-highlight = { group = "io.noties.markwon", name = "syntax-highlight", version.ref = "markwon" }
-markwon-ext-latex = { group = "io.noties.markwon", name = "ext-latex", version.ref = "markwon" } # LaTeX 数学（传递 JLaTeXMath）
-prism4j = { group = "io.noties", name = "prism4j", version.ref = "prism4j" }
-prism4j-bundler = { group = "io.noties", name = "prism4j-bundler", version.ref = "prism4j" }
+jlatexmath-android = { group = "ru.noties", name = "jlatexmath-android", version.ref = "jlatexmath" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

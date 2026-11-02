@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.wire.gen.Attachment
+import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
 
 /**
@@ -63,12 +64,15 @@ sealed interface RenderUnit {
         val attachments: List<Attachment> = emptyList(),
     ) : RenderUnit
 
-    /** 助手正文，按 markdown 渲染。 */
+    /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版。 */
     data class AssistantMarkdown(
         override val key: String,
-        val markdown: String,
+        val doc: Doc,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : RenderUnit {
+        /** 树上的字（搜索 · 跟到底那一格量长短用），取一次留着。 */
+        val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc.plainText() }
+    }
 
     /** 助手思考块，默认折叠。 */
     data class Thinking(
@@ -164,7 +168,7 @@ sealed interface RenderUnit {
 fun RenderUnit.searchableText(): String =
     when (this) {
         is RenderUnit.UserText -> text
-        is RenderUnit.AssistantMarkdown -> markdown
+        is RenderUnit.AssistantMarkdown -> text
         is RenderUnit.Thinking -> text
         is RenderUnit.ToolCall -> toolCallSearchable()
         is RenderUnit.SlashCommand -> if (args.isEmpty()) name else "$name $args"
