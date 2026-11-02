@@ -1,5 +1,13 @@
-//! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 十一条管什么 · 买到什么买不到什么）住
+//! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 这几条管什么 · 买到什么买不到什么）住
 //! `tests/frontend/shell/comm_boundary_registry.rs`，不在这里抄第二份。
+//!
+//! 谁守哪一条：读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量（`Duration::from_*`）· `try_send` 由两包的
+//! `clippy.toml`（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）挡；`match` 列全变体由两包
+//! `Cargo.toml` 的 `wildcard_enum_match_arm = "deny"` 挡；期限只收紧、调用点必给期限由 `Budget` 字段私有
+//! （只经 `Budget::new` 造、只经 `narrow` 取小）与 `call` 的签名挡。本文件只留编译器挡不住的那几条。
+//!
+//! 买不到（从此没人守）：`chan.ts` 那一侧的期限字面量与「重新 `now() + …`」（TS 没有字段私有那一道）；
+//! 名字带 `SECS` 之类的裸数常量（它变成 `Duration` 时才被名单咬，`Duration::new` 不在名单里）。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -141,85 +149,6 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
     found
 }
 
-/// 通信层**对前端的入口符号** —— `(符号名, 说明)`。`C3` 与 `X6` 的人群从这儿派生。
-///
-/// 前端只有两个动作（`call` / `subscribe`）。
-///
-/// 🔴 〔2026-09-24 起〕两个动作**在盘上有了**：
-/// `src/comms/inward/chan/client.rs` 的 `Client` 实现了 `Comms`。
-/// ⚠ **但本表仍然刻意为空**，理由是人群的形状对不上，不是入口不存在：
-/// `X6` 的人群是「本表 × **TS** 前端语料」，而第一个用上它的外部前端是 **Rust**（egui 文件窗口，
-/// 下一波 F2 才接）。把 `call` 填进来的话，`X6` 会去 TS 语料里数与本通道无关的 `call(`
-/// （`fn.call(this, …)` 那一族），那是假红；而 Rust 那一侧今天**零个**真调用点。
-/// ⇒ 这一格是一笔欠账：F2 落第一个真调用点时，`X6` 的人群要扩到 Rust 前端那一侧。
-/// 住址在末尾「面 A 的第一个外部客户端：通道」的欠账那一节，不在这里抄第二份。
-///
-/// 🔴**那一天到了**：文件窗口（今住独立包 `src/frontend/filewin/`）是第一个真调用点
-/// （`source::ask`）。表从两列扩成三列 —— 第二列是**这个入口的前端语料住在哪一种语言里**：
-/// `call` / `subscribe` 这两个裸词在 TS 语料里另有与本通道无关的同名调用
-/// （`launcher-diagnostics.ts` 的本地 `call(true)` 这类），
-/// 按语言分人群才不假红。Rust 那一侧的人群是 [`RUST_FRONTENDS`]。
-const ENTRIES: &[(&str, &str, &str)] = &[
-    (
-        "chan.call",
-        "ts",
-        "**主界面**（webview）说 `call` 的入口（`src/comms/inward/chan.ts` 的 `chan.call`）。\
-         入口名带着 `chan.` 前缀，是因为 TS 语料里另有与本通道无关的裸 `call(`（`fn.call(this, …)` 一族）——\
-         按语言分人群之外再按全名收窄，才不假红。期限由调用方给（`Budget.within(…)`）。",
-    ),
-    (
-        "call",
-        "rs",
-        "一次性请求（`Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
-    ),
-    (
-        "chan.subscribe",
-        "ts",
-        "**主界面**（webview）说 `subscribe` 的入口（`src/comms/inward/chan.ts` 的 `chan.subscribe`，会话内容流）。\
-         同 `chan.call` 那一行按全名收窄（TS 语料里另有与本通道无关的裸 `subscribe(`）。它**没有期限参数**\
-         （订阅是长期意向）⇒ 只进调用点条数恒等，不进「显式给 `Budget`」那条。",
-    ),
-    (
-        "subscribe",
-        "rs",
-        "订阅（`Comms::subscribe`）—— 窗口恰好一处（`filewin/source.rs::watch`，传输进度流\
-         `transfer/<id>`，生产上第一条流）。⚠ 它**没有期限参数**（签名逐字：订阅是长期意向，\
-         不被一次调用的期限拴住）⇒ 本表这一格不进「显式给 `Budget`」那条，只进调用点条数恒等",
-    ),
-];
-
-/// `X6` 的 **Rust 前端语料**：`(目录前缀, 摘掉的文件, 为什么摘)`。
-///
-/// ⚠ **monitor 那一侧**的入口（`entry.rs`）不在这份语料里：它调的是通道宿主注入给路由器的
-/// 那个句柄（`Backends::call`，入参是「这一跳还剩多少」的 `Duration`），不是前端的 `Comms::call`。
-/// 窗口独立成包 `src/frontend/filewin/`：那一侧整个就是这一个前端；monitor 那一侧 `src/frontend/shell/src/filewin/`
-/// （开窗入口 · 起进程 · `[[bin]]` 入口）留在 monitor 进程，同 `entry.rs` 那条理由不进前端语料。
-const RUST_FRONTENDS: &[(&str, &[&str], &str)] = &[(
-    "src/frontend/filewin/src/",
-    &[],
-    "文件窗口进程（又一个前端）：它经 `comms_inward` 的 `Client` 说 `Comms::call` / `subscribe`",
-)];
-
-/// 一份文件是不是某个入口的前端语料（按 [`ENTRIES`] 第二列的语言分）。
-fn is_frontend_for(rel: &str, lang: &str, member_paths: &BTreeSet<&str>) -> bool {
-    if member_paths.contains(rel) {
-        return false;
-    }
-    match lang {
-        // 只算**生产**前端：`tests/` 那棵树不是调用方，是判据（`chan.vitest.ts` 自己就说了六次
-        //   `chan.call(`）。测试文件整棵住 `tests/`（仓库重组：src 与 tests 分离），`src/` 下没有 ——
-        //   所以按第一段路径分就够。TS 人群第一次非空，这一格才第一次有牙。
-        "ts" => rel.ends_with(".ts") && rel.split('/').next() == Some("src"),
-        "rs" => {
-            rel.ends_with(".rs")
-                && RUST_FRONTENDS.iter().any(|(root, skip, _)| {
-                    rel.len() > root.len() && &rel[..root.len()] == *root && !skip.contains(&rel)
-                })
-        }
-        _ => false,
-    }
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 //  二、人群：两个 crate 的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
 // ════════════════════════════════════════════════════════════════════════════
@@ -257,7 +186,7 @@ fn production_of(rel: &str, raw: &str) -> String {
 /// 人群：两个通信层 crate 目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
 ///
 /// 反空真：每个 crate 的 crate 根（`cargo metadata` 的 `targets[].src_path`）必须在人群里（两侧异源：清单 vs 走目录）；
-/// 人群里至少有一份 `.ts`（`C3` / `X6` 的 TS 那一面）。
+/// 人群里至少有一份 `.ts`（`C1` / `C3` 的 TS 那一面）。
 fn boundary() -> Vec<Member> {
     let root = repo_root();
     let all = workspace_packages();
@@ -291,26 +220,6 @@ fn boundary() -> Vec<Member> {
     out
 }
 
-/// `X6` 的前端语料：`src/` 下的 `.rs` / `.ts`（第三方 `vendor/` 不算）。
-fn frontend_corpus() -> Vec<(String, String)> {
-    let root = repo_root();
-    let mut out: Vec<(String, String)> =
-        guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
-            .into_iter()
-            .map(|(p, text)| {
-                let rel = p
-                    .strip_prefix(&root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                (rel, text)
-            })
-            .filter(|(rel, _)| !rel.contains("/vendor/"))
-            .collect();
-    out.sort();
-    out
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 //  三、判据清单（元判据用它对拍「这些条真的在跑」）
 // ════════════════════════════════════════════════════════════════════════════
@@ -338,49 +247,9 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "前端发出的请求里不许含 `transport`（`transport` 是本层的内部选择）",
     ),
     (
-        "C4",
-        "c4_nothing_inside_the_boundary_reads_disk_or_environment",
-        "不许读盘、不许读环境变量 —— 凭据由后端交给它",
-    ),
-    (
-        "C5",
-        "c5_nothing_inside_the_boundary_spawns_a_process_or_binds_a_port",
-        "不许起进程、不许绑端口 —— 它只用别人交给它的通道",
-    ),
-    (
-        "X1",
-        "x1_every_match_on_the_three_wire_types_is_exhaustive",
-        "对 `CallError` / `Item` / `Reach` 的 `match` 穷尽、零 `_ =>`",
-    ),
-    (
-        "X2",
-        "x2_no_deadline_literal_lives_inside_the_boundary",
-        "生产段零期限字面量（期限的值归后端）",
-    ),
-    (
         "X4",
         "x4_the_only_way_to_drop_is_to_say_gap",
-        "丢弃只能经 `Item::Gap` 表达 —— 零 `try_send`、零静默 drop",
-    ),
-    (
-        "X5",
-        "x5_every_budget_until_derivation_only_tightens",
-        "`until` 的每一处派生都是 `min`",
-    ),
-    (
-        "X6",
-        "x6_every_frontend_call_site_passes_an_explicit_budget",
-        "前端对入口的调用点一律显式给 `Budget`",
-    ),
-    (
-        "面B剩下的",
-        "the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
-        "中转的宿主（`relay/listen.rs`）为什么在外面：逐份**被哪几条咬**与散文两向相等",
-    ),
-    (
-        "传输面三份",
-        "the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
-        "面 A（传输面）进不来的那几份，逐份**被哪几条咬**与散文两向相等",
+        "丢弃只能经 `Item::Gap` 表达 —— 零 `let _ = …send(…)`（`try_send` 由名单挡）",
     ),
     (
         "元",
@@ -462,7 +331,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  六、C1–C5：通信层的铁律
+//  六、C1–C3：通信层的铁律（扫文字的那三条）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 业务词表 —— `C1` 的九个概念，**每个带它的复数形**
@@ -978,7 +847,7 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// ⇒ 上一版咬（`C1` ＋ `X4`），本版只剩 `X4`。那不是报错文案，是一条线上契约，
 /// 而**本射程分不出这两者** —— `103 §P5.3 ②` 那个形状换了个位置又出现了一次。
 /// 🔴 这一格**今天判不了**，缺的证据是一份「线上契约的字段名住哪」的独立读数。
-/// 挡它的不是本条，是 `X1` 那一族（线上类型必须穷尽）与金标准逐字节对拍。
+/// 挡它的不是本条，是两包的 `wildcard_enum_match_arm` 开关（线上类型列全变体）与金标准逐字节对拍。
 ///
 /// # 匹配单位仍是**标识符子词**，词表加了复数〔`§8.1.5`〕
 ///
@@ -1293,7 +1162,7 @@ fn c2_the_comms_crates_depend_only_on_the_allowed_crates() {
         offenders.is_empty(),
         "通信层 crate 依赖了名单之外的东西：\n{}\n\n\
 `C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
-         ⇒ 真需要那份数据，让**宿主交给它**（`C4` 是同一句话的另一面）。",
+         ⇒ 真需要那份数据，让**宿主交给它**（不读盘 · 不读环境是同一句话的另一面，由两包的名单挡）。",
         offenders.join("\n")
     );
     // 正控：给面 B 那个 crate 合成一条业务依赖（`creds-core`，它的目录就是盘上那一份）必须咬出来。
@@ -1376,373 +1245,15 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
         !public_line_leaks_transport("    let transport = pick_transport(&origin);"),
         "层**内部**选传输被判成违例 —— `§3.2` 逐字说那是它的本职，假红比不查更坏"
     );
-    // `X6` 的人群也从入口表来，这里顺手钉住「入口表与它的读者同源」那一格不成立：
-    assert_eq!(
-        ENTRIES.len(),
-        ENTRIES
-            .iter()
-            .map(|(n, _, _)| *n)
-            .collect::<BTreeSet<_>>()
-            .len(),
-        "入口表里有重名 —— 人群会被数两遍"
-    );
-}
-
-/// `C4` 的形状表 —— `(串, 出处)`。
-///
-/// 前三条是点名的（`read_to_string` / `File::open` / `env::var`）；
-/// 后三条是同族的别名，后补的 —— 补的理由：只挡三种写法等于给第四种写法留门，
-/// 而「换个写法就过」在本仓有记录（`readonly_guard` 的前身栽过）。
-/// 🔴 **串一律运行时拼**：写成字面量的话，本文件自己就是一处「读盘点」，
-/// 而按这些串扫源码的判据会把本文件自己数进去。
-fn disk_and_env_needles() -> Vec<(&'static str, String, &'static str)> {
-    vec![
-        ("读文本", format!("read_to_{}(", "string"), "§2 C4 逐字"),
-        ("开文件", format!("File::{}(", "open"), "§2 C4 逐字"),
-        ("读环境", format!("env::{}(", "var"), "§2 C4 逐字"),
-        (
-            "读环境OS",
-            format!("env::{}_os(", "var"),
-            "同族别名（后补）",
-        ),
-        (
-            "以选项开",
-            format!("OpenOptions::{}", "new"),
-            "同族别名（后补）",
-        ),
-        ("读字节", format!("fs::{}(", "read"), "同族别名（后补）"),
-    ]
-}
-
-/// 一份文本里**咬得上的那几个 `C4` 判词**，按**标签**返回。
-///
-/// 🔴 **为什么登记表用标签而不用那个串本身**：串写成字面量的话，本文件自己就成了一处
-/// 「读盘点」，按这些串扫源码的判据会把它数进去
-/// —— 那正是 [`disk_and_env_needles`] 头注里「串一律运行时拼」在治的事。
-/// 标签是中文短名 ⇒ 任何按代码形状扫的判据都不可能命中它。
-/// ⚠ 标签拼错 ⇒ 那一行从此**恒不命中**；挡这一形的是 [`assert_left_outside`] 里那条
-/// 「表里每个标签都必须是真判词」的自检。
-fn disk_and_env_tags_in(prod: &str) -> BTreeSet<&'static str> {
-    disk_and_env_needles()
-        .into_iter()
-        .filter(|(_, n, _)| prod.contains(n.as_str()))
-        .map(|(tag, _, _)| tag)
-        .collect()
-}
-
-/// ★ `C4` —— 不许读盘、不许读环境变量。
-///
-/// 这是用户那句「**key 什么的这些应该要归后端管，通信只负责流量**」
-/// 的操作化 —— 凭据不是"它去拿"，是"后端给它"。
-///
-/// **买不到**：① `include_str!` 那种**编译期**读盘；② 经由别的 crate 间接读盘；
-/// ③ 「它拿到的那张表对不对」。本条只买「这一层自己不伸手」。
-///
-/// # 🔴 ④**从一条流里读也会被咬** —— 一个已登记的假阳类
-///
-/// `read_to_string(` 是个**形状**，它认不出左边那个接收者是盘还是一条已经拿到手的流。
-/// 活样本：`pubkey.rs` 整份文件**只被本条咬住**，而它那个判词下面的两处命中里
-/// **只有一处是读盘**（本机 `.pub`）；另一处是 `reader.read_to_string(&mut out)`，
-/// 读的是当时的远端 exec 原语交回来的那条 SSH 流 —— 也就是
-/// 「**只使用别人交给它的通道**」正要它干的那件事。
-/// ⇒ **「本条咬了几处」不等于「这一层伸手拿了几次东西」**，报数时别把两者读成一个。
-///
-/// ⚠ **今天刻意不收窄**：那三条判词是**逐字**点名的，收窄成
-/// `fs::read_to_string(` 会漏掉 `std::fs` 之外的写法。要动它是改 `§2` 那张表，
-/// 不是在这里放宽。下面有一条**钉住这个假阳类**的断言 —— 谁把形状表收窄了那一条当场红，
-/// 逼他回来改这一段话（而不是让这段话安静地变成假的）。
-///
-/// # 🔴 ⑤〔同拍现打〕**「传输载荷」与「凭据/配置」在这张形状表上分不开**
-///
-/// `C4` 的句子逐字点的是「**凭据、配置、路由表、期限值**」，而 `transfer_relay.rs` 那两个判词
-/// 打开的是**用户亲自按下的那一次传输的本地那一头**（上传源 · 下载的 `.part`）——
-/// 那是**载荷**，不是句子里那四样。**本条分不出来。**
-/// ⚠ 这一格**今天判不了**，缺的证据是一道裁定：「本层该不该连**本地文件句柄**也由调用方交给它」
-/// —— `C5` 那句「只使用别人交给它的通道」照字面是**该**，而 `§2` 没写到文件这一头。
-/// ⇒ 不许拿本条的处数当那道题的答案。
-#[test]
-fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
-    let pop = boundary();
-    let needles = disk_and_env_needles();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            needles
-                .iter()
-                .filter(|(_, n, _)| m.prod.contains(n.as_str()))
-                .map(|(tag, n, why)| format!("  {} —— `{n}`〔{tag}〕（{why}）", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "通信层成员自己去读盘 / 读环境变量了：\n{}\n\n\
-把用户那句话操作化成这一条：\n\
-         「key 什么的这些应该要归后端管，**通信只负责流量**」\n\
-         ⇒ 凭据、配置、账号映射全部由后端**交给它**（步 4：`creds.rs` ＋ `table.rs` 搬去后端）。",
-        offenders.join("\n")
-    );
-    for (tag, n, why) in &needles {
-        let synthetic = format!("pub fn boot() {{ let _ = {n}\"x\"); }}\n");
-        assert!(
-            disk_and_env_tags_in(&synthetic).contains(tag),
-            "形状表里写着 `{n}`〔{tag}〕（{why}），识别器却认不出自己造的那处 —— 表与识别器脱钩了"
-        );
-    }
-    assert!(
-        disk_and_env_tags_in("pub fn feed(table: Table) { use_it(table) }\n").is_empty(),
-        "一段**由后端喂进来**的干净代码被判成读盘 —— 假红比不查更坏"
-    );
-    // 标签面的自检：六个判词六个**互不相同**的标签（撞一个 ⇒ 登记表那一侧会少一格而不出声）。
-    assert_eq!(
-        needles.len(),
-        needles
-            .iter()
-            .map(|(tag, _, _)| *tag)
-            .collect::<BTreeSet<_>>()
-            .len(),
-        "判词的标签有重名 —— 两个判词会在登记表那一侧被数成一个"
-    );
-    // ★ 钉住头注 ④ 那个**已登记的假阳类**：从一条**已经交到手里**的流里读，形状表照咬。
-    //   这一条**不是**在说那样很好 —— 它是在说「这段话与识别器今天是一致的」。
-    //   谁把形状表收窄（那样这一条当场红），处置是回去改头注 ④，不是把本条删掉。
-    let from_a_stream = "pub async fn drain(io: &mut R) { let mut s = String::new(); \
-                         io.read_to_string(&mut s).await.ok(); }\n";
-    assert!(
-        !disk_and_env_tags_in(from_a_stream).is_empty(),
-        "头注 ④ 说「从一条流里读也会被咬」，而形状表今天认不出这一形 —— \
-         那句话已经假了（或者有人把判词收窄了而没回来改它）"
-    );
-}
-
-/// `C5` 的形状表 —— 前两条是点名的，其余是同族别名。
-fn spawn_and_bind_needles() -> Vec<(String, &'static str)> {
-    vec![
-        (format!("Command::{}(", "new"), "§2 C5 逐字"),
-        (format!("TcpListener::{}(", "bind"), "§2 C5 逐字"),
-        (format!("UnixListener::{}(", "bind"), "同族别名（后补）"),
-        (format!("UdpSocket::{}(", "bind"), "同族别名（后补）"),
-    ]
-}
-
-/// ★ `C5` —— 不许起进程、不许绑端口。
-///
-/// 用户那句「**我不希望一个 app 占用三个端口、三个进程**」的操作化 ——
-/// 谁起进程、谁绑端口是**后端生命周期**的事，通信层无权。
-/// 它只使用别人交给它的通道（一个 `AsyncRead + AsyncWrite`）。
-///
-/// **买不到**：① 经由别的 crate 间接起进程 / 绑端口；② **发起连接**（`connect`）——
-/// 那是本层的本职，刻意不在名单里；③ 「交给它的那条通道是谁开的」。
-#[test]
-fn c5_nothing_inside_the_boundary_spawns_a_process_or_binds_a_port() {
-    let pop = boundary();
-    let needles = spawn_and_bind_needles();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            needles
-                .iter()
-                .filter(|(n, _)| m.prod.contains(n.as_str()))
-                .map(|(n, why)| format!("  {} —— `{n}`（{why}）", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "通信层成员自己起进程 / 绑端口了：\n{}\n\n\
-「我不希望一个 app 占用三个端口、三个进程」\n\
-         ⇒ 生命周期归后端，本层只**使用**别人交给它的那条通道。",
-        offenders.join("\n")
-    );
-    for (n, why) in &needles {
-        let synthetic = format!("pub fn boot() {{ let _ = {n}\"x\"); }}\n");
-        assert!(
-            needles.iter().any(|(m, _)| synthetic.contains(m.as_str())),
-            "形状表里写着 `{n}`（{why}），识别器却认不出自己造的那处 —— 表与识别器脱钩了"
-        );
-    }
-    assert!(
-        !needles.iter().any(
-            |(n, _)| "pub async fn run(io: impl AsyncRead + AsyncWrite) {}\n".contains(n.as_str())
-        ),
-        "一段**只用交给它的通道**的干净代码被判成起进程 —— 假红比不查更坏"
-    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七、X1 · X2 · X4–X6：签名判据（与 C1–C5 共用上面那张表）
+//  七、X4：丢只能经 `Gap`（名单挡不住的那一形）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 从 `at` 起第一对配平花括号里的内容。
-///
-/// ⚠ **粗尺子，如实登记**：它不解析字符串与字符字面量 ——
-/// 一个写在字符串里的 `}` 会让它提前收尾。本仓的判据语料里满是合成源码串，
-/// 精确解析一次失步就整段跟着错，而错的方向是**静默的绿**；
-/// 宁可用一把粗而稳的尺子（`scanning_guard_registry::guard_fn_item` 的头注同此论证）。
-fn braced_block(text: &str, at: usize) -> Option<&str> {
-    let open = at + text[at..].find('{')?;
-    let mut depth = 0usize;
-    for (i, c) in text[open..].char_indices() {
-        match c {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(&text[open + 1..open + i]);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// 那三个线上类型 —— `X1` 的人群按它们认。
-const WIRE_TYPES: &[&str] = &["CallError", "Item", "Reach"];
-
-/// 生产段里「对那三个类型的 `match`」中带 `_ =>` 的那些（返回每处的片段）。
-fn inexhaustive_wire_matches(prod: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mark = format!("{} ", "match");
-    for (at, _) in prod.match_indices(mark.as_str()) {
-        let Some(block) = braced_block(prod, at) else {
-            continue;
-        };
-        if !WIRE_TYPES
-            .iter()
-            .any(|t| guard_core::contains_word(block, t))
-        {
-            continue;
-        }
-        let wildcard = format!("_ {}", "=>");
-        if block.contains(wildcard.as_str()) {
-            out.push(block.trim().chars().take(120).collect::<String>());
-        }
-    }
-    out
-}
-
-/// ★ `X1` —— 对 `CallError` / `Item` / `Reach` 的 `match` 必须穷尽，零 `_ =>`。
-///
-/// **买不到**：① 类型对不对（本条按**名字**认，不做类型检查）；
-/// ② `_ =>` 之外的兜底写法（`other =>`、`e if true =>`）；
-/// ③ 写在字符串里的花括号会让块提前收尾（见 [`braced_block`]）。
-#[test]
-fn x1_every_match_on_the_three_wire_types_is_exhaustive() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            inexhaustive_wire_matches(&m.prod)
-                .into_iter()
-                .map(|blk| format!("  {} —— `{blk}`", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "这几处对线上类型的 `match` 用了通配臂：\n{}\n\n\
-`X1`：三个类型的每一处 `match` 必须**穷尽、零 `_ =>`**。\n\
-         ⇒ 通配臂的代价是：错误面加一个变体时，**没有任何地方会红** —— \n\
-         新错误被悄悄归进旧分支，而那正是这一层最不能出的事。",
-        offenders.join("\n")
-    );
-    for t in WIRE_TYPES {
-        let bad = format!("    match e {{ {t}::A => 1, _ => 0 }}\n");
-        assert_eq!(
-            inexhaustive_wire_matches(&bad).len(),
-            1,
-            "识别器认不出 `{t}` 上的通配臂 —— `X1` 此刻在空转"
-        );
-        let good = format!("    match e {{ {t}::A => 1, {t}::B => 0 }}\n");
-        assert!(
-            inexhaustive_wire_matches(&good).is_empty(),
-            "穷尽的 `{t}` match 被判成违例 —— 假红比不查更坏"
-        );
-    }
-    assert!(
-        inexhaustive_wire_matches("    match kind { Foo::A => 1, _ => 0 }\n").is_empty(),
-        "**别的**类型上的通配臂被算进了 `X1` 的人群 —— 人群要等于它真正证明的那件事"
-    );
-}
-
-/// 生产段里的期限字面量。
-fn deadline_literals(prod: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let dur = concat!("Duration", "::from_");
-    for (at, _) in prod.match_indices(dur) {
-        out.push(prod[at..].chars().take(40).collect::<String>());
-    }
-    // 裸秒常量：`const 名字里带 SEC/MS/TIMEOUT/DEADLINE 的 = 数字`。
-    for line in prod.lines() {
-        let t = guard_core::strip_visibility(line.trim_start());
-        if !t.starts_with("const ") {
-            continue;
-        }
-        let deadlineish = ["SEC", "MS", "TIMEOUT", "DEADLINE", "INTERVAL"]
-            .iter()
-            .any(|k| t.contains(k));
-        if deadlineish && t.chars().any(|c| c.is_ascii_digit()) {
-            out.push(t.trim().to_string());
-        }
-    }
-    out
-}
-
-/// ★ `X2` —— 通信层生产段**零期限字面量**。
-///
-/// **值归后端 · 执行归通信层 · 说法归调用方**。
-/// 期限的**值**一个字都不许写在这一层里 —— 它是后端交下来的。
-///
-/// **买不到**：① 从别处 `use` 进来的常量（本条只看这一层自己的文本）；
-/// ② 名字不带那五个关键词的裸秒常量（`const GRACE: u64 = 30;`）；
-/// ③ **`§9` 逐字**：具体该给多少秒**判不了** —— 缺的证据是各跳端到端时延的 p50/p99。
-///    本条守的是「值不住在这里」，不是「值定对了」。
-#[test]
-fn x2_no_deadline_literal_lives_inside_the_boundary() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            deadline_literals(&m.prod)
-                .into_iter()
-                .map(|s| format!("  {} —— `{s}`", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "通信层生产段里出现了期限字面量：\n{}\n\n\
-**值归后端**。期限从 `Budget` 里进来，不在这一层里写死。",
-        offenders.join("\n")
-    );
-    assert_eq!(
-        deadline_literals(&format!(
-            "let d = {}(30);\n",
-            concat!("Duration", "::from_secs")
-        ))
-        .len(),
-        1,
-        "识别器认不出期限字面量 —— `X2` 此刻在空转"
-    );
-    assert_eq!(
-        deadline_literals("const CALL_TIMEOUT_SECS: u64 = 30;\n").len(),
-        1,
-        "识别器认不出裸秒常量 —— `X2` 此刻在空转"
-    );
-    assert!(
-        deadline_literals("pub fn call(budget: Budget) -> Reach { budget.until }\n").is_empty(),
-        "一段**只收 `Budget`** 的干净代码被判成写死期限 —— 假红比不查更坏"
-    );
-}
-
-/// 静默丢弃的两种形状。
+/// 静默丢弃里名单挡不住的那一形：`let _ = …send(…)`（`try_send` 在两包的名单里）。
 fn silent_drop_sites(prod: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let try_send = concat!("try_", "send");
-    for (at, _) in prod.match_indices(try_send) {
-        out.push(prod[at..].chars().take(60).collect::<String>());
-    }
     for line in prod.lines() {
         let t = line.trim();
         if t.starts_with("let _ =") && guard_core::contains_word(t, "send") {
@@ -1755,10 +1266,12 @@ fn silent_drop_sites(prod: &str) -> Vec<String> {
 /// ★ `X4` —— 丢弃只能经 `Item::Gap` 表达。
 ///
 /// **回推优先 · 推不动才丢 · 丢必须说**。
-/// `try_send` 与 `let _ = …send(…)` 都是「推不动就当没发生」——
-/// 订阅方**看不出**中间少了东西，而流的语义整个塌在这一点上。
+/// `let _ = …send(…)` 是「推不动就当没发生」—— 订阅方**看不出**中间少了东西，
+/// 而流的语义整个塌在这一点上。`try_send` 那一形由两包的 `clippy.toml` 挡（发 `Gap` 那一处就地放行）；
+/// 这一形名单挡不住：`send` 返回 `Result` 时 `let _ =` 不触发 `unused_must_use`。
+/// 什么时候删：两包 `Cargo.toml` 开了 `let_underscore_must_use` 那天。
 ///
-/// **买不到**：① 别的丢弃写法（`if ch.capacity() == 0 { return; }`）；
+/// **买不到**：① 别的丢弃写法（`if ch.capacity() == 0 { return; }` · `.ok()`）；
 /// ② **`§9` 逐字**：SSH 那条路上回推到底推不推得回去**判不了** ——
 ///    缺的证据是一次真机的慢消费者实验。本条只买「丢的时候有没有说」。
 #[test]
@@ -1781,11 +1294,6 @@ fn x4_the_only_way_to_drop_is_to_say_gap() {
         offenders.join("\n")
     );
     assert_eq!(
-        silent_drop_sites(&format!("ch.{}(item);\n", concat!("try_", "send"))).len(),
-        1,
-        "识别器认不出那种「推不动就算了」的发法 —— `X4` 此刻在空转"
-    );
-    assert_eq!(
         silent_drop_sites("    let _ = ch.send(item);\n").len(),
         1,
         "识别器认不出被丢掉的发送结果 —— `X4` 此刻在空转"
@@ -1797,529 +1305,8 @@ fn x4_the_only_way_to_drop_is_to_say_gap() {
     );
 }
 
-/// `until` 的派生点里**不是只收紧**的那些。
-fn loose_until_derivations(prod: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in prod.lines() {
-        let t = line.trim();
-        if !guard_core::contains_word(t, "until") {
-            continue;
-        }
-        let Some(eq) = t.find('=') else { continue };
-        if t[eq..].starts_with("==") {
-            continue;
-        }
-        let rhs = &t[eq + 1..];
-        let tightening = rhs.contains(".min(") || rhs.contains("min(");
-        let loosening = rhs.contains('+')
-            || rhs.contains(".max(")
-            || rhs.contains("max(")
-            || rhs.contains("now(");
-        if loosening || !tightening {
-            out.push(t.to_string());
-        }
-    }
-    out
-}
-
-/// ★ `X5` —— `Budget.until` 的每一处派生都是 `min`。
-///
-/// 期限沿着调用链**只许越来越紧**。
-/// 一处 `+` 或一次重新 `now() + …`，就把上游给的那个期限放宽了 ——
-/// 而放宽之后没有任何人会发现：请求只是"慢了一点"。
-///
-/// **买不到**：① 跨行的派生（本条按行判）；② `min` 之外语义等价的收紧写法
-/// （`if a < b { a } else { b }`）会被判成违例 —— 那是**假红**，
-/// 而假红在本仓的账上比漏判更危险（它会训练人绕过判据）。
-///    ⇒ 真撞上了，**改写代码去用 `min`**，别来放宽本条。
-#[test]
-fn x5_every_budget_until_derivation_only_tightens() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            loose_until_derivations(&m.prod)
-                .into_iter()
-                .map(|s| format!("  {} —— `{s}`", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "`until` 的这几处派生不是「只收紧」：\n{}\n\n\
-`X5`：**每一处派生都是 `min` —— 零 `+` / `max` / 重新 `now() + …`**。\n\
-         ⇒ 放宽上游给的期限之后，症状只是「慢了一点」，没有任何人会发现。",
-        offenders.join("\n")
-    );
-    assert_eq!(
-        loose_until_derivations("let until = now() + step;\n").len(),
-        1,
-        "识别器认不出重新起算的期限 —— `X5` 此刻在空转"
-    );
-    assert_eq!(
-        loose_until_derivations("let until = parent.until.max(mine);\n").len(),
-        1,
-        "识别器认不出被放宽的期限 —— `X5` 此刻在空转"
-    );
-    assert!(
-        loose_until_derivations("let until = parent.until.min(mine);\n").is_empty(),
-        "一处**收紧**的派生被判成违例 —— 假红比不查更坏"
-    );
-}
-
-/// 前端对某个入口的调用点里，**没显式给 `Budget`** 的那些。
-fn call_sites_without_budget(text: &str, entry: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let head = format!("{entry}(");
-    for (at, _) in text.match_indices(head.as_str()) {
-        // 边界：`recall(` 不算 `call(`。
-        let before_is_ident = text[..at]
-            .chars()
-            .next_back()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_');
-        if before_is_ident {
-            continue;
-        }
-        let tail = &text[at + head.len()..];
-        let args: String = tail
-            .chars()
-            .take_while(|c| *c != ')' && *c != ';')
-            .collect();
-        if !(args.contains("Budget") || guard_core::contains_word(&args, "budget")) {
-            out.push(format!("{head}{args})"));
-        }
-    }
-    out
-}
-
-/// ★ `X6` —— 前端侧的调用点**一律显式给 `Budget`**，零处"用库里的默认"。
-///
-/// **说法归调用方**。一个藏在库里的默认期限意味着
-/// 「这条路该等多久」没有任何调用方想过，而 `§9` 逐字记着：
-/// 那 8 条无期限路径今天**连实测分布都没有**。
-///
-/// 人群 = [`ENTRIES`] × 前端语料。两张表今天都空 ⇒ 0 个调用点。
-///
-/// **买不到**：① 跨行的实参表（本条只取到第一个 `)` 或 `;`）；
-/// ② 把 `Budget` 藏进一个变量再传（`call(o, op, p, b)`）——
-///    那一格要类型检查，今天**判不了**（缺的证据：通信层的第一版类型定义）。
-#[test]
-fn x6_every_frontend_call_site_passes_an_explicit_budget() {
-    let pop = boundary();
-    let member_paths: BTreeSet<&str> = pop.iter().map(|m| m.rel.as_str()).collect();
-    let all = frontend_corpus();
-    // 抽取器自检：两种语言的前端语料都真的在（人群为空不等于语料为空）。
-    assert!(
-        all.iter().any(|(rel, _)| rel == "src/frontend/ui/tabs.ts"
-            && is_frontend_for(rel, "ts", &member_paths)),
-        "前端语料里找不到 `src/frontend/ui/tabs.ts` —— 语料面坏了，本条此刻在空转"
-    );
-    assert!(
-        all.iter()
-            .any(|(rel, _)| rel == "src/frontend/filewin/src/source.rs"
-                && is_frontend_for(rel, "rs", &member_paths)),
-        "Rust 前端语料里找不到 `filewin/source.rs`（窗口进程那一处 `call`）—— 语料面坏了"
-    );
-    let mut offenders: Vec<String> = Vec::new();
-    let mut sites = 0usize;
-    // 按入口分开记谁在说：`subscribe` **没有期限参数**（签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判。
-    let mut holders: BTreeMap<&str, BTreeSet<&str>> = Default::default();
-    // `chan.call`（主界面那一侧）同样带期限 —— 死值验现打：只写 `call` 的话，
-    //   把主界面某处调用的期限换成一个不叫 budget 的东西，本条**照绿**（入口按全名分，`chan.call` 不在这张表里就不判）。
-    const HAS_DEADLINE: &[&str] = &["call", "chan.call"];
-    for (entry, lang, _) in ENTRIES {
-        for (rel, text) in all
-            .iter()
-            .filter(|(rel, _)| is_frontend_for(rel, lang, &member_paths))
-        {
-            let prod = production_of(rel, text);
-            let head = format!("{entry}(");
-            let n = prod.matches(head.as_str()).count();
-            sites += n;
-            if n > 0 {
-                holders.entry(entry).or_default().insert(rel.as_str());
-            }
-            if !HAS_DEADLINE.contains(entry) {
-                continue;
-            }
-            for s in call_sites_without_budget(&prod, entry) {
-                offenders.push(format!("  {rel} —— `{s}`"));
-            }
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "前端这几处调用通信层入口时没有显式给 `Budget`（本趟共扫到 {sites} 个调用点）：\n{}\n\n\
-**说法归调用方**。库里的默认期限 =\n\
-         「这条路该等多久」没有任何调用方想过（`§9`：那 8 条无期限路径连实测分布都没有）。",
-        offenders.join("\n")
-    );
-    // 正控（按符号认，不数个数）：每个入口点名一份今天确实在说它的文件 —— 抽取坏了 / 语料面缩了，
-    //   上面那条零违例会在零个调用点上恒绿。
-    const ANCHORS: &[(&str, &str)] = &[
-        ("chan.call", "src/frontend/ui/ipc/chan-caller.ts"),
-        ("chan.subscribe", "src/frontend/ui/events.ts"),
-        ("call", "src/frontend/filewin/src/source.rs"),
-        ("subscribe", "src/frontend/filewin/src/source.rs"),
-    ];
-    for (entry, file) in ANCHORS {
-        assert!(
-            holders.get(entry).is_some_and(|h| h.contains(file)),
-            "正控：`{file}` 里没扫到 `{entry}(` —— 抽取 / 语料面坏了（或那一处真搬走了：换一份点名）。今天说它的：{:?}",
-            holders.get(entry)
-        );
-    }
-    // 窗口进程（Rust）说通信层只许 `filewin/source.rs` 一个文件：多一份 ＝ 期限 / 撤的住址跟着分家。
-    for entry in ["call", "subscribe"] {
-        let h: Vec<&str> = holders
-            .get(entry)
-            .map(|h| h.iter().copied().collect())
-            .unwrap_or_default();
-        assert_eq!(
-            h,
-            vec!["src/frontend/filewin/src/source.rs"],
-            "窗口里说 `{entry}(` 的不再只有 `filewin/source.rs` 一份"
-        );
-    }
-    assert_eq!(
-        call_sites_without_budget("await call(origin, op, payload);\n", "call").len(),
-        1,
-        "识别器认不出缺 `Budget` 的调用点 —— `X6` 此刻在空转"
-    );
-    assert!(
-        call_sites_without_budget("await call(origin, op, payload, budget);\n", "call").is_empty(),
-        "显式给了 `budget` 的调用点被判成违例 —— 假红比不查更坏"
-    );
-    assert!(
-        call_sites_without_budget("await recall(origin);\n", "call").is_empty(),
-        "`recall(` 被当成了 `call(` —— 匹配单位比事实小（`needle_anchor_registry` 那一族）"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════════
-//  七b、进不来的那几份：逐份被哪几条咬（散文 ⇒ 机检）—— 面 B ＋ 面 A 各一张表
-// ════════════════════════════════════════════════════════════════════════════
-
-/// 中转的宿主（后端 `relay/`）里**不进通信层**的那几份 ——
-/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它在外面)`。
-///
-/// ⚠ 第三列〔`C4` 判词标签〕的理由住 [`assert_left_outside`] ——
-/// 只比判据编号的话，「一份文件少了一处读盘」在盘上看不出来。标签的住址是
-/// [`disk_and_env_needles`]（本表**不写那个串本身**，理由见 [`disk_and_env_tags_in`]）。
-///
-/// 本条判的是：那段解释「为什么它在外面」的散文有没有腐 —— 盘上现扫的咬人判据集合 == 本表这一行（两向）。
-/// ⇒ 一份文件的阻塞清空了（表里那一行变成空集）⇒ 本条当场红，该问的是「它现在该不该搬进通信层 crate」，
-/// 不是回来把这一行删掉了事。⚠ 「十一条全绿」不等于「该进」，归属判断永远是人做的。
-const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[(
-    "src/backend/relay/listen.rs",
-    &["C5", "X2"],
-    &[],
-    "自己 `TcpListener::bind` 端口（`C5`）；环境不自己读，取值器是宿主递进来的。\
-         按 `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
-         这一份**语义上就该在外面**，不是「等它变干净」。\
-         🔴 **`X2` 是「变干净」的反面**：中转那两个期限**常量**住在这一份里（「期限值」\
-         算进「全部由后端交给它」）⇒ 这一份**更**该在外面，中转本身不咬 `X2`。\
-         这一格是那张表少见的「多一条反而是对的」—— 别顺手把它挪走。",
-)];
-
-/// **面 A 的传输面候选**里进不来的那几份 ——
-/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它今天圈不进来)`。
-///
-/// 🔴 **这张表治的病与 [`RELAY_LEFT_OUTSIDE`] 逐字相同，只是换了一个面。**
-/// 2026-09-21 给**面 B** 把「为什么进不来」从散文换成了机检，而**面 A 一直没有** ——
-/// 它那几份的判词只住，也就是一份**会腐的读数**。
-///
-/// # 🔴 它不是「多一张表」，它补的是一个现打出来的洞
-///
-/// 死值验：把 `stream_source/` 那处读环境变量**摘掉**
-/// ⇒ 这一族当时那十六条**一条都没红**（那几份不是成员、也不在任何一张表里）。
-/// ⇒ 「面 A 还剩几处读盘」这件事**此前完全不在执行链上**：清掉一处、或者再长出一处，
-/// 都没有任何东西会说话。本条就是那条缺掉的腿。
-/// （同一刀真红的是**另一族** `stream_source::dial_move_judge`，而它是**正着**钉住那处
-/// 环境变量必须在 ⇒ 清它是改设计，不是做清理。这一格的判词写在下面 `stream_source/` 那一行。）
-///
-/// # 人群从哪来（**不是**「扫哪个目录」）
-///
-/// 那张「传输面在新射程下还咬」的表点了四份，**减去**那本 SFTP 搬迁账
-/// （它一条都不咬），**加上** `pubkey.rs`（逐份试圈的第 5 行，
-/// 也是完成判据里点名的三份之一）。
-///
-/// ⚠ **那本搬迁账为什么不列进来**：它是那一形的第三例
-/// —— 十一条一条不咬，**而它仍然不该圈**。列进来的话这张表第一天就红，
-/// 而那条红指向的处置（「阻塞清空了 ⇒ 把它圈进来」）**恰好是错的**。
-/// 归属判断永远是人做的 ⇒ 照 [`RELAY_LEFT_OUTSIDE`] 对 `accounts/policy.rs` 的处置办：
-/// **不列，理由写在这里而不是等人来问。**
-///
-/// # 「还剩几处读盘」的机检住址是这张表的第三列
-///
-/// 那个数不写在任何一句散文里：下面那条判据逐份把第三列与现扫的判词两向相等 ⇒
-/// 清掉一处、或者再多长一处，两个方向都当场红。往里加 / 减一行只改这张表。
-/// ⚠ 这张表**不是**豁免清单，也**不是**待办清单：它只保证「为什么进不来」这段理由**不是假的**。
-const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
-    (
-        "src/frontend/shell/src/stream_source/",
-        &["C1", "X2"],
-        &[],
-        "**传输那一段已经搬出去了**：SSH 的全部活进了本机后端，界面这一侧只读本机后端那一条流。\
-         今天咬它的两条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
-         （远端数据源本来就是业务）· `X2` 握手每一行的期限与快照重试的期限值（重连退避本身随重连循环住 `resident-client`）。\
-         ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。",
-    ),
-    (
-        "src/frontend/shell/src/deploy.rs",
-        &["X2"],
-        &[],
-        "**今天咬 `X2` 一条**：部署判定在本机常驻后端（`deploy-plan`），本文件问它要计划那一问\
-         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主，而它就是宿主那一侧的调用方（形状同下一行 `transfer_relay.rs`），\
-         照实登记、不圈。🔴 **它不圈是一次归属判断、不是判据没跑**：\
-         本文件是**部署**（后端二进制 · 入口 shim · 卸载；远端 rc 别名块的规划住 `profile_installer.rs`）—— 都是业务，不是传输。\
-         十一条全绿不等于该圈。",
-    ),
-    (
-        "src/frontend/shell/src/transfer_relay.rs",
-        &["X2"],
-        &[],
-        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `ssh-dial/sftp.rs`、传输台 `control/transfer.rs`），\
-         这份只剩中继：开单 / 起跑 / 撤原样转给本机后端，`transfer` 帧翻成窗口那几格。\
-         只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
-         期限值归宿主，而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",
-    ),
-    // `pubkey.rs` 那一行摘了：它「正解是搬去后端」—— 公钥推送整件进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`：
-    //   读本机 `.pub` · 组请求 · 那台后端在就经它写 / 不在就一次 exec），monitor 那份文件删了。
-];
-
-/// 拿十一条判据的识别器扫一份文本，返回**咬它的那些编号**。
-///
-/// 🔴 **一行识别器都不自己写** —— 全部调 `C1`–`C5` / `X1`–`X6` 各自那一个
-/// （`E3`：一个事实一个权威源）。自己近似重写一份的话，本条会与那十一条各自漂。
-fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
-    let mut out: BTreeSet<&'static str> = BTreeSet::new();
-    if !surface_offences_of(rel, prod).is_empty() {
-        out.insert("C1");
-    }
-    let c3 = if rel.ends_with(".ts") {
-        guard_core::contains_word(prod, "transport")
-    } else {
-        prod.lines().any(public_line_leaks_transport)
-    };
-    if c3 {
-        out.insert("C3");
-    }
-    if !disk_and_env_tags_in(prod).is_empty() {
-        out.insert("C4");
-    }
-    if spawn_and_bind_needles()
-        .iter()
-        .any(|(n, _)| prod.contains(n.as_str()))
-    {
-        out.insert("C5");
-    }
-    if !inexhaustive_wire_matches(prod).is_empty() {
-        out.insert("X1");
-    }
-    if !deadline_literals(prod).is_empty() {
-        out.insert("X2");
-    }
-    if !silent_drop_sites(prod).is_empty() {
-        out.insert("X4");
-    }
-    if !loose_until_derivations(prod).is_empty() {
-        out.insert("X5");
-    }
-    if ENTRIES
-        .iter()
-        // 人群与 `X6` 同一个口径（按入口的语言分前端语料），不另写一份。
-        .any(|(e, lang, _)| {
-            is_frontend_for(rel, lang, &BTreeSet::new())
-                && !call_sites_without_budget(prod, e).is_empty()
-        })
-    {
-        out.insert("X6");
-    }
-    out
-}
-
-/// ★★ 两张「进不来的逐份理由」表**共用的那一条断言** —— `D1`：一个判定只有一个家。
-///
-/// [`RELAY_LEFT_OUTSIDE`]（面 B）与 [`TRANSPORT_LEFT_OUTSIDE`]（面 A）形状逐字相同，
-/// 而它们**只许有一份实现**：各写一份的话两份会各自漂，而「漂开了」在终端上一个字都看不出来
-/// —— 那正是 `D1` 在治的那一族（同 [`criteria_biting`] 一行识别器都不自己写的理由）。
-///
-/// # 反空真：三样各自钉着
-///
-/// 1. **两向集合相等**（逐份）—— 不是「表里那几条确实咬」（那是**地板**，在「多咬了一条」
-///    方向瞎），是**恰好这几条**。
-/// 2. **份数相等 ＋ 每份都真读到了** —— 份数用**相等**不用地板；路径漂了当场 panic，
-///    不许退化成「那就少判一份」（人群缩水与「全都合规」在终端上一模一样）。
-/// 3. **识别器不是恒红** —— 一段干净的合成文本喂进去必须零命中。没有这一条，全咬也是绿。
-///
-/// # 🔴 为什么还要**判词那一层**（2026-09-22 被死值验逼出来的一格）
-///
-/// 第一版只比**判据编号**的集合。死值验第一刀当场证否：`stream_source/` 有两个 `C4` 判词，
-/// 摘掉其中一个之后编号那个集合**一个字都不变** ⇒ 十七条**全绿**。
-/// ⇒ 「集合粒度」在「少了一处」那个方向与**地板**一样瞎，而本仓正是反复栽在那上面。
-/// 本条因此多一层：逐份的 `C4` **判词**两向集合相等，
-/// 另有一条两列互相的自检（写了 `C4` 就必须逐个判词点出来，反之也不许凭空多一列）。
-///
-/// # 买不到（如实登记）
-///
-/// - **只有 `C4` 收到了判词那一层。** `C2`（业务 crate 名）· `C5`（起进程/绑端口）·
-///   `X1`–`X6` 今天仍**只比编号集合** ⇒ 那几条各自「少了一处」的方向**照样瞎**。
-///   这一格是有意的：完成判据点名的是「那 5 处读盘」，
-///   把六条判据的判词全立起来会变成一张没人读的大表。**要补是另一件活，不是这一件的漏。**
-/// - **不买「表里那几份该不该进来」** —— 归属判断永远是人做的，见两张表各自的头注。
-fn assert_left_outside(table: &[(&str, &[&str], &[&str], &str)], label: &str) {
-    let root = repo_root();
-    // 表里的编号必须都是真判据（拼错一个 ⇒ 那一行从此恒不命中）。
-    let known: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
-    let known_tags: BTreeSet<&str> = disk_and_env_needles()
-        .iter()
-        .map(|(tag, _, _)| *tag)
-        .collect();
-    for (rel, ids, c4, _) in table {
-        for id in *ids {
-            assert!(
-                known.contains(id),
-                "`{rel}` 那一行写着判据 `{id}`，而 `CRITERIA` 里没有这个编号 —— \
-                 编号拼错了 / 判据改名了。那一行会从此恒不命中。"
-            );
-        }
-        for tag in *c4 {
-            assert!(
-                known_tags.contains(tag),
-                "`{rel}` 那一行写着 `C4` 判词〔{tag}〕，而形状表里没有这个标签 —— \
-                 标签拼错了 / 判词改名了。那一格会从此恒不命中。"
-            );
-        }
-        // 两列之间的自检：写了 `C4` 就必须逐个判词点出来，反之也不许凭空多一列。
-        assert_eq!(
-            ids.contains(&"C4"),
-            !c4.is_empty(),
-            "`{rel}`：判据那一列{}写 `C4`，而判词那一列{}空 —— 两列必须同进同退，\
-             否则「几处读盘」那个数会从一侧悄悄漂掉",
-            if ids.contains(&"C4") { "" } else { "没" },
-            if c4.is_empty() { "是" } else { "不是" }
-        );
-    }
-
-    let mut all: BTreeSet<&'static str> = BTreeSet::new();
-    let mut diverged: Vec<String> = Vec::new();
-    for (rel, ids, c4, why) in table {
-        // 以 `/` 结尾的那一格是一个目录（会话流来源拆成了一个目录）：整个目录的生产段当一份判。
-        let prod = if rel.ends_with('/') {
-            assert_eq!(
-                *rel, "src/frontend/shell/src/stream_source/",
-                "目录那一格只认会话流来源那个目录（理由：{why}）"
-            );
-            guard_core::addr::stream_source_production()
-        } else {
-            let p = root.join(rel);
-            let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-                panic!(
-                    "表里写着 `{rel}`（理由：{why}），而它读不出来：{e}\n\
-                     ⇒ 路径漂了 / 文件搬走了。**不许当成「那就少判一份」** ——\n\
-                     人群缩水与「全都合规」在终端上一模一样。"
-                )
-            });
-            production_of(rel, &raw)
-        };
-        assert!(
-            !prod.trim().is_empty(),
-            "`{rel}` 的生产段剥完是空的 —— 剥法坏了，下面那条会在两个空集之间比对（恒绿）"
-        );
-        let got = criteria_biting(rel, &prod);
-        all.extend(got.iter().copied());
-        let want: BTreeSet<&str> = ids.iter().copied().collect();
-        let got_str: BTreeSet<&str> = got.iter().copied().collect();
-        if got_str != want {
-            let extra: Vec<&&str> = got_str.difference(&want).collect();
-            let gone: Vec<&&str> = want.difference(&got_str).collect();
-            diverged.push(format!(
-                "  {rel}\n    表里写着：{want:?}\n    盘上现扫：{got_str:?}\n    \
-                 多出来的（表没写）：{extra:?}\n    不见了的（表写了而不咬）：{gone:?}"
-            ));
-        }
-        // 🔴 **判词那一层也要两向相等** —— 只比判据编号的话，一份文件有两个 `C4` 判词时
-        //    摘掉其中一个，编号那个集合**一个字都不变** ⇒ 「少了一处读盘」在盘上看不出来。
-        //    〔死值验第一刀逮到的正是这一形：摘掉 `stream_source` 那处读环境变量，
-        //     只比编号时十七条全绿。地板在「变少」方向是瞎的，集合粒度在这里也是。〕
-        let want_c4: BTreeSet<&str> = c4.iter().copied().collect();
-        let got_c4 = disk_and_env_tags_in(&prod);
-        if got_c4 != want_c4 {
-            let extra: Vec<&&str> = got_c4.difference(&want_c4).collect();
-            let gone: Vec<&&str> = want_c4.difference(&got_c4).collect();
-            diverged.push(format!(
-                "  {rel}〔`C4` 判词那一层〕\n    表里写着：{want_c4:?}\n    \
-                 盘上现扫：{got_c4:?}\n    多出来的（表没写）：{extra:?}\n    \
-                 不见了的（表写了而不咬）：{gone:?}"
-            ));
-        }
-    }
-    assert!(
-        diverged.is_empty(),
-        "{label}「被哪几条咬」与登记的对不上：\n{}\n\n\
-         两个方向各有一种处置，别混：\n\
-         ① **多出来一条** ⇒ 有人往那份文件里加了新的违例。补进表里那一行，并写清它是什么。\n\
-         ② **少了一条**（表写了而不咬）⇒ 那条阻塞被清掉了。\n\
-            🔴 处置**不是**把这一行改小了事 —— 该问的是「它现在圈得进来了吗」：\n\
-            阻塞清空 ⇒ 它该不该搬进通信层 crate。\n\
-            ⚠ 而「十一条全绿」不等于「该圈」，归属判断仍是人做的。",
-        diverged.join("\n")
-    );
-
-    // 反空真①：至少真咬到过东西（否则「识别器全瞎」与「全都干净」同形）。
-    assert!(
-        !all.is_empty(),
-        "{label}：一条判据都没咬住 —— 识别器整批瞎了，\
-         而那时上面那条相等断言是在两个空集之间比对（恒绿）"
-    );
-
-    // 反空真②：识别器不是恒红 —— 一段干净的合成文本喂进去必须零命中。
-    let clean = "pub fn relay(origin: &str, op: &str, payload: &[u8]) -> u8 {\n    \
-         let _ = (origin, op, payload);\n    0\n}\n";
-    let on_clean = criteria_biting("synthetic.rs", clean);
-    assert!(
-        on_clean.is_empty(),
-        "一段只用位置词、不读盘、不起进程、无期限字面量的干净代码被判成有 {on_clean:?} —— \
-         那么上面每一格的绿都不携带任何信息（识别器恒红）"
-    );
-}
-
-/// ★ **中转的宿主为什么在外面** —— 后端 `relay/` 里不进通信层的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
-///
-/// 反空真那三样与面 A 那条**共用同一份实现**（[`assert_left_outside`]，`D1`）。
-/// **不买**「表里那几份该不该进来」—— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
-#[test]
-fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    assert_left_outside(
-        RELAY_LEFT_OUTSIDE,
-        "中转的宿主（后端 `relay/`）不进通信层的那几份",
-    );
-}
-
-/// ★ **传输面候选** —— 面 A 的候选逐份**被哪几条咬**与 [`TRANSPORT_LEFT_OUTSIDE`] 两向相等。
-///
-/// 〔「步 4 的剩余」，2026-09-22 立〕面 B 那张表 2026-09-21 就有了，
-/// **面 A 一直没有** ⇒ 「面 A 还剩几处读盘」这件事此前**完全不在执行链上**
-/// （死值验：摘掉一处读环境变量，这一族当时那十六条一条都没红）。人群与逐份理由住
-/// [`TRANSPORT_LEFT_OUTSIDE`]，反空真那三样与面 B 那条共用 [`assert_left_outside`]。
-///
-/// # 买不到（别读大了）
-///
-/// - **不买「这四份该不该进来」** —— 见 [`TRANSPORT_LEFT_OUTSIDE`] 头注；
-///   其中 `pubkey.rs` 与那本搬迁账两格的正解都**不是**「圈进来」。
-/// - **不买「传输面就是这四份」** —— 人群是那张表 ＋给的，
-///   本条**不去数目录**。哪天传输面多一份文件，本条一个字都不说。
-/// - **不买「这几处读盘清得掉」** —— 它只买「那段解释为什么清不掉的理由不是假的」。
-///   逐处的外部前置（另一族判据正着钉住那处环境变量 · 6 条互锁登记表 · 一道未拍的设计题）
-///   写在表里各自那一行。
-#[test]
-fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面候选");
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-//  八、元判据：这十七条真的在跑
+//  八、元判据：这几条真的在跑
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份 Rust 源码里所有 `#[test] fn <名字>` 的名字。
@@ -2350,7 +1337,7 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 /// ★★ **「判据不在执行链上就等于不存在」的机检形态**。
 ///
 /// [`CRITERIA`] 那张表与本文件里**真实的** `#[test]` 两向集合相等，
-/// 并且编号那一列恰好覆盖 `C1`–`C5` 与 `X1`–`X6`。
+/// 并且编号那一列恰好覆盖 `C1`–`C3` 与 `X4`。
 ///
 /// # 它治什么
 ///
@@ -2395,16 +1382,16 @@ fn every_criterion_is_on_the_execution_chain() {
         declared.len()
     );
     let ids: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
-    let want_c: BTreeSet<&str> = ["C1", "C2", "C3", "C4", "C5"].into_iter().collect();
-    let want_x: BTreeSet<&str> = ["X1", "X2", "X4", "X5", "X6"].into_iter().collect();
+    let want_c: BTreeSet<&str> = ["C1", "C2", "C3"].into_iter().collect();
+    let want_x: BTreeSet<&str> = ["X4"].into_iter().collect();
     let got_c: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('C')).copied().collect();
     let got_x: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('X')).copied().collect();
     assert_eq!(
         got_c, want_c,
-        "通信层的铁律恰好五条（C1–C5），盘上是 {got_c:?}"
+        "扫文字的铁律恰好三条（C1–C3；读盘 · 起进程那两条由名单挡），盘上是 {got_c:?}"
     );
     assert_eq!(
         got_x, want_x,
-        "签名判据恰好五条（X1 · X2 · X4–X6），盘上是 {got_x:?}"
+        "扫文字的签名判据恰好一条（X4；别的由名单 · 开关 · `Budget` 私有挡），盘上是 {got_x:?}"
     );
 }
