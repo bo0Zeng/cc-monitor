@@ -555,7 +555,8 @@ fn this_crate_never_falls_back_to_not_stripping() {
          别把下面那棵根删掉了事（删掉就回到「块那一半空转」那个状态）"
     );
     // 两棵根互不包含（`§5.4b` 纪律 1）：一棵在 `src/` 下、一棵在 `tests/` 下。
-    assert_block_comment_model_holds(&[&crate_src, &crate_tests], 2, 30);
+    // 块数地板 250：登记表（`rules/` 里一百五十来块）住这棵测试树。
+    assert_block_comment_model_holds(&[&crate_src, &crate_tests], 2, 250);
 }
 
 /// 🔴🔴 **钉「剥法的输入单位 = 看门判据的输入单位」这条关系。**

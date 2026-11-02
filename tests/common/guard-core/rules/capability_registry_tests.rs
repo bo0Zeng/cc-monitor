@@ -42,13 +42,13 @@ const WINDOWS: &[&str] = &["main", "viewer-*", "settings"];
 
 /// 读 `src/frontend/shell/` 下的一个同级配置文件。
 fn capability_json_sibling(name: &str) -> String {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(name);
+    let p = guard_core::addr::shell_root().join(name);
     std::fs::read_to_string(&p)
         .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 路径变了就把本条一起改"))
 }
 
 fn capability_json() -> String {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/default.json");
+    let p = guard_core::addr::shell_root().join("capabilities/default.json");
     std::fs::read_to_string(&p)
         .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 路径变了就把本条一起改"))
 }
@@ -1466,7 +1466,7 @@ fn capability_keys_anywhere(v: &serde_json::Value) -> usize {
 /// 是把 [`every_webview_permission_is_registered`] 改成读**全部**来源、逐份对 `ALLOWED`，再改本条的集合。
 #[test]
 fn tauri_loads_capabilities_from_exactly_one_source() {
-    let shell = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let shell = guard_core::addr::shell_root();
 
     // ① 目录：全部文件（空扩展名列表 = 不筛）两向等于 {default.json}。
     let files: std::collections::BTreeSet<String> =
@@ -1595,7 +1595,7 @@ fn every_window_write_the_ui_calls_is_granted() {
         let (name, tail) = rest.split_at(end);
         (!name.is_empty() && tail.trim_start().starts_with('(')).then_some(name)
     }
-    let shell = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let shell = guard_core::addr::shell_root();
     let mut calls: Vec<(String, String)> = Vec::new();
     for root in ["../ui", "../../comms"] {
         for (path, ts_text) in guard_core::scan_tree_excluding(&shell.join(root), &["ts"], &[]) {

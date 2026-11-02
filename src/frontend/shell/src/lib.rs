@@ -148,12 +148,6 @@ mod stream_watch;
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/cross_half_edge_registry.rs"]
-mod cross_half_edge_registry; // F20：两半之间的编译期边（跨半边 include_str! 逐条登记 + ★ 一条都不许长在生产段）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/doc_claim_registry.rs"]
-mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与代码对拍（状态列逐格登记 + ★ 判据从文档里读那个数，代码里不留第二份）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
 mod frame_tally;
@@ -161,64 +155,20 @@ mod frame_tally;
 #[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
 mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/）
 
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/bus_identity_registry.rs"]
-mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（整体 #[cfg(test)]）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/capability_registry.rs"]
-mod capability_registry;
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/comm_boundary_registry.rs"]
-mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C3 · X1 · X4
+// 登记表住 `tests/common/guard-core/rules/`（`cargo test -p guard-core` 跑）；留在这里的只有读壳 crate 内部的那一张。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/command_home_registry.rs"]
 mod command_home_registry; // Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
 #[cfg(test)]
-// audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
-#[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
-mod e2e_gate_registry;
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lockfile_conflict_guard.rs"]
 mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须为空（超集不算）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/needle_anchor_registry.rs"]
-mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/parity_ledger.rs"]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
-                   // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
-                   // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
-                   //   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/plugin_class_registry.rs"]
-mod plugin_class_registry;
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/polling_registry.rs"]
-mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（backend 那条零定时器护栏点名要「单独论证」的那半）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/pub_reader_registry.rs"]
-mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产品读者（只被测试读算零）
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/quote_singleton_guard.rs"]
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/scanning_guard_registry.rs"]
-mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/session_name_registry.rs"]
-mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/shared_crate_registry.rs"]
-mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
-#[cfg(test)]
-// audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免。
-#[path = "../../../../tests/frontend/shell/shell_lint_registry.rs"]
-mod shell_lint_registry;
-// TL3（审计 F 🔴-2）：同步 IPC 命令的调用闭包里零 `block_on` / 零同步连后端（`INVARIANTS §10`；整体 cfg(test)）。
-//   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `plugin_class_registry` 那一段）。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/sync_command_registry.rs"]
-mod sync_command_registry;
+
 // 大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
 // 远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。

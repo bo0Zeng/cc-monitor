@@ -2406,12 +2406,12 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 /// `min_blocks` 挡「切法坏了」。棘轮纪律：只许升不许降。
 #[test]
 fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
-    // 🔴 **两棵树一起喂，地板一格不动。**
+    // 🔴 **两棵树一起喂。**
     //
     // monitor 这半边今天住两处：生产段 `src/frontend/shell/src`、测试段 `<repo>/tests/frontend/shell`。
     // 而本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话
-    // 块数从 1 200 掉到 412，「没有文件走兜底」这个结论就是在三分之一的语料上得出的。
-    // ⚠ 两条地板**都没往下拧**（100 / 1200 逐字照旧）—— 变的是分母那一侧够不够得到。
+    // 块数掉到三分之一，「没有文件走兜底」这个结论就是在三分之一的语料上得出的。
+    // 块数地板 1050：登记表（一百五十来块）住 `tests/common/guard-core/rules/`，归 guard-core 那一条量（它的地板跟着抬）。
     guard_core::assert_block_comment_model_holds(
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
@@ -2420,7 +2420,7 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
             &guard_core::addr::tests_root().join("frontend/filewin"),
         ],
         100,
-        1200,
+        1050,
     );
 }
 

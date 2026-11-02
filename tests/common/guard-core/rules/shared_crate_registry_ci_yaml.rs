@@ -1,5 +1,3 @@
-use std::path::Path;
-
 fn repo_root() -> std::path::PathBuf {
     // 住址唯一源：`guard_core::addr`。
     guard_core::addr::repo_root()
