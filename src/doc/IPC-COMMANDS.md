@@ -6781,6 +6781,22 @@ id: string, };
 
 码：`bad_args` · `failed` · `oversized_line` · `refused` · `not_found`
 
+#### `prose-hl`
+
+拉一段正文的代码高亮。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --prose-hl`
+
+入参 `ProseHlReq` · 回包 `SegHl`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HlCode = { lang: string | null, x: string, };
+type ProseHlReq = { codes: Array<HlCode>, };
+type SegHl = { hl: Array<Array<number>>, };
+```
+
+码：`bad_args` · `too_large`
+
 #### `history-read`
 
 按字节分页读一份会话。
@@ -17297,6 +17313,7 @@ alias?: string | null, };
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
 | `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |
 | `--profiles-write` | ＝ 帧命令 `profiles-write`：按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数 |
+| `--prose-hl` | ＝ 帧命令 `prose-hl`：拉一段正文的代码高亮 |
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
