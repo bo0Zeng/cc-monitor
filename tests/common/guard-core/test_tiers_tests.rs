@@ -61,6 +61,9 @@ use std::path::{Path, PathBuf};
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
     "tests/common/guard-core/rules/mod.rs", // 规则的入口：快照 · 取人群 · 两向相等 · 耗时
+    "tests/backend/relay/relay_support.rs", // 中转宿主的判据夹具：本包与上层判据经 `test-support` 共用
+    "tests/backend/cross/relay.rs", // 只挂中转那几条上层判据，自己没有测试
+    "tests/backend/cross/agents.rs", // 只挂 agents 那几条上层判据，自己没有测试
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/stream/remote_ask_peers.rs", // 跨台合并那几条判据共用的「那几台」替身（问常驻 · 记命令行与 stdin）
@@ -258,7 +261,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/relay/host_tests.rs",
         "hosted_relay_child_entry_point",
-        Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "relay::listen::host_tests::hosted_relay_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "cross_relay::host_tests::hosted_relay_child_entry_point" },
     ),
     (
         "tests/backend/accounts/quota/rules/decide_tests.rs",
@@ -288,12 +291,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/stderr_log_tests.rs",
         "stderr_log_child_entry_point",
-        Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "tests::stderr_log_child_entry_point" },
     ),
     (
         "tests/backend/relay/server_tests.rs",
         "relay_child_process_entry_point",
-        Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "relay::server_tests::relay_child_process_entry_point" },
+        Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "cross_relay::server_tests::relay_child_process_entry_point" },
     ),
     (
         "tests/frontend/shell/local_backend_tests.rs",

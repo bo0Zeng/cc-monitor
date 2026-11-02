@@ -102,9 +102,9 @@ use platform::tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 
 #[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
+use backend_relay as relay;
 #[cfg(test)]
-pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
-use backend_relay as relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
+pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`） // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/relay.rs"]
 mod cross_relay; // 中转宿主判据里引到上层的那几条（那一层是独立的包、够不到上层）
