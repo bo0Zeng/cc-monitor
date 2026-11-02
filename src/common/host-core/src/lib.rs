@@ -3,7 +3,7 @@
 //!
 //! 两个前端进程（monitor 主界面 ＋ 文件窗口）都要、而只许有一份的宿主那几件：
 //! - [`atomic_write_json`] —— 前端自己那几份状态文件（`auto-launch.json` · 书签 · 绑定表）的原子覆盖；
-//!   [`read_capped`] —— 读回它们时先过上限（上限从声明表来）；
+//!   [`read_capped`] · [`read_capped_bytes`] —— 两个前端整读一份文件都经它们，先过上限（[`Cap`]：调用方声明的那一道）；
 //! - [`local_offset_at`] —— 那一刻本机时区与 UTC 的差（文件窗口画修改时间 · 两边写「复制详情」的时刻）；
 //! - [`viewer_tz`] —— 这一台的时区名（请求信封与起流的 `tz`：后端按看的那一台的钟写「几点」）；
 //! - [`WorkArea`] ＋ [`fit_into_work_area`] —— 一扇窗夹进它所在显示器的工作区（Tauri 那几扇窗与文件窗口同一个判定）；
@@ -13,7 +13,9 @@ mod atomic;
 mod clock;
 mod geometry;
 
-pub use atomic::{atomic_write_json, read_capped, Capped};
+pub use atomic::{atomic_write_json, read_capped, read_capped_bytes, Capped};
+/// 读上限那个类型（住 `relay_route_core`）：文件窗口包只依赖本包、不依赖 `relay-route-core`，声明它自己的读上限从这里拿。
+pub use relay_route_core::{Cap, Over};
 pub use clock::{local_offset_at, viewer_tz, TZ_ROOM};
 
 /// 这一份编给的系统与架构（「复制详情」里写「本机」那一行用）。平台形态只许住宿主原语与 `platform/`。

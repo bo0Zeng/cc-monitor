@@ -1055,7 +1055,7 @@ pub fn extract_embedded_to(
     let name = local_ccm_entry_name();
     let dest = bin.dir().join(&name);
     sweep_moved_aside(bin, &name);
-    if std::fs::read(&dest).is_ok_and(|disk| disk == bytes) {
+    if same_on_disk(&dest, bytes) {
         return Ok(dest);
     }
     sweep_stale_partials(bin, &name);
@@ -1137,16 +1137,23 @@ pub fn place_local_program(
     // 错交回 `io::Error`（带落点）：调用方按它的种类取原因词（`copy_core::reason`），原话进复制详情。
     let dest = bin.dir().join(file);
     sweep_moved_aside(bin, file);
-    if let Ok(m) = std::fs::metadata(&dest) {
-        if m.is_file()
-            && m.len() == bytes.len() as u64
-            && std::fs::read(&dest).is_ok_and(|on_disk| on_disk == bytes)
-        {
-            return Ok(dest);
-        }
+    if same_on_disk(&dest, bytes) {
+        return Ok(dest);
     }
     sweep_stale_partials(bin, file);
     bin.place(file, bytes)
+}
+
+/// 盘上 `dest` 与手上这份逐字节相同。读上限就是手上这份的长度：更长的就不是这一份，超了拒、不截一段去比，照「不同」回。
+fn same_on_disk(dest: &Path, bytes: &[u8]) -> bool {
+    let cap = relay_route_core::Cap {
+        bytes: bytes.len() as u64,
+        over: relay_route_core::Over::Reject,
+    };
+    matches!(
+        host_core::read_capped_bytes(dest, cap),
+        Ok(host_core::Capped::Whole(disk)) if disk == bytes
+    )
 }
 
 // ── **本机的 `ccm` 入口** ──────────────────────────────
