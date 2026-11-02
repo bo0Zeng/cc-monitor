@@ -3,8 +3,9 @@
 //!
 //! 谁守哪一条：读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量（`Duration::from_*`）· `try_send` 由两包的
 //! `clippy.toml`（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）挡；`match` 列全变体由两包
-//! `Cargo.toml` 的 `wildcard_enum_match_arm = "deny"` 挡；期限只收紧、调用点必给期限由 `Budget` 字段私有
-//! （只经 `Budget::new` 造、只经 `narrow` 取小）与 `call` 的签名挡。本文件只留编译器挡不住的那几条。
+//! `Cargo.toml` 的 `wildcard_enum_match_arm = "deny"` 挡（通配臂只盖一个变体的那一形它不管，归 `X1`）；
+//! 期限只收紧、调用点必给期限由 `Budget` 字段私有（只经 `Budget::new` 造、只经 `narrow` 取小）与
+//! `call` 的签名挡。本文件只留编译器挡不住的那几条。
 //!
 //! 买不到（从此没人守）：`chan.ts` 那一侧的期限字面量与「重新 `now() + …`」（TS 没有字段私有那一道）；
 //! 名字带 `SECS` 之类的裸数常量（它变成 `Duration` 时才被名单咬，`Duration::new` 不在名单里）。
@@ -245,6 +246,11 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "C3",
         "c3_the_word_transport_never_crosses_the_boundary",
         "前端发出的请求里不许含 `transport`（`transport` 是本层的内部选择）",
+    ),
+    (
+        "X1",
+        "x1_every_match_on_the_three_wire_types_is_exhaustive",
+        "对 `CallError` / `Item` / `Reach` 的 `match` 穷尽、零 `_ =>`（只盖一个变体的那一形开关挡不住）",
     ),
     (
         "X4",
@@ -847,7 +853,7 @@ fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
 /// ⇒ 上一版咬（`C1` ＋ `X4`），本版只剩 `X4`。那不是报错文案，是一条线上契约，
 /// 而**本射程分不出这两者** —— `103 §P5.3 ②` 那个形状换了个位置又出现了一次。
 /// 🔴 这一格**今天判不了**，缺的证据是一份「线上契约的字段名住哪」的独立读数。
-/// 挡它的不是本条，是两包的 `wildcard_enum_match_arm` 开关（线上类型列全变体）与金标准逐字节对拍。
+/// 挡它的不是本条，是线上类型列全变体（两包的 `wildcard_enum_match_arm` 开关 ＋ `X1`）与金标准逐字节对拍。
 ///
 /// # 匹配单位仍是**标识符子词**，词表加了复数〔`§8.1.5`〕
 ///
@@ -1248,8 +1254,105 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七、X4：丢只能经 `Gap`（名单挡不住的那一形）
+//  七、X1 · X4：开关与名单挡不住的那两形
 // ════════════════════════════════════════════════════════════════════════════
+
+/// 从 `at` 起第一对配平花括号里的内容。
+///
+/// ⚠ **粗尺子，如实登记**：它不解析字符串与字符字面量 ——
+/// 一个写在字符串里的 `}` 会让它提前收尾。本仓的判据语料里满是合成源码串，
+/// 精确解析一次失步就整段跟着错，而错的方向是**静默的绿**；
+/// 宁可用一把粗而稳的尺子（`scanning_guard_registry::guard_fn_item` 的头注同此论证）。
+fn braced_block(text: &str, at: usize) -> Option<&str> {
+    let open = at + text[at..].find('{')?;
+    let mut depth = 0usize;
+    for (i, c) in text[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[open + 1..open + i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 那三个线上类型 —— `X1` 的人群按它们认。
+const WIRE_TYPES: &[&str] = &["CallError", "Item", "Reach"];
+
+/// 生产段里「对那三个类型的 `match`」中带 `_ =>` 的那些（返回每处的片段）。
+fn inexhaustive_wire_matches(prod: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mark = format!("{} ", "match");
+    for (at, _) in prod.match_indices(mark.as_str()) {
+        let Some(block) = braced_block(prod, at) else {
+            continue;
+        };
+        if !WIRE_TYPES
+            .iter()
+            .any(|t| guard_core::contains_word(block, t))
+        {
+            continue;
+        }
+        let wildcard = format!("_ {}", "=>");
+        if block.contains(wildcard.as_str()) {
+            out.push(block.trim().chars().take(120).collect::<String>());
+        }
+    }
+    out
+}
+
+/// ★ `X1` —— 对 `CallError` / `Item` / `Reach` 的 `match` 必须穷尽，零 `_ =>`。
+///
+/// 两包的 `wildcard_enum_match_arm = "deny"` 挡住了大半：通配臂盖住两个以上变体就编不过。
+/// 它挡不住的那一形是**通配臂只盖住剩下的一个变体**（那归 `match_wildcard_for_single_variants`，两包没开）——
+/// 本条只为这一形留着。什么时候删：两包 `Cargo.toml` 开了 `match_wildcard_for_single_variants` 那天。
+///
+/// **买不到**：① 类型对不对（本条按**名字**认，不做类型检查）；
+/// ② `_ =>` 之外的兜底写法（`other =>`、`e if true =>`；盖两个以上变体的由开关挡）；
+/// ③ 写在字符串里的花括号会让块提前收尾（见 [`braced_block`]）。
+#[test]
+fn x1_every_match_on_the_three_wire_types_is_exhaustive() {
+    let pop = boundary();
+    let offenders: Vec<String> = pop
+        .iter()
+        .flat_map(|m| {
+            inexhaustive_wire_matches(&m.prod)
+                .into_iter()
+                .map(|blk| format!("  {} —— `{blk}`", m.rel))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "这几处对线上类型的 `match` 用了通配臂：\n{}\n\n\
+`X1`：三个类型的每一处 `match` 必须**穷尽、零 `_ =>`**。\n\
+         ⇒ 通配臂的代价是：错误面加一个变体时，**没有任何地方会红** —— \n\
+         新错误被悄悄归进旧分支，而那正是这一层最不能出的事。",
+        offenders.join("\n")
+    );
+    for t in WIRE_TYPES {
+        let bad = format!("    match e {{ {t}::A => 1, _ => 0 }}\n");
+        assert_eq!(
+            inexhaustive_wire_matches(&bad).len(),
+            1,
+            "识别器认不出 `{t}` 上的通配臂 —— `X1` 此刻在空转"
+        );
+        let good = format!("    match e {{ {t}::A => 1, {t}::B => 0 }}\n");
+        assert!(
+            inexhaustive_wire_matches(&good).is_empty(),
+            "穷尽的 `{t}` match 被判成违例 —— 假红比不查更坏"
+        );
+    }
+    assert!(
+        inexhaustive_wire_matches("    match kind { Foo::A => 1, _ => 0 }\n").is_empty(),
+        "**别的**类型上的通配臂被算进了 `X1` 的人群 —— 人群要等于它真正证明的那件事"
+    );
+}
 
 /// 静默丢弃里名单挡不住的那一形：`let _ = …send(…)`（`try_send` 在两包的名单里）。
 fn silent_drop_sites(prod: &str) -> Vec<String> {
@@ -1337,7 +1440,7 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 /// ★★ **「判据不在执行链上就等于不存在」的机检形态**。
 ///
 /// [`CRITERIA`] 那张表与本文件里**真实的** `#[test]` 两向集合相等，
-/// 并且编号那一列恰好覆盖 `C1`–`C3` 与 `X4`。
+/// 并且编号那一列恰好覆盖 `C1`–`C3` 与 `X1` · `X4`。
 ///
 /// # 它治什么
 ///
@@ -1383,7 +1486,7 @@ fn every_criterion_is_on_the_execution_chain() {
     );
     let ids: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
     let want_c: BTreeSet<&str> = ["C1", "C2", "C3"].into_iter().collect();
-    let want_x: BTreeSet<&str> = ["X4"].into_iter().collect();
+    let want_x: BTreeSet<&str> = ["X1", "X4"].into_iter().collect();
     let got_c: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('C')).copied().collect();
     let got_x: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('X')).copied().collect();
     assert_eq!(
@@ -1392,6 +1495,6 @@ fn every_criterion_is_on_the_execution_chain() {
     );
     assert_eq!(
         got_x, want_x,
-        "扫文字的签名判据恰好一条（X4；别的由名单 · 开关 · `Budget` 私有挡），盘上是 {got_x:?}"
+        "扫文字的签名判据恰好两条（X1 · X4；别的由名单 · 开关 · `Budget` 私有挡），盘上是 {got_x:?}"
     );
 }
