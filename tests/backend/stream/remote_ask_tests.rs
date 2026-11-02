@@ -22,9 +22,26 @@
 //! - 🔴 真远端：`DialRemote`（capture 那一跳）没对真 sshd 跑过（同 AS2）；判据 3 用替身对面。
 
 use super::*;
-use crate::assets::hub_wire::{SkillReadCmd, SkillReadReq};
+use crate::common::time::Tz;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex as StdMutex;
+
+/// 问的那一条的入参（形同 `skill-read`：一个名字 ＋ 一个可缺的项目）。本包够不到上层的命令表 ⇒ 替身自己声明一条。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct SkillReadReq {
+    name: String,
+    project: Option<String>,
+}
+
+/// 随便一条 typed 内层命令（线上名 `skill-read`；回包照原样收、码表空）。
+struct SkillReadCmd;
+
+impl crate::wire::typed::Command for SkillReadCmd {
+    const NAME: &'static str = "skill-read";
+    type Req = SkillReadReq;
+    type Reply = Value;
+    type Err = crate::wire::conn::NoErr;
+}
 
 /// 机器表里的一台（线上那一形读成的）。
 fn host(v: Value) -> crate::dial::Host {
@@ -125,7 +142,7 @@ fn probe() -> SkillReadReq {
 async fn an_unregistered_origin_is_said_and_never_dialed() {
     let table = crate::dial::remote_ask::test_peers::empty();
     let far = Recorder::default();
-    let e = ask_json::<SkillReadCmd>("nowhere", &probe(), &crate::Tz::default(), &table, &far)
+    let e = ask_json::<SkillReadCmd>("nowhere", &probe(), &Tz::default(), &table, &far)
         .await
         .expect_err("机器表里没有的那台不许问出东西来");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
@@ -141,7 +158,7 @@ async fn a_machine_in_the_table_is_asked_with_its_composed_dial_and_a_quoted_com
         json!({"label": "dev", "host": "192.0.2.2", "user": "u", "keyPath": "/k"}),
     )]);
     let far = Recorder::default();
-    let tz = crate::Tz::iana("Asia/Shanghai").unwrap();
+    let tz = Tz::iana("Asia/Shanghai").unwrap();
     let _ = ask_json::<SkillReadCmd>("dev", &probe(), &tz, &table, &far)
         .await
         .expect_err("替身答的不是 JSON");
@@ -176,7 +193,7 @@ async fn a_machine_in_the_table_is_asked_with_its_composed_dial_and_a_quoted_com
 async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
     let table = crate::dial::remote_ask::test_peers::named(&["dev"]);
     let far = Recorder::default();
-    let here = crate::Tz::named(crate::common::time::TZ_HERE).unwrap();
+    let here = Tz::named(crate::common::time::TZ_HERE).unwrap();
     let _ = ask_json::<SkillReadCmd>("dev", &probe(), &here, &table, &far)
         .await
         .expect_err("替身答的不是 JSON");
@@ -400,66 +417,6 @@ async fn a_failed_remote_command_keeps_its_envelope_code() {
     assert_eq!(e.said, copy_text("beRemoteAsk.run.failed", &[]), "{e:?}");
 }
 
-/// ★ 问别台常驻那一跳（[`ask_resident`]）在那台起的 `--resident-call` 是一次性的：发起方一走（ssh 断开 ⇒ 它 stdout 那根管子的读端没人了），
-/// 就不再等那台常驻、当场收工 —— 不攥着一条常驻连接空等到发起方给的期限（10-28 沙箱 sshd 实测：断开后照活到期限）。
-/// 读端还在 ⇒ 照旧等到期限、报 `timed_out`（「发起方走了」不是一碰就响）；读端已关 ⇒ 交回「走了」，不等到期限。
-/// 扮那台常驻的：绑了套接字、不收不说（连得上，hello 永远不来）。
-#[tokio::test]
-#[cfg(unix)]
-async fn a_resident_call_stops_waiting_once_the_asker_is_gone() {
-    use crate::control::resident::{call_while, stdout_gone};
-    use crate::platform::child::Deadline;
-    let dh = std::env::temp_dir().join("ra-gone");
-    let _ = std::fs::remove_dir_all(&dh);
-    let run = relay_route_core::listen_dir_for(&dh);
-    std::fs::create_dir_all(&run).unwrap();
-    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
-    let _mute = own_chan::bind(&relay_route_core::listen_socket_for(&dh)).expect("绑");
-    let asked = crate::wire::listen::ResidentCall {
-        cmd: "machines-list".into(),
-        args: json!({}),
-    };
-    let tz = crate::Tz::default();
-
-    // 读端一直在：等到期限。
-    let (rd, wr) = std::io::pipe().unwrap();
-    let got = call_while(
-        &dh,
-        &asked,
-        Some(300),
-        &tz,
-        Deadline::millis(300),
-        stdout_gone(wr.into()),
-    )
-    .await;
-    let code = got.map(|r| r.map_err(|f| f.code));
-    assert_eq!(
-        code,
-        Some(Err(crate::wire::listen::CALL_TIMED_OUT.to_string())),
-        "读端还在却当成发起方走了"
-    );
-    drop(rd);
-
-    // 读端已关：不等那 30 秒期限（还在等 ⇒ 30 秒后交回 `timed_out`，下面那一条红）。
-    let (rd, wr) = std::io::pipe().unwrap();
-    drop(rd);
-    let got = call_while(
-        &dh,
-        &asked,
-        Some(30_000),
-        &tz,
-        Deadline::secs(30),
-        stdout_gone(wr.into()),
-    )
-    .await;
-    let _ = std::fs::remove_dir_all(&dh);
-    assert!(
-        got.is_none(),
-        "发起方走了（读端关了）还在等那台常驻、等到了期限：{:?}",
-        got.map(|r| r.map_err(|f| f.code))
-    );
-}
-
 /// ★ 每台各一份入参：本机那一份交给本机那一问，别的台各自 stdin 里是给它的那一份（照先后、一台一格）。
 #[tokio::test]
 async fn each_machine_gets_its_own_args() {
@@ -482,7 +439,7 @@ async fn each_machine_gets_its_own_args() {
             *seen.lock().unwrap() = Some(r.name.clone());
             async { Err(Said::from("here")) }
         },
-        &crate::Tz::default(),
+        &Tz::default(),
         until(5_000),
         &table,
         &peers,

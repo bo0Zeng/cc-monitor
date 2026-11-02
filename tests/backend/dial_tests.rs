@@ -145,21 +145,6 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ 子命令闸门不认 `--dial`：拨号只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），
-/// 没有一条入方向命令替界面开字节流。闸门认一个子命令却没有臂接它 ⇒ 半截入口。
-#[test]
-fn the_old_dial_entry_is_gone() {
-    assert!(
-        !crate::stream::cli::is_subcommand("--dial"),
-        "子命令闸门认 `--dial` —— 拨号不开子命令入口"
-    );
-    // 正控：同一个闸门认得出一条真子命令（不是「这一问什么都答不认」）。
-    assert!(
-        crate::stream::cli::is_subcommand("--resident-ensure"),
-        "正控 `--resident-ensure` 闸门不认 —— 本条在空转"
-    );
-}
-
 /// ★ 反向自检 · **阳性方向**：把一处锚点放到 `ssh-dial/` 外面去，判据必须红**并点名**。
 ///
 /// 语料是**活体**（真语料 + 一处注入），不是手搓的小串 —— 手搓的小串过不了字节地板，
@@ -622,10 +607,8 @@ fn the_multi_open_judge_lives_in_one_function() {
 struct CountingHalf(std::sync::Arc<std::sync::atomic::AtomicUsize>);
 
 impl super::uses::Closable for CountingHalf {
-    fn close_it(self) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        }
+    async fn close_it(self) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -991,7 +974,7 @@ fn keepalive_judges_a_dead_road_within_twenty_seconds_and_spares_a_live_one() {
         "最后收包之后 {dead_after_ms} ms 才判死 —— 刚断过马上开要干等这么久"
     );
     assert!(uses::STALE_AFTER_MS < dead_after_ms);
-    assert!(uses::STALE_AFTER_MS >= connect::KEEPALIVE_MS + 1_000);
+    const { assert!(uses::STALE_AFTER_MS >= connect::KEEPALIVE_MS + 1_000) };
 }
 
 /// ★ 等回话那一段的结局怎么记 —— 开通道失败、而连接也已断开（保活判死 / 对端断了）⇒ 当它死了
@@ -1036,8 +1019,7 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
         d.contains(crate::common::id::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"
     );
-    // 暂存区那一根与提交那一侧（`files::commit`）是同一个串。
-    assert_eq!(sftp::STAGING_ROOT, crate::files::commit::STAGING_DIR);
+    // 暂存区那一根与提交那一侧（`files::commit`）是同一个串：那一侧在上层，判据挂主 crate（`dial/on_upper_tests.rs`）。
 }
 
 /// 私钥框里写的 `~/.ssh/…`：拨号那一层按这台家目录展开再读（不原样交给读文件那一下）；读不出来那一句里的路径照用户写的。

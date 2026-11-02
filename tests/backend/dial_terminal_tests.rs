@@ -290,72 +290,6 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
     }
 }
 
-/// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
-/// 那一行的字节表的每一格 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
-fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
-    use crate::control::launch_render::ccm_invocation::tests as table;
-    let mut out = Vec::new();
-    for c in table::cells() {
-        for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string())))
-        {
-            let mut cell = c.clone();
-            cell.1.cwd = cwd.clone();
-            if let Ok(cmd) = table::render_cell(&cell) {
-                out.push((format!("cli {} · cwd {cwd:?}", c.0), cmd));
-            }
-        }
-    }
-    out
-}
-
-/// ★ Windows 上开远端会话不许被自家守卫拒：后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
-/// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；外层包了 tmux 的那一格真的在人群里。
-/// 守卫不放宽（正控）：同一条路上工作目录带 `"` 的照旧拒。
-#[test]
-fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
-    let cwds = [
-        "/home/u/c c",
-        "/home/u/文档/项目",
-        "/home/u/a\u{2019}b",
-        "/home/u/it's",
-    ];
-    let all = every_rendered_remote_command(&cwds);
-    let refused: Vec<String> = all
-        .iter()
-        .filter_map(|(what, cmd)| {
-            run(machine("h", "u", 22, None), cmd)
-                .err()
-                .map(|e| format!("  {what}\n    {cmd}\n    ⇒ {e:?}"))
-        })
-        .collect();
-    assert!(
-        refused.is_empty(),
-        "后端自己渲的远端命令被开终端那道守卫拒了（Windows 上这一趟就起不来）：\n{}",
-        refused.join("\n")
-    );
-    assert!(
-        all.iter().any(|(_, c)| c.contains("--ccm-tmux=")),
-        "建 tmux 会话的那几格一条都没渲出来 —— 人群塌了"
-    );
-    let dq = every_rendered_remote_command(&["/home/u/a\"b"]);
-    let with_dq: Vec<&String> = dq
-        .iter()
-        .map(|(_, c)| c)
-        .filter(|c| c.contains('"'))
-        .collect();
-    assert!(!with_dq.is_empty(), "正控没造出带双引号的命令");
-    for c in with_dq {
-        assert_eq!(
-            run(machine("h", "u", 22, None), c)
-                .unwrap_err()
-                .code
-                .as_deref(),
-            Some("refused"),
-            "守卫被放宽了：{c}"
-        );
-    }
-}
-
 // ── 「在此打开终端」的那一串：拼法住本机后端 ──
 
 /// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
@@ -429,13 +363,12 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
         by_intent,
         answer(&json!({ "machine": m, "cwd": "/srv/c" })).unwrap()
     );
-    for bad in [json!({ "machine": m, "cwd": "/srv", "command": "ls" })] {
-        assert_eq!(
-            answer(&bad).unwrap_err().code.as_deref(),
-            Some("bad_args"),
-            "{bad}"
-        );
-    }
+    let bad = json!({ "machine": m, "cwd": "/srv", "command": "ls" });
+    assert_eq!(
+        answer(&bad).unwrap_err().code.as_deref(),
+        Some("bad_args"),
+        "{bad}"
+    );
 }
 
 /// 终端那一行带 `-F <cc-monitor 那份 ssh 配置>`（目标与 `-J` 的每台跳板都认同一份库）、主机钥匙核对没被关

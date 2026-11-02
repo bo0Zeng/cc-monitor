@@ -36,7 +36,7 @@ use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::dial::DialRequest;
 
 /// 账上最多几条（有界资源；每条占一个本机口，一个人开不出这么多）。
-pub const MAX_FORWARDS: usize = 64;
+pub(crate) const MAX_FORWARDS: usize = 64;
 
 /// ack 那一行的上限。超了：拒收＋回错（这条转发起不来，原因带上限）。
 const ACK_CAP: Cap = Cap {
@@ -82,10 +82,10 @@ pub(crate) struct Spec {
 
 /// `forward-start` 的入参：规格四格 ＋ 那台的名字（怎么拨照这一端的机器表组，线上不交那台的配置）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct ForwardStartReq {
+pub struct ForwardStartReq {
     /// 那台的名字。
     pub(crate) origin: cmd_wire::Machine,
     /// 绑本机 `127.0.0.1:localPort`：用户敲进去的原文，这里解（界面不判是不是端口）。
@@ -284,19 +284,19 @@ where
 
 /// `forward-start` 的应答：这条转发的号。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ForwardStarted {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ForwardStarted {
     /// `fwd-<n>`，本进程内单调。
     pub(crate) id: String,
 }
 
 /// `forward-stop` 的入参 · 应答（应答回显那个号）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ForwardId {
+pub struct ForwardId {
     /// 转发号（`fwd-<n>`）。
     pub(crate) id: String,
 }
@@ -320,8 +320,8 @@ pub(crate) fn stop_with(
 
 /// 账上一条转发此刻的样子。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ForwardRow {
     pub(crate) id: String,
@@ -331,18 +331,18 @@ pub(crate) struct ForwardRow {
     pub(crate) remote_host: String,
     pub(crate) remote_port: u16,
     /// `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
-    #[cfg_attr(test, ts(type = "\"running\" | \"error\""))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"running\" | \"error\""))]
     pub(crate) state: &'static str,
     /// 累计接进的连接数。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) conn_count: u64,
 }
 
 /// `forward-list` 的应答。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Forwards {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Forwards {
     pub(crate) forwards: Vec<ForwardRow>,
 }
 
@@ -378,12 +378,12 @@ pub(crate) fn running_to(ledger: &Ledger, origin: &str) -> u32 {
 }
 
 /// 生产的那一份：进程里那张账。
-pub(crate) fn running_to_machine(origin: &str) -> u32 {
+pub fn running_to_machine(origin: &str) -> u32 {
     running_to(&LEDGER, origin)
 }
 
 /// 账上链路还在的全部几条（「现在重启 cc-monitor」而这台后端随它一起停时，这些都断）。
-pub(crate) fn running_all() -> u32 {
+pub fn running_all() -> u32 {
     LEDGER
         .rows()
         .iter()
@@ -393,7 +393,7 @@ pub(crate) fn running_all() -> u32 {
 
 crate::wire::typed::codes! {
     /// `forward-start` 的码：规格不对 · 那台不在可达表里也没交配置 · 跳板查无 / 成环 · 账满了 · 链路没起来。
-    pub(crate) enum ForwardStartErr {
+    pub enum ForwardStartErr {
         BadSpec = "bad_spec",
         Unreachable = "unreachable",
         BadJump = "bad_jump",
@@ -403,7 +403,7 @@ crate::wire::typed::codes! {
 }
 
 /// `forward-start`：起一条本地端口转发。真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断。
-pub(crate) struct ForwardStart;
+pub struct ForwardStart;
 
 impl crate::wire::typed::Command for ForwardStart {
     const NAME: &'static str = "forward-start";
@@ -414,35 +414,33 @@ impl crate::wire::typed::Command for ForwardStart {
 
 impl crate::wire::typed::Handle for ForwardStart {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: ForwardStartReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl Future<Output = Result<ForwardStarted, ForwardStartErr>> + Send + 'static {
-        async move {
-            start_with(
-                &req,
-                &remote_ask::REACH,
-                &LEDGER,
-                |req, up_r, mut down_w| async move {
-                    let stages = crate::dial::StageSink::new(false);
-                    crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-                },
-            )
-            .await
-            .map_err(crate::wire::typed::of_fail_with(ForwardStartErr::Failed))
-        }
+    ) -> Result<ForwardStarted, ForwardStartErr> {
+        start_with(
+            &req,
+            &remote_ask::REACH,
+            &LEDGER,
+            |req, up_r, mut down_w| async move {
+                let stages = crate::dial::StageSink::new(false);
+                crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+            },
+        )
+        .await
+        .map_err(crate::wire::typed::of_fail_with(ForwardStartErr::Failed))
     }
 }
 
 crate::wire::typed::codes! {
     /// `forward-stop` 的码：账上没有这个号。
-    pub(crate) enum ForwardStopErr {
+    pub enum ForwardStopErr {
         NotFound = "not_found",
     }
 }
 
 /// `forward-stop`：停一条转发（纯内存，一把锁）。
-pub(crate) struct ForwardStop;
+pub struct ForwardStop;
 
 impl crate::wire::typed::Command for ForwardStop {
     const NAME: &'static str = "forward-stop";
@@ -466,11 +464,11 @@ impl crate::wire::typed::Handle for ForwardStop {
 
 crate::wire::typed::codes! {
     /// `forward-list` 没有别的码。
-    pub(crate) enum ForwardListErr {}
+    pub enum ForwardListErr {}
 }
 
 /// `forward-list`：列转发（纯内存，一把锁）。
-pub(crate) struct ForwardList;
+pub struct ForwardList;
 
 impl crate::wire::typed::Command for ForwardList {
     const NAME: &'static str = "forward-list";

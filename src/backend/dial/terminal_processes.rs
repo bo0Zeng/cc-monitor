@@ -41,7 +41,7 @@ pub(crate) struct Conn {
 
 /// 进程表一行（只这四格）。`start` 是启动时刻（只在同一台上比先后：Windows FILETIME · Linux 开机后的滴答）；0 = 系统没给。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Proc {
+pub struct Proc {
     pub(crate) ppid: u32,
     pub(crate) name: String,
     pub(crate) start: u64,
@@ -49,22 +49,22 @@ pub(crate) struct Proc {
 
 /// 两张表。
 #[derive(Debug, Default)]
-pub(crate) struct Tables {
+pub struct Tables {
     pub(crate) conns: Vec<Conn>,
-    pub(crate) procs: HashMap<u32, Proc>,
+    pub procs: HashMap<u32, Proc>,
 }
 
 /// 进程链的一级（线上形）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Link {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Link {
     /// 进程号。
-    pub(crate) pid: u32,
+    pub pid: u32,
     /// 进程名。
     pub(crate) name: String,
     /// 启动时刻（系统原值；拿不到 ⇒ 0）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) start: u64,
 }
 
@@ -86,13 +86,13 @@ pub(crate) enum Found {
 /// 要对的那几个终端：那台 `session-terminals` 答的 `terminals`，原样交来。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TerminalProcessesReq {
+pub struct TerminalProcessesReq {
     /// 1–16 个，最近动静在前。
-    pub(crate) terminals: Vec<crate::common::seen_terminal::Terminal>,
+    pub terminals: Vec<crate::common::seen_terminal::Terminal>,
 }
 
 /// 本体，系统那一趟是参数（判据喂合成的 JSON）。入参先验，验不过不去问系统（码只有 `bad_args`）。
-pub(crate) fn answer_with(
+pub fn answer_with(
     req: &TerminalProcessesReq,
     query: impl FnOnce() -> Result<String, String>,
 ) -> Result<Processes, Said> {
@@ -109,15 +109,15 @@ pub(crate) fn answer_with(
 
 /// 对出来的：进程链（对不上 ⇒ 空链 ＋ 为什么，`elsewhere` 另带对面地址）。`session-window` 的回包照搬这三格。
 #[derive(Debug, Serialize)]
-pub(crate) struct Processes {
+pub struct Processes {
     /// 这台上开着那条连接的进程链（自下而上）。
-    pub(crate) chain: Vec<Link>,
+    pub chain: Vec<Link>,
     /// 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) why: Option<&'static str>,
+    pub why: Option<&'static str>,
     /// `elsewhere` 时对面那个地址。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) addr: Option<String>,
+    pub addr: Option<String>,
 }
 
 /// 事实 ⇒ 线上成品。
@@ -177,7 +177,7 @@ pub(crate) fn ip(s: &str) -> Option<IpAddr> {
 }
 
 /// 系统那一趟的 JSON ⇒ 两张表。认不出的行丢掉；整份认不出 ⇒ `Err`。
-pub(crate) fn parse_tables(raw: &str) -> Result<Tables, String> {
+pub fn parse_tables(raw: &str) -> Result<Tables, String> {
     let v: Value = serde_json::from_str(raw.trim()).map_err(|e| format!("not JSON: {e}"))?;
     // PowerShell 把只有一项的数组打成单个对象 —— 两形都收。
     let rows = |k: &str| -> Result<Vec<Value>, String> {
@@ -271,7 +271,7 @@ fn one(w: &Wanted, t: &Tables) -> Found {
 
 /// 本机开过的那个终端（`dial/opened_windows.rs` 记下的标签 `<shell 进程号>-<起始时刻>`）此刻还开着 ssh 吗。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum OpenedHere {
+pub enum OpenedHere {
     /// 那个 shell 还是它，它自己就是 ssh（shell 把 ssh exec 了：进程号与起始时刻不变）或底下开着 ssh ⇒ 从那个 ssh 往上的进程链。
     Chain(Vec<Link>),
     /// 那个 shell 还在，它自己不是、底下也没有 ssh。
@@ -301,7 +301,7 @@ pub(crate) fn shell_still_there(
 /// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 最早起的那个。
 /// 连的是哪台不看（不读命令行 · 不比起始时刻）：记录只在开窗那条 ssh 开着时在（`dial/opened_windows.rs::window` 的收尾），
 /// 读得到记录、底下开着的就是那一条，连着记下的那台。
-pub(crate) fn opened_chain(
+pub fn opened_chain(
     label: &crate::common::seen_terminal::WindowLabel,
     procs: &HashMap<u32, Proc>,
 ) -> OpenedHere {
@@ -332,7 +332,7 @@ fn named(name: &str, names: &[&str]) -> bool {
 
 /// 从 `pid` 往上数：到桌面外壳 / init 之前为止；父进程不在表里 / 比子进程晚起（进程号被复用过）/ 启动时刻不明 ⇒ 链在那里断。
 /// `pid` 自己不在进程表里 ⇒ `None`。
-pub(crate) fn chain(pid: u32, procs: &HashMap<u32, Proc>) -> Option<Vec<Link>> {
+pub fn chain(pid: u32, procs: &HashMap<u32, Proc>) -> Option<Vec<Link>> {
     let mut cur = pid;
     let mut p = procs.get(&cur)?;
     let mut out = vec![Link {
