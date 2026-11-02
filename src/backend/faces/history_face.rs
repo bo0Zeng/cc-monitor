@@ -30,7 +30,7 @@ use crate::wire::REPLY_PAGE_BYTES;
 /// 整份回包过 [`LINES_CAP_BYTES`] ⇒ `too_large` 那一句（不截断：截断的清单会被当成完整的用）。
 fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {
     let size = serde_json::to_vec(reply).map_or(0, |b| b.len());
-    (size > LINES_CAP_BYTES).then(|| too_large(size).said)
+    (size > LINES_CAP_BYTES.as_len()).then(|| too_large(size).said)
 }
 
 /// 这台的记录树根（生产只这一个值）。
@@ -1001,7 +1001,7 @@ impl<T> Default for Capped<T> {
 impl<T: serde::Serialize + Clone> Capped<T> {
     pub(crate) fn push(&mut self, row: &T) -> std::io::Result<()> {
         self.seen += serde_json::to_vec(row).map_or(0, |b| b.len()) + 1;
-        if self.seen > LINES_CAP_BYTES {
+        if self.seen > LINES_CAP_BYTES.as_len() {
             self.over = true;
             return Err(std::io::Error::other("reply cap reached"));
         }

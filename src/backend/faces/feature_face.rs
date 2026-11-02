@@ -66,7 +66,7 @@ pub(crate) fn tasks_at(
     let tasks = crate::observe::tasks_query::session_tasks(home, &req.sid).map_err(&fail)?;
     let reply = TasksList { tasks };
     let size = serde_json::to_vec(&reply).map_or(0, |b| b.len());
-    if size > crate::faces::read_face::LINES_CAP_BYTES {
+    if size > crate::faces::read_face::LINES_CAP_BYTES.as_len() {
         return Err(TasksListErr::TooLarge(too_large(size)));
     }
     Ok(reply)
@@ -194,7 +194,7 @@ pub(crate) fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadR
 /// 整份过同一个上限（不截断）：过了 ⇒ 那一句。
 fn capped<T: serde::Serialize>(v: T) -> Result<T, String> {
     let size = serde_json::to_vec(&v).map_or(0, |b| b.len());
-    if size > crate::faces::read_face::LINES_CAP_BYTES {
+    if size > crate::faces::read_face::LINES_CAP_BYTES.as_len() {
         return Err(too_large(size));
     }
     Ok(v)
@@ -208,7 +208,7 @@ fn too_large(size: usize) -> String {
             ("size", &size.to_string()),
             (
                 "cap",
-                &(crate::faces::read_face::LINES_CAP_BYTES).to_string(),
+                &crate::faces::read_face::LINES_CAP_BYTES.bytes.to_string(),
             ),
         ],
     )

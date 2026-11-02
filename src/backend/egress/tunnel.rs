@@ -7,8 +7,11 @@ use std::net::{IpAddr, TcpStream, ToSocketAddrs};
 
 use crate::describe::{Kind, Proxy};
 
-/// 代理那一跳的回包头最长读这么多（超了当代理不对）。
-const HEAD_CAP: usize = 16 * 1024;
+/// 代理那一跳的回包头最长读这么多（超了当代理不对：这一跳报错，连接不建）。
+const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 16 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 pub(crate) fn handshake(tcp: &mut TcpStream, p: &Proxy, host: &str, port: u16) -> io::Result<()> {
     match p.kind {
@@ -50,7 +53,7 @@ fn http_connect(tcp: &mut TcpStream, p: &Proxy, host: &str, port: u16) -> io::Re
     let mut got = Vec::new();
     let mut b = [0u8; 1];
     while !got.ends_with(b"\r\n\r\n") {
-        if got.len() >= HEAD_CAP {
+        if got.len() >= HEAD_CAP.as_len() {
             return Err(refused("proxy answer head too large".to_string()));
         }
         match tcp.read(&mut b) {

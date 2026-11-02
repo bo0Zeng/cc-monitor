@@ -9,7 +9,10 @@
 use crate::copy_text;
 
 /// 原话最多留多少字节（按字符边界往回退）。
-pub const RAW_CAP: usize = 4096;
+pub const RAW_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4096,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 
 /// 「项名：值」的项名闭集（文案表 `detail.label.*` 与它两向相等，判据住 `tests/common/copy-core/detail_tests.rs`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,10 +339,10 @@ fn line_of(label: Label, value: &str) -> Option<String> {
 
 /// 原话截到 [`RAW_CAP`] 字节（按字符边界往回退），截了末尾接「…（截断）」。
 pub fn truncate_raw(raw: &str) -> String {
-    if raw.len() <= RAW_CAP {
+    if raw.len() <= RAW_CAP.as_len() {
         return raw.to_string();
     }
-    let mut end = RAW_CAP;
+    let mut end = RAW_CAP.as_len();
     while !raw.is_char_boundary(end) {
         end -= 1;
     }

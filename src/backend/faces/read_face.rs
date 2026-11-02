@@ -53,7 +53,10 @@ pub(crate) const LINE_CAP_BYTES: relay_route_core::Cap = relay_route_core::Cap {
 };
 
 /// 按行那六条整份输出的上限（同上，留一半余量）。
-pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
+pub(crate) const LINES_CAP_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 32 << 20,
+    over: relay_route_core::Over::Reject,
+};
 
 /// `backend-log` 一次最多回多少字节（尾部）。
 pub(crate) const LOG_TAIL_BYTES: relay_route_core::Cap = relay_route_core::Cap {
@@ -356,7 +359,7 @@ impl crate::wire::typed::Handle for AccountsListCmd {
                 crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
             );
             let size = serde_json::to_string(&v).map_or(0, |t| t.len());
-            if size > LINES_CAP_BYTES {
+            if size > LINES_CAP_BYTES.as_len() {
                 return Err(AccountsListErr::TooLarge(too_large(size).said));
             }
             Ok(v)
@@ -602,7 +605,7 @@ pub(crate) fn reader<'a>(
 }
 
 pub(crate) fn too_large(size: usize) -> crate::common::said::Said {
-    too_large_at(size, LINES_CAP_BYTES)
+    too_large_at(size, LINES_CAP_BYTES.as_len())
 }
 
 /// 同 [`too_large`]，上限是参数（全文搜索那条按它判，判据拿小上限验）。
