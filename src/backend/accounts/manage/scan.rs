@@ -349,13 +349,14 @@ fn backups_in(accts: &str, st: &DirState) -> Vec<Backup> {
         .map(|(n, _)| {
             let path = join(accts, n);
             let undo_path = join(&path, UNDO_NAME);
-            let undo = match crate::platform::fs::Ro::read_capped(Path::new(&undo_path), MAX_UNDO_BYTES) {
-                Ok(b) => String::from_utf8(b).ok(),
-                Err(e) => {
-                    tracing::warn!("备份 {path} 的撤销清单读不了，这一份不能用来回滚：{e}");
-                    None
-                }
-            };
+            let undo =
+                match crate::platform::fs::Ro::read_capped(Path::new(&undo_path), MAX_UNDO_BYTES) {
+                    Ok(b) => String::from_utf8(b).ok(),
+                    Err(e) => {
+                        tracing::warn!("备份 {path} 的撤销清单读不了，这一份不能用来回滚：{e}");
+                        None
+                    }
+                };
             Backup {
                 id: n[BACKUP_PREFIX.len()..].to_string(),
                 rolled_back: acct_view::item(Path::new(&join(&path, ROLLED_BACK_NAME))).exists(),
