@@ -45,7 +45,7 @@
 
 **谁在守**：`paths_tests.rs` 一族（`with_nothing_set_it_is_the_documented_default` · `a_relative_override_refuses_instead_of_quietly_using_the_real_profile` · `nothing_else_in_the_monitor_tree_builds_that_path_itself` · `the_data_dir_is_spelled_in_one_place` …）。
 
-### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
+### 2.1 真相 vs 缓存必须分得清
 
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
@@ -208,7 +208,7 @@
 
 **为什么不能松动**：Claude Code 写 pidfile 偶发漏 `procStart`；字段一必填，整个会话就被静默忽略、漏一个 Tab。
 
-### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`（F63 / issue #49）
+### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`
 
 未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；在设置「机器 → 足迹 → 未识别的数据」查看。
 
@@ -263,7 +263,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ---
 
-## 22. 独立窗口契约（viewer #10 / settings F82a）
+## 22. 独立窗口契约
 
 独立窗口（查看窗 · agent 窗 · 设置窗）违反下列任一条都是**静默失败**（白屏 · 收不到 · 卡死 · 点了没反应）：
 
@@ -298,7 +298,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 后端连接时把各文件的 seq 计数器初始化为当前完整行数、新行 seq = 行号；旁路快照按行号编号 ⇒ 无截断时重连后的新行 seq 不低于断连前的高水位。断连期间截断（`/clear`）仍可能短暂吞行，靠快照重拉与 §25 的幂等兜底。
 
-## 26. bg 会话门是数据层配置门；后端流模式 flag 必须先于查询模式判定剥离（Batch7-F24）
+## 26. bg 会话门是数据层配置门；后端流模式 flag 必须先于查询模式判定剥离
 
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`（那一家的原词不上线）。后台会话是**标注而非过滤**：后端照宣告（`background: true`），显示与否由出口按用户开关定（本机远端两条流同一个口径）。
 - **后端任何新的流模式旗标必须在一次性查询模式判定之前从参数里剥掉**（`stream/cli.rs::split_stream_flags`），否则旗标落进查询分支、后端打印结果就退出，monitor 等不到 hello。
@@ -309,7 +309,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 - **F5 时起停与骨架先于重放**：就绪点（`event_replay.rs::ready_point`）之前，这条流上的起停帧已经先交（起停帧没 credit 也照交、照扣，不许丢）。
 - **缺省一律按最保守的待**：`status` 缺 ⇒ 未知（不加灯）。
 
-## 28. 自造持久身份的护栏（F64 / issue #58 单向门①）
+## 28. 自造持久身份的护栏
 
 任何会落盘、跨进程或上线的身份标识，必须 **opaque ＋ 稳定 ＋ 出生一次 ＋ 永不从名字 / 路径 / 位置算**。想不清就先别发，用外部已有的稳定 id 顶着（Claude Code 的 `sessionId`）。
 
@@ -317,17 +317,17 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 **为什么是单向门**：id 一旦被别处引用或落盘就锁死；拿会变的值当键（Claude Code 自己的 `enc(cwd)`）一搬目录历史全对不上。
 
-## 29. 会话生命周期解析规则以权威规格为准，两端不许各自发明（F67 / issue #58 单向门⑤）
+## 29. 会话生命周期解析规则以权威规格为准，两端不许各自发明
 
 会话生命周期的解析规则（未知记录抢救 · ESC 回退主线 · `end_turn` 判定 · 排队折叠 · api_error 两形 · attachment / isMeta 链 · pidfile 保守缺省 · PID 复用防护）只在后端适配层实现一份，两个前端都吃它的成品（§7 冻结面见 IPC-PROTOCOL）。改规则先改后端那一份；发现别处漂移就对回它，不各自发明。核心判据不许近似（`end_turn` 必须是 `stop_reason == "end_turn"`）。
 
-## 30. tmux ↔ 会话精确映射靠 `@ccm_sid`，不靠名字/目录反推（F74 / #63 / SS-5 / SS-9）
+## 30. tmux ↔ 会话精确映射靠 `@ccm_sid`，不靠名字/目录反推
 
 `/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位、对会话句柄打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的是终端名单 `terminals-list`（`host/tmux.rs::parse_rows`）。`@ccm_sid_expect` 是起会话时声明的意图，**任何破坏性判断只认 `@ccm_sid`**。
 
 **铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作警告并按第一个继续，破坏性动作（kill · 换号重启）拒绝。没有后端时在 tmux 里起有身份的 agent ⇒ `ccm` 响亮失败（逃生口 `CCM_NO_BACKEND=1` 也要说一句）。
 
-## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令（F90 / #48 / SS-12）
+## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令
 
 会话后端（多路复用器）是机器的属性，不是界面的属性。**前端绝不出现可执行的 `tmux attach` / `new-session` / `send-keys` 字面量**：起 / 接会话的命令一律问后端要（只交一行 `ccm …`，§33）。加任何第二种会话后端之前必须先答「另一端还接得上吗」；登记表主键守 §28。
 
@@ -335,7 +335,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 手机那一侧：列会话 · 附着 · 建会话 · 结束 · 抓屏 · 送字都问那台核心（进终端那一行由 `session-open` 渲、手机原样敲进自己的终端），不改会话级选项。
 
-## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标（F01 / unify-launch）
+## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标
 
 裸 `-t <名>` 按「精确 → 名字开头 → glob」解析：只有 `sib-2` 在时 `kill-session -t sib` 杀掉 `sib-2` 且 rc=0。`=` 只在 target-session 路径上被认，`send-keys` / `capture-pane` / `set-option` 走 pane 解析 ⇒ 必须带尾冒号 `=<名>:`，它是所有动词上都既通用又精确的唯一形式。`new-session -s <名>` 收的是名字，不加 `=` / `:`。e2e 的 shell 探针同样用 `=<名>:`。
 
@@ -365,7 +365,7 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 用到的能力缺一项就拒，不近似；一个修饰「不出现」时下游的默认若不等于用户的期望，就恒要求那一项能力（`ccm_invocation_tests.rs::unconditional_caps_are_always_required_and_conditional_ones_only_when_used`）。新的一条轴直接是后端起会话请求里的一格（`control/launch_render/`），界面上「有哪些可选值」现查后端（例：账号 `src/frontend/ui/account-reads.ts::fetchAccounts`）。
 
-## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
+## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act
 
 送键与杀会话只走后端（结束：界面 · 手机交 `terminal-end`（按名单句柄或会话 ID，两种宿主同一条），批量停 `sessions-stop` 每一项同它；送字：`terminal-input` · 会话输入队的投递（`faces/session_send.rs`），就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
 
@@ -395,7 +395,7 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 ---
 
-## 41. 后端的判活信号全部由内核事件驱动 —— 四路事件、零定时器、四个盲区如实分类（zero-poll-liveness P0-P7）
+## 41. 后端的判活信号全部由内核事件驱动 —— 四路事件、零定时器、四个盲区如实分类
 
 后端生产段零定时器：判活与 tmux 观测全部由内核事件驱动，四路事件汇进 `watcher.rs` 的同一个通道，`watch_loop` 阻塞在 `recv()` 上：没有说在跑的会话、也没有在跑的子运行时无超时；有 ⇒ 至多等到最早那个「久未动静」的时刻（一次性期限，到点判一次、重算）。
 
