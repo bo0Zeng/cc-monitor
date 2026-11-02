@@ -286,13 +286,6 @@ pub(crate) struct Patch {
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
 const ALIASES: [&str; 2] = ["custom_title", "updated_at"];
 
-fn now_ms() -> i64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
 /// 读原文成「严格读过的结构 ＋ 原文 JSON」（`version` 那一格读写口摘了、写时再带上）。文件不在 ⇒ 缺省形状。
 fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::common::said::Said> {
     match read_raw(path).map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))? {
@@ -456,7 +449,7 @@ impl crate::wire::typed::Handle for HistoryAnnotateCmd {
         async move {
             let own = &needs;
 
-            annotate_at(own, req, now_ms())
+            annotate_at(own, req, crate::common::time::now_ms() as i64)
         }
     }
 }
@@ -591,9 +584,7 @@ pub(crate) fn keep_for_resume(
             permission_mode: permission_mode.map(str::to_string),
             end,
         },
-        crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as i64),
+        crate::common::time::now_ms() as i64,
     )
 }
 

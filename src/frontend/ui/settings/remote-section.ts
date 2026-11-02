@@ -53,7 +53,7 @@ import type { FleetLines } from "../generated/FleetLines";
 import { isLocalOrigin } from "../ipc/origin";
 import { machineName } from "../ipc/chan-caller";
 import type { AccountsState } from "../accounts";
-// 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`）。
+// 本机后端那条把手的 origin（后端注册表里的键 `cmd_wire::LOCAL`）。
 import { LOCAL_ORIGIN } from "../backend-policy";
 // 调用点（含测试）从本模块 import 它，原样再导出。
 export { shouldShowResetFingerprint };

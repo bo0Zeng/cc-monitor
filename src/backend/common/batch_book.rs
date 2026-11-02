@@ -270,7 +270,7 @@ pub fn answers_of(dir_into: bool, skip: bool) -> Vec<Decide> {
 /// 同名清单里那两格时刻（文件的修改时刻，unix 秒）⇒ 写好的字：按此刻与看的那一台的时区（同额度与轮换那几处时刻的写法）。
 pub fn moment_text(secs: Option<i64>, tz: &crate::common::time::Tz) -> Option<String> {
     secs.filter(|s| *s > 0)
-        .map(|s| crate::common::time::fmt_at(s, crate::common::time::now_secs(), tz))
+        .map(|s| crate::common::time::fmt_at(s, crate::common::time::now_secs() as i64, tz))
 }
 
 /// 盘上那一格的修改时刻（`metadata.modified()` 那一格）⇒ unix 秒。

@@ -70,7 +70,7 @@ impl<T> Doc<T> {
         assert!(steps.len() == span, "升级步数要等于 version - floor");
         Doc {
             rel: d.row.rel,
-            cap: d.row.cap,
+            cap: d.row.cap.bytes,
             kind: d.row.kind,
             format: d.row.format,
             steps,

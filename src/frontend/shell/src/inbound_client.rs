@@ -162,3 +162,7 @@ pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/inbound_client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/local_address_tests.rs"]
+mod local_address_tests;

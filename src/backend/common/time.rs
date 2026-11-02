@@ -330,16 +330,17 @@ mod shots_clock {
     }
 }
 
-/// 此刻（unix 毫秒）。
-pub fn now_ms() -> i64 {
+/// 此刻（unix 毫秒）：「此刻」的两个读口之一（另一个是 [`now_secs`]），别处不另写换算（`one_clock_guard` C6）。
+/// 早于纪元 ⇒ `0`；放不进 `u64` ⇒ `u64::MAX`。要 `i64` 的读者在调用处写 `as i64`（`u64` 毫秒到 2.9 亿年都放得进 `i64`）。
+pub fn now_ms() -> u64 {
     now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// 此刻（unix 秒）。
-pub fn now_secs() -> i64 {
-    now_ms().div_euclid(1_000)
+/// 此刻（unix 秒，向下取整）。
+pub fn now_secs() -> u64 {
+    now_ms() / 1_000
 }
 
 /// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：
@@ -359,7 +360,7 @@ pub(crate) fn mtime_texts(local: i64, today: i64) -> (String, String) {
 
 /// [`mtime_texts`] 按此刻与看的那一台的时区（`files-ls` · `files-stat` 回包那一下）。
 pub fn mtime_texts_now(secs: u64, tz: &Tz) -> (String, String) {
-    let today = tz.local(now_secs()).div_euclid(DAY);
+    let today = tz.local(now_secs() as i64).div_euclid(DAY);
     mtime_texts(tz.local(i64::try_from(secs).unwrap_or(i64::MAX)), today)
 }
 
@@ -453,7 +454,10 @@ pub fn hit_text(ts_ms: i64, tz: &Tz) -> String {
     if ts_ms <= 0 {
         return String::new();
     }
-    hit_time(tz.local(ts_ms.div_euclid(1_000)), tz.local(now_secs()))
+    hit_time(
+        tz.local(ts_ms.div_euclid(1_000)),
+        tz.local(now_secs() as i64),
+    )
 }
 
 /// 历史页行尾那一格（一行的 `at` · 一组的最近活动同一个写法）：毫秒，按看的那一台的时区。

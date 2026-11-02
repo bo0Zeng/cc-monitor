@@ -17,8 +17,8 @@ const REGISTRY = "src/backend/stream/inbound/registry";
 /** 生成的线上类型里许出现 tmux 的那几格：`文件:词` ⇒ 为什么只跟 tmux。 */
 const TMUX_ONLY: Record<string, string> = {
   "Launch.ts:tmux": "放在哪的一形：tmux",
-  "WireTerminalHost.ts:tmux": "终端宿主的一形：tmux",
-  "WireSessionContainer.ts:tmux": "会话容器的一形：在 tmux 里",
+  "TerminalHost.ts:tmux": "终端宿主的一形：tmux",
+  "SessionContainer.ts:tmux": "会话容器的一形：在 tmux 里",
   "ForkTerminal.ts:tmux": "分叉源会话所在宿主的一形：tmux",
   "TypedCommands.ts:no_tmux": "这台没装 tmux",
   "TypedCommands.ts:tmux_too_old": "这台的 tmux 版本太旧",

@@ -3,4 +3,4 @@
 /**
  * 终端住在哪种宿主里（线上 `host`）。容器那一格（[`SessionContainer`]）与 `terminals-list` 每一行的 `host` 同一套词。
  */
-export type WireTerminalHost = "tmux" | "managed";
+export type TerminalHost = "tmux" | "managed";
