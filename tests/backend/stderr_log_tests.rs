@@ -222,7 +222,7 @@ fn stderr_log_child_entry_point() {
     // 写过上限（一块一块，不经 `tracing`），再经 `tracing` 那个写者 ⇒ 这一下必须真滚。
     let block = vec![b'.'; 64 * 1024];
     let mut e = std::io::stderr();
-    for _ in 0..=(CAP_BYTES / block.len() as u64) {
+    for _ in 0..=(CAP_BYTES.bytes / block.len() as u64) {
         e.write_all(&block).unwrap();
     }
     writeln!(stderr_writer(), "{AFTER_ROLL}").unwrap();

@@ -2050,7 +2050,11 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
         peek_text(&root, "bin.dat").unwrap_err().code.as_deref(),
         Some("not_text")
     );
-    std::fs::write(root.join("big.txt"), vec![b'x'; PEEK_MAX_BYTES + 1]).expect("铺大文件");
+    std::fs::write(
+        root.join("big.txt"),
+        vec![b'x'; PEEK_MAX_BYTES.as_len() + 1],
+    )
+    .expect("铺大文件");
     assert_eq!(
         peek_text(&root, "big.txt").unwrap_err().code.as_deref(),
         Some("too_large")

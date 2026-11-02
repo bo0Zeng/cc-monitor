@@ -43,10 +43,6 @@ use serde_json::Value;
 
 /// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
-/// 读一份记录的上限。一个文件一条约 100 字节 ⇒ 4 MiB 装得下四万个文件；超了当读不懂（不拿截断的当完整的）。
-/// 读的那一口照声明表的那一格；这里的名字给字节上限登记表认，两处须相等（下一行编译期查）。
-pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
-const _: () = assert!(MAX_BYTES == relay_route_core::SKILL_LEDGER_FILE.row.cap.bytes);
 
 /// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 版经 [`v1_to_v2`] 读成这一版。
 const DOC: crate::common::own_state::Doc<Ledger> =

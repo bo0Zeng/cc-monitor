@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
 
 /// 同时在途的下游连接数上限。住宿主不住中转：上界与绑口同是策略值。
-/// 是条数不是体量（名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`：那是 `byte_cap_registry` 的钩子）。超了回 `503` 并关连接，不是静默 FIN。
+/// 是条数不是体量（字节上限才是 `Cap`）。超了回 `503` 并关连接，不是静默 FIN。
 /// 1024：每条在途约占 3 个 fd（下游 · 下游的 dup · 上游）、1 条线程 ⇒ 约 3000 个 fd、1000 条线程，常驻后端起来时软上限已抬到硬上限
 /// （`platform::raise_open_files_limit`）。要够 100 多个 agent 各开两三条流：顶满时每秒完成的条数就卡在「上界 ÷ 每条时长」。
 pub const INFLIGHT_CONNECTIONS: usize = 1024;
@@ -23,7 +23,10 @@ pub const INFLIGHT_CONNECTIONS: usize = 1024;
 /// 读体之前按 `Content-Length` 记账，记不下回 `503`（原因头 `body-budget`，条数满了是 `busy`），一个体字节都不读；这一发收场退账。
 /// 1 GiB：条数上限 × 单发上限（`BODY_CAP` 64 MiB）远大于一台机器的内存 —— 上游答得慢时在途攒起来，每条带着一整份体，
 /// 足以把常驻后端顶到几十 G。真实一发的体多在几 MB，1 GiB 容得下几百条同时在途。
-pub const INFLIGHT_BODY_CAP: usize = 1024 * 1024 * 1024;
+pub const INFLIGHT_BODY_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 pub const ENV_PORT: &str = "CCM_RELAY_PORT";
 

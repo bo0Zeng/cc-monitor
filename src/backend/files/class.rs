@@ -3,13 +3,23 @@
 
 use cmd_wire::files::{FileClass, Gate, Gates, PreviewGate, TextPreview};
 use copy_core::{copy_text, size_text};
+use relay_route_core::{Cap, Over};
 
 /// 预览当文本读的上限：预览跟着光标走（每挪一下一趟），比编辑上限小得多。超了不读、不截断。
-pub const PREVIEW_TEXT_MAX_BYTES: u64 = 64 * 1024;
+pub const PREVIEW_TEXT_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 /// 预览当图读的上限（超了不读）。
-pub const PREVIEW_IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
+pub const PREVIEW_IMAGE_MAX_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 查看页读一张图的上限：一块 256 KiB 一趟，32 MiB 是 128 趟（远端上十几秒到半分钟，再大该下载到本机看）。
-pub const VIEW_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+pub const VIEW_IMAGE_MAX_BYTES: Cap = Cap {
+    bytes: 32 * 1024 * 1024,
+    over: Over::Reject,
+};
 
 /// 两端自己解得开的那几种图（其余的图不当图读）。
 const DECODABLE: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
@@ -58,7 +68,7 @@ fn view_too_big(size: u64) -> String {
         "beFilesOpen.view.tooBig",
         &[
             ("size", &size_text(size)),
-            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES)),
+            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES.bytes)),
         ],
     )
 }
@@ -71,48 +81,48 @@ pub fn gates_of(name: &[u8], size: u64) -> Gates {
         class == FileClass::Image && ext.as_deref().is_some_and(|e| DECODABLE.contains(&e));
     let preview = if decodable {
         // 预览放不下：查看页放得下 ⇒ 指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
-        if size > VIEW_IMAGE_MAX_BYTES {
+        if size > VIEW_IMAGE_MAX_BYTES.bytes {
             PreviewGate::No(view_too_big(size))
-        } else if size > PREVIEW_IMAGE_MAX_BYTES {
+        } else if size > PREVIEW_IMAGE_MAX_BYTES.bytes {
             PreviewGate::No(copy_text(
                 "beFilesOpen.preview.imageTooBig",
                 &[
                     ("size", &size_text(size)),
-                    ("limit", &size_text(PREVIEW_IMAGE_MAX_BYTES)),
+                    ("limit", &size_text(PREVIEW_IMAGE_MAX_BYTES.bytes)),
                 ],
             ))
         } else {
-            PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES)
+            PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES.bytes)
         }
     } else if class == FileClass::Image && ext.as_deref() != Some("svg") {
         PreviewGate::No(copy_text("beFilesOpen.preview.imageKind", &[]))
     } else if matches!(class, FileClass::Archive | FileClass::Pdf) {
         PreviewGate::No(copy_text("beFilesOpen.preview.binaryKind", &[]))
-    } else if size > PREVIEW_TEXT_MAX_BYTES {
+    } else if size > PREVIEW_TEXT_MAX_BYTES.bytes {
         PreviewGate::No(copy_text(
             "beFilesOpen.preview.tooBig",
             &[
                 ("size", &size_text(size)),
-                ("limit", &size_text(PREVIEW_TEXT_MAX_BYTES)),
+                ("limit", &size_text(PREVIEW_TEXT_MAX_BYTES.bytes)),
             ],
         ))
     } else {
         let lang = ext.filter(|e| class == FileClass::Code || e == "md" || e == "svg");
         PreviewGate::Text(TextPreview {
-            cap: PREVIEW_TEXT_MAX_BYTES,
+            cap: PREVIEW_TEXT_MAX_BYTES.bytes,
             lang,
         })
     };
     let view = decodable.then(|| {
-        if size > VIEW_IMAGE_MAX_BYTES {
+        if size > VIEW_IMAGE_MAX_BYTES.bytes {
             Gate::No(view_too_big(size))
         } else {
-            Gate::Cap(VIEW_IMAGE_MAX_BYTES)
+            Gate::Cap(VIEW_IMAGE_MAX_BYTES.bytes)
         }
     });
     // 编辑上限 ＝ 读一趟的天花板：打得开的就存得回（`files-commit-text` 收的也是这个数）。
     // 「太大」报多了多少字节：边界附近两个四舍过的大小会写成同一个数，什么都没说。
-    let cap = super::READ_TEXT_MAX_BYTES as u64;
+    let cap = super::READ_TEXT_MAX_BYTES.bytes;
     let edit = if size > cap {
         Gate::No(copy_text(
             "beFilesOpen.edit.tooBig",

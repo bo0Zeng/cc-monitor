@@ -30,7 +30,7 @@ use crate::wire::REPLY_PAGE_BYTES;
 /// 整份回包过 [`LINES_CAP_BYTES`] ⇒ `too_large` 那一句（不截断：截断的清单会被当成完整的用）。
 fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {
     let size = serde_json::to_vec(reply).map_or(0, |b| b.len());
-    (size > LINES_CAP_BYTES).then(|| too_large(size).said)
+    (size > LINES_CAP_BYTES.as_len()).then(|| too_large(size).said)
 }
 
 /// 这台的记录树根（生产只这一个值）。
@@ -125,13 +125,22 @@ fn read_rows(
     fixed: usize,
 ) -> Result<(Vec<ReadRow>, u64, bool), crate::common::said::Said> {
     let (target, face) = record_face(home, path)?;
-    let mut reader = reader(&face, tz).back(&target, READ_PAGE_BYTES);
-    let room = READ_PAGE_BYTES.saturating_sub(fixed + ENVELOPE_BYTES);
+    let mut reader = reader(&face, tz).back(&target, READ_PAGE_BYTES.as_len());
+    let room = READ_PAGE_BYTES
+        .as_len()
+        .saturating_sub(fixed + ENVELOPE_BYTES);
     let (mut rows, mut used, mut at) = (Vec::<ReadRow>::new(), 0usize, offset);
     // 上一块里最后一条带记录的行：这一块第一条带记录的行可能要并进它。
     let mut last: Option<usize> = None;
     loop {
-        let chunk = body::read_page(home, path, at, until, READ_PAGE_BYTES, LINE_CAP_BYTES)?;
+        let chunk = body::read_page(
+            home,
+            path,
+            at,
+            until,
+            READ_PAGE_BYTES.as_len(),
+            LINE_CAP_BYTES.as_len(),
+        )?;
         let mut first = true;
         for mut row in body::rows_of(&mut reader, at, &chunk.bytes) {
             // 块内的 `rows_of` 已经并过；只剩这一块第一条带记录的行与上一块最后一条之间那一处。
@@ -164,7 +173,7 @@ fn read_rows(
             rows.push(row);
         }
         at = chunk.next;
-        if chunk.eof || at - offset >= LINE_CAP_BYTES as u64 {
+        if chunk.eof || at - offset >= LINE_CAP_BYTES.bytes {
             return Ok((rows, at, chunk.eof));
         }
     }
@@ -257,12 +266,12 @@ pub(crate) fn page_at(
         &req.path,
         offset,
         req.until,
-        READ_PAGE_BYTES,
-        LINE_CAP_BYTES,
+        READ_PAGE_BYTES.as_len(),
+        LINE_CAP_BYTES.as_len(),
     )
     .map_err(&lower)?;
     let (lines, next_seq) = crate::observe::query::body::record_lines_of_page(
-        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES.as_len()),
         &target,
         req.seq.unwrap_or(0),
         offset,
@@ -323,12 +332,12 @@ pub(crate) fn lines_at(
         &req.path,
         req.from.unwrap_or(0),
         req.until,
-        READ_PAGE_BYTES,
-        LINE_CAP_BYTES,
+        READ_PAGE_BYTES.as_len(),
+        LINE_CAP_BYTES.as_len(),
     )
     .map_err(&lower)?;
     let (lines, _) = crate::observe::query::body::record_lines(
-        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES.as_len()),
         &target,
         page.from,
         page.lines
@@ -413,7 +422,8 @@ pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage
     };
     let (_, face) = record_face(home, &req.path).map_err(&lower)?;
     // 一页只要一个字节：续读到那一行的行尾为止（不多读后面的行）。
-    let page = body::read_page(home, &req.path, req.at, None, 1, LINE_CAP_BYTES).map_err(&lower)?;
+    let page = body::read_page(home, &req.path, req.at, None, 1, LINE_CAP_BYTES.as_len())
+        .map_err(&lower)?;
     let line = page.bytes.split(|&b| b == b'\n').next().unwrap_or_default();
     let line = String::from_utf8_lossy(line.strip_suffix(b"\r").unwrap_or(line));
     let record = (face.parse)(&crate::agents::Line::new(&line, req.at))
@@ -549,16 +559,29 @@ pub(crate) fn run_at(
     let path = source.to_string_lossy().into_owned();
     let (target, face) = record_face(home, &path).map_err(&lower)?;
     let (from, bytes, end, more) = if req.tail == Some(true) || req.before.is_some() {
-        let page = body::read_back(home, &path, req.before, READ_PAGE_BYTES, LINE_CAP_BYTES)
-            .map_err(&lower)?;
+        let page = body::read_back(
+            home,
+            &path,
+            req.before,
+            READ_PAGE_BYTES.as_len(),
+            LINE_CAP_BYTES.as_len(),
+        )
+        .map_err(&lower)?;
         (page.from, page.bytes, page.end, page.more)
     } else {
-        let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
-            .map_err(&lower)?;
+        let page = body::read_page(
+            home,
+            &path,
+            from,
+            None,
+            READ_PAGE_BYTES.as_len(),
+            LINE_CAP_BYTES.as_len(),
+        )
+        .map_err(&lower)?;
         (from, page.bytes, page.next, !page.eof)
     };
     let rows = crate::observe::query::body::run_rows(
-        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES.as_len()),
         from,
         &bytes,
     );
@@ -608,7 +631,7 @@ impl crate::wire::typed::Handle for HistoryBranchCmd {
 
 /// [`HistoryBranchCmd`] 的本体，家目录是参数。
 pub(crate) fn branch_at(home: &Path, req: BranchReq) -> Result<Branch, HistoryBranchErr> {
-    branch_page(home, req, REPLY_PAGE_BYTES).map_err(HistoryBranchErr::Failed)
+    branch_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(HistoryBranchErr::Failed)
 }
 
 // ───────────────────────── history-tail ─────────────────────────
@@ -679,7 +702,7 @@ pub(crate) fn tail_at(
         .map_err(failed)?;
     let plan = tail.plan;
     let mark = |start: u64, end: u64| {
-        tail::mark_at(home, &path, start, end, LINE_CAP_BYTES).map_err(failed)
+        tail::mark_at(home, &path, start, end, LINE_CAP_BYTES.as_len()).map_err(failed)
     };
     let how = how_of(req.held.as_ref(), &path, &plan, req.n, |m| {
         tail::mark_span(m)
@@ -978,7 +1001,7 @@ impl<T> Default for Capped<T> {
 impl<T: serde::Serialize + Clone> Capped<T> {
     pub(crate) fn push(&mut self, row: &T) -> std::io::Result<()> {
         self.seen += serde_json::to_vec(row).map_or(0, |b| b.len()) + 1;
-        if self.seen > LINES_CAP_BYTES {
+        if self.seen > LINES_CAP_BYTES.as_len() {
             self.over = true;
             return Err(std::io::Error::other("reply cap reached"));
         }
@@ -1048,7 +1071,7 @@ impl crate::wire::typed::Handle for HistoryIndexCmd {
 
 /// [`HistoryIndexCmd`] 的本体，家目录是参数。
 pub(crate) fn index_at(home: &Path, req: HistoryIndexReq) -> Result<HistoryIndex, HistoryIndexErr> {
-    index_page(home, req, REPLY_PAGE_BYTES).map_err(HistoryIndexErr::Failed)
+    index_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(HistoryIndexErr::Failed)
 }
 
 // ───────────────────────── history-user-inputs ─────────────────────────
@@ -1080,7 +1103,7 @@ impl crate::wire::typed::Handle for UserInputsCmd {
 
 /// [`UserInputsCmd`] 的本体，家目录是参数。
 pub(crate) fn user_inputs_at(home: &Path, req: UserInputsReq) -> Result<UserInputs, UserInputsErr> {
-    user_inputs_page(home, req, REPLY_PAGE_BYTES).map_err(UserInputsErr::Failed)
+    user_inputs_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(UserInputsErr::Failed)
 }
 
 // ───────────────────────── history-turns ─────────────────────────
@@ -1122,7 +1145,7 @@ pub(crate) fn turns_at(
     req: HistoryTurnsReq,
     tz: &crate::Tz,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
-    turns_page(home, req, tz, REPLY_PAGE_BYTES)
+    turns_page(home, req, tz, REPLY_PAGE_BYTES.as_len())
 }
 
 /// [`turns_at`] 的本体，一页的上限是参数：从扫描图上切（[`crate::observe::query::turns::turns_page`]），

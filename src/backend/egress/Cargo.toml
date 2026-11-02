@@ -12,6 +12,8 @@ description = "出网口：这台所有出站 TCP 只在这里开 —— 按一�
 path = "lib.rs"
 
 [dependencies]
+# 字节上限的类型（`Cap`：数与超了怎么办写在一处）住契约包；它也零依赖，引它不给本包带进第三方包。
+relay-route-core = { path = "../../common/relay-route-core" }
 # 测试档不许出网：真开 TCP 的那个目的地不是回环 ⇒ panic（回环判定只有 `upstream_is_loopback` 那一个家）。只在测试档进来。
 upstream-url-core = { path = "../../common/upstream-url-core", optional = true }
 

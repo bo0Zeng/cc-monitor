@@ -633,7 +633,7 @@ fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
 /// （进程 CPU 毫秒，不按墙钟）—— 正文整份装得下的最小一档；含工具那一形 128 / 256 都装不下、调大只多常驻不变快。要改它先重量这一组读数。
 #[test]
 fn the_resident_bound_is_128_mb() {
-    assert_eq!(RESIDENT_MAX_BYTES, 128 << 20);
+    assert_eq!(RESIDENT_MAX_BYTES.bytes, 128 << 20);
 }
 
 /// d：整份读按块 —— 第一次带一份 8 MiB 的记录（整份那一臂），读的时候本线程手里最多两块多一点，不是整份文件。

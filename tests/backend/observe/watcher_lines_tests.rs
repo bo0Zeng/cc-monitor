@@ -11,7 +11,7 @@ fn rig(tag: &str) -> (PathBuf, PathBuf, ReaderState, FrameSink, FrameRx) {
     let dir = std::env::temp_dir().join(format!("ccm-r2-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(SID.to_string());
     let path = dir.join(format!("{SID}.jsonl"));

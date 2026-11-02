@@ -950,7 +950,7 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     );
     let e = answer_wire(
         "files-read-chunk",
-        &serde_json::json!({ "path": at, "offset": 0, "len": READ_CHUNK_MAX_BYTES + 1 }),
+        &serde_json::json!({ "path": at, "offset": 0, "len": READ_CHUNK_MAX_BYTES.bytes + 1 }),
         &Default::default(),
     )
     .unwrap_err();

@@ -60,7 +60,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let t0 = std::time::Instant::now();
-        let r = http1::read_head(&mut srv, HEAD_CAP);
+        let r = http1::read_head(&mut srv, HEAD_CAP.as_len());
         let _ = tx.send((r, t0.elapsed()));
     });
     let (r, waited) = rx
@@ -95,7 +95,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     srv2.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("装期限");
     let t1 = std::time::Instant::now();
-    let got = http1::read_head(&mut srv2, HEAD_CAP)
+    let got = http1::read_head(&mut srv2, HEAD_CAP.as_len())
         .expect("完整的请求头不该报错")
         .expect("完整的请求头该读得出来");
     let fast = t1.elapsed();
@@ -157,7 +157,7 @@ fn spawn_tls_stub(answer: Answer) -> TlsStub {
                 let conn = rustls::ServerConnection::new(cfg).expect("服务端连接");
                 let mut tls = rustls::StreamOwned::new(conn, tcp);
                 loop {
-                    let Ok(Some(raw)) = http1::read_head(&mut tls, HEAD_CAP) else {
+                    let Ok(Some(raw)) = http1::read_head(&mut tls, HEAD_CAP.as_len()) else {
                         return;
                     };
                     let head = http1::parse_request(&raw).expect("假上游收到的该是 HTTP 请求");
@@ -378,10 +378,16 @@ fn a_pooled_connection_the_upstream_closed_is_dropped_before_any_byte_is_sent() 
 // 上游选择（判据自己的一张）进门就先报一声、再压着不答，放一次答一发：在途的那几发一直攥着自己那一笔账。
 
 /// 不量体量的那几条判据给的账：比判据里任何一发都宽得多。
-const BODIES_WIDE: usize = 1 << 30;
+const BODIES_WIDE: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 30,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 判据的账与每一发的体：3 发记不下、2 发记得下。
-const BODIES_NARROW: usize = 8 * 1024 * 1024;
+const BODIES_NARROW: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 8 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 const ONE_BODY: usize = 3 * 1024 * 1024;
 
 /// 进 `resolve` 先报一声（`entered`），再等放行（`release` 来一次答一发：现成回包 200）。
@@ -419,7 +425,9 @@ impl Destinations for Held {
 }
 
 /// 起一个账为 `bodies` 的中转，上游选择是 [`Held`]；回中转地址 ＋ 「进来了」的收端 ＋ 放行的发端。
-fn spawn_held_relay(bodies: usize) -> (SocketAddr, mpsc::Receiver<()>, mpsc::Sender<()>) {
+fn spawn_held_relay(
+    bodies: relay_route_core::Cap,
+) -> (SocketAddr, mpsc::Receiver<()>, mpsc::Sender<()>) {
     let (entered_tx, entered) = mpsc::channel();
     let (release, release_rx) = mpsc::channel();
     let open: Arc<OpenFor> =
@@ -529,7 +537,7 @@ fn a_body_is_allocated_once_at_its_declared_length() {
     let n = ONE_BODY + 7;
     let src = vec![b'x'; n];
     let mut r = std::io::Cursor::new(&src[..]);
-    let got = http1::read_exact_body(&mut r, n, BODY_CAP)
+    let got = http1::read_exact_body(&mut r, n, BODY_CAP.as_len())
         .expect("io")
         .expect("没超上限");
     assert_eq!(got.len(), n);

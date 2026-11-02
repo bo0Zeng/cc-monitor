@@ -156,7 +156,7 @@ fn list_rang(rx: &mut tokio::sync::watch::Receiver<u64>) -> bool {
 /// 记录被改写从头重读；与清单无关的帧（运行表）不响。
 #[test]
 fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut list = sink.list.subscribe();
     let line = |seq: u64| {
@@ -249,7 +249,7 @@ fn added_frame(sid: &str) -> Frame {
 #[test]
 fn a_session_that_left_is_gone_from_faces_here() {
     const SID: &str = "faces-here-left";
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     sink.send(added_frame(SID));
     assert!(
@@ -291,7 +291,7 @@ fn the_faces_book_never_grows_past_its_cap_and_evicts_the_stalest_first() {
 /// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。
 #[test]
 fn annotations_moving_ring_the_list_node() {
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut list = sink.list.subscribe();
     let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
@@ -306,7 +306,7 @@ fn annotations_moving_ring_the_list_node() {
 #[test]
 fn the_groups_half_moving_pushes_changed_groups_once() {
     use crate::history::history_annotations::{Book, Entry, GroupRec, Table};
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
     let one = |groups: &[&str], starred: bool| {
@@ -1565,7 +1565,7 @@ fn sid_change_in_place_retires_old_sid() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let path = dir.join(format!("{pid}.json"));
@@ -1620,7 +1620,7 @@ fn a_pidfile_in_the_hidden_dir_is_not_announced() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let path = dir.join(format!("{pid}.json"));
@@ -1651,7 +1651,7 @@ fn a_pidfile_in_the_hidden_dir_is_not_announced() {
 fn the_session_name_follows_the_records_even_when_nobody_watches() {
     let dir = std::env::temp_dir().join(format!("ccm-name-follows-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.clone());
     let path = dir.join("sess-1.jsonl");
@@ -1730,7 +1730,7 @@ fn same_sid_two_pidfiles_refcount() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
 
@@ -1790,7 +1790,7 @@ fn plain_lifecycle_regression() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let path = dir.join(format!("{pid}.json"));
@@ -1851,7 +1851,7 @@ fn the_announcement_says_which_account_the_session_runs_under() {
             std::thread::yield_now();
         }
         let ticks = proc_starttime(pid).expect("child starttime");
-        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"));
         state.accts_dir = accts.clone();
@@ -1895,7 +1895,7 @@ fn status_diff_emits_session_status_frame() {
     std::fs::create_dir_all(dir.join("projects")).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let pidfile = dir.join(format!("{pid}.json"));
@@ -1984,7 +1984,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     std::fs::create_dir_all(dir.join("projects")).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let note = |t: Option<&str>| {
@@ -2059,7 +2059,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     // 既有历史：3 个完整行 + 1 个残行（残行不计数 → L=3）
     let jsonl = proj.join("tail-sid.jsonl");
     std::fs::write(&jsonl, b"{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n{\"torn").unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects")); // --tail-only
     let pidfile = dir.join(format!("{pid}.json"));
@@ -2123,7 +2123,7 @@ fn with_bg_and_tail_only_combined() {
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
     std::fs::write(proj.join("combo-sid.jsonl"), b"{\"h\":1}\n{\"h\":2}\n").unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects")); // 双开
     let pidfile = dir.join(format!("{pid}.json"));
@@ -2164,7 +2164,7 @@ fn with_bg_announces_bg_with_metadata() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects")); // --with-bg
     let path = dir.join(format!("{pid}.json"));
@@ -2235,7 +2235,7 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
             format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/launched/here","procStart":"{ticks}"}}"#),
         )
         .unwrap();
-        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"));
         process_session_added(&pidfile, &mut state, &mut sink);
@@ -2281,7 +2281,7 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
         format!(r#"{{"pid":{pid},"sessionId":"late-sid","cwd":"/a/proj","procStart":"{ticks}"}}"#),
     )
     .unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     process_session_added(&pidfile, &mut state, &mut sink);
@@ -2887,7 +2887,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
         "`agent_home` 不在时挂的应当是它的上一层（且不是它本身）"
     );
 
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(projects.clone());
 
@@ -3132,7 +3132,7 @@ exit 1
         .zip(["two-a", "two-b"])
         .map(|(k, sid)| vis2_pidfile(&sessions, k.id(), sid))
         .collect();
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(root.join("projects"));
     state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
@@ -3172,7 +3172,7 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
         .iter()
         .map(|k| vis2_pidfile(&sessions, k.id(), "dup-sid"))
         .collect();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     initial_session_scan(&sessions, &mut state, &mut sink);
@@ -3205,7 +3205,7 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(sessions.join("dup")).unwrap();
     let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let old = vis2_pidfile(&sessions, kids[0].id(), "again-sid");
@@ -3282,7 +3282,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         )
         .unwrap();
     }
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
@@ -3328,7 +3328,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
 
     // ② `sessions/` 不在：空清单也要说完。
     let empty = std::env::temp_dir().join(format!("ccm-u4b-replayed-empty-{}", std::process::id()));
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(empty.join("projects"));
     initial_session_scan(&empty.join("sessions"), &mut state, &mut sink);
@@ -3352,7 +3352,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
     let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
     let live = sessions.join(format!("{pid}.json"));
     let gone = sessions.join("1.json");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     // 「挂耳朵」那一步里：一份活会话的 pidfile 落下；另一份落下又被删掉（初扫之前就没了，事件照样排着队）。
@@ -3430,7 +3430,7 @@ fn loc1b_the_pid_rides_the_session_added_frame() {
             .expect("起不来 `sleep` —— 夹具坏了");
         let pid = kid.id();
         let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
-        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         let mut sink = FrameSink::new(tx);
         let mut state = ReaderState::new(dir.join("projects"));
         let path = dir.join(format!("{pid}.json"));
@@ -3502,7 +3502,7 @@ fn fw1_rig(
     let dir = std::env::temp_dir().join(format!("ccm-fw1-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert("s-fw1".to_string());
@@ -3812,7 +3812,7 @@ fn an_externally_changed_identity_tag_is_put_back() {
     let _iso = crate::control::identity_tag::door::isolate_with(&script);
     let sessions = dir.join("sessions");
     let mut kid = claude_in_pane(&sessions, "%5", "resync-a", "busy");
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
@@ -3859,7 +3859,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
     let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
     let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
     let mut c = claude_in_pane(&sessions, "%5", "sid-c", "idle");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
@@ -4090,7 +4090,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     for sid in ["sid-a", "sid-b"] {
         std::fs::write(proj.join(format!("{sid}.jsonl")), "{\"n\":0}\n").unwrap();
     }
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     for k in [&a, &b] {
@@ -4219,7 +4219,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     let mut ears = HomeEars::new(&home, &projects, &sessions);
     ears.arm(&mut fs_watch);
     assert!(!ears.tasks_watched, "夹具坏了：tasks/ 一开始就在");
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(projects.clone());
     std::fs::create_dir_all(&tasks).unwrap();
@@ -4274,7 +4274,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
 /// 主运行与子运行（适配层 `run_of` 答得出）那两条的 `line` 都带上各自的对账键（`RecordFace::response_id`）。
 #[test]
 fn main_and_sub_run_lines_carry_their_own_reply_key() {
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(PathBuf::from("/p"));
     let main = r#"{"type":"assistant","uuid":"u-main","message":{"id":"m1","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
@@ -4304,7 +4304,7 @@ fn main_and_sub_run_lines_carry_their_own_reply_key() {
 /// 时刻是它自己的 timestamp；`queue-operation` 的 `enqueue` · `remove` 两行都不出成品（否则同一句上屏两次）。
 #[test]
 fn a_mid_turn_line_on_the_live_stream_is_said_once_with_its_own_id_and_moment() {
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(PathBuf::from("/p"));
     let enq = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-01-02T03:00:00.000Z","content":"also this"}"#;
@@ -4486,7 +4486,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
         + line("u2", "a1", "t3", "user").as_str()
         + line("u3", "a1", "t4", "user").as_str();
     std::fs::write(&jsonl, &body).unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::wanting_branches(tx, &["br-sid"]);
     let mut state = ReaderState::new(dir.join("projects"));
     let pidfile = dir.join(format!("{pid}.json"));
@@ -4594,7 +4594,7 @@ fn announce_record(dir: &Path, sid: &str, body: &str) -> (Vec<Frame>, ReaderStat
         format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/p","procStart":"{ticks}"}}"#),
     )
     .unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::wanting_branches(tx, &[sid]);
     let mut state = ReaderState::new(dir.join("projects"));
     process_session_added(&pidfile, &mut state, &mut sink);
@@ -4669,7 +4669,7 @@ fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
     let (_, mut state) = announce_record(&dir, "hot-sid2", "");
     let path = dir.join("projects").join("proj-h").join("hot-sid2.jsonl");
     std::fs::write(&path, &body).unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::wanting_branches(tx, &["hot-sid2"]);
     process_jsonl(&path, &mut state, &mut sink);
     let mut frames = Vec::new();
@@ -4787,10 +4787,10 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
         sid: "rw-sid".into(),
         ..Default::default()
     };
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     // 接上来那一份此刻的样子：不带清单。
-    let (tx1, mut rx1) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx1, mut rx1) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     join(
         Sub::new(1, tx1, crate::Tz::default()),
         None,
@@ -4888,7 +4888,7 @@ fn a_live_line_is_parsed_from_text_once() {
         r#"{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"t3","message":{"role":"assistant","content":[{"type":"text","text":"w"}],"stop_reason":"end_turn"}}"#,
     ];
     std::fs::write(&path, lines.join("\n") + "\n").unwrap();
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     crate::agents::LINE_PARSES.with(|c| c.set(0));
     process_jsonl(&path, &mut state, &mut sink);
@@ -4919,7 +4919,7 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     let pin = |on: bool| {
@@ -4985,7 +4985,7 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
 /// 压在通道里的字节不超过上限，超出的那些丢、记账；排空后下一帧之前先出 `Overflow`。
 #[test]
 fn the_outbound_channel_holds_at_most_its_byte_cap() {
-    const CAP: usize = CHANNEL_MAX_BYTES;
+    const CAP: usize = CHANNEL_MAX_BYTES.as_len();
     let (tx, mut rx) = frame_channel(CAP);
     let mut sink = FrameSink::new(tx);
     let fat = "x".repeat(100_000);
@@ -5067,7 +5067,7 @@ fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
     let _iso = crate::control::identity_tag::door::isolate();
     let minute = std::time::Duration::from_secs(60);
     let (dir, pidfile, mut state) = frozen_fixture("old", "hb-old", "busy", STALE_AFTER + minute);
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
@@ -5088,7 +5088,7 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     let _iso = crate::control::identity_tag::door::isolate();
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("live", "hb-live", "busy", second);
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
@@ -5158,7 +5158,7 @@ fn waiting_sessions_and_ones_with_running_children_are_not_judged_frozen() {
     let _iso = crate::control::identity_tag::door::isolate();
     let hour = std::time::Duration::from_secs(3600);
     let (dir, pidfile, mut state) = frozen_fixture("wait", "hb-wait", "waiting", hour);
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
@@ -5211,7 +5211,7 @@ fn a_session_with_a_pending_ask_is_announced_as_needing_you_even_if_its_pidfile_
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("asked", "hb-asked", "busy", second);
     state.asked.insert("hb-asked".to_string());
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
@@ -5230,7 +5230,7 @@ fn an_ask_coming_and_going_flips_the_announced_dot() {
     let _iso = crate::control::identity_tag::door::isolate();
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("ask-flip", "hb-flip", "busy", second);
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     process_session_added(&pidfile, &mut state, &mut sink);
     while rx.try_recv().is_ok() {}
@@ -5269,7 +5269,7 @@ fn an_ask_coming_and_going_flips_the_announced_dot() {
 fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
     let mut state = ReaderState::new(std::env::temp_dir().join("ccm-runs-needs-unused"));
     crate::observe::runs::testing::seed_running(&state.book, "s-n", "a", None);
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let ask = crate::agents::asks::specimen();
     let hung = |sid: &str| {
@@ -5296,7 +5296,7 @@ fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
 #[test]
 fn the_needs_bell_goes_out_as_one_changed_needs_on_the_watcher_path() {
     let mut state = ReaderState::new(std::env::temp_dir().join("ccm-needs-bell-unused"));
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let needs = |rx: &mut FrameRx| -> Vec<Option<String>> {
         std::iter::from_fn(|| rx.try_recv().ok())

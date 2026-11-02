@@ -730,7 +730,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     let mut fat: Vec<String> = TAP_EVENTS.iter().map(|s| s.to_string()).collect();
     fat[2] = format!(
         r#"{{"type":"ping","pad":"{}"}}"#,
-        "x".repeat(comms_outward::test_support::tee::TAP_DATA_CAP)
+        "x".repeat(comms_outward::test_support::tee::TAP_DATA_CAP.as_len())
     );
     let mut b = String::new();
     for e in &fat {
@@ -753,7 +753,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     let mut want: Vec<u64> = (0..k).collect();
     want.push(k);
     assert_eq!(ns, want, "超上限那一件也占着它的号，收尾那件带总数");
-    let cap = comms_outward::test_support::tee::TAP_DATA_CAP;
+    let cap = comms_outward::test_support::tee::TAP_DATA_CAP.as_len();
     match &got[2].body {
         comms_outward::TapBody::Clipped { head, len } => {
             assert_eq!(head.len(), cap, "截断形交的不是开头那 {cap} 字节");

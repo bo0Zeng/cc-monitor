@@ -19,12 +19,12 @@ fn only_items_with_values_render_one_per_line() {
 
 #[test]
 fn raw_is_cut_at_the_cap_on_a_char_boundary() {
-    let long = "错".repeat(RAW_CAP); // 每字 3 字节
+    let long = "错".repeat(RAW_CAP.as_len()); // 每字 3 字节
     let cut = truncate_raw(&long);
     let tail = copy_text("detail.value.truncated", &[]);
     assert!(cut.ends_with(&tail));
     let body = &cut[..cut.len() - tail.len()];
-    assert!(body.len() <= RAW_CAP && body.len() > RAW_CAP - 3);
+    assert!(body.len() <= RAW_CAP.as_len() && body.len() > RAW_CAP.as_len() - 3);
     assert_eq!(truncate_raw("short"), "short");
 }
 

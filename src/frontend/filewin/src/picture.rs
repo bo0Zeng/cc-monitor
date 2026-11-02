@@ -27,7 +27,10 @@ use std::sync::{Arc, Mutex};
 pub const MAX_SIDE: u32 = 8192;
 
 /// 解码那一步最多占多少内存（字节）。超了说「像素过多」，不说「解不开」。
-pub const DECODE_MAX_BYTES: u64 = 512 * 1024 * 1024;
+pub const DECODE_MAX_BYTES: host_core::Cap = host_core::Cap {
+    bytes: 512 * 1024 * 1024,
+    over: host_core::Over::Reject,
+};
 
 /// 一张图的钥匙：路径 ＋ 大小 ＋ 修改时间（列表那一行上的）。
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -264,7 +267,7 @@ pub fn decode(bytes: &[u8], side: u32) -> Result<(egui::ColorImage, [u32; 2]), S
         .with_guessed_format()
         .map_err(undecodable)?;
     let mut limits = image::Limits::default();
-    limits.max_alloc = Some(DECODE_MAX_BYTES);
+    limits.max_alloc = Some(DECODE_MAX_BYTES.bytes);
     reader.limits(limits);
     let img = reader.decode().map_err(|e| match e {
         image::ImageError::Limits(_) => {

@@ -1752,7 +1752,10 @@ pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Foll
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。
-pub(crate) const HEAD_CAP: u64 = 1 << 20;
+pub(crate) const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 20,
+    over: relay_route_core::Over::SkipAndSay,
+};
 
 /// 记录开头逐条交给 `pick`，第一个给出值的胜；读满 [`HEAD_CAP`] 字节就停（截在半截的那一行解析不出、不算）。
 /// 读满了还没找到 ⇒ `None`，并在日志里说是哪份文件（调用方退到「没有这一格」）。
@@ -1762,14 +1765,14 @@ pub(crate) fn first_in_head(
 ) -> Option<String> {
     use std::io::{BufRead, Read};
     let file = Ro::open(p).ok()?;
-    let mut r = std::io::BufReader::new(file.take(HEAD_CAP));
+    let mut r = std::io::BufReader::new(file.take(HEAD_CAP.bytes));
     let mut line = Vec::new();
     let mut read = 0u64;
     loop {
         line.clear();
         let n = r.read_until(b'\n', &mut line).ok()?;
         if n == 0 {
-            if read >= HEAD_CAP {
+            if read >= HEAD_CAP.bytes {
                 tracing::warn!(
                     "{}: nothing found within the head cap; giving up",
                     p.display()

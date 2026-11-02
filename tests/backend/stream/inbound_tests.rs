@@ -254,7 +254,7 @@ async fn a_bad_line_does_not_stop_the_reader() {
 async fn an_oversized_line_is_rejected_without_killing_the_reader() {
     let huge = format!(
         "{{\"id\":\"big\",\"cmd\":\"ping\",\"pad\":\"{}\"}}\n",
-        "p".repeat(MAX_LINE_BYTES)
+        "p".repeat(MAX_LINE_BYTES.as_len())
     );
     let out = one_line(&(huge + "{\"id\":\"after\",\"cmd\":\"nope\"}\n")).await;
     assert!(
@@ -274,7 +274,7 @@ async fn an_oversized_line_is_rejected_without_killing_the_reader() {
 /// 阴性对照：信封里没有 `id` ⇒ 仍回空串（抠不出就不编）。
 #[tokio::test]
 async fn an_oversized_line_answers_with_the_id_it_carried() {
-    let pad = "p".repeat(MAX_LINE_BYTES);
+    let pad = "p".repeat(MAX_LINE_BYTES.as_len());
     let lines = [
         format!("{{\"id\":\"first\",\"cmd\":\"files-write-text\",\"args\":{{\"content\":\"{pad}\"}}}}\n"),
         format!(

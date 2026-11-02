@@ -697,11 +697,17 @@ pub fn browse(conn: u64, req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
 /// `files.read.text` 一趟最多肯交多少字节：一帧应答整个进内存、整个过线的天花板（JSON 转义最坏 ×6 = 48 MiB，
 /// 仍在 monitor 读后端一行 · 通道一帧 64 MiB 之内）。编辑上限就是它（[`class::gates_of`]）；
 /// 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`，不偷偷夹小。
-pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub const READ_TEXT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 8 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 /// `files-read-chunk` 一块最多多少原始字节（b16 翻倍后一帧应答仍远小于 monitor 读一行的上限）。
 /// 调用方给的 `len` 越界 ⇒ `bad_args`、不夹小（同 [`READ_TEXT_MAX_BYTES`] 那一条理由）。
-pub const READ_CHUNK_MAX_BYTES: u64 = 256 * 1024;
+pub const READ_CHUNK_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 256 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 // 摘要算法（流式那一形 ＋ 十六进制长度）住 `common/digest.rs`：传输台（原生那一块）上传时也边传边算，两块各引各的。
 pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
@@ -738,11 +744,12 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
     use std::io::Seek as _;
     let path = path_of(&req.path, "path")?;
     let (offset, len) = (req.offset, req.len);
-    if len == 0 || len > READ_CHUNK_MAX_BYTES {
+    if len == 0 || len > READ_CHUNK_MAX_BYTES.bytes {
         return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "`len` is {len}; accepted range 1..={READ_CHUNK_MAX_BYTES}, not clamped"
+                "`len` is {len}; accepted range 1..={}, not clamped",
+                READ_CHUNK_MAX_BYTES.bytes
             )),
         ));
     }
@@ -806,11 +813,12 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
 fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
     let path = path_of(&req.path, "path")?;
     let max = req.max_bytes;
-    if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
+    if max == 0 || max > READ_TEXT_MAX_BYTES.bytes {
         return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "`max_bytes` is {max}; accepted range 1..={READ_TEXT_MAX_BYTES}, not clamped"
+                "`max_bytes` is {max}; accepted range 1..={}, not clamped",
+                READ_TEXT_MAX_BYTES.bytes
             )),
         ));
     }

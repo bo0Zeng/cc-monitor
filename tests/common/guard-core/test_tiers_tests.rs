@@ -100,7 +100,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。
     "tests/frontend/shell/bus_identity_registry.rs",
-    "tests/frontend/shell/byte_cap_registry.rs",
     "tests/frontend/shell/capability_registry.rs",
     "tests/frontend/shell/comm_boundary_registry.rs",
     "tests/frontend/shell/command_home_registry.rs",

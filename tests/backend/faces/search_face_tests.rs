@@ -42,7 +42,7 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
         search_at(
             &home,
             req,
-            crate::faces::read_face::LINES_CAP_BYTES,
+            crate::faces::read_face::LINES_CAP_BYTES.as_len(),
             0,
             &Default::default(),
             &plain,
@@ -103,7 +103,7 @@ fn each_row_carries_its_row_and_span_texts_written_here() {
     let v = search_at(
         &home,
         req,
-        crate::faces::read_face::LINES_CAP_BYTES,
+        crate::faces::read_face::LINES_CAP_BYTES.as_len(),
         now,
         &Default::default(),
         &plain,
@@ -148,7 +148,7 @@ fn each_row_carries_this_machines_label_star_and_hidden() {
     let v = search_at(
         &home,
         req,
-        crate::faces::read_face::LINES_CAP_BYTES,
+        crate::faces::read_face::LINES_CAP_BYTES.as_len(),
         0,
         &Default::default(),
         &mark,
@@ -370,7 +370,7 @@ fn an_oversized_search_answer_is_refused_not_truncated() {
     let full = search_at(
         &home,
         req(),
-        crate::faces::read_face::LINES_CAP_BYTES,
+        crate::faces::read_face::LINES_CAP_BYTES.as_len(),
         0,
         &Default::default(),
         &plain,
@@ -429,7 +429,7 @@ fn hits_carry_their_offset_and_forks_name_their_parent() {
     let v = search_at(
         &home,
         req,
-        crate::faces::read_face::LINES_CAP_BYTES,
+        crate::faces::read_face::LINES_CAP_BYTES.as_len(),
         0,
         &Default::default(),
         &plain,

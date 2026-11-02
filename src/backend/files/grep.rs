@@ -34,10 +34,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub const DEFAULT_LIMIT: usize = 200;
 /// 调用方给的 `limit` 最多到这里（再大就压回来）。
 pub const MAX_LIMIT: usize = 1000;
-/// 单份文件超过这个字节数不读（`skipped_large`）。
-pub const FILE_MAX_BYTES: u64 = 8 << 20;
+/// 单份文件超过这个字节数不读（`skipped_large`，`warn!` 说出路径）。
+pub const FILE_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 8 << 20,
+    over: relay_route_core::Over::SkipAndSay,
+};
 /// 一趟累计读进来的字节上限（到了就停，`stopped: "bytes"`）。
-pub const TOTAL_MAX_BYTES: u64 = 256 << 20;
+pub const TOTAL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 256 << 20,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 /// 判二进制看开头这么长（字节数）。⚠ 它不是一道上界（什么都不因它被截掉）：只是「看多远才算看过开头」。
 pub const BINARY_SNIFF_LEN: usize = 8 << 10;
 /// 要找的那一串最长多少字节。
@@ -116,7 +122,7 @@ pub struct Caps {
 
 /// 生产那两道上界（真正按它们停 / 跳的地方在 `look_at`：跳过的那一份 `warn!` 说出路径，停了回 `stopped`）。
 #[rustfmt::skip]
-pub const CAPS: Caps = Caps { file_max_bytes: FILE_MAX_BYTES, total_max_bytes: TOTAL_MAX_BYTES };
+pub const CAPS: Caps = Caps { file_max_bytes: FILE_MAX_BYTES.bytes, total_max_bytes: TOTAL_MAX_BYTES.bytes };
 
 /// 生产入口：设备号走 `platform/`、上界是 [`CAPS`]。顶上那一格读不到 ⇒ `Err`（调用方回 `unreadable`）。
 pub fn search(top: &Path, args: &GrepArgs, cancel: &AtomicBool) -> std::io::Result<Grepped> {

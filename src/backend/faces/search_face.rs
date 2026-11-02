@@ -72,7 +72,7 @@ async fn search_here(
         search_at(
             &crate::history::listing::agent_home(),
             req,
-            super::read_face::LINES_CAP_BYTES,
+            super::read_face::LINES_CAP_BYTES.as_len(),
             crate::common::time::now_ms() as i64,
             &tz,
             &mark,

@@ -462,13 +462,25 @@ pub enum Format {
     Foreign,
 }
 
-/// 一道读上限：多少字节，超了怎么办。数和处置写在一处，声明的地方就说清越界那一刻发生什么。
+/// 一道字节上限（读一份 · 收一帧 · 攒一截 · 留一份在内存里）：多少字节，超了怎么办。数和处置写在一处，声明的地方就说清越界那一刻发生什么。
+/// 量的不是字节的上限（条数 · 字符数 · 毫秒）不用它。
 ///
 /// 没有「静默截断」那一档：截了不说，拿半份当整份用，正是上限要挡的。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cap {
     pub bytes: u64,
     pub over: Over,
+}
+
+impl Cap {
+    /// 上限的字节数作 `usize`，给拿长度（`len()`）比的调用处用；大过 `usize` 的（32 位上）当 `usize::MAX`。
+    pub const fn as_len(self) -> usize {
+        if self.bytes > usize::MAX as u64 {
+            usize::MAX
+        } else {
+            self.bytes as usize
+        }
+    }
 }
 
 /// 超了上限怎么办。每一档都让人知道越界了；分界写在各档上。

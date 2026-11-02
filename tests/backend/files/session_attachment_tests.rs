@@ -140,14 +140,14 @@ fn an_oversized_file_is_refused_before_and_at_commit() {
     let (home, cwd) = rig("big");
     let items = [AttachItem {
         name: "dataset.zip".into(),
-        bytes: MAX_ONE_BYTES + 1,
+        bytes: MAX_ONE_BYTES.bytes + 1,
         dir: false,
     }];
     let v = check(&cwd, &items);
     assert_eq!(v[0].why, Some(AttachRefused::TooBig));
     assert!(v[0].said.is_some());
     let mut r = req("dataset.zip", b"x");
-    r.bytes = MAX_ONE_BYTES + 1;
+    r.bytes = MAX_ONE_BYTES.bytes + 1;
     let err = commit(&Face::issue(), &home, &cwd, r, AT, &utc()).expect_err("该拒");
     assert_eq!(err.code_or_fallback(), "too_big");
     assert!(!cwd.join(".ccm-attach").exists());

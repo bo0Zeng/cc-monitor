@@ -80,7 +80,7 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
         }
     }
     // 超长
-    let long = "x".repeat(MAX_FIELD_BYTES + 1);
+    let long = "x".repeat(MAX_FIELD_BYTES.as_len() + 1);
     assert_eq!(
         parse_request(&base("n", &long))
             .unwrap_err()
@@ -370,7 +370,7 @@ fn send_into_never_creates_a_session() {
 /// 诊断里直接写清「去把 4h 与那几处注释一起重判」。
 ///
 /// ⚠ 本条是**源码层**（读自己这份源码的函数体）：挡得住「悄悄加/减一道检查」，
-/// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，另有 `byte_cap_registry` 管。
+/// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，数与超了怎么办写在那个 `Cap` 上，不归本条。
 #[test]
 fn the_payload_is_still_only_shape_checked() {
     let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
@@ -1377,5 +1377,27 @@ fn a_pasted_text_waits_before_enter_and_a_typed_line_does_not() {
     assert_eq!(
         typed_into(&[], "a\nb", false),
         ["set-buffer a\nb", "paste-buffer"]
+    );
+}
+
+/// 启动请求一个字段的上限与 monitor 本机那条送法的命令串上限「同量级」（头注那句话）：两侧刻意不同值（8 KiB · 4 KiB），
+/// 这里把「同量级」写成相差不超过 4 倍 —— 那是个约定，不是实测阈值。monitor 那一处不在后端够得着的包里，读它的源码比。
+#[test]
+fn the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap() {
+    let shell =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
+    let at = shell
+        .find("const MAX_REMOTE_CMD: relay_route_core::Cap = relay_route_core::Cap {")
+        .expect("monitor 那一侧的命令串上限认不出了（改了写法就把这里一起改）");
+    let monitor: u64 = shell[at..]
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("bytes: "))
+        .and_then(|v| v.trim_end_matches(',').parse().ok())
+        .expect("monitor 那个上限里没有一个整数的 `bytes:`");
+    let backend = MAX_FIELD_BYTES.bytes;
+    let (hi, lo) = (backend.max(monitor), backend.min(monitor));
+    assert!(
+        lo > 0 && hi <= lo * 4,
+        "「一条人能读的启动命令」两侧差得太远（后端 {backend} / monitor {monitor}）"
     );
 }

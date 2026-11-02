@@ -538,7 +538,10 @@ pub fn etxtbsy_gave_up(bin: &Path, tries: u32, last: &str) -> Said {
 ///
 /// 🔴 它**不是**「读到这里就不读了」—— 那是把病换个方向犯（见 [`drain_child_stderr_into_log`]
 /// 头注的第二条）。超出之后照旧读到 EOF，只是不再逐行记，收尾报一个**行数**。
-const STDERR_LOG_BUDGET_BYTES: u64 = 256 * 1024;
+const STDERR_LOG_BUDGET_BYTES: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::DropAndReport,
+};
 
 /// 子进程 stderr 一条的上界（经 [`read_capped_line_sync`] 读）。对端一个 `\n` 都不发时，无界的读行会一直把内存吃下去。
 ///
@@ -603,7 +606,7 @@ pub(crate) fn next_stderr_line<R: std::io::BufRead>(rd: &mut R) -> Option<String
 /// `InvalidData`，那会把本函数踢出循环，于是约束 1 当场失守（读的一侧停了，子进程会卡）。
 pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u32) {
     let mut reader = std::io::BufReader::new(err);
-    let mut budget = STDERR_LOG_BUDGET_BYTES;
+    let mut budget = STDERR_LOG_BUDGET_BYTES.bytes;
     let mut unlogged = 0usize;
     // `None`：EOF（子进程关掉了 stderr，通常就是它退了），或读不动了（管子那头没了）——
     // 这里停不违反约束 1：已经没有「另一端会被我卡住」的另一端了。
@@ -627,8 +630,9 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
     if unlogged > 0 {
         tracing::warn!(
             "本机后端[pid {pid}] 另有 {unlogged} 行 stderr 没有记进来 —— \
-             这一条子进程的日志预算（{STDERR_LOG_BUDGET_BYTES} 字节）用完了。\
-             ⚠ 别把它读成「后端只说了这些」：它说的比记下来的多。"
+             这一条子进程的日志预算（{} 字节）用完了。\
+             ⚠ 别把它读成「后端只说了这些」：它说的比记下来的多。",
+            STDERR_LOG_BUDGET_BYTES.bytes
         );
     }
 }

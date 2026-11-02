@@ -67,7 +67,10 @@ pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
 
 /// 一帧画面（`view` 序列化之后）的字节上限：超了不推，改推收尾帧 `too_big`。
 /// 依据：200 列 × 60 行、每格都着色的满屏约 150 KiB；512 KiB 留三倍多余量，又远小于客户端一行的上限（64 MiB）。
-pub const SCREEN_FRAME_CAP: usize = 512 * 1024;
+pub const SCREEN_FRAME_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 512 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 「退过、却还没订过」的票记几张（退订先于订阅到的那一刻用；票只用一次，记最近的就够）。
 const DROPPED_KEPT: usize = 64;
@@ -1058,7 +1061,8 @@ impl Worker {
         if fp == *last {
             return Step::Go;
         }
-        if serde_json::to_string(&shot).map_or(usize::MAX, |s| s.len()) > SCREEN_FRAME_CAP {
+        if serde_json::to_string(&shot).map_or(usize::MAX, |s| s.len()) > SCREEN_FRAME_CAP.as_len()
+        {
             return Step::End(FollowEnd::TooBig);
         }
         *seq += 1;

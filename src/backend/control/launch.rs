@@ -53,7 +53,10 @@ use copy_core::copy_text;
 
 /// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
 /// 那是「一条人能读的启动命令」的宽松上界，不是安全阈值。
-const MAX_FIELD_BYTES: usize = 8 * 1024;
+const MAX_FIELD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 8 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 起会话的模式。**没有 `attach-only`** —— attach 是平面 ③。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,12 +305,13 @@ fn check_field(what: &str, v: &str) -> Result<(), Said> {
 }
 
 fn check_len(what: &str, v: &str) -> Result<(), Said> {
-    if v.len() > MAX_FIELD_BYTES {
+    if v.len() > MAX_FIELD_BYTES.as_len() {
         return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
-                v.len()
+                "`{what}` is too long ({} > {})",
+                v.len(),
+                MAX_FIELD_BYTES.bytes
             )),
         ));
     }
@@ -331,12 +335,13 @@ fn check_typed_payload(v: &str) -> Result<(), Said> {
             crate::common::contract::malformed("`payload` is empty"),
         ));
     }
-    if v.len() > MAX_FIELD_BYTES {
+    if v.len() > MAX_FIELD_BYTES.as_len() {
         return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "`payload` is too long ({} > {MAX_FIELD_BYTES})",
-                v.len()
+                "`payload` is too long ({} > {})",
+                v.len(),
+                MAX_FIELD_BYTES.bytes
             )),
         ));
     }

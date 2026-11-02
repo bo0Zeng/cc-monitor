@@ -3,7 +3,7 @@
 use super::*;
 use cmd_wire::files::{FileClass as C, Gate, PreviewGate};
 
-const EDIT_MAX_BYTES: u64 = super::super::READ_TEXT_MAX_BYTES as u64;
+const EDIT_MAX_BYTES: u64 = super::super::READ_TEXT_MAX_BYTES.bytes;
 
 #[test]
 fn the_class_comes_from_the_name_and_links_draw_what_they_point_at() {
@@ -71,16 +71,16 @@ fn the_type_column_text_is_written_here() {
 #[test]
 fn text_preview_is_allowed_up_to_its_cap_and_carries_the_syntax() {
     assert_eq!(
-        gates_of(b"a.rs", PREVIEW_TEXT_MAX_BYTES).preview,
+        gates_of(b"a.rs", PREVIEW_TEXT_MAX_BYTES.bytes).preview,
         PreviewGate::Text(cmd_wire::files::TextPreview {
-            cap: PREVIEW_TEXT_MAX_BYTES,
+            cap: PREVIEW_TEXT_MAX_BYTES.bytes,
             lang: Some("rs".into())
         })
     );
     assert_eq!(
         gates_of(b"a.txt", 1).preview,
         PreviewGate::Text(cmd_wire::files::TextPreview {
-            cap: PREVIEW_TEXT_MAX_BYTES,
+            cap: PREVIEW_TEXT_MAX_BYTES.bytes,
             lang: None
         }),
         "纯文本不上色"
@@ -89,14 +89,14 @@ fn text_preview_is_allowed_up_to_its_cap_and_carries_the_syntax() {
         gates_of(b"a.svg", 1).preview,
         PreviewGate::Text(ref t) if t.lang.as_deref() == Some("svg")
     ));
-    let over = PREVIEW_TEXT_MAX_BYTES + 1;
+    let over = PREVIEW_TEXT_MAX_BYTES.bytes + 1;
     assert_eq!(
         gates_of(b"a.rs", over).preview,
         PreviewGate::No(copy_text(
             "beFilesOpen.preview.tooBig",
             &[
                 ("size", &size_text(over)),
-                ("limit", &size_text(PREVIEW_TEXT_MAX_BYTES))
+                ("limit", &size_text(PREVIEW_TEXT_MAX_BYTES.bytes))
             ]
         ))
     );
@@ -106,48 +106,48 @@ fn text_preview_is_allowed_up_to_its_cap_and_carries_the_syntax() {
 fn images_preview_and_view_each_up_to_their_own_cap() {
     let at = |n: u64| gates_of(b"p.png", n);
     assert_eq!(
-        at(PREVIEW_IMAGE_MAX_BYTES).preview,
-        PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES)
+        at(PREVIEW_IMAGE_MAX_BYTES.bytes).preview,
+        PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES.bytes)
     );
     // 预览放不下、查看页放得下 ⇒ 那一句指向「查看」；连查看页也放不下 ⇒ 与查看页同一句。
     assert_eq!(
-        at(PREVIEW_IMAGE_MAX_BYTES + 1).preview,
+        at(PREVIEW_IMAGE_MAX_BYTES.bytes + 1).preview,
         PreviewGate::No(copy_text(
             "beFilesOpen.preview.imageTooBig",
             &[
-                ("size", &size_text(PREVIEW_IMAGE_MAX_BYTES + 1)),
-                ("limit", &size_text(PREVIEW_IMAGE_MAX_BYTES))
+                ("size", &size_text(PREVIEW_IMAGE_MAX_BYTES.bytes + 1)),
+                ("limit", &size_text(PREVIEW_IMAGE_MAX_BYTES.bytes))
             ]
         ))
     );
     assert_eq!(
-        at(VIEW_IMAGE_MAX_BYTES + 1).preview,
+        at(VIEW_IMAGE_MAX_BYTES.bytes + 1).preview,
         PreviewGate::No(copy_text(
             "beFilesOpen.view.tooBig",
             &[
-                ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
-                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES))
+                ("size", &size_text(VIEW_IMAGE_MAX_BYTES.bytes + 1)),
+                ("limit", &size_text(VIEW_IMAGE_MAX_BYTES.bytes))
             ]
         ))
     );
     assert_eq!(
-        at(VIEW_IMAGE_MAX_BYTES).view,
-        Some(Gate::Cap(VIEW_IMAGE_MAX_BYTES))
+        at(VIEW_IMAGE_MAX_BYTES.bytes).view,
+        Some(Gate::Cap(VIEW_IMAGE_MAX_BYTES.bytes))
     );
     // 连查看页也放不下 ⇒ 预览与查看页同一句。
     let too_big = copy_text(
         "beFilesOpen.view.tooBig",
         &[
-            ("size", &size_text(VIEW_IMAGE_MAX_BYTES + 1)),
-            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES)),
+            ("size", &size_text(VIEW_IMAGE_MAX_BYTES.bytes + 1)),
+            ("limit", &size_text(VIEW_IMAGE_MAX_BYTES.bytes)),
         ],
     );
     assert_eq!(
-        at(VIEW_IMAGE_MAX_BYTES + 1).view,
+        at(VIEW_IMAGE_MAX_BYTES.bytes + 1).view,
         Some(Gate::No(too_big.clone()))
     );
     assert_eq!(
-        at(VIEW_IMAGE_MAX_BYTES + 1).preview,
+        at(VIEW_IMAGE_MAX_BYTES.bytes + 1).preview,
         PreviewGate::No(too_big)
     );
     // 解不开的图：不预览、没有查看页；svg 当文本。

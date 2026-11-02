@@ -629,7 +629,7 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
         "读到 EOF 那一形居然也没再要字节 —— 读端替身坏了，上面那条是空转"
     );
     // 上限：没有换行、超过上限 ⇒ 拒（不截断），也不许一直读下去。
-    let big = vec![b'x'; MAX_CLI_STDIN as usize + 10];
+    let big = vec![b'x'; MAX_CLI_STDIN.as_len() + 10];
     let r = read_input(std::io::BufReader::new(ThenPanic(Some(big))), true);
     assert_eq!(
         r.map_err(|e| e.code),
@@ -933,7 +933,7 @@ fn the_argv_payload_refuses_clearly() {
         "bad_request"
     );
     // 超大：argv 那一形自己的上限（比系统单个参数的上限小一点，系统放得进来的才轮得到它说）。
-    let big = "A".repeat(MAX_ARGS_B64_LEN + 4);
+    let big = "A".repeat(MAX_ARGS_B64_LEN.as_len() + 4);
     assert_eq!(
         refuse(&[
             "--history-read",
@@ -942,8 +942,8 @@ fn the_argv_payload_refuses_clearly() {
         ]),
         "args_too_large"
     );
-    let just = crate::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN / 4 * 3]);
-    assert!(just.len() <= MAX_ARGS_B64_LEN);
+    let just = crate::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN.as_len() / 4 * 3]);
+    assert!(just.len() <= MAX_ARGS_B64_LEN.as_len());
     assert_ne!(
         refuse(&[
             "--history-read",
@@ -956,7 +956,7 @@ fn the_argv_payload_refuses_clearly() {
     // stdin 那一形超大：同一个码。
     let (rc, _, err) = run_cli(
         &strs(&["--history-read"]),
-        std::io::Cursor::new(vec![b' '; MAX_CLI_STDIN as usize + 1]),
+        std::io::Cursor::new(vec![b' '; MAX_CLI_STDIN.as_len() + 1]),
     );
     assert_eq!((rc, err_code(&err).as_str()), (2, "args_too_large"));
 }
@@ -965,18 +965,18 @@ fn the_argv_payload_refuses_clearly() {
 /// 经 ssh 时整行命令是登录 shell `-c` 的**一个**参数 ⇒ 同一个上限管整行。比它大，本后端根本起不来、轮不到它回码。
 #[test]
 fn the_argv_cap_sits_inside_the_systems_single_argument_cap() {
-    const LINUX_MAX_ARG_STRLEN: usize = 32 * 4096;
+    const LINUX_MAX_ARG_STRLEN: u64 = 32 * 4096;
     assert!(
-        MAX_ARGS_B64_LEN < LINUX_MAX_ARG_STRLEN,
+        MAX_ARGS_B64_LEN.bytes < LINUX_MAX_ARG_STRLEN,
         "argv 载荷口的上限超过了系统单个参数的上限 —— 那一段永远轮不到本后端回码"
     );
     assert_eq!(
-        MAX_ARGS_B64_LEN % 4,
+        MAX_ARGS_B64_LEN.bytes % 4,
         0,
         "上限不是 4 的倍数 —— 刚好到上限的合法 base64 也会被拒"
     );
     assert!(
-        (MAX_ARGS_B64_LEN as u64) / 4 * 3 <= MAX_CLI_STDIN,
+        MAX_ARGS_B64_LEN.bytes / 4 * 3 <= MAX_CLI_STDIN.bytes,
         "argv 口解出来的上限比 stdin 那一形还大"
     );
 }
@@ -990,17 +990,17 @@ fn the_protocol_doc_states_the_input_limits_the_code_enforces() {
         .nth(1)
         .and_then(|s| s.split("\n## ").next())
         .expect("IPC-PROTOCOL.md 没有「8. CLI 一次性调用」那一节");
-    let mib = MAX_CLI_STDIN / (1024 * 1024);
+    let mib = MAX_CLI_STDIN.bytes / (1024 * 1024);
     assert_eq!(
-        MAX_CLI_STDIN,
+        MAX_CLI_STDIN.bytes,
         mib * 1024 * 1024,
         "MAX_CLI_STDIN 不是整 MiB，下面这条比法要改"
     );
     for want in [
         crate::wire::cli_words::ARGS_B64_FLAG.to_string(),
         crate::wire::cli_words::STDIN_LINE_FLAG.to_string(),
-        format!("{mib} MiB（{MAX_CLI_STDIN} 字节）"),
-        format!("{MAX_ARGS_B64_LEN} 字节"),
+        format!("{mib} MiB（{} 字节）", MAX_CLI_STDIN.bytes),
+        format!("{} 字节", MAX_ARGS_B64_LEN.bytes),
         format!("{} ms", STDIN_QUIET.as_millis()),
         "`args_too_large`".to_string(),
         "`no_input`".to_string(),

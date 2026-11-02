@@ -81,6 +81,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
     ),
+    (
+        "backend→monitor",
+        "tests/backend/control/launch_tests.rs",
+        "src/frontend/shell/src/launch.rs",
+        "★ **启动请求一个字段的上限与 monitor 本机那条送法的命令串上限同量级** —— \
+         `launch_tests.rs::the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap`。两侧各写一个 `Cap`，刻意不同值；\
+         失效方向：两侧差出几倍 ⇒ 一条在一侧送得出的命令在另一侧被拒成「太长」。",
+    ),
     // `tests/backend/footprint/rows_tests.rs` → `relay-route-core` 那一条删了：共享 crate 搬出 monitor 包、住 `src/common/`，
     //   不再是「两半之间」的边（共享 crate 两侧都依赖，本表只登记半边对半边）。
     (
@@ -181,6 +189,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "★ **窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
          `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
          每一块都被 `bad_args` 拒，非 UTF-8 名永远下不下来。",
+    ),
+    (
+        "monitor→backend",
+        "tests/frontend/filewin/editor_tests.rs",
+        "src/backend/stream/inbound/mod.rs",
+        "★ **窗口存盘一行的上限 == 后端入方向一行的上限** —— \
+         `editor_tests.rs::the_save_line_cap_is_the_backend_line_cap`。两侧各写一个 `Cap`；失效方向：窗口给得比后端大 ⇒ \
+         判装得下的那一行被后端整行丢弃（`line_too_long`），存盘失败。",
     ),
     (
         "monitor→backend",

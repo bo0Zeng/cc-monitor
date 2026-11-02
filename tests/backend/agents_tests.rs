@@ -548,7 +548,7 @@ fn project_dir_is_the_first_cwd_in_the_head_and_reading_is_bounded() {
             "x".repeat(n as usize)
         )
     };
-    let cap = crate::agents::HEAD_CAP;
+    let cap = crate::agents::HEAD_CAP.bytes;
     let far = dir.join("far.jsonl");
     std::fs::write(&far, pad(cap) + rec("/a/proj").as_str() + "\n").unwrap();
     assert_eq!(

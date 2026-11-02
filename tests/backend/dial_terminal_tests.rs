@@ -210,7 +210,7 @@ fn bad_inputs_are_refused_and_say_which_cell() {
         );
     }
     assert_eq!(
-        run(c(), &"a".repeat(MAX_COMMAND + 1))
+        run(c(), &"a".repeat(MAX_COMMAND.as_len() + 1))
             .unwrap_err()
             .code
             .as_deref(),

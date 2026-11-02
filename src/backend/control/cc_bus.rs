@@ -110,7 +110,10 @@ pub(crate) fn list_reply(agents: Vec<BusAgent>) -> BusList {
 /// `bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
 const INBOX_LINES_DEFAULT: u64 = 200;
 const INBOX_LINES_MAX: u64 = 2000;
-const INBOX_CAP: usize = 4 * 1024 * 1024;
+const INBOX_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024 * 1024,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 
 /// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（拒码 `bad_id`）。
 pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), Said> {
@@ -150,7 +153,7 @@ pub(crate) fn inbox_reply(rows: &[String]) -> BusInbox {
         .iter()
         .rposition(|l| {
             kept += l.len() + 1;
-            kept > INBOX_CAP
+            kept > INBOX_CAP.as_len()
         })
         .map_or(0, |i| i + 1);
     let mut messages = Vec::new();

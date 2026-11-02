@@ -50,13 +50,17 @@ pub const ENV: &str = crate::platform::child_env::STDERR_LOG;
 pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
 
 /// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
-pub(crate) const CAP_BYTES: u64 = 4 << 20;
+pub(crate) const CAP_BYTES: common::Cap = common::Cap {
+    bytes: 4 << 20,
+    over: common::Over::DropAndReport,
+};
 
 /// 滚过一次之后，新那份的第一行。
 pub(crate) fn roll_note(old: &Path) -> String {
     format!(
-        "[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n",
-        old.display()
+        "[stderr-log] 上一份挪成 {}（每份上限 {} 字节）；再早的那一份丢了\n",
+        old.display(),
+        CAP_BYTES.bytes
     )
 }
 
@@ -163,7 +167,7 @@ impl Installed {
             Installed::Logging(p) => format!(
                 "[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）",
                 p.display(),
-                CAP_BYTES
+                CAP_BYTES.bytes
             ),
             Installed::Failed(why) => format!("[stderr] 被交了日志路径但接不上：{why}"),
         }
@@ -180,7 +184,7 @@ pub fn install_from_env(
         return Installed::NotAsked;
     };
     let cur = PathBuf::from(path);
-    match Roller::start(issue(cur.clone()), CAP_BYTES, Fd2) {
+    match Roller::start(issue(cur.clone()), CAP_BYTES.bytes, Fd2) {
         Ok(r) => {
             *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
             Installed::Logging(cur)

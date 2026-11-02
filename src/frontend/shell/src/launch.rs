@@ -18,7 +18,10 @@ use copy_core::copy_text;
 use copy_core::said::Said;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
-const MAX_REMOTE_CMD: usize = 4096;
+const MAX_REMOTE_CMD: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4096,
+    over: relay_route_core::Over::Reject,
+};
 
 // 这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
 // PowerShell 字面量只经后端 `platform/shell/dialect.rs::ps_literal` ⇒ 删了。monitor 生产段零 PowerShell 引号器（`quote_singleton_guard_tests`）。
@@ -38,13 +41,13 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), Said> {
             &[("what", &what.to_string())],
         ));
     }
-    if cmd.len() > MAX_REMOTE_CMD {
+    if cmd.len() > MAX_REMOTE_CMD.as_len() {
         return Err(Said::of(
             "rsLaunch.refuse.tooLong",
             &[
                 ("what", &what.to_string()),
                 ("len", &(cmd.len()).to_string()),
-                ("max", &MAX_REMOTE_CMD.to_string()),
+                ("max", &MAX_REMOTE_CMD.bytes.to_string()),
             ],
         ));
     }

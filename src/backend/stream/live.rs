@@ -37,8 +37,7 @@ pub(crate) const LIVE_TEXT_SLACK: usize = 8_192;
 pub(crate) const LIVE_TOMB_KEEP: usize = 64;
 /// 记住几个「不再收」的段（先进先出）。
 const DEAD_KEEP: usize = 256;
-/// 每条连接的发件箱能排多少**件**（条数不是体量：一件 ≤ 一段上游文字或一张整卡）。
-/// 登记住址 `tests/frontend/shell/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
+/// 每条连接的发件箱能排多少**件**（条数不是体量，所以不是 `Cap`：一件 ≤ 一段上游文字或一张整卡）。
 pub(crate) const LIVE_OUTBOX_CAP: usize = 256;
 
 /// 先进先出、有上界的集合。

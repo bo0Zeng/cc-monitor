@@ -107,10 +107,6 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
 const DOC: crate::common::own_state::Doc<String> =
     crate::common::own_state::Doc::of(&relay_route_core::KEY_FILE);
 
-/// 读盘的上限（一行钥匙）。读的那一口照声明表的那一格；这里的名字给字节上限登记表认，两处须相等（下一行编译期查）。
-const KEY_MAX_BYTES: u64 = 4096;
-const _: () = assert!(KEY_MAX_BYTES == relay_route_core::KEY_FILE.row.cap.bytes);
-
 /// 给一条中转地址（构造口产物）插上这台盘上那条路由要的那一把钥匙（[`KeyKind::for_url`]，**只读**）⇒ agent 进程要的展开形
 /// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。

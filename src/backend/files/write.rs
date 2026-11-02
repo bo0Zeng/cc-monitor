@@ -1632,7 +1632,10 @@ pub struct Peeked {
 /// 装进同一行请求，而后端一行上限是 `inbound::MAX_LINE_BYTES`（1 MiB）。
 /// 两份各 256 KiB、再给 JSON 转义留出余量 ⇒ 读得回来的，写得回去。
 /// 更大的文件 ⇒ `too_large`，说清楚，不截断。
-pub const PEEK_MAX_BYTES: usize = 256 * 1024;
+pub const PEEK_MAX_BYTES: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::Reject,
+};
 
 /// 一次读改写的**读那一半**：与写**同一道路径解析**（词法 ＋ 父目录解开；最后一段在盘上就解到底），
 /// 于是「读的那一份」与「写的那一份」是同一个落点。
@@ -1686,7 +1689,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
             ),
         ));
     }
-    if md.len() > PEEK_MAX_BYTES as u64 {
+    if md.len() > PEEK_MAX_BYTES.bytes {
         return Err(Said::new(
             "too_large",
             copy_text(
@@ -1694,16 +1697,12 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
                 &[
                     ("path", &real.display().to_string()),
                     ("size", &md.len().to_string()),
-                    ("max", &PEEK_MAX_BYTES.to_string()),
+                    ("max", &PEEK_MAX_BYTES.bytes.to_string()),
                 ],
             ),
         ));
     }
-    let cap = Cap {
-        bytes: PEEK_MAX_BYTES as u64,
-        over: Over::Reject,
-    };
-    let bytes = Ro::read_capped_nofollow(&real, cap).map_err(|e| {
+    let bytes = Ro::read_capped_nofollow(&real, PEEK_MAX_BYTES).map_err(|e| {
         e.wrap(|why| {
             copy_text(
                 "reason.fs.readFailed",

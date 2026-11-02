@@ -52,7 +52,7 @@ fn cold_open(home: &Path, path: &str, n: u64) -> Vec<Vec<Value>> {
     )
     .unwrap();
     assert!(
-        t.rows.len() <= 1 || line_len(&t) <= READ_PAGE_BYTES,
+        t.rows.len() <= 1 || line_len(&t) <= READ_PAGE_BYTES.as_len(),
         "history-tail 一条应答 {} 字节，过了上限",
         line_len(&t)
     );
@@ -70,7 +70,7 @@ fn cold_open(home: &Path, path: &str, n: u64) -> Vec<Vec<Value>> {
         )
         .unwrap();
         assert!(
-            r.rows.len() <= 1 || line_len(&r) <= READ_PAGE_BYTES,
+            r.rows.len() <= 1 || line_len(&r) <= READ_PAGE_BYTES.as_len(),
             "history-read 一条应答 {} 字节，过了上限",
             line_len(&r)
         );
@@ -129,7 +129,15 @@ fn pages_cut_by_delivered_bytes_add_up_to_one_whole_read() {
 
     let tz = crate::Tz::default();
     let (_, face) = record_face(&home, &path).unwrap();
-    let whole = body::read_page(&home, &path, 0, None, usize::MAX >> 1, LINE_CAP_BYTES).unwrap();
+    let whole = body::read_page(
+        &home,
+        &path,
+        0,
+        None,
+        usize::MAX >> 1,
+        LINE_CAP_BYTES.as_len(),
+    )
+    .unwrap();
     let want: Vec<Value> = body::rows_of(&mut reader(&face, &tz), 0, &whole.bytes)
         .iter()
         .map(|r| json!(r))

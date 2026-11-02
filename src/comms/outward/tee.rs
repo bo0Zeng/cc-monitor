@@ -115,8 +115,11 @@ pub trait TapPort: Send + Sync {
 ///
 /// 值怎么定的：上游的 SSE 是 token 级增量，增量事件在 KiB 级；开头 / 收尾那一件在有的协议里带整份应答对象（含整段系统提示），
 /// 远超这个数，但接收侧从它要的只有开头那几格。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
-/// 超了：截断＋说清（`relay_route_core::Over::TruncateAndSay` 那一档：结果里带着「截了」那一格）。
-pub const TAP_DATA_CAP: usize = 16 * 1024;
+/// 超了：截断＋说清（结果里带着「截了」那一格）。
+pub const TAP_DATA_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 16 * 1024,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 
 /// 一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，
 /// 同一个响应的 `event` / `note_dropped_bytes` / `close` 都拿它（响应之间互不相干，所以不放进共享的 `TeeSink`）。
@@ -166,10 +169,10 @@ impl TeeSink {
     /// 一个 SSE 事件：先占号，再投递（投不进 ⇒ 号照占，缺口在接收侧可算；超界 ⇒ 交开头那一截、标截断）。
     pub(crate) fn event(&self, id: super::StreamId<'_>, at: &mut TeeStream, payload: &str) {
         let n = at.take();
-        let body = if payload.len() <= TAP_DATA_CAP {
+        let body = if payload.len() <= TAP_DATA_CAP.as_len() {
             TapBody::Data(payload.to_string())
         } else {
-            let mut cut = TAP_DATA_CAP;
+            let mut cut = TAP_DATA_CAP.as_len();
             while !payload.is_char_boundary(cut) {
                 cut -= 1;
             }

@@ -43,8 +43,11 @@ fn split_url(url: &str) -> Option<(&str, &str)> {
     Some((&url[..slash], &url[slash..]))
 }
 
-/// 回包体上限（令牌端点的回包很小）。
-const ANSWER_CAP: usize = 64 * 1024;
+/// 回包头与体各自的上限（令牌端点的回包很小）；超了整发作错、往上交，不截断。
+const ANSWER_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::HardError,
+};
 
 /// 为什么这个号此刻拿不出能用的访问令牌。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,7 +374,7 @@ fn renew(
         &[("Content-Type", "application/json")],
         body.as_bytes(),
         endpoint.deadline,
-        ANSWER_CAP,
+        ANSWER_CAP.as_len(),
     )
     .map_err(|e| unreached(trail, &e))?;
     trail.status = Some(answer.status);

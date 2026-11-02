@@ -496,7 +496,7 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
         "capture",
         // 上限同别的远端一次性收全（`--resident-ensure` 只回一行）；老后端认不得它、掉进流模式 ⇒ 见到 hello 就收（判在连常驻那一层）。
         json!({ "probe": true, "capture": {
-            "max_bytes": super::remote_ask::PULL_MAX_BYTES,
+            "max_bytes": super::remote_ask::PULL_MAX_BYTES.bytes,
             "abort_marker": cmd_wire::dial::OLD_BACKEND_MARKER,
         } }),
     )?;

@@ -31,7 +31,10 @@ pub(crate) const SENT_KEEP: usize = 32;
 /// 一条会话的队里最多几条（排着 · 收着 · 未送达合计）。
 pub(crate) const ITEMS_MAX: usize = 256;
 /// 一句最长多少字节。
-pub(crate) const TEXT_MAX: usize = 64 * 1024;
+pub(crate) const TEXT_MAX: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 /// 队文件所在那一层（相对家目录）。
 pub(crate) const DIR_REL: &str = relay_route_core::SESSION_QUEUE_DIR_REL;
 
@@ -181,7 +184,7 @@ impl Book {
                 said,
             });
         }
-        if req.text.len() > TEXT_MAX {
+        if req.text.len() > TEXT_MAX.as_len() {
             return Err(Refused::TooLong);
         }
         if self.items.len() >= ITEMS_MAX {

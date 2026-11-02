@@ -165,9 +165,6 @@ mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / 
 #[path = "../../../../tests/frontend/shell/bus_identity_registry.rs"]
 mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（整体 #[cfg(test)]）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/byte_cap_registry.rs"]
-mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/capability_registry.rs"]
 mod capability_registry;
 #[cfg(test)]

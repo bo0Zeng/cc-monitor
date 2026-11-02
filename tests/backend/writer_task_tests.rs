@@ -42,7 +42,7 @@ fn tapf(n: u64) -> Frame {
 /// 而且**每一条 `line` 都排在任何一条 tap 之前**（tap 最低优先：出方向有东西时轮不到它）。
 #[tokio::test]
 async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(8);
     let (tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1000);
     for i in 0..400 {
@@ -109,7 +109,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
             ..Default::default()
         })
     };
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     tx.try_send(runs(None)).unwrap();
@@ -128,7 +128,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
 
 /// 一页分页应答（`data` 里垫到一页那么大）。
 fn page(id: &str) -> Frame {
-    let pad = "p".repeat(crate::REPLY_PAGE_BYTES);
+    let pad = "p".repeat(crate::REPLY_PAGE_BYTES.as_len());
     Frame::Reply(crate::wire::Reply {
         id: id.into(),
         ok: true,
@@ -144,7 +144,7 @@ fn page(id: &str) -> Frame {
 /// 应答优先只到一页为止（按条数让位要等 8 页之后）。
 #[tokio::test]
 async fn a_live_line_goes_out_before_the_next_page_of_a_paged_reply() {
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(10);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     for i in 1..=3 {
@@ -247,7 +247,7 @@ fn seqs(lines: &[String]) -> Vec<u64> {
 /// 而且只 flush **一次**（排着的时候不 flush，排空了才 flush）。
 #[tokio::test]
 async fn a_queued_burst_goes_out_whole_in_one_flush() {
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     for i in 0..40 {
@@ -274,7 +274,7 @@ async fn a_queued_burst_goes_out_whole_in_one_flush() {
 /// 只来一帧、通道还开着：这一帧写完**立刻**发出去（不等下一帧、不等计时器）。
 #[tokio::test]
 async fn a_lone_frame_goes_out_at_once() {
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     let out = Flushed::default();
@@ -311,7 +311,7 @@ async fn a_long_flood_is_flushed_every_64k() {
             rid: None,
         })
     };
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     for i in 0..40 {

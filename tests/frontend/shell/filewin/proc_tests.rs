@@ -49,7 +49,7 @@ fn synthetic_request() -> OpenRequest {
         // 〔09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
         //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
         reveal: Some("坏\u{FFFD}名字".to_string()),
-        frame: crate::chan::host::FRAME_MAX_BYTES,
+        frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         // 视图文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
         view: Some(std::path::PathBuf::from("/tmp/视图 目录/filewin-view.json")),
         // 机器名单也进种子对拍（带中文与空格）。
@@ -424,7 +424,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         origin: synthetic_cfg(),
         cwd: Some("/tmp".to_string()),
         reveal: None,
-        frame: crate::chan::host::FRAME_MAX_BYTES,
+        frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -544,7 +544,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
-        frame: crate::chan::host::FRAME_MAX_BYTES,
+        frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -607,7 +607,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         origin: synthetic_cfg(),
         cwd: None,
         reveal: None,
-        frame: crate::chan::host::FRAME_MAX_BYTES,
+        frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         view: None,
         machines: Vec::new(),
         work_area: None,
@@ -763,7 +763,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             origin: synthetic_cfg(),
             cwd: Some(dir.to_string_lossy().to_string()),
             reveal: None,
-            frame: crate::chan::host::FRAME_MAX_BYTES,
+            frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
             view: None,
             machines: Vec::new(),
             work_area: None,
