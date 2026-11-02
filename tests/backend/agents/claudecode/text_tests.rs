@@ -551,9 +551,7 @@ fn a_mid_turn_line_from_the_person_is_what_the_person_said() {
         beat.said().and_then(|s| s.speech()).as_deref(),
         Some("往后排，先做乙")
     );
-    let row =
-        crate::observe::recognize::user_inputs::user_input_of("claude", &mine).expect("进大纲");
-    assert_eq!(row.uuid, "q-1");
+    // 进大纲那一侧（观测面读这一拍）挂在 `observe` 底下。
     for other in [
         json!({"type":"queued_command","prompt":"<task-notification>\n<task-id>f6</task-id>\n</task-notification>","origin":{"kind":"task-notification"}}),
         json!({"type":"queued_command","prompt":"<agent-message from=\"g7\">\n甲\n</agent-message>","isMeta":true,"origin":{"kind":"peer","from":"g7"}}),

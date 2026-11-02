@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// 解包信封 `{type, payload}` → `(顶层 type, payload)`。缺 type / payload 非对象 → `None`。
-pub fn unwrap_envelope(v: &Value) -> Option<(&str, &Value)> {
+pub(crate) fn unwrap_envelope(v: &Value) -> Option<(&str, &Value)> {
     let top = v.get("type")?.as_str()?;
     let payload = v.get("payload").filter(|p| p.is_object())?;
     Some((top, payload))
@@ -36,14 +36,14 @@ pub(crate) fn normalize_event(t: &str) -> &str {
 }
 
 /// 信封顶层 `timestamp`（turn-end uuid 回退键 / usage 归天）。缺 → None。
-pub fn envelope_ts(v: &Value) -> Option<&str> {
+pub(crate) fn envelope_ts(v: &Value) -> Option<&str> {
     v.get("timestamp").and_then(Value::as_str)
 }
 
 // ─── DG5：usage（event_msg `token_count`）+ 会话定位 helpers（镜像 monitor F5 / adapter Codex 侧）───
 
 /// `$CODEX_HOME`（优先、非空）| `~/.codex`。缺 HOME → None。**backend 在会话主机本地解**（同 monitor adapter）。
-pub fn resolve_codex_dir() -> Option<PathBuf> {
+pub(crate) fn resolve_codex_dir() -> Option<PathBuf> {
     if let Some(h) = std::env::var_os("CODEX_HOME").filter(|h| !h.is_empty()) {
         return Some(PathBuf::from(h));
     }
@@ -51,19 +51,19 @@ pub fn resolve_codex_dir() -> Option<PathBuf> {
 }
 
 /// Codex 会话记录根 `<codex_dir>/sessions`（日期分区树 `YYYY/MM/DD/rollout-*.jsonl` 在其下）。
-pub fn sessions_root(codex_dir: &Path) -> PathBuf {
+pub(crate) fn sessions_root(codex_dir: &Path) -> PathBuf {
     codex_dir.join("sessions")
 }
 
 /// session_meta 的 `payload.cwd`（用量行 projectPath；Codex 无 cwd-项目目录）。
-pub fn session_meta_cwd(v: &Value) -> Option<&str> {
+pub(crate) fn session_meta_cwd(v: &Value) -> Option<&str> {
     match unwrap_envelope(v) {
         Some(("session_meta", p)) => p.get("cwd").and_then(Value::as_str),
         _ => None,
     }
 }
 
-pub fn codex_sid_from_path(path: &Path) -> Option<String> {
+pub(crate) fn codex_sid_from_path(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
     let rest = stem.strip_prefix("rollout-")?;
     let uuid = rest.get(rest.len().checked_sub(36)?..)?;

@@ -1,7 +1,7 @@
 use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
-use crate::agents::record::{BodyExt as _, RecordExt as _};
+use crate::agents::record::RecordExt as _;
 use crate::agents::Speaker;
 use crate::agents::UserText;
 use crate::agents::UserTextExt as _;
@@ -550,7 +550,7 @@ fn codex_records_carry_the_clock_face_too() {
             .unwrap();
         assert!(got.time_text.is_none(), "解析那一层不写钟面");
         let mut got = got;
-        got.stamp(&crate::Tz::named("Asia/Shanghai").unwrap());
+        got.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
         assert_eq!(
             got.time_text.as_ref().map(|w| w.0.as_str()),
             Some(want.as_str()),
@@ -558,74 +558,6 @@ fn codex_records_carry_the_clock_face_too() {
         );
         assert_eq!(got.at.as_deref(), Some(ts), "{v}");
     }
-}
-
-/// 金样重写开关（人读过「现打」再落盘）。
-/// ★ 造的中性 rollout（`codex-rollout.sample.jsonl`，一整份会话：元记录 · 事件 · 人话 · 注入 · 推理 · 两种工具 · 回复 · 认不出的一类）
-/// 走核心读页那一遍（适配层 ＋ `body::rows_of`，与 `history-read` 同一条路）⇒ 通用记录金样 `record-codex.golden.jsonl`。
-/// 手机（`CodexRecordGoldenTest.kt`）与界面（`codex-record.vitest.ts`）解的是同一份金样，逐格对。
-#[test]
-fn codex_sample_rollout_reads_to_the_record_golden() {
-    let root = guard_core::addr::repo_root();
-    let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
-    let face = super::super::RECORDS;
-    let tz = crate::Tz::named("UTC").unwrap();
-    let mut reader = crate::observe::query::body::Reader::new(&face, tz);
-    let rows = crate::observe::query::body::rows_of(&mut reader, 0, &sample);
-    let mut got = String::new();
-    for (i, row) in rows.iter().enumerate() {
-        if let Some(record) = &row.record {
-            let line = serde_json::json!({"case": format!("line-{i:02}"), "record": record});
-            got.push_str(&line.to_string());
-            got.push('\n');
-        }
-    }
-    crate::golden::assert_golden(
-        "tests/__fixtures__/record-codex.golden.jsonl",
-        &got,
-        "Codex 通用记录与金样不一致",
-    );
-}
-
-/// ★ 骨架行的类 · 画法 · 人说的就是这一家整条翻译出的那条记录的，骨架索引照**这份记录那一家**的翻译取。
-/// 骨架照记录树那一家（Claude）的认法判 Codex 的行的话，每行都「不进界面」，
-/// 查看器打开有消息的 Codex 会话会写「无消息 · 0 条」（而 `history-page` 照样出得来记录）。
-#[test]
-fn the_skeleton_rows_of_a_codex_rollout_are_its_records() {
-    let sample = include_str!("../../../__fixtures__/codex-rollout.sample.jsonl");
-    let mut shown = 0;
-    let mut offset = 0u64;
-    for raw in sample.lines() {
-        let rec = record_of(&serde_json::from_str(raw).unwrap(), offset);
-        let want = rec.as_ref().map(|r| r.body.class());
-        let has_blocks = rec.as_ref().is_some_and(|r| {
-            serde_json::to_value(&r.body).ok().and_then(|b| {
-                b.get("blocks")
-                    .and_then(Value::as_array)
-                    .map(|a| !a.is_empty())
-            }) == Some(true)
-        });
-        let row = crate::observe::recognize::index_row::tests::index_row(
-            super::super::AGENT_KIND,
-            raw.as_bytes(),
-            offset,
-            raw.len() as u64 + 1,
-        );
-        assert_eq!(
-            (row.t, row.dr, row.hu),
-            rec.as_ref().map_or((None, Default::default(), false), |r| (
-                want, r.draw, r.human
-            )),
-            "骨架那一行：{raw}"
-        );
-        // 进界面的那几行骨架上要有料（正文字数 / 折叠单元），不然骨架判它「画不出东西」、查看器照样一张卡都不建。
-        if want.is_some() && has_blocks {
-            assert!(row.ch > 0 || row.fd > 0, "骨架那一行没有料：{raw}");
-        }
-        shown += usize::from(want.is_some());
-        offset += raw.len() as u64 + 1;
-    }
-    assert!(shown >= 3, "样本里进界面的行塌了：{shown}");
 }
 
 /// read8c：同一行交给这一家的几问（成品 · 此刻在干什么）共用一份解析 —— 从文本只解一次。

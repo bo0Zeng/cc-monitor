@@ -28,9 +28,9 @@
 //! 剩下的 3 处全是冻结的 wire 字段名）。
 //! 通用层经注册表那一行（`agents::REGISTRY`）够到本层的各格，一处都不直呼本层（`agent_locality_guard` 判据④零命中）。
 
-pub(crate) mod accounts;
-pub(crate) mod asks;
-pub(crate) mod assets;
+pub mod accounts;
+pub mod asks;
+pub mod assets;
 // 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
 pub(crate) mod background;
 pub(crate) mod beat;
@@ -39,31 +39,31 @@ pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
 // 记录链（`uuid` / `parentUuid`）⇒ 通用层算主线外清单要的事实。
-pub(crate) mod chain;
+pub mod chain;
 // 盘上一行 ⇒ 通用记录（翻译表只住这里）。
 pub(crate) mod drift;
-pub(crate) mod record_of;
+pub mod record_of;
 // 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
-pub(crate) mod liveness;
-pub(crate) mod mcp;
-pub(crate) mod parse;
+pub mod liveness;
+pub mod mcp;
+pub mod parse;
 pub mod paths;
 pub(crate) mod pidfile;
 // 回包头里的额度那一族 → 通用的额度快照。
-pub(crate) mod quota;
-pub(crate) mod records;
+pub mod quota;
+pub mod records;
 // 官方客户端报一个号的用量（`claude -p /usage`）→ 通用的额度窗口：命令行与读法。
-pub(crate) mod resume;
+pub mod resume;
 // 回退菜单（双击 Esc 的 Rewind）：怎么调出来 · 每一屏怎么认 · 确认页那几项叫什么。
 pub(crate) mod rewind;
 pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
-pub(crate) mod runs;
-pub(crate) mod schema;
+pub mod runs;
+pub mod schema;
 // 一行记录里通用层要的会话级那几格 · 正文的形状（清单 · 全文搜索 · 骨架索引共用这一份读法）。
 pub(crate) mod session_line;
-pub(crate) mod sign_in;
+pub mod sign_in;
 pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥。
 pub(crate) mod text;
@@ -78,12 +78,12 @@ pub(crate) mod text;
 /// 它住在**适配层**而不是通用层，是为了让 `agents::REGISTRY` 那张注册表里
 /// 一个 agent 名的字面量都没有（`D3`：agent 维度只许出现在值里 —— 而这个值的**来源**
 /// 也该是那个 agent 自己）。
-pub(crate) const AGENT_KIND: &str = "claude";
+pub const AGENT_KIND: &str = "claude";
 
 /// 本 agent 的**默认上游**（用户「写死, 跟着适配层」）：路由里叫 `claude-code`；
 /// `CCM_AGENT_UPSTREAM_CLAUDE_CODE` 盖掉它（名字照 `CCM_AGENT_UPSTREAM_<agent>` 的形状）；
 /// 内置默认是 Anthropic 官方端点。上游选择只经 `agents::default_upstreams` 读它。
-pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
+pub const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     route_id: "claude-code",
     env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     fallback: super::Fallback::One("https://api.anthropic.com"),
@@ -149,7 +149,7 @@ pub(crate) const WARM: super::WarmFace = super::WarmFace {
 
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法
 /// （JSON 体发到令牌端点、快过期 5 分钟内就续、拿配置目录里外那两把 `mkdir` 锁）。
-pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
+pub const LOGIN: super::LoginFace = super::LoginFace {
     creds_file: acct_core::CREDENTIALS_NAME,
     section: "claudeAiOauth",
     access: "accessToken",
@@ -228,7 +228,7 @@ fn refer(a: &super::AttachRef<'_>) -> super::Refer {
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
 
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
-pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
+pub const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
     display_name: "Claude Code",
     speaker_name: "Claude",
@@ -278,7 +278,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
 /// 恒 `Some`：[`paths::resolve_home`] 有默认值（`$HOME/.claude`，再退 cwd 下的 `.claude`），
 /// 解析不出来这种事对 Claude 不存在。签名仍取 `Option` 是为了与
 /// [`super::codex::home`] 同形（那家真的可能答不出来）。
-pub(crate) fn home() -> Option<std::path::PathBuf> {
+pub fn home() -> Option<std::path::PathBuf> {
     Some(paths::resolve_home())
 }
 
@@ -301,7 +301,7 @@ pub(crate) const MCP: super::McpFace = super::McpFace {
 };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
-pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
+pub const RECORDS: super::RecordFace = super::RecordFace {
     parse: parse::translated,
     sid: records::session_id_of,
     is_session_file: records::is_session_file,

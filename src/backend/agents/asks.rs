@@ -3,22 +3,20 @@
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
-pub(crate) use cmd_wire::needs::{
-    Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption,
-};
+pub use cmd_wire::needs::{Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption};
 
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
 /// 那一家的 hook 叫 ccm 的那几个词（打头的 `--`：后面是后端的词），后面再接那一家的 kind。
-pub const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
+pub(crate) const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
 
 /// ccm 起会话时**挂不上**答题 hook（用户自己给的会话级设置读不出 / 不是那一家认的形）⇒ 起的那个进程环境里带这个变量；
 /// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（`answerOff`）。
-pub(crate) const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
+pub const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
 
 /// 答题 hook 为什么没挂上（ccm 起会话时定，经 [`ANSWER_HOOK_OFF_ENV`] 的值带到那个进程里，会话事实读回来写那一句）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HookOff {
+pub enum HookOff {
     /// 用户自带的会话级设置（`--settings`）并不进答题 hook：为什么见 [`SettingsWhy`]。
     Settings(SettingsWhy),
     /// 会话由自定义启动器起（不是这一家默认的那一个），而经环境交插件那一路这一家没有 / 这台判不了子进程与接没接上（读不出别的进程的环境）。
@@ -35,7 +33,7 @@ pub(crate) enum HookOff {
 
 /// 用户自带的会话级设置并不进去的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SettingsWhy {
+pub enum SettingsWhy {
     /// 读不出：文件不在 / 打不开，或旗标后面没给值。
     Unread,
     /// 读出来不是 JSON。
@@ -46,7 +44,7 @@ pub(crate) enum SettingsWhy {
 
 impl HookOff {
     /// 写进那个进程环境的值（ASCII 短码；会话事实按它认原因）。
-    pub(crate) fn env_value(self) -> &'static str {
+    pub fn env_value(self) -> &'static str {
         match self {
             HookOff::Settings(SettingsWhy::Unread) => "settings-unread",
             HookOff::Settings(SettingsWhy::NotJson) => "settings-json",
@@ -77,7 +75,7 @@ impl HookOff {
 }
 
 /// 我们那个答题插件目录（`<家>/.cc-monitor/…`，绝对路径；ccm 起会话那一下写进去，起会话 · hook · 会话事实都按这一处算）。
-pub(crate) fn plugin_dir_under(home: &str) -> String {
+pub fn plugin_dir_under(home: &str) -> String {
     let mut p = std::path::PathBuf::from(home);
     for seg in relay_route_core::ANSWER_PLUGIN_DIR_REL.split('/') {
         p.push(seg);
@@ -89,12 +87,12 @@ pub(crate) fn plugin_dir_under(home: &str) -> String {
 const DIRS_SEP: char = if cfg!(windows) { ';' } else { ':' };
 
 /// 一串插件目录清单里有没有 `dir`。
-pub(crate) fn dirs_have(list: &str, dir: &str) -> bool {
+pub fn dirs_have(list: &str, dir: &str) -> bool {
     list.split(DIRS_SEP).any(|p| p == dir)
 }
 
 /// 用户已有的清单后面接上 `dir`（已有就不重复加）。
-pub(crate) fn dirs_with(list: Option<&str>, dir: &str) -> String {
+pub fn dirs_with(list: Option<&str>, dir: &str) -> String {
     match list.filter(|l| !l.is_empty()) {
         None => dir.to_string(),
         Some(l) if dirs_have(l, dir) => l.to_string(),
@@ -105,7 +103,7 @@ pub(crate) fn dirs_with(list: Option<&str>, dir: &str) -> String {
 /// 持着会话的那个进程（环境里没有挂不上的那个变量）是不是别处起的（纯函数）：那一家有答题口，而它身上一样 ccm 挂过的痕迹都没有 ——
 /// 命令行里没有 hook 客户端那个旗标（`--settings` 那一路垫进去的）· 插件目录变量里没有我们那个目录（换了启动器那一路）· ccm 没给它留过便条。
 /// 命令行读不出（非 Linux · 进程刚没了）⇒ 不下这个判断（`false`：只说只能在终端里答，不编原因）。
-pub(crate) fn started_elsewhere(
+pub fn started_elsewhere(
     has_ask_face: bool,
     cmdline: Option<&str>,
     plugin_here: bool,
@@ -121,7 +119,7 @@ pub(crate) fn started_elsewhere(
 }
 
 /// 「这条会话在这里答不了」那一句（会话事实的 `answerOff` · `needs.manualText`）：照环境里那个值说原因。
-pub(crate) fn hook_off_words(env_value: &str) -> Words {
+pub fn hook_off_words(env_value: &str) -> Words {
     Words(match HookOff::from_env_value(env_value) {
         Some(HookOff::Settings(w)) => {
             let why = match w {
@@ -155,7 +153,7 @@ pub(crate) fn row_of(a: &AskIn, id: &str) -> ChoiceRow {
 
 /// 子运行发的那一条：会话记录 `record` 底下 id 为 `run` 的那个子运行派出时的标签（子运行面 `sources` ＋ `spawned`，哪一家都经它）。
 /// 那一家没有子运行面 · 还没落盘 · 对不上 ⇒ `None`。挂上那一刻查一次（[`product_of`] 的 `label`）。
-pub(crate) fn run_label(record: &std::path::Path, run: &str) -> Option<String> {
+pub fn run_label(record: &std::path::Path, run: &str) -> Option<String> {
     let ch = super::record_face_of(record)?.children?;
     (ch.sources)(record)
         .iter()
@@ -179,7 +177,7 @@ fn run_words(label: Option<&str>, kind: Option<&str>) -> Words {
 }
 
 /// 成品：选项按种类写好字；`label` ＝ 子运行发的那一条派出时的标签（[`run_label`]，主会话 / 查不到 ⇒ `None`）。
-pub(crate) fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> Ask {
+pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> Ask {
     let c = |id: &str, text: String, tone: Tone, note: NoteNeed| Choice {
         id: id.to_string(),
         text: Words(text),
@@ -313,7 +311,7 @@ pub(crate) fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64
 }
 
 /// 格目录的样本（每一格都有值：选项 · 题 · 选项说明 · 子 agent 那两格）。
-pub(crate) fn specimen() -> Ask {
+pub fn specimen() -> Ask {
     product_of(
         "ask-1",
         &AskIn {

@@ -4,7 +4,7 @@
 //! 为什么住适配层：每家 agent 用这套词申报落在自己布局里的那几条（`agents/<家>/footprint.rs`，经 [`super::FootprintFace`] 汇总）；
 //! 足迹那边（`footprint/registry.rs` 两张表 ＋ 档的派生、`footprint/rows.rs` 的判定）读它。词放在足迹那边的话，适配层就得反过来引足迹
 //! （`layering_guard::ONE_WAY`：适配层在功能之下）。
-//! 下面的文档里没写全路径的 `environment` · `EnvTier` · `TOOLS` · `UNMANAGED_ENV` 都住 `crate::footprint::registry`。
+//! 下面的文档里没写全路径的 `environment` · `EnvTier` · `TOOLS` · `UNMANAGED_ENV` 都住主 crate 的 `footprint::registry`。
 
 use copy_core::copy_text;
 
@@ -296,7 +296,7 @@ pub struct ToolSpec {
     /// 能不能装/升。
     ///
     /// 🔴 **这一格是「app 装的」与「app 只查」两档的分界线**：
-    /// [`environment`](crate::footprint::registry::environment) 就是读它算出每条 `ToolSpec` 属于哪一档的。
+    /// 足迹那边的 `environment` 就是读它算出每条 `ToolSpec` 属于哪一档的。
     /// ⇒ 它填错了，用户在配置面上读到的「能否装/撤」与清单上的档**同时**是假的。
     /// 守它的是 `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
     /// （读**字段值**，不是注释里的词频）：**覆盖全表**的性质，两格一起对拍，两个方向都判。
@@ -345,7 +345,7 @@ impl ToolSpec {
 ///
 /// # 🔴 「app 自带的是哪几样」这个人群的**唯一住址**就是 [`Provisioning::AppShips`]
 ///
-/// 要人数就 [`environment`](crate::footprint::registry::environment) 里现算（`filter(who == AppShips)`），
+/// 要人数就在足迹那边的 `environment` 里现算（`filter(who == AppShips)`），
 /// **别处不许再手抄一张自带清单** —— 那是第二个。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub enum Provisioning {
@@ -429,7 +429,7 @@ impl Provisioning {
 pub struct UnmanagedEnv {
     pub id: &'static str,
     pub display_name: Text,
-    /// 🔴 **「谁该装」**。档不手填：由 [`EnvTier::of`](crate::footprint::registry::EnvTier::of) 从这一格 ＋「有没有 `ToolSpec`」
+    /// 🔴 **「谁该装」**。档不手填：由足迹那边的 `EnvTier::of` 从这一格 ＋「有没有 `ToolSpec`」
     /// 派生出来，「谁该装」与「今天装得了吗」各在各的格里。
     pub who: Provisioning,
     /// **怎么查它在不在。**「提示」= 我看、缺了我要说，住这一格 —— 见 [`EnvProbe`]。

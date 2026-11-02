@@ -138,21 +138,15 @@ fn a_background_agents_approval_says_who_asks_and_what_the_command_does() {
     let a = read(&v).unwrap();
     let label = crate::agents::asks::run_label(&parent, "a1");
     let ask = crate::agents::asks::product_of("ask-1", &a, label.as_deref(), 1);
-    let n = crate::observe::recognize::facts::dress_ask_with(None, Some(ask), 2).unwrap();
-    let run = n
-        .ask
-        .as_ref()
-        .and_then(|x| x.run.as_ref())
-        .expect("子 agent 发的带 run");
+    let run = ask.run.as_ref().expect("子 agent 发的带 run");
     assert!(
         run.text.0.contains("Audit: docs") && run.text.0.contains("Explore"),
         "{}",
         run.text.0
     );
+    // 需手动那一条的钉条与代码头照这一份的 `what` 摆（观测面那一侧的判据挂在 `observe` 底下）。
     let want = "sed -n '1,40p' \"$F\" | head -5";
-    assert_eq!(n.what.as_deref(), Some(want));
-    assert_eq!(n.head_code.as_deref(), Some(want));
-    assert_eq!(n.ask.as_ref().and_then(|x| x.what.as_deref()), Some(want));
+    assert_eq!(ask.what.as_deref(), Some(want));
     assert_eq!(
         crate::agents::asks::run_label(&parent, "zz"),
         None,

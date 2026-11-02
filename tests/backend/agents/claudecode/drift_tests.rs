@@ -156,7 +156,7 @@ fn every_face_states_its_consequence() {
         "../../../../src/backend/agents/claudecode/drift.rs"
     ));
     let at = src
-        .find("pub enum DriftFace")
+        .find("enum DriftFace {")
         .expect("找不到枚举 —— 抽取坏了");
     let end = src[at..].find("\n}").map(|k| at + k).expect("枚举没收尾");
     let variants = src[at..end]

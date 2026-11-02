@@ -830,20 +830,6 @@ fn the_sole_family_is_answered_only_when_there_is_exactly_one() {
     }
 }
 
-/// 后端那几份线上形里的 agent 格（会话事实 · 换号重启 · 问答 hook）也是 [`AgentKind`]：哪一格还是串就编不过。
-#[test]
-fn backend_wire_agent_cells_are_agent_kinds() {
-    fn maybe(_: &Option<AgentKind>) {}
-    fn kind(_: &AgentKind) {}
-    let _ = |f: &crate::observe::recognize::facts::SessionFacts,
-             r: &crate::control::session_restart::RestartReq,
-             a: &crate::control::asks::AskReq| {
-        maybe(&f.agent);
-        kind(&r.agent);
-        kind(&a.agent);
-    };
-}
-
 /// 账 · 表 · 路由键里存着的路由名只在 [`route_named`] 这一处换成 [`RouteId`]：认路由名、不认 kind、不认注册表里没有的。
 /// 按路由名查的那几个只收 `RouteId` ⇒ kind 的串交不进去（交进去编不过）。
 #[test]

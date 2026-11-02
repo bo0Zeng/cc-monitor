@@ -1,4 +1,8 @@
-use super::*;
+//! 最小假 agent 走全流程的判据（经 ccm_line · control · history · observe）：挂在主 crate（`cross/agents.rs`），
+//! 夹具本身住适配层（`agents::fake`，只在测试档 · `test-support` 下编）。
+use crate::accounts::manage::trust_share::trusted;
+use crate::agents::fake::*;
+use std::path::{Path, PathBuf};
 
 /// 夹具根：按 pid + tag 隔开。
 ///
@@ -194,7 +198,7 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
 #[test]
 fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
     let root = build_fixture("walk");
-    let done = walk(&caps_with(home_of_walk), &root);
+    let done = walk(&caps_with(home_of_walk), &root, trusted);
     assert_eq!(
         done.as_deref(),
         Ok(STAGES),
@@ -224,7 +228,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
     let full = caps_with(home_of_hole);
     let mut stopped_at: Vec<(&str, &'static str, &'static str)> = Vec::new();
     for cap in CAPABILITIES {
-        match walk(&full.without(cap), &root) {
+        match walk(&full.without(cap), &root, trusted) {
             Ok(done) => panic!(
                 "挖掉能力「{cap}」之后流程仍然走完了 {done:?} —— \
                      少一种能力却一路绿灯，那正是要拦的「静默当成这个 agent 没有会话」"
@@ -525,9 +529,10 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
 
 /// **夹具家永远不上生产** —— 判据两向。
 ///
-/// 它**不许**混进 `agents::REGISTRY`，挂载处也**不许**丢掉那行 `#[cfg(test)]`。
+/// 它**不许**混进 `agents::REGISTRY`，挂载处也**不许**丢掉那行只在测试档 · `test-support` 下编的 `#[cfg(…)]`，
+/// 主 crate 的生产依赖也**不许**开 `test-support`。
 /// 前者混进去 ⇒ 真 `hello.homes` 会声明一个根本不存在的 agent；
-/// 后者丢掉 ⇒ 生产二进制里凭空多出一个假 agent 的知识，而没有任何东西会说。
+/// 后两样丢掉 ⇒ 生产二进制里凭空多出一个假 agent 的知识，而没有任何东西会说。
 #[test]
 fn the_fixture_agent_never_ships() {
     // ① 不在生产注册表里。
@@ -537,10 +542,10 @@ fn the_fixture_agent_never_ships() {
         "夹具 agent `{AGENT_KIND}` 混进了生产注册表 `agents::REGISTRY`：{kinds:?}\n\
              ⇒ 真填 `hello.homes` 那天，backend 会向仓外消费方声明一个**不存在**的 agent。"
     );
-    // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
+    // ② 模块声明只在测试档 · `test-support` 下编 —— 生产二进制里零字节。
     let mod_path = guard_core::addr::backend_src_root().join("agents/mod.rs");
     let mod_rs = std::fs::read_to_string(mod_path).expect("读 agents/mod.rs");
-    let decl = format!("pub(crate) mod {AGENT_KIND};");
+    let decl = format!("pub mod {AGENT_KIND};");
     let lines: Vec<&str> = mod_rs.lines().map(str::trim).collect();
     let at = lines.iter().position(|l| *l == decl).unwrap_or_else(|| {
         panic!("`agents/mod.rs` 里找不到 `{decl}` —— 夹具家的模块声明改了形状，本条在空转")
@@ -552,8 +557,28 @@ fn the_fixture_agent_never_ships() {
         .copied()
         .collect();
     assert!(
-        attrs.contains(&"#[cfg(test)]"),
-        "`{decl}` 上面那串属性里没有 `#[cfg(test)]` —— 夹具 agent 会被编进生产二进制。\n属性：{attrs:?}"
+        attrs.contains(&r#"#[cfg(any(test, feature = "test-support"))]"#),
+        "`{decl}` 上面那串属性里没有只在测试档 · `test-support` 下编的 `#[cfg(…)]` —— 夹具 agent 会被编进生产二进制。\n属性：{attrs:?}"
+    );
+    // ③ 主 crate 的生产依赖不给适配层开 `test-support`（只许 `[dev-dependencies]` 开）。
+    let manifest = std::fs::read_to_string(guard_core::addr::backend_src_root().join("Cargo.toml"))
+        .expect("读后端 Cargo.toml");
+    let mut section = "";
+    let mut seen = false;
+    for l in manifest.lines().map(str::trim) {
+        if l.starts_with('[') {
+            section = l;
+        } else if section == "[dependencies]" && l.starts_with("backend-agents") {
+            seen = true;
+            assert!(
+                !l.contains("test-support"),
+                "主 crate 的生产依赖给 `backend-agents` 开了 `test-support` —— 夹具 agent 会被编进生产二进制：{l}"
+            );
+        }
+    }
+    assert!(
+        seen,
+        "主 crate 的 `[dependencies]` 里找不到 `backend-agents` —— 本条在空转"
     );
 }
 
@@ -576,7 +601,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         assets: None,
         history: None,
         upstream: None,
-        mcp: Some(super::MCP),
+        mcp: Some(MCP),
         home: home_of_announce,
         footprint: None,
         accounts: None,

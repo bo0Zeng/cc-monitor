@@ -1,15 +1,6 @@
 //! 主线外清单：分叉选最新 · 多根只折死胡同的人话根 · 重复投递幂等 · 排队裸叶豁免 · 逐条喂与整批算逐条相同。
+use super::test_support::off_of;
 use super::*;
-
-/// 一批事实 ⇒ 主线外清单（判据的对照：与 [`Chain`] 逐条记、逐条算的结果相同；冷读那一路改成扫描图里的 [`Chain`] 接着记）。
-pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
-    let mut c = Chain::new();
-    for f in facts {
-        c.load(f);
-    }
-    c.settle();
-    c.off
-}
 
 #[derive(Clone, Copy)]
 enum K {
@@ -413,15 +404,15 @@ fn resident(turns: usize) -> (usize, usize) {
             k % 1000
         )
     };
-    let base = crate::alloc_probe::reset_peak();
+    let base = test_meters::alloc_probe::reset_peak();
     let mut facts = Vec::new();
     let mut k = 0usize;
     let mut tip: Option<String> = None;
-    let mut push = |facts: &mut Vec<ChainFact>,
-                    k: &mut usize,
-                    parent: Option<String>,
-                    kind: K,
-                    text: Option<Words>| {
+    let push = |facts: &mut Vec<ChainFact>,
+                k: &mut usize,
+                parent: Option<String>,
+                kind: K,
+                text: Option<Words>| {
         *k += 1;
         let ChainFact::Node(mut l) = node(&uuid(*k), parent.as_deref(), &at(*k), kind) else {
             unreachable!()
@@ -466,7 +457,7 @@ fn resident(turns: usize) -> (usize, usize) {
         c.load(f);
     }
     c.settle();
-    let held = crate::alloc_probe::reset_peak() - base;
+    let held = test_meters::alloc_probe::reset_peak() - base;
     assert!(!c.off().is_empty());
     (n, held.max(0) as usize)
 }

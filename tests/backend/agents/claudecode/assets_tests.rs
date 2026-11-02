@@ -132,73 +132,7 @@ fn mcp_is_the_user_level_table_plus_each_given_projects_mcp_json_and_broken_ones
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// ★ 覆盖面：一个临时家目录里 skill × 用户级 / 项目级、MCP × 用户级 / 项目级四格各放一个 —— 项目取自这台的会话清单
-/// （会话记录里的 `cwd`，只采结构），目录四格各认出一个（两向相等）。
-#[test]
-fn the_catalog_sees_one_of_each_kind_at_each_level() {
-    let d = temp_dir("four");
-    let agent_home = d.join(".claude");
-    let proj = d.join("proj");
-    let skill = |root: &Path, name: &str| {
-        std::fs::create_dir_all(root.join(name)).unwrap();
-        std::fs::write(
-            root.join(name).join(SKILL_DOC),
-            "---\ndescription: x\n---\n",
-        )
-        .unwrap();
-    };
-    skill(&agent_home.join(SKILLS_DIR), "su");
-    skill(&project_skills_root(&proj), "sp");
-    std::fs::write(
-        d.join(".claude.json"),
-        serde_json::json!({ "mcpServers": { "mu": { "command": "u" } } }).to_string(),
-    )
-    .unwrap();
-    std::fs::write(
-        proj.join(PROJECT_MCP_FILE),
-        serde_json::json!({ "mcpServers": { "mp": { "command": "p" } } }).to_string(),
-    )
-    .unwrap();
-    let sessions = agent_home.join("projects").join("-proj");
-    std::fs::create_dir_all(&sessions).unwrap();
-    std::fs::write(
-        sessions.join("00000000-0000-0000-0000-000000000001.jsonl"),
-        format!(
-            "{}\n",
-            serde_json::json!({ "type": "user", "cwd": proj.display().to_string() })
-        ),
-    )
-    .unwrap();
-
-    let (projects, why) = crate::assets::asset_catalog::session_projects_at(&agent_home);
-    assert_eq!(
-        (projects.clone(), why),
-        (vec![proj.display().to_string()], None)
-    );
-    let seen = scan_at(
-        Some(&agent_home.join(SKILLS_DIR)),
-        Some(&d.join(".claude.json")),
-        &projects,
-    );
-    let (assets, problems) = crate::assets::asset_catalog::assets_from(&[seen]);
-    assert!(problems.is_empty(), "{problems:?}");
-    use crate::assets::asset_catalog::ExtKind;
-    let got: std::collections::BTreeSet<(ExtKind, String, bool)> = assets
-        .iter()
-        .map(|a| (a.kind, a.name.clone(), a.project.is_some()))
-        .collect();
-    let want: std::collections::BTreeSet<(ExtKind, String, bool)> = [
-        (ExtKind::Skill, "su", false),
-        (ExtKind::Skill, "sp", true),
-        (ExtKind::Mcp, "mu", false),
-        (ExtKind::Mcp, "mp", true),
-    ]
-    .iter()
-    .map(|(k, n, p)| (*k, n.to_string(), *p))
-    .collect();
-    assert_eq!(got, want);
-    let _ = std::fs::remove_dir_all(&d);
-}
+// 资产目录（经 `assets`）四格各认出一个的那一条挂在 `assets` 底下。
 
 /// 装着的插件：`skills/<名>/`（含指向别处的链接）与插件缓存里每个版本各一个，名字取清单；没清单的目录不算。
 #[test]

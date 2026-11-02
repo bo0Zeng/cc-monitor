@@ -8,7 +8,7 @@
 //! 适配层的接口是四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话 / resume）。「这台机器上有没有这个 agent」已有（[`home`] + `agents::visible_homes`）；
 //! 「有哪些会话、活没活」：没有 pidfile ⇒ 声明 [`LIVE`] ＝ 开着写（在世期间一直开着记录写），流式 watcher 据此认写者判活
 //! （`observe/watcher.rs` 的「开着即活」那一路，记录根是合成历史面的那个根）。
-//! 发现出来的东西不上线：`main.rs` 的 `homes: Vec::new()` 那一行留着（填 `homes` 是一次跨仓契约变更，是一次纯发布决策）。
+//! 发现出来的东西不报给仓外（报出去是一次跨仓契约变更，是一次纯发布决策）。
 //! 不要从「这里有个模块」推断「Codex 支持完整」。
 
 // 一条记录答成一拍（轮次 · 会话事实 · 大纲只吃它）。
@@ -17,19 +17,19 @@ pub(crate) mod beat;
 pub(crate) mod history;
 pub(crate) mod parse;
 // 记录分类 ＋ 翻成通用记录。
-pub(crate) mod record;
+pub mod record;
 // 经中转那一份（默认上游 · 会话头 · 怎么指到中转 · 直接敲的那份配置里的地址）。
-pub(crate) mod relay;
-pub(crate) mod resume;
+pub mod relay;
+pub mod resume;
 
 /// 这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
-pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
+pub const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
     sessions: history::sessions,
     excerpt: history::first_user_excerpt,
     root: history::records_root,
 };
 /// 记录解释面（注册表 `Adapter.records` 那一格）。漂移账这一家今天不报。
-pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
+pub const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::translated,
     sid: parse::codex_sid_from_path,
     is_session_file: history::is_session_file,
@@ -68,7 +68,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 一个 agent 名的字面量都没有（顺带：`agent_locality_guard` 判据②数的正是通用层里
 /// 带引号的 `"codex"`，把它写在注册表里会**当场**多一条 kind 派发登记 —— 而注册表
 /// 根本不在做派发）。
-pub(crate) const AGENT_KIND: &str = "codex";
+pub const AGENT_KIND: &str = "codex";
 
 /// tmux 前台命令算 Codex 的会话：原生装的报 `codex`；npm 装的经 Node 包一层，前台报 `node`（已在 Claude 那张表里）。注册表 `Adapter.processes` 那一格。
 pub(crate) const PROCESS_NAMES: &[&str] = &["codex"];

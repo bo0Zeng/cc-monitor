@@ -8,9 +8,9 @@
 //! - 收场以派出那一方为准（子记录常以一次工具调用收尾、没有 `end_turn`；被额度打断 / 被叫停的根本没有终局）。三路，先到先算：
 //!   ① 前台派出：那次调用拿到结果 ⇒ 完成（`is_error` ⇒ 失败）；后台派出当场回的那次（`toolUseResult.status` ＝ `async_launched`）不算。
 //!   ② 后台派出：父记录里关于它的通知 —— `<task-notification>` 打头的一段，住 `queue-operation` 的 `content` · `attachment` 的
-//!      `prompt` · user 记录的字符串正文；只读 `<task-id>`（＝ agentId）与 `<status>`（completed · failed · killed / stopped）两格，不读正文。
+//!   `prompt` · user 记录的字符串正文；只读 `<task-id>`（＝ agentId）与 `<status>`（completed · failed · killed / stopped）两格，不读正文。
 //!   ③ 子记录自己那一轮以 `end_turn` 收尾；API 报错的那条（`isApiErrorMessage`，`stop_reason` 不定）本身就是失败收场；
-//!      最后一条是打断标记 ⇒ 被叫停。
+//!   最后一条是打断标记 ⇒ 被叫停。
 //! - 派出那一刻：子记录旁边落一份 `agent-<agentId>.meta.json`，`toolUseId` 是父侧那次 Agent 调用的 id（前台派出的在结果回来之前
 //!   只能凭它把卡和运行对上，[`spawned`]）。
 //! - 请求：子 agent 发的每条请求带 `x-claude-code-agent-id`（值 ＝ 它的 `agentId`）；主运行的请求不带。
@@ -31,13 +31,13 @@ const CHILD_DEPTH: usize = 4;
 /// 标签取 `prompt` 首行时最多几个字。
 pub(crate) const LABEL_PROMPT_CHARS: usize = 80;
 /// 子 agent 自报身份的请求头（值 ＝ 记录里的 `agentId`）。
-pub(crate) const RUN_HEADER: &str = "x-claude-code-agent-id";
+pub const RUN_HEADER: &str = "x-claude-code-agent-id";
 
 /// 请求自报「这一发是哪一类」的头（`DefaultUpstream.relay_heads` 里的 `RelayHead::Class`；2.1.310 读码）：值 ∈ main · subagent · workflow ·
 /// compaction · auxiliary · side_reply。预测下一句 · 起标题这类分叉请求是 auxiliary（它是主运行的分叉、不带 [`RUN_HEADER`]，
 /// 只有这一格分得出它），压缩总结是 compaction，旁问的回答是 side_reply —— 这三类都不进记录 ⇒ 不上活卡。
 /// 只在设了 [`HINT_HEADERS_ENV`] 时发（[`RELAY_ENV`]）；没带 ⇒ 通用层照主运行放、照实说一行。
-pub(crate) const REQUEST_CLASS: crate::agents::SideClass = crate::agents::SideClass {
+pub const REQUEST_CLASS: crate::agents::SideClass = crate::agents::SideClass {
     header: "x-claude-code-request-class",
     side: &["compaction", "auxiliary", "side_reply"],
 };

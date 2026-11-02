@@ -117,7 +117,7 @@ fn the_mcp_bad_paste_line_is_recognised_and_the_face_wants_a_terminal() {
     assert!(!mcp_said_bad_paste(
         "Authenticated with \"notes\". Its tools are now available in Claude Code."
     ));
-    assert!(MCP_FACE.terminal && !FACE.terminal);
+    assert_eq!((MCP_FACE.terminal, FACE.terminal), (true, false));
     assert_eq!(MCP_FACE.args, &["mcp", "login", "--no-browser"]);
     assert_eq!(MCP_FACE.paste, crate::agents::PasteShape::RedirectUrl);
     assert_eq!(FACE.paste, crate::agents::PasteShape::Code);

@@ -12,9 +12,9 @@
 //! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 类别）；认不出那一行的一句与摘录跟形状一起住 `cmd-wire`（手机解不开的那一条也写这一句）。
 
 pub use cmd_wire::record::{excerpt_of, unread_text};
-pub(crate) use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
+pub use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 
-pub(crate) use cmd_wire::record::Draw;
+pub use cmd_wire::record::Draw;
 
 /// 助手那一行的内容块：正文块解析成块树（[`Block::Prose`]，两家适配层都经它，解析只有 `md_core::parse` 一处）；别的块照原样。
 pub(crate) fn reply_blocks(blocks: Vec<Block>) -> Vec<Block> {
@@ -29,12 +29,7 @@ pub(crate) fn reply_blocks(blocks: Vec<Block>) -> Vec<Block> {
 
 /// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
 /// 钟面那两格留给出口（[`RecordExt::stamp`]）。
-pub(crate) fn record(
-    agent: cmd_wire::AgentKind,
-    id: String,
-    at: Option<String>,
-    body: Body,
-) -> Record {
+pub fn record(agent: cmd_wire::AgentKind, id: String, at: Option<String>, body: Body) -> Record {
     let body = said_doc(body);
     Record {
         agent,
@@ -163,7 +158,7 @@ fn draw_of(body: &Body) -> Draw {
 }
 
 /// 后端写记录那一侧（形状在 `cmd-wire`，孤儿规则不许在那边的类型上加固有方法）。
-pub(crate) trait RecordExt {
+pub trait RecordExt {
     /// 出口那一下（推 `line` 帧 · 回按页读的那几条）按看的那一台的时区写钟面：`timeText` ＝ `at` 的 `HH:MM`。
     /// 解析那一层不写它：同一份记录可能推给几个时区不同的看的人。
     fn stamp(&mut self, tz: &crate::common::time::Tz);
@@ -216,7 +211,7 @@ fn notice_row(what: &str, end: Option<cmd_wire::record::TaskEnd>, time: &str) ->
 }
 
 /// 后端造 / 认记录类别那一侧（形状在 `cmd-wire`）。
-pub(crate) trait BodyExt {
+pub trait BodyExt {
     /// 这条记录的类。
     fn class(&self) -> RecordClass;
 }
@@ -235,8 +230,8 @@ impl BodyExt for Body {
 
 /// 通用记录的类（记录上 `t` 那一格的五个词；骨架行 `t` 也是它，`unread` 除外：骨架不出认不出的行）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub enum RecordClass {
     Said,

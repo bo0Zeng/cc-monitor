@@ -12,7 +12,7 @@ use std::num::NonZeroU64;
 
 /// 人那一侧一句话的摘要（去首尾空白后的 64 位 FNV-1a）：排队豁免只比两句是不是同一句，原文不进链。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Words(NonZeroU64);
+pub struct Words(NonZeroU64);
 
 impl Words {
     pub(crate) fn of(text: &str) -> Self {
@@ -25,7 +25,7 @@ impl Words {
 
 /// 链上一个节点的事实（适配层从一条记录翻过来）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-pub(crate) struct Link {
+pub struct Link {
     /// 这条记录的身份（与记录成品的 `id` 同值）。
     pub(crate) id: String,
     /// 上一条是谁；缺 ＝ 根。
@@ -46,7 +46,7 @@ pub(crate) struct Link {
 
 /// 适配层从一行翻出的链事实。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChainFact {
+pub enum ChainFact {
     /// 链上一个节点。
     Node(Link),
     /// 一句排进队列的话（摘要）：它对应的那片裸叶不算回退。
@@ -68,7 +68,7 @@ struct Node {
 
 /// 一份会话记录的链索引：每个节点只记下标 · 时刻 · 几个标志 · 原文摘要。可以抄一份接着记（扫描图续扫）；骨架落盘那一形见 [`skel`]。
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Chain {
+pub struct Chain {
     /// 身份 ⇒ 下标；身份只存这一份（清单出身份时按下标反查它）。
     index: HashMap<Box<str>, u32>,
     nodes: Vec<Node>,
@@ -106,14 +106,14 @@ impl Chain {
     /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 缺着的上一条迟到补上 · 主线外有东西时排队集合变了）要整份重算 ——
     /// 结果与对全部事实重算一次逐条相同。一次重算是整份的量 ⇒ 一趟读进多少条都是全记完再 `settle` 一次，
     /// 不逐条算（12 万行、上万处分叉 / 排队的记录逐条重算就是平方）。
-    pub(crate) fn load(&mut self, fact: ChainFact) {
+    pub fn load(&mut self, fact: ChainFact) {
         if self.stage(fact) {
             self.dirty = true;
         }
     }
 
     /// 攒着的事实一次算掉；回：主线外清单比上一次算的变没变。
-    pub(crate) fn settle(&mut self) -> bool {
+    pub fn settle(&mut self) -> bool {
         if !std::mem::take(&mut self.dirty) {
             return false;
         }
@@ -180,24 +180,25 @@ impl Chain {
     }
 
     /// 主线外的那几条（只含进界面的；文件序）。是上一次算的结果：[`Chain::load`] 之后先 [`Chain::settle`]。
-    pub(crate) fn off(&self) -> &[String] {
+    pub fn off(&self) -> &[String] {
         debug_assert!(!self.dirty, "记了没算就来读清单");
         &self.off
     }
 
     /// 上一次问它到此刻，清单前几条没动（主线外清单是文件序，新的分叉一般接在尾上 ⇒ 只有后面那几条是新的）；问完重新记。
     /// 中间变了几次都算上（取最短的公共前缀）⇒ 拿上一次发出去的那一份接上这一截，就是此刻的清单。
-    pub(crate) fn take_kept(&mut self) -> usize {
+    pub fn take_kept(&mut self) -> usize {
         self.kept.take().unwrap_or(self.off.len())
     }
 
-    /// 记了几个节点。
-    pub(crate) fn len(&self) -> usize {
+    /// 记了几个节点（量内存与骨架大小用；链不当集合用，不答「空不空」）。
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
         self.nodes.len()
     }
 
     /// 到此刻整份重算一共走过几格（见 `walked` 字段）。
-    pub(crate) fn walked(&self) -> u64 {
+    pub fn walked(&self) -> u64 {
         self.walked
     }
 
@@ -252,7 +253,7 @@ impl Chain {
 
 /// 骨架落盘那一形（`observe::skeleton`）：只存记进来的事实（节点 ＋ 排队摘要），读回来照原样一条条记、算一次 ——
 /// 算出来的那几样（主线 · 豁免 · 清单）不存，跟整份记一遍的结果相同。
-pub(crate) mod skel {
+pub mod skel {
     use super::{Chain, ChainFact, Link, Words};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -309,7 +310,7 @@ pub(crate) mod skel {
         queued: Vec<Words>,
     }
 
-    pub(crate) fn serialize<S: Serializer>(c: &Chain, s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(c: &Chain, s: S) -> Result<S::Ok, S::Error> {
         let mut queued: Vec<Words> = c.queued.iter().copied().collect();
         queued.sort_unstable_by_key(|w| w.0);
         FactsRef {
@@ -319,7 +320,7 @@ pub(crate) mod skel {
         .serialize(s)
     }
 
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Chain, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Chain, D::Error> {
         let f = Facts::deserialize(d)?;
         let mut c = Chain::new();
         for n in f.nodes {
@@ -468,6 +469,11 @@ fn exempt_queued(
     out
 }
 
+/// 主线外清单的对照（本包与上层判据共用；只在测试档与 `test-support` 下编）。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/agents/mainline_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/agents/mainline_tests.rs"]
-pub(crate) mod tests;
+mod tests;

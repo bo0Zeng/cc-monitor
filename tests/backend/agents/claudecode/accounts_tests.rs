@@ -110,20 +110,20 @@ fn reading_and_rewriting_the_identity_does_not_build_the_whole_body() {
     let len = body.len();
     assert!(len > 4 << 20, "夹具该有几 MB：{len}");
 
-    let base = crate::alloc_probe::reset_peak();
+    let base = test_meters::alloc_probe::reset_peak();
     let who = super::identity_of_body(body.as_bytes());
-    let peak = crate::alloc_probe::peak_since(base);
+    let peak = test_meters::alloc_probe::peak_since(base);
     assert_eq!(who.as_deref(), Some(A));
     assert!(
         peak < len / 16,
         "读身份时本线程分配峰值 {peak} 字节（体长 {len}）—— 该只取那一格，不整份建树"
     );
 
-    let base = crate::alloc_probe::reset_peak();
+    let base = test_meters::alloc_probe::reset_peak();
     let IdentityCell::Rewritten(out) = rewrite_identity(body.as_bytes(), B) else {
         panic!("应换成");
     };
-    let peak = crate::alloc_probe::peak_since(base);
+    let peak = test_meters::alloc_probe::peak_since(base);
     assert_eq!(out, big_body_with(B).into_bytes());
     assert!(
         peak < len + len / 16,

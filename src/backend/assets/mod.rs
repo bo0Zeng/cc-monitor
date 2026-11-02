@@ -39,3 +39,8 @@ pub mod skill_ledger; // skill 装记录（后端自有状态 `~/.cc-monitor/ski
 #[cfg(test)]
 #[path = "../../../tests/backend/assets/catalog_wire_tests.rs"]
 mod catalog_wire_tests;
+
+// agent 适配层判据里经资产目录的那几条（适配层是独立的包、够不到这一层；本层拆成包时跟着走）。
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/on_assets_tests.rs"]
+mod agents_tests;
