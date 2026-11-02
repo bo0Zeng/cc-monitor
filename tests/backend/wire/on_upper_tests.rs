@@ -274,12 +274,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     blocks: vec![
                         LiveBlock {
                             kind: BlockKind::Text,
-                            text: Some(s("hi")),
+                            md: Some(vec![cmd_wire::md::MdBlock::P {
+                                k: vec![cmd_wire::md::Inl::S(s("hi"))],
+                            }]),
                             tool: None,
                         },
                         LiveBlock {
                             kind: BlockKind::Tool,
-                            text: None,
+                            md: None,
                             tool: Some(s("Bash")),
                         },
                     ],

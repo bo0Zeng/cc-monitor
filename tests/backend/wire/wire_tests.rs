@@ -331,20 +331,20 @@ fn live_frames_have_exactly_these_bytes() {
                     phase: LivePhase::Streaming,
                     clipped: false,
                     blocks: vec![
-                        LiveBlock { kind: BlockKind::Thinking, text: None, tool: None },
-                        LiveBlock { kind: BlockKind::Text, text: Some("你好".into()), tool: None },
+                        LiveBlock { kind: BlockKind::Thinking, md: None, tool: None },
+                        LiveBlock { kind: BlockKind::Text, md: Some(vec![cmd_wire::md::MdBlock::P { k: vec![cmd_wire::md::Inl::S("你好".into())] }]), tool: None },
                     ],
                 },
             ),
-            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"text\":\"你好\"}]}\n",
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"md\":[{\"t\":\"p\",\"k\":[\"你好\"]}]}]}\n",
         ),
         (
             live(Some("a1"), 1, LiveOp::Block { i: 2, block: BlockKind::Tool, tool: Some("Bash".into()) }),
             "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"card\":12,\"n\":1,\"op\":\"block\",\"i\":2,\"block\":\"tool\",\"tool\":\"Bash\"}\n",
         ),
         (
-            live(None, 2, LiveOp::Text { i: 1, s: "hi".into() }),
-            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":2,\"op\":\"text\",\"i\":1,\"s\":\"hi\"}\n",
+            live(None, 2, LiveOp::Text { i: 1, keep: 3, tail: vec![cmd_wire::md::MdBlock::Rule] }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":2,\"op\":\"text\",\"i\":1,\"keep\":3,\"tail\":[{\"t\":\"rule\"}]}\n",
         ),
         (
             live(None, 3, LiveOp::Awaiting),
@@ -721,7 +721,9 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
                 clipped: false,
                 blocks: vec![crate::wire::LiveBlock {
                     kind: crate::agents::BlockKind::Text,
-                    text: Some("hi".into()),
+                    md: Some(vec![cmd_wire::md::MdBlock::P {
+                        k: vec![cmd_wire::md::Inl::S("hi".into())],
+                    }]),
                     tool: None,
                 }],
             },
