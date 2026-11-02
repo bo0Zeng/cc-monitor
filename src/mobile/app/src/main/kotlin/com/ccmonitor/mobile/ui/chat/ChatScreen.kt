@@ -126,9 +126,9 @@ fun ChatTranscript(
     // 跟到底。触发看「最后一个单元的 key + 内容长度」而不是 `units.size`：流式期间数量不变，
     // 而往顶部插历史会改 size。滚到最后一个单元的末尾（一条很长的回答也看得到它最新那几行），偏移交给列表自己夹到底。
     // 视口高度也在 key 里：键盘弹起把消息区压矮时，贴着底的照样看得到最新那几行。
-    // 活卡逐字长在正文尾巴上：它的字数也在 key 里，贴着底时跟着它长。
+    // 活卡逐字长在正文尾巴上：它的正文（一串块）也在 key 里，贴着底时跟着它长。
     val lastUnit = state.units.lastOrNull()
-    val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.orEmpty().length } + 1 }
+    val liveLength = state.live.sumOf { c -> c.body.hashCode() + 1 }
     val total = state.stream.size + state.live.size
     val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
 

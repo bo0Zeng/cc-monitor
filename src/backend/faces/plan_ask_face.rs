@@ -102,7 +102,7 @@ fn lines_of(book: &Book, name: &str) -> Result<AliasLines, String> {
             .map_or(name, |g| g.layer.as_str())
             .to_string()
     };
-    let mut parts = vec![copy_text("bePlan.ask.runsTmux", &[])];
+    let mut parts = vec![copy_text("resumeMenu.hint.tmux", &[])];
     if !o.account.is_empty() {
         parts.push(copy_text(
             "bePlan.ask.runsAccount",
@@ -122,7 +122,7 @@ fn lines_of(book: &Book, name: &str) -> Result<AliasLines, String> {
     }
     Ok(AliasLines {
         say: o.say.clone(),
-        runs: parts.join(&copy_text("bePlan.ask.runsSep", &[])),
+        runs: parts.join(&copy_text("kit.text.sep", &[])),
     })
 }
 

@@ -964,6 +964,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse_marked: "J40",
     computed: NONE,
     bytes: NONE,
+    // `Growing`（活卡里一段正在长的正文）：接一截 · 整段重来 · 读原文 · 读块；解析本身仍是 `parse` 那一家（J40），TS 侧不解析。
+    push: NONE,
+    reset: NONE,
+    src: NONE,
+    blocks: NONE,
   },
   "copy-core": {
     backend_old: "J22",

@@ -233,7 +233,7 @@ mod said {
             .and_then(|s| s.since_text.clone())
             .expect("时刻的字");
         let want = [
-            t("plan.strip.unreadable", &[("reason", "pb 那一句")]),
+            t("plan.strip.sliceUnreadable", &[("reason", "pb 那一句")]),
             t("plan.strip.stale", &[("time", &since)]),
         ]
         .join(&sep());

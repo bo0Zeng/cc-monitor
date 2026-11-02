@@ -30,11 +30,11 @@ fn book() -> crate::assets::aliases::profile::Book {
 
 /// 「起在哪」那一句里的几段，照这台的文案表连起来（期望逐段手写）。
 fn runs_of(parts: &[String]) -> String {
-    parts.join(&copy_core::copy_text("bePlan.ask.runsSep", &[]))
+    parts.join(&copy_core::copy_text("kit.text.sep", &[]))
 }
 
 fn tmux_part() -> String {
-    copy_core::copy_text("bePlan.ask.runsTmux", &[])
+    copy_core::copy_text("resumeMenu.hint.tmux", &[])
 }
 
 fn cell_part() -> String {

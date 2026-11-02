@@ -625,8 +625,8 @@ fn session_frames_carry_the_state_written_and_toned() {
             .clone()
     };
     for (a, key, tone) in [
-        (A::Working, "beSession.activity.working", "now"),
-        (A::NeedsYou, "beSession.activity.needsYou", "need"),
+        (A::Working, "backend.status.connected", "now"),
+        (A::NeedsYou, "beSession.needs.unknown", "need"),
         (A::Idle, "beSession.activity.idle", "plain"),
         (
             A::BackgroundWork,
@@ -642,11 +642,11 @@ fn session_frames_carry_the_state_written_and_toned() {
     let none = status(None);
     assert_eq!(
         none["name"],
-        copy_core::copy_text("beSession.activity.unclear", &[])
+        copy_core::copy_text("runs.state.unknown", &[])
     );
     assert_ne!(
         none["name"],
-        copy_core::copy_text("beSession.activity.working", &[]),
+        copy_core::copy_text("backend.status.connected", &[]),
         "判不出却写了运行中"
     );
     assert_eq!(none["tone"], "plain");
