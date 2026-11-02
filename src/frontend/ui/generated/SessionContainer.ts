@@ -6,4 +6,4 @@
  * 线上是对象：`{"host":"tmux","terminal":"tmux-3-7"}` · `{"host":"managed","terminal":"<id>"}` · `{"host":"none"}`。
  * 在 tmux 里的，claude 退了终端还在（「可重连」）；托管的与不在宿主里的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
  */
-export type WireSessionContainer = { "host": "tmux", terminal?: string, } | { "host": "managed", terminal?: string, } | { "host": "none" };
+export type SessionContainer = { "host": "tmux", terminal?: string, } | { "host": "managed", terminal?: string, } | { "host": "none" };

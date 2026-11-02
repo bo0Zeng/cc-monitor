@@ -39,14 +39,16 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
         None,
     )
     .unwrap();
+    // 不给 sid ⇒ 开窗跑的就是那一行（`window` 与 `line` 同一串）。
+    let line = format!(
+        r#"'/usr/bin/ssh' -t -J j@hop.example -p 2222 -i '/k/id'{} dev@192.0.2.5 -- 'bash -lic '\\''claude --resume abc'\\'''"#,
+        known_hosts_posix()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+    );
     assert_eq!(
         wire_of(&got),
-        format!(
-            r#"{{"line":"'/usr/bin/ssh' -t -J j@hop.example -p 2222 -i '/k/id'{} dev@192.0.2.5 -- 'bash -lic '\\''claude --resume abc'\\'''","prelude":""}}"#,
-            known_hosts_posix()
-                .replace('\\', "\\\\")
-                .replace('"', "\\\"")
-        )
+        format!(r#"{{"line":"{line}","window":"{line}"}}"#)
     );
 }
 

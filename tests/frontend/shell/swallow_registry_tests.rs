@@ -46,44 +46,6 @@ enum Why {
 /// 超过 [`KEY_CHARS`] 个字符的截断。**不含行号**。
 const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/platform/local_tz.rs", "#[cfg(unix)] let link = crate::platform::fs::Ro::read_link(\"/etc/localtime\").ok();", Why::NotAnError, "这台的 /etc/localtime 不是链（没有 · 是一份拷贝）是常态：说不出时区 ⇒ 调用方写「时区不明」"),
-    ("src/backend/platform/watch_file.rs", "let _ = events.send(Some(p));", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜共用）：线程不在了就没人要这一下"),
-    ("src/backend/platform/watch_file.rs", "let _ = self.tx.send(None);", Why::PeerGone, "踢收的线程一下（各号 MCP 同步做完加号 / 建库之后）：线程不在了就没人要这一下"),
-    ("src/backend/host/managed/attach.rs", "let _ = qtx.send(l);", Why::PeerGone, "瘦客户端底行那一句转给接着的那一趟：那一趟已经断开 ⇒ 没人要这一句"),
-    ("src/backend/platform/watch_file.rs", "let _ = self.inner.unwatch(&gone.0);", Why::Reap, "名单里离开的目录卸掉 watch：目录已删时 unwatch 本来就会失败，名单照样摘"),
-    ("src/backend/platform/fs/own.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "后端自有状态文件原子写的旁名（自己建的那一个）：写或换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的旁名"),
-    ("src/backend/control/machine_state.rs", "let _ = changes().send((machine.to_string(), p.clone()));", Why::NotAnError, "进程内「某台的状态成品变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，表在进程里，客户端重问 `machine-read` 就有"),
-    ("src/backend/control/machine_state.rs", "let _ = changes().send(p);", Why::NotAnError, "同上（机器表改了之后每台现推的那一份）"),
-    ("src/backend/control/place_self.rs", "let _ = own.delete_file(&p);", Why::CleanupAfterFailure, "自报不是这一版的暂存件当场删：主失败已经在回（`not_self`），删不掉只剩一份残件，下一趟部署按陈旧残件清"),
-    ("src/backend/history/needs_changed.rs", "let _ = changes().send(sid);", Why::PeerGone, "敲需手动的铃：此刻没有 watcher 在订（一次性子命令 · 判据）⇒ 没人收（下一个连上来的照常重问）"),
-    ("src/backend/dial/opened_windows.rs", "let _ = self.0.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧的窗口标签记录（那个 shell 不在 / 进程号被复用）：删不掉下一次 ↗ 再清，它对不上进程不会被认"),
-    ("src/backend/platform/fs/face.rs", "at::unlink(&to.dir, &to.name, 0).ok();", Why::CleanupAfterFailure, "`link ＋ unlink` 改名时 `unlink` 失败 ⇒ 撤掉刚建的那个名字；主错误（`unlink` 那一下）已在回"),
-    ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（做得好的对照组）"),
-    ("src/backend/control/transfer_copy.rs", "let _ = crate::dial::sftp::remove(&self.to, &staging_part(&key)).await;", Why::CleanupAfterFailure, "一份文件没传成 ⇒ 删落点那台暂存区里的半截；删不掉只是暂存区里多一份，孤儿扫会收"),
-    ("src/backend/control/transfer_copy.rs", "let _ = self.face.delete_file(&at);", Why::CleanupAfterFailure, "本机中转那一份不论成败都删；删不掉只是暂存区里多一份，孤儿扫会收"),
-    ("src/backend/control/transfer_copy.rs", "let _ = face.own_dir(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
-    ("src/backend/control/transfer.rs", "let _ = forward.await;", Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
-    ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
-    ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
-    ("src/backend/control/transfer.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
-    ("src/backend/dial/probe.rs", "let _ = tx.send(Ev::Feed(e));", Why::PeerGone, "测试连接那一台常驻流交来的事转进这一趟：这一趟已经收场（结局出了 · 到点被丢）就没人要这一下"),
-    ("src/backend/platform/signal.rs", "let _ = t.recv().await;", Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（从 `main.rs` 下沉来）"),
-    ("src/backend/platform/signal.rs", "let _ = tokio::signal::ctrl_c().await;", Why::Signal, "从 `main.rs` 下沉来的停机信号监听"),
-    ("src/backend/control/terminal_follow.rs", "let _ = f.tx.send(Ev::Stop);", Why::PeerGone, "退订 / 连接走：那张票的订阅线程已经自己停了（终端没了、推了收尾帧）⇒ 「停」没人收"),
-    ("src/backend/control/terminal_follow.rs", "let _ = self.replies.blocking_send(Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd { ticket: self.ticket.clone()", Why::PeerGone, "订它的那条流连接已经走了 ⇒ 收尾帧没人收（票表随连接一起丢）"),
-    ("src/backend/control/terminal_follow.rs", "let _ = tx.send(Ev::Closed);", Why::PeerGone, "订阅线程已经停了（退订 / 推了收尾帧）⇒ 「客户端退了」没人收"),
-    ("src/backend/platform/child.rs", "let _ = r.join();", Why::Reap, "一问一答的子进程收尾：等两条读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
-    ("src/backend/platform/child.rs", "let _ = child.kill();", Why::Reap, "伪终端里起的那一个说不出 pid（杀不准它那一组）⇒ 当场杀掉、收尸、照实报起不来；杀 / 收失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = reader.join();", Why::Reap, "伪终端那一问一答收尾：等读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
-    ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Out(plain_line(&buf)));", Why::PeerGone, "伪终端读到头时没收尾的那半行：拿着它的那一方已放手 ⇒ 没人收"),
-    ("src/backend/platform/child.rs", "let _ = self.child.wait();", Why::Reap, "长寿子进程放手：杀组之后收尸；收不了也没有更好的补救（组已经杀了）"),
-    ("src/backend/platform/child.rs", "let _ = child.wait();", Why::Reap, "Windows 臂只等直接子进程退出（句柄占着进程号）；退出码由随后那一下 `wait` 取"),
-    ("src/backend/platform/child.rs", "let _ = done_tx.send(status.map(|s| Output { status: s, stdout: o, stderr: e, }));", Why::PeerGone, "发起方过了期限已放手、回了超时，这份结果没人收"),
-    ("src/backend/platform/child.rs", "let _ = ev_tx.send(Ev::GaveUp);", Why::PeerGone, "等待线程已收尾退出 ⇒ 放手那一声没人收"),
-    ("src/backend/platform/child.rs", "let _ = piped_tx.send(Ev::Piped(o, e));", Why::PeerGone, "等待线程已按放手收尾 ⇒ 读完的输出没人收"),
-    ("src/backend/platform/child.rs", "let _ = r.read_to_end(&mut buf);", Why::Drain, "读子进程输出到底；读错只少尾巴几个字节，退出码与超时照旧判"),
-    ("src/backend/control/resident.rs", "let _ = log_dir_chain(own);", Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     // 载荷那一层渲 env 那四行 `let _ = write!(out, "export …")` 摘了：`export` / `unset` 的写法搬进 `platform::shell::posix`
@@ -98,10 +60,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // 单实例回调那三行收进 `platform::window::raise_main`（与点通知共用，失败各留一行日志），这里不再有。
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
     // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
-    ("src/backend/control/resident.rs", "let _ = tokio::io::copy(&mut down, &mut stdout).await;", Why::DeadLink, "小中继下行：套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代"),
-    ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
-    ("src/backend/control/resident.rs", "let _ = own.delete_file(&rec_own);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
-    ("src/backend/control/resident.rs", "let _ = own.delete_file(&token);", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。

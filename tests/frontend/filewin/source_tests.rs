@@ -509,6 +509,7 @@ fn truncation_is_carried_back_not_dropped() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn listing_has_no_second_road_when_the_backend_refuses() {
     use crate::find::testing::{synth_fs, wire_up, Declared, FakeBackend};
+    const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
     let (dir, want) = synth_tree();
     let wired = wire_up(
         "source-ls",

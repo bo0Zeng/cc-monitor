@@ -287,6 +287,19 @@ fn every_declared_file_is_consistent_and_declared_once() {
     }
 }
 
+/// 声明的「超了怎么办」与读口真做的对得上：自有文件全经后端 `own_state` 读，超了当读不出来 ——
+/// 状态照实回错、不覆盖（拒收＋回错），缓存 `warn!` 带路径、当没有（跳过＋说清）。别的档在这张表里说的是假话。
+#[test]
+fn every_declared_cap_says_what_the_reader_does_on_overflow() {
+    for r in OWN_FILES {
+        let want = match r.kind {
+            Kind::State => Over::Reject,
+            Kind::Cache => Over::SkipAndSay,
+        };
+        assert_eq!(r.cap.over, want, "{}：种类 {:?}", r.rel, r.kind);
+    }
+}
+
 /// `X.Y.Z` ⇒ 三个数；不是这一形 ⇒ 没有。
 fn release_of(s: &str) -> Option<(u32, u32, u32)> {
     let mut it = s.trim().split('.').map(|p| p.parse::<u32>().ok());

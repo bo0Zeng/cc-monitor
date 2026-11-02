@@ -80,9 +80,9 @@ async function opened(command: string, got: Promise<TerminalOpened>): Promise<vo
   if (r === "setMissing") throw new NoTerminalWindow(command, "setMissing");
 }
 
-/** 开窗跑 `prelude + line`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
-async function openWindow({ prelude, line }: SshCommand): Promise<void> {
-  await opened(line, commands.open_terminal_window({ command: prelude + line }));
+/** 开窗跑本机后端拼好的 `window`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
+async function openWindow({ window, line }: SshCommand): Promise<void> {
+  await opened(line, commands.open_terminal_window({ command: window }));
 }
 
 /** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
@@ -92,8 +92,8 @@ export async function openLocalTerminal(cmd: string, cwd: string | null): Promis
 
 /**
  * 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。
- * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端另回一段前奏，开窗时接在那一行前面，开的那个 shell 记下自己的窗口标签，
- * ↗ 先照它在本机找；开不了窗时复制出去的只有那一行。
+ * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端拼的开窗那一串另带前奏与收尾：开的那个 shell 记下自己的窗口标签、
+ * 那条 ssh 一退就删，↗ 先照它在本机找；开不了窗时复制出去的只有那一行。
  */
 export async function openTerminal(
   origin: Origin,
@@ -101,7 +101,7 @@ export async function openTerminal(
   sid: string | null = null,
 ): Promise<void> {
   if (isLocalOrigin(origin)) {
-    await openWindow({ prelude: "", line: command });
+    await openWindow({ window: command, line: command });
     return;
   }
   // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。

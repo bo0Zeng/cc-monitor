@@ -474,7 +474,11 @@ pub(crate) fn rename_with(
         })
         .map_err(|e| RotationStrategyRenameErr::IoFailed(note(e)))?;
     rotation::face_change(&ctx.hop.store, own, |b| {
-        for c in b.sessions.values_mut().filter_map(|s| s.uses.as_mut()) {
+        for c in b
+            .sessions
+            .values_mut()
+            .filter_map(|s| s.uses.as_mut().map(std::sync::Arc::make_mut))
+        {
             if c.id == from {
                 c.id = to.clone();
             }

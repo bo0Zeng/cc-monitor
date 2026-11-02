@@ -220,6 +220,54 @@ pub struct RotLog {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub why: Option<String>,
+    /// 那一判看的事实摘要（事后核每一次为什么换）；没记 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub saw: Option<RotSaw>,
+}
+
+/// 一判看的事实摘要：各号的 5 小时窗 ＋ 本会话量出来的；量不到的格缺。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RotSaw {
+    pub accounts: Vec<RotSawAcct>,
+    /// 本会话用速：折合输入 token / 分。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub pace: Option<f64>,
+    /// 本会话用速的起伏（σ/μ）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub spread: Option<f64>,
+    /// 本会话上下文（token）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub context: Option<u64>,
+}
+
+/// 摘要里的一个号：5 小时用量 · 重置时刻 · 用速（点 / 分）· 别的会话压在它上面的用速（点 / 分）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RotSawAcct {
+    pub id: String,
+    pub used5h: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub resets5h: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub rate5h: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub others: Option<f64>,
 }
 
 /// 后端看得见的换号原因。

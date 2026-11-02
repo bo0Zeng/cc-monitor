@@ -902,7 +902,7 @@ impl Relayed {
 /// 线上整份脸 `face.live.activity` 送它。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionActivity", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionActivity {
     /// 一轮在跑。
@@ -1066,7 +1066,7 @@ pub struct NameFace {
 /// 终端住在哪种宿主里（线上 `host`）。容器那一格（[`SessionContainer`]）与 `terminals-list` 每一行的 `host` 同一套词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireTerminalHost", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalHost {
     Tmux,
@@ -1090,7 +1090,7 @@ impl TerminalHost {
 /// 在 tmux 里的，claude 退了终端还在（「可重连」）；托管的与不在宿主里的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionContainer", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "host", rename_all = "snake_case")]
 pub enum SessionContainer {
     /// 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。

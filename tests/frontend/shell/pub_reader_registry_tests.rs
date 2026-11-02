@@ -20,6 +20,16 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "src/backend/platform/fs/ro.rs",
+        "read_capped_nofollow",
+        "不跟链接的带上限整读：读者是文件管理那五处 `read_nofollow` 的调用方（它们换上之后删这一行）",
+    ),
+    (
+        "src/backend/platform/fs/ro.rs",
+        "read_string_capped",
+        "带上限读成字符串：读者是后端各处今天的 `read_to_string` 整读（它们换上之后删这一行）",
+    ),
+    (
         "src/common/cmd-wire/src/md.rs",
         "SegHl",
         "一段的高亮回包：读者是后端拉一段高亮的那条命令（接上之前只有生成的 TS · Kotlin 读；接上那一刀删这一行）",

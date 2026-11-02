@@ -11,6 +11,7 @@
 use crate::platform::fs::{Own, OwnPath, Ro};
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use std::path::Path;
 
 /// 复制详情「命令」那一项里的名字。
@@ -106,7 +107,7 @@ pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Said> {
         drop_kept(own, &name);
     }
     if let Ok(p) = staging.join(name) {
-        let _ = own.delete_file(&p);
+        own.delete_file(&p).discard(Why::CleanupAfterFailure); // 删不掉只剩一份残件，下一趟部署按陈旧残件清
     }
     Ok(removed)
 }
@@ -122,7 +123,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Said> {
     {
         // 自报的不是这一版（传坏了 · 被换过）⇒ 留着没用：删掉，下次那一趟重传。
         if let Ok(p) = staging.join(name) {
-            let _ = own.delete_file(&p);
+            own.delete_file(&p).discard(Why::CleanupAfterFailure); // 主失败（`not_self`）已在回；删不掉只剩一份残件，下一趟部署按陈旧残件清
         }
         return Err(crate::common::said::Said::new(
             "not_self",
