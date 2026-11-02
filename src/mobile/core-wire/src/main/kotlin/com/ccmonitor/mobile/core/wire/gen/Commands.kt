@@ -725,6 +725,11 @@ object Commands {
         const val NAME: String = "mcp-sync-source"
     }
 
+    /** `md-doc`。 */
+    object MdDoc : Command<com.ccmonitor.mobile.core.wire.gen.MdDocReq, com.ccmonitor.mobile.core.wire.gen.Doc>("md-doc", { com.ccmonitor.mobile.core.wire.gen.MdDocReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.Doc.ADAPTER }) {
+        const val NAME: String = "md-doc"
+    }
+
     /** `monitor-board`。 */
     object MonitorBoard : Command<com.ccmonitor.mobile.core.wire.gen.MonitorBoardReq, com.ccmonitor.mobile.core.wire.gen.MonitorBoard>("monitor-board", { com.ccmonitor.mobile.core.wire.gen.MonitorBoardReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.MonitorBoard.ADAPTER }) {
         const val NAME: String = "monitor-board"
@@ -1359,6 +1364,7 @@ object Commands {
             McpSyncApply,
             McpSyncPreview,
             McpSyncSource,
+            MdDoc,
             MonitorBoard,
             MonitorBoardHere,
             NeedsAnswer,
@@ -2003,7 +2009,9 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.McpSuspect::class.java to com.ccmonitor.mobile.core.wire.gen.McpSuspect.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.McpTrouble::class.java to com.ccmonitor.mobile.core.wire.gen.McpTrouble.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MdAlign::class.java to com.ccmonitor.mobile.core.wire.gen.MdAlign.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.MdAs::class.java to com.ccmonitor.mobile.core.wire.gen.MdAs.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MdBlock::class.java to com.ccmonitor.mobile.core.wire.gen.MdBlock.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.MdDocReq::class.java to com.ccmonitor.mobile.core.wire.gen.MdDocReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MdItem::class.java to com.ccmonitor.mobile.core.wire.gen.MdItem.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MdNote::class.java to com.ccmonitor.mobile.core.wire.gen.MdNote.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MemberFacts::class.java to com.ccmonitor.mobile.core.wire.gen.MemberFacts.ADAPTER,

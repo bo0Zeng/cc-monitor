@@ -10607,6 +10607,15 @@ sealed interface InlNode {
         override val t: String get() = "fn"
         override var wireOrder: IntArray? = null
     }
+    @Suppress("UNCHECKED_CAST")
+    data class Ref(
+        val x: String,
+        val ids: List<String>,
+        val label: String,
+    ) : InlNode, Ordered {
+        override val t: String get() = "ref"
+        override var wireOrder: IntArray? = null
+    }
 
     companion object {
         val ADAPTER: JsonAdapter<InlNode> =
@@ -10685,6 +10694,16 @@ sealed interface InlNode {
                         ),
                         { a -> InlNode.Fn(a[1] as Int) },
                         { v -> arrayOf("fn", v.n) },
+                    )),
+                Variant("ref", InlNode.Ref::class.java, obj(
+                        listOf(
+                        Field("t", { tag("ref") }, optional = false, nullable = false),
+                        Field("x", { Str }, optional = false, nullable = false),
+                        Field("ids", { arr(Str) }, optional = false, nullable = false),
+                        Field("label", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.Ref(a[1] as String, a[2] as List<String>, a[3] as String) },
+                        { v -> arrayOf("ref", v.x, v.ids, v.label) },
                     )),
                 ),
             )
@@ -14012,6 +14031,16 @@ enum class MdAlign(val wire: String) {
     }
 }
 
+enum class MdAs(val wire: String) {
+    PROSE("prose"),
+    TOOL_RESULT("tool_result"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdAs> = enumOf(entries) { it.wire }
+    }
+}
+
 sealed interface MdBlock {
     /** 判别格（`t`）那个词。 */
     val t: String
@@ -14185,6 +14214,27 @@ sealed interface MdBlock {
                     )),
                 ),
             )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MdDocReq(
+    val text: String,
+    val `as`: MdAs,
+    val refs: List<PlanRef>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdDocReq> = obj(
+            listOf(
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("as", { MdAs.ADAPTER }, optional = false, nullable = false),
+            Field("refs", { arr(PlanRef.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MdDocReq(a[0] as String, a[1] as MdAs, a[2] as List<PlanRef>) },
+            { v -> arrayOf(v.text, v.`as`, v.refs) },
+        )
     }
 }
 
@@ -16570,6 +16620,7 @@ data class PlanMsgRefs(
     val workspace: String?,
     val slice: String?,
     val refs: List<List<PlanMsgRef>>,
+    val docs: List<Doc?>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16579,9 +16630,10 @@ data class PlanMsgRefs(
             Field("workspace", { opt(Str) }, optional = false, nullable = true),
             Field("slice", { opt(Str) }, optional = false, nullable = true),
             Field("refs", { arr(arr(PlanMsgRef.ADAPTER)) }, optional = false, nullable = false),
+            Field("docs", { arr(opt(Doc.ADAPTER)) }, optional = false, nullable = false),
             ),
-            { a -> PlanMsgRefs(a[0] as String?, a[1] as String?, a[2] as List<List<PlanMsgRef>>) },
-            { v -> arrayOf(v.workspace, v.slice, v.refs) },
+            { a -> PlanMsgRefs(a[0] as String?, a[1] as String?, a[2] as List<List<PlanMsgRef>>, a[3] as List<Doc?>) },
+            { v -> arrayOf(v.workspace, v.slice, v.refs, v.docs) },
         )
     }
 }
@@ -17018,6 +17070,7 @@ data class PlanRefs(
 data class PlanRefsReq(
     val sid: String,
     val texts: List<String>,
+    val docs: List<Doc>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17026,9 +17079,10 @@ data class PlanRefsReq(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("texts", { arr(Str) }, optional = false, nullable = false),
+            Field("docs", { arr(Doc.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> PlanRefsReq(a[0] as String, a[1] as List<String>) },
-            { v -> arrayOf(v.sid, v.texts) },
+            { a -> PlanRefsReq(a[0] as String, a[1] as List<String>, a[2] as List<Doc>) },
+            { v -> arrayOf(v.sid, v.texts, v.docs) },
         )
     }
 }
@@ -24587,7 +24641,7 @@ sealed interface Speaker {
         val from: String? = null,
         val name: String? = null,
         val handback: Boolean,
-        val body: String? = null,
+        val doc: Doc? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "agentMessage"
         override var wireOrder: IntArray? = null
@@ -24595,14 +24649,14 @@ sealed interface Speaker {
     @Suppress("UNCHECKED_CAST")
     data class PeerSession(
         val from: String? = null,
-        val body: String? = null,
+        val doc: Doc? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "peerSession"
         override var wireOrder: IntArray? = null
     }
     @Suppress("UNCHECKED_CAST")
     data class Coordinator(
-        val body: String? = null,
+        val doc: Doc? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "coordinator"
         override var wireOrder: IntArray? = null
@@ -24695,27 +24749,27 @@ sealed interface Speaker {
                         Field("from", { opt(Str) }, optional = true, nullable = true),
                         Field("name", { opt(Str) }, optional = true, nullable = true),
                         Field("handback", { Bool }, optional = false, nullable = false),
-                        Field("body", { opt(Str) }, optional = true, nullable = true),
+                        Field("doc", { opt(Doc.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.AgentMessage(a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as String?) },
-                        { v -> arrayOf("agentMessage", v.from, v.name, v.handback, v.body) },
+                        { a -> Speaker.AgentMessage(a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Doc?) },
+                        { v -> arrayOf("agentMessage", v.from, v.name, v.handback, v.doc) },
                     )),
                 Variant("peerSession", Speaker.PeerSession::class.java, obj(
                         listOf(
                         Field("kind", { tag("peerSession") }, optional = false, nullable = false),
                         Field("from", { opt(Str) }, optional = true, nullable = true),
-                        Field("body", { opt(Str) }, optional = true, nullable = true),
+                        Field("doc", { opt(Doc.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.PeerSession(a[1] as String?, a[2] as String?) },
-                        { v -> arrayOf("peerSession", v.from, v.body) },
+                        { a -> Speaker.PeerSession(a[1] as String?, a[2] as Doc?) },
+                        { v -> arrayOf("peerSession", v.from, v.doc) },
                     )),
                 Variant("coordinator", Speaker.Coordinator::class.java, obj(
                         listOf(
                         Field("kind", { tag("coordinator") }, optional = false, nullable = false),
-                        Field("body", { opt(Str) }, optional = true, nullable = true),
+                        Field("doc", { opt(Doc.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.Coordinator(a[1] as String?) },
-                        { v -> arrayOf("coordinator", v.body) },
+                        { a -> Speaker.Coordinator(a[1] as Doc?) },
+                        { v -> arrayOf("coordinator", v.doc) },
                     )),
                 Variant("agentTask", Speaker.AgentTask::class.java, obj(
                         listOf(
@@ -25162,7 +25216,7 @@ sealed interface StepAsk {
     }
     @Suppress("UNCHECKED_CAST")
     data class Plan(
-        val text: String,
+        val doc: Doc,
         val title: PlanTitle,
     ) : StepAsk, Ordered {
         override val kind: String get() = "plan"
@@ -25185,11 +25239,11 @@ sealed interface StepAsk {
                 Variant("plan", StepAsk.Plan::class.java, obj(
                         listOf(
                         Field("kind", { tag("plan") }, optional = false, nullable = false),
-                        Field("text", { Str }, optional = false, nullable = false),
+                        Field("doc", { Doc.ADAPTER }, optional = false, nullable = false),
                         Field("title", { PlanTitle.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> StepAsk.Plan(a[1] as String, a[2] as PlanTitle) },
-                        { v -> arrayOf("plan", v.text, v.title) },
+                        { a -> StepAsk.Plan(a[1] as Doc, a[2] as PlanTitle) },
+                        { v -> arrayOf("plan", v.doc, v.title) },
                     )),
                 ),
             )
