@@ -63,7 +63,8 @@ fn hog_once_accepting(hogs: &mut Vec<std::fs::File>) {
 /// 这个进程里此刻睡在 `accept4` 上的线程条数（`/proc/self/task/<tid>/stat` 的状态是 `S`、`syscall` 的号是 `accept4`）。
 #[cfg(target_os = "linux")]
 fn asleep_in_accept() -> usize {
-    let Ok(tasks) = std::fs::read_dir("/proc/self/task") else {
+    // 读的是这个进程的线程表，不是源码树：经后端的只读句柄读。
+    let Ok(tasks) = crate::platform::fs::Ro::read_dir("/proc/self/task") else {
         return 0;
     };
     tasks
