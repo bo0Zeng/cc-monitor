@@ -26,11 +26,10 @@ src/backend/stream/inbound/registry/history.rs	1
 src/backend/stream/inbound/registry/machine.rs	1
 src/backend/stream/mod.rs	1
 src/backend/wire/cli_words.rs	1
-src/common/cmd-wire/src/frame.rs	5
 src/common/creds-core/Cargo.toml	1
 src/common/creds-core/src/lib.rs	10
 src/common/creds-core/src/store.rs	1
-src/common/guard-core/src/lib.rs	47
+src/common/guard-core/src/lib.rs	3
 src/comms/outward/http1.rs	1
 src/comms/outward/lib.rs	1
 src/comms/outward/server.rs	3
