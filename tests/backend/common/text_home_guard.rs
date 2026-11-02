@@ -125,14 +125,23 @@ fn the_scans_recognise_the_hand_written_shapes() {
     let two = "Some(l.split_whitespace().take(2).collect::<Vec<_>>().join(\" \"))";
     assert_eq!(chained(&squeezed(two), COLLAPSE_HEAD, &[".join("]), 0);
     let first = "let l = s.lines().map(str::trim).find(|l| !l.is_empty())?;";
-    assert_eq!(chained(&squeezed(first), ".lines()", &[".find(", "is_empty()"]), 1);
+    assert_eq!(
+        chained(&squeezed(first), ".lines()", &[".find(", "is_empty()"]),
+        1
+    );
     let first2 = "s.lines().find(|l| !l.trim().is_empty()).unwrap_or(\"\");";
-    assert_eq!(chained(&squeezed(first2), ".lines()", &[".find(", "is_empty()"]), 1);
+    assert_eq!(
+        chained(&squeezed(first2), ".lines()", &[".find(", "is_empty()"]),
+        1
+    );
     let words = "let f: Vec<&str> = line.split_whitespace().collect();";
     assert_eq!(chained(&squeezed(words), COLLAPSE_HEAD, &[".join("]), 0);
     assert_eq!(ellipsis_appends(&squeezed("format!(\"{}…\", &s[..i])")), 1);
     assert_eq!(ellipsis_appends(&squeezed("format!(\"{cut}…\")")), 1);
     assert_eq!(ellipsis_appends(&squeezed("out.push('…');")), 1);
     // 文案句里的省略号不是截断。
-    assert_eq!(ellipsis_appends(&squeezed("reason = \"等那一下（…）再说\"")), 0);
+    assert_eq!(
+        ellipsis_appends(&squeezed("reason = \"等那一下（…）再说\"")),
+        0
+    );
 }

@@ -62,7 +62,11 @@ fn truncate_helpers() {
 /// 命中点之后那一截先压空白再数字：连串空白不吃掉字数（截了接「…」）。
 #[test]
 fn the_after_part_counts_chars_after_collapsing() {
-    let text = format!("docker{}{}", " \n ".repeat(SNIPPET_CTX), "y".repeat(SNIPPET_CTX * 2));
+    let text = format!(
+        "docker{}{}",
+        " \n ".repeat(SNIPPET_CTX),
+        "y".repeat(SNIPPET_CTX * 2)
+    );
     let (_b, _m, after) = make_snippet(&text, "docker");
     assert_eq!(after, format!("{}…", "y".repeat(SNIPPET_CTX)));
 }

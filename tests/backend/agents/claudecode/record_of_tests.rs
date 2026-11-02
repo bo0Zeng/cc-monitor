@@ -335,7 +335,11 @@ fn a_thinking_block_carries_its_collapsed_line() {
         .collect();
     assert_eq!(
         previews,
-        ["先看一眼".to_string(), format!("{}…", "想".repeat(160)), String::new()]
+        [
+            "先看一眼".to_string(),
+            format!("{}…", "想".repeat(160)),
+            String::new()
+        ]
     );
 }
 
