@@ -1258,7 +1258,7 @@ function filterPanel(
   const panel = document.createElement("div");
   panel.className = s.hvFilter;
   panel.append(
-    filterGroup(copyText("newSession.label.machine"), ...machines),
+    filterGroup(copyText("detail.label.machine"), ...machines),
     filterGroup(
       copyText("history.filter.time"),
       ...radioSet<0 | 7 | 30>("hv-time", p.withinDays, [

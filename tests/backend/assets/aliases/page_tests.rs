@@ -126,7 +126,7 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
     assert_eq!(b["own"][0]["vals"], json!(["team"]));
     assert_eq!(b["own"][0]["line"], 11);
     // 树里那一行的摘要与表单、合并表同一套词：标签「账号」＋ 值。
-    let label = copy_text("newSession.label.account", &[]);
+    let label = copy_text("beProfile.slot.account", &[]);
     assert_eq!(
         b["said"],
         copy_text("beProfile.said.slot", &[("label", &label), ("val", "team")])
@@ -232,7 +232,7 @@ fn resolve_lists_every_item_with_label_origin_and_the_overridden_ones_struck() {
     assert_eq!(row(&r, "ccm-tmux", "cct")["overriddenBy"], "teamcct");
     assert!(row(&r, "ccm-tmux", "teamcct")["overriddenBy"].is_null());
     let acct = row(&r, "account", "teamcct");
-    assert_eq!(acct["label"], copy_text("newSession.label.account", &[]));
+    assert_eq!(acct["label"], copy_text("beProfile.slot.account", &[]));
     assert_eq!(acct["vals"], json!(["team"]));
     // 「来自哪一段」那一句也是这台写好的（新建框单个页那几格照摆）。
     assert_eq!(
@@ -805,7 +805,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
         (e.code.as_deref(), e.said.replace(&home, "<HOME>")),
         (
             Some("stale"),
-            "<HOME>/.cc-monitor/profiles.toml 在本页读取后被别处改过 · 本次未写入".to_string()
+            "<HOME>/.cc-monitor/profiles.toml · 已在别处改过 · 别名未写入".to_string()
         )
     );
 }

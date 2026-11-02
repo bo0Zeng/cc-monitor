@@ -275,7 +275,7 @@ export class AccountChip {
         },
       );
     }
-    openMenu({ el: anchor, align: "end" }, items, { label: copyText("newSession.label.account") });
+    openMenu({ el: anchor, align: "end" }, items, { label: copyText("beProfile.slot.account") });
   }
 
   /**

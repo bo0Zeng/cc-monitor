@@ -88,7 +88,7 @@ import java.util.UUID
  * 服务器列表那一屏的标题。没有机器时冷启动落在这一屏，它是新用户看到的第一屏。
  * 「SSH 主机」在界面上一律叫「服务器」。
  */
-val HOSTS_SCREEN_TITLE: String get() = copyText("newSession.label.machine")
+val HOSTS_SCREEN_TITLE: String get() = copyText("detail.label.machine")
 
 /**
  * 钥匙（SSH 密钥）那一屏的标题，以及通往它那颗按钮的字。

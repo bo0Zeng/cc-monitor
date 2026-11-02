@@ -22,7 +22,7 @@ pub fn unseen(offline: Words) -> SessionFace {
         dot: SessionDot::Unknown,
         life: Life::Unclear,
         settled: false,
-        name: Words(copy_text("sessionState.unseen.name", &[])),
+        name: Words(copy_text("runs.state.unknown", &[])),
         line: tip.clone(),
         tone: Tone::Plain,
         order: 3,

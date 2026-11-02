@@ -363,7 +363,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             (
                 K::Unsupported,
                 None,
-                "reason.sftp.unsupported",
+                "machineState.word.unsupported",
                 S::Key("machineState.problem.notUnix"),
                 vec![],
             ),
@@ -472,7 +472,7 @@ fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_miss
             (
                 K::Unsupported,
                 None,
-                "reason.sftp.unsupported",
+                "machineState.word.unsupported",
                 S::Key("machineState.problem.notUnix"),
                 vec![],
             ),

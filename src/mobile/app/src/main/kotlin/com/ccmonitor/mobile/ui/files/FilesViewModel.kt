@@ -317,7 +317,7 @@ class FilesViewModel(
         viewModelScope.launch {
             val id = start(dir)
             if (id == 0L) {
-                _events.tryEmit(Notice(offline.value ?: copyText("sessionState.unseen.name")))
+                _events.tryEmit(Notice(offline.value ?: copyText("runs.state.unknown")))
             } else {
                 mine += id
                 early.remove(id)?.let(::onBatch)

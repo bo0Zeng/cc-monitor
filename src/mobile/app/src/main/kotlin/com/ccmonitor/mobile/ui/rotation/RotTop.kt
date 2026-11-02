@@ -350,7 +350,7 @@ private fun Hint(
 private fun NeedsTag() {
     val ink = toneInk(NoteTone.WARN)
     Surface(shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, ink), color = MaterialTheme.colorScheme.surface) {
-        Text(copyText("tabBar.needs.label"), style = MaterialTheme.typography.labelSmall, color = ink, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+        Text(copyText("beSession.needs.unknown"), style = MaterialTheme.typography.labelSmall, color = ink, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
     }
 }
 

@@ -69,7 +69,7 @@ function bar(
 
 /** agent 交回 / 途中来话。`label` ＝ 运行表给的标签（查不到 ⇒ 来话自带的名字 ⇒「agent」）。`pull` ＝ 正文里代码块的高亮问谁。 */
 export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: string | undefined, pull?: HlPull): HTMLElement {
-  const name = label || sp.name || copyText("newSession.label.agent");
+  const name = label || sp.name || copyText("beProfile.slot.agent");
   return bar(
     "agent",
     copyText("speaker.agent.title", { label: name }),

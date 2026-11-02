@@ -62,7 +62,7 @@ export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
   if (isLive(r.face) && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
-  else if (live && isLive(r.face)) badges.push(badge(copyText("history.row.live"), "live"));
+  else if (live && isLive(r.face)) badges.push(badge(copyText("runs.state.running"), "live"));
   return badges;
 }
 
@@ -238,7 +238,7 @@ export function groupHead(
     c.className = s.hvGroupCount;
     c.textContent = copyText("history.group.count", { n: g.count });
     el.appendChild(c);
-    if (g.hasLive) el.appendChild(statusDot("running", copyText("history.row.live"), "compact"));
+    if (g.hasLive) el.appendChild(statusDot("running", copyText("runs.state.running"), "compact"));
     const add = button({
       label: copyText("history.group.newSession"),
       size: "compact",

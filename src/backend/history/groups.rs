@@ -591,7 +591,7 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
         let n_text = n.to_string();
         let n_text = n_text.as_str();
         let text = match dot {
-            SessionDot::NeedsYou => copy_core::copy_text("tabBar.needs.aria", &[("n", n_text)]),
+            SessionDot::NeedsYou => copy_core::copy_text("beGroups.count.needs", &[("n", n_text)]),
             SessionDot::Running => copy_core::copy_text("beGroups.count.running", &[("n", n_text)]),
             _ => copy_core::copy_text("beGroups.count.background", &[("n", n_text)]),
         };

@@ -57,7 +57,7 @@ describe("回答与运行表：出口照摆后端写好的成品", () => {
     const runs = "src/frontend/ui/runs.ts";
     expect(hits([{ file: runs, text: backend(runs) }], needles)).toEqual([]);
     const be = backend("src/backend/observe/runs.rs");
-    for (const k of ["history.row.live", "runs.state.done", "runs.state.failed", "runs.state.stopped", "sessionState.unseen.name", "newSession.label.agent", "runs.last.tool"]) {
+    for (const k of ["runs.state.running", "runs.state.done", "runs.state.failed", "runs.state.stopped", "runs.state.unknown", "beProfile.slot.agent", "runs.last.tool"]) {
       expect(be, `正控：${k} 由后端写`).toContain(`"${k}"`);
     }
   });

@@ -100,7 +100,7 @@ fun RotationScreen(
             val down = linkState as? LinkLine.Down
             when {
                 // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
-                down != null -> DownBox(offline ?: copyText("sessionState.unseen.name"))
+                down != null -> DownBox(offline ?: copyText("runs.state.unknown"))
                 !ui.loaded -> Skeleton(sid != null)
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }

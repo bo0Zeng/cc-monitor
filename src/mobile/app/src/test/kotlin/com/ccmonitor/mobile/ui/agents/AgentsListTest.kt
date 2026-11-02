@@ -30,7 +30,7 @@ class AgentsListTest {
             summary = "成品写的子 agent 那一句",
         )
 
-    private val running = "head:RUNNING:${copyText("history.row.live")}"
+    private val running = "head:RUNNING:${copyText("runs.state.running")}"
     private val recent = "head:RECENT:${copyText("agentsPanel.group.recent")}"
 
     private fun shape(items: List<AgentsItem>) =

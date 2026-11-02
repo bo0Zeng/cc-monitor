@@ -715,7 +715,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     await flush();
     expect(vi.mocked(resumeAccounts).mock.calls[0].slice(0, 2)).toEqual(["<local>", "claude"]);
     const headings = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="presentation"]')].map((e) => e.textContent);
-    expect(headings).toEqual([copyText("newSession.label.account"), copyText("resumeMenu.group.run")]);
+    expect(headings).toEqual([copyText("beProfile.slot.account"), copyText("resumeMenu.group.run")]);
     const items = menuItems();
     const work = menuItem("work")!;
     expect(work.querySelector(".acct-avatar"), "号前面它的头像").not.toBeNull();

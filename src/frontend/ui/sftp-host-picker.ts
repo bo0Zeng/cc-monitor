@@ -37,6 +37,6 @@ export async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
   openMenu(
     { el: anchor, align: "end" },
     hosts.map((h) => ({ label: h.name, onClick: () => void openFileWindow(h.name) })),
-    { label: copyText("newSession.label.machine") },
+    { label: copyText("detail.label.machine") },
   );
 }

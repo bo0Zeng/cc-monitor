@@ -30,8 +30,8 @@ data class SettingsEntry(
  */
 fun settingsEntries(): List<SettingsEntry> =
     listOf(
-        SettingsEntry(Ph.HardDrives, copyText("newSession.label.machine"), Screen.Hosts.route, readsMachine = false, count = EntryCount.MACHINES),
-        SettingsEntry(Ph.UserCircle, copyText("newSession.label.account"), Screen.Accounts.route, readsMachine = true),
+        SettingsEntry(Ph.HardDrives, copyText("detail.label.machine"), Screen.Hosts.route, readsMachine = false, count = EntryCount.MACHINES),
+        SettingsEntry(Ph.UserCircle, copyText("beProfile.slot.account"), Screen.Accounts.route, readsMachine = true),
         // 轮换看的是当前那台新会话用的那份。
         SettingsEntry(Ph.ArrowCounterClockwise, copyText("machinePage.tab.rot"), Screen.RotationHere.route, readsMachine = true),
         SettingsEntry(Ph.Key, copyText("mobIdentity.page.title"), Screen.Identities.route, readsMachine = false, count = EntryCount.KEYS),

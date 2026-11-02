@@ -47,7 +47,7 @@ export class CcBusSection {
 
     const label = document.createElement("span");
     label.className = "settings-label";
-    label.textContent = copyText("newSession.label.machine");
+    label.textContent = copyText("detail.label.machine");
     row.appendChild(label);
 
     this.originSel = document.createElement("select");

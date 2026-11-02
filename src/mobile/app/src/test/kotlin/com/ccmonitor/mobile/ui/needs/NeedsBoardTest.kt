@@ -244,8 +244,8 @@ class NeedsBoardTest {
     @Test
     fun `入口：总数 0 ⇒ 不画；≥ 1 ⇒ 需手动 n；数说不准 ⇒ 不带数字`() {
         assertNull(entryText(0, uncertain = false))
-        assertEquals(copyText("tabBar.needs.aria", "n" to 3), entryText(3, uncertain = false))
-        assertEquals(copyText("tabBar.needs.label"), entryText(3, uncertain = true))
+        assertEquals(copyText("beGroups.count.needs", "n" to 3), entryText(3, uncertain = false))
+        assertEquals(copyText("beSession.needs.unknown"), entryText(3, uncertain = true))
     }
 
     @Test

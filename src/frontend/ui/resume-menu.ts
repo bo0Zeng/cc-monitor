@@ -146,7 +146,7 @@ export function resumeMenuItems(spec: ResumeMenuSpec): MenuItem[] {
     );
   }
   if (accounts.kind !== "off") {
-    items.push({ label: copyText("newSession.label.account"), heading: true });
+    items.push({ label: copyText("beProfile.slot.account"), heading: true });
     if (accounts.kind === "none") {
       items.push({ label: copyText("history.resume.noAccounts", { agent: accounts.agentName }), enabled: false });
     } else {

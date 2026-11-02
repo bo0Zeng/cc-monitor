@@ -380,7 +380,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // 机器
   const machineSel = select({
-    label: copyText("newSession.label.machine"),
+    label: copyText("detail.label.machine"),
     options: [machineOption({ origin, up: true }, origin)],
     value: origin,
     onChange: (v) => {
@@ -393,7 +393,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (onSet) paintPage();
     },
   });
-  const machineRow = row(copyText("newSession.label.machine"), machineSel.el, false);
+  const machineRow = row(copyText("detail.label.machine"), machineSel.el, false);
   form.appendChild(machineRow.root);
 
   // 单个页那几格住 `single`；一组页是另一份（`new-session-set.ts`），换页只换哪一份露着。
@@ -462,7 +462,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // agent（那台能起的多于一家才出）
   const agentSel = select({
-    label: copyText("newSession.label.agent"),
+    label: copyText("beProfile.slot.agent"),
     options: [],
     onChange: (v) => {
       agent = v;
@@ -471,13 +471,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       void paintAccounts().then(() => handle.refresh());
     },
   });
-  const agentRow = row(copyText("newSession.label.agent"), agentSel.el, false);
+  const agentRow = row(copyText("beProfile.slot.agent"), agentSel.el, false);
   agentRow.root.hidden = true;
   single.appendChild(agentRow.root);
 
   // 账号
   const accountSel = select({
-    label: copyText("newSession.label.account"),
+    label: copyText("beProfile.slot.account"),
     options: [],
     onChange: () => {
       // 人改了这一格 ⇒ 盖过别名。
@@ -486,7 +486,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       handle.refresh();
     },
   });
-  const accountRow = row(copyText("newSession.label.account"), accountSel.el, false);
+  const accountRow = row(copyText("beProfile.slot.account"), accountSel.el, false);
   accountRow.root.hidden = true;
   single.appendChild(accountRow.root);
 
@@ -538,8 +538,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   promptInput.rows = 3;
   promptInput.spellcheck = false;
   promptInput.value = spec.prompt ?? "";
-  promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
-  const promptRow = row(copyText("newSession.label.prompt"), promptInput);
+  promptInput.setAttribute("aria-label", copyText("beProfile.slot.say"));
+  const promptRow = row(copyText("beProfile.slot.say"), promptInput);
   single.appendChild(promptRow.root);
   if (ask) paintRuns(ask.runs);
 

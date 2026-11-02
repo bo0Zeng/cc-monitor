@@ -1674,7 +1674,7 @@ fn the_run_table_carries_its_own_words() {
     assert_eq!(
         words(&s.runs[0]),
         (
-            Words(copy_text("history.row.live", &[])),
+            Words(copy_text("runs.state.running", &[])),
             Words("审交互".into()),
             Some(Words(copy_text("runs.last.tool", &[("tool", "Bash")]))),
         )
@@ -1683,14 +1683,14 @@ fn the_run_table_carries_its_own_words() {
         words(&s.runs[1]),
         (
             Words(copy_text("runs.state.failed", &[])),
-            Words(copy_text("newSession.label.agent", &[])),
+            Words(copy_text("beProfile.slot.agent", &[])),
             Some(Words(copy_text("runs.last.think", &[]))),
         )
     );
     for (st, key) in [
         (RunState::Done, "runs.state.done"),
         (RunState::Stopped, "runs.state.stopped"),
-        (RunState::Unknown, "sessionState.unseen.name"),
+        (RunState::Unknown, "runs.state.unknown"),
     ] {
         assert_eq!(status_text(st), Words(copy_text(key, &[])), "{st:?}");
     }
@@ -1818,7 +1818,7 @@ fn the_run_table_writes_facts_explain_and_end() {
             sub: line("agentWindow.end.failed", &[], None),
         })
     );
-    let unknown = Some(Words(copy_text("sessionState.unseen.name", &[])));
+    let unknown = Some(Words(copy_text("runs.state.unknown", &[])));
     assert_eq!(
         c.explain,
         Some(RunExplain {

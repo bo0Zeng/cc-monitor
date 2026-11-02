@@ -530,7 +530,7 @@ fn part_label(key: &str) -> String {
     match key {
         "skills" => copy_text("beExt.part.skills", &[]),
         "commands" => copy_text("detail.label.command", &[]),
-        "agents" => copy_text("newSession.label.agent", &[]),
+        "agents" => copy_text("beProfile.slot.agent", &[]),
         "hooks" => copy_text("beExt.part.hooks", &[]),
         _ => copy_text("extPage.filter.mcp", &[]),
     }

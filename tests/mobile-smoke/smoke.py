@@ -166,7 +166,7 @@ def foreground():
 def launch(fresh=False):
     start_app()
     if fresh:
-        if not wait(t("newSession.label.machine"), 20):
+        if not wait(t("detail.label.machine"), 20):
             raise Step.Fail("App 没起来")
         return
     to_chat()
@@ -1321,7 +1321,7 @@ def walk():
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
             raise Step.Fail("历史清单没出新会话")
-        needs = [t("tabBar.needs.label")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
+        needs = [t("beSession.needs.unknown")] + [t(f"beSession.needs.{k}") for k in ("approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown")]
         end = time.time() + 20
         while time.time() < end and row_text(f"{T} needs", needs) is None:
             time.sleep(1)
@@ -1511,7 +1511,7 @@ def walk():
 
     with Step("4e-答提问") as st:
         st.back_to(f"{T} new session")
-        ask_up(f"{T} quiz go", t("needs.bar.answer"), t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
+        ask_up(f"{T} quiz go", t("beSession.needs.answer"), t("mobAsk.head.page", head=t("beSession.needs.answer"), i=1, n=2))
         tap("Red")
         shot("4e-提问第一题")
         tap(t("mobAsk.act.next")); time.sleep(1)
@@ -1795,7 +1795,7 @@ def walk():
         items = (frames("sessions-needs", {}).get("data") or {}).get("items") or []
         if not any(i.get("kind") == "manual" for i in items) or not any(i.get("kind") == "session" for i in items):
             raise Step.Fail(f"台架那台的需手动里没有会话 ＋ 会外两样：{[i.get('kind') for i in items]!r}")
-        entry = t("tabBar.needs.aria", n=len(items))
+        entry = t("beGroups.count.needs", n=len(items))
         if not wait(entry, 30):
             raise Step.Fail(f"聊天屏右上没有「{entry}」")
         tap(entry)
@@ -1817,7 +1817,7 @@ def walk():
         # 那台断了 ⇒ 入口的数减掉那台（只连着这一台 ⇒ 入口不画）。造法：停掉那台的常驻、落点挪开（重连 ensure 起不来），
         # 判完才放回去 —— 判的那几十秒里一直断着（先放回再判，手机早连回去了、入口照旧在）。
         launch()
-        entry = t("tabBar.needs.aria", n=len((frames("sessions-needs", {}).get("data") or {}).get("items") or []))
+        entry = t("beGroups.count.needs", n=len((frames("sessions-needs", {}).get("data") or {}).get("items") or []))
         if not wait(entry, 30):
             raise Step.Fail(f"断开之前聊天屏右上就没有「{entry}」")
         rig("backend", "off")

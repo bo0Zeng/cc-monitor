@@ -138,6 +138,6 @@ class FileOpsTest {
             assertEquals(FakeCoreLink.OFFLINE, e.problem.text)
             val noProduct = FakeCoreLink().apply { offline.value = null }
             val u = FileOps(noProduct) { "box" }.list(dir).exceptionOrNull() as FileOps.Failed
-            assertEquals(copyText("sessionState.unseen.name"), u.problem.text)
+            assertEquals(copyText("runs.state.unknown"), u.problem.text)
         }
 }

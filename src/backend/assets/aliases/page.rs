@@ -67,7 +67,7 @@ impl Slot {
 pub(crate) const SLOTS: &[Slot] = &[
     Slot {
         id: SlotId::Account,
-        label: || copy_text("newSession.label.account", &[]),
+        label: || copy_text("beProfile.slot.account", &[]),
         flags: &[flag::ACCOUNT, flag::BASE],
     },
     Slot {
@@ -87,7 +87,7 @@ pub(crate) const SLOTS: &[Slot] = &[
     },
     Slot {
         id: SlotId::Agent,
-        label: || copy_text("newSession.label.agent", &[]),
+        label: || copy_text("beProfile.slot.agent", &[]),
         flags: &[flag::AGENT],
     },
     Slot {
@@ -122,7 +122,7 @@ pub(crate) const SLOTS: &[Slot] = &[
     },
     Slot {
         id: SlotId::Say,
-        label: || copy_text("newSession.label.prompt", &[]),
+        label: || copy_text("beProfile.slot.say", &[]),
         flags: &[flag::SAY],
     },
 ];

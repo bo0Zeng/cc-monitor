@@ -73,7 +73,7 @@ export function openAccountPanel(sid: string | null, origin: Machine, host: Acct
   body.className = s.acctPanel;
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
-    title: copyText("newSession.label.account"),
+    title: copyText("beProfile.slot.account"),
     sub: sid === null ? machineLabel(origin) : copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
     body,
     width: 540,

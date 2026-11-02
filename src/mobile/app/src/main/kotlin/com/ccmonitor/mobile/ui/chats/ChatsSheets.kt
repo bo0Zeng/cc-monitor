@@ -72,7 +72,7 @@ fun FilterSheet(
                 listOf(ChatsView.TIME to copyText("history.page.byTime"), ChatsView.DIR to copyText("history.page.byProject")),
                 f.view,
             ) { v -> onFilters { it.copy(view = v) } }
-            Head(copyText("newSession.label.machine"))
+            Head(copyText("detail.label.machine"))
             ui.choices.forEach { c ->
                 Row(
                     Modifier

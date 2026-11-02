@@ -72,7 +72,7 @@ export class AgentsPanel {
 
   /** 页签上的字（有 agent ⇒ 与 chip 同字；没有 ⇒ 页名）。 */
   get label(): string {
-    return this.table.summary !== undefined && this.activeSid !== null ? this.table.summary : copyText("newSession.label.agent");
+    return this.table.summary !== undefined && this.activeSid !== null ? this.table.summary : copyText("beProfile.slot.agent");
   }
 
   /** 抽屉开到 / 离开这一页（宿主调）：chip 的「开着」跟着变。 */
@@ -137,7 +137,7 @@ export class AgentsPanel {
     this.onLabel?.(this.label);
 
     const items: HTMLElement[] = [];
-    if (g.running.length > 0) items.push(this.head("running", copyText("history.row.live")), ...g.running.flatMap((r) => this.row(r)));
+    if (g.running.length > 0) items.push(this.head("running", copyText("runs.state.running")), ...g.running.flatMap((r) => this.row(r)));
     if (g.recent.length > 0) items.push(this.head("recent", copyText("agentsPanel.group.recent")), ...g.recent.flatMap((r) => this.row(r)));
     if (g.older.length > 0) {
       items.push(this.olderToggle(this.table.groups.older_text ?? ""));

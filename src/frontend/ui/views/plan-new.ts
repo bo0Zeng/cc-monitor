@@ -72,7 +72,7 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
   const body = document.createElement("div");
   body.className = s.pnForm;
   const machineSel = select({
-    label: copyText("newSession.label.machine"),
+    label: copyText("detail.label.machine"),
     options: host.machines().map((m) => ({ value: m, label: machineName(m) })),
     value: origin,
     onChange: (v) => {
@@ -94,9 +94,9 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
   });
   const pair = document.createElement("div");
   pair.className = s.pnPair;
-  pair.append(row(copyText("newSession.label.machine"), machineSel.el), row(copyText("plan.new.workspace"), dirSel.el, note(copyText("plan.new.workspaceHint"))));
+  pair.append(row(copyText("detail.label.machine"), machineSel.el), row(copyText("plan.new.workspace"), dirSel.el, note(copyText("plan.new.workspaceHint"))));
 
-  const path = field({ label: copyText("rsFilewinProps.label.path"), help: copyText("plan.new.pathHint") });
+  const path = field({ label: copyText("detail.label.path"), help: copyText("plan.new.pathHint") });
   const where = note();
   path.root.appendChild(where);
   path.input.addEventListener("input", () => {

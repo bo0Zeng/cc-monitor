@@ -587,7 +587,7 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
         (Io::other("Permission denied"), word("reason.io.denied")),
         (
             Io::other("Operation unsupported"),
-            word("reason.sftp.unsupported"),
+            word("machineState.word.unsupported"),
         ),
         (Io::other("Bad message"), word("reason.code.bug")),
         (Io::other("Failure"), word("reason.io.unknown")),
@@ -596,7 +596,7 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
         (Io::from(st(C::PermissionDenied)), word("reason.io.denied")),
         (
             Io::from(st(C::OpUnsupported)),
-            word("reason.sftp.unsupported"),
+            word("machineState.word.unsupported"),
         ),
         (Io::from(E::Timeout), word("reason.link.noAnswer")),
         (Io::from(st(C::ConnectionLost)), word("reason.link.lost")),

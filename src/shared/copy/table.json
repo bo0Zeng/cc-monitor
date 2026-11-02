@@ -2107,7 +2107,7 @@
       "zh": "记录已不在 · 不可恢复",
       "args": []
     },
-    "sessionState.unseen.name": {
+    "runs.state.unknown": {
       "kind": "body",
       "role": "片段",
       "zh": "状态不明",
@@ -10958,7 +10958,7 @@
       "zh": "原会话不变 · 新建前不写入 · 终端名自动换新",
       "args": []
     },
-    "newSession.label.machine": {
+    "detail.label.machine": {
       "kind": "action",
       "role": "菜单项",
       "zh": "机器",
@@ -10970,13 +10970,13 @@
       "zh": "工作目录",
       "args": []
     },
-    "newSession.label.agent": {
+    "beProfile.slot.agent": {
       "kind": "action",
       "role": "按钮",
       "zh": "agent",
       "args": []
     },
-    "newSession.label.account": {
+    "beProfile.slot.account": {
       "kind": "action",
       "role": "菜单项",
       "zh": "账号",
@@ -10995,7 +10995,7 @@
       "zh": "启动命令",
       "args": []
     },
-    "newSession.label.prompt": {
+    "beProfile.slot.say": {
       "kind": "control",
       "role": "标签",
       "zh": "第一句话",
@@ -17580,7 +17580,7 @@
       "zh": "新建空文件",
       "args": []
     },
-    "rsFilewinProps.label.path": {
+    "detail.label.path": {
       "kind": "control",
       "role": "标签",
       "zh": "路径",
@@ -17850,7 +17850,7 @@
       "zh": "{year} 年 {month} 月",
       "args": ["year", "month"]
     },
-    "history.row.live": {
+    "runs.state.running": {
       "kind": "body",
       "role": "片段",
       "zh": "在跑",
@@ -19442,7 +19442,7 @@
       "zh": "关闭窗口",
       "args": []
     },
-    "tabBar.needs.label": {
+    "beSession.needs.unknown": {
       "kind": "action",
       "role": "按钮",
       "zh": "需手动",
@@ -19451,6 +19451,12 @@
     "tabBar.needs.aria": {
       "kind": "aria",
       "role": "读屏",
+      "zh": "需手动的会话 {n}",
+      "args": ["n"]
+    },
+    "beGroups.count.needs": {
+      "kind": "body",
+      "role": "说明",
       "zh": "需手动 {n}",
       "args": ["n"]
     },
@@ -19795,7 +19801,7 @@
       "zh": "等批准 · {tool}",
       "args": ["tool"]
     },
-    "needs.bar.answer": {
+    "beSession.needs.answer": {
       "kind": "body",
       "role": "片段",
       "zh": "等回答",
@@ -19825,7 +19831,7 @@
       "zh": "等确认 · 会话目标",
       "args": []
     },
-    "needs.bar.choose": {
+    "beSession.needs.choose": {
       "kind": "body",
       "role": "片段",
       "zh": "等选择",
@@ -23990,7 +23996,7 @@
       "zh": "{what}未保存 · {said}",
       "args": ["what", "said"]
     },
-    "reason.sftp.unsupported": {
+    "machineState.word.unsupported": {
       "kind": "body",
       "role": "片段",
       "zh": "不支持",
