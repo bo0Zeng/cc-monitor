@@ -402,7 +402,7 @@ fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
     match e {
         E::Status(st) => copy_core::sftp_status_reason(st.status_code as u32),
         E::Timeout => copy_text("reason.link.noAnswer", &[]),
-        E::Limited(_) => copy_text("reason.sftp.overLimit", &[]),
+        E::Limited(_) => copy_text("reason.code.overLimit", &[]),
         E::UnexpectedPacket => copy_text("reason.code.bug", &[]),
         E::IO(_) | E::UnexpectedBehavior(_) => copy_core::io_reason(std::io::ErrorKind::Other),
     }

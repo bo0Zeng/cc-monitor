@@ -64,7 +64,7 @@ pub(crate) fn render(
     config_unknown: &[String],
     log_file: Option<&str>,
 ) -> DiagnosticsReport {
-    let none = copy_text("rsDiagReport.text.none", &[]);
+    let none = copy_text("acct.val.none", &[]);
     let mut out = vec![
         copy_text("rsDiagReport.text.head", &[]),
         copy_text(
@@ -110,7 +110,7 @@ pub(crate) fn render(
                 &if config_unknown.is_empty() {
                     none.clone()
                 } else {
-                    config_unknown.join(&copy_text("rsDiagReport.text.keySep", &[]))
+                    config_unknown.join(&copy_text("plan.page.listSep", &[]))
                 },
             ),
         ],
@@ -186,7 +186,7 @@ pub async fn diagnostics_report(
         let log_file = state.log_file_info().current_file;
         let local = cmd_wire::LOCAL;
         let mut origins: Vec<(String, String)> =
-            vec![(local.to_string(), copy_text("rsDiagReport.text.local", &[]))];
+            vec![(local.to_string(), copy_text("detail.label.local", &[]))];
         for row in crate::machine_table::rows_now() {
             origins.push((row.name.clone(), row.name));
         }

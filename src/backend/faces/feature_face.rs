@@ -306,14 +306,14 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
         .iter()
         .map(|e| {
             let login = (e.status == McpStatus::NeedsLogin).then(|| {
-                let who = e.login_in.join(&copy_text("beMcp.mark.sep", &[]));
+                let who = e.login_in.join(&copy_text("plan.page.listSep", &[]));
                 let at = e.seen_ms.map_or(String::new(), |t| {
                     time(i64::try_from(t).unwrap_or(i64::MAX))
                 });
                 let (said, tip) = if who.is_empty() {
                     (
                         copy_text("beMcp.mark.loginBare", &[("time", &at)]),
-                        copy_text("beMcp.mark.loginTipBare", &[]),
+                        copy_text("acct.tag.login", &[]),
                     )
                 } else {
                     (
@@ -350,7 +350,7 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
                     };
                     McpFailedMark {
                         said,
-                        tip: copy_text("beMcp.mark.failedTip", &[]),
+                        tip: copy_text("beServer.words.cantConnect", &[]),
                         detail: f.detail.clone(),
                     }
                 });

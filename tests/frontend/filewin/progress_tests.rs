@@ -235,7 +235,7 @@ fn a_tree_delete_row_stops_through_its_ticket() {
     assert_eq!(
         v.title,
         copy_text(
-            "rsFilewinBatch.row.title",
+            "beFiles.batch.head",
             &[
                 ("action", &copy_text("beFiles.batch.verbDelete", &[])),
                 ("n", "1")

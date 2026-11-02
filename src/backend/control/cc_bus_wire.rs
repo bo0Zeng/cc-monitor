@@ -129,7 +129,7 @@ pub(crate) fn act_said(a: cmd_wire::bus::BusAct) -> String {
         A::Answer => copy_text("ccBus.act.answer", &[]),
         A::Request => copy_text("ccBus.act.request", &[]),
         A::Inform => copy_text("ccBus.act.inform", &[]),
-        A::Handback => copy_text("ccBus.act.handback", &[]),
+        A::Handback => copy_text("speaker.tag.handback", &[]),
         A::Correct => copy_text("ccBus.act.correct", &[]),
     }
 }

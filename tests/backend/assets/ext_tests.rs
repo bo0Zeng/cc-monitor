@@ -1606,9 +1606,9 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         vec![
             (ExtState::Same, n("beExt.legend.same")),
             (ExtState::Differs, n("beExt.legend.differs")),
-            (ExtState::Missing, n("beExt.state.missing")),
+            (ExtState::Missing, n("reason.spawn.notInstalled")),
             (ExtState::Project, n("beExt.legend.project")),
-            (ExtState::Off, n("beExt.legend.off")),
+            (ExtState::Off, n("beExt.state.off")),
         ]
     );
     let mut no_plugin = asset_catalog::fresh("h".into());

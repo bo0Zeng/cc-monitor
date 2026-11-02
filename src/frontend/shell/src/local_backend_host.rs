@@ -231,7 +231,7 @@ fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String
     let say = |m: &std::collections::BTreeMap<String, String>, k: &str| {
         m.get(k)
             .cloned()
-            .unwrap_or_else(|| copy_text("rsLocalBackendHost.dataDir.absent", &[]))
+            .unwrap_or_else(|| copy_text("hostKey.compare.none", &[]))
     };
     let diffs: Vec<String> = HANDED_ENVS
         .iter()
@@ -249,10 +249,7 @@ fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String
         .collect();
     Some(copy_text(
         "rsLocalBackendHost.dataDir.otherDataDir",
-        &[(
-            "diffs",
-            &diffs.join(&copy_text("rsLocalBackendHost.dataDir.slotSep", &[])),
-        )],
+        &[("diffs", &diffs.join(&copy_text("kit.text.sep", &[])))],
     ))
 }
 
@@ -764,7 +761,7 @@ fn attach_stream(
         // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
         let mut unread = crate::stream_source::UnreadNotes::new(
             cmd_wire::LOCAL,
-            copy_text("rsLocalBackendHost.local.machine", &[]),
+            copy_text("detail.label.local", &[]),
         );
         loop {
             match crate::stream_source::read_capped_line(
@@ -1435,7 +1432,7 @@ pub fn start_local_backend() -> StartOutcome {
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
     let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
-        .map_err(|r| r.say(&copy_text("rsLocalBackendHost.local.machine", &[])))
+        .map_err(|r| r.say(&copy_text("detail.label.local", &[])))
         .and_then(|p| {
             p.build_id
                 .map(|id| (id, p.bytes))
@@ -1749,7 +1746,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     // 起不来那几样只有一颗：［重试］＝ 再起一次本机后端。
     let fixes = vec![cmd_wire::machine::FixButton {
         fix: cmd_wire::machine::MachineFix::Retry,
-        label: copy_text("machineState.fix.retry", &[]),
+        label: copy_text("front.act.retry", &[]),
     }];
     match relation {
         Relation::Older => LocalBackend::Older {

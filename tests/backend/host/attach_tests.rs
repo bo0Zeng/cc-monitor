@@ -241,7 +241,7 @@ fn the_clients_sheet_uses_the_short_words_and_ends_with_the_legend() {
     ]);
     assert_eq!(lines.len(), 4);
     assert!(lines[0].contains(&copy_text("beTerminal.who.terminalWindow", &[])));
-    assert!(lines[1].contains(&copy_text("beTerminal.who.desktop", &[])));
+    assert!(lines[1].contains(&copy_text("beQueue.from.desktop", &[])));
     assert_eq!(
         lines.last().map(String::as_str),
         Some(copy_text("beHost.attach.clientsLegend", &[]).as_str())

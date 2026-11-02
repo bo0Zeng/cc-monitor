@@ -86,8 +86,7 @@ fn outcome(
         peer: peer.map(str::to_string),
         changed,
         pushed,
-        error: (!errors.is_empty())
-            .then(|| errors.join(&copy_text("beAssetSync.report.errorSep", &[]))),
+        error: (!errors.is_empty()).then(|| errors.join(&copy_text("kit.text.sep", &[]))),
     }
 }
 

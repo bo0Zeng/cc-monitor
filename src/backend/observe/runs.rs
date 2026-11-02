@@ -1108,11 +1108,11 @@ pub(crate) fn next_event<T>(
 /// 状态写好的字（运行表 · 被挤出的那几项同一处）。
 pub(crate) fn status_text(s: RunState) -> Words {
     Words(match s {
-        RunState::Running => copy_text("runs.state.running", &[]),
+        RunState::Running => copy_text("history.row.live", &[]),
         RunState::Done => copy_text("runs.state.done", &[]),
         RunState::Failed => copy_text("runs.state.failed", &[]),
         RunState::Stopped => copy_text("runs.state.stopped", &[]),
-        RunState::Unknown => copy_text("runs.state.unknown", &[]),
+        RunState::Unknown => copy_text("sessionState.unseen.name", &[]),
     })
 }
 
@@ -1179,11 +1179,11 @@ fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
     }
     if i.calls > 0 {
         let n = i.calls.to_string();
-        out.push(said(copy_text("agentWindow.facts.calls", &[("n", &n)])));
+        out.push(said(copy_text("rsTurns.proc.tools", &[("n", &n)])));
     }
     if kids > 0 {
         let n = kids.to_string();
-        out.push(said(copy_text("agentWindow.facts.kids", &[("n", &n)])));
+        out.push(said(copy_text("rsTurns.proc.agents", &[("n", &n)])));
     }
     if i.background {
         out.push(said(copy_text("agentWindow.facts.background", &[])));
@@ -1339,7 +1339,7 @@ fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
         i.label
             .clone()
             .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| copy_text("runs.label.unnamed", &[])),
+            .unwrap_or_else(|| copy_text("newSession.label.agent", &[])),
     );
     i.last_text = i.last.as_ref().map(|d| {
         Words(match d {

@@ -394,7 +394,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         );
         let line = k.line.to_string();
         c.name = copy_text("beChore.clash.name", &[("name", &k.name)]);
-        c.loc = copy_text("beChore.clash.loc", &[("path", &k.path), ("line", &line)]);
+        c.loc = copy_text("beChore.sshd.loc", &[("path", &k.path), ("line", &line)]);
         c.said = match k.wins.as_str() {
             "yours" => copy_text("beChore.clash.winsYours", &[]),
             "list" => copy_text("beChore.clash.winsList", &[]),
@@ -551,7 +551,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             ChoreAction::CopyCommand,
         );
         c.name = copy_text("beChore.mcpLogin.name", &[("name", &m.name)]);
-        c.loc = m.who.join(&copy_text("beChore.mcpLogin.whoSep", &[]));
+        c.loc = m.who.join(&copy_text("plan.page.listSep", &[]));
         c.said = copy_text("beChore.mcpLogin.said", &[]);
         c.why = copy_text("beChore.mcpLogin.why", &[]);
         c.steps = vec![copy_text("beChore.mcpLogin.step", &[("name", &m.name)])];

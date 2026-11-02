@@ -215,7 +215,7 @@ fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
     let text = |a: &AskIn, label: Option<&str>| product_of("a", a, label, 1).run.unwrap().text.0;
     let named = copy_text("speaker.agent.title", &[("label", "Audit")]);
     assert_eq!(text(&a, Some("Audit")), named);
-    assert_eq!(text(&a, None), copy_text("askBlock.tag.runBare", &[]));
+    assert_eq!(text(&a, None), copy_text("newSession.label.agent", &[]));
     a.agent_type = Some("Explore".into());
     assert_eq!(
         text(&a, Some("Audit")),

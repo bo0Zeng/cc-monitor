@@ -228,8 +228,8 @@ pub(crate) fn said(code: &str) -> Option<String> {
     Some(match code {
         "tmux_too_old" | "too_many_follows" => return None,
         "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
-        "not_known" => copy_text("beTermFollow.refuse.gone", &[]),
-        "ambiguous" => copy_text("beTermFollow.refuse.ambiguous", &[]),
+        "not_known" => copy_text("beTermFollow.end.gone", &[]),
+        "ambiguous" => copy_text("terminal.why.ambiguous", &[]),
         _ => copy_text("beTermFollow.refuse.other", &[]),
     })
 }
@@ -346,7 +346,7 @@ pub(crate) fn live_after_refusal(code: &str) -> Refused {
 pub(crate) fn end_said(why: FollowEnd) -> String {
     match why {
         FollowEnd::Gone => copy_text("beTermFollow.end.gone", &[]),
-        FollowEnd::Lost => copy_text("beTermFollow.end.lost", &[]),
+        FollowEnd::Lost => copy_text("terminal.liveWhy.lost", &[]),
         FollowEnd::TooBig => copy_text("beTermFollow.end.tooBig", &[]),
     }
 }

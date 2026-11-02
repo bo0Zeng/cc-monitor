@@ -363,7 +363,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             (
                 K::Unsupported,
                 None,
-                "machineState.word.unsupported",
+                "reason.sftp.unsupported",
                 S::Key("machineState.problem.notUnix"),
                 vec![],
             ),
@@ -472,7 +472,7 @@ fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_miss
             (
                 K::Unsupported,
                 None,
-                "machineState.word.unsupported",
+                "reason.sftp.unsupported",
                 S::Key("machineState.problem.notUnix"),
                 vec![],
             ),
@@ -764,7 +764,7 @@ fn the_empty_line_says_which_machines_are_not_counted() {
         one("devbox", "machinePage.state.down"),
         one("nas", "machineState.word.needsUpdate"),
     ]
-    .join(&copy_text("beEmpty.list.sep", &[]));
+    .join(&copy_text("plan.page.listSep", &[]));
     assert_eq!(
         f.hint,
         [

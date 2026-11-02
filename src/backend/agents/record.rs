@@ -203,7 +203,7 @@ fn notice_row(what: &str, end: Option<cmd_wire::record::TaskEnd>, time: &str) ->
         Some(TaskEnd::Done) => copy_core::copy_text("runs.state.done", &[]),
         Some(TaskEnd::Failed) => copy_core::copy_text("runs.state.failed", &[]),
         Some(TaskEnd::Stopped) => copy_core::copy_text("runs.state.stopped", &[]),
-        None => copy_core::copy_text("runs.state.unknown", &[]),
+        None => copy_core::copy_text("sessionState.unseen.name", &[]),
     };
     copy_core::copy_text(
         "speaker.notice.row",

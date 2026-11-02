@@ -33,7 +33,7 @@ impl FileChange {
 /// 告诉用户的那几句里那台叫什么：本机 ⇒「本机」，别台 ⇒ 它的名字。
 pub(crate) fn host_label(origin: &crate::origin::Origin) -> String {
     if origin.is_local() {
-        copy_core::copy_text("rsLocalBackend.place.thisMachine", &[])
+        copy_core::copy_text("detail.label.local", &[])
     } else {
         origin.to_string()
     }

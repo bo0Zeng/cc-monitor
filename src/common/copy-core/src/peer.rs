@@ -5,7 +5,7 @@ use crate::copy_text;
 /// 本机的名字：本机后端那一台成品的 `name` 取它，壳 · 通信层说本机后端那几句（那时没有成品可查）也取它，Rust 两侧只这一把键。
 /// 界面不取它，照成品的 `name` 叫（`chan-caller.ts::machineName`）。
 pub fn local_machine() -> String {
-    copy_text("remote.cards.local", &[])
+    copy_text("detail.label.local", &[])
 }
 
 /// 说话的这一层不知道那台叫什么时（通信层的兜底句 · 后端自己答「不认这条」）称呼它的那个词。

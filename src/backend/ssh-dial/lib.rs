@@ -204,7 +204,7 @@ pub mod stage {
     pub fn auth_ok() -> Stage {
         Stage::Auth {
             ok: true,
-            said: copy_text("beProbe.stage.authOk", &[]),
+            said: copy_text("accounts.badge.signedIn", &[]),
         }
     }
 

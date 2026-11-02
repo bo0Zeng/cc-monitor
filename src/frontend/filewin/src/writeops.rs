@@ -108,7 +108,7 @@ pub static RENAME_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
 /// 行上那颗「删除」。
 pub static DELETE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.delete", &[]));
+    std::sync::LazyLock::new(|| copy_text("beFiles.batch.verbDelete", &[]));
 /// 行上那颗「权限」。
 pub static CHMOD_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.chmod", &[]));
@@ -660,7 +660,7 @@ impl WritePrompt {
             // 就地那一格没有标题（画在列表那一行里）。
             PromptKind::Mkdir | PromptKind::Rename { .. } | PromptKind::NewFile => String::new(),
             PromptKind::Chmod { targets } if targets.len() > 1 => copy_text(
-                "rsFilewinWriteops.heading.chmodMany",
+                "rsFilewinSelect.label.chmodMany",
                 &[("n", &(targets.len()).to_string())],
             ),
             PromptKind::Chmod { .. } => copy_text(
@@ -1277,19 +1277,16 @@ impl WriteBoard {
         };
         let title = if n == 1 {
             copy_text(
-                "rsFilewinWriteops.delete.titleOne",
+                "acctPage.remove.action",
                 &[("name", remote_basename(&path_of(&asking[0])))],
             )
         } else {
-            copy_text(
-                "rsFilewinWriteops.delete.titleMany",
-                &[("n", &n.to_string())],
-            )
+            copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
         };
         let go_label = if n == 1 {
-            copy_text("rsFilewinWriteops.delete.go", &[])
+            copy_text("beFiles.batch.verbDelete", &[])
         } else {
-            copy_text("rsFilewinWriteops.delete.goMany", &[("n", &n.to_string())])
+            copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
         };
         let rows: Vec<super::kit::ListRow> = asking
             .iter()
@@ -1330,10 +1327,7 @@ impl WriteBoard {
                 ui.label(copy_text("rsFilewinWriteops.delete.body", &[]));
             },
             &[
-                (
-                    copy_text("rsFilewinWriteops.delete.cancel", &[]),
-                    super::kit::Btn::Plain,
-                ),
+                (copy_text("kit.dialog.cancel", &[]), super::kit::Btn::Plain),
                 (go_label, super::kit::Btn::Danger),
             ],
             0,

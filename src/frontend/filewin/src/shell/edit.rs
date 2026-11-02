@@ -561,7 +561,7 @@ impl FileWindow {
         } else if self.edits.saving().is_some() {
             Some(copy_text("rsFilewinEditPage.state.saving", &[]))
         } else if dirty {
-            Some(copy_text("rsFilewinEditPage.state.unsaved", &[]))
+            Some(copy_text("rsFilewinWorkspace.closeAsk.unsaved", &[]))
         } else {
             pane.as_ref().and_then(|e| e.saved_at).map(|t| {
                 copy_text(
@@ -596,7 +596,7 @@ impl FileWindow {
         let entries = [
             (
                 ph::ARROW_CLOCKWISE,
-                copy_text("rsFilewinEditPage.more.reload", &[]),
+                copy_text("accountChip.menu.refresh", &[]),
             ),
             (
                 ph::DOWNLOAD_SIMPLE,
@@ -656,7 +656,7 @@ impl FileWindow {
                 pane.is_some(),
                 "",
             )
-            .on_hover_text(copy_text("rsFilewinEditPage.find.hint", &[]))
+            .on_hover_text(copy_text("rsFilewinShell.editor.findLabel", &[]))
             .clicked()
         {
             acts.find_toggle = true;
@@ -687,8 +687,8 @@ impl FileWindow {
                 if crate::kit::failure_banner(
                     ui,
                     crate::kit::Tone::Error,
-                    &copy_text("rsFilewinShell.editor.saveFailed", &[("why", why)]),
-                    &[copy_text("rsFilewinEditPage.action.retry", &[])],
+                    &copy_text("settings.behavior.saveFailedLine", &[("why", why)]),
+                    &[copy_text("front.act.retry", &[])],
                     &e.save_detail,
                     id,
                 )
@@ -703,7 +703,7 @@ impl FileWindow {
                     ui,
                     crate::kit::Tone::Warn,
                     note,
-                    &[copy_text("rsFilewinEditPage.more.reload", &[])],
+                    &[copy_text("accountChip.menu.refresh", &[])],
                 )
                 .is_some()
                     && idle
@@ -736,7 +736,7 @@ impl FileWindow {
                 &why,
                 &[
                     copy_text("rsFilewinEditPage.action.download", &[]),
-                    copy_text("rsFilewinEditPage.action.retry", &[]),
+                    copy_text("front.act.retry", &[]),
                 ],
             ) {
                 Some(0) => acts.pull = true,
@@ -831,16 +831,13 @@ impl FileWindow {
                     );
                 },
                 &[
-                    (
-                        copy_text("rsFilewinShell.editor.keep", &[]),
-                        crate::kit::Btn::Plain,
-                    ),
+                    (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                     (
                         copy_text("rsFilewinShell.editor.discard", &[]),
                         crate::kit::Btn::Plain,
                     ),
                     (
-                        copy_text("rsFilewinShell.editor.saveClose", &[]),
+                        copy_text("rsFilewinShell.editor.save", &[]),
                         crate::kit::Btn::Primary,
                     ),
                 ],
@@ -908,7 +905,7 @@ impl FileWindow {
     /// 大文件模式左端多「大文件模式 · 长行不换行 · 无查找替换」。超上限那一句另回（画在右端，`--error`）。
     pub fn editor_status(&self, ctx: &egui::Context) -> Option<(String, Option<String>)> {
         let e = self.editing.as_ref()?;
-        let sep = copy_text("rsFilewinProgress.detail.sep", &[]);
+        let sep = copy_text("kit.text.sep", &[]);
         let mut parts = Vec::new();
         if e.big.is_big() {
             parts.push(copy_text("rsFilewinShell.editor.findBig", &[]));
@@ -1008,11 +1005,7 @@ pub(super) fn find_row(
         ) {
             act = Some(FindAct::Prev);
         }
-        if icon(
-            ui,
-            ph::CARET_DOWN,
-            copy_text("rsFilewinShell.editor.findNext", &[]),
-        ) {
+        if icon(ui, ph::CARET_DOWN, copy_text("beRotation.line.next", &[])) {
             act = Some(FindAct::Next);
         }
         if icon(ui, ph::X, copy_text("rsFilewinEditPage.find.close", &[])) {

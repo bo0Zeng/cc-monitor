@@ -1780,7 +1780,7 @@ pub fn fake_gates(
     const VIEW: u64 = 32 * 1024 * 1024;
     const EDIT: u64 = 8 * 1024 * 1024;
     if is_dir {
-        return (C::Folder, copy_text("beFilesKind.label.folder", &[]), None);
+        return (C::Folder, copy_text("gridMonitor.fact.dir", &[]), None);
     }
     let ext = name
         .rsplit_once('.')
@@ -1847,14 +1847,14 @@ pub fn fake_gates(
         Gate::Cap(EDIT)
     };
     let label = |c: C| match c {
-        C::Folder => copy_text("beFilesKind.label.folder", &[]),
+        C::Folder => copy_text("gridMonitor.fact.dir", &[]),
         C::Text => copy_text("beFilesKind.label.text", &[]),
         C::Code => copy_text("beFilesKind.label.code", &[]),
         C::Image => copy_text("beFilesKind.label.image", &[]),
         C::Archive => copy_text("beFilesKind.label.archive", &[]),
         C::Pdf => copy_text("beFilesKind.label.pdf", &[]),
         C::Link => copy_text("beFilesKind.label.link", &[]),
-        C::Other => copy_text("beFilesKind.label.other", &[]),
+        C::Other => copy_text("mobDrawer.item.files", &[]),
     };
     let type_text = match (class, ext.as_deref()) {
         (C::Pdf, _) | (_, None) => label(class),

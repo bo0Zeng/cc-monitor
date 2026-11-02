@@ -605,7 +605,7 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
         (Io::from(K::ConnectionReset), word("reason.link.lost")),
         (
             Io::from(E::Limited("n".into())),
-            word("reason.sftp.overLimit"),
+            word("reason.code.overLimit"),
         ),
         // 本来就是 IO 种类的照 IO 那张表。
         (Io::from(K::PermissionDenied), word("reason.io.denied")),

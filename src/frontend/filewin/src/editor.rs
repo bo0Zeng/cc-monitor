@@ -136,7 +136,7 @@ pub static EDIT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
 /// 存盘撞上 stale 之后那两颗按钮（住这里：判据按名字点它们，不在画的地方另写一遍）。
 pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.overwrite", &[]));
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBatch.btn.overwrite", &[]));
 /// 同上，另一颗。
 pub static REOPEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));

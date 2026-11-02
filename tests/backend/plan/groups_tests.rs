@@ -47,7 +47,7 @@ fn block<'a>(doc: &'a PlanRead, slice: &str, id: &str) -> &'a PlanBlock {
 }
 
 fn none() -> String {
-    copy_text("plan.page.none", &[])
+    copy_text("acct.val.none", &[])
 }
 
 #[test]

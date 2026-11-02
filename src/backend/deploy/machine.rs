@@ -190,7 +190,7 @@ fn first_screen(rows: &[(&MachineState, bool)]) -> (String, String) {
             copy_text("beEmpty.hint.none", &[]),
         );
     }
-    let sep = copy_text("beEmpty.list.sep", &[]);
+    let sep = copy_text("plan.page.listSep", &[]);
     let line = if listed.is_empty() {
         copy_text("beEmpty.line.waiting", &[])
     } else {
@@ -343,7 +343,7 @@ pub fn word(state: K, relation: Option<Relation>) -> String {
         K::NeedsUpdate => copy_text("machineState.word.needsUpdate", &[]),
         K::Newer => copy_text("machineState.word.newer", &[]),
         K::Disabled => copy_text("machinePage.state.disabled", &[]),
-        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
+        K::Unsupported => copy_text("reason.sftp.unsupported", &[]),
     }
 }
 
@@ -358,7 +358,7 @@ pub fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> 
     match state {
         K::Up | K::Unknown => String::new(),
         K::Connecting => match stage {
-            Some(Stage::Deploy) => connecting(copy_text("machineState.stage.deploy", &[])),
+            Some(Stage::Deploy) => connecting(copy_text("mobHostEdit.backend.check", &[])),
             Some(Stage::Attach) | None => connecting(copy_text("machineState.stage.attach", &[])),
         },
         K::Installing => copy_text("machineState.busy.installing", &[("machine", machine)]),
@@ -437,11 +437,11 @@ pub fn offline(state: K, why: Option<Why>) -> bool {
 /// 修法按钮上的字。
 pub fn label(fix: MachineFix) -> String {
     match fix {
-        MachineFix::Retry => copy_text("machineState.fix.retry", &[]),
+        MachineFix::Retry => copy_text("front.act.retry", &[]),
         MachineFix::ConnSettings => copy_text("machinePage.conn.toggle", &[]),
-        MachineFix::PushKey => copy_text("machineCard.build.pushKey", &[]),
+        MachineFix::PushKey => copy_text("mobPalette.item.key", &[]),
         MachineFix::CompareFingerprint => copy_text("machineState.fix.compareFingerprint", &[]),
-        MachineFix::Update => copy_text("machineState.fix.update", &[]),
+        MachineFix::Update => copy_text("front.act.update", &[]),
         MachineFix::Connect => copy_text("machinePage.problem.connect", &[]),
         MachineFix::Install => copy_text("machineState.fix.install", &[]),
     }

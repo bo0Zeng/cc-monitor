@@ -40,7 +40,7 @@ pub(crate) struct Facts<'a> {
 pub(crate) fn judge(f: &Facts) -> Option<Hidden> {
     let hide = |by: HiddenBy, said: String| Some(Hidden { by, said });
     match f.hide {
-        Some(Hide::On) => return hide(HiddenBy::Own, copy_text("beSession.hidden.self", &[])),
+        Some(Hide::On) => return hide(HiddenBy::Own, copy_text("history.row.hidden", &[])),
         Some(Hide::Off) => return None,
         None => {}
     }

@@ -200,7 +200,7 @@ async fn a_taken_name_says_exists_under_the_cell_and_keeps_it() {
     assert_eq!(
         w.prompt_error(),
         Some(copy_core::copy_text(
-            "rsFilewinWriteops.inline.exists",
+            "addMachine.err.taken",
             &[("name", "exists.md")]
         )),
         "那一格下面说的不是「已存在」"
@@ -210,7 +210,7 @@ async fn a_taken_name_says_exists_under_the_cell_and_keeps_it() {
     let painted = frame_text(&ctx, &mut w, Vec::new());
     assert!(
         painted.iter().any(|t| t.contains(&copy_core::copy_text(
-            "rsFilewinWriteops.inline.exists",
+            "addMachine.err.taken",
             &[("name", "exists.md")]
         ))),
         "那句话没画在窗口上：{painted:?}"

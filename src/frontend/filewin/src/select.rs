@@ -505,7 +505,7 @@ pub use pick_core::{Action, Item, Picked, PLAN_GROUP};
 /// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
 /// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
 pub static OPEN_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.open", &[]));
+    std::sync::LazyLock::new(|| copy_text("mobTerms.row.attach", &[]));
 /// 右键菜单最后那一格。
 pub static PROPS_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.properties", &[]));
@@ -529,9 +529,7 @@ impl ActionFace for Action {
                 copy_text("rsFilewinSelect.label.crossMany", &[("n", &n.to_string())])
             }
             Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
-            Action::Across => {
-                copy_text("rsFilewinSelect.label.acrossMany", &[("n", &n.to_string())])
-            }
+            Action::Across => copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())]),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -651,12 +649,12 @@ impl ItemFace for Item {
             Item::Act(Action::Delete) if n > 1 => {
                 copy_text("rsFilewinSelect.menu.deleteMany", &[("n", &n.to_string())])
             }
-            Item::Act(Action::Delete) => copy_text("rsFilewinSelect.menu.delete", &[]),
+            Item::Act(Action::Delete) => copy_text("history.menu.delete", &[]),
             Item::Act(Action::Chmod) => copy_text("rsFilewinSelect.menu.chmod", &[]),
             Item::Act(a) => a.label(n),
             Item::InPlan => plan.unwrap_or_default().to_string(),
             // 空白处那个菜单上没有「新建 ▾」那一层，字写全。
-            Item::Mkdir => copy_text("rsFilewinSelect.menu.newFolder", &[]),
+            Item::Mkdir => copy_text("rsFilewinWriteops.inline.newDir", &[]),
             Item::NewFile => copy_text("rsFilewinSelect.menu.newFile", &[]),
             Item::Upload => super::upload::UPLOAD_LABEL.to_string(),
             Item::Term => super::chrome::TERMINAL_LABEL.to_string(),

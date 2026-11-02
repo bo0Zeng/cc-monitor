@@ -86,7 +86,7 @@ fn who_can(parts: &[(String, String)]) -> String {
         .iter()
         .map(|(who, can)| copy_text("credsPerm.judge.whoCan", &[("who", who), ("can", can)]))
         .collect::<Vec<_>>()
-        .join(&copy_text("credsPerm.judge.listSep", &[]))
+        .join(&copy_text("plan.page.listSep", &[]))
 }
 
 /// 判完的结论。

@@ -452,7 +452,7 @@ async fn hide_across_two_machines_merges_the_said_and_the_undo_asks() {
     )
     .await
     .expect("答得出");
-    let action = copy_text("tabBatch.verb.hide", &[]);
+    let action = copy_text("history.menu.hide", &[]);
     assert_eq!(
         r.said,
         said_line(
@@ -546,7 +546,7 @@ async fn pin_across_two_machines_merges_the_said() {
     )
     .await
     .expect("答得出");
-    let action = copy_text("tabBatch.verb.pin", &[]);
+    let action = copy_text("tabMenu.pin.pin", &[]);
     assert_eq!(
         r.said,
         said_line(

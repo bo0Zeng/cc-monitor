@@ -932,10 +932,7 @@ impl Workspace {
         }
         let p = super::theme::palette(ctx);
         let machine = self.pane_on(self.focus).source.label();
-        let mut buttons = vec![(
-            copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
-            super::kit::Btn::Plain,
-        )];
+        let mut buttons = vec![(copy_text("kit.dialog.cancel", &[]), super::kit::Btn::Plain)];
         // 存不成（断着，[`super::chrome::WriteGate::write_refused`]）⇒ 不给「全部保存后关闭」；没存的照样列出来、「仍然关闭」照给。
         let save_all = !ask.unsaved.is_empty() && self.gate.write_refused().is_none();
         if save_all {
@@ -974,10 +971,9 @@ impl Workspace {
                                         .color(p.text2),
                                 );
                                 ui.label(
-                                    egui::RichText::new(ask.unsaved.join(&copy_text(
-                                        "rsFilewinWorkspace.closeAsk.listSep",
-                                        &[],
-                                    )))
+                                    egui::RichText::new(
+                                        ask.unsaved.join(&copy_text("plan.page.listSep", &[])),
+                                    )
                                     .color(p.text),
                                 );
                             });
@@ -1420,7 +1416,7 @@ impl Workspace {
                     self.undo_for.insert(self.undo_tag, undo);
                     self.toasts.push_tagged(
                         r,
-                        Some(copy_text("rsFilewinWriteops.receipt.undo", &[])),
+                        Some(copy_text("kit.toast.undo", &[])),
                         self.undo_tag,
                     );
                 }

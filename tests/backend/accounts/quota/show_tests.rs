@@ -217,7 +217,7 @@ fn a_slot_cell_is_written_once_by_state() {
     let c = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
     assert_eq!(
         w(QuotaState::OverageInUse, true, Some(40), false),
-        (c("acct.val.over", &[]), Tone::Warn)
+        (c("acct.row.over", &[]), Tone::Warn)
     );
     assert_eq!(
         w(QuotaState::ResetSinceSeen, true, Some(40), false),
