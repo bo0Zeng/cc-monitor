@@ -15,7 +15,6 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use cmd_wire::batch::{BatchOutcome, BatchReply, Decide, ItemState};
 use cmd_wire::files as wire;
-use copy_core::copy_text;
 
 /// 最多记几张票。
 pub(crate) const KEEP: usize = 64;

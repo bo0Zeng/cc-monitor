@@ -1,5 +1,4 @@
 use super::*;
-use crate::agents::claudecode::paths::projects_root;
 use std::path::PathBuf;
 
 fn fixture_project(root: &Path, dir_name: &str) -> PathBuf {

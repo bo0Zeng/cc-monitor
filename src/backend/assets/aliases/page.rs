@@ -11,7 +11,6 @@
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 use super::profile::{self, Book, Change, Profile, ProfileEdit};
 use super::{door, links, Door, Shell};

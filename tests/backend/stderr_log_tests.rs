@@ -12,8 +12,8 @@
 //! - L1 滚动（真文件 ＋ 记账替身当 fd 2）：每写一段之前看一眼（与 `tracing` 写者同一个口 `check`）⇒ 盘上恰好两份、
 //!   旧 ＋ 当前（去掉说明行）是写入流的尾巴、有说明行；起来时已有当前那份 ⇒ 它变成旧的（两向）；建不了 ⇒ `Err`、fd 不碰。
 //!   期望不照实现的切法算（异源：只判性质）。
-//! - L2 生产接线（真子进程 ＋ 真 fd 2）：子进程走 `install_from_env`（`main.rs` 真调的那一个），之后 `eprintln!` 的、
-//!   **它起的子进程**写 stderr 的，全落进那份文件；写满上限之后经 `stderr_writer`（`main.rs` 装给 `tracing` 的那一个）真滚一次；
+//! - L2 生产接线（真子进程 ＋ 真 fd 2）：子进程走 `install_from_env`（入口 `stream/entry.rs` 真调的那一个），之后 `eprintln!` 的、
+//!   **它起的子进程**写 stderr 的，全落进那份文件；写满上限之后经 `stderr_writer`（`stream/entry.rs` 装给 `tracing` 的那一个）真滚一次；
 //!   然后**立刻 `exit(7)`** —— 前面的话一个字都不丢（「管子 ＋ 读线程」那种做法就丢在这一格）；
 //!   它自己原来那根 stderr 管子上这几行一行都没有（fd 真被换走了）。没交路径 ⇒ 零文件（另一向）。
 //!
@@ -193,12 +193,12 @@ fn nothing_is_installed_without_a_path() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHILD_MARK: &str = "CCM_NT2_STDERR_CHILD";
-const CHILD_TEST_NAME: &str = "stderr_log::tests::stderr_log_child_entry_point";
+const CHILD_TEST_NAME: &str = "tests::stderr_log_child_entry_point";
 const DONE: &str = "nt2-child-done";
 
 const AFTER_ROLL: &str = "nt2-after-roll";
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）：装上（与 `main.rs` 同一个写口）→ 两种方式写 stderr → 写满上限、经 `stderr_writer`
+/// 子进程入口（不是判据 ⇒ `#[ignore]`）：装上（与 `stream/entry.rs` 同一个写口）→ 两种方式写 stderr → 写满上限、经 `stderr_writer`
 /// 真滚一次 → 再写一行 → **立刻 `exit(7)`**（不等、不收尾：前面的话必须已经在盘上）。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_NT2_STDERR_CHILD 拉起时才跑"]

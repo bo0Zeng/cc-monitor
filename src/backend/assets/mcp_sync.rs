@@ -33,7 +33,7 @@
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;

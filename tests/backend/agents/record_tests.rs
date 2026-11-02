@@ -390,7 +390,7 @@ fn stamp_writes_the_notice_row() {
         )
     };
     let row = |mut r: Record| {
-        r.stamp(&crate::Tz::named("Asia/Shanghai").unwrap());
+        r.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
         match r.body {
             Body::Said { who, .. } => match who.speaker {
                 Speaker::TaskNotification { row, .. } => row.map(|w| w.0),

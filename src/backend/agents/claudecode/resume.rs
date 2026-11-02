@@ -12,15 +12,15 @@
 use crate::agents::Choice;
 
 /// 默认启动器。
-pub(crate) const DEFAULT_COMMAND: &str = "claude";
+pub const DEFAULT_COMMAND: &str = "claude";
 
 /// 用户的 shell 集成 wrapper（含代理 / env）：探得到就先用它，探不到回退 [`DEFAULT_COMMAND`]。
 pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
 /// resume 那个字面量：**flag 形**（`--` 开头）。画像表（`agents::LaunchFace`）读它。
-pub(crate) const RESUME_TOKEN: &str = "--resume";
+pub const RESUME_TOKEN: &str = "--resume";
 /// 起新会话时先定好 sid 的旗标（`claude --session-id <uuid>`；起会话框带规则时后端按它先写好来源）。
-pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
+pub const SESSION_ID_FLAG: &str = "--session-id";
 
 /// 起会话时选权限档的旗标（`claude --permission-mode <档>`）。
 pub(crate) const PERMISSION_MODE_FLAG: &str = "--permission-mode";

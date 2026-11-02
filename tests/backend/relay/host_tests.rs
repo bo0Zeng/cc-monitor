@@ -1,19 +1,18 @@
-//! 常驻后端**进程内**的中转：`relay::listen::host` 与它在 `main.rs` 里的那一处接线。
+//! 常驻后端**进程内**的中转：`relay::host` 与它在入口（`stream/entry.rs`）里的那一处接线。
 //!
 //! 判据（记录住 –H4）：
 //! - H1 交了端口 ⇒ 真在听、真转发一段 SSE（假上游是本文件自己的 socket —— 异源）；
 //! - H2 没交端口 ⇒ `NotAsked`、零监听；交了但起不来（端口被占 / 端口认不出 / 上游配置认不出）⇒ `Failed`，不退出；
-//! - H3 生产接线（`faces::rotation_face::host_relay` → `accounts::upstream_select::host_relay`，`main.rs` 调的就是前者）在**真子进程**里：
+//! - H3 生产接线（`faces::rotation_face::host_relay` → `accounts::upstream_select::host_relay`，`stream/entry.rs` 调的就是前者）在**真子进程**里：
 //!   转发一整段 SSE 之后，子进程 stdout 上**一行 tee 都没有**（stdio 载体上 stdout 就是 wire）；
-//! - `main.rs` 那一处：流模式里恰好一处、排在一次性分派之后、起载体之前。
+//! - `stream/entry.rs` 那一处：流模式里恰好一处、排在一次性分派之后、起载体之前。
 //!
 //! ⚠ 走得到 `serve()` 的判据一律带读期限（风险 `5x`：把挂住换成红，同 `server_tests::send_request`）。
 
-use super::*;
+use crate::relay::{host, our_relay_listening, Hosted, ENV_PORT};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
-use std::time::Duration;
 
 /// 上游那一段 SSE（**原样字节**；下游必须逐字节收到它）。
 const SSE_BODY: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"n\":1}\n\ndata: {\"type\":\"ping\"}\n\n";
@@ -104,14 +103,14 @@ fn creds_fixture(tag: &str) -> std::path::PathBuf {
 }
 
 /// 喂给 `host` 的取值器：端口 ＋ 默认上游 ＋ 凭据路径 ＋夹具家目录（钥匙文件在它底下，
-/// 预先放好 `super::super::key::key_tests::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
+/// 预先放好 `crate::relay::test_support::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
 fn env_of(
     port: Option<&str>,
     upstream: Option<String>,
     creds: &std::path::Path,
 ) -> impl Fn(&str) -> Option<String> {
     let port = port.map(str::to_string);
-    let home = super::super::key::key_tests::seed_test_home(creds.parent().expect("夹具目录"))
+    let home = crate::relay::test_support::seed_test_home(creds.parent().expect("夹具目录"))
         .display()
         .to_string();
     // 凭据住家里：家指到夹具那一份所在的目录（文件名就是 `apikey-credentials.json`）。
@@ -154,7 +153,7 @@ fn through_with(addr: SocketAddr, extra: &str) -> String {
     let req = format!(
         // 过门：钥匙段挂在最前、`Host` 用回环字面量。
         "POST /{}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        super::super::key::key_tests::TEST_KEY,
+        crate::relay::test_support::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");
@@ -329,9 +328,9 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHILD_MARK: &str = "CCM_RL1_HOSTED_CHILD";
-const CHILD_TEST_NAME: &str = "relay::listen::host_tests::hosted_relay_child_entry_point";
+const CHILD_TEST_NAME: &str = "cross_relay::host_tests::hosted_relay_child_entry_point";
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）：走 `main.rs` 流模式**真调的那一个**
+/// 子进程入口（不是判据 ⇒ `#[ignore]`）：走 `stream/entry.rs` 流模式**真调的那一个**
 /// （`faces::rotation_face::host_relay`），然后停在这里当一个「活着的宿主」，等父进程收掉它。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RL1_HOSTED_CHILD 拉起时才跑"]
@@ -339,7 +338,7 @@ fn hosted_relay_child_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    // 写句柄同 `main.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
+    // 写句柄同 `stream/entry.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
     let said = crate::faces::rotation_face::host_relay(
         crate::stream::tap::port(),
         crate::platform::fs::Own::issue(),
@@ -383,7 +382,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
         .env("CCM_DATA_DIR", creds.parent().expect("夹具目录"))
         .env("CLAUDE_CONFIG_DIR", &home)
         // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。家那一对一起给（Windows 上找家先看 `USERPROFILE`）。
-        .env("HOME", super::super::key::key_tests::seed_test_home(&home))
+        .env("HOME", crate::relay::test_support::seed_test_home(&home))
         .env("USERPROFILE", &home)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

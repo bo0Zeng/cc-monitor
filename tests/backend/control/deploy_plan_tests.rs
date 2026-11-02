@@ -9,7 +9,7 @@ use crate::wire::spec::Settle as _;
 // 判定的本体住 `deploy` crate：被测模块只引它要用的几样，其余判据直接从那里引。
 use deploy::{interpret_target_probe, promised, Facing, Fut, TargetBinary, LEFTOVER_STALE_SECS};
 use deploy_contract::{Arch, Os, LINES};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 

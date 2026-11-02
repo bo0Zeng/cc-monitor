@@ -38,11 +38,7 @@ pub(crate) fn read(project_dir: Option<&Path>, look: &McpLook) -> McpRead {
 }
 
 /// [`read`] 的本体，`.claude.json` 的位置是参数（判据拿夹具喂它）。
-pub(crate) fn read_at(
-    claude_json: Option<&Path>,
-    project_dir: Option<&Path>,
-    look: &McpLook,
-) -> McpRead {
+pub fn read_at(claude_json: Option<&Path>, project_dir: Option<&Path>, look: &McpLook) -> McpRead {
     let mut out = McpRead::default();
     let mut disabled: Vec<String> = Vec::new();
     if let Some(path) = claude_json {
@@ -104,7 +100,7 @@ fn judge(out: &mut McpRead, disabled: &[String], look: &McpLook) {
         })
         .collect();
     for e in &mut out.entries {
-        if disabled.iter().any(|d| *d == e.name) {
+        if disabled.contains(&e.name) {
             e.status = McpStatus::Disabled;
             continue;
         }

@@ -16,8 +16,8 @@ use crate::common::said::Said;
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
-pub(crate) use new::{dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation};
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
+pub(crate) use new::{ForkWrite, PreRotation};
 
 use cmd_wire::open::RotationPick;
 /// `session-open` 的入参与它引到的几样：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。

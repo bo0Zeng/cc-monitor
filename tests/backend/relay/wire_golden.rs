@@ -35,9 +35,11 @@
 //!   **必须有 `Some(...)` 那几格垫着** —— 由 [`GOLDEN_CASES_REACHING_UPSTREAM`]
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::table::RoutingTable;
 use crate::accounts::upstream_select::Accounts;
+use crate::relay::test_support::{
+    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE,
+};
 use comms_outward::{Base, Relay, TapEvent, TapPort, TeeSink};
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
@@ -375,9 +377,9 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认"),
             crate::platform::fs::Own::for_tests(),
         )),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -399,7 +401,7 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
         // 过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节
         //   与下游拿回的字节 —— 钥匙段在门里就被剥掉，所以期望一个字节都不用动（这正是「钥匙不上游」的一格）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
-        super::key::key_tests::TEST_KEY,
+        crate::relay::test_support::TEST_KEY,
         CLIENT_BODY.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");

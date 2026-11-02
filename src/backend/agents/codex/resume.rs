@@ -4,10 +4,10 @@
 //! 通用层里一个 agent 名字面量都不许有（`agent_locality_guard` 判据②）—— 谁想在别处再开一个 Codex 分支，得先写出 `"codex"`，当场红。
 
 /// 默认启动器。
-pub(crate) const DEFAULT_COMMAND: &str = "codex";
+pub const DEFAULT_COMMAND: &str = "codex";
 
 /// resume 那个字面量：**子命令形**（不以 `--` 开头）。画像表（`agents::LaunchFace`）读它。
-pub(crate) const RESUME_TOKEN: &str = "resume";
+pub const RESUME_TOKEN: &str = "resume";
 
 /// `ccm` 起它（新起与 resume）一律不连共享后台：共享后台沿用第一个拉起它的进程的环境，
 /// 这一趟给的账号与中转地址可能不生效，也认不出哪个窗格是哪个会话。

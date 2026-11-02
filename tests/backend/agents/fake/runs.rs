@@ -167,7 +167,7 @@ fn spawned(child: &Path) -> Option<ChildLink> {
 }
 
 /// 本假适配层的运行面。
-pub(crate) const FACES: RunFaces = RunFaces {
+pub const FACES: RunFaces = RunFaces {
     response_id: Some(response_id),
     run_of: Some(run_of),
     child_link: Some(child_link),
@@ -214,7 +214,7 @@ fn fold(data: &str) -> Vec<StreamEv> {
 }
 
 /// 本假适配层上游的流协议面。
-pub(crate) const STREAM: StreamFace = StreamFace {
+pub const STREAM: StreamFace = StreamFace {
     fold,
     fold_clipped: |_| Vec::new(),
     spent: None,

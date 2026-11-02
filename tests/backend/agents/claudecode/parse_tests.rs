@@ -365,7 +365,7 @@ fn f63_real_data_ledger() {
 #[test]
 fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
     let ts = "2026-10-07T20:30:15.123Z";
-    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
     let lines = [
         format!(
             r#"{{"type":"user","uuid":"u1","timestamp":"{ts}","message":{{"role":"user","content":"hi"}}}}"#
@@ -395,7 +395,7 @@ fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
             Some("04:30"),
             "{l}"
         );
-        r.stamp(&crate::Tz::default());
+        r.stamp(&crate::common::time::Tz::default());
         assert_eq!(
             r.time_text.as_ref().map(|w| w.0.as_str()),
             Some("20:30"),

@@ -121,7 +121,6 @@ tests/backend/host/bin_tests.rs	2
 tests/backend/host/keys_tests.rs	2
 tests/backend/host/life_tests.rs	1
 tests/backend/host/serve_tests.rs	2
-tests/backend/layering_guard.rs	2
 tests/backend/observe/cc_bus_hooks_tests.rs	2
 tests/backend/observe/recognize/facts_tests.rs	3
 tests/backend/observe/record_scan_tests.rs	8

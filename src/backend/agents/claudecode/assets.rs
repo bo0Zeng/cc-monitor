@@ -19,13 +19,13 @@ use crate::agents::{McpSeen, Sightings, SkillSeen};
 use crate::common::said::IntoNote as _;
 
 /// skill 目录名（配置根下）。
-const SKILLS_DIR: &str = "skills";
+pub const SKILLS_DIR: &str = "skills";
 /// 项目里装配置的那一层目录名（项目级 skill 住 `<项目>/.claude/skills`）。
 const PROJECT_CONFIG_DIR: &str = ".claude";
 /// 一个 skill 的说明文件。
-const SKILL_DOC: &str = "SKILL.md";
+pub const SKILL_DOC: &str = "SKILL.md";
 /// 项目级 MCP 配置的文件名。
-pub(crate) const PROJECT_MCP_FILE: &str = ".mcp.json";
+pub const PROJECT_MCP_FILE: &str = ".mcp.json";
 /// `.mcp.json` / `.claude.json` 里装 server 表的键。
 pub(crate) const SERVERS_KEY: &str = "mcpServers";
 /// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级）：超了那一份跳过、记进 `problems`，不截断。
@@ -112,7 +112,7 @@ pub(crate) fn claude_json() -> Option<PathBuf> {
 }
 
 /// 一个项目目录里 skill 的根：`<项目>/.claude/skills`。
-pub(crate) fn project_skills_root(project: &Path) -> PathBuf {
+pub fn project_skills_root(project: &Path) -> PathBuf {
     project.join(PROJECT_CONFIG_DIR).join(SKILLS_DIR)
 }
 
@@ -129,7 +129,7 @@ pub(crate) fn scan(projects: &[String], user_mcp: Option<&Path>) -> Sightings {
 }
 
 /// [`scan`] 的本体：用户级两个根由调用方给（判据拿临时家目录喂）。
-pub(crate) fn scan_at(
+pub fn scan_at(
     skills: Option<&Path>,
     claude_json: Option<&Path>,
     projects: &[String],
@@ -248,7 +248,7 @@ fn skill_description(doc: &Path) -> Result<Option<String>, crate::common::said::
 }
 
 /// 用户级 MCP：`.claude.json` 顶层的 `mcpServers`。文件不在 ⇒ 这台没用过（不是问题）；在但读不出来 ⇒ 说出来。
-pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
+pub fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
     if !claude_json.exists() {
         return;
     }

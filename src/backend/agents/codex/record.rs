@@ -19,7 +19,7 @@ use serde_json::Value;
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodexRecordKind {
+pub(crate) enum CodexRecordKind {
     SessionMeta,
     TurnContext,
     WorldState,
@@ -57,7 +57,7 @@ pub enum CodexRecordKind {
 
 /// 防御分类：unwrap 信封 → 顶层 type（+ 必要时 payload.type，alias 归一）→ [`CodexRecordKind`]。
 /// 任何缺失/未知 → `Other`/`OtherEvent`（不崩、前向兼容）。
-pub fn classify(v: &Value) -> CodexRecordKind {
+pub(crate) fn classify(v: &Value) -> CodexRecordKind {
     use CodexRecordKind as K;
     let Some((top, payload)) = unwrap_envelope(v) else {
         return K::Other;
@@ -113,7 +113,7 @@ pub(crate) fn activity_of(
 /// `[{type:input_text|output_text, text}]`（手机端 Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
 /// 文本（且 String fixture 绿着骗过）。数组→拼各项 `text`（`input_image` 等无 text 项自然跳过）；
 /// 防御：裸 String→原样；其它→""。**fixture 必用真机数组 shape。**
-pub fn flatten_text(v: &Value) -> String {
+pub(crate) fn flatten_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Array(items) => items
@@ -130,7 +130,7 @@ pub fn flatten_text(v: &Value) -> String {
 
 /// reasoning 的文本：`payload.summary`（array `[{text}]` 或裸串）→ 拍平。**真机 summary 恒 []**
 /// （仅 encrypted_content）→ ""；调用方据此空文本时给**空 blocks**、不产 `Thinking("")` 噪音。
-pub fn reasoning_text(v: &Value) -> String {
+pub(crate) fn reasoning_text(v: &Value) -> String {
     unwrap_envelope(v)
         .and_then(|(_, p)| p.get("summary").map(flatten_text))
         .unwrap_or_default()
@@ -139,7 +139,7 @@ pub fn reasoning_text(v: &Value) -> String {
 /// tool_call 的入参：`payload.input`（`custom_tool_call` 写这一格，自由文本）：Object→原样、String→包 `{"input": s}`；
 /// 没有就 `payload.arguments`（`function_call` 写这一格，是一个 JSON 串）：解得出对象→那个对象、解不出→同样包 `{"input": s}`（不吞）；
 /// 其它/缺→`Null`（保 name 可见）。
-pub fn tool_input(v: &Value) -> Value {
+pub(crate) fn tool_input(v: &Value) -> Value {
     let p = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
     let wrap = |s: &str| serde_json::json!({ "input": s });
     match (p.get("input"), p.get("arguments")) {
@@ -155,7 +155,7 @@ pub fn tool_input(v: &Value) -> Value {
 }
 
 /// tool 的 `payload.call_id`（ToolUse.id / ToolResult.tool_use_id 配对键）。
-pub fn call_id(v: &Value) -> Option<&str> {
+pub(crate) fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
 }
 

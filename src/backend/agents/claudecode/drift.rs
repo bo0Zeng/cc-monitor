@@ -19,13 +19,13 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 /// 每个面最多记多少个不同的键。超出的并进 [`OVERFLOW_KEY`]。
-pub const MAX_KEYS: usize = 64;
+pub(crate) const MAX_KEYS: usize = 64;
 /// 键数超限之后的归并键。
-pub const OVERFLOW_KEY: &str = "<overflow>";
+pub(crate) const OVERFLOW_KEY: &str = "<overflow>";
 
 /// 记录那两个「降级点」。每一个都对应一处**刻意的**宽容。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DriftFace {
+pub(crate) enum DriftFace {
     /// jsonl 里我们不认识的记录 `type`（`parse.rs` 抢救成 `Unrecognized`，刻意不 warn）。
     UnknownRecordType,
     /// 已知 `type` 但字段解析失败（**这一类值得警惕**：多半是 CC 改了已知类型的形状）。
@@ -42,7 +42,7 @@ pub enum DriftFace {
 
 impl DriftFace {
     /// 线上那个词（漂移账里 `face` 那一格；界面按它排、壳不认）。
-    pub fn word(self) -> &'static str {
+    pub(crate) fn word(self) -> &'static str {
         match self {
             DriftFace::UnknownRecordType => "unknown_record_type",
             DriftFace::KnownTypeParseFailed => "known_type_parse_failed",
@@ -54,7 +54,7 @@ impl DriftFace {
     }
 
     /// 给人看的一句话：**这个面看不懂东西时会发生什么**。诊断面直接显示它。
-    pub fn consequence(self) -> String {
+    pub(crate) fn consequence(self) -> String {
         match self {
             DriftFace::UnknownRecordType => {
                 copy_text("rsDriftLedger.consequence.unknownRecord", &[])
@@ -102,7 +102,7 @@ fn truncate_sample(s: &str) -> String {
 /// 记一次。**这是本模块唯一的写入口。**
 ///
 /// `key` 为空时用 `"<empty>"`（空串当键会让诊断面显示成空行，看不出是哪一类）。
-pub fn record(face: DriftFace, key: &str, sample: Option<&str>) {
+pub(crate) fn record(face: DriftFace, key: &str, sample: Option<&str>) {
     record_into(&mut lock(), face, key, sample);
 }
 

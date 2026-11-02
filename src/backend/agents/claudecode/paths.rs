@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 
 /// 覆盖配置根的环境变量名。**账号隔离（后端 `accounts/manage/` 建的账号库）就是靠切它**，
 /// 所以它不只是"一个环境变量"，是账号这个概念在 Claude 侧的载体。
-pub(crate) const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
+pub const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 
 /// Claude 找上游的环境变量名。起会话时中转地址经它注入（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，钥匙段在 pane shell 里展开）；
 /// 会话那几行（`accounts_query::session_accounts`）读它**只为答一个布尔**（这条会话走不走本机中转），值本身带钥匙、**绝不出参、绝不进日志**。
-pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
+pub const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 
 /// 账号归属读会话进程环境时读的那两个键（注册表 `AccountsFace.session_env`）。
 pub(crate) const SESSION_ENV_KEYS: super::super::SessionEnvKeys = super::super::SessionEnvKeys {
@@ -52,7 +52,7 @@ pub(crate) fn settings_may_set_base_url(
 
 /// 直接敲的 claude 也走中转（注册表 `DefaultUpstream.settings_env` 那一格）：`~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL`。
 /// 各号的设置文件都链回这一份 ⇒ 写进去对这台所有号同时生效；它**压过**进程环境（见 [`settings_may_set_base_url`]）。
-pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
+pub const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
     read: read_settings_base_url,
     merge: settings_env_merge,
     slot: "env",
@@ -152,14 +152,14 @@ pub fn resolve_home() -> PathBuf {
 }
 
 /// 不看 `CLAUDE_CONFIG_DIR` 的那一格：`$HOME/.claude`（同 [`resolve_home`] 的退路）—— `ccm --base` 与「没选账号」时的家目录。
-pub fn default_home() -> PathBuf {
+pub(crate) fn default_home() -> PathBuf {
     crate::platform::paths::home_dir()
         .map(|h| h.join(HOME_DIR_NAME))
         .unwrap_or_else(|| PathBuf::from(HOME_DIR_NAME))
 }
 
 /// 给了账号配置目录 ⇒ 就是它；没给 ⇒ `from_env` 时 [`resolve_home`]（看 `CLAUDE_CONFIG_DIR`），否则 [`default_home`]。
-pub fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
+pub(crate) fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
     match (config_dir, from_env) {
         (Some(d), _) => d.to_path_buf(),
         (None, true) => resolve_home(),
@@ -181,7 +181,7 @@ pub(crate) const SESSIONS_DIR: &str = "sessions";
 /// 第五处是内联的、grep 函数名找不到），那个性质**原样保留** ——
 /// 变的只是它住哪一层：目录名 `projects` 是 **Claude 的布局知识**，
 /// 而 `common/` 的三条门槛第③条逐字写着「无域知识」。它当初就不该在那儿。
-pub(crate) fn projects_root(home: &Path) -> PathBuf {
+pub fn projects_root(home: &Path) -> PathBuf {
     home.join(PROJECTS_DIR)
 }
 
@@ -194,7 +194,7 @@ pub(crate) fn tasks_root(home: &Path) -> PathBuf {
 ///
 /// ⚠ 与 Codex 的 `sessions/`（会话记录根）**同名不同物**。`S2` 就是因为这个
 /// 把 `sessions/` 从 codex 的针里剔了出去。
-pub(crate) fn sessions_root(home: &Path) -> PathBuf {
+pub fn sessions_root(home: &Path) -> PathBuf {
     home.join(SESSIONS_DIR)
 }
 
@@ -203,8 +203,8 @@ pub(crate) fn sessions_root(home: &Path) -> PathBuf {
 ///
 /// # 它**不是写侧围栏**
 ///
-/// 文件管理器能改 `~/.claude` 里的东西 ⇒ 文件管理写面（`control/files_write.rs`）不问它。后端里它**只有删历史会话
-/// 那一条**在问（[`session_file_for_delete_in`] 与 `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」）。
+/// 文件管理器能改 `~/.claude` 里的东西 ⇒ 文件管理写面（`files/write.rs`）不问它。后端里它**只有删历史会话
+/// 那一条**在问（[`session_file_for_delete_in`] 与 `files::write::fenced_session_file`：「要删的必须**是**一份会话记录」）。
 ///
 /// # 🔴 它是那个判定的**逐字副本**，而不是第二个判定
 ///
@@ -346,7 +346,7 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
 }
 
 /// [`session_file_for_delete_in`] 的生产入口：根取本机后端此刻的配置根（[`resolve_home`]）。
-pub fn session_file_for_delete(sid: &str) -> Result<PathBuf, String> {
+pub(crate) fn session_file_for_delete(sid: &str) -> Result<PathBuf, String> {
     session_file_for_delete_in(&resolve_home(), sid)
 }
 

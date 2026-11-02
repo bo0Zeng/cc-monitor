@@ -4576,7 +4576,7 @@ fn long_branchy_record(records: usize, fork_every: usize, queue_every: usize) ->
 
 /// 主线外清单 = 这份记录整批算一次（与冷读同一个算法）。
 fn off_of_record(body: &str) -> Vec<String> {
-    crate::agents::mainline::tests::off_of(body.lines().filter_map(|l| {
+    crate::agents::mainline::test_support::off_of(body.lines().filter_map(|l| {
         crate::agents::claudecode::chain::chain_fact(&crate::agents::Line::new(l, 0))
     }))
 }

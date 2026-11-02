@@ -506,6 +506,11 @@ impl Walker<'_> {
     }
 }
 
+// 假 agent 的终端（与 Claude 每一屏都不同形）接上本模块的 `RewindIo` 那一半：终端住适配层的夹具、口子住这里 ⇒ 挂在这里。
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/fake/rewind_io.rs"]
+mod fake_rewind_io;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/control/rewind_tests.rs"]
 mod tests;

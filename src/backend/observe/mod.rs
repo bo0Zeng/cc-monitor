@@ -44,3 +44,8 @@ pub(crate) mod tasks_query;
 // tmux 观测。
 pub(crate) mod tmux_observe;
 pub mod watcher;
+
+// agent 适配层判据里经观测面的那几条（适配层是独立的包、够不到这一层；本层拆成包时跟着走）。
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/on_observe_tests.rs"]
+mod agents_tests;

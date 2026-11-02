@@ -1,7 +1,6 @@
 //! 全文搜索那两条 typed 帧命令的判据。夹具只造结构（目录名 · 一两行占位 JSON），不采真会话正文。
 
 use super::*;
-use crate::wire::SessionFaceExt as _;
 use cmd_wire::Machine;
 
 /// 没有注解 · 不隐藏的那台说法。

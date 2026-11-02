@@ -30,6 +30,7 @@
 
 use crate::platform::fs::Ro;
 use relay_route_core::{Cap, Over};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 /// 本假 agent 读自己那几份夹具文件（配置 · MCP · 派出记录）的上限：夹具只有几行，超了即拒收。
@@ -43,29 +44,30 @@ pub(crate) const FAKE_FILE_CAP: Cap = Cap {
 /// ⚠ 本层不进 `agents::REGISTRY`
 /// （`the_fixture_agent_never_ships` 钉住）。
 // 子运行形状（与 Claude Code 每一格都不同形；通用层的运行判据拿它跑）。
-pub(crate) mod runs;
+pub mod runs;
 // 回退菜单与它的一个终端（与 Claude 每一屏都不同形；通用层的回退那一串拿它跑）。
+// 终端接上控制面口子的那一半（`rewind_io.rs`）挂在 `control/rewind.rs` 底下。
 #[path = "rewind.rs"]
-pub(crate) mod rewind;
+pub mod rewind;
 
-pub(crate) const AGENT_KIND: &str = "fake";
+pub const AGENT_KIND: &str = "fake";
 
 /// 解析本机 home 的环境变量。⚠ **刻意没有默认值**（Claude 那家恒有值）——
 /// 少了这个差别，`visible_among` 里 `None` 那条分支就永远不会被这家走一遍。
-const HOME_ENV: &str = "CCM_FAKE_AGENT_HOME";
+pub const HOME_ENV: &str = "CCM_FAKE_AGENT_HOME";
 
 /// 能力 8：解析本机 home。`None` = 连候选路径都说不出。
-pub(crate) fn home() -> Option<PathBuf> {
+pub fn home() -> Option<PathBuf> {
     std::env::var_os(HOME_ENV).map(PathBuf::from)
 }
 
 /// 能力 1：会话记录根。**`convos` 不是 `projects`**。
-pub(crate) fn records_root(home: &Path) -> PathBuf {
+pub fn records_root(home: &Path) -> PathBuf {
     home.join("convos")
 }
 
 /// 能力 2：这个路径是不是一份会话记录。**`.ndjson` 不是 `.jsonl`**。
-pub(crate) fn is_session_file(p: &Path) -> bool {
+pub fn is_session_file(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "ndjson")
         && p.file_name()
             .and_then(|n| n.to_str())
@@ -73,7 +75,7 @@ pub(crate) fn is_session_file(p: &Path) -> bool {
 }
 
 /// 能力 3：会话 id → 记录文件名。**带前缀**，与 Claude 的裸 `<sid>.<ext>` 不同形。
-pub(crate) fn session_file_name(sid: &str) -> String {
+pub fn session_file_name(sid: &str) -> String {
     format!("sess-{sid}.ndjson")
 }
 
@@ -97,18 +99,18 @@ fn find_session(root: &Path, sid: &str) -> Result<PathBuf, String> {
 }
 
 /// 能力 4：pidfile 目录。**`live` 不是 `sessions`**。
-pub(crate) fn pidfile_root(home: &Path) -> PathBuf {
+pub fn pidfile_root(home: &Path) -> PathBuf {
     home.join("live")
 }
 
 /// 能力 5：账号（配置根）环境变量名。
-pub(crate) const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
+pub const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
 
 /// 能力 6：某个配置根下、对某个 cwd 的信任判定。
 ///
 /// 形状与 Claude 那家**不同**：文件名不同、字段路径不同（`trusted[cwd]` 而不是
 /// `projects[cwd].hasTrustDialogAccepted`）。
-pub(crate) fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
+pub fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
     let p = root.join("fake-config.json");
     let bytes =
         Ro::read_capped(&p, FAKE_FILE_CAP).map_err(|e| format!("fake_config_unreadable: {e}"))?;
@@ -123,20 +125,20 @@ pub(crate) fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
 /// 能力 7：判活时"这个 cmdline 看起来像不像本 agent"。
 ///
 /// ⚠ 与 Claude 那家**方向相同但词表不同**（那边是「明显不像才判冒名」，含 `claude`/`node`）。
-pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
+pub fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty() || lower.contains("fakeagent")
 }
 
 /// 能力 10：默认启动器。
-pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
+pub const DEFAULT_COMMAND: &str = "fakeagent";
 
 /// 能力 11：resume 那个字面量 —— **子命令形，且动词与 Codex 也不同**。
-pub(crate) const RESUME_TOKEN: &str = "revive";
+pub const RESUME_TOKEN: &str = "revive";
 
 /// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile」，
 /// Codex 是「两样都没有」；这一家是「有身份面 · 判不了活」。
 /// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
-pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
+pub const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
     display_name: "Fake",
     speaker_name: "Fake",
@@ -167,7 +169,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
 /// 各种能力的**名字**，与 `agent_locality_guard::tests::CAPABILITY_FACES`（每一种住注册表哪一格）逐条对账。
 ///
 /// ⚠ 顺序即 [`FakeCaps`] 字段序，[`FakeCaps::without`] 按名字挖洞时靠它。
-pub(crate) const CAPABILITIES: &[&str] = &[
+pub const CAPABILITIES: &[&str] = &[
     "会话记录根",
     "会话文件判定",
     "会话文件命名",
@@ -180,25 +182,28 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "resume 命令形",
 ];
 
+/// 能力 6：读那份配置判这个目录信不信任。
+pub type TrustOfConfig = fn(&Path, &str) -> Result<bool, String>;
+
 /// 假 agent 交出来的一整套能力。每一项都是 `Option`：反向夹具要能「把某一种能力删掉」，而删掉之后流程必须在一个说得出话的地方停下来；
 /// 用 `Option` 而不是手工注释掉一个函数，那个反向夹具才是常驻判据。
 #[derive(Clone)]
-pub(crate) struct FakeCaps {
-    pub(crate) records_root: Option<fn(&Path) -> PathBuf>,
-    pub(crate) is_session_file: Option<fn(&Path) -> bool>,
-    pub(crate) session_file_name: Option<fn(&str) -> String>,
-    pub(crate) pidfile_root: Option<fn(&Path) -> PathBuf>,
-    pub(crate) account_dir_env: Option<&'static str>,
-    pub(crate) trust_of_config: Option<fn(&Path, &str) -> Result<bool, String>>,
-    pub(crate) cmdline_may_be_agent: Option<fn(&str) -> bool>,
-    pub(crate) home: Option<fn() -> Option<PathBuf>>,
-    pub(crate) default_command: Option<&'static str>,
-    pub(crate) resume_token: Option<&'static str>,
+pub struct FakeCaps {
+    pub records_root: Option<fn(&Path) -> PathBuf>,
+    pub is_session_file: Option<fn(&Path) -> bool>,
+    pub session_file_name: Option<fn(&str) -> String>,
+    pub pidfile_root: Option<fn(&Path) -> PathBuf>,
+    pub account_dir_env: Option<&'static str>,
+    pub trust_of_config: Option<TrustOfConfig>,
+    pub cmdline_may_be_agent: Option<fn(&str) -> bool>,
+    pub home: Option<fn() -> Option<PathBuf>>,
+    pub default_command: Option<&'static str>,
+    pub resume_token: Option<&'static str>,
 }
 
 impl FakeCaps {
     /// 还剩几种能力在（[`without`](Self::without) 的自检用）。
-    pub(crate) fn present(&self) -> usize {
+    pub fn present(&self) -> usize {
         [
             self.records_root.is_some(),
             self.is_session_file.is_some(),
@@ -217,7 +222,7 @@ impl FakeCaps {
     }
 
     /// 完整的一套（正题用）。
-    pub(crate) fn full() -> Self {
+    pub fn full() -> Self {
         Self {
             records_root: Some(records_root),
             is_session_file: Some(is_session_file),
@@ -234,7 +239,7 @@ impl FakeCaps {
 
     /// 挖掉**一种**能力（反向夹具用）。名字必须是 [`CAPABILITIES`] 里的一条 —— 写错就 panic，
     /// 不静默返回原样（静默的话反向夹具会**变成正题**再跑一遍，而它会绿）。
-    pub(crate) fn without(&self, capability: &str) -> Self {
+    pub fn without(&self, capability: &str) -> Self {
         assert!(
             CAPABILITIES.contains(&capability),
             "`{capability}` 不是一种登记过的能力 —— 反向夹具挖了个不存在的洞，\
@@ -259,11 +264,11 @@ impl FakeCaps {
 }
 
 /// 全流程的 5 段。名字进错误信息，所以是常量而不是字面量。
-pub(crate) const STAGES: &[&str] = &["发现", "读会话", "判活", "账号", "resume"];
+pub const STAGES: &[&str] = &["发现", "读会话", "判活", "账号", "resume"];
 
 /// 流程停下来的原因：点名是哪一段缺了哪一种能力（不许静默当成「这个 agent 没有会话」）。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Stop {
+pub enum Stop {
     /// 假 agent 自己少了一种能力 —— 点名是**哪一段**缺了**哪一种**。
     MissingCapability {
         stage: &'static str,
@@ -273,7 +278,7 @@ pub(crate) enum Stop {
 
 /// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
 /// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
-pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace {
+pub const MCP: crate::agents::McpFace = crate::agents::McpFace {
     read: read_mcp,
     login_command: "/fake-mcp",
     sign_in: None,
@@ -338,7 +343,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
 }
 
 /// 一整行：本假 agent 的全部面（判据「同一批通用判据对三家各跑一遍」用）。
-pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
+pub fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     crate::agents::Adapter {
         account_env: Some(ACCOUNT_DIR_ENV),
         mcp: Some(MCP),
@@ -475,14 +480,21 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
 }
 
 /// 信任那一格：`fake-config.json` → `trusted[<目录>] = true`（目录那一项本身就是那个布尔；键原样）。
-pub(crate) const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCells {
+pub const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCells {
     table: "trusted",
     flag: None,
     dir_keys: |cwd| vec![cwd.to_string()],
 };
 
+/// 账号域那一份信任判定（各号同步信任的本体，住适配层之上）：调用方交进来，`walk` 第④段经它读。
+pub type TrustJudge = fn(&crate::agents::TrustCells, &serde_json::Value) -> BTreeSet<String>;
+
 /// 把假 agent 推过全流程，每一段都经通用层（见模块头注）。成功 = 走完的段名。
-pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static str>, Stop> {
+pub fn walk(
+    caps: &FakeCaps,
+    fixture_home: &Path,
+    trusted: TrustJudge,
+) -> Result<Vec<&'static str>, Stop> {
     let mut done: Vec<&'static str> = Vec::new();
 
     // ── ① 发现：**真的走通用层**（注册表 × 判准）。
@@ -622,12 +634,10 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     // 信任经通用层读：那一家说的配置文件名 ＋ 信任那一格（`AccountsFace.trust`），本体是各号同步信任那一份。
     let trusted = face.trust.is_some_and(|cells| {
-        Ro::read_capped(&fixture_home.join(face.config_file), FAKE_FILE_CAP)
+        Ro::read_capped(fixture_home.join(face.config_file), FAKE_FILE_CAP)
             .ok()
             .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-            .is_some_and(|v| {
-                crate::accounts::manage::trust_share::trusted(&cells, &v).contains(FIXTURE_CWD)
-            })
+            .is_some_and(|v| trusted(&cells, &v).contains(FIXTURE_CWD))
     });
     if !trusted {
         return Err(Stop::MissingCapability {
@@ -679,10 +689,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
 }
 
 /// 夹具里那条会话的 id。**只出现在夹具里**，不是任何真实会话。
-pub(crate) const FIXTURE_SESSION_ID: &str = "00000000-0000-4000-8000-0000000000f6";
+pub const FIXTURE_SESSION_ID: &str = "00000000-0000-4000-8000-0000000000f6";
 /// 夹具里那条会话的 cwd。
-pub(crate) const FIXTURE_CWD: &str = "/home/u/proj";
+pub const FIXTURE_CWD: &str = "/home/u/proj";
 
-#[cfg(test)]
-#[path = "../fake_tests.rs"]
-mod tests;
+// 走全流程的判据（`fake_tests.rs`）经 ccm_line · control · history · observe ⇒ 挂在主 crate（`cross/agents.rs`）。

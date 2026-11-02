@@ -1,9 +1,10 @@
 //! 中转去上游经出网口：真中转 ＋ 生产段的上游选择，上游是内置的 `https://api.anthropic.com`，出网描述指到沙箱里的假 HTTP CONNECT 代理。
 //! 直连那一路被测试档断言断着（出网口真开 TCP 的那个目的地不是回环 ⇒ panic），所以假代理收到那一问 ＝ 这一发经了代理。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
-use super::two_form_tests::Taps;
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
+use crate::relay::test_support::{
+    listen, serve, Taps, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE,
+};
 use comms_outward::{Relay, TeeSink};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -47,7 +48,7 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
             Upstreams::from_env(&|_| None).expect("内置默认上游"),
             crate::platform::fs::Own::for_tests(),
         )),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(Arc::new(Taps::default())),
         Arc::new(move |_: Option<&str>, h: &str, p: u16, d| {
             egress::open(&via, h, p, Some(d))
@@ -68,7 +69,7 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
     c.write_all(
         format!(
             "POST /{}/t/claude-code/0/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}",
-            super::key::key_tests::TEST_KEY
+            crate::relay::test_support::TEST_KEY
         )
         .as_bytes(),
     )
@@ -114,9 +115,9 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
             Upstreams::from_env(&|_| None).expect("内置默认上游"),
             crate::platform::fs::Own::for_tests(),
         )),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(Arc::new(Taps::default())),
-        super::open_for(egress_of(&own)),
+        crate::relay::open_for(egress_of(&own)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -131,7 +132,7 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
     c.write_all(
         format!(
             "POST /{}/t/claude-code/0/~0123abcd/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}",
-            super::key::key_tests::TEST_KEY
+            crate::relay::test_support::TEST_KEY
         )
         .as_bytes(),
     )

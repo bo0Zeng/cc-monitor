@@ -22,31 +22,31 @@ pub(crate) struct BeatFace {
 
 /// 一条记录的一拍。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Beat<'a> {
+pub struct Beat<'a> {
     /// 这一条的 id（原样；没有 ⇒ `None`）。轮次与大纲只认非空的那种。
-    pub(crate) id: Option<Cow<'a, str>>,
+    pub id: Option<Cow<'a, str>>,
     /// 这一条的时刻（原样，ISO 8601）。
-    pub(crate) at: Option<Cow<'a, str>>,
-    pub(crate) side: Side,
+    pub at: Option<Cow<'a, str>>,
+    pub side: Side,
     /// 用户那侧里宿主自动注入的那种（不是人这一刻发的）。
-    pub(crate) injected: bool,
+    pub injected: bool,
     /// 这一条里做了的事，文件序。
-    pub(crate) acts: Vec<Act<'a>>,
+    pub acts: Vec<Act<'a>>,
     /// 这一次请求的用量（只有代理那侧写）。
-    pub(crate) usage: Option<Usage<'a>>,
+    pub usage: Option<Usage<'a>>,
     /// 这一条说的此刻型号（原值）。
-    pub(crate) model: Option<Cow<'a, str>>,
+    pub model: Option<Cow<'a, str>>,
     /// 那一家自己记的全会话花费。
-    pub(crate) cost: Option<CostSaid>,
+    pub cost: Option<CostSaid>,
     /// 此刻许可档（原值）。
-    pub(crate) mode: Option<Cow<'a, str>>,
+    pub mode: Option<Cow<'a, str>>,
     /// 这份会话是从哪个会话分叉来的（源 sid）。
-    pub(crate) forked_from: Option<String>,
+    pub forked_from: Option<String>,
 }
 
 /// 这一条是谁那侧写的。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum Side {
+pub enum Side {
     /// 代理那侧（回复 · 工具调用 · 思考）。
     Reply,
     /// 用户角色那侧（人话 · 工具结果 · 通知 · 注入）。
@@ -58,7 +58,7 @@ pub(crate) enum Side {
 
 /// 一条里的一件事（闭集）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Act<'a> {
+pub enum Act<'a> {
     /// 调了一次工具：调用 id（没有 ⇒ 空串）· 工具名 · 主参数一行（那一家的工具词表给）· 它写了哪个文件（写类工具才有）。
     Call {
         id: Cow<'a, str>,
@@ -84,7 +84,7 @@ pub(crate) enum Act<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StopWhy {
+pub enum StopWhy {
     /// 说完了。
     Done,
     /// 这一条本身就是报错卡。
@@ -93,7 +93,7 @@ pub(crate) enum StopWhy {
 
 /// 一个工具在「需手动」里是哪一种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CallAsk {
+pub enum CallAsk {
     Plain,
     /// 在等回答的（提问工具）。
     Answer,
@@ -104,40 +104,40 @@ pub(crate) enum CallAsk {
 /// 一次请求的用量（各家照这个口径换算好）：新输入（不含缓存）· 读缓存 · 写缓存总数 · 写缓存两档（分不出档 ⇒ 都 `None`）· 输出 ·
 /// 请求键（同一次请求写出几条 ⇒ 同一个键）。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct Usage<'a> {
-    pub(crate) input: u64,
-    pub(crate) cache_read: u64,
-    pub(crate) cache_write: u64,
-    pub(crate) write_5m: Option<u64>,
-    pub(crate) write_1h: Option<u64>,
-    pub(crate) output: u64,
-    pub(crate) request: Option<Cow<'a, str>>,
+pub struct Usage<'a> {
+    pub input: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub write_5m: Option<u64>,
+    pub write_1h: Option<u64>,
+    pub output: u64,
+    pub request: Option<Cow<'a, str>>,
 }
 
 /// 那一家自己记的全会话花费：微美元 · 有没有定不了价的型号（有 ⇒ 数只是下限）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CostSaid {
-    pub(crate) micros: u64,
-    pub(crate) partial: bool,
+pub struct CostSaid {
+    pub micros: u64,
+    pub partial: bool,
 }
 
 /// 快路要看的此刻状态（事实累加器给）。
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Watch {
+pub struct Watch {
     /// 分叉来源已经定了（不用再找）。
-    pub(crate) fork_locked: bool,
+    pub fork_locked: bool,
     /// 有一串重试还没下文。
-    pub(crate) retry_open: bool,
+    pub retry_open: bool,
     /// 有没结果的工具调用。
-    pub(crate) pending: bool,
+    pub pending: bool,
     /// 有还没收场的后台命令。
-    pub(crate) background: bool,
+    pub background: bool,
     /// 只问 MCP 那一格（扩展页「谁断开」）。
-    pub(crate) mcp_only: bool,
+    pub mcp_only: bool,
 }
 
 /// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
-pub(crate) const SAY_CHARS: usize = 160;
+pub const SAY_CHARS: usize = 160;
 
 /// 只做准备、说不出用意的那几个打头的词（换目录 · 设变量 · 设 shell 选项 · 读进环境 · 空命令）。
 const SETUP_WORDS: &[&str] = &[
@@ -300,7 +300,7 @@ fn intent_in(seg: &str) -> Option<usize> {
 }
 
 /// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。
-pub(crate) fn one_line(s: &str) -> Option<String> {
+pub fn one_line(s: &str) -> Option<String> {
     let line = s.lines().map(str::trim).find(|l| !l.is_empty())?;
     let mut out: String = line.chars().take(SAY_CHARS).collect();
     if line.chars().count() > SAY_CHARS {
@@ -310,7 +310,7 @@ pub(crate) fn one_line(s: &str) -> Option<String> {
 }
 
 /// 子串在不在：按首字节跳着找，命中首字节再比后面（大工具输出那几行每行要问好几次，逐窗比较太慢）。快路用。
-pub(crate) fn contains(hay: &[u8], needle: &[u8]) -> bool {
+pub fn contains(hay: &[u8], needle: &[u8]) -> bool {
     let Some((&first, rest)) = needle.split_first() else {
         return true;
     };
@@ -327,7 +327,7 @@ pub(crate) fn contains(hay: &[u8], needle: &[u8]) -> bool {
 
 impl Beat<'_> {
     /// 一拍里「谁说的」那一件。
-    pub(crate) fn said(&self) -> Option<&UserText> {
+    pub fn said(&self) -> Option<&UserText> {
         self.acts.iter().find_map(|a| match a {
             Act::Said(u) => Some(u),
             _ => None,
@@ -335,12 +335,12 @@ impl Beat<'_> {
     }
 
     /// 一拍停在 `why` 上了没有。
-    pub(crate) fn stops(&self, why: StopWhy) -> bool {
+    pub fn stops(&self, why: StopWhy) -> bool {
         self.acts.contains(&Act::Stop(why))
     }
 
     /// 一拍带着工具结果。
-    pub(crate) fn has_result(&self) -> bool {
+    pub fn has_result(&self) -> bool {
         self.acts.iter().any(|a| matches!(a, Act::Result { .. }))
     }
 }

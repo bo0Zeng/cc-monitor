@@ -4,7 +4,7 @@
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
 use crate::wire::SessionFaceExt as _;
-use crate::wire::{Frame, FrameMake as _, WireLife};
+use crate::wire::{Frame, WireLife};
 
 /// watcher 摘一条的两种：真走了 · 被顶替了（顶替它的那条叫 `<sid>-new`）。
 #[derive(Debug, Clone, Copy)]

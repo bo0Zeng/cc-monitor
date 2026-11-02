@@ -13,7 +13,7 @@
 /// 听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），宿主与后端同一个函数。
 pub const RESIDENT: &str = "CCM_RESIDENT";
 
-/// stderr 诊断文件完整路径的 env 名（`stderr_log.rs` 读它）。
+/// stderr 诊断文件完整路径的 env 名（`backend-stderr-log` 读它）。
 pub const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
 
 /// 常驻后端自有的那几格（起它的那一方只交给它自己用；中转口除外，见头注）。名字住这里（最下层），读它们的上层引这里。

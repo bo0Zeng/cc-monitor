@@ -27,7 +27,10 @@ mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与
 #[cfg(test)]
 #[path = "../../tests/backend/agent_locality_guard.rs"]
 mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ + 通用层零个 agent 名字面量（整体 #[cfg(test)]）
-mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
+use backend_agents as agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode；独立的包 `backend-agents`：只引纯工具与平台两层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/agents.rs"]
+mod cross_agents; // agent 适配层判据里引到上层的那几条（那一层是独立的包、够不到上层）
 #[cfg(test)]
 use test_meters::alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的，会把邻居测试算进来；住 dev 侧的量具包）
 #[cfg(test)]
@@ -99,16 +102,19 @@ use platform::tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 
 #[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
+use backend_relay as relay;
 #[cfg(test)]
-pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
-mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
+pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`） // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/relay.rs"]
+mod cross_relay; // 中转宿主判据里引到上层的那几条（那一层是独立的包、够不到上层）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
 mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // 多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
-mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
+use backend_stderr_log as stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
 mod stream; // 进后端的口（最上层）：进程入口 · 命令表 · 帧面与 CLI 面的分派 · 门 · 期限 · 出口声明 · tap（谁都不引它，只 lib 接）
 pub use stream::entry::run; // 二进制那一行（`main.rs`）：进程的整个身子
 pub use wire::b64_encode; // bench `s7_history_read` 读它（crate 外读者）
