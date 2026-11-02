@@ -301,7 +301,7 @@ describe("号牌与点开一个号", () => {
     const root = draw(view(), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
     const keys = [...new Set(texts(pane, "span").filter((t) => t.startsWith("夹具")))];
-    expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·恢复默认", "夹具·延迟"]);
+    expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·延迟"]);
     expect([...pane.querySelectorAll<HTMLElement>('[data-inherited="true"]')].map((e) => e.textContent), "只有 from = all 的画虚线").toEqual(["夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·90"]);
     pane.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
     expect(a.edit.mock.calls).toEqual([[{ set: { key: "fallback", v: false, row: 2 } }]]);

@@ -51,7 +51,7 @@ impl TapPort for TapHub {
     /// 恒收：号已由 tee 占掉，卡上的缺口由活卡判。
     fn offer(&self, ev: TapEvent) -> bool {
         let spend = crate::accounts::quota::spend::book();
-        let now = crate::accounts::quota::now_unix();
+        let now = crate::common::time::now_secs();
         if ev.n == 0 {
             crate::observe::relay_marks::note(&ev.stream, &ev.heads);
             spend.began(&ev.stream, ev.resp, now);

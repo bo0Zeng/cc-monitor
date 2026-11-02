@@ -9,6 +9,17 @@
 //! 起进程、接管子、读盘、读环境都不在这里：那是宿主的事（壳里 `chan/host.rs` · `filewin/proc.rs`）。
 //! `chan.ts`（主界面那一侧的通道入口）与这几份同住这个目录，同归通信层管。
 
+// 生产段的禁用名单住上一层 `src/comms/clippy.toml`，放行逐处写在调用点；测试段的夹具要自己定期限、读源码 ⇒ 测试段整段放开。
+// 这一行是整包唯一许写 `allow` 的地方：测试段用不用得到名单上的调用随判据增减，写成 `expect` 会在用不到时报。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::disallowed_methods,
+        reason = "测试段放开禁用名单：夹具自己定期限、读源码"
+    )
+)]
+
 pub mod backend_route;
 pub mod line;
 pub mod origin;

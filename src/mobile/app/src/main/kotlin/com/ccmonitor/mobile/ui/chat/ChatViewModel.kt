@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
 import com.ccmonitor.mobile.core.claude.model.SaidImage
+import com.ccmonitor.mobile.core.wire.gen.HlCode
+import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.chat.attach.AttachActions
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
@@ -29,6 +31,9 @@ class ChatViewModel(
 
     /** 人说的那一句里的一张图（画到那一格时取，见 [ChatSession.image]）。 */
     suspend fun image(img: SaidImage): ByteArray? = session.image(img)
+
+    /** 助手正文一段的代码高亮（建好那一段时拉，见 [ChatSession.segHl]）。 */
+    suspend fun segHl(codes: List<HlCode>): SegHl? = session.segHl(codes)
 
     /** 视口贴不贴着底（见 [ChatSession.follow]）。 */
     fun follow(on: Boolean) = session.follow(on)

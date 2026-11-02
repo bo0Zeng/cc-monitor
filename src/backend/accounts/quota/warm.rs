@@ -274,7 +274,7 @@ impl crate::wire::typed::Handle for QuotaWarm {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Warmed, WarmErr>> + Send + 'static {
         async move {
-            answer(&req, &cx.needs, super::now_unix())
+            answer(&req, &cx.needs, crate::common::time::now_secs())
                 .map_err(|f| crate::wire::typed::of_fail(f, WarmErr::NotSent))
         }
     }
