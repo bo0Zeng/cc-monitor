@@ -12,8 +12,11 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use cmd_wire::phone::{DeployAct, DeployEnd};
+use comms_inward::line::CappedAll;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use deploy_contract::DeployAction;
+use relay_route_core::{Cap, Over};
 
 use crate::resident::{self, OnEvent};
 
@@ -67,6 +70,44 @@ pub fn slots_of(json: &str) -> Vec<deploy::Slot> {
             })
         })
         .collect()
+}
+
+/// 整份读本版带的那份后端的上限（同后端整读后端字节那一个数：今天一份二十来 MB，留足十倍余量）。
+/// 超了 ⇒ 拒收：一个字节不读进来，回超出上限那一句，这一趟不装、那台一个字节不动。
+const BACKEND_BYTES_CAP: Cap = Cap {
+    bytes: 256 << 20,
+    over: Over::Reject,
+};
+
+/// 读一格字节（App 解到私有目录的那份后端）。超上限 ⇒ 拒收，那一句就是部署那一格的原因。
+fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
+    read_capped(p, BACKEND_BYTES_CAP)
+}
+
+/// 带上限地整份读一份本机文件，读经 `comms_inward::line::read_capped_all_sync`。只认普通文件（先看类型再打开：
+/// 打开 FIFO 会卡住，设备的长度报 0 会骗过大小检查）；长度已过上限 ⇒ 不读。读不了的那一句只是原因，系统原话进 `raw`。
+fn read_capped(p: &std::path::Path, cap: Cap) -> Result<Vec<u8>, Said> {
+    let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
+    let meta = std::fs::metadata(p).map_err(io)?;
+    if !meta.is_file() {
+        return Err(Said::from(copy_text("reason.fs.notRegular", &[])));
+    }
+    let c = cap.bytes.to_string();
+    if meta.len() > cap.bytes {
+        let size = meta.len().to_string();
+        return Err(Said::from(copy_text(
+            "beFs.readRegularCapped.tooBigSized",
+            &[("cap", &c), ("size", &size)],
+        )));
+    }
+    let f = std::fs::File::open(p).map_err(io)?;
+    match comms_inward::line::read_capped_all_sync(f, cap).map_err(io)? {
+        CappedAll::All(buf) => Ok(buf),
+        CappedAll::OverCap => Err(Said::from(copy_text(
+            "beFs.readRegularCapped.tooBig",
+            &[("cap", &c)],
+        ))),
+    }
 }
 
 /// 给编号 `h` 那台装一趟（在当前运行时上起）。那台不在 · 正在装 ⇒ `false`（不起第二趟）。
@@ -138,10 +179,6 @@ async fn run(
             on(h, kind, body);
         }
     };
-    let load = |p: &std::path::Path| {
-        std::fs::read(p)
-            .map_err(|e| copy_core::said::Said::with_raw(copy_core::io_reason(e.kind()), e))
-    };
     let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
         Err(f) => failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
         Ok(plan) => {
@@ -212,6 +249,69 @@ mod tests {
             (Some("failed"), Some("refused"))
         );
         assert!(f["detail"].as_str().unwrap().contains("uname: x"), "{f}");
+    }
+
+    /// 这一条判据自己的临时目录（测试档的临时目录已是沙箱）。
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("mobcore-load-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("临时目录");
+        d
+    }
+
+    /// 本版带的那份后端比上限大一个字节 ⇒ 拒收，那一句是超出上限（带实际大小），一个字节不读进来。
+    #[test]
+    fn a_carried_backend_one_byte_over_the_cap_is_refused_as_over_the_cap() {
+        let d = scratch("over");
+        let p = d.join("backend");
+        let f = std::fs::File::create(&p).expect("建假后端");
+        f.set_len(BACKEND_BYTES_CAP.bytes + 1)
+            .expect("稀疏扩到上限加一");
+        let said = match load(&p) {
+            Ok(b) => panic!("超上限却读进来了 {} 字节", b.len()),
+            Err(s) => s.said,
+        };
+        let cap = BACKEND_BYTES_CAP.bytes.to_string();
+        let size = (BACKEND_BYTES_CAP.bytes + 1).to_string();
+        assert_eq!(
+            said,
+            copy_text(
+                "beFs.readRegularCapped.tooBigSized",
+                &[("cap", &cap), ("size", &size)]
+            )
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 正好等于上限的照读，多一个字节就拒。用小上限量，不写几百 MB。
+    #[test]
+    fn exactly_at_the_cap_is_read_one_byte_more_is_refused() {
+        let d = scratch("edge");
+        let p = d.join("backend");
+        std::fs::write(&p, b"0123456789").expect("写假后端");
+        let at = |bytes| Cap {
+            bytes,
+            over: Over::Reject,
+        };
+        assert_eq!(
+            read_capped(&p, at(10)).expect("正好等于上限"),
+            b"0123456789"
+        );
+        let said = read_capped(&p, at(9)).expect_err("超上限却读进来了").said;
+        assert!(
+            copy_core::copy_matches("beFs.readRegularCapped.tooBigSized", &said),
+            "{said}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 不是普通文件（目录 · FIFO · 设备）⇒ 不打开、回「不是普通文件」。
+    #[test]
+    fn a_carried_backend_that_is_not_a_regular_file_is_refused() {
+        let d = scratch("dir");
+        let said = load(&d).expect_err("目录却读成了").said;
+        assert_eq!(said, copy_text("reason.fs.notRegular", &[]));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// Kotlin 交的那几格：认得的照收，缺格 · 空身份 · 表 A 外的机器丢掉。

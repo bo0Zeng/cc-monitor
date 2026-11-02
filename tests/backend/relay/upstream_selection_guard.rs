@@ -287,12 +287,17 @@ pub(super) mod tests {
     }
 
     /// `word` 在 `text` 里作为**完整标识符**出现几次。
-    /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`）。
+    /// 后端顶层模块名（`lib.rs` 生产段里的 `mod <名>;`，`#[path]` 挂进来的判据不算）。
     fn top_level_modules() -> BTreeSet<String> {
         let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
-        lib.lines()
-            .filter_map(|l| l.trim().strip_prefix("pub mod "))
+        let prod = guard_core::production_code(&lib);
+        let lines: Vec<&str> = prod.lines().map(str::trim).collect();
+        lines
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i == 0 || !lines[i - 1].starts_with("#[path"))
+            .filter_map(|(_, l)| l.strip_prefix("mod "))
             .filter_map(|r| r.split(';').next())
             .map(|n| n.trim().to_string())
             .collect()

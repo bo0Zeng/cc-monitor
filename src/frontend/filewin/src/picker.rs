@@ -95,13 +95,31 @@ pub fn save_type(suggested: &str, windows: bool) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `user-dirs.dirs` 的读上限：十来行 `XDG_*_DIR=` 赋值，几百字节。超了跳过（照主目录底下的 `Downloads` 走）、日志说是哪一份。
+const USER_DIRS_CAP: host_core::Cap = host_core::Cap {
+    bytes: 64 * 1024,
+    over: host_core::Over::SkipAndSay,
+};
+
 /// 进程里那一份生产选择框。
 /// 系统的「下载」文件夹（存盘框缺省落在这儿）：Linux 读 `user-dirs.dirs` 的 `XDG_DOWNLOAD_DIR`（中文环境是「下载」），
 /// 别的平台 ⇒ 主目录底下的 `Downloads`；不在盘上 ⇒ `None`（由系统框自己定）。
 pub fn downloads_dir() -> Option<PathBuf> {
     let home = PathBuf::from(super::shell::local_home());
-    let xdg = std::fs::read_to_string(home.join(".config/user-dirs.dirs"))
-        .ok()
+    let dirs = home.join(".config/user-dirs.dirs");
+    let text = match host_core::read_capped(&dirs, USER_DIRS_CAP) {
+        Ok(host_core::Capped::Whole(t)) => Some(t),
+        Ok(host_core::Capped::TooBig) => {
+            tracing::warn!(
+                cap = USER_DIRS_CAP.bytes,
+                "{} over its read cap, skipped",
+                dirs.display()
+            );
+            None
+        }
+        Ok(host_core::Capped::Absent) | Err(_) => None,
+    };
+    let xdg = text
         .and_then(|t| {
             t.lines()
                 .find_map(|l| l.strip_prefix("XDG_DOWNLOAD_DIR="))

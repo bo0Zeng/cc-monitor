@@ -12,9 +12,9 @@ fn row(name: &str, sid: &str) -> SessionRow {
     }
 }
 
-/// ★★ **`KR96D1` 死值验第二刀：读快照必须触发更新，拿到的值是「这一刻的」。**
+/// ★★ **读快照必须触发更新，拿到的值是「这一刻的」。**
 ///
-/// 🔴 **失效方向（件文件逐字）：只判「有没有调那个快照函数」。**
+/// 🔴 **失效方向：只判「有没有调那个快照函数」。**
 /// 那种判据在「`query` 被改成先看缓存」时**照样绿** —— 而那正是这里要挡的那一下。
 /// ⇒ 这里的夹具是一个**会变的世界**：探测器第 1 次回 A、第 2 次回 B。
 /// 判的是**第二次问到的是 B**，不是「问了」。
@@ -35,7 +35,7 @@ fn asking_the_snapshot_refreshes_it_so_the_answer_is_from_this_moment() {
         second,
         vec![row("world-1-cc", "sid-x")],
         "第二次问回来的还是第一次那份 —— `query` 退化成了「读缓存」。\n\
-             ★ `R52` 裁定一允许 Gate 读快照的**前提**就是「问一次、更新一次」；\n\
+             ★ Gate 能读快照判活，**前提**就是「问一次、更新一次」；\n\
                读陈值判活 = 把一个刚死的会话报成活的。"
     );
 }
@@ -82,12 +82,11 @@ fn the_taken_name_table_is_also_refreshed_by_the_asking() {
 /// ★ 陈值那个口子（`peek`）**只许测试用** —— 生产段一处都不许调。
 ///
 /// 它是本模块唯一一个「读了不更新」的口，留着是为了让上面两条测得出来。
-/// 漏进生产段就等于把 `R52` 的前提拆了，所以在这里数一遍。
+/// 漏进生产段就等于把 Gate 读快照判活的前提拆了，所以在这里数一遍。
 #[test]
 fn the_stale_read_door_never_appears_in_production_code() {
     // ⚠ **必须走 `scan_tree!`，不许自己 `read_dir`** —— 裸遍历会让判据在**自己的语料**
-    //   里找到自己 ⇒ 恒绿；那条纪律由 monitor 侧 `scanning_guard_registry` 机检
-    //   （本条第一版就是这么红的）。
+    //   里找到自己 ⇒ 恒绿；那条纪律由 monitor 侧 `scanning_guard_registry` 机检。
     // ⚠ 宏自称的「摘掉调用者自己那一份」**在这一处不生效**
     //   （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     //   本条不在自己的语料里靠的是**住址**：它住 `tests/backend/common/`，扫的是 `src/backend`。
@@ -116,10 +115,9 @@ fn the_stale_read_door_never_appears_in_production_code() {
     );
 }
 
-/// ★★ **`K-R12`：这一处起 tmux，`-u` 必须排在子命令之前。**
+/// ★★ **这一处起 tmux，`-u` 必须排在子命令之前。**
 ///
-/// 判据本体从 `control/gate.rs` 随 `list-sessions` 这处调用点一起搬来
-/// （那边今天只剩 `display-message` 一处，它那条判据也随之收成一个动词）。
+/// `control/gate.rs` 那边只有 `display-message` 一处，它那条同名判据只管那一个动词。
 /// 为什么这一条只能是「扫源码」、以及它守不住什么，见 `control/gate.rs` 同名判据的头注
 /// （行为那一半只有对真 tmux 打才看得见，不在 cargo 里）。
 ///
@@ -158,7 +156,7 @@ fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     );
 }
 
-/// ★ `K-R12 J1`：段数下溢 ⇒ 整行不当好数据（本处这一侧）。
+/// ★ 段数下溢 ⇒ 整行不当好数据（本处这一侧）。
 ///
 /// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]

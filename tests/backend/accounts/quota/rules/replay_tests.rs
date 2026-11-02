@@ -5,13 +5,303 @@
 //! 「1% ≈ 多少」取让每段在号上的用量正好在日志那一刻打到上限的那个数。
 
 use super::*;
+use crate::accounts::quota::ledger::EST_FRESH as PACE_SPAN;
 use crate::accounts::quota::rules::code;
-use crate::accounts::quota::rules::decide::{Ctx, Sigma, Strategy, Verdict};
+use crate::accounts::quota::rules::decide::{
+    use_now, Ctx, Me, PromptCache, Sigma, Strategy, Verdict,
+};
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::setup::script::{self, File};
 use crate::accounts::quota::strategy::Fail;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
+
+/// 回放的需求：本会话从 `t0` 起每分钟用了多少（折合输入 token）· 那一分钟的上下文（token）；
+/// 写缓存那一档：比读缓存多几倍 · 留几秒。
+#[derive(Debug, Clone)]
+struct Trace {
+    t0: u64,
+    mins: Vec<(f64, u64)>,
+    extra: f64,
+    ttl: u64,
+}
+
+/// 本会话的用速看最近 [`PACE_SPAN`] 秒 · 刚开头这么久不给（同额度账那一本的口径）。
+const PACE_FIRST: u64 = 10 * 60;
+/// 起伏按 10 分钟一段、看最近 6 段，不到 3 段不给。
+const SPREAD_BIN: u64 = 10 * 60;
+const SPREAD_BINS: u64 = 6;
+const SPREAD_MIN: usize = 3;
+
+impl Trace {
+    fn minute(&self, t: u64) -> Option<(f64, u64)> {
+        let k = usize::try_from(t.checked_sub(self.t0)? / 60).ok()?;
+        self.mins.get(k).copied()
+    }
+
+    fn units(&self, from: u64, to: u64) -> f64 {
+        (from.max(self.t0)..to)
+            .step_by(60)
+            .filter_map(|t| self.minute(t))
+            .map(|m| m.0)
+            .sum()
+    }
+
+    /// 此刻交给判的 `session`：只看 `t` 以前的那几分钟（判的时候还不知道之后用多少）。
+    fn me(&self, t: u64, cached: Vec<PromptCache>) -> Me {
+        let pace = (t >= self.t0 + PACE_FIRST).then(|| {
+            let from = t.saturating_sub(PACE_SPAN).max(self.t0);
+            self.units(from, t) / ((t - from) as f64 / 60.0)
+        });
+        let bins: Vec<f64> = (0..SPREAD_BINS)
+            .map(|k| t.saturating_sub(SPREAD_BIN * (k + 1)))
+            .filter(|from| *from >= self.t0)
+            .map(|from| self.units(from, from + SPREAD_BIN))
+            .collect();
+        let spread = (bins.len() >= SPREAD_MIN).then(|| {
+            let n = bins.len() as f64;
+            let mu = bins.iter().sum::<f64>() / n;
+            let var = bins.iter().map(|x| (x - mu).powi(2)).sum::<f64>() / n;
+            if mu > 0.0 {
+                var.sqrt() / mu
+            } else {
+                0.0
+            }
+        });
+        let context = t.checked_sub(60).and_then(|p| self.minute(p)).map(|m| m.1);
+        let back = t.saturating_sub(PACE_SPAN).max(self.t0);
+        let grow = self
+            .minute(back)
+            .zip(context)
+            .filter(|_| t >= back + 120)
+            .map(|(a, b)| b.saturating_sub(a.1) as f64 / ((t - 60 - back) as f64 / 60.0));
+        // 短窗用速 · 在途并发 · 6 小时分段：录下来的轨迹里没有这三样 ⇒ 交「量不到」。
+        Me {
+            pace: pace.filter(|p| *p > 0.0),
+            pace_short: None,
+            inflight: None,
+            bins: Vec::new(),
+            spread,
+            context,
+            write_extra: Some(self.extra),
+            ttl: Some(self.ttl),
+            grow,
+            cached,
+        }
+    }
+}
+
+/// 别的会话压在一个号 5 小时窗上的用速（点 / 分），在 `[from, to)` 里。
+#[derive(Debug, Clone)]
+struct Load {
+    acct: String,
+    from: u64,
+    to: u64,
+    rate: f64,
+}
+
+/// 回放里策略管不着的事：别的会话的用量 · 号被拒的时段（号 · 起 · 止）· 用户「现在用」（时刻 · 号）。
+#[derive(Debug, Clone)]
+struct World {
+    others: Vec<Load>,
+    refused: Vec<(String, u64, u64)>,
+    use_now: Vec<(u64, String)>,
+}
+
+/// 一次换号为什么换：在用的号用不了了（到上限 · 被拒）· 在用的号还能用、策略要提前换 · 用户「现在用」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SwitchCause {
+    Forced,
+    Early,
+    Manual,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Switch {
+    at: u64,
+    from: String,
+    to: String,
+    cause: SwitchCause,
+}
+
+/// 一份额度作废：哪个号的哪一窗 · 几点 · 作废时还剩几点（100 − 用量）。
+#[derive(Debug, Clone, PartialEq)]
+struct Expired {
+    acct: String,
+    w: usize,
+    at: u64,
+    left: f64,
+}
+
+/// 回放结果：换号 · 停发的时段 · 卡住的需求（折合输入 token）· 作废的每一份 · 跑完时各号的事实。
+#[derive(Debug, Clone)]
+struct Replay {
+    switches: Vec<Switch>,
+    holds: Vec<(u64, u64)>,
+    stuck: f64,
+    expired: Vec<Expired>,
+    end: Vec<Acct>,
+}
+
+/// ★ 回放：从 `from` 到 `to` 每分钟判一次（和真用同一个 [`turn`]），需求照 `trace` 而不是用速。
+/// 在用的号这一分钟涨 ＝ 本会话这一分钟的用量 ÷ 它「1% ≈ 多少」（换过去那一下另加整段重写：写缓存倍数 × 上下文，
+/// 那个号上的缓存还没过期就不加），用到 100 那一刻起多出来的算卡住；停发的那几分钟整份卡住。
+/// 别的号照 [`rate_of`] 涨（本会话不在上面 ⇒ 只有别的会话那一份）；窗口关着、别的会话开始用 ⇒ 从那一刻开窗。
+#[allow(clippy::too_many_arguments)]
+fn replay(
+    sigma: &Sigma,
+    facts: &[Acct],
+    settings: &Value,
+    p: &dyn Strategy,
+    clock_of: &dyn Fn(u64) -> u16,
+    trace: &Trace,
+    world: &World,
+    from: u64,
+    to: u64,
+) -> Replay {
+    let mut s = sigma.clone();
+    let mut f: Vec<Acct> = facts.to_vec();
+    let mut out = Replay {
+        switches: Vec::new(),
+        holds: Vec::new(),
+        stuck: 0.0,
+        expired: Vec::new(),
+        end: Vec::new(),
+    };
+    // 号 ⇒ 本会话在它上面的缓存留到几点 · 当时的上下文。
+    let mut cache: Vec<(String, u64, u64)> = Vec::new();
+    let mut held: Option<u64> = None;
+    let mut t = from;
+    while t < to {
+        let te = (t + 60).min(to);
+        for x in f.iter_mut() {
+            if let Some(u) = world
+                .refused
+                .iter()
+                .filter(|(a, a0, a1)| *a == x.id && *a0 < te && *a1 > t)
+                .map(|r| r.2)
+                .max()
+            {
+                x.refused_until = Some(u);
+            }
+            x.others = Some(
+                world
+                    .others
+                    .iter()
+                    .filter(|o| o.acct == x.id && o.from <= t && t < o.to)
+                    .map(|o| o.rate)
+                    .sum(),
+            );
+        }
+        for (_, a) in world.use_now.iter().filter(|(at, _)| t <= *at && *at < te) {
+            if let Ok(next) = use_now(&s, &f, t, a) {
+                if next.current != s.current {
+                    out.switches.push(Switch {
+                        at: t,
+                        from: s.current.clone(),
+                        to: next.current.clone(),
+                        cause: SwitchCause::Manual,
+                    });
+                }
+                s = next;
+            }
+        }
+        cache.retain(|c| c.1 > t);
+        s.me = trace.me(
+            t,
+            cache
+                .iter()
+                .map(|(a, until, tokens)| PromptCache {
+                    account: a.clone(),
+                    until: *until,
+                    tokens: *tokens,
+                })
+                .collect(),
+        );
+        let prev = s.current.clone();
+        let d = turn(&s, &f, settings, p, clock_of(t), t, &[]);
+        let (tok, ctx) = trace.minute(t).unwrap_or((0.0, 0));
+        match &d.pick {
+            Pick::Use(a) => {
+                if let Some(h) = held.take() {
+                    out.holds.push((h, t));
+                }
+                let mut lump = 0.0;
+                if *a != prev {
+                    let still = d.order.contains(&prev)
+                        && f.iter().any(|x| x.id == prev && standing::sendable(x, t));
+                    out.switches.push(Switch {
+                        at: t,
+                        from: prev.clone(),
+                        to: a.clone(),
+                        cause: if still {
+                            SwitchCause::Early
+                        } else {
+                            SwitchCause::Forced
+                        },
+                    });
+                    if !cache.iter().any(|c| c.0 == *a) {
+                        lump = trace.extra * ctx as f64;
+                    }
+                }
+                if let Some(x) = f.iter_mut().find(|x| x.id == *a) {
+                    open_windows(x, t);
+                    // 这一分钟发得出去的：每一窗（量得到 1% 的）到 100 为止还装得下多少。
+                    let room = (0..2)
+                        .filter(|w| *w == 0 || x.weekly)
+                        .filter_map(|w| {
+                            x.per_pct[w].map(|k| (100.0 - x.used[w]).max(0.0) * k as f64)
+                        })
+                        .fold(f64::INFINITY, f64::min);
+                    let served = (tok + lump).min(room);
+                    out.stuck += tok - (served - lump).max(0.0).min(tok);
+                    for w in 0..2 {
+                        if let Some(k) = x.per_pct[w].filter(|k| *k > 0) {
+                            x.used[w] = (x.used[w] + served / k as f64).min(100.0);
+                        }
+                    }
+                }
+                cache.retain(|c| c.0 != *a);
+                cache.push((a.clone(), te + trace.ttl, ctx));
+            }
+            Pick::Hold { .. } => {
+                held.get_or_insert(t);
+                out.stuck += tok;
+            }
+        }
+        // 别的会话那一份：窗口关着、它开始用 ⇒ 从此刻开窗。
+        for x in f.iter_mut().filter(|x| !x.api) {
+            for w in 0..2 {
+                let Some(r) = rate_of(x, w, false, None).filter(|r| *r > 0.0) else {
+                    continue;
+                };
+                if x.resets[w].is_none_or(|r| r <= t) {
+                    open_windows(x, t);
+                }
+                x.used[w] = (x.used[w] + r * (te - t) as f64 / 60.0).min(100.0);
+            }
+        }
+        for x in f.iter_mut() {
+            for (w, at, used) in expire(x, te) {
+                if w == 0 || x.weekly {
+                    out.expired.push(Expired {
+                        acct: x.id.clone(),
+                        w,
+                        at,
+                        left: (100.0 - used).max(0.0),
+                    });
+                }
+            }
+        }
+        s = d.sigma;
+        t = te;
+    }
+    if let Some(h) = held {
+        out.holds.push((h, to));
+    }
+    out.end = f;
+    out
+}
 
 const NIGHT: &str = include_str!("../../../../__fixtures__/rotation-night-1029.json");
 

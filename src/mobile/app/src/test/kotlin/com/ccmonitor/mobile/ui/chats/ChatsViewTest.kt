@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.wire.gen.CanResume
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
@@ -73,6 +74,7 @@ class ChatsViewTest {
         sectionText = section,
         spanText = "09:0$sid",
         forkedFromSessionId = parent,
+        origin = LOCAL,
     )
 
     private fun group(
@@ -91,6 +93,7 @@ class ChatsViewTest {
         atText = "09:00",
         order = order,
         failed = null,
+        origin = LOCAL,
     )
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)

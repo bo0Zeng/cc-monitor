@@ -778,7 +778,7 @@ pub fn run() {
                 // 问不到就按缺省（不结束）办并出声。**只问一次**。
                 //
                 // ⚠ 常驻（脱离）那条起法**不在这里收** —— 它自己就是读那个值的人：
-                //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
+                //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `stream/entry.rs::serve_listening`）。
                 //   这里替它再决定一次 = 两个决策处，且违背 `§3.3b ⑥`「不是起我的那个 monitor 退了」。
                 let kill = crate::backend_policy::kill_on_exit_now(&crate::origin::Origin::local());
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──

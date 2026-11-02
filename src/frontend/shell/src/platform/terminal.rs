@@ -107,11 +107,10 @@ pub(crate) fn pick_terminal_from(
     }
 }
 
-/// 设置里那一格的原值（config.json `terminal`；没设 / 读不动 ⇒ `None` ＝ 自动）。
+/// 设置里那一格的原值（config.json `terminal`；没设 / 读不动 ⇒ `None` ＝ 自动）。读经设置那一处（上限照声明表）。
 #[cfg(not(windows))]
 fn terminal_setting() -> Option<String> {
-    let raw = std::fs::read_to_string(crate::config::resolve_config_path()?).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let v = crate::config::load_config_at(&crate::config::resolve_config_path()?).ok()?;
     v.get("terminal")?.as_str().map(String::from)
 }
 

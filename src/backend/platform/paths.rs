@@ -59,10 +59,8 @@ pub fn temp_root() -> PathBuf {
 
 /// 跑着的这个进程的 uid。**非 unix 上没有这个概念 ⇒ 给 `0`**。
 ///
-/// ⚠⚠ 这一半先前就住在 `observe/watcher.rs` 里、**并且已经有两条 cfg 臂**
-/// （那份注释还记着「首版直接 `unsafe { libc::getuid() }`，本机 cargo test 全绿、
-/// Windows 侧编不过」）。搬过来不是因为它坏，是因为**它和它的另一半被拆在两处**：
-/// 一半有门、一半没门，而两半合起来才是一条路径。
+/// ⚠⚠ **两条 cfg 臂缺一不可**：只写 `unsafe { libc::getuid() }` 的话本机 cargo test 全绿、
+/// Windows 侧编不过。它和 [`temp_root`] 住同一处：两半合起来才是一条路径。
 #[cfg(unix)]
 pub fn current_uid() -> u32 {
     // SAFETY: `getuid` 无副作用、不会失败。

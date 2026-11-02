@@ -123,7 +123,7 @@ fn the_store_round_trips_and_does_not_overwrite_an_unreadable_file() {
     let store = LineageStore::at(Some(path.clone()));
     store.saw(&own, o(T, Some("s-p")), "s-new", "claude-code", 100);
     let again = LineageStore::at(Some(path.clone()));
-    assert_eq!(again.now().parent_of("s-new"), Some("s-p"));
+    assert_eq!(again.current().0.parent_of("s-new"), Some("s-p"));
     std::fs::write(&path, b"{not json").unwrap();
     let broken = LineageStore::at(Some(path.clone()));
     broken.saw(&own, o("ffff000011112222", None), "s-b", "claude-code", 100);
@@ -150,7 +150,7 @@ fn a_file_without_version_reads_as_format_1_and_is_written_back_with_it() {
     let own = crate::platform::fs::Own::issue_data_at(&dir);
     let store = LineageStore::at(Some(path.clone()));
     assert_eq!(
-        store.now().parent_of("s-old"),
+        store.current().0.parent_of("s-old"),
         Some("s-p"),
         "没有版本那一份没读成第 1 版"
     );

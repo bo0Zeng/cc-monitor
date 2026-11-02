@@ -393,8 +393,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("byte_table::native_filewin", Kind::Carried),
     ("local_backend::place_local_program", Kind::Carried),
     ("platform::own_fs::OwnBin", Kind::Carried),
-    // 窗口进程的 stderr 一条最多收多少字节：与被监护子进程那一份同一个上界（不另起一个数）。
-    ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
+    // 窗口进程的 stderr 读一条：与被监护子进程那一份同一个读法、同一个上界（不另起一个数）。
+    ("local_backend::next_stderr_line", Kind::Carried),
     // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：本机后端机器表最近那一份里的名字，不新建数据源。
     ("machine_table::rows_now", Kind::Config),
     // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。

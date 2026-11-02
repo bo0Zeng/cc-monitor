@@ -46,7 +46,7 @@ async fn one_byte_over_the_cap_is_over_not_cut() {
     let mut buf = Vec::new();
     match read_capped_line(&mut rd, &mut buf, c).await.unwrap() {
         CappedLine::TooLong(n) => assert_eq!(n, c.bytes + 1, "报出的字节数是真实长度"),
-        other => panic!("该判超限，实得 {other:?}"),
+        other @ (CappedLine::Line | CappedLine::Eof) => panic!("该判超限，实得 {other:?}"),
     }
     assert!(buf.is_empty(), "超限的行不许截成前 16 字节留在 buf 里");
 }
@@ -60,7 +60,7 @@ async fn over_limit_stops_growing_the_buffer() {
     let mut buf = Vec::new();
     match read_capped_line(&mut rd, &mut buf, cap(16)).await.unwrap() {
         CappedLine::TooLong(n) => assert_eq!(n, 100_000),
-        other => panic!("该判超限，实得 {other:?}"),
+        other @ (CappedLine::Line | CappedLine::Eof) => panic!("该判超限，实得 {other:?}"),
     }
     assert!(
         buf.capacity() < 1024,
@@ -167,6 +167,47 @@ async fn read_whole_stops_reading_past_the_cap() {
     let mut rd = &data[..];
     assert!(matches!(
         read_capped_all(&mut rd, cap(16)).await.unwrap(),
+        CappedAll::OverCap
+    ));
+    assert!(
+        rd.len() >= 1_000_000 - 64 * 1024,
+        "超限之后还在读：只剩 {} 字节没读",
+        rd.len()
+    );
+}
+
+/// 同步整读：正好到上限照交整份，空流交空。
+#[test]
+fn sync_read_whole_up_to_the_cap() {
+    let data = vec![b'x'; 32];
+    match read_capped_all_sync(&data[..], cap(32)).unwrap() {
+        CappedAll::All(b) => assert_eq!(b, data),
+        CappedAll::OverCap => panic!("正好到上限却判超限"),
+    }
+    match read_capped_all_sync(&b""[..], cap(32)).unwrap() {
+        CappedAll::All(b) => assert!(b.is_empty()),
+        CappedAll::OverCap => panic!("空流却判超限"),
+    }
+}
+
+/// 同步整读：`cap.bytes + 1` 字节 ⇒ 超限，不交出前 `cap.bytes` 字节当整份。
+#[test]
+fn sync_read_whole_one_byte_over_is_over_not_cut() {
+    let c = cap(32);
+    let data = vec![b'y'; (c.bytes + 1) as usize];
+    assert!(matches!(
+        read_capped_all_sync(&data[..], c).unwrap(),
+        CappedAll::OverCap
+    ));
+}
+
+/// 同步整读：超限那一刻就停，不把后面的字节读进来（文件读的途中还会长）。
+#[test]
+fn sync_read_whole_stops_reading_past_the_cap() {
+    let data = vec![b'y'; 1_000_000];
+    let mut rd = &data[..];
+    assert!(matches!(
+        read_capped_all_sync(&mut rd, cap(16)).unwrap(),
         CappedAll::OverCap
     ));
     assert!(

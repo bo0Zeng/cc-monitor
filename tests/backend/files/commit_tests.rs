@@ -202,8 +202,8 @@ fn an_overwriting_commit_keeps_the_target_mode() {
 ///
 /// 这一条是行为那一半：把 `commit_upload` 里那句
 /// 路径解析换成「直接拼 `root.join(rel)`」⇒ 上跳那一格会真的落到根外 ⇒ 红。
-/// 从前第一格是「目标是一份会话文件 ⇒ 拒」；用户「文件管理器全部都可以改. 不需要任何围栏」
-/// ⇒ 那一格翻成正控（提交**落得进**会话文件那个位置），见本条末尾。
+/// 会话文件那个位置是正控（用户「文件管理器全部都可以改. 不需要任何围栏」）：
+/// 提交**落得进**去，见本条末尾。
 #[test]
 fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
     let (home, base) = rig("fence");
@@ -750,7 +750,7 @@ fn a_chunk_is_written_once_and_never_through_a_link() {
 }
 
 /// ★ 提交先过写面那道路径解析：上跳 / 不存在的目标 ⇒ 拒、盘上零改动、块照样删掉。
-/// 从前第一格是「会话文件 ⇒ 拒」；今天那一格翻成正控：存盘改得动会话文件。
+/// 会话文件那一格是正控：存盘改得动会话文件。
 #[test]
 fn a_text_commit_goes_through_the_write_fence() {
     let (home, root) = bare_rig("cfence");
@@ -758,7 +758,7 @@ fn a_text_commit_goes_through_the_write_fence() {
     std::fs::create_dir_all(&proj).unwrap();
     let session = proj.join("s.jsonl");
     std::fs::write(&session, b"{}\n").unwrap();
-    // 不存在的目标从前是 `refused`（解不到底）；带了 CAS 之后是 `stale`（「你打开的时候还在」）—— 逐格钉码。
+    // 不存在的目标是 `stale`（CAS 说「你打开的时候还在」），不是 `refused` —— 逐格钉码。
     for (i, (rel, code)) in [("../escape.txt", "refused"), ("nope.txt", "stale")]
         .iter()
         .enumerate()

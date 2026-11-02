@@ -242,6 +242,12 @@ fn drain_await_dir(this: &Arc<BindRegistry>, await_dir: &Path) {
 /// 本机 bash / zsh 接入块留的那一份的后缀（`ps-await/<进程号>.tty`；写的一侧是 `src/shared/ccm-aliases.sh`）。
 const TTY_RECORD_EXT: &str = "tty";
 
+/// 那一份的读上限：三格（进程号 · 起始时刻 · 终端设备），实测百来字节。超了当认不出：日志说是哪一份、扔掉，不碰那个终端。
+const TTY_RECORD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
+
 /// 本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在 `ps-await/<进程号>.tty` 留下的那一份：那个 shell 的进程号 ·
 /// 起始时刻（`/proc/<pid>/stat` 第 22 格，与它设的 `LC_CCM_WINDOW` 同一个键）· 它的终端设备。
 #[derive(Debug, Clone, Deserialize)]
@@ -331,9 +337,18 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
     if this.tty_tried.lock().contains(file) {
         return;
     }
-    let rec = std::fs::read_to_string(file)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<TtyRecord>(raw.trim()).ok());
+    let rec = match host_core::read_capped(file, TTY_RECORD_CAP) {
+        Ok(host_core::Capped::Whole(raw)) => serde_json::from_str::<TtyRecord>(raw.trim()).ok(),
+        Ok(host_core::Capped::TooBig) => {
+            tracing::warn!(
+                "bind: {} 超过读上限 {} 字节",
+                file.display(),
+                TTY_RECORD_CAP.bytes
+            );
+            None
+        }
+        Ok(host_core::Capped::Absent) | Err(_) => None,
+    };
     let Some(rec) = rec else {
         tracing::warn!("bind: 认不出 {}，扔掉", file.display());
         // 用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删（下同）。
