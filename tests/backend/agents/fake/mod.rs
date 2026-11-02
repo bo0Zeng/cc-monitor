@@ -110,7 +110,8 @@ pub(crate) const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
 /// `projects[cwd].hasTrustDialogAccepted`）。
 pub(crate) fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
     let p = root.join("fake-config.json");
-    let bytes = Ro::read_capped(&p, FAKE_FILE_CAP).map_err(|e| format!("fake_config_unreadable: {e}"))?;
+    let bytes =
+        Ro::read_capped(&p, FAKE_FILE_CAP).map_err(|e| format!("fake_config_unreadable: {e}"))?;
     let v: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("fake_config_invalid: {e}"))?;
     Ok(v.get("trusted")
