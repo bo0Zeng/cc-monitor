@@ -445,22 +445,19 @@ fn s35_a_per_use_limit_keeps_counting_across_a_reset() {
 }
 
 #[test]
-fn s14_a_dragged_order_does_not_stop_a_forced_switch() {
+fn s14_a_manual_account_stops_a_forced_switch() {
     let f = [
         with_reset("A", 10.0, 5),
         with_reset("B", 10.0, 200),
         acct("C", 10.0),
     ];
-    let d = turn(
-        &sig("B", &["B"]),
-        &f,
-        &forced(25),
-        by_reset(),
-        clock(T),
-        T,
-        &[],
+    let at = |sigma: &Sigma| turn(sigma, &f, &forced(25), by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&at(&sig("B", &[]))), "A", "没手动选：照强制切换换走");
+    assert_eq!(
+        used(&at(&sig("B", &["B"]))),
+        "B",
+        "手动选的号还发得出去：强制切换不换它"
     );
-    assert_eq!(used(&d), "A", "拖出来的顺序只在在用的号该换时生效");
 }
 
 #[test]
@@ -643,7 +640,7 @@ fn s12_a_dragged_entry_that_cannot_be_used_is_skipped() {
         ..Fixed::default()
     };
     let f = [
-        acct("A", 10.0),
+        refused(acct("A", 10.0), T + 3600),
         refused(acct("B", 10.0), T + 3600),
         acct("C", 10.0),
     ];
@@ -656,24 +653,74 @@ fn s12_a_dragged_entry_that_cannot_be_used_is_skipped() {
 }
 
 #[test]
-fn s13_a_dragged_entry_stays_until_the_strategy_drops_it() {
+fn s13_a_dragged_entry_stays_until_it_cannot_be_sent() {
     let f = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
-    let keep = Fixed {
-        order: vec!["C", "A", "B"],
-        ..Fixed::default()
-    };
-    let d = turn(&sig("C", &["C"]), &f, &base(), &keep, 0, T, &[]);
-    assert_eq!(
-        (used(&d), d.sigma.temp.clone()),
-        ("C", vec!["C".to_string()])
-    );
     let drop = Fixed {
         order: vec!["A", "B"],
         ..Fixed::default()
     };
+    let d = turn(&sig("C", &["C"]), &f, &base(), &drop, 0, T, &[]);
+    assert_eq!(
+        (used(&d), d.sigma.temp.clone()),
+        ("C", vec!["C".to_string()]),
+        "策略不列它也照留"
+    );
+    let f = [
+        acct("A", 10.0),
+        acct("B", 10.0),
+        refused(acct("C", 10.0), T + 3600),
+    ];
     let d = turn(&d.sigma, &f, &base(), &drop, 0, T + MIN, &[]);
-    assert_eq!(used(&d), "A");
+    assert_eq!(used(&d), "A", "发不出去了才照策略换");
     assert!(d.sigma.temp.is_empty());
+}
+
+/// ★ 手动选的号压过策略的号列表：「现在用」一个策略不列的号（发得出去）⇒ 下一判还是它；用不了了才照策略换；
+/// 拖出来的先后里策略不列的号，到该换那一刻照样先用。
+#[test]
+fn s38_a_manual_account_outside_the_strategy_list_is_really_used() {
+    let p = Fixed {
+        order: vec!["A", "B"],
+        ..Fixed::default()
+    };
+    let f = [acct("A", 10.0), acct("B", 10.0), acct("Z", 10.0)];
+    let s = use_now(&sig("A", &[]), &f, T, "Z").expect("Z 发得出去");
+    let d = turn(&s, &f, &base(), &p, 0, T, &[]);
+    assert_eq!(
+        used(&d),
+        "Z",
+        "「现在用」的 Z 不在策略的号列表里，照留：{d:?}"
+    );
+    assert!(d.from_temp);
+    let d = turn(&d.sigma, &f, &base(), &p, 0, T + MIN, &[]);
+    assert_eq!(used(&d), "Z", "再判一次也不换回");
+    let gone = [
+        acct("A", 10.0),
+        acct("B", 10.0),
+        refused(acct("Z", 10.0), T + 3600),
+    ];
+    let d = turn(&d.sigma, &gone, &base(), &p, 0, T + 2 * MIN, &[]);
+    assert_eq!(used(&d), "A", "Z 用不了了 ⇒ 照策略换");
+    // 拖出来的先后：在用的 A 用不了 ⇒ 先用拖出来的 Z（策略不列它），不跳过它去选 B。
+    let f = [
+        refused(acct("A", 10.0), T + 3600),
+        acct("B", 10.0),
+        acct("Z", 10.0),
+    ];
+    let d = turn(&sig("A", &["Z", "B"]), &f, &base(), &p, 0, T, &[]);
+    assert_eq!(
+        (used(&d), d.skipped.clone()),
+        ("Z", Vec::<String>::new()),
+        "{d:?}"
+    );
+    // 手动选的号在策略的号列表里、只是排在后面：照留。
+    let p = Fixed {
+        order: vec!["B", "A"],
+        ..Fixed::default()
+    };
+    let f = [acct("A", 10.0), acct("B", 10.0)];
+    let d = turn(&sig("A", &["A"]), &f, &base(), &p, 0, T, &[]);
+    assert_eq!(used(&d), "A");
 }
 
 /// 判据用的假策略：先后照此刻在用的是谁（`by_current[在用的号]`，没写 ⇒ `rest`）。
@@ -698,13 +745,14 @@ impl Strategy for ByCurrent {
     }
 }
 
-/// ★ #37 换了号、照新的在用号再问策略，它此刻就又要换（例：拖出来的顺序选中的号，策略照强制切换要换走）⇒ 同一刻接着换，
+/// ★ #37 换了号、照新的在用号再问策略，它此刻就又要换（例：策略的先后跟着在用的是谁变，对着新换上的号要另一个）⇒ 同一刻接着换，
 /// 不留到下一发（不然推演从这一刻起说的是「此刻换走」，逐发那边却等到下一发、事实变了换到别的号）。
+/// 拖出来的顺序选中的号是手动选的：策略对着它要换也不换。
 #[test]
 fn s37_a_switch_the_strategy_would_undo_at_once_is_followed_at_once() {
     let p = ByCurrent {
-        by_current: vec![("B", vec!["C", "B"])],
-        rest: vec!["C", "B"],
+        by_current: vec![("B", vec!["C", "B"]), ("C", vec!["C", "B"])],
+        rest: vec!["B", "C"],
         calls: Default::default(),
     };
     let f = [
@@ -712,21 +760,18 @@ fn s37_a_switch_the_strategy_would_undo_at_once_is_followed_at_once() {
         acct("B", 10.0),
         acct("C", 10.0),
     ];
-    let d = turn(&sig("A", &["B"]), &f, &base(), &p, 0, T, &[]);
-    assert_eq!(
-        used(&d),
-        "C",
-        "拖出来的顺序先选中 B，策略对着 B 当场要 C：{d:?}"
-    );
+    let d = turn(&sig("A", &[]), &f, &base(), &p, 0, T, &[]);
+    assert_eq!(used(&d), "C", "策略先给 B，对着 B 当场要 C：{d:?}");
     assert_eq!(d.sigma.current, "C");
-    assert!(!d.from_temp, "最后用的号不是拖出来的那个");
-    assert_eq!(
-        d.sigma.temp,
-        vec!["B".to_string()],
-        "B 还能用，留在拖出来的顺序里"
-    );
+    assert!(!d.from_temp);
     let again = turn(&d.sigma, &f, &base(), &p, 0, T, &[]);
     assert_eq!(used(&again), "C", "同一刻再判一次不再换");
+    let d = turn(&sig("A", &["B"]), &f, &base(), &p, 0, T, &[]);
+    assert_eq!(
+        (used(&d), d.from_temp, d.sigma.temp.clone()),
+        ("B", true, vec!["B".to_string()]),
+        "拖出来的顺序选中 B，策略对着 B 要 C 也不换：{d:?}"
+    );
     // 策略对着谁都要换到另一个（来回）⇒ 同一刻里一个号只换到一次，不打转。
     let flip = ByCurrent {
         by_current: vec![("B", vec!["C", "B"]), ("C", vec!["B", "C"])],
@@ -1235,7 +1280,9 @@ fn s36_groups(n: u64) -> (usize, usize) {
 }
 
 fn s36_one(seed: u64) -> (usize, usize) {
-    let (mut s, f, sigma) = group(seed);
+    let (mut s, f, mut sigma) = group(seed);
+    // 比的是策略照余量换号：拖出来的顺序选中的号是手动选的、发得出去就不换，这里不拖。
+    sigma.temp.clear();
     for r in s["accounts"].as_array_mut().expect("accounts") {
         if r.get("delay").is_some() {
             r["delay"] = json!(0);
