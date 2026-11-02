@@ -47,8 +47,8 @@ async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
     assert_eq!(got["origin"], "handoff-live-a");
     assert_eq!(
         got["live"],
-        serde_json::json!({"sid": "s1", "cards": [{"card": 7, "rid": "m", "phase": "awaiting", "clipped": false, "blocks": [],
-            "head": copy_core::copy_text("liveCard.state.awaitingRecord", &[]), "body": ""}]})
+        serde_json::json!({"t": "whole", "whole": {"sid": "s1", "cards": [{"card": 7, "rid": "m", "phase": "awaiting", "clipped": false,
+            "head": copy_core::copy_text("liveCard.state.awaitingRecord", &[]), "body": []}]}})
     );
 }
 

@@ -965,12 +965,11 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
     assert_eq!(r.stats().history_len, 0, "tap 进了重放留存");
 }
 
-/// 读数（不是判据）：一轮长回答（500 段 × 40 字，每 10 段一个自然段 ⇒ 2 万字、50 段）一段一帧，壳交给界面的字节总数。
+/// 一轮长回答（500 段 × 40 字，每 10 段一个自然段 ⇒ 2 万字、50 段）一段一帧：壳交给界面的字节随尾巴走、不随整张卡走 ——
+/// 每格只带正在写的那一段（≤ 1 200 字节上下），整轮不过 1 MB（每格交整张卡时是 28 MB 级）。顺带印出总数（`--nocapture`）。
 /// 帧照后端那一形写（开卡一帧整卡，之后每帧 `keep` ＝ 已写完的自然段数、尾巴是正在写的那一段）。
-/// 跑法：`cargo test --lib -- --ignored --nocapture event_replay::tests::live_card_bytes_to_the_page_reading`
 #[tokio::test]
-#[ignore]
-async fn live_card_bytes_to_the_page_reading() {
+async fn live_card_bytes_to_the_page_follow_the_tail_not_the_whole_card() {
     let (r, rec) = hub();
     r.origin_seen(&local(), true);
     r.subscribe("w", 7, &local(), "session-live-card", None, 100_000);
@@ -996,6 +995,8 @@ async fn live_card_bytes_to_the_page_reading() {
         }
     }
     println!("READING live-card to page: frames={frames} bytes={bytes}");
+    assert_eq!(frames, 501, "每段一格");
+    assert!(bytes < 1_000_000, "壳交给界面 {bytes} 字节：在交整张卡");
 }
 
 /// T5c：两条流互不串：会话行不交给 tap 订阅、tap 不交给会话行订阅（两向）。
