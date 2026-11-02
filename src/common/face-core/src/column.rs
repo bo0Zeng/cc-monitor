@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// **最近优先**（全仓唯一的排法）：按 `key` 倒序，同值照原先后（稳定）。
 pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
-    items.sort_by(|a, b| key(b).cmp(&key(a)));
+    items.sort_by_key(|a| std::cmp::Reverse(key(a)));
 }
 
 /// 几台各一列（各台自己排好的先后，不重排）⇒ 并成一列：每一步取各台排头里 `key` 最大的那一个，同值照台的先后。只并、不另判。
