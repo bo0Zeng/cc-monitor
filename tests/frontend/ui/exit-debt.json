@@ -142,7 +142,7 @@
         ["src/frontend/ui/new-session.ts", "branch", 15],
         ["src/frontend/ui/new-session.ts", "key", 15],
         ["src/frontend/ui/open-settings.ts", "key", 1],
-        ["src/frontend/ui/paste-block.ts", "key", 6],
+        ["src/frontend/ui/paste-block.ts", "key", 5],
         ["src/frontend/ui/record-file-notice.ts", "branch", 3],
         ["src/frontend/ui/record-reads.ts", "key", 1],
         ["src/frontend/ui/resume-menu.ts", "branch", 6],
@@ -152,7 +152,7 @@
         ["src/frontend/ui/reveal-in-folder.ts", "key", 1],
         ["src/frontend/ui/rot-board.ts", "branch", 13],
         ["src/frontend/ui/rot-board.ts", "key", 6],
-        ["src/frontend/ui/rot-mount.ts", "key", 15],
+        ["src/frontend/ui/rot-mount.ts", "key", 14],
         ["src/frontend/ui/rot-session.ts", "key", 4],
         ["src/frontend/ui/run-timeline.ts", "key", 1],
         ["src/frontend/ui/runs.ts", "key", 2],
@@ -180,7 +180,7 @@
         ["src/frontend/ui/settings/context-limits-section.ts", "branch", 1],
         ["src/frontend/ui/settings/context-limits-section.ts", "key", 5],
         ["src/frontend/ui/settings/data-page.ts", "branch", 2],
-        ["src/frontend/ui/settings/data-page.ts", "key", 12],
+        ["src/frontend/ui/settings/data-page.ts", "key", 11],
         ["src/frontend/ui/settings/data-section.ts", "branch", 3],
         ["src/frontend/ui/settings/data-section.ts", "key", 5],
         ["src/frontend/ui/settings/diagnostics-section.ts", "key", 11],
@@ -198,13 +198,13 @@
         ["src/frontend/ui/settings/machine-page.ts", "branch", 2],
         ["src/frontend/ui/settings/machine-page.ts", "key", 6],
         ["src/frontend/ui/settings/panel.ts", "branch", 4],
-        ["src/frontend/ui/settings/panel.ts", "key", 19],
+        ["src/frontend/ui/settings/panel.ts", "key", 18],
         ["src/frontend/ui/settings/pb-dir-row.ts", "branch", 2],
         ["src/frontend/ui/settings/pb-dir-row.ts", "key", 3],
         ["src/frontend/ui/settings/port-forward.ts", "key", 3],
         ["src/frontend/ui/settings/profiles-list.ts", "branch", 47],
         ["src/frontend/ui/settings/profiles-list.ts", "key", 32],
-        ["src/frontend/ui/settings/remote-section.ts", "key", 14],
+        ["src/frontend/ui/settings/remote-section.ts", "key", 13],
         ["src/frontend/ui/settings/restart-notice.ts", "key", 1],
         ["src/frontend/ui/settings/restart-now.ts", "key", 1],
         ["src/frontend/ui/settings/terminal-row.ts", "branch", 1],
@@ -312,7 +312,7 @@
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/crypto/SshKeyGenerator.kt", "key", 2],
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/LegacyButtons.kt", "branch", 9],
         ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/HostKeyChangedException.kt", "key", 1],
-        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 15]
+        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 12]
       ]
     }
   ]
