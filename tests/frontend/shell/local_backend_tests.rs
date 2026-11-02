@@ -684,6 +684,110 @@ fn the_local_frame_reader_is_bounded_and_lossy() {
     });
 }
 
+/// 同步有界读行照 `cap.over` 办：读端缓冲故意开得很小（3 字节），一行跨好几次 `fill_buf`。
+fn sync_lines(input: &[u8], cap: relay_route_core::Cap) -> Vec<SyncLine> {
+    let mut rd = std::io::BufReader::with_capacity(3, input);
+    let mut out = Vec::new();
+    loop {
+        match read_capped_line_sync(&mut rd, cap).unwrap() {
+            SyncLine::Eof => return out,
+            l => out.push(l),
+        }
+    }
+}
+
+fn line(text: &str, cut: bool) -> SyncLine {
+    SyncLine::Line {
+        text: text.into(),
+        lossy: false,
+        cut,
+    }
+}
+
+/// 「丢弃＋带身份报告」（帧行那一档）：超了的那一行整行丢、下一行照读；刚好到上限的整行留；没换行的残行也交。
+#[test]
+fn a_frame_line_over_the_cap_is_dropped_whole_and_the_next_line_still_reads() {
+    let cap = relay_route_core::Cap {
+        bytes: 4,
+        over: relay_route_core::Over::DropAndReport,
+    };
+    assert_eq!(
+        sync_lines(b"abcd\nabcdefgh\n\nxy", cap),
+        vec![
+            line("abcd", false),
+            SyncLine::Dropped,
+            line("", false),
+            line("xy", false)
+        ]
+    );
+    assert_eq!(sync_lines(b"abcdefgh", cap), vec![SyncLine::Dropped]);
+}
+
+/// 「截断＋说清」（子进程 stderr 那一档）：读满上限就交出这一段（`cut`），余下的是下一条，一个字节不丢；
+/// 刚好到上限再换行的不算切开。
+#[test]
+fn a_stderr_line_over_the_cap_is_cut_at_the_cap_and_the_rest_is_the_next_line() {
+    let cap = relay_route_core::Cap {
+        bytes: 4,
+        over: relay_route_core::Over::TruncateAndSay,
+    };
+    assert_eq!(
+        sync_lines(b"abcdefghij\nabcd\nxy\n", cap),
+        vec![
+            line("abcd", true),
+            line("efgh", true),
+            line("ij", false),
+            line("abcd", false),
+            line("xy", false),
+        ]
+    );
+    assert_eq!(
+        sync_lines(b"abcdefgh", cap),
+        vec![line("abcd", true), line("efgh", false)]
+    );
+}
+
+/// 不是合法 UTF-8 的一行按替换字符读、旁边带一位 `lossy`（调用方记进丢帧账），不当读错误。
+#[test]
+fn a_sync_line_that_is_not_utf8_reads_lossy_instead_of_failing() {
+    let cap = relay_route_core::Cap {
+        bytes: 64,
+        over: relay_route_core::Over::DropAndReport,
+    };
+    assert_eq!(
+        sync_lines(b"a\xffb\n", cap),
+        vec![SyncLine::Line {
+            text: "a\u{fffd}b".into(),
+            lossy: true,
+            cut: false,
+        }]
+    );
+}
+
+/// stderr 那两处（本机后端 · 文件窗口进程）读一条都经同步有界读行、上限是那一个 `Cap` 常量：
+/// 不许再手写 `take(..)` 接 `read_until`。
+#[test]
+fn both_stderr_drains_read_through_the_capped_line_reader() {
+    for (name, src) in [
+        (
+            "local_backend.rs",
+            include_str!("../../../src/frontend/shell/src/local_backend.rs"),
+        ),
+        (
+            "filewin/proc.rs",
+            include_str!("../../../src/frontend/shell/src/filewin/proc.rs"),
+        ),
+    ] {
+        let prod = guard_core::production_code(src);
+        assert!(
+            !prod.contains(concat!(".read_", "until(")),
+            "{name} 里又手写了读行（`take(..)` 接 `read_until`）—— 读一行经 `read_capped_line_sync`，上限照它的 `Cap`"
+        );
+        guard_core::find_pinned(&prod, "STDERR_MAX_LINE_BYTES")
+            .unwrap_or_else(|e| panic!("{name} 读 stderr 没用那一个上限常量（{e}）"));
+    }
+}
+
 /// **生产入口真的把消费者传下去了**。
 ///
 /// 上面那条实测直接调 `supervise_with_stdio` 并自己传 `Some(local_stdio_consumer)`。

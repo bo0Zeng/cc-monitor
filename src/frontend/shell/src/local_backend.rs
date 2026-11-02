@@ -71,6 +71,7 @@ use crate::platform::own_fs::OwnBin;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -539,15 +540,18 @@ pub fn etxtbsy_gave_up(bin: &Path, tries: u32, last: &str) -> Said {
 /// 头注的第二条）。超出之后照旧读到 EOF，只是不再逐行记，收尾报一个**行数**。
 const STDERR_LOG_BUDGET_BYTES: u64 = 256 * 1024;
 
-/// 单行上界。对端一个 `\n` 都不发时，`read_until` 会一直把内存吃下去。
+/// 子进程 stderr 一条的上界（经 [`read_capped_line_sync`] 读）。对端一个 `\n` 都不发时，无界的读行会一直把内存吃下去。
 ///
 /// ⚠ 超了**不丢字节**：这一段照记，只是末尾打一句 [`STDERR_CUT_MARK`] 说「它在这里被切开」，
 /// 余下的字节成为下一条。⇒ 超限语义是「**截断+说清**」里的「说清」那一半承重 ——
 /// 没有那句标记的话，日志里会出现一条**看起来完整、其实是半句**的诊断。
-pub(crate) const STDERR_MAX_LINE_BYTES: u64 = 8 * 1024;
+pub(crate) const STDERR_MAX_LINE_BYTES: Cap = Cap {
+    bytes: 8 * 1024,
+    over: Over::TruncateAndSay,
+};
 
 /// 一行被 [`STDERR_MAX_LINE_BYTES`] 切开时贴在断口上的话。
-const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
+pub(crate) const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
 
 /// 把一个子进程的 stderr **读到 EOF**，前 [`STDERR_LOG_BUDGET_BYTES`] 字节逐行接进
 /// monitor 的滚动日志（`logging.rs`：`~/.cc-monitor/logs/monitor/monitor.<日期>.log`）。
@@ -578,34 +582,26 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 /// ⚠ 非 UTF-8 走 `from_utf8_lossy`，不走 `read_line` —— 后者遇到非法字节返回
 /// `InvalidData`，那会把本函数踢出循环，于是约束 1 当场失守（读的一侧停了，子进程会卡）。
 pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u32) {
-    use std::io::{BufRead, Read};
     let mut reader = std::io::BufReader::new(err);
     let mut budget = STDERR_LOG_BUDGET_BYTES;
-    let mut buf: Vec<u8> = Vec::new();
     let mut unlogged = 0usize;
     loop {
-        buf.clear();
-        let n = match (&mut reader)
-            .take(STDERR_MAX_LINE_BYTES)
-            .read_until(b'\n', &mut buf)
-        {
-            Ok(n) => n,
+        let (text, cut) = match read_capped_line_sync(&mut reader, STDERR_MAX_LINE_BYTES) {
+            Ok(SyncLine::Line { text, cut, .. }) => (text, cut),
+            // 「截断＋说清」那一档不整行丢；真来了也照旧读下去（约束 1）。
+            Ok(SyncLine::Dropped) => continue,
+            Ok(SyncLine::Eof) => break, // EOF：子进程关掉了 stderr（通常就是它退了）。
             // 读不动了 = 管子那头没了（子进程走了 / fd 被关）。这里 `break` 不违反约束 1：
             // 已经没有「另一端会被我卡住」的另一端了。
             Err(_) => break,
         };
-        if n == 0 {
-            break; // EOF：子进程关掉了 stderr（通常就是它退了）。
-        }
         if budget == 0 {
             unlogged += 1;
             continue; // ← 约束 1：照旧读，只是不记。
         }
-        budget = budget.saturating_sub(n as u64);
-        // 没读到 `\n` 而恰好读满上界 ⇒ 这一条是被**切开**的，断口要说出来。
-        let cut = n as u64 == STDERR_MAX_LINE_BYTES && buf.last() != Some(&b'\n');
-        let line = String::from_utf8_lossy(&buf);
-        let line = line.trim_end_matches(['\n', '\r']);
+        budget = budget.saturating_sub(text.len() as u64 + 1);
+        // 切开的那一条断口要说出来（`cut`：读满上界、还没见到 `\n`）。
+        let line = text.trim_end_matches('\r');
         if line.is_empty() {
             continue;
         }
@@ -1237,11 +1233,16 @@ pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
 /// D 审计实测**喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB**，
 /// 而它照样回了一条「看起来对」的 `line_too_long`。
 ///
+/// # 超了怎么办：照 `cap.over`
+///
+/// - 「截断＋说清」（[`Over::TruncateAndSay`]，子进程 stderr 那两处）：读满 `cap.bytes` 就交出这一段（[`SyncLine::Line`] 的 `cut`），
+///   余下的字节成为下一条 —— 一个字节不丢，断口由调用方说出来；
+/// - 别的档（帧行是「丢弃＋带身份报告」）：超了的那一行读到换行为止整行丢掉（[`SyncLine::Dropped`]），由调用方照那一档说。
+///
 /// # 返回
 ///
-/// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(Some(s)))` = 一行 ·
-/// `Ok(Some(None))` = 超限、整行丢了（调用方原位说出来，`local_lines::StdioOut::line_lost`）·
-/// `Err` = 真的读错误。
+/// [`SyncLine::Eof`] = EOF（stdout 那一路的**判死信号**）· [`SyncLine::Line`] = 一行 · [`SyncLine::Dropped`] = 超限、整行丢了
+/// （帧行那一路原位说出来，`local_lines::StdioOut::line_lost`）· `Err` = 真的读错误。
 ///
 /// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：
 /// 原版用 `BufReader::lines()`，那是 **UTF-8 严格**的，一个坏字节就回 `InvalidData`，
@@ -1252,11 +1253,14 @@ pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
 ///
 /// 行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
 /// 让调用方记进丢帧账（`frame_tally`）—— lossy 这条取舍不动，只是不再静默。
-#[allow(clippy::type_complexity)]
-fn read_capped_line_sync<R: std::io::BufRead>(
+pub(crate) fn read_capped_line_sync<R: std::io::BufRead>(
     rd: &mut R,
-    cap: usize,
-) -> std::io::Result<Option<Option<(String, bool)>>> {
+    cap: Cap,
+) -> std::io::Result<SyncLine> {
+    let truncate = cap.over == Over::TruncateAndSay;
+    let cap = usize::try_from(cap.bytes).unwrap_or(usize::MAX);
+    // 切开那一档至少交一个字节：上限 0 会让同一处每次都交出空的一段、读端原地不动。
+    let cap = if truncate { cap.max(1) } else { cap };
     let mut buf: Vec<u8> = Vec::new();
     let mut seen: usize = 0;
     let mut overflowed = false;
@@ -1268,17 +1272,24 @@ fn read_capped_line_sync<R: std::io::BufRead>(
         };
         if chunk.is_empty() {
             return Ok(if seen == 0 {
-                None // 真 EOF
+                SyncLine::Eof // 真 EOF
             } else if overflowed {
-                Some(None)
+                SyncLine::Dropped
             } else {
-                Some(Some(decode_line(buf)))
+                SyncLine::of(buf, false)
             });
         }
         let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
             Some(i) => (i, true),
             None => (chunk.len(), false),
         };
+        if truncate && seen + take > cap {
+            // 读满上限就交出这一段，余下的留在读端、成为下一条。
+            let room = cap - seen;
+            buf.extend_from_slice(&chunk[..room]);
+            rd.consume(room);
+            return Ok(SyncLine::of(buf, true));
+        }
         seen += take;
         if seen > cap {
             overflowed = true;
@@ -1290,11 +1301,33 @@ fn read_capped_line_sync<R: std::io::BufRead>(
         rd.consume(consume);
         if done {
             return Ok(if overflowed {
-                Some(None)
+                SyncLine::Dropped
             } else {
-                Some(Some(decode_line(buf)))
+                SyncLine::of(buf, false)
             });
         }
+    }
+}
+
+/// [`read_capped_line_sync`] 读一行的结局。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SyncLine {
+    /// 一行（不含 `\n`）。`lossy` = 不是合法 UTF-8、按替换字符读的；`cut` = 在上限处切开（「截断＋说清」那一档：余下的字节是下一条）。
+    Line {
+        text: String,
+        lossy: bool,
+        cut: bool,
+    },
+    /// 超过上限、整行丢了（「截断＋说清」以外的档）。
+    Dropped,
+    /// 读端到头了，没有残行。
+    Eof,
+}
+
+impl SyncLine {
+    fn of(buf: Vec<u8>, cut: bool) -> Self {
+        let (text, lossy) = decode_line(buf);
+        SyncLine::Line { text, lossy, cut }
     }
 }
 
@@ -1430,25 +1463,23 @@ pub(crate) fn local_stdio_consumer(
     // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
     let mut unread =
         crate::stream_source::UnreadNotes::new(route.origin.to_string(), route.place.clone());
+    let frame_cap = crate::stream_source::BACKEND_FRAME_LINE_CAP;
     loop {
-        let line = match read_capped_line_sync(
-            &mut rd,
-            crate::stream_source::BACKEND_FRAME_LINE_CAP.bytes as usize,
-        ) {
-            Ok(Some(None)) => {
+        let line = match read_capped_line_sync(&mut rd, frame_cap) {
+            Ok(SyncLine::Dropped) => {
                 // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
                 route.out.line_lost();
                 continue;
             }
-            Ok(Some(Some((l, lossy)))) => {
+            Ok(SyncLine::Line { text, lossy, .. }) => {
                 if lossy {
-                    if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
+                    if let Some(n) = tally.note_bad_utf8(text.as_bytes()) {
                         tracing::warn!("{n}");
                     }
                 }
-                l
+                text
             }
-            Ok(None) => break, // EOF = 流结束 = 判死
+            Ok(SyncLine::Eof) => break, // EOF = 流结束 = 判死
             Err(e) => {
                 // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
                 // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。

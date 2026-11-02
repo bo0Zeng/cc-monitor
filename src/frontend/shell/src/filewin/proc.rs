@@ -185,23 +185,26 @@ impl StderrTail {
         let (tx, rx) = std::sync::mpsc::channel::<Result<Ready, String>>();
         let reader = err.map(|err| {
             std::thread::spawn(move || {
-                use std::io::{BufRead, Read};
+                use crate::local_backend::{read_capped_line_sync, SyncLine};
                 let mut r = std::io::BufReader::new(err);
                 let mut tail: std::collections::VecDeque<String> = Default::default();
-                let mut buf = Vec::new();
                 let mut tx = Some(tx);
                 loop {
-                    buf.clear();
-                    match (&mut r)
-                        .take(crate::local_backend::STDERR_MAX_LINE_BYTES)
-                        .read_until(b'\n', &mut buf)
-                    {
-                        Ok(0) | Err(_) => break,
-                        Ok(_) => {}
-                    }
-                    let line = String::from_utf8_lossy(&buf).trim_end().to_string();
+                    // 一条至多 `STDERR_MAX_LINE_BYTES`（截断＋说清：切开处贴上那句标记，余下的是下一条）。
+                    let (text, cut) = match read_capped_line_sync(
+                        &mut r,
+                        crate::local_backend::STDERR_MAX_LINE_BYTES,
+                    ) {
+                        Ok(SyncLine::Line { text, cut, .. }) => (text, cut),
+                        Ok(SyncLine::Dropped) => continue,
+                        Ok(SyncLine::Eof) | Err(_) => break,
+                    };
+                    let mut line = text.trim_end().to_string();
                     if line.is_empty() {
                         continue;
+                    }
+                    if cut {
+                        line.push_str(crate::local_backend::STDERR_CUT_MARK);
                     }
                     if is_ready_line(&line) {
                         if let Some(tx) = tx.take() {
