@@ -119,7 +119,7 @@ fn missing_session_is_an_error_not_a_panic() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// ★★ `KR88D2` 第三刀（backend 这一侧）：**给一个查不到的 sid，处置是报错，
+/// ★★ backend 这一侧：**给一个查不到的 sid，处置是报错，
 /// 不是「树上有什么就拿什么」。**
 ///
 /// 树上**真的有两份**别的会话 —— 少了这一步，下面那条断言在空树上也绿，
