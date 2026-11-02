@@ -9,51 +9,52 @@
 pub(super) use crate::wire::typed::{asynchronous, blocking, frame, frame_blocking};
 
 #[cfg(test)]
-pub(super) use shaped::{asynchronous, blocking, frame, frame_blocking};
-
+use crate::wire::spec::CommandSpec;
 #[cfg(test)]
-mod shaped {
-    use crate::wire::spec::CommandSpec;
-    use crate::wire::typed::test_support::{shape_of, shaped, DataTys};
-    use crate::wire::typed::{self, Codes, Command, Handle};
+use crate::wire::typed::test_support::{shape_of, shaped, DataTys};
+#[cfg(test)]
+use crate::wire::typed::{self as wire_typed, Codes, Command, Handle};
 
-    /// 阻塞档的一行登记（补上形状）。
-    pub(crate) const fn blocking<C: Handle>(summary: &'static str) -> CommandSpec
-    where
-        C::Req: ts_rs::TS,
-        C::Reply: ts_rs::TS,
-        <C::Err as Codes>::Data: DataTys,
-    {
-        shaped(typed::blocking::<C>(summary), shape_of::<C>)
-    }
+/// 阻塞档的一行登记（测试档：补上形状）。
+#[cfg(test)]
+pub(super) const fn blocking<C: Handle>(summary: &'static str) -> CommandSpec
+where
+    C::Req: ts_rs::TS,
+    C::Reply: ts_rs::TS,
+    <C::Err as Codes>::Data: DataTys,
+{
+    shaped(wire_typed::blocking::<C>(summary), shape_of::<C>)
+}
 
-    /// 异步档的一行登记（补上形状）。
-    pub(crate) const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec
-    where
-        C::Req: ts_rs::TS,
-        C::Reply: ts_rs::TS,
-        <C::Err as Codes>::Data: DataTys,
-    {
-        shaped(typed::asynchronous::<C>(summary), shape_of::<C>)
-    }
+/// 异步档的一行登记（测试档：补上形状）。
+#[cfg(test)]
+pub(super) const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec
+where
+    C::Req: ts_rs::TS,
+    C::Reply: ts_rs::TS,
+    <C::Err as Codes>::Data: DataTys,
+{
+    shaped(wire_typed::asynchronous::<C>(summary), shape_of::<C>)
+}
 
-    /// 帧面硬臂那一档的一行登记（补上形状）。
-    pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec
-    where
-        C::Req: ts_rs::TS,
-        C::Reply: ts_rs::TS,
-        <C::Err as Codes>::Data: DataTys,
-    {
-        shaped(typed::frame::<C>(summary), shape_of::<C>)
-    }
+/// 帧面硬臂那一档的一行登记（测试档：补上形状）。
+#[cfg(test)]
+pub(super) const fn frame<C: Command>(summary: &'static str) -> CommandSpec
+where
+    C::Req: ts_rs::TS,
+    C::Reply: ts_rs::TS,
+    <C::Err as Codes>::Data: DataTys,
+{
+    shaped(wire_typed::frame::<C>(summary), shape_of::<C>)
+}
 
-    /// 硬臂进阻塞池那一档的一行登记（补上形状）。
-    pub(crate) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec
-    where
-        C::Req: ts_rs::TS,
-        C::Reply: ts_rs::TS,
-        <C::Err as Codes>::Data: DataTys,
-    {
-        shaped(typed::frame_blocking::<C>(summary), shape_of::<C>)
-    }
+/// 硬臂进阻塞池那一档的一行登记（测试档：补上形状）。
+#[cfg(test)]
+pub(super) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec
+where
+    C::Req: ts_rs::TS,
+    C::Reply: ts_rs::TS,
+    <C::Err as Codes>::Data: DataTys,
+{
+    shaped(wire_typed::frame_blocking::<C>(summary), shape_of::<C>)
 }
