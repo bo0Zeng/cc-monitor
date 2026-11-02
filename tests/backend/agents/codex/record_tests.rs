@@ -405,7 +405,7 @@ fn maps_tool_call_and_output() {
     );
 }
 
-/// F1a-3：session_meta cwd 抽取（Codex 无 cwd-项目目录 → list 用 cwd 内存分组）。
+/// session_meta cwd 抽取（Codex 无 cwd-项目目录 → list 用 cwd 内存分组）。
 #[test]
 fn session_meta_cwd_is_read_from_session_meta_only() {
     let sm = env(
@@ -588,8 +588,8 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
 }
 
 /// ★ 骨架行的类 · 画法 · 人说的就是这一家整条翻译出的那条记录的，骨架索引照**这份记录那一家**的翻译取。
-/// 从前骨架照记录树那一家（Claude）的认法判 Codex 的行 ⇒ 每行都「不进界面」，
-/// 查看器打开有消息的 Codex 会话写「无消息 · 0 条」（`history-page` 那一路照样出得来记录）。
+/// 骨架照记录树那一家（Claude）的认法判 Codex 的行的话，每行都「不进界面」，
+/// 查看器打开有消息的 Codex 会话会写「无消息 · 0 条」（而 `history-page` 照样出得来记录）。
 #[test]
 fn the_skeleton_rows_of_a_codex_rollout_are_its_records() {
     let sample = include_str!("../../../__fixtures__/codex-rollout.sample.jsonl");

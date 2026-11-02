@@ -78,30 +78,22 @@ mod tests {
         // `agent_locality_guard::ADAPTER_CALL_SITES` **逐条登记**（共 8 文件 / 27 处），
         // 收进接口一处、那张表短一条、这里就能进一个文件。
         //
-        // ── `K-W1A`：**新立的 `plugin/` 整层进表** ─────────────────────
+        // ── **`plugin/` 整层在表里** ─────────────────────
         //
-        // ★ 这一批与上面几批**性质不同**：上面是「把已有文件搬干净之后收进来」，
-        // 这一批是**新造的层从第一天就进表**。理由是这条判据的一个结构性质：
         // `CORE_FILES` 是 **opt-in** 的，不在表里的文件**不扫** ⇒ 新造一个自称「通用」的层
         // 而不进表，「通用层不许知道任何一个 agent 的名字」这条性质对它就是**空的**，
-        // 而且**没有任何机检能逼人加**（`KY6` 逐字）。
+        // 而且**没有任何机检能逼人加** ⇒ 新造的层从第一天就进表。
         //
-        // ⇒ 进表不是形式：它当场约束了接口形状。第一刀那个插件的候选安装路径里逐字带着
+        // ⇒ 进表不是形式：它约束了接口形状。插件的候选安装路径里逐字带着
         // agent 的名字，所以**候选列表只能是入参**，不能住进 `plugin/` —— 这条判据是把它
         // 挡在门外的那道门（另一条独立理由是两个真实实现的查找顺序本来就不同）。
         "plugin/mod.rs",
         "plugin/discover.rs",
         "plugin/invoke.rs",
-        // ── 以下由 `K-R12` 下一拍加入（09-04）──────────────────────────────
-        // 新建的 `common/tmux_utf8.rs`（「tmux 的打印通道必须是 UTF-8」那个口径的家），
-        // 同 `plugin/` 那一批：**新造的东西从第一天就进表**，理由一样 ——
-        // 本表是 opt-in 的，不在表里就**不扫**，而「没人逼你加」正是 `KY6` 那个洞。
-        //
-        // 现打（09-04，量于 `058a2aa`，口径比本判据更宽：整份文件、大小写不敏感）：
-        // 六根针在那个文件里**逐针 0 命中**；同一把尺子打 `observe/watcher.rs` 作**非空对照**
-        // 得 57 / 3 / 13 / 12 / 34 / 1 ⇒ 尺子不是坏的，那个 0 是真的 0。
+        // `common/tmux_utf8.rs`（「tmux 的打印通道必须是 UTF-8」那个口径的家）：
+        // 同 `plugin/`，新造的东西从第一天就进表 —— 本表是 opt-in 的，不在表里就**不扫**。
         "common/tmux_utf8.rs",
-        // 入方向从一份文件拆成目录（10-03）：拆出来的每一份（含命令表各族）照旧在表里（原来那一份在表里，拆开不缩覆盖面）。
+        // 入方向是一个目录：其中每一份（含命令表各族）都在表里。
         "stream/inbound/doors.rs",
         "wire/drain.rs",
         "stream/inbound/sniff.rs",
@@ -210,8 +202,8 @@ mod tests {
     fn no_agent_specific_literal_in_the_core_layer() {
         let root = src_dir();
         let mut scanned = 0usize;
-        // `文件:行号:命中的词:那一行` —— `S1-Y3` 要的是**逐条可核**，不是一个总数：
-        // 只报数字的话，`S2`/`S3` 搬的时候没法对照，人会去改数字而不是搬代码。
+        // `文件:行号:命中的词:那一行` —— 要的是**逐条可核**，不是一个总数：
+        // 只报数字的话，搬代码的时候没法对照，人会去改数字而不是搬代码。
         let mut hits: Vec<String> = Vec::new();
         let files = core_files();
         for rel in &files {
@@ -256,30 +248,26 @@ mod tests {
         //
         // ⚠ 写两遍是**刻意的**：它让"把某个文件移出通用层"必须是一个**显式动作**。
         //
-        // ★ 这张表原名 `AT_BIRTH`，只装 `S1` 立表当天那 6 个 —— 于是 `S3` 后来加进
-        // `CORE_FILES` 的 5 个**可以被静默删掉**（6 个元老还在、长度也够，两条断言全绿）。
-        // **棘轮只棘到出生线，不棘到今天。** 这个洞是 `S3` 的变异台架逮出来的
-        //（M3「把 platform/proc.rs 摘掉」原本零红），不是谁记起来的。
+        // ★ 只装立表当天那几个的话，后来加进 `CORE_FILES` 的**可以被静默删掉**
+        //（元老还在、长度也够，两条断言全绿）：棘轮要棘到今天，不只棘到出生线。
         const EVER_DECLARED_CORE: &[&str] = &[
-            // S1 立表当天
             "platform/mod.rs",
             "common/mod.rs",
             "wire/mod.rs",
             "stream/inbound/mod.rs",
-            // S3 加入
             "platform/proc.rs",
             "platform/liveness.rs",
             "platform/paths.rs",
             "platform/signal.rs",
-            // 原 `common/fs.rs`：读盘并进 `platform/fs/`（只读护栏换类型挡第一刀，10-11），同一份文件换了住址
+            // 读盘的只读那一份
             "platform/fs/ro.rs",
-            // K-W1A 加入（08-26）：新立的 `plugin/` 整层，从第一天就在表里
+            // `plugin/` 整层
             "plugin/mod.rs",
             "plugin/discover.rs",
             "plugin/invoke.rs",
-            // K-R12 下一拍加入（09-04）：新建的 `common/tmux_utf8.rs`，同样从第一天就在表里
+            // tmux 打印通道的口径
             "common/tmux_utf8.rs",
-            // 入方向拆成目录（10-03）：拆出来的那几份与命令表各族
+            // 入方向那个目录与命令表各族
             "stream/inbound/doors.rs",
             "wire/drain.rs",
             "stream/inbound/sniff.rs",
@@ -296,7 +284,7 @@ mod tests {
         ];
         // 整棵进表的子树（[`CORE_TREES`]），同上只增不减、两张表同轮改。
         const EVER_DECLARED_TREES: &[&str] = &[
-            // A2-2 加入（10-24）：读会话的核心三块整棵进表
+            // 读会话的核心三块整棵进表
             "observe/",
             "history/",
             "control/session_",

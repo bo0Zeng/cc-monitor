@@ -13,7 +13,7 @@ fn fixture_root(tag: &str) -> PathBuf {
 // 为什么不用 `CCM_FAKE_AGENT_HOME`：`std::env::set_var` 在多线程测试进程里与
 // 别的线程的 `getenv` 竞争（同进程里 `claudecode::home()` / `codex::home()` 正在读
 // `HOME`/`CLAUDE_CONFIG_DIR`/`CODEX_HOME`）。`Adapter.home` 本来就是**裸函数指针**
-// ——`S5` 选函数指针的一个副产物就是「假 agent 不需要任何运行时装配」。⇒ 直接给指针。
+// —— 选函数指针的一个副产物就是「假 agent 不需要任何运行时装配」。⇒ 直接给指针。
 fn home_of_announce() -> Option<PathBuf> {
     Some(fixture_root("announce"))
 }
@@ -57,14 +57,14 @@ fn caps_with(home_ptr: fn() -> Option<PathBuf>) -> FakeCaps {
     }
 }
 
-/// `S6-Z1`：12 种能力**全部实现**，且**每一种都与两家真 agent 不同形**。
+/// 12 种能力**全部实现**，且**每一种都与两家真 agent 不同形**。
 ///
 /// # 为什么"不同形"是这组判据的地基，而不是趣味
 ///
 /// 假 agent 若照抄 Claude 的布局（`projects/` + `.jsonl`），通用层拿 Claude 的知识
 /// 去解释它的 home **恰好也能读出东西** —— 那时"走通全流程"证明的是
 /// 「Claude 的布局被施加到了另一个目录上」，不是「通用层能容纳第二种布局」。
-/// ⇒ 少了这一格，`S6` 的正题随时可能退化成一个**粉饰的通过**。
+/// ⇒ 少了这一格，「假 agent 走通全流程」随时可能退化成一个**粉饰的通过**。
 #[test]
 fn every_fake_capability_differs_in_shape_from_both_real_agents() {
     // ⚠ 不叫 `home`：本模块的能力 8 就叫 `home()`，遮住它这一格就验不了它。
@@ -186,10 +186,9 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
     }
 }
 
-/// `S6-Z2`（正题下半）：12 种能力**凑得出一条完整的路**。
+/// 12 种能力**凑得出一条完整的路**。
 ///
-/// `L2` 的钉法逐字：「`S6` 的最小假 agent —— 它只实现这组接口，
-/// **若接口漏了什么，`S6` 走不通就会红**」。本格就是那条钉法。
+/// 最小假 agent 只实现这组接口：**若接口漏了什么，它走不通就会红**。
 ///
 /// 每一段都经通用层（见 [`walk`] 头注）：读会话 / 判活 / 账号三段问的是注册表里这一家的那几格。
 #[test]
@@ -199,16 +198,16 @@ fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
     assert_eq!(
         done.as_deref(),
         Ok(STAGES),
-        "12 种能力走不完全流程 —— 那说明 `L2` 反推出来的接口面**漏了东西**"
+        "12 种能力走不完全流程 —— 那说明反推出来的接口面**漏了东西**"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `S6-Z4`（反向夹具）：**删掉任何一种能力，流程都在一个说得出话的地方停**。
+/// 反向夹具：**删掉任何一种能力，流程都在一个说得出话的地方停**。
 ///
-/// # 它守的是件里逐字禁掉的那种坏法
+/// # 它守的坏法
 ///
-/// 「不许静默当成"这个 agent 没有会话"」。本条对 12 种能力**逐一**挖洞，
+/// 「静默当成"这个 agent 没有会话"」。本条对 12 种能力**逐一**挖洞，
 /// 每次都要求停下来的地方**点得出段名与能力名**，且点的是**挖掉的那一种**。
 ///
 /// ⚠ **两向都验**（铁律：只验"逮得住"会引进假阳）：
@@ -218,7 +217,7 @@ fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
 ///
 /// ⚠ 对照着看的是**通用层今天的反应**：同样是"这家的布局它不认识"，
 /// 用量聚合那条查询 / 全文搜索 / 会话归属一律 **零输出**
-/// （实测过）—— 那正是**静默**。两者的差就是 `L2` 要补的东西。
+/// （实测过）—— 那正是**静默**。两者的差就是能力接口要补的东西。
 #[test]
 fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
     let root = build_fixture("hole");
@@ -228,7 +227,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
         match walk(&full.without(cap), &root) {
             Ok(done) => panic!(
                 "挖掉能力「{cap}」之后流程仍然走完了 {done:?} —— \
-                     少一种能力却一路绿灯，那正是件里禁掉的「静默当成这个 agent 没有会话」"
+                     少一种能力却一路绿灯，那正是要拦的「静默当成这个 agent 没有会话」"
             ),
             Err(Stop::MissingCapability { stage, capability }) => {
                 assert!(
@@ -263,11 +262,10 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `S6-Z3`（最要紧的一格）：**通用层今天怎么回答一个不是 Claude 的 agent** —— 实测。
+/// 最要紧的一格：**通用层今天怎么回答一个不是 Claude 的 agent** —— 实测。
 ///
-/// # 它逮的是件里逐字禁掉的那种坏法，而且逮到了
+/// # 它逮的坏法：**静默**当成"这个 agent 没有会话"
 ///
-/// 件里写着反向夹具「不许**静默**当成"这个 agent 没有会话"」。
 /// 本格把一个装好的、有会话有 pidfile 有账号配置的新 agent 的 home 直接喂给通用层的
 /// 四条一次性入口，读它们的实际反应 —— 实测三种，**只有一种算说得出话**：
 ///
@@ -280,10 +278,10 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 ///
 /// 最后一条：起会话 / resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
 /// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 报错、不落默认那一家
-///（缺 / 空才是默认那家）—— 从前这里落默认，对一个没进注册表的第三家就是误路由。
+///（缺 / 空才是默认那家）—— 落默认的话，对一个没进注册表的第三家就是误路由。
 ///
 /// ⚠ 本格**不是**在说这些入口有 bug —— 它们今天的契约就是「只服务一种 agent」。
-/// 它记的是：`G1` 成功标准②今天差的那 27 处，**每一处的失败长什么样**。
+/// 它记的是：通用层还只认一种 agent 的那几处，**每一处的失败长什么样**。
 /// 生产注册表里没有这一家，通用层按记录树那一家（Claude）的格去读它的 home：读不到就是这几种反应。
 #[test]
 fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words() {
@@ -525,7 +523,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     );
 }
 
-/// `S6-Z5`：**夹具家永远不上生产** —— 判据两向。
+/// **夹具家永远不上生产** —— 判据两向。
 ///
 /// 它**不许**混进 `agents::REGISTRY`，挂载处也**不许**丢掉那行 `#[cfg(test)]`。
 /// 前者混进去 ⇒ 真 `hello.homes` 会声明一个根本不存在的 agent；
