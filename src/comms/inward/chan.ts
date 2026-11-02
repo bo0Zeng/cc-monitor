@@ -42,7 +42,7 @@
  */
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { commands } from "../../frontend/ui/ipc/commands";
-import type { Origin } from "../../frontend/ui/ipc/origin";
+import type { Machine } from "../../frontend/ui/ipc/origin";
 
 /**
  * 一次调用的期限。`until` 是绝对时刻（`performance.now()` 钟面），**调用者给，本文件不造**
@@ -161,8 +161,8 @@ export interface Offer {
 }
 
 /** 每台一份：第一次对它 `call` 时去问（不等它），通道那一跳出了事就作废（重连之后可能换了一份）。 */
-const offers = new Map<Origin, Offer | null>();
-const asking = new Map<Origin, Promise<Offer | null>>();
+const offers = new Map<Machine, Offer | null>();
+const asking = new Map<Machine, Promise<Offer | null>>();
 
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
@@ -177,7 +177,7 @@ export function decodeOffer(raw: unknown): Offer | null {
   return { ops, unavailable: unavailable as [string, string, string][] };
 }
 
-function askOffer(origin: Origin): Promise<Offer | null> {
+function askOffer(origin: Machine): Promise<Offer | null> {
   const inFlight = asking.get(origin);
   if (inFlight) return inFlight;
   const p = commands
@@ -290,12 +290,12 @@ function dispatchDelivery(raw: unknown): void {
 /** 前端对通信层的说法（`§3.1`：前端只有两个动作）。 */
 export const chan = {
   /** 那台的能力事实：先问一次（`null` = 没有控制通道）。 */
-  offer(origin: Origin): Promise<Offer | null> {
+  offer(origin: Machine): Promise<Offer | null> {
     return askOffer(origin);
   },
 
   /** 手里那份（没问过 ⇒ `undefined`；界面画菜单时用它，同时 `offer()` 去补）。 */
-  cachedOffer(origin: Origin): Offer | null | undefined {
+  cachedOffer(origin: Machine): Offer | null | undefined {
     return offers.get(origin);
   },
 
@@ -304,7 +304,7 @@ export const chan = {
    * 载荷两个方向都原样：本文件不 `JSON.parse`、不 `JSON.stringify`。
    * `view`：出口的声明（要哪几格 · 哪几格不要），原样搬进后端的请求信封、不进载荷；本文件不读它。没给 ⇒ 全量。
    */
-  async call(origin: Origin, op: string, payload: Uint8Array, budget: Budget, view: object | null = null): Promise<Uint8Array> {
+  async call(origin: Machine, op: string, payload: Uint8Array, budget: Budget, view: object | null = null): Promise<Uint8Array> {
     // 期限早已过也照样交给 monitor（`leftMs: 0`）：它一个字节都不往后端发、回「已超时 · 未执行」那一句。
     return commands.chan_call({ origin, op, payload: Array.from(payload), view, leftMs: remaining(budget) }).then(
       (buf) => new Uint8Array(buf),
@@ -322,7 +322,7 @@ export const chan = {
    * `from`：续传游标（不透明；webview 这一跳的句柄不支持，给了就原位 `closed`）。`want`：一开始能吃多少格。
    */
   async subscribe(
-    origin: Origin,
+    origin: Machine,
     kind: string,
     from: Uint8Array | null,
     want: number,

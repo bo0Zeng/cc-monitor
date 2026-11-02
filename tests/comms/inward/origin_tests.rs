@@ -96,7 +96,7 @@ fn an_unknown_shape_is_refused_not_guessed() {
     );
 }
 
-// ── B：类型照本名导出 · 哨兵的既有住址与 `LOCAL` 相等 ─────────────────────
+// ── B：类型照本名导出 · 界面那一侧的 `LOCAL` 是生成物里的这一个值 ───────────
 #[test]
 fn the_machine_type_exports_under_its_own_name() {
     // 界面那一侧的类型名就是 Rust 本名：生成物是 `Machine.ts`，不另起一个 `Origin`。
@@ -108,15 +108,15 @@ fn the_machine_type_exports_under_its_own_name() {
     );
 }
 
-// `backend-policy.ts::LOCAL_ORIGIN` 是待删的那一份抄写；删掉之前与 `LOCAL` 逐字节相等。
+// 界面经 `ipc/origin.ts` 拿的 `LOCAL` 出自生成物 `judgment-rules.ts`；那里的值与 `cmd_wire::LOCAL` 逐字节相等。
 #[test]
-fn the_sentinel_agrees_with_the_ts_copy() {
-    let ts = include_str!("../../../src/frontend/ui/backend-policy.ts");
-    let needle = "export const LOCAL_ORIGIN = ";
+fn the_sentinel_agrees_with_the_generated_ts() {
+    let ts = include_str!("../../../src/frontend/ui/generated/judgment-rules.ts");
+    let needle = "export const LOCAL = ";
     let n = ts.matches(needle).count();
     assert_eq!(
         n, 1,
-        "`backend-policy.ts` 里 `{needle}` 命中 {n} 次（应当 1）—— 抽取器坏了"
+        "`judgment-rules.ts` 里 `{needle}` 命中 {n} 次（应当 1）—— 抽取器坏了"
     );
     let ts_val = ts
         .split_once(needle)
@@ -125,7 +125,7 @@ fn the_sentinel_agrees_with_the_ts_copy() {
         .expect("抠不出 TS 侧的值");
     assert_eq!(
         ts_val, LOCAL,
-        "TS 侧 `{ts_val}` 与本文件的 `LOCAL`（`{LOCAL}`）不一致"
+        "生成物里的 `{ts_val}` 与 `cmd_wire::LOCAL`（`{LOCAL}`）不一致 —— 生成物没重打"
     );
 }
 

@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { accountLabel, slotLabel } from "../../../src/frontend/ui/acct-words";
 import { tookQuota } from "../../../src/frontend/ui/quota-reads";
 import { ReplyUnreadable, unreadableSaid } from "../../../src/frontend/ui/ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 
 const NAMES = { accounts: { _: "家里那个号" }, slots: { "5h": "五小时", "7d": "七天" } };
@@ -19,17 +19,17 @@ describe("号名 / 位名照核心那张表", () => {
     expect(slotLabel("5h")).not.toBe("5h");
   });
   it("额度成品带来的表：`_` 与两个语义位照表里的字，别的号照原名", () => {
-    tookQuota(LOCAL_ORIGIN, quota(NAMES));
+    tookQuota(LOCAL, quota(NAMES));
     expect(accountLabel("_")).toBe("家里那个号");
     expect(accountLabel("work")).toBe("work");
     expect(slotLabel("5h")).toBe("五小时");
     expect(slotLabel("7d")).toBe("七天");
   });
   it("回包带的一格语义位不在 `names.slots` ⇒ 回包读不出、不收这张表、界面不出 `5h`", () => {
-    tookQuota(LOCAL_ORIGIN, quota(NAMES));
+    tookQuota(LOCAL, quota(NAMES));
     const bad = quota({ accounts: { _: "别的字" }, slots: { "7d": "七天" } }, withSlot("5h"));
-    expect(() => tookQuota(LOCAL_ORIGIN, bad)).toThrow(ReplyUnreadable);
-    expect(() => tookQuota(LOCAL_ORIGIN, bad)).toThrow(unreadableSaid(LOCAL_ORIGIN));
+    expect(() => tookQuota(LOCAL, bad)).toThrow(ReplyUnreadable);
+    expect(() => tookQuota(LOCAL, bad)).toThrow(unreadableSaid(LOCAL));
     expect(accountLabel("_")).toBe("家里那个号");
     expect(slotLabel("5h")).toBe("五小时");
   });

@@ -69,15 +69,15 @@ function singleDoors() {
     "Property[key.name='kind'][value.value='named']");
 
   // 「是不是本机」只在 `ipc/origin.ts` 判（`isLocalOrigin` / `isRemoteOrigin`）：同一条规则两份实现会漂，漂开是静默的错。
-  //   买不到：转一手再比（`const L = LOCAL_ORIGIN; x === L`）· 查表 · `startsWith("<")` 之类的变形。
-  const local = "「是不是本机」只在 ipc/origin.ts 判：用 isLocalOrigin / isRemoteOrigin，不直比 LOCAL_ORIGIN / \"<local>\"。";
+  //   买不到：转一手再比（`const L = LOCAL; x === L`）· 查表 · `startsWith("<")` 之类的变形。
+  const local = "「是不是本机」只在 ipc/origin.ts 判：用 isLocalOrigin / isRemoteOrigin，不直比 LOCAL / \"<local>\"。";
   const eq = "BinaryExpression[operator=/^[=!]==?$/]";
   door(local, { homes: [`${UI}/ipc/origin.ts`] },
-    `${eq} > Identifier[name='LOCAL_ORIGIN']`, `${eq} > MemberExpression[property.name='LOCAL_ORIGIN']`,
+    `${eq} > Identifier[name='LOCAL']`, `${eq} > MemberExpression[property.name='LOCAL']`,
     `${eq} > Literal[value='<local>']`, `${eq} > TemplateLiteral[expressions.length=0][quasis.0.value.cooked='<local>']`,
-    "SwitchCase[test.name='LOCAL_ORIGIN']", "SwitchCase[test.property.name='LOCAL_ORIGIN']", "SwitchCase[test.value='<local>']");
-  door("LOCAL_ORIGIN 不起别名导入：别名直比认不出（「是不是本机」只在 ipc/origin.ts 判）。", {},
-    "ImportSpecifier[imported.name='LOCAL_ORIGIN'][local.name!='LOCAL_ORIGIN']");
+    "SwitchCase[test.name='LOCAL']", "SwitchCase[test.property.name='LOCAL']", "SwitchCase[test.value='<local>']");
+  door("LOCAL 不起别名导入：别名直比认不出（「是不是本机」只在 ipc/origin.ts 判）。", {},
+    "ImportSpecifier[imported.name='LOCAL'][local.name!='LOCAL']");
 
   // 会话此刻是什么样、能做什么只由那台后端判（整份脸 `SessionFace`）：界面没有转移表 · 落值口 · 两轴的格。
   door("会话状态只由那台后端判（SessionFace）：界面不写状态转移（转移表 · 落值口 · 判活 · 可恢复两轴）。", {},

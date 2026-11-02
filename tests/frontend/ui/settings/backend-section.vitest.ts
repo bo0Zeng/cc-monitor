@@ -10,8 +10,8 @@
  * ## ⚠⚠ 两条一起，缺一条就是安慰剂
  *
  * 1. **人群** —— 只读一个文件、只剥整行注释的话，文案搬家 / 拼串 / 进一张 i18n 表 ⇒ 它**零命中地绿**。
- *    ⇒ 人群是 `backend-section.ts` **+** `backend-policy.ts`，而且**反过来要求**：
- *    那四句的唯一一个家是 `backend-policy.ts`，`backend-section.ts` 里一句都不许有。
+ *    ⇒ 人群是 `backend-section.ts` **+** 文案表，而且**反过来要求**：
+ *    那四句的唯一一个家是文案表，`backend-section.ts` 里一句都不许有。
  * 2. **会红的反向锚点**：「无人监护」在这两个文件里出现 **0** 次 ⇒ 它当场红。
  *
  * ⚠ 判据的边界（照旧如实登记）：它扫的是**字面量与那个纯函数的四张脸**，
@@ -141,10 +141,10 @@ const FACE: Record<string, GoldenFace> = Object.fromEntries(
 
 /**
  * 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。**
- * 家搬进了文案表 ⇒ 人群 +1（`table.json`），而「唯一一个家」从 `backend-policy.ts` 换成表。
+ * 「唯一一个家」是文案表（`table.json`），画格子的 `backend-section.ts` 里一句都不许有。
  */
 const TABLE_REL = "../../../shared/copy/table.json";
-const COPY_POPULATION = ["backend-section.ts", "../backend-policy.ts", TABLE_REL] as const;
+const COPY_POPULATION = ["backend-section.ts", TABLE_REL] as const;
 
 function readPopulation(): { name: string; src: string }[] {
   return COPY_POPULATION.map((rel) => ({
@@ -182,13 +182,13 @@ describe("P2s backend 开关区", () => {
     }
     // ⚠ 人群含 `HEALTH_*` 四句 —— 它们与那三句同一条规矩。
     //   Rust 那侧另有 `the_backend_policy_copy_has_exactly_one_home`，两侧各有一条不是重复：
-    //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
+    //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是 `backend-section.ts` 与文案表。
     // 人群 +1：「读不出来」那一句（三句变四句）。
     // HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
     const tableZh = (key: string): string =>
       (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
     // 健康那六句的取文口搬到了后端（`backend_policy.rs::health_face`，key 归 `rsBackendPolicy.health.*`）——
-    //   前端这两份里更不许出现它们的原文（界面只排版后端给的成品）。
+    //   `backend-section.ts` 里更不许出现它们的原文（界面只排版后端给的成品）。
     const literals = [
       EXIT_KILLS,
       EXIT_UNATTENDED,
