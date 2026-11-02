@@ -1424,33 +1424,35 @@ pub(crate) fn local_stdio_consumer(
     let mut unread =
         crate::stream_source::UnreadNotes::new(route.origin.to_string(), route.place.clone());
     loop {
-        let line =
-            match read_capped_line_sync(&mut rd, crate::stream_source::BACKEND_FRAME_LINE_CAP) {
-                Ok(Some(None)) => {
-                    // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
-                    route.out.line_lost();
-                    continue;
-                }
-                Ok(Some(Some((l, lossy)))) => {
-                    if lossy {
-                        if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
-                            tracing::warn!("{n}");
-                        }
+        let line = match read_capped_line_sync(
+            &mut rd,
+            crate::stream_source::BACKEND_FRAME_LINE_CAP.bytes as usize,
+        ) {
+            Ok(Some(None)) => {
+                // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
+                route.out.line_lost();
+                continue;
+            }
+            Ok(Some(Some((l, lossy)))) => {
+                if lossy {
+                    if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
+                        tracing::warn!("{n}");
                     }
-                    l
                 }
-                Ok(None) => break, // EOF = 流结束 = 判死
-                Err(e) => {
-                    // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
-                    // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
-                    tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
-                    // ★ 那句错**原样**带上去 —— 账上那一行要它
-                    //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
-                    reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
-                    early = true;
-                    break;
-                }
-            };
+                l
+            }
+            Ok(None) => break, // EOF = 流结束 = 判死
+            Err(e) => {
+                // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
+                // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
+                tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
+                // ★ 那句错**原样**带上去 —— 账上那一行要它
+                //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
+                reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
+                early = true;
+                break;
+            }
+        };
         if line.is_empty() {
             continue; // 空行
         }
