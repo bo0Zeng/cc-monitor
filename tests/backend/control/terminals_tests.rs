@@ -1414,3 +1414,205 @@ async fn an_interrupt_to_an_old_hosted_terminal_is_refused_as_outdated() {
     );
     host.await.expect("假托管没崩");
 }
+
+// ═══ 升级后端：今天的 tmux 会话不迁，升级前起的托管终端照旧是托管 ═══
+
+/// 升级前那一版起的托管进程（假的）：攥着自己的家，事实照那一版的样子写在盘上（顶层 `version: 1`）；托管口只答
+/// 那一版认的动词（`welcome` 报 proto 1：`clients` · `capture` · `end`），之后加的动词一律不答。
+/// 记下收到的每一个控制帧（`hello` 连带对方报的 proto）；收到 `end` ⇒ 回 `ended`、收家、交回记下的。
+fn old_hosted_terminal(
+    rt: &tokio::runtime::Runtime,
+    own: &crate::platform::fs::Own,
+    id: &str,
+    sid: &str,
+) -> (std::path::PathBuf, tokio::task::JoinHandle<Vec<String>>) {
+    use crate::host::managed::wire::{read_frame, write_frame, Ctl, Frame, Size};
+    let home = crate::host::managed::home::Home::claim(own, id).expect("占家");
+    let dir = crate::host::managed::home::dir_of(own, id).expect("家的路径");
+    let facts = json!({
+        "version": 1,
+        "id": id,
+        "name": "old-one",
+        "host_pid": std::process::id(),
+        "started_ms": 1_000,
+        "cwd": "/",
+        "agent": "claude",
+        "client": "ccm",
+        "sid": sid,
+    });
+    std::fs::write(dir.as_path().join("facts.json"), facts.to_string()).expect("写事实");
+    let sock = home.sock().to_path_buf();
+    let l = {
+        let _in = rt.enter();
+        own_chan::bind(&sock).expect("绑得上")
+    };
+    let id = id.to_string();
+    let task = rt.spawn(async move {
+        let size = Size { rows: 24, cols: 80 };
+        let mut heard = Vec::new();
+        'conns: loop {
+            let own_chan::Accepted::Ours(mut s) = l.accept().await.expect("收得到") else {
+                panic!("对端是本人");
+            };
+            while let Ok(Some(f)) = read_frame(&mut s).await {
+                let Frame::Ctl(c) = f else { continue };
+                let reply = match c {
+                    Ctl::Hello { proto, .. } => {
+                        heard.push(format!("hello {proto}"));
+                        Ctl::Welcome {
+                            proto: 1,
+                            id: id.clone(),
+                            size,
+                            you: 1,
+                            holder: None,
+                            screen: String::new(),
+                        }
+                    }
+                    Ctl::Clients => {
+                        heard.push("clients".into());
+                        Ctl::ClientsAre { clients: vec![] }
+                    }
+                    Ctl::Capture { .. } => {
+                        heard.push("capture".into());
+                        Ctl::Captured {
+                            lines: vec!["old-screen".into()],
+                            capped: false,
+                            size,
+                            cursor: [0, 0],
+                        }
+                    }
+                    Ctl::End => {
+                        heard.push("end".into());
+                        write_frame(&mut s, &Frame::Ctl(Ctl::Ended { code: Some(0) }))
+                            .await
+                            .expect("回 ended");
+                        break 'conns;
+                    }
+                    Ctl::Bye => break,
+                    other => {
+                        heard.push(format!("{other:?}"));
+                        continue;
+                    }
+                };
+                write_frame(&mut s, &Frame::Ctl(reply)).await.expect("回话");
+            }
+        }
+        home.clear();
+        heard
+    });
+    (sock, task)
+}
+
+/// ★ 有一个 tmux 会话、一个托管终端时升级后端：新后端头一回列名单只凭 tmux 与盘 ⇒ 两行都在、各自的宿主不变；
+/// 预览各走各的宿主；结束托管那一行不碰 tmux 那一行。升级前起的托管进程是旧版（proto 1）：新后端只拿它认得的动词跟它说话，
+/// 投递那一句 · 中断这类之后加的动词当场照实回「旧版」，一个都不说给它。私有 tmux socket、沙箱数据目录，不起真 claude。
+#[test]
+fn after_an_upgrade_a_tmux_session_stays_tmux_and_an_old_hosted_terminal_stays_managed() {
+    use crate::host::managed::run::tests::sandbox_own;
+    use crate::wire::TerminalHost;
+    let rt = tokio::runtime::Runtime::new().expect("运行时");
+    let iso = Iso::new("upgrade");
+    let tmux_sid = "7d0c1a2b-1111-4222-8333-944455556666";
+    iso.session("old-cc", "ccm", tmux_sid);
+    let (own, _data) = sandbox_own("upgrade");
+    let hosted_sid = "7d0c1a2b-2222-4222-8333-944455556666";
+    let (sock, host) = old_hosted_terminal(&rt, &own, "t-old", hosted_sid);
+
+    let listed = || {
+        let (rows, _, _) =
+            crate::host::list_with(iso.on(), &|| crate::host::managed::listed_at(&own))
+                .expect("名单");
+        rows.iter()
+            .map(|r| (r.name.clone(), r.host, r.sid.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        listed(),
+        vec![
+            (
+                "old-cc".to_string(),
+                TerminalHost::Tmux,
+                tmux_sid.to_string()
+            ),
+            (
+                "old-one".to_string(),
+                TerminalHost::Managed,
+                hosted_sid.to_string()
+            ),
+        ],
+        "两行都在、各自的宿主与会话照旧"
+    );
+
+    // 预览：tmux 那一行照 tmux 抓，托管那一行经托管口抓。
+    let handle = iso.handle_of("old-cc");
+    assert!(
+        handle.starts_with("tmux-"),
+        "tmux 那一行的句柄照旧：{handle}"
+    );
+    iso.tmux(&["send-keys", "-t", "=old-cc:", "-l", "tmux-side"]);
+    assert!(
+        iso.shows(&handle, "tmux-side"),
+        "tmux 那一行的预览照 tmux 抓"
+    );
+    let p = val(hosted_screen_at(&sock, &Default::default()).expect("托管那一行抓得到"));
+    assert!(
+        p["lines"].to_string().contains("old-screen"),
+        "托管那一行的预览经托管口：{p}"
+    );
+
+    // 之后加的动词遇到旧托管：当场照实回旧版，不说给它。
+    let line = Input::Text {
+        text: "hi".into(),
+        enter: true,
+    };
+    for sent in [
+        say_managed_at(&sock, &line, &[]),
+        interrupt_managed_at(&sock),
+    ] {
+        assert_eq!(
+            (sent.result, sent.why, sent.said.as_deref()),
+            (
+                SentResult::Refused,
+                Some(Refused::HostOutdated),
+                Some(copy_text("beTerminal.no.hostOutdated", &[]).as_str())
+            ),
+            "{sent:?}"
+        );
+    }
+
+    // 结束托管那一行：经托管口 `end`；tmux 那一行照旧在、照旧是 tmux。
+    let ended = crate::control::kill::end_terminal(
+        iso.on(),
+        Some(&own),
+        &crate::control::kill::TerminalEndReq {
+            terminal: Some("t-old".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        ended.map(|e| e.terminal).map_err(|f| f.code),
+        Ok("t-old".into())
+    );
+    let heard = rt.block_on(host).expect("假托管没崩");
+    assert_eq!(
+        listed(),
+        vec![(
+            "old-cc".to_string(),
+            TerminalHost::Tmux,
+            tmux_sid.to_string()
+        )],
+        "托管那一行结束了，tmux 那一行不动"
+    );
+    let unknown: Vec<&String> = heard
+        .iter()
+        .filter(|h| {
+            !matches!(h.as_str(), "clients" | "capture" | "end")
+                && **h != format!("hello {}", crate::host::managed::wire::PROTO)
+        })
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "新后端跟旧托管只说它认得的动词（hello 报自己的 proto）：多说了 {unknown:?}，全部 {heard:?}"
+    );
+    assert!(heard.iter().any(|h| h == "end"), "结束经托管口：{heard:?}");
+}
