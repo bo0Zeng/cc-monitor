@@ -65,7 +65,7 @@ pub(crate) fn log_tail(
     path: Option<&std::path::Path>,
     max: u64,
 ) -> Result<LogTail, crate::common::said::Said> {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::{Seek, SeekFrom};
     let Some(path) = path else {
         return Ok(LogTail {
             path: None,
@@ -81,9 +81,9 @@ pub(crate) fn log_tail(
         .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?
         .len();
     let from = size.saturating_sub(max);
-    let mut buf = Vec::new();
-    f.seek(SeekFrom::Start(from))
-        .and_then(|_| f.take(max).read_to_end(&mut buf))
+    let buf = f
+        .seek(SeekFrom::Start(from))
+        .and_then(|_| relay_route_core::read_window(&mut f, max))
         .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
     let body = if from > 0 {
         buf.iter()
