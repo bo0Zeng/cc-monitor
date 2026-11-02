@@ -53,7 +53,7 @@ impl<R: AsyncRead + Unpin> AsyncBufRead for Downstream<R> {
     }
 }
 
-/// 解一个 raw deflate 流（那台每帧 sync flush ⇒ 每帧一到就解得出来）。对端关了 ⇒ 到头（流本来就不收尾）；解不开 ⇒ `InvalidData`。
+/// 解一个 raw deflate 流（那台每帧 full flush ⇒ 每帧一到就解得出来，帧之间不回指）。对端关了 ⇒ 到头（流本来就不收尾）；解不开 ⇒ `InvalidData`。
 pub struct Inflate<R> {
     inner: R,
     z: flate2::Decompress,
@@ -131,7 +131,7 @@ impl<R: AsyncBufRead + Unpin> AsyncRead for Inflate<R> {
                         "deflate stream made no progress",
                     )))
                 }
-                // 吃进去了、还没解出字节（一段 sync flush 的空块）⇒ 接着读。
+                // 吃进去了、还没解出字节（一段 full flush 的空块）⇒ 接着读。
                 _ => {}
             }
         }
