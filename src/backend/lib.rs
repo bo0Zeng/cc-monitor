@@ -46,8 +46,8 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 #[cfg(test)]
 #[path = "../../tests/backend/cap_over_guard.rs"]
 mod cap_over_guard; // 读上限的 `over` 与调用处对得上（硬报错不被吞 · 丢弃＋带身份报告的每一臂都说话）
-use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住宿主口那个包 `backend-host`）
 use backend_common as common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断；独立的包 `backend-common`）
+use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住宿主口那个包 `backend-host`）
 #[cfg(test)]
 #[path = "../../tests/backend/common/cross_tests.rs"]
 mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）

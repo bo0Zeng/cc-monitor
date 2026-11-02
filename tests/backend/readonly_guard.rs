@@ -2124,6 +2124,13 @@ mod g6_dependency_signoff {
              链的是 crates.io 上游那一份（仓内不留副本）",
         ),
         (
+            "russh",
+            DEV_DEPS,
+            UNMEASURED,
+            "同上面 `[dependencies]` 那一行：拨号那一侧的包（`backend-dial`）的判据拿它造替身服务端\
+             （`russh::server::Handler`）、读它的错误类型与鉴权结果，只在测试档，写面同上",
+        ),
+        (
             "russh-sftp",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
