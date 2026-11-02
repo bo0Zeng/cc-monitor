@@ -62,7 +62,7 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
             "`{manifest}` 的 `[lints.clippy]` 没把 `disallowed_methods` 开成 deny ⇒ 名单在那个包上不起作用。"
         );
     }
-    let me = fs::read_to_string(root.join("tests/frontend/shell/polling_registry.rs"))
+    let me = fs::read_to_string(root.join("tests/common/guard-core/rules/polling_registry.rs"))
         .expect("读不到本文件");
     // 只看头注那半（`production_source` 剥掉 `#[cfg(test)]` 段）：拿整份文件找，本条自己的代码里就写着这个名字。
     let head_note = guard_core::production_source(&me);
@@ -564,8 +564,8 @@ fn the_files_that_forbid_polling_really_have_none() {
 // **monitor Rust 自己拼出来的 shell 周期唤醒**：clippy 的名单只认 Rust 的调用，认不出拼进命令行里的 `sleep`
 // ═══════════════════════════════════════════════════════════════════════
 
-fn root() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+fn root() -> PathBuf {
+    guard_core::addr::shell_root()
 }
 
 /// 生产段：用 `guard_core` 剥（连测试段一起剥）。

@@ -2567,6 +2567,10 @@ mod tests;
 #[path = "../../../../tests/common/guard-core/rules/mod.rs"]
 mod rules;
 
+/// 登记表写的是 `guard_core::…`（与别的包里调本 crate 同一个写法）：测试构建里本 crate 也叫这个名字。
+#[cfg(test)]
+extern crate self as guard_core;
+
 /// 测试层分级（TQ1）：五层各一张登记表 ＋ 各一条反空真自检。人群是整个仓的测试树，
 /// 住在这里是因为它是「元层的元层」，而且本 crate 跟着门禁 `cargo` 那一格跑。
 #[cfg(test)]

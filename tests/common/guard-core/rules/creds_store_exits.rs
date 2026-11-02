@@ -9,8 +9,88 @@ use super::{equal, none, rule};
 /// 定义面那张表（`creds-core` 判据 `INNER_FIELD_USERS`）住在哪。
 const DEFINITION_TABLE: &str = "tests/common/creds-core/lib_tests.rs";
 
-/// 扫哪几棵树：这就是「每个出口恰好一处调用」的分母。
-const PLAINTEXT_SCAN_TREES: &[&str] = &["src/frontend/shell/src", "src/common", "src/backend"];
+/// 扫哪几棵树：这就是「每个出口恰好一处调用」的分母（通信层也在里面：门上只拿宿主递进去的比对口，不取明文）。
+const PLAINTEXT_SCAN_TREES: &[&str] = &[
+    "src/frontend/shell/src",
+    "src/common",
+    "src/comms",
+    "src/backend",
+];
+
+/// 装秘密的类型的唯一住址：`(文件, 类型名)`。
+const SECRET_HOLDER: (&str, &str) = ("src/common/creds-core/src/lib.rs", "SecretKey");
+
+/// 长得像装秘密的类型、装的却不是秘密的那几个：`(文件, 类型名, 装的是什么)`。加一行就是在放宽。
+const NOT_SECRET_HOLDERS: &[(&str, &str, &str)] = &[(
+    "src/backend/dial/mod.rs",
+    "Held",
+    "活流计数的把手：装那台的机器名，丢掉时把计数减一",
+)];
+
+/// 生产段里每一个「字段私有、只包一个 `String`、不派生 `Debug`」的元组结构的名字 —— 装秘密的类型那副样子
+/// （派生 `Debug` 会把内层原样印出来，装秘密的不会派生它）。属性取的是上一个 item 收尾到 `struct` 之间那一段。
+fn string_wrappers_without_derived_debug(prod: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, _) in prod.match_indices("struct ") {
+        let rest = &prod[i + "struct ".len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let shape: String = rest[name.len()..]
+            .chars()
+            .take_while(|c| *c != ';' && *c != '{')
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if name.is_empty() || shape != "(String)" {
+            continue;
+        }
+        let head_from = prod[..i].rfind([';', '}', '{']).map_or(0, |k| k + 1);
+        let head = &prod[head_from..i];
+        let derives_debug = head.match_indices("derive(").any(|(d, _)| {
+            let inner = &head[d + "derive(".len()..];
+            let inner = &inner[..inner.find(')').unwrap_or(inner.len())];
+            inner
+                .split(',')
+                .any(|t| t.trim() == "Debug" || t.trim().ends_with("::Debug"))
+        });
+        if !derives_debug {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// 装一串秘密、不让它进日志、只经具名的口取明文 —— 这件事只许 `creds_core::SecretKey` 一个类型做。
+/// 别处再长一个同样形状的类型，就是同一条安全性质的第二个实现，`creds-core` 定义面那几条判据看不见它。
+/// 认的是形状（私有 `String` 字段 · 不派生 `Debug`），不是名字；手写遮蔽的 `Debug` 与干脆没有 `Debug` 都算。
+#[test]
+fn only_creds_core_defines_a_type_that_wraps_a_secret_string() {
+    let planted = "#[derive(Clone)]\npub struct Token(String);\n#[derive(Debug, Clone)]\npub struct Name(String);\n";
+    assert_eq!(
+        string_wrappers_without_derived_debug(planted),
+        vec!["Token".to_string()],
+        "合成样本上认法不对：派生了 `Debug` 的不算，没派生的算"
+    );
+    rule(|repo| {
+        let found = repo
+            .under(PLAINTEXT_SCAN_TREES, &["rs"])
+            .into_iter()
+            .flat_map(|f| {
+                string_wrappers_without_derived_debug(f.prod())
+                    .into_iter()
+                    .map(|n| (f.rel.clone(), n))
+            });
+        let registered = std::iter::once(SECRET_HOLDER)
+            .chain(NOT_SECRET_HOLDERS.iter().map(|(f, n, _)| (*f, *n)))
+            .map(|(f, n)| (f.to_string(), n.to_string()));
+        equal(
+            "装一串秘密的类型（私有 `String` 字段 · 不派生 `Debug`）只许是 `creds_core::SecretKey`",
+            found,
+            registered,
+        );
+    });
+}
 
 /// 定义面标 `Handling::HandsOut("<唯一调用点住的文件>")` 的每一行 ⇒ `(方法名, 那份文件)`。
 fn plaintext_exit_sites(core: &str) -> Vec<(String, String)> {

@@ -1,11 +1,11 @@
 use super::ci_yaml;
 use super::ci_yaml::job_block as ci_job_block;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
-/// 本文件所在 crate 的根（`src/frontend/shell/`）。
-fn root() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+/// 壳那棵 workspace 的根（`src/frontend/shell/`）。
+fn root() -> PathBuf {
+    guard_core::addr::shell_root()
 }
 
 /// 共享 crate 的家 —— `<repo>/src/common/`。
@@ -13,15 +13,17 @@ fn common_dir() -> std::path::PathBuf {
     guard_core::addr::repo_src_root().join("common")
 }
 
-/// 从本 crate 的包根（`members` 数组的基准）到 [`common_dir`] 的相对前缀（带尾 `/`）。
+/// 从 workspace 根（`members` 数组的基准）到 [`common_dir`] 的相对前缀（带尾 `/`）。
 /// 现算，不写死 —— 包根搬一级，这个前缀就跟着变。
 fn member_prefix() -> String {
-    let from: Vec<_> = root().components().collect();
     let to: Vec<_> = common_dir()
         .components()
         .map(|c| c.as_os_str().to_owned())
         .collect();
-    let from: Vec<_> = from.iter().map(|c| c.as_os_str().to_owned()).collect();
+    let from: Vec<_> = root()
+        .components()
+        .map(|c| c.as_os_str().to_owned())
+        .collect();
     let same = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
     let mut out = "../".repeat(from.len() - same);
     for c in &to[same..] {
@@ -471,7 +473,7 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
     const ADJUDICATED: &[(&str, &str, &str)] = &[(
         "release.yml",
         "workflow_dispatch",
-        "tests/frontend/shell/shared_crate_registry_tests.rs#STILL_RESTING_ON",
+        "tests/common/guard-core/rules/shared_crate_registry_tests.rs#STILL_RESTING_ON",
     )];
     /// 扫描面 ＋ **每个文件今天还压着哪几条边界**（红了要人去重判的就是这些）。
     /// 🔴 这一栏不是装饰：诊断里要说得出「你这一下动的是**谁**的前提」。
@@ -940,5 +942,55 @@ fn ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it() {
     assert!(
         !rel_push.iter().any(|l| l.trim().starts_with("branches")),
         "`release.yml` 的 push 触发认了分支（{rel_push:?}）—— 推候选分支 / main 就会起发版；发版只许由标签触发"
+    );
+}
+
+/// ★ `lockfile_conflict_guard` 那套论证的**前提**：跨 target check 确实跑在 `src/backend` 下。
+///
+/// 这个 `working-directory` 一改，「两份 lock 编的不是同一棵树」这句话就不成立了 ——
+/// 那时该回来重判整条，而不是留着一条论证已经落空的判据。
+///
+/// ⚠⚠ **08-07 订正：本条原本钉的是两个「字符串各自存在」，不是它们的关系。**
+/// 变异实测两刀：① 把跨 target check 整步搬进 `rust` job（它改走 monitor 的 lock）；
+/// ② 把 backend job 的 `working-directory` 改成 `src/frontend/shell`、同时把那一行原样挪到别的 job。
+/// 两刀都让那套论证**反过来**，而本条**一声不吭**（三条全绿）。
+///
+/// ★ 两刀确实各有别的判据红了 —— 但读它们的诊断：说的是
+/// 「切出来的块里没有 `working-directory: src/backend` —— **切错 job 了，本条会零命中地绿**」，
+/// 那是当时另一条判据（钉 backend job 四步的那条，后来随四步改调门禁删了）的**抽取器自检**在说话。
+/// 照它去修，人会去查切块逻辑，而真实事件是 **backend job 换了工作目录**。
+/// ⇒ **「有别的判据接住」不等于「有人把这件事讲对了」** —— 本条才是该讲这句话的那条。
+///
+/// 改法：钉**关系** —— 两件事必须落在**同一个 job 块**里。切块用
+/// `ci_yaml`（E3：`ci.yml` 的读取与切块只有一个家）。
+#[test]
+fn the_cross_target_check_still_runs_under_the_backend_lock() {
+    const CHECK: &str = "cargo check --workspace --all-targets --target x86_64-pc-windows-msvc";
+    // ⚠ **行锚定**，不能用 `contains` 裸匹配：`src/backend` 是
+    // `src/backend-X` 的**前缀** —— 变异实测过，裸 `contains` 照样绿。
+    const WD: &str = "working-directory: src/backend";
+
+    let block = ci_yaml::job_block("backend");
+    // 抽取器自检：切不出块时下面两条会零命中地绿。
+    assert!(
+        block.lines().count() >= 10,
+        "从 `ci.yml` 切 `backend:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
+        block.lines().count()
+    );
+    assert!(
+        block.lines().any(|l| l.trim() == WD),
+        "`backend:` job 里没有 `{WD}` 了 —— 它可能被改了值、也可能被挪到了别的 job。\n\
+             ⚠ **别只看「这行字在不在 ci.yml 里」** —— 它在别处照样在，而那套论证要的是\n\
+             「**跨 target check 所在的那个 job** 跑在后端的 lock 下」。\n\
+             这个前提一没，`lockfile_conflict_guard_tests.rs::the_two_lockfiles_have_no_real_version_conflict` 整套论证就落空，\n\
+             该回来重判整条，而不是留着一条论证已经落空的判据。"
+    );
+    assert!(
+        block.contains(CHECK),
+        "跨 target Windows check 不在 `backend:` job 里了（它是 `ci.yml` 自称的\n\
+             「平台线唯一真判据」）。要么它被删了（那是个更大的问题），\n\
+             要么它被搬进了别的 job —— 而别的 job 的 `working-directory` 不是\n\
+             `src/backend` ⇒ 它改走 **monitor 的 lock**，那套论证反过来。\n\
+             ⚠ 变异实测过：把它搬出 `backend:` job，本条红。"
     );
 }
