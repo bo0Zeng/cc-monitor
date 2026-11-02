@@ -228,7 +228,7 @@ pub(crate) async fn session(
         &mut wr,
         &Frame::Ctl(Ctl::Hello {
             proto: PROTO,
-            build: crate::BUILD_ID.to_string(),
+            build: crate::common::id::BUILD_ID.to_string(),
             want: Want::Input,
             size,
             who: Who {

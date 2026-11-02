@@ -510,7 +510,7 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
     let _feed = Closing(Feed::start(
         Config {
             machine: name.clone(),
-            mine: Some(crate::BUILD_ID.to_string()),
+            mine: Some(crate::common::id::BUILD_ID.to_string()),
             tz: None,
             handshake: HANDSHAKE,
         },

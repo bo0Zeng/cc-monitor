@@ -362,7 +362,7 @@ pub(crate) struct PlaceAnswer {
 }
 
 /// `place-verdict` 的本体：`dest` 不是绝对路径 · `machine` 空 ⇒ `bad_args`。
-/// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::BUILD_ID`）。
+/// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::common::id::BUILD_ID`）。
 pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
     let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     if !std::path::Path::new(&req.dest).is_absolute() {
@@ -382,7 +382,7 @@ pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
         match place_verdict(
             Key::this_machine(),
             disk,
-            crate::BUILD_ID,
+            crate::common::id::BUILD_ID,
             &req.machine,
             &req.dest,
         )? {

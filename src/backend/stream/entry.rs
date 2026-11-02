@@ -12,15 +12,14 @@
 //! - **写者**（[`writer_task`]，`stream/writer.rs`）排空通道、把线上行写进 stdout。SSH 管道慢 ⇒ 通道背压，
 //!   而有界那一格把背压挡在通道上，到不了 inotify 读者。
 
+use crate::common::id::{BUILD_ID, VERSION};
 use crate::faces::read_face;
 use crate::stream::claim::claim_then_log;
 use crate::stream::inbound::views::StreamWants;
 use crate::stream::writer::writer_task;
 use crate::stream::{cli, inbound, oneshot, tap, topic_body};
 use crate::wire::{self, drain, listen, topic_hook, Frame};
-use crate::{
-    agents, control, dial, faces, history, observe, stderr_log, unavailable_here, BUILD_ID,
-};
+use crate::{agents, control, dial, faces, history, observe, stderr_log, unavailable_here};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::discard::{Discard, Why};
 
@@ -36,7 +35,7 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
 
 /// `ccm -- <词>` 里那个词归不归后端：一次性子命令（闸门 [`cli::is_subcommand`]）∪ 流模式旗标。交给 `control::ccm::route` 那一问就是它。
 pub(crate) fn is_backend_word(w: &str) -> bool {
-    cli::is_subcommand(w) || crate::STREAM_FLAGS.contains(&w)
+    cli::is_subcommand(w) || crate::wire::cli_words::STREAM_FLAGS.contains(&w)
 }
 
 /// 后端进程的整个身子：装配 → 分流（`ccm` · 一次性子命令 · 流模式）→ 起载体。每条路都在自己的收场处 `exit`。
@@ -292,7 +291,7 @@ fn build_hello() -> Frame {
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         // 这份二进制出自的那一版：连它的那一端（本机后端那条常驻流）照它写机器页那台的版本号。
-        version: Some(env!("CC_MONITOR_VERSION").to_string()),
+        version: Some(VERSION.to_string()),
         commands: inbound::command_names()
             .into_iter()
             .map(str::to_string)

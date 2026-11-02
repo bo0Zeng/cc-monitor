@@ -176,7 +176,7 @@ fn fleet_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Lin
     deploy::machine::fleet(&all)
 }
 
-/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
+/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`common::id::VERSION`）。
 /// 不经 SSH ⇒ 没有连接那一格。
 fn local_row() -> MachineState {
     let mut e = Entry::default();
@@ -187,7 +187,7 @@ fn local_row() -> MachineState {
                 relation: cmd_wire::attach::Relation::Same,
                 differs: Vec::new(),
             },
-            version: Some(env!("CC_MONITOR_VERSION").to_string()),
+            version: Some(crate::common::id::VERSION.to_string()),
         },
     );
     product(&e, &copy_core::local_machine(), true, true)

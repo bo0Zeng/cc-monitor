@@ -71,7 +71,10 @@ fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
 fn the_ccm_side_asks_the_gate_for_backend_words() {
     use crate::ccm_line::argv;
     use crate::stream::entry::is_backend_word;
-    for t in subcommands().iter().chain(crate::STREAM_FLAGS) {
+    for t in subcommands()
+        .iter()
+        .chain(crate::wire::cli_words::STREAM_FLAGS)
+    {
         assert!(is_backend_word(t), "`{t}` 是后端的词，ccm 那一侧不认");
         assert!(!argv::is_ccm_word(t), "`{t}` 同时是 ccm 的词");
     }

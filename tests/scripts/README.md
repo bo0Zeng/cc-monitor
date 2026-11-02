@@ -16,7 +16,7 @@
 | [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：起命令前经 `session-scrub.sh` 摘掉会话变量；每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的按先来后到排队（排最前的那一个才去问槽位）；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
 | [`push-candidate.sh`](push-candidate.sh) | 推送：`w8/<名>` 强推到候选分支 `next` → 用 `gh` 等 CI 跑完 → 全绿才在主工作树上把 `main` 快进过去并推；有红就停、印红的 job 与失败日志，`main` 不动；推之前先跑 `dep-advisories.mjs`，判的是要推的那个提交里的锁 |
 | [`dep-advisories.mjs`](dep-advisories.mjs) | 依赖漏洞判据：两份 `Cargo.lock` 与 `package-lock.json` 里从 registry 来的包批量问 OSV，随产品发的包有修复版、又没登在豁免表 [`dep-advisories-waived.txt`](dep-advisories-waived.txt)（一行「包 编号 为什么碰不到」，死行也红）⇒ 红；不再维护 · 无修复版 · 开发依赖只印；OSV 问不到 ⇒ 判不了，不当通过。要联网，不进 quick-check，`push-candidate.sh` 推之前调它（`--rev <提交>` 读那个提交里的锁） |
-| [`bump-build-id.sh`](bump-build-id.sh) | 发版时打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。下一步是 `re-embed.sh` |
+| [`bump-build-id.sh`](bump-build-id.sh) | 发版时打版本号的机械那一半：改 `src/backend/common/id.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。下一步是 `re-embed.sh` |
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
 | [`apt-install.sh`](apt-install.sh) | CI 上装 apt 包的唯一写法（两份 workflow 每一处都调它）：每趟 update / install 套 `timeout`、apt 下载带重试、一趟没成歇一下再来、最多 3 趟；调它的那一步自带 `timeout-minutes` |
 | [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |

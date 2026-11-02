@@ -1033,7 +1033,7 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
     .detail
     .expect("失败的 ack 带详情");
     assert!(
-        d.contains(crate::BUILD_ID),
+        d.contains(crate::common::id::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"
     );
     // 暂存区那一根与提交那一侧（`files::commit`）是同一个串。

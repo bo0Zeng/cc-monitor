@@ -105,7 +105,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 
     };
     if replace {
         // 旧的不先让出锁，新的必然起不来 ⇒ 与「停」同一个停法（等它真退了再起）。
-        match swap_out(own, crate::BUILD_ID, STOP_GRACE_MS) {
+        match swap_out(own, crate::common::id::BUILD_ID, STOP_GRACE_MS) {
             Ok(Swap::Kept(pid)) => {
                 println!("{}", serde_json::json!({ "pid": pid, "replaced": false }));
                 return 0;

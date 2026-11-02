@@ -24,6 +24,8 @@ backend-platform = { path = "../platform" }
 batch-core = { path = "../../common/batch-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
+# 身份戳的两个界标（`id::build_stamp` 拼的头尾；monitor 扫字节用的是同一份）。
+deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }

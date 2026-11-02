@@ -475,7 +475,7 @@ pub(crate) fn answer_probe_for(
         version: CCM_VERSION,
         capabilities: crate::ccm_launcher_with(platform),
         agents: agents(),
-        build: crate::BUILD_ID,
+        build: crate::common::id::BUILD_ID,
         on_path,
     }
 }
@@ -658,7 +658,7 @@ pub(crate) fn terminal_name_mint_with(
 /// ⇒ 恒等 ⇒ 零证据（现打）。
 /// ⇒ 本行把身份接到**这个进程自己**身上：能跑它的人直接问它，不看它旁边任何文件。
 /// 〔另一半给「跑不了它的人」——交叉编译出来的 musl 二进制在 Windows 上没法执行 ——
-///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::BUILD_ID`。〕
+///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::common::id::BUILD_ID`。〕
 ///
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
@@ -677,7 +677,7 @@ pub(crate) fn probe_output_for(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
         crate::ccm_launcher_with(platform).join(","),
         agents().join(","),
-        crate::BUILD_ID
+        crate::common::id::BUILD_ID
     )
 }
 

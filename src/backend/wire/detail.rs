@@ -90,7 +90,10 @@ fn machine() -> String {
         "{} {} · {}",
         os_word(std::env::consts::OS),
         std::env::consts::ARCH,
-        copy_text("detail.value.backend", &[("build", crate::BUILD_ID)])
+        copy_text(
+            "detail.value.backend",
+            &[("build", crate::common::id::BUILD_ID)]
+        )
     )
 }
 

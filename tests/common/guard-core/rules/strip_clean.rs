@@ -2,7 +2,7 @@
 
 use super::rule;
 
-/// ★ 语义钉：后端根源码面（`lib.rs` ＋ `main.rs`）的生产段必须含这几样东西。
+/// ★ 语义钉：后端根源码面（`lib.rs` ＋ `main.rs` ＋ 身份住的 `common/id.rs`）的生产段必须含这几样东西。
 ///
 /// 字节数地板挡不住「单个文件被剥空 / 剥过头」：这条用**语义锚点**直接钉住那一类失效。
 /// 锚点随重构变时（U3 拆层时 `mod watcher;` 挪进了 `observe/mod.rs`，红过一次），
@@ -11,14 +11,15 @@ use super::rule;
 fn main_production_section_keeps_its_load_bearing_items() {
     rule(|repo| {
         let prod = format!(
-            "{}\n{}",
+            "{}\n{}\n{}",
             repo.file("src/backend/lib.rs").prod(),
-            repo.file("src/backend/main.rs").prod()
+            repo.file("src/backend/main.rs").prod(),
+            repo.file("src/backend/common/id.rs").prod()
         );
         for anchor in [
             format!("const BUILD{}", "_ID"),
-            format!("const STREAM{}", "_FLAGS"),
-            format!("const SUBCOMMAND{}", "_OPTIONS"),
+            format!("static CC_MONITOR_BUILD{}", "_STAMP"),
+            format!("fn unavailable{}", "_here"),
             format!("mod obser{}", "ve;"),
             format!("mod contr{}", "ol;"),
         ] {

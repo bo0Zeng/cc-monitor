@@ -1,13 +1,13 @@
 //! 流旗标收进声明之后，monitor 这一侧剩下的那几件：起参只剩 `--stream`（本机两条载体一份常量）·
 //! 分身会话不在壳里藏（隐不隐藏由后端判好、帧上带着，`tests/frontend/shell/local_lines_tests.rs::no_read_loop_drops_background_sessions`）。
 
-/// 后端 `lib.rs::STREAM_FLAGS` 的字面量（从后端源码摘，异源）。
+/// 后端 `wire/cli_words.rs::STREAM_FLAGS` 的字面量（从后端源码摘，异源）。
 fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
-    let src = include_str!("../../../../src/backend/lib.rs");
-    let at = src
+    let words = include_str!("../../../../src/backend/wire/cli_words.rs");
+    let at = words
         .find(" const STREAM_FLAGS: &[&str] = &[")
-        .expect("后端 lib.rs 里找不到 `STREAM_FLAGS` 的定义");
-    let rest = &src[at..];
+        .expect("后端 wire/cli_words.rs 里找不到 `STREAM_FLAGS` 的定义");
+    let rest = &words[at..];
     let body = &rest[..rest.find("];").expect("STREAM_FLAGS 没有收尾")];
     let mut out: std::collections::BTreeSet<String> = body
         .split('"')
@@ -15,9 +15,8 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    // 表里引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量（那个词住 `wire/cli_words.rs`）。
+    // 表里引用 `STREAM_FLAG_EXPLICIT` ⇒ 从同一份源码补它的字面量。
     if body.contains("STREAM_FLAG_EXPLICIT") {
-        let words = include_str!("../../../../src/backend/wire/cli_words.rs");
         let l = words
             .lines()
             .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))

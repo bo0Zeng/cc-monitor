@@ -86,7 +86,7 @@ fn the_host_program_is_the_versioned_copy_only_where_running_programs_are_locked
         let want = data
             .join("hosts")
             .join(".bin")
-            .join(crate::BUILD_ID)
+            .join(crate::common::id::BUILD_ID)
             .join(program_name());
         assert_eq!(std::path::PathBuf::from(&got), want);
     } else {
@@ -103,7 +103,7 @@ fn the_copy_is_named_by_the_build_id_not_the_package_version() {
     let want = data
         .join("hosts")
         .join(".bin")
-        .join(crate::BUILD_ID)
+        .join(crate::common::id::BUILD_ID)
         .join(program_name());
     assert_eq!(std::path::PathBuf::from(&got), want);
     assert_eq!(

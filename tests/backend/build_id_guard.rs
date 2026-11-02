@@ -144,7 +144,7 @@ mod tests {
         out.push_str(&chans.join("\n"));
         // 第三段：子命令的选项（`SUBCOMMAND_OPTIONS`）。W5-AUX 加 `--stdin-line` 时本条没红、
         //   p4f 靠人记得手动 bump —— 旧后端不认新选项同样会卡住调用方，所以它也算命令面。
-        let mut opts: Vec<String> = crate::SUBCOMMAND_OPTIONS
+        let mut opts: Vec<String> = crate::wire::cli_words::SUBCOMMAND_OPTIONS
             .iter()
             .map(|o| format!("opt:{o}"))
             .collect();
@@ -222,11 +222,11 @@ mod tests {
                  报同一个 id ⇒ 不判 stale ⇒ 不自动重装 ⇒ **你这一轮的改动在已部署的远端休眠**，\n\
                  用户只会拿到「版本过旧」。本仓已经因为这个栽过三次（p1r / p1t / G2）。\n\
                  \n\
-                 正确动作：① 在 lib.rs 里 bump `BUILD_ID`；\n\
+                 正确动作：① 在 common/id.rs 里 bump `BUILD_ID`；\n\
                  ② 在 `SUBCOMMAND_HISTORY` **追加**一行、并删掉最老那一行（表恒为两行）；\
                  要追加的就是下面 NEW-ROW 那一行（打版本号的脚本按它改表）：\n\
                  NEW-ROW: (\"<新 id>\", {now:?})",
-                super::super::BUILD_ID
+                crate::common::id::BUILD_ID
             );
         }
     }
@@ -347,7 +347,10 @@ mod tests {
         );
         let real = String::from_utf8_lossy(crate::CC_MONITOR_BUILD_STAMP.as_slice()).to_string();
         let two = format!("头{fake}中{real}尾");
-        let mut want = vec![super::super::BUILD_ID.to_string(), "zz-not-us".to_string()];
+        let mut want = vec![
+            crate::common::id::BUILD_ID.to_string(),
+            "zz-not-us".to_string(),
+        ];
         want.sort();
         assert_eq!(build_ids_in(two.as_bytes()), want, "两个戳要认出两个");
         // 界标挨着（debug 构建 `.rodata` 里真会出现的那一形）不许被当成一个戳。
@@ -397,7 +400,7 @@ mod tests {
         let ids = build_ids_in(&bytes);
         assert_eq!(
             ids,
-            vec![super::super::BUILD_ID.to_string()],
+            vec![crate::common::id::BUILD_ID.to_string()],
             "从这一份二进制的字节里扫出来的身份是 {ids:?}，而 `BUILD_ID` 是 `{}`。\n\
              \n\
              · 扫到 **0 个** ⇒ 那个 `#[used] static CC_MONITOR_BUILD_STAMP` 被优化掉 / 被删了\n\
@@ -405,7 +408,7 @@ mod tests {
                文件不算数**：它是从源码常量抄的标签，三个载体永远一致，一格证据都不提供。\n\
              · 扫到 **多个** ⇒ 有第二处也在往二进制里写这个形状的串，身份不再唯一。\n\
              · 值不对 ⇒ 拼戳那条 `const fn` 与 `BUILD_ID` 脱钩了。",
-            super::super::BUILD_ID
+            crate::common::id::BUILD_ID
         );
     }
 
@@ -430,10 +433,10 @@ mod tests {
             });
         assert_eq!(
             line,
-            super::super::BUILD_ID,
+            crate::common::id::BUILD_ID,
             "`build=` 报的是 `{line}`，而这一份的 `BUILD_ID` 是 `{}` —— \
              它没有取自本进程的常量（抄了别处 = 又一个标签）",
-            super::super::BUILD_ID
+            crate::common::id::BUILD_ID
         );
     }
 
@@ -473,7 +476,7 @@ mod tests {
             version_lines,
             vec![r#"version = "0.0.0""#],
             "本 crate 的 `[package] version` 实得 {version_lines:?}。\n\
-             它**刻意**是 `0.0.0`（真身份住 `lib.rs` 的 `BUILD_ID`，理由逐字写在\n\
+             它**刻意**是 `0.0.0`（真身份住 `common/id.rs` 的 `BUILD_ID`，理由逐字写在\n\
              `Cargo.toml` 那一行上方）。要改成别的数字，得先答一个问题：\n\
              **谁在数它？** 把一个假值换成另一个假值，正是要防的失效方向。"
         );
@@ -486,13 +489,10 @@ mod tests {
              `0.0.0` 于是退回成一个**没人解释过的假值**，而下一个人看到它只会顺手改掉。"
         );
         // ── ③ 真身份的住址逐个还在 ─────────────────────────────────────────
-        // 🔴 住址从 `main.rs` 改成 `lib.rs` —— 身份按
-        //    前置 2 搬进库面（in-process 那条路没有那个 `main.rs`，身份会跟着它消失）。
-        // ⚠ 认的那一行现在是 `pub const BUILD_ID`（搬进库面时提了权）——
-        //    `starts_with("const BUILD_ID")` 会**一条都不命中**而本条当场空真，
-        //    所以下面按 `contains` 认，且**仍然要求恰好 1 处**。
-        let lib_rs = include_str!("../../src/backend/lib.rs");
-        let decls = lib_rs
+        // 🔴 住址是纯工具那一层的 `common/id.rs`：库里谁都够得到它（in-process 那条路没有 `main.rs`），
+        //    它又不引任何上层。认的那一行是 `pub const BUILD_ID`，按行首认，**恰好 1 处**。
+        let id_rs = include_str!("../../src/backend/common/id.rs");
+        let decls = id_rs
             .lines()
             .filter(|l| {
                 let t = l.trim_start();
@@ -501,15 +501,24 @@ mod tests {
             .count();
         assert_eq!(
             decls, 1,
-            "`lib.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
-             ⚠ `release.yml` 与 `tests/scripts/re-embed.sh` 两处都按\n\
+            "`common/id.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
+             ⚠ `release.yml` · `tests/scripts/re-embed.sh` · 手机 `core-claude/build.gradle.kts` 都按\n\
              「含 `const BUILD_ID` 的那一行」去抠**这份文件**；0 处 ⇒ 抠出 `unknown`，\n\
              多处 ⇒ 抠到哪一个看运气。\n\
-             ⚠ 把它搬回 `main.rs` 也会让本条红 —— 那是刻意的：in-process 那条路**没有\n\
+             ⚠ 把它搬进 `main.rs` 也会让本条红 —— 那是刻意的：in-process 那条路**没有\n\
              那个 `main.rs`**，身份不能住在只有一个宿主看得见的地方。"
         );
+        // 根上不留第二份：`lib.rs` 只留烤进字节的那段戳，不再声明 `BUILD_ID`。
+        let lib_rs = include_str!("../../src/backend/lib.rs");
         assert!(
-            !super::super::BUILD_ID.is_empty(),
+            !lib_rs
+                .lines()
+                .any(|l| l.trim_start().starts_with("pub const BUILD_ID")
+                    || l.trim_start().starts_with("const BUILD_ID")),
+            "`lib.rs` 里又声明了一份 `BUILD_ID` —— 身份只住 `common/id.rs`"
+        );
+        assert!(
+            !crate::common::id::BUILD_ID.is_empty(),
             "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-backend-`（不带版本）"
         );
         // 戳的两个界标也是身份住址的一部分：它们一变，扫字节那一侧全瞎。
@@ -519,7 +528,7 @@ mod tests {
         );
         assert!(
             build_ids_in(crate::CC_MONITOR_BUILD_STAMP.as_slice())
-                == vec![super::super::BUILD_ID.to_string()],
+                == vec![crate::common::id::BUILD_ID.to_string()],
             "那段 `static` 自己都扫不出 `BUILD_ID` —— 拼戳的 `const fn` 与常量脱钩了"
         );
     }
@@ -537,7 +546,7 @@ mod tests {
         let shortened = now.split('\n').skip(1).collect::<Vec<_>>().join("\n");
         assert_ne!(now, shortened);
         // 选项那一段真在指纹里：每一个 `SUBCOMMAND_OPTIONS` 都得有自己的一行。
-        for o in crate::SUBCOMMAND_OPTIONS {
+        for o in crate::wire::cli_words::SUBCOMMAND_OPTIONS {
             assert!(
                 now.lines().any(|l| l == format!("opt:{o}")),
                 "指纹里没有选项 `{o}` —— 加选项又会不逼 bump"
@@ -569,10 +578,10 @@ mod tests {
         let run = |tag: &str, first: &str| -> (String, String, String) {
             let d = std::env::temp_dir().join(format!("bump-script-{tag}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&d);
-            for sub in ["src/backend", "tests/backend", "bin"] {
+            for sub in ["src/backend/common", "tests/backend", "bin"] {
                 std::fs::create_dir_all(d.join(sub)).unwrap();
             }
-            std::fs::write(d.join("src/backend/lib.rs"), lib0).unwrap();
+            std::fs::write(d.join("src/backend/common/id.rs"), lib0).unwrap();
             std::fs::write(d.join("tests/backend/build_id_guard.rs"), guard0).unwrap();
             std::fs::write(d.join("first.txt"), first).unwrap();
             let fake = format!(
@@ -607,7 +616,7 @@ mod tests {
                 .output()
                 .unwrap();
             let said = String::from_utf8_lossy(&out.stdout).into_owned();
-            let lib = std::fs::read_to_string(d.join("src/backend/lib.rs")).unwrap();
+            let lib = std::fs::read_to_string(d.join("src/backend/common/id.rs")).unwrap();
             let guard = std::fs::read_to_string(d.join("tests/backend/build_id_guard.rs")).unwrap();
             let _ = std::fs::remove_dir_all(&d);
             (said, lib, guard)

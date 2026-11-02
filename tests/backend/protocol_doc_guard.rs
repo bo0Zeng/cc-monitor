@@ -22,13 +22,10 @@
 /// 「抽取面画小了」是比「少写一条」更隐蔽的失效：护栏照常报绿，而它压根没看那片地方。
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
-    // 🔴 `lib.rs`：子命令选项词那张表（`SUBCOMMAND_OPTIONS`）住库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它就是一份。
-    //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的**。
-    //    ⚠ 漏登它的后果逐字写在本名单头注里：那份文件里的 `--子命令` **全部不受
-    //      IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
-    ("lib.rs", include_str!("../../src/backend/lib.rs")),
-    // const1：`lib.rs` 里那几个旗标的字面量（流模式显式词 · 子命令后面的选项词）住址挪了 —— 词进 `wire/cli_words.rs`，
-    //   答题 hook 那个子命令的词进 `agents/asks.rs`（写进 hook 设置的是适配层）。同 `lib.rs` 那一行：本判据自己算出来的。
+    // 🔴 `wire/cli_words.rs`：旗标的字面量（流模式显式词 · 子命令后面的选项词）与那两张表（`STREAM_FLAGS` · `SUBCOMMAND_OPTIONS`）
+    //   都住这里 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它就是一份。答题 hook 那个子命令的词住 `agents/asks.rs`（写进 hook 设置的是适配层）。
+    //   ⚠ **不是判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的**；漏登的那一份里的 `--子命令`
+    //   **全部不受 IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
     (
         "wire/cli_words.rs",
         include_str!("../../src/backend/wire/cli_words.rs"),

@@ -43,10 +43,10 @@ REAL_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
 die() { echo "❌ $*" >&2; exit 1; }
 
 _build_id() {
-  # 单一事实源 = 后端库面那个 const（`src/backend/lib.rs`；抠法同 `tests/scripts/bump-build-id.sh`），不抄字面量。
+  # 单一事实源 = 后端那个 const（`src/backend/common/id.rs`；抠法同 `tests/scripts/bump-build-id.sh`），不抄字面量。
   local id
-  id="$(sed -n 's/^pub const BUILD_ID: &str = "\([^"]*\)";$/\1/p' "$REPO/src/backend/lib.rs")"
-  [ -n "$id" ] || die "抠不到后端的 BUILD_ID（src/backend/lib.rs）—— 改名了？"
+  id="$(sed -n 's/^pub const BUILD_ID: &str = "\([^"]*\)";$/\1/p' "$REPO/src/backend/common/id.rs")"
+  [ -n "$id" ] || die "抠不到后端的 BUILD_ID（src/backend/common/id.rs）—— 改名了？"
   printf '%s' "$id"
 }
 

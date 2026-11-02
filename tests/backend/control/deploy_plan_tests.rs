@@ -399,7 +399,7 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
         }
         prev = Some(o);
     }
-    let now = crate::BUILD_ID;
+    let now = crate::common::id::BUILD_ID;
     let o = deploy_contract::build_order(now).unwrap_or_else(|| {
         panic!("现在的 BUILD_ID {now:?} 解不出序 —— 照 `p<代号><小写字母>-<名>` 起名（D-b：部署按这个序只升不降）")
     });

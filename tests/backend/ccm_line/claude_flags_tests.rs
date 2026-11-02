@@ -58,7 +58,7 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
     }
     let backend: BTreeSet<String> = crate::stream::cli::tests::subcommands()
         .iter()
-        .chain(crate::STREAM_FLAGS.iter())
+        .chain(crate::wire::cli_words::STREAM_FLAGS.iter())
         .map(|s| s.to_string())
         .collect();
     let ours: BTreeSet<String> = [
@@ -148,4 +148,17 @@ fn route_asks_the_entry_whether_a_word_belongs_to_the_backend() {
         route("ccm", &line, |w| w == "--commands"),
         Entry::Backend(vec!["--commands".to_string()])
     );
+}
+
+/// 自己的名字认的是这份二进制的名字（`ccm` · `cc-monitor-backend` · 落盘的 `cc-monitor-backend-<build>`），
+/// 不是编进这一段的那个包叫什么：这一段换了包，认的名字也不跟着变。
+#[test]
+fn own_names_are_the_binary_names_whatever_package_this_code_sits_in() {
+    use crate::ccm_line::is_own_name;
+    for own in ["ccm", "cc-monitor-backend", "cc-monitor-backend-p11b"] {
+        assert!(is_own_name(own), "`{own}` 没认成自己");
+    }
+    for other in ["claude", "backend-host", "cc-monitor"] {
+        assert!(!is_own_name(other), "`{other}` 被认成了自己");
+    }
 }

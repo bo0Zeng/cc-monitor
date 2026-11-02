@@ -24,7 +24,7 @@ pub(crate) fn open(sock: &Path, front: Option<&str>) -> std::io::Result<own_chan
     s.set_write_timeout(Some(within))?;
     let hello = Ctl::Hello {
         proto: PROTO,
-        build: crate::BUILD_ID.to_string(),
+        build: crate::common::id::BUILD_ID.to_string(),
         want: Want::View,
         size: None,
         who: Who {

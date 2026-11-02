@@ -601,6 +601,7 @@ fn build_rs_reaches_outside(build_rs: &str) -> Vec<String> {
         "\"..",
         "../",
         "src/backend",
+        "backend/common/id.rs",
         "backend/lib.rs",
         "backend/main.rs",
     ];
@@ -610,7 +611,7 @@ fn build_rs_reaches_outside(build_rs: &str) -> Vec<String> {
         .collect()
 }
 
-/// ① **`build.rs` 不读后端源码**：它的代码里零处伸出本包（`..` / `src/backend` / 后端那两份源码的名字）。
+/// ① **`build.rs` 不读后端源码**：它的代码里零处伸出本包（`..` / `src/backend` / 后端根上与身份住的那几份源码的名字）。
 /// 「我这一版」只认手上那份内嵌字节自报的 id；源码 `BUILD_ID` 只在发版核对那一侧读（`release.yml` · `re-embed.sh --check`）。
 #[test]
 fn the_build_script_does_not_read_the_backend_source() {
