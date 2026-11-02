@@ -645,8 +645,12 @@ impl Home {
         spawn_relay_over(accounts)
     }
 
+    /// 盘上那一份血缘（读不成 ⇒ 空的，同 `LineageStore` 的口径）。
     fn lineage(&self) -> crate::lineage::Book {
-        crate::lineage::LineageStore::at(Some(self.lineage_path())).now()
+        match crate::lineage::read_at(&self.lineage_path()) {
+            crate::common::own_state::Read::Present(b) => b,
+            _ => crate::lineage::Book::default(),
+        }
     }
 
     fn session(&self, sid: &str) -> crate::accounts::quota::rules::book::Session {
