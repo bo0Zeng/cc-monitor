@@ -28,7 +28,7 @@ mod claudecode_asks {
     }
 }
 
-/// 「谁说的」那一问（`claudecode/text.rs`）答「人」的那一拍，观测面照普通的一句收进大纲。
+/// 「谁说的」那一问（`claudecode/text.rs`）答「人」的那条记录，观测面照普通的一句收进大纲。
 mod claudecode_text {
     use serde_json::json;
 
