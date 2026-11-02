@@ -11824,7 +11824,7 @@ data class ListMeta(
 @Suppress("UNCHECKED_CAST")
 data class LiveBlock(
     val kind: BlockKind,
-    val text: String? = null,
+    val md: List<MdBlock>? = null,
     val tool: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -11833,11 +11833,11 @@ data class LiveBlock(
         val ADAPTER: JsonAdapter<LiveBlock> = obj(
             listOf(
             Field("kind", { BlockKind.ADAPTER }, optional = false, nullable = false),
-            Field("text", { opt(Str) }, optional = true, nullable = true),
+            Field("md", { opt(arr(MdBlock.ADAPTER)) }, optional = true, nullable = true),
             Field("tool", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LiveBlock(a[0] as BlockKind, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.kind, v.text, v.tool) },
+            { a -> LiveBlock(a[0] as BlockKind, a[1] as List<MdBlock>?, a[2] as String?) },
+            { v -> arrayOf(v.kind, v.md, v.tool) },
         )
     }
 }
@@ -11888,7 +11888,8 @@ sealed interface LiveCard {
         override val card: Long,
         override val n: Long,
         val i: Long,
-        val s: String,
+        val keep: Long,
+        val tail: List<MdBlock>,
     ) : LiveCard, Ordered {
         override val op: String get() = "text"
         override var wireOrder: IntArray? = null
@@ -11957,10 +11958,11 @@ sealed interface LiveCard {
                         Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("text") }, optional = false, nullable = false),
                         Field("i", { U64 }, optional = false, nullable = false),
-                        Field("s", { Str }, optional = false, nullable = false),
+                        Field("keep", { U64 }, optional = false, nullable = false),
+                        Field("tail", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> LiveCard.Text(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long, a[5] as Long, a[6] as String) },
-                        { v -> arrayOf(v.sid, v.run, v.card, v.n, "text", v.i, v.s) },
+                        { a -> LiveCard.Text(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long, a[5] as Long, a[6] as Long, a[7] as List<MdBlock>) },
+                        { v -> arrayOf(v.sid, v.run, v.card, v.n, "text", v.i, v.keep, v.tail) },
                     )),
                 Variant("awaiting", LiveCard.Awaiting::class.java, obj(
                         listOf(
@@ -11996,9 +11998,8 @@ data class LiveCardNow(
     val rid: String,
     val phase: LivePhase,
     val clipped: Boolean,
-    val blocks: List<LiveBlock>,
     val head: String,
-    val body: String,
+    val body: List<MdBlock>,
     val last: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -12010,13 +12011,12 @@ data class LiveCardNow(
             Field("rid", { Str }, optional = false, nullable = false),
             Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
             Field("clipped", { Bool }, optional = false, nullable = false),
-            Field("blocks", { arr(LiveBlock.ADAPTER) }, optional = false, nullable = false),
             Field("head", { Str }, optional = false, nullable = false),
-            Field("body", { Str }, optional = false, nullable = false),
+            Field("body", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
             Field("last", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>, a[5] as String, a[6] as String, a[7] as String?) },
-            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks, v.head, v.body, v.last) },
+            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as String, a[5] as List<MdBlock>, a[6] as String?) },
+            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.head, v.body, v.last) },
         )
     }
 }
@@ -12039,6 +12039,51 @@ data class LiveCards(
             { a -> LiveCards(a[0] as String, a[1] as String?, a[2] as List<LiveCardNow>) },
             { v -> arrayOf(v.sid, v.run, v.cards) },
         )
+    }
+}
+
+sealed interface LiveChange {
+    /** 判别格（`t`）那个词。 */
+    val t: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Whole(
+        val whole: LiveCards,
+    ) : LiveChange, Ordered {
+        override val t: String get() = "whole"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Tail(
+        val tail: LiveTail,
+    ) : LiveChange, Ordered {
+        override val t: String get() = "tail"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<LiveChange> =
+            tagged<LiveChange>(
+                "t",
+                listOf(
+                Variant("whole", LiveChange.Whole::class.java, obj(
+                        listOf(
+                        Field("t", { tag("whole") }, optional = false, nullable = false),
+                        Field("whole", { LiveCards.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> LiveChange.Whole(a[1] as LiveCards) },
+                        { v -> arrayOf("whole", v.whole) },
+                    )),
+                Variant("tail", LiveChange.Tail::class.java, obj(
+                        listOf(
+                        Field("t", { tag("tail") }, optional = false, nullable = false),
+                        Field("tail", { LiveTail.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> LiveChange.Tail(a[1] as LiveTail) },
+                        { v -> arrayOf("tail", v.tail) },
+                    )),
+                ),
+            )
     }
 }
 
@@ -12068,7 +12113,8 @@ sealed interface LiveOp {
     @Suppress("UNCHECKED_CAST")
     data class Text(
         val i: Long,
-        val s: String,
+        val keep: Long,
+        val tail: List<MdBlock>,
     ) : LiveOp, Ordered {
         override val op: String get() = "text"
         override var wireOrder: IntArray? = null
@@ -12114,10 +12160,11 @@ sealed interface LiveOp {
                         listOf(
                         Field("op", { tag("text") }, optional = false, nullable = false),
                         Field("i", { U64 }, optional = false, nullable = false),
-                        Field("s", { Str }, optional = false, nullable = false),
+                        Field("keep", { U64 }, optional = false, nullable = false),
+                        Field("tail", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> LiveOp.Text(a[1] as Long, a[2] as String) },
-                        { v -> arrayOf("text", v.i, v.s) },
+                        { a -> LiveOp.Text(a[1] as Long, a[2] as Long, a[3] as List<MdBlock>) },
+                        { v -> arrayOf("text", v.i, v.keep, v.tail) },
                     )),
                 Variant("awaiting", LiveOp.Awaiting::class.java, obj(
                         listOf(
@@ -12146,6 +12193,33 @@ enum class LivePhase(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<LivePhase> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class LiveTail(
+    val sid: String,
+    val run: String? = null,
+    val card: Long,
+    val keep: Long,
+    val blocks: List<MdBlock>,
+    val last: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LiveTail> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("run", { opt(Str) }, optional = true, nullable = true),
+            Field("card", { Lng }, optional = false, nullable = false),
+            Field("keep", { Lng }, optional = false, nullable = false),
+            Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+            Field("last", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> LiveTail(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long, a[4] as List<MdBlock>, a[5] as String?) },
+            { v -> arrayOf(v.sid, v.run, v.card, v.keep, v.blocks, v.last) },
+        )
     }
 }
 
