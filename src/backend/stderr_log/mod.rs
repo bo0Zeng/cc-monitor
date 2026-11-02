@@ -15,6 +15,16 @@
 //! 写经诊断文件的窄句柄（`platform::fs::DiagLog`，只许启动入口造）：动词只有 `O_EXCL` 新建 · 原子挪（不建目录、不截断）·
 //! 一次性模式只追加整行（[`oneshot_writer`]）。对外口只从 `stream/entry.rs` 进。
 //! 买不到：远端后端的 stderr · 真 Windows（非 unix 臂回 `Failed`）。
+//!
+//! 独立的包 `backend-stderr-log`：只引纯工具与平台两层，引了上层就编不过（常量住这里，控制面反过来引它）。
+
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
+// 包里照旧写 `crate::stderr_log::…` · `crate::common::…` · `crate::platform::…`。
+extern crate self as stderr_log;
+use backend_common as common;
+use backend_platform as platform;
 
 use crate::platform::fs::{DiagFile, DiagLog};
 use copy_core::copy_text;
@@ -32,7 +42,7 @@ pub const ENV: &str = crate::platform::child_env::STDERR_LOG;
 pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
 
 /// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
-pub const CAP_BYTES: u64 = 4 << 20;
+pub(crate) const CAP_BYTES: u64 = 4 << 20;
 
 /// 滚过一次之后，新那份的第一行。
 pub(crate) fn roll_note(old: &Path) -> String {
@@ -240,5 +250,10 @@ pub(crate) fn append_line(log: &DiagLog, line: &[u8]) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/stderr_log_tests.rs"]
+#[path = "../../../tests/backend/stderr_log_tests.rs"]
 mod tests;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
