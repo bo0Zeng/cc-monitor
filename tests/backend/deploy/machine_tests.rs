@@ -553,19 +553,13 @@ fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
         ],
         true,
     );
-    assert_eq!(
-        p.said,
-        copy_text("front.title.update", &[("machine", M)])
-    );
+    assert_eq!(p.said, copy_text("front.title.update", &[("machine", M)]));
     // 换上了：同一版连上 ⇒ 没有问题行。
     let p = of(
         vec![failed(), up(Relation::Same, &[]), up(Relation::Older, &[])],
         true,
     );
-    assert_eq!(
-        p.said,
-        copy_text("front.title.update", &[("machine", M)])
-    );
+    assert_eq!(p.said, copy_text("front.title.update", &[("machine", M)]));
 }
 
 /// 两枚指纹（那台出示的 · 库里记下的）只在「指纹变了」那一态带；下一轮换成别的原因就不挂着。

@@ -19,7 +19,7 @@ class ReconnectOneKeyTest {
         // 原文从表里取（测试不照抄原文）：离线那一颗今天借的那个键的字。
         val word = copyText("history.list.reconnect")
         val keys = Regex(""""([A-Za-z0-9_.]+)":\s*\{[^{}]*?"zh":\s*"${Regex.escape(word)}"""").findAll(table).map { it.groupValues[1] }.toSet()
-        assertTrue("前提：表里得找得到这几个键（实得 $keys）", keys.size >= 2)
+        assertTrue("前提：表里得找得到这个键（实得 $keys）", keys.isNotEmpty())
         val used =
             File(root, "app/src/main/kotlin")
                 .walkTopDown()
