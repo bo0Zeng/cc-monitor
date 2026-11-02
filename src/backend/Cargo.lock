@@ -1772,6 +1772,7 @@ dependencies = [
  "guard-core",
  "jni",
  "pick-core",
+ "relay-route-core",
  "resident-client",
  "ring",
  "russh",
