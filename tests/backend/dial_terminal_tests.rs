@@ -599,7 +599,7 @@ fn login(
         crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
     let aliases: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
     answer_with(&req, &hosts, &aliases, powershell, ssh, None).map(|r| {
-        assert_eq!(r.prelude, "", "不给 sid ⇒ 没有前奏");
+        assert_eq!(r.window, r.line, "不给 sid ⇒ 开窗跑的就是那一行");
         r.line
     })
 }
@@ -707,9 +707,9 @@ fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused()
     assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 
-// ───── 带了 sid：那一行前面接前奏，开的那个 shell 记下自己的窗口标签（`opened_windows.rs`） ─────
+// ───── 带了 sid：开窗那一串是前奏 ＋ 那一行 ＋ 收尾：开的那个 shell 记下自己的窗口标签，ssh 一退就删（`opened_windows.rs`） ─────
 
-/// 开窗那一下跑的那一串：前奏 ＋ 那一行。
+/// 开窗那一下跑的那一串（回包的 `window`）。
 fn with_sid(
     m: Value,
     cmd: &str,
@@ -718,7 +718,7 @@ fn with_sid(
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
 ) -> Result<String, Said> {
-    parts_with_sid(m, cmd, sid, powershell, ssh, dir).map(|r| format!("{}{}", r.prelude, r.line))
+    parts_with_sid(m, cmd, sid, powershell, ssh, dir).map(|r| r.window)
 }
 
 fn parts_with_sid(
@@ -739,7 +739,7 @@ fn parts_with_sid(
     answer_with(&req, &hosts, &[], powershell, ssh, dir)
 }
 
-/// 前奏与那一行分两格：开不了窗时复制出去的只有那一行（不带本机数据目录的路径与 shell 写法），两种方言一样。
+/// 开窗那一串与那一行分两格：开不了窗时复制出去的只有那一行（不带本机数据目录的路径与 shell 写法），两种方言一样。
 #[test]
 fn the_record_step_rides_in_its_own_cell_and_the_line_stays_plain() {
     let m = machine("192.0.2.2", "u", 22, None);
@@ -767,8 +767,8 @@ fn the_record_step_rides_in_its_own_cell_and_the_line_stays_plain() {
         let (plain, with) = (ask(None), ask(Some("s1")));
         assert_eq!(with.line, plain.line, "那一行一字不变");
         assert!(!with.line.contains("opened-windows"), "{}", with.line);
-        assert!(with.prelude.contains("opened-windows"), "{}", with.prelude);
-        assert_eq!(plain.prelude, "", "不给 sid ⇒ 没有前奏");
+        assert!(with.window.contains("opened-windows"), "{}", with.window);
+        assert_eq!(plain.window, plain.line, "不给 sid ⇒ 开窗跑的就是那一行");
     }
 }
 
@@ -794,12 +794,16 @@ fn a_sid_puts_the_record_step_in_front_of_the_powershell_line_and_nothing_else_c
         Some(dir),
     )
     .unwrap();
-    let (front, rest) = with.split_at(with.len() - plain.len());
-    assert_eq!(rest, plain, "后面那一行一字不变");
-    assert!(
-        front.starts_with("try { & {") && front.ends_with("catch {}; "),
-        "{front}"
+    let (front, rest) = with.split_once("catch {}; ").expect(&with);
+    assert_eq!(
+        rest,
+        format!(
+            "try {{ {plain} }} finally {{ Remove-Item -LiteralPath {} -ErrorAction Ignore }}",
+            ps_literal(&dir.join("s1").to_string_lossy())
+        ),
+        "那一行一字不变，包进 try、finally 里删记录"
     );
+    assert!(front.starts_with("try { & {"), "{front}");
     assert!(
         front.contains(&ps_literal(&dir.join("s1").to_string_lossy())),
         "{front}"
@@ -848,8 +852,10 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
     std::fs::write(
         &fake,
         format!(
-            "#!/bin/sh\necho \"$$ $PPID $(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20) $(sed 's/.*) //' /proc/$PPID/stat | cut -d' ' -f20)\" > '{}'\n",
-            pids.display()
+            "#!/bin/sh\necho \"$$ $PPID $(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20) $(sed 's/.*) //' /proc/$PPID/stat | cut -d' ' -f20)\" > '{}'\ncp '{}' '{}'\n",
+            pids.display(),
+            dir.join("opened-windows/s1").display(),
+            dir.join("seen").display()
         ),
     )
     .unwrap();
@@ -869,7 +875,8 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
         .status()
         .unwrap();
     assert!(st.success(), "{line}");
-    let rec = std::fs::read_to_string(dir.join("opened-windows/s1")).unwrap();
+    let rec = std::fs::read_to_string(dir.join("seen")).expect("ssh 跑的时候记录在");
+    let forgotten = !dir.join("opened-windows/s1").exists();
     let seen: Vec<String> = std::fs::read_to_string(&pids)
         .unwrap()
         .split_whitespace()
@@ -888,4 +895,5 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
         got.label
     );
     assert!(!dir.join("opened-windows/s1.part").exists());
+    assert!(forgotten, "ssh 退了 ⇒ 记录删了");
 }
