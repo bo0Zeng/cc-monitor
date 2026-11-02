@@ -239,14 +239,13 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
     out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
   }
   if (live && terminalFrontAvailable()) {
-    const origin = r.origin;
     out.push(
       button({
         label: copyText("tabBarView.tab.terminalHint"),
         kind: "icon",
         icon: "front",
         hint: copyText("tabBarView.tab.terminalHint"),
-        onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, origin),
+        onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );
   }
