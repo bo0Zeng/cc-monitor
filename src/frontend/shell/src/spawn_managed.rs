@@ -174,9 +174,8 @@ pub fn spawn_managed(
     })
 }
 
-/// 壳里 `Command` 只在这里造（`clippy.toml` 起进程那一组只在这一处放行）：`setup` 装「跑什么」
-/// （argv / env / cwd / stdin / stdout），装完当场按三条策略起。拿不到一个没起的 `Command`，
-/// 所以落点没法绕开三条策略自己 `spawn` / `output`。
+/// 起进程的常用那一形：`setup` 装「跑什么」（argv / env / cwd / stdin / stdout），装完当场按三条策略起。
+/// `Command` 经 [`command`] 造（壳里只那一处，`clippy.toml` 起进程那一组只在那里放行）。
 pub fn spawn_managed_with(
     program: impl AsRef<std::ffi::OsStr>,
     console: ConsolePolicy,
@@ -184,11 +183,7 @@ pub fn spawn_managed_with(
     stderr: StderrSink,
     setup: impl FnOnce(&mut std::process::Command),
 ) -> std::io::Result<ManagedChild> {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "壳起进程的唯一住址：造好就交给 `spawn_managed_cmd` 按三条策略起"
-    )]
-    let mut cmd = std::process::Command::new(program);
+    let mut cmd = command(program);
     setup(&mut cmd);
     spawn_managed_cmd(&mut cmd, console, lifetime, stderr)
 }
@@ -248,6 +243,17 @@ fn apply_stdio(cmd: &mut std::process::Command, stderr: StderrSink) {
 /// 平台差异收敛成**一个注入点**，backend 那侧原样往下传。
 pub type ManagedSpawn =
     dyn Fn(&mut std::process::Command) -> std::io::Result<ManagedChild> + Send + Sync;
+
+/// 壳里造 `Command` 的唯一一处。造出来的还没起：交 [`spawn_managed_cmd`]（经 [`spawn_managed_with`]）
+/// 或注入的 [`ManagedSpawn`] 按三条策略起；后一形要同一个 `Command` 起不止一次
+/// （`local_backend::spawn_with_etxtbsy_retry` 撞上 ETXTBSY 时重试），所以给得出没起的那一个。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "壳起进程的唯一住址：造好交给三条策略那一侧起"
+)]
+pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    std::process::Command::new(program)
+}
 
 /// 把三条策略绑成一个 [`ManagedSpawn`]。**三个参数仍然必填** ——
 /// 注入没有把那三个问题变没，只是把回答的地方挪到了宿主这一侧。

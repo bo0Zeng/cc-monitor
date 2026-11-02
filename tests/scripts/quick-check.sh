@@ -4,13 +4,14 @@
 #   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（名单是 ci.yml 里 `static-gate` 那个 job 的 GATE_ONLY，经 gate.sh 跑）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
 #     壳那棵改到的包同样跑 clippy（clippy-shell：壳 · 文件窗口 · 通信那三个包；禁用名单住 `src/frontend/clippy.toml` · `src/comms/clippy.toml`）·
+#     两棵树的库在 Windows 目标上 `cargo check`（win-check：只在本机、目标没装算红）·
 #     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
 #   重的四段：后端那棵 `cargo test --workspace --lib`（只编各包的测试库；bin 与 bench 由 clippy 守编译、门禁与 CI 跑）· 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
 #     手机那一套（ktlint · detekt · 各模块 JVM 单测，经 heavy.sh、gradle 带 --no-daemon）。这棵树（连没提交的）相对起点改到的路径
 #     交给 gate-affected/plan.py 照 gate-affected/map 判（与 gate-affected 同一张表）：挑上那一段的格（backend · cargo · npm · mobile）才跑；
 #     前三段在表里恒跑（@suites：它们都扫全仓），手机那一段按改动挑。表不认识的路径、找不到起点、plan.py 停了 ⇒ 四段全跑。
 #     起点是 base.sh 印的那一个（分支上游，没设就 origin/main）。
-#   `--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
+#   `--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑；`win-check` 那一格也认）。
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：bump-build-id.sh）⇒ 单列成「待打版本号」，不算红。
 # 环境：每一步经 session-scrub.sh 摘掉会话继承来的变量（表在 session-vars）；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录。
 #   cargo 那几步的 TMPDIR 是外面临时目录下一个一次性的空目录，收尾判它还是空的（tmp-left：测试进程退出时删自己的沙箱根，见 test-home）。
@@ -34,7 +35,7 @@ cd "$root" || exit 2
 mode=all; only=
 case "${1:-}" in
   --only) only=${2:-}; shift 2 || shift
-    case "$only" in backend|shell|vitest|mobile) ;; *) echo "quick-check --only 要 backend · shell · vitest · mobile 之一" >&2; exit 2 ;; esac ;;
+    case "$only" in backend|shell|vitest|mobile|win-check) ;; *) echo "quick-check --only 要 backend · shell · vitest · mobile · win-check 之一" >&2; exit 2 ;; esac ;;
   --plan) mode=plan; shift ;;
   '') ;;
   *) echo "quick-check：不认识的参数 $1（只认 --plan · --only <段>）" >&2; exit 2 ;;
@@ -193,6 +194,18 @@ doc_step() {
   if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到带文档测试的共享包\n' doc-shared "$base_ref"; return; fi
   step doc-shared buildcargo bash -c 'cd src/frontend/shell && cargo test --doc "$@"' _ "${pkgs[@]}"
 }
+# Windows 目标的编译核对（只 check、不链接）：非 unix 那一臂的可见性 · 签名只在 Windows 目标上编得到，Linux 上的测试与 clippy 看不见。
+#   后端那棵只主包的库（它从外面调拆出去的各包，那几包的 Windows 臂跟着编到）· 壳那棵整棵的库。
+#   只在本机：经锁起但不带 CCM_BUILD_REMOTE_OK（外面带进来的也摘掉）—— 别的机器没装这个目标。目标没装 ⇒ 照实报没装、算红。
+win_target=x86_64-pc-windows-gnu
+win_check_step() {
+  local sysroot; sysroot=$(rustc --print sysroot 2>/dev/null)
+  if [ -z "$sysroot" ] || [ ! -d "$sysroot/lib/rustlib/$win_target" ]; then
+    printf '  红   %-16s 本机工具链没装 %s 目标（rustup target add %s）—— 判不了\n' win-check "$win_target" "$win_target"; fails+=(win-check); return
+  fi
+  step win-check env -u CCM_BUILD_REMOTE_OK "${build_lock[@]}" bash "$HERE/session-scrub.sh" "${box_env[@]}" env TMPDIR="$ctmp" nice -n 10 bash -c '
+    (cd src/backend && cargo check --target "$1" -p cc-monitor-backend --lib) && (cd src/frontend/shell && cargo check --target "$1" --workspace --lib)' _ "$win_target"
+}
 # 修剪（见头注）：同组（路径去掉末尾 `-<哈希>`）最新那一份往前 6 小时之外的删掉
 prune_step() {
   local t0=$SECONDS victims=() p kb
@@ -251,7 +264,7 @@ vitest_step() {
 }
 
 echo "快检 $(git log --oneline -1 | cut -c1-60)"
-[ -n "$only" ] && { "${only}_step"; verdict; }
+[ -n "$only" ] && { "${only//-/_}_step"; verdict; }
 if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新树）⇒ npm ci"; run env npm_config_cache="$npm_cache" npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1 || { echo "QUICK: 红 —— npm ci 失败"; exit 1; }; fi
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
 # 后端那棵的包名单从 `cargo metadata --no-deps` 现取（手机嵌的 `mobcore` 除外；与门禁 `fmt-backend` 那一格同一条取法）。
@@ -266,6 +279,7 @@ backend_step
 clippy_step clippy-backend src/backend 后端那棵 clippy_pkgs
 shell_step
 clippy_step clippy-shell src/frontend/shell 壳那棵 shell_clippy_pkgs
+win_check_step
 doc_step
 # 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
 step creds-harden buildcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'

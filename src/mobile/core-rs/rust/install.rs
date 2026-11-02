@@ -138,7 +138,10 @@ async fn run(
             on(h, kind, body);
         }
     };
-    let load = |p: &std::path::Path| std::fs::read(p);
+    let load = |p: &std::path::Path| {
+        std::fs::read(p)
+            .map_err(|e| copy_core::said::Said::with_raw(copy_core::io_reason(e.kind()), e))
+    };
     let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
         Err(f) => failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
         Ok(plan) => {

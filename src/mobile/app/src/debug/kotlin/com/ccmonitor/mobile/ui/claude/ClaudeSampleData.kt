@@ -1,9 +1,25 @@
 package com.ccmonitor.mobile.ui.claude
 
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.Inl
+import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
 import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
+import com.ccmonitor.mobile.core.wire.gen.MdItem
+
+// 样本正文是后端解析好的那一形（块树）：真的树由核心 `md_core::parse` 出，这里照那一形摆几块。
+private fun doc(vararg blocks: MdBlock) = Doc(blocks.toList(), emptyList())
+
+private fun p(vararg k: Inl) = MdBlock.P(k.toList())
+
+private fun s(text: String): Inl = Inl.Text(text)
+
+private fun b(text: String): Inl = Inl.InlNode(InlNode.B(listOf(Inl.Text(text))))
+
+private fun c(code: String): Inl = Inl.InlNode(InlNode.C(code))
 
 private fun row(
     kind: LineDiffKind,
@@ -29,22 +45,24 @@ fun sampleRenderUnits(): List<RenderUnit> =
         ),
         RenderUnit.AssistantMarkdown(
             "s3",
-            """
-            好的，我来加 **cellBudget 守卫**。要点：
-
-            1. 在分配 `IntArray((m+1)*width)` **之前**判断
-            2. 用 `m.toLong() * n` 避免 `Int` 溢出（100k × 100k 远超 `Int.MAX`）
-            3. 超限退化为全删 + 全增
-
-            ```kotlin
-            if (m.toLong() * n > cellBudget) {
-                // 退化路径：整删 + 整增
-                return degraded(oldLines, newLines)
-            }
-            ```
-
-            > 注：阈值默认 4_000_000 格，约对应 2000×2000 行。
-            """.trimIndent(),
+            doc(
+                p(s("好的，我来加 "), b("cellBudget 守卫"), s("。要点：")),
+                MdBlock.List(
+                    1,
+                    true,
+                    listOf(
+                        MdItem(null, listOf(p(s("在分配 "), c("IntArray((m+1)*width)"), s(" "), b("之前"), s("判断")))),
+                        MdItem(null, listOf(p(s("用 "), c("m.toLong() * n"), s(" 避免 "), c("Int"), s(" 溢出（100k × 100k 远超 "), c("Int.MAX"), s("）")))),
+                        MdItem(null, listOf(p(s("超限退化为全删 + 全增")))),
+                    ),
+                ),
+                MdBlock.Code(
+                    "kotlin",
+                    "if (m.toLong() * n > cellBudget) {\n    // 退化路径：整删 + 整增\n    return degraded(oldLines, newLines)\n}",
+                    false,
+                ),
+                MdBlock.Quote(listOf(p(s("注：阈值默认 4_000_000 格，约对应 2000×2000 行。")))),
+            ),
             "a1",
         ),
         RenderUnit.ToolCall(
@@ -116,23 +134,16 @@ fun sampleRenderUnits(): List<RenderUnit> =
             pending = false,
             sourceUuid = "a5",
         ),
-        RenderUnit.AssistantMarkdown("s9", "全部测试通过 ✅，已经把守卫加上并验证了边界用例。", "a6"),
-        // LaTeX 渲染样本。块级 `$$` 必须独占一行；单 `$` 不渲染（markwon 4.6.2 的限制）。
+        RenderUnit.AssistantMarkdown("s9", doc(p(s("全部测试通过 ✅，已经把守卫加上并验证了边界用例。"))), "a6"),
+        // 公式样本：块公式单独一块，行内公式占一个行内槽；钱数在树里就是字。
         RenderUnit.AssistantMarkdown(
             "s10",
-            """
-            LaTeX 块级数学（markwon 4.6.2 仅认独占行的成对美元号）：
-
-            $$
-            E = mc^2
-            $$
-
-            $$
-            x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
-            $$
-
-            行内单美元号不渲染（库限制，留 backlog）：价格 $5 到 $10 按字面显示。
-            """.trimIndent(),
+            doc(
+                p(s("块公式：")),
+                MdBlock.Math("E = mc^2"),
+                MdBlock.Math("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"),
+                p(s("行内 "), Inl.InlNode(InlNode.M("a^2+b^2")), s(" 与价格 \$5 到 \$10。")),
+            ),
             "a7",
         ),
     )

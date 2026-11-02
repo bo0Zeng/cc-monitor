@@ -8,6 +8,15 @@
 
 use super::*;
 
+/// 根在 `dir` 的句柄（经 `CCM_DATA_DIR` 喂成它；真数据目录不碰）。
+fn own_in(dir: &Path) -> crate::platform::own_fs::OwnState {
+    let dir = dir.to_path_buf();
+    crate::platform::own_fs::OwnState::issue_with(&|k| {
+        (k == crate::config::DATA_DIR_ENV).then(|| dir.clone().into_os_string())
+    })
+    .expect("临时目录是绝对路径")
+}
+
 #[test]
 fn diagnostics_default_is_user_friendly() {
     let d = DiagnosticsConfig::default();
@@ -88,7 +97,7 @@ fn write_then_read_diagnostics_roundtrip() {
         error_toast: false,
         max_files: 7,
     };
-    write_diagnostics_to_config(&tmp, &cfg).unwrap();
+    write_diagnostics_to_config(&own_in(&tmp), &cfg).unwrap();
 
     let back = read_diagnostics_from_config(&tmp);
     assert_eq!(back, cfg);
@@ -115,7 +124,7 @@ fn write_diagnostics_preserves_other_fields() {
     std::fs::write(tmp.join("config.json"), original).unwrap();
 
     // 再写 diagnostics
-    write_diagnostics_to_config(&tmp, &DiagnosticsConfig::default()).unwrap();
+    write_diagnostics_to_config(&own_in(&tmp), &DiagnosticsConfig::default()).unwrap();
 
     // 老字段必须还在
     let raw = std::fs::read_to_string(tmp.join("config.json")).unwrap();
@@ -166,17 +175,17 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
     let cfg_path = tmp.join("config.json");
     std::fs::write(&cfg_path, broken).unwrap();
 
-    let err = write_diagnostics_to_config(&tmp, &DiagnosticsConfig::default())
+    let err = write_diagnostics_to_config(&own_in(&tmp), &DiagnosticsConfig::default())
         .expect_err("读不懂的 config.json 被当成空的写回去了");
     assert_eq!(
         std::fs::read_to_string(&cfg_path).unwrap(),
         broken,
         "读不懂的那份被改了 —— 用户手填的内容没了"
     );
-    // 临时件名带 pid 了（`config.json.<pid>.tmp`，写口 `config::patch_config_at`）。
+    // 临时件一份都没写出来（写口 `config::patch_config_at`）：删掉 config.json 后那一层是空的（不遍历目录）。
+    std::fs::remove_file(&cfg_path).ok();
     assert!(
-        !tmp.join(format!("config.json.{}.tmp", std::process::id()))
-            .exists(),
+        std::fs::remove_dir(&tmp).is_ok(),
         "临时文件都写出来了 —— 「不写」要在写之前就停"
     );
     assert!(
@@ -311,6 +320,7 @@ fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_hande
         reload_handle,
         log_dir: monitor_log_dir(&root),
         monitor_data_dir: root.clone(),
+        own: None,
         _guard: Mutex::new(None),
     };
     assert!(
@@ -355,6 +365,7 @@ fn log_file_info_carries_the_paths_shown_under_the_home() {
         reload_handle,
         log_dir: monitor_log_dir(&root),
         monitor_data_dir: root.clone(),
+        own: None,
         _guard: Mutex::new(None),
     };
     let name = format!("monitor.2026-10-26.{LOG_FILE_SUFFIX}");

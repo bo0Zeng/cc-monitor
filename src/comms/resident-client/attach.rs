@@ -3,10 +3,12 @@
 //! 从开出链路到通着一个来回。桌面与手机同一份零件；两端都整段走 [`handshake`]（经 [`crate::feed`]）。
 
 use crate::client::{split_and_park, BackendHello, ParkedWriter};
-use crate::line::{read_capped_line, CappedLine, Downstream};
+use crate::line::Downstream;
 use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
 use cmd_wire::watch::WatchAsk;
+use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 
@@ -18,7 +20,11 @@ pub const RELAY_WAIT: Duration = Duration::from_millis(200);
 
 /// 握手那两行（hello · attach 回话）的上限：hello 实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，
 /// typed 命令越多越长），64 KiB 给足余量，又堵死「一直发字节不发换行」。
-pub const HANDSHAKE_LINE_CAP: usize = 64 * 1024;
+/// 超了：拒收＋回错（握手当场失败，原因带上那一行多长）。
+pub const HANDSHAKE_LINE_CAP: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 
 /// 小中继断开时第一行就是它（`{"attach":"refused","reason":…}`）⇒ 那个原因；不是 ⇒ `None`。
 pub fn relay_refusal(first: &str) -> Option<String> {

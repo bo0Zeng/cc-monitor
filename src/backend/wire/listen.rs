@@ -25,6 +25,7 @@
 //! 3. 别的 uid 连进来（root 例外不了：内核报的就是它的 uid）⇒ 关掉、出声，hello 都不给。
 
 use cmd_wire::attach::{AttachLine, AttachReply};
+use relay_route_core::{Cap, Over};
 
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。
 pub const ENV_RESIDENT: &str = crate::platform::child_env::RESIDENT;
@@ -41,8 +42,14 @@ pub const EXIT_BAD_LISTEN_CONFIG: i32 = 4;
 
 /// 一行 attach 请求的字节上限。请求形如 `{"attach":true,"tz":…,"mine":…}`（几十字节），8 KiB 给了两个量级余量。
 /// 少了它就是一个无界堆分配：对端可以一直发字节不发换行。
-/// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。登记住址 `tests/frontend/shell/byte_cap_registry.rs`。
-pub const ATTACH_LINE_CAP: usize = 8 * 1024;
+/// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。读这一行经 `comms_inward::line::read_capped_line`。
+pub const ATTACH_LINE: Cap = Cap {
+    bytes: 8 * 1024,
+    over: Over::Reject,
+};
+
+/// [`ATTACH_LINE`] 的字节数：`main.rs` 读 attach 请求那一处还按字节数传给 [`read_capped_line`]。
+pub const ATTACH_LINE_CAP: usize = ATTACH_LINE.bytes as usize;
 
 /// 读一行 attach 请求的三种结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,50 +62,27 @@ pub enum HandshakeLine {
     TooLong(usize),
 }
 
-/// 有上限地读一行：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节 ⇒ 内存占用与行长无关。
-/// `cap` 是参数：判据要能传一个小数，「超限之后内存不涨」才进得了单测。
+/// 读一行 attach 请求：至多 `cap` 字节、超了拒收（[`ATTACH_LINE`] 那一档），读本身是 `comms_inward::line::read_capped_line`。
+/// `main.rs` 那一处改调 `comms_inward::line` 之后，本函数与 [`ATTACH_LINE_CAP`] · [`HandshakeLine`] 一起删。
 pub async fn read_capped_line<R>(rd: &mut R, cap: usize) -> std::io::Result<HandshakeLine>
 where
     R: tokio::io::AsyncBufRead + Unpin,
 {
-    use tokio::io::AsyncBufReadExt;
+    use comms_inward::line::CappedLine;
     let mut buf: Vec<u8> = Vec::new();
-    let mut seen: usize = 0;
-    let mut overflowed = false;
-    loop {
-        let chunk = rd.fill_buf().await?;
-        if chunk.is_empty() {
-            return Ok(if seen == 0 {
-                HandshakeLine::Eof
-            } else if overflowed {
-                HandshakeLine::TooLong(seen)
-            } else {
-                HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned())
-            });
-        }
-        let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
-            Some(i) => (i, true),
-            None => (chunk.len(), false),
-        };
-        seen += take;
-        if seen > cap {
-            overflowed = true;
-            buf.clear();
-            buf.shrink_to_fit();
-        }
-        if !overflowed {
-            buf.extend_from_slice(&chunk[..take]);
-        }
-        let consumed = if done { take + 1 } else { take };
-        rd.consume(consumed);
-        if done {
-            return Ok(if overflowed {
-                HandshakeLine::TooLong(seen)
-            } else {
-                HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned())
-            });
-        }
-    }
+    let cap = Cap {
+        bytes: cap as u64,
+        ..ATTACH_LINE
+    };
+    Ok(
+        match comms_inward::line::read_capped_line(rd, &mut buf, cap).await? {
+            CappedLine::Eof => HandshakeLine::Eof,
+            CappedLine::Line => HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned()),
+            CappedLine::TooLong(n) => {
+                HandshakeLine::TooLong(usize::try_from(n).unwrap_or(usize::MAX))
+            }
+        },
+    )
 }
 
 /// 拒绝的理由（闭集）：`refusal_line` 只拼这里的常量，没有任何一段外来字节

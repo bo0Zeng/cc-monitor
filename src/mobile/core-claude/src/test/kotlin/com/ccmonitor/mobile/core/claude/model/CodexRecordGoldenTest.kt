@@ -7,7 +7,10 @@ import com.ccmonitor.mobile.core.claude.link.obj
 import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
+import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.SessionStatus
@@ -77,7 +80,7 @@ class CodexRecordGoldenTest {
                     pending = false,
                     sourceUuid = patch["id"] as String,
                 ),
-                RenderUnit.AssistantMarkdown("msg-9#0", "two files", "msg-9"),
+                RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), "msg-9"),
                 record("line-16").let { u ->
                     RenderUnit.Unread(u["id"] as String, u["text"] as String, u["timeText"] as String?, u["excerpt"] as String, u["id"] as String)
                 },
@@ -94,7 +97,7 @@ class CodexRecordGoldenTest {
                 when (u) {
                     is RenderUnit.UserText -> u.text
                     is RenderUnit.Thinking -> u.text
-                    is RenderUnit.AssistantMarkdown -> u.markdown
+                    is RenderUnit.AssistantMarkdown -> u.text
                     is RenderUnit.ToolCall -> u.resultText.orEmpty()
                     is RenderUnit.Unread -> u.text
                     else -> ""
