@@ -1656,7 +1656,10 @@ fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms
         vec!["--", "--account-dir", "/h/x", "--base"],
     ] {
         let a: Vec<String> = bad.iter().map(|s| s.to_string()).collect();
-        assert!(crate::ccm_line::argv::tests::parse(&a).is_err(), "{bad:?} 该被拒");
+        assert!(
+            crate::ccm_line::argv::tests::parse(&a).is_err(),
+            "{bad:?} 该被拒"
+        );
     }
 }
 
@@ -1849,7 +1852,9 @@ fn cwd_if_goes_where_the_first_exact_match_says() {
         e.pwd = pwd.to_string();
         let mut a = vec!["--".to_string()];
         a.extend(right.iter().map(|s| s.to_string()));
-        match crate::ccm_line::argv::tests::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0)) {
+        match crate::ccm_line::argv::tests::parse(&a)
+            .unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
+        {
             Parsed::Opts(o) => resolve_cwd(&o, &e),
             other => panic!("{other:?}"),
         }
@@ -1902,7 +1907,9 @@ fn cwd_expands_a_leading_tilde_like_cwd_if() {
     let at = |right: &[&str]| -> String {
         let mut a = vec!["--".to_string()];
         a.extend(right.iter().map(|s| s.to_string()));
-        match crate::ccm_line::argv::tests::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0)) {
+        match crate::ccm_line::argv::tests::parse(&a)
+            .unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
+        {
             Parsed::Opts(o) => resolve_cwd(&o, &e),
             other => panic!("{other:?}"),
         }

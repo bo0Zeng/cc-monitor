@@ -335,7 +335,6 @@ fn list_of(pb: wire::PlanPb, docs: &[wire::PlanRead]) -> wire::PlanList {
     }
 }
 
-
 /// [`reads`] 的本体：本子 · 要问的目录 · 认过的也重问不重问 · 起 pb 读一个目录的那一下。
 /// 不重问时：认过的目录照本子里那一份；认不出的（不是工作区 · 读不成）也照本子里记的那一个结局，不再起 pb。
 fn reads_in(

@@ -553,10 +553,7 @@ async fn handshake_one(
                 cmd_wire::attach::AttachReply::Ok { deflate: true, .. }
             );
             let w = listen::Down::new(w, deflate);
-            let tz = tz
-                .as_deref()
-                .and_then(crate::Tz::named)
-                .unwrap_or_default();
+            let tz = tz.as_deref().and_then(crate::Tz::named).unwrap_or_default();
             attached
                 .send(Attached {
                     reader: r,

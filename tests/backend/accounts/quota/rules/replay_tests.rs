@@ -7,7 +7,9 @@
 use super::*;
 use crate::accounts::quota::ledger::EST_FRESH as PACE_SPAN;
 use crate::accounts::quota::rules::code;
-use crate::accounts::quota::rules::decide::{use_now, Ctx, Me, PromptCache, Sigma, Strategy, Verdict};
+use crate::accounts::quota::rules::decide::{
+    use_now, Ctx, Me, PromptCache, Sigma, Strategy, Verdict,
+};
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::setup::script::{self, File};
 use crate::accounts::quota::strategy::Fail;
