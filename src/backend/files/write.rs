@@ -25,7 +25,17 @@ use crate::common::said::Said;
 use crate::platform::fs::{Face, Perms, Resolved, Ro};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason, Discard, Why};
+use relay_route_core::{Cap, Over};
 use std::path::{Component, Path, PathBuf};
+
+/// 读改写那几处整读一份用户文件的上限：要比的那一份有多长就读多长 —— 更长的就不是那一份，
+/// 超了拒、一个字节不交（比对照「对不上」或「读不成」回，不截一段去比）。
+pub(crate) fn as_long_as(want: &[u8]) -> Cap {
+    Cap {
+        bytes: want.len() as u64,
+        over: Over::Reject,
+    }
+}
 
 // 路径解析住 `common/root_path.rs`：传输台（原生那一块）写本机落点也过它，两块各引各的。
 pub use crate::common::root_path::{lexical_in_root, walk_in_root, Last};
@@ -113,6 +123,15 @@ impl WriteRefusal {
         WriteRefusal::IoSaid {
             said,
             raw: e.to_string(),
+        }
+    }
+
+    /// 带上限的整读没读成：`said` 照原因词（[`Said::said`]）拼那一句，下层原话有就跟着走。线上码同 `io_failed`。
+    pub fn read(e: Said, said: impl FnOnce(&str) -> String) -> WriteRefusal {
+        let said = said(&e.said);
+        match e.raw {
+            Some(raw) => WriteRefusal::IoSaid { said, raw },
+            None => WriteRefusal::Io(said),
         }
     }
 
@@ -521,17 +540,20 @@ pub fn delete_file_expecting(
             &[("path", &target.display().to_string())],
         )));
     }
-    let current = Ro::read_nofollow(&target).map_err(|e| {
-        WriteRefusal::io(
+    // 比 `expect` 长就不会是读到的那一份：不读，照「对不上」回。读的上限就是 `expect` 的长度。
+    if md.len() > expect.len() as u64 {
+        return Err(WriteRefusal::Stale(copy_text(
+            "beFilesWrite.delete.changed",
+            &[("path", &target.display().to_string())],
+        )));
+    }
+    let current = Ro::read_capped_nofollow(&target, as_long_as(expect)).map_err(|e| {
+        WriteRefusal::read(e, |why| {
             copy_text(
                 "reason.fs.readFailed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
+                &[("path", &target.display().to_string()), ("why", why)],
+            )
+        })
     })?;
     if current.is_empty() && md.len() > 0 {
         return Err(WriteRefusal::Io(format!(
@@ -1679,17 +1701,17 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
             ),
         ));
     }
-    let bytes = Ro::read_nofollow(&real).map_err(|e| {
-        Said::with_raw(
+    let cap = Cap {
+        bytes: PEEK_MAX_BYTES as u64,
+        over: Over::Reject,
+    };
+    let bytes = Ro::read_capped_nofollow(&real, cap).map_err(|e| {
+        e.wrap(|why| {
             copy_text(
                 "reason.fs.readFailed",
-                &[
-                    ("path", &real.display().to_string()),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
+                &[("path", &real.display().to_string()), ("why", why)],
+            )
+        })
         .coded("io_failed")
     })?;
     if bytes.is_empty() && md.len() > 0 {
@@ -1818,17 +1840,22 @@ fn put_text_racing(
                 &[("path", &real.display().to_string())],
             )));
         }
-        let cur = Ro::read_nofollow(&real).map_err(|e| {
-            WriteRefusal::io(
+        // 比 `expect` 长（`expect: null` ⇒ 有就算长）就不会是读到的那一份：不读，照「对不上」回。读的上限就是 `expect` 的长度。
+        let want = expect.unwrap_or_default();
+        if md.len() > want.len() as u64 {
+            let path = real.display().to_string();
+            return Err(WriteRefusal::Stale(match expect {
+                Some(_) => copy_text("beFilesWrite.put.changed", &[("path", &path)]),
+                None => copy_text("beFilesWrite.put.appeared", &[("path", &path)]),
+            }));
+        }
+        let cur = Ro::read_capped_nofollow(&real, as_long_as(want)).map_err(|e| {
+            WriteRefusal::read(e, |why| {
                 copy_text(
                     "reason.fs.readFailed",
-                    &[
-                        ("path", &real.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
+                    &[("path", &real.display().to_string()), ("why", why)],
+                )
+            })
         })?;
         if cur.is_empty() && md.len() > 0 {
             return Err(WriteRefusal::Io(format!(
@@ -1886,7 +1913,7 @@ fn put_text_racing(
         }
         other => other?,
     };
-    let back = Ro::read_nofollow(&dst);
+    let back = Ro::read_capped_nofollow(&dst, as_long_as(bytes));
     if back.as_deref().ok() != Some(bytes) {
         let why = match &back {
             Ok(b) => copy_text(
@@ -1896,12 +1923,9 @@ fn put_text_racing(
                     ("want", &bytes.len().to_string()),
                 ],
             ),
-            Err(e) => copy_text(
-                "beFilesWrite.put.verifyUnreadable",
-                &[("why", &io_reason(e.kind()))],
-            ),
+            Err(e) => copy_text("beFilesWrite.put.verifyUnreadable", &[("why", &e.said)]),
         };
-        let raw = back.as_ref().err().map(ToString::to_string);
+        let raw = back.as_ref().err().and_then(|e| e.raw.clone());
         let undone = match current.as_deref() {
             Some(orig) => {
                 let put_back = Content::Bytes(orig);

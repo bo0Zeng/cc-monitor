@@ -21,8 +21,8 @@ use std::collections::{BTreeMap, BTreeSet};
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "src/backend/platform/fs/ro.rs",
-        "read_capped_nofollow",
-        "不跟链接的带上限整读：读者是文件管理那五处 `read_nofollow` 的调用方（它们换上之后删这一行）",
+        "read_nofollow",
+        "不带上限的旧整读：调用方都已换成 `read_capped_nofollow`，删 `Ro` 不带上限的那几个读动词时连它一起删（删了就删这一行）",
     ),
     (
         "src/common/cmd-wire/src/md.rs",

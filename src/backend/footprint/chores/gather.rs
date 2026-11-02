@@ -5,25 +5,25 @@ use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
+use relay_route_core::{Cap, Over};
 use serde_json::Value;
 use std::path::Path;
 
-/// 读一份用户文件的上限（启动文件 / 设置文件都远小于它）。
-const READ_CAP: u64 = 1 << 20;
+/// 读一份用户文件的上限（启动文件 / 设置文件都远小于它）；超了跳过那一份、日志里说是哪一份。
+const READ_CAP: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::SkipAndSay,
+};
 
 /// 读不到（不在 · 超上限 · 不是 UTF-8）⇒ `None`，那一件跳过（不在的不说；别的留一行日志说是哪一份）。
 fn read_small(p: &Path) -> Option<String> {
     if !p.exists() {
         return None;
     }
-    match crate::platform::fs::Ro::read_regular_capped(p, READ_CAP).map(String::from_utf8) {
-        Ok(Ok(t)) => Some(t),
-        Ok(Err(_)) => {
-            tracing::warn!(path = %p.display(), "chores: not UTF-8, skipped");
-            None
-        }
+    match crate::platform::fs::Ro::read_string_capped(p, READ_CAP) {
+        Ok(t) => Some(t),
         Err(e) => {
-            tracing::warn!(path = %p.display(), error = %e, "chores: unreadable, skipped");
+            tracing::warn!(path = %p.display(), error = %e.logged(), "chores: unreadable, skipped");
             None
         }
     }
