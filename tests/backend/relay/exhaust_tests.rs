@@ -1,10 +1,11 @@
 //! 中转吃不下的两种时候（fd 用尽 · 在途顶满）：来的连接拿到 503（不是干等到下游自己超时），这一阵只说一次，缓过来说一次、照常转发。
 //! 要把整个进程的 fd 占满、要数中转往 stderr 说了几句 ⇒ 在自己起的子进程里跑，父进程看它的 stdout 与 stderr。
 
-use crate::accounts::upstream_select::{table::RoutingTable, Accounts};
-use crate::relay::observe_retry_tests::{
+use super::observe_retry_tests::{
     shoot, spawn_judging_upstream, spawn_relay_over, sse_200, temp_dir, upstreams_at,
 };
+use crate::accounts::upstream_select::{table::RoutingTable, Accounts};
+use crate::relay::test_support::INFLIGHT_CONNECTIONS;
 
 const CHILD_MARK: &str = "CCM_RELAY_EXHAUST_CHILD";
 const TARGET: &str = "/t/claude-code/q/v1/messages";
@@ -85,20 +86,20 @@ fn as_child_over_the_cap() {
     );
     let relay = std::sync::Arc::new(comms_outward::Relay::new(
         std::sync::Arc::new(accounts),
-        crate::relay::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         comms_outward::TeeSink::to_port(std::sync::Arc::new(Mute)),
         crate::relay::open_for(std::sync::Arc::new(|_| None)),
-        super::DOWNSTREAM_DEADLINE,
-        super::UPSTREAM_DEADLINE,
-        super::INFLIGHT_BODY_CAP,
+        crate::relay::test_support::DOWNSTREAM_DEADLINE,
+        crate::relay::test_support::UPSTREAM_DEADLINE,
+        crate::relay::test_support::INFLIGHT_BODY_CAP,
     ));
-    let listener = super::listen(0).expect("listen");
+    let listener = crate::relay::test_support::listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
     let inflight = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
-        super::INFLIGHT_CONNECTIONS,
+        crate::relay::test_support::INFLIGHT_CONNECTIONS,
     ));
     let counted = std::sync::Arc::clone(&inflight);
-    std::thread::spawn(move || super::serve(listener, relay, counted));
+    std::thread::spawn(move || crate::relay::test_support::serve(listener, relay, counted));
     let status = |resp: &str| resp.lines().next().unwrap_or("（没有回包）").to_string();
     let shot = |step: &str| {
         println!(
@@ -111,18 +112,18 @@ fn as_child_over_the_cap() {
         shot(step);
     }
     // 顶在上限边上来回（放进一条 · 又顶满）：还是同一阵，不再说一遍。
-    inflight.store(super::INFLIGHT_CONNECTIONS - 1, SeqCst);
+    inflight.store(INFLIGHT_CONNECTIONS - 1, SeqCst);
     shot("edge");
     // 那一条的连接线程收工时减一次：等它减完再顶满，不然那一减落在顶满之后。
     let until = std::time::Instant::now() + guard_core::wall::CEILING;
-    while inflight.load(SeqCst) != super::INFLIGHT_CONNECTIONS - 1 {
+    while inflight.load(SeqCst) != INFLIGHT_CONNECTIONS - 1 {
         assert!(
             std::time::Instant::now() < until,
             "边上那一条的连接线程没收工"
         );
         std::thread::yield_now();
     }
-    inflight.store(super::INFLIGHT_CONNECTIONS, SeqCst);
+    inflight.store(INFLIGHT_CONNECTIONS, SeqCst);
     shot("full-4");
     inflight.store(0, SeqCst);
     println!(
@@ -153,7 +154,7 @@ fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
 
 fn judge_over_the_cap() {
     let (steps, stderr) = run_child(
-        "relay::listen::exhaust_tests::over_the_cap_every_connection_gets_503_and_the_relay_says_so_once",
+        "cross_relay::exhaust_tests::over_the_cap_every_connection_gets_503_and_the_relay_says_so_once",
     );
     assert_eq!(
         steps,
@@ -192,7 +193,7 @@ fn a_relay_out_of_fds_answers_503_says_so_once_and_recovers() {
 #[cfg(unix)]
 fn judge_out_of_fds() {
     let (steps, stderr) = run_child(
-        "relay::listen::exhaust_tests::a_relay_out_of_fds_answers_503_says_so_once_and_recovers",
+        "cross_relay::exhaust_tests::a_relay_out_of_fds_answers_503_says_so_once_and_recovers",
     );
     assert_eq!(
         steps,

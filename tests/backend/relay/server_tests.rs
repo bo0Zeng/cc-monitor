@@ -1,11 +1,11 @@
 //! 中转的组合判据：真中转（`comms_outward`）＋ 后端这一侧的接受循环 · 生产段的上游选择 · tap · 内存探针。
 //! 不需要后端的那几格住中转 crate 自己的 `server_tests.rs`。
 
-use super::listen::{
-    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
-};
 use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Accounts};
 use crate::common::net::LOOPBACK;
+use crate::relay::test_support::{
+    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
+};
 use comms_outward::test_support::http1::RequestHead;
 use comms_outward::test_support::server::*;
 use comms_outward::test_support::{http1, upstream};
@@ -704,9 +704,9 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(port),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -743,7 +743,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     let req = format!(
         // 过门：路径前面挂上夹具那把钥匙、`Host` 用回环字面量（门那三问见 `door.rs`）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Length: {}\r\n\r\n{body}",
-        super::key::key_tests::TEST_KEY,
+        crate::relay::test_support::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("write req");
@@ -1058,7 +1058,7 @@ fn an_upgrade_request_is_answered_426_and_never_reaches_upstream() {
         relay_addr,
         &format!(
             "GET /{}/t/agentA/acctA/v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
-            super::key::key_tests::TEST_KEY
+            crate::relay::test_support::TEST_KEY
         ),
     );
     assert!(
@@ -1430,7 +1430,7 @@ fn accept_from<T>(listener: &TcpListener, client: &std::thread::JoinHandle<T>) -
 const CHILD_MARK: &str = "CCM_RELAY_TEST_CHILD";
 /// `--exact` 要的全名。写错了会**红**而不会静默变绿：子进程一条测试都不跑
 /// ⇒ 永远等不到那句 `listening on` ⇒ 下面 `spawn_relay_child` 当场 panic。
-const CHILD_TEST_NAME: &str = "relay::server_tests::relay_child_process_entry_point";
+const CHILD_TEST_NAME: &str = "cross_relay::server_tests::relay_child_process_entry_point";
 
 /// ★ 子进程入口：把**测试二进制自己**当一个起了中转的常驻后端重新拉起来。
 ///
@@ -1441,7 +1441,7 @@ const CHILD_TEST_NAME: &str = "relay::server_tests::relay_child_process_entry_po
 ///
 /// # 它走的是**生产接线**
 ///
-/// 独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
+/// 独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `stream/entry.rs` 流模式**真调的那一个**
 /// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
 /// tee 的采集面：交给装配口一个只收不折的 tap 口（生产交的是进程级那一个，`crate::stream::tap::port()`），
 /// 每件逐字写成 tee 交出的那一行（本文件的 `tee_line`：中转那一侧原样交了什么）落 stdout。
@@ -1464,7 +1464,7 @@ fn relay_child_process_entry_point() {
     });
     // ⚠ 凭据那份文件住家里，父进程一定会把家（`CCM_DATA_DIR`）指到夹具目录
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    // 写句柄同 `main.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
+    // 写句柄同 `stream/entry.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
     let said = crate::faces::rotation_face::host_relay(taps, crate::platform::fs::Own::issue());
     eprintln!("[relay-child] {said}");
     loop {
@@ -1479,7 +1479,7 @@ const TAP_DATA: &str = "\"data\":";
 struct RelayChild {
     child: std::process::Child,
     addr: SocketAddr,
-    /// 子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `super::key::key_tests::TEST_KEY`）。
+    /// 子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `crate::relay::test_support::TEST_KEY`）。
     home: std::path::PathBuf,
     out: Arc<std::sync::Mutex<String>>,
     err: Arc<std::sync::Mutex<String>>,
@@ -1525,7 +1525,8 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
     // 中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
     //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
-    let home = super::key::key_tests::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
+    let home =
+        crate::relay::test_support::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
     spawn_relay_child_at(up, creds_path, home)
 }
 
@@ -1861,9 +1862,9 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         no_tap(),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -2656,9 +2657,9 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         no_tap(),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -2806,9 +2807,9 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         no_tap(),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -2831,7 +2832,8 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream")
+    match upstream::connect(&base2, UPSTREAM_DEADLINE, &crate::relay::open_here)
+        .expect("connect upstream")
     {
         upstream::Conn::Plain(s) => {
             assert!(
@@ -2906,9 +2908,9 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         no_tap(),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -2938,7 +2940,8 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream")
+    match upstream::connect(&base2, UPSTREAM_DEADLINE, &crate::relay::open_here)
+        .expect("connect upstream")
     {
         upstream::Conn::Plain(s) => {
             assert_eq!(
@@ -3609,9 +3612,9 @@ fn spawn_relay_with_upstream_deadline(
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         no_tap(),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
         INFLIGHT_BODY_CAP,
@@ -4018,7 +4021,7 @@ fn rk1_send(addr: SocketAddr, target: &str, headers: &str) -> String {
 fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
-    let k = super::key::key_tests::TEST_KEY;
+    let k = crate::relay::test_support::TEST_KEY;
     let wrong = format!("{}0", &k[..k.len() - 1]);
     let host = "Host: 127.0.0.1\r\n";
     for target in [
@@ -4082,7 +4085,7 @@ fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
     let target = format!(
         "/{}/s/agentA/acctA/v1/messages",
-        super::key::key_tests::TEST_KEY
+        crate::relay::test_support::TEST_KEY
     );
     let origin = rk1_send(
         relay_addr,
@@ -4180,7 +4183,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
     );
     assert_ne!(
         key,
-        super::key::key_tests::TEST_KEY,
+        crate::relay::test_support::TEST_KEY,
         "这一条要的是**现铸**的那把，不是夹具值"
     );
     let good_req = format!(

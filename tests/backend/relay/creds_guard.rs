@@ -352,10 +352,8 @@ mod tests {
     /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（那条路不经 manifest）。
     #[test]
     fn this_crate_turns_on_the_write_half_of_the_credentials_crate_in_exactly_one_declaration() {
-        let mine = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
-        )
-        .expect("读不到本 crate 的 Cargo.toml —— 抽取器坏了，本条会零命中地绿");
+        let mine = std::fs::read_to_string(guard_core::addr::backend_src_root().join("Cargo.toml"))
+            .expect("读不到本 crate 的 Cargo.toml —— 抽取器坏了，本条会零命中地绿");
 
         // 抽取器自检：真读到了那份 manifest，而且里面确实声明了 `creds-core`。
         assert_eq!(
@@ -701,8 +699,8 @@ mod tests {
             LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
         // 白名单圈的非中转那一棵，**恰好**是上游选择的根（盘上现推，住 `upstream_selection_guard`）——
         //   不是整个账号域：账号域里别的块不是中转的上游选择，不进本白名单。
-        let sel_root =
-            super::super::upstream_selection_guard::tests::upstream_selection_root_from_disk();
+        use super::super::relay_upstream_selection_guard::tests as selection;
+        let sel_root = selection::upstream_selection_root_from_disk();
         let non_relay: Vec<&str> = LOG_ROOTS
             .iter()
             .copied()

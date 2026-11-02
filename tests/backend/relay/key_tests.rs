@@ -4,30 +4,8 @@
 //! 走真 socket 的那一半（403/421 与 404 真可分 · 对的钥匙真转发 · 钥匙不出现在日志 / tee / argv / env / 上游）住 `server_tests.rs` 的 `rk1_*` 那几条。
 
 use super::*;
-use std::path::PathBuf;
-
-/// 判据用的那一把（形状合法、一眼认得出是测试值）。同层判据（`server_tests` · `host_tests` · `wire_golden`）经
-/// `key::key_tests::TEST_KEY` 取。
-pub(crate) const TEST_KEY: &str =
-    "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
-
-/// 判据用的那把只许直通的钥匙：从 [`TEST_KEY`] 派生（生产同一个函数 [`pass_of`]）。
-pub(crate) fn test_pass_key() -> String {
-    pass_of(&test_key()).expose().to_string()
-}
-
-/// 判据用：[`TEST_KEY`] 那一把。
-pub(crate) fn test_key() -> Key {
-    Key::from_text(TEST_KEY).expect("夹具钥匙过得了形状闸")
-}
-
-/// 判据用：[`TEST_KEY`] ＋ 它派生出来的只许直通那一把（中转门上那两把，与生产同一个派生）。
-pub(crate) fn test_keys() -> comms_outward::Keys {
-    comms_outward::Keys {
-        full: test_key(),
-        pass: pass_of(&test_key()),
-    }
-}
+// 判据用的那一把与夹具家目录（本包与上层的判据共用）住 `test_support`。
+use crate::relay::test_support::{seed_test_home, test_key, TEST_KEY};
 
 /// 只许直通那一把是派生的：同一把根钥匙恒得同一把 · 形状合法 · 不等于根钥匙 · 换一把根钥匙就换一把；
 /// 插地址（`keyed_with_key_on_disk`）用的就是它，盘上没有第二份文件。
@@ -62,21 +40,6 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
         "只许直通那一把落了盘"
     );
     let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
-/// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
-pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
-    let path = home.join(relay_route_core::KEY_FILE_REL);
-    // 夹具直接落盘（只给本人）；那一层目录这里自己建。
-    std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
-    std::fs::write(&path, test_key().expose()).expect("写夹具钥匙");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("只给本人");
-    }
-    home.to_path_buf()
 }
 
 /// ⑤ 钥匙文件：第一次铸（64 位小写十六进制 · `0600`）→ 第二次读回**同一把**（跨重起不变）；

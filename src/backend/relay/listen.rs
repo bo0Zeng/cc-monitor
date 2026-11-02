@@ -17,15 +17,15 @@ use std::sync::Arc;
 /// 是条数不是体量（名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`：那是 `byte_cap_registry` 的钩子）。超了回 `503` 并关连接，不是静默 FIN。
 /// 1024：每条在途约占 3 个 fd（下游 · 下游的 dup · 上游）、1 条线程 ⇒ 约 3000 个 fd、1000 条线程，常驻后端起来时软上限已抬到硬上限
 /// （`platform::raise_open_files_limit`）。要够 100 多个 agent 各开两三条流：顶满时每秒完成的条数就卡在「上界 ÷ 每条时长」。
-pub(super) const INFLIGHT_CONNECTIONS: usize = 1024;
+pub const INFLIGHT_CONNECTIONS: usize = 1024;
 
 /// 同时在途的下游请求体字节合计上限（与条数上限同住这里，经 `Relay::new` 交给中转记账）。
 /// 读体之前按 `Content-Length` 记账，记不下回 `503`（原因头 `body-budget`，条数满了是 `busy`），一个体字节都不读；这一发收场退账。
 /// 1 GiB：条数上限 × 单发上限（`BODY_CAP` 64 MiB）远大于一台机器的内存 —— 上游答得慢时在途攒起来，每条带着一整份体，
 /// 足以把常驻后端顶到几十 G。真实一发的体多在几 MB，1 GiB 容得下几百条同时在途。
-pub(crate) const INFLIGHT_BODY_CAP: usize = 1024 * 1024 * 1024;
+pub const INFLIGHT_BODY_CAP: usize = 1024 * 1024 * 1024;
 
-pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
+pub const ENV_PORT: &str = "CCM_RELAY_PORT";
 
 //
 // ══════════════════════════════════════════════════════════════════════════
@@ -50,8 +50,7 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
     clippy::disallowed_methods,
     reason = "中转下游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（那个值今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按「期限值全部由后端交给它」搬出中转；…"
 )]
-pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
-    std::time::Duration::from_millis(30_000);
+pub const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
 
 /// 上游那条 socket 的读写期限。同样不是定时器（只限这一次阻塞的读写），期限到了把连接结掉、不许任何一层重试
 /// （`pump` 与 `http1` 只重试 `Interrupted`；`rustls` 的 `complete_io` 同形）。
@@ -65,10 +64,10 @@ pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
     clippy::disallowed_methods,
     reason = "中转上游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（同上，那个值今天住`relay/listen.rs::UPSTREAM_DEADLINE`；装它的那一手仍在 `relay/upstre…"
 )]
-pub(super) const UPSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(600_000);
+pub const UPSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(600_000);
 
 /// 起监听。返回真实绑定的地址（端口给 0 时由内核选，测试用）。
-pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
+pub fn listen(port: u16) -> std::io::Result<TcpListener> {
     let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, port))?;
     Ok(listener)
 }
@@ -86,7 +85,7 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 /// 关写半边、留下当新的备用（它的号不放回 ⇒ 别的线程抢不走）。这一阵只说一次，缓过来（接上的那条量得出 fd）再说一次。
 /// 放掉备用之后仍接不上（别的线程抢先占了那个号）⇒ 每一圈重 `dup` 一份当备用，拿到之前这一段会空转 ——
 /// 只在中转之外的代码把 fd 用光、又恰好抢在这两步之间时出现。
-pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
+pub fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
     let mut spare = dup_listener(&listener);
     let mut short = false;
     // 在途顶满的这一阵（只说一次 · 退到上界四分之三以下再说一次）。
@@ -292,7 +291,7 @@ fn prepare(
 /// 中转只是常驻后端的一个面 ⇒ 起不来**出声、不拖垮后端**（持有全部 SSH 的那个进程
 /// 不许因为「端口被占」或「上游配置认不出」而倒下）。
 #[derive(Debug)]
-pub(crate) enum Hosted {
+pub enum Hosted {
     /// 没被交端口 ⇒ 这个进程**不开**中转（测试连接探针 exec 的那一趟就是这一格）。
     NotAsked,
     /// 在听：回环 ＋ 这个地址。
@@ -332,7 +331,6 @@ pub(crate) fn announce_key_perm(
     out: &mut dyn std::io::Write,
 ) -> usize {
     use creds_core::perm::Verdict;
-    use std::io::Write as _;
     match verdict {
         Verdict::OwnerOnly => 0,
         Verdict::TooWide { how, fix } => {
@@ -350,7 +348,7 @@ pub(crate) fn announce_key_perm(
 /// **这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
 /// （中转就住在这个进程里，；一个事实一个家）。读者：上游选择出的两份成品
 /// （账号清单徽章的 `relay_running` · 别名预览）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
-pub(crate) fn our_relay_listening(port: u16) -> bool {
+pub fn our_relay_listening(port: u16) -> bool {
     HOSTED_PORTS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -365,7 +363,7 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 /// ③ 起不来不退出（见 [`Hosted`]）。
 /// `own`：写自家状态的句柄（启动时造的那一份）；钥匙经它读回或铸。
 /// `egress_of`：来处 ⇒ 那条会话的出网描述（宿主递进来；中转开上游那一口先问它，没有 ⇒ 这台的出网描述）。
-pub(crate) fn host(
+pub fn host(
     get: &dyn Fn(&str) -> Option<String>,
     startup: &dyn Startup,
     tap: std::sync::Arc<dyn comms_outward::TapPort>,
@@ -407,10 +405,3 @@ pub(crate) fn host(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/exhaust_tests.rs"]
-mod exhaust_tests;
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/host_tests.rs"]
-mod host_tests; // 进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee // fd 用尽时接受循环回 503、只说一次、缓过来照常

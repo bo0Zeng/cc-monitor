@@ -1,9 +1,11 @@
 //! 中转的 `observe` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 一个按鉴权头作答的假上游。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use crate::common::net::LOOPBACK;
+use crate::relay::test_support::{
+    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE,
+};
 use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
 use std::io::BufRead;
 use std::io::{Read, Write};
@@ -74,9 +76,9 @@ pub(super) fn upstreams_at(up: SocketAddr) -> Upstreams {
 pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         Arc::new(accounts),
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -101,7 +103,7 @@ pub(super) fn shoot(addr: SocketAddr, target: &str, headers: &str, body: &str) -
         .expect("read deadline");
     let req = format!(
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",
-        super::key::key_tests::TEST_KEY,
+        crate::relay::test_support::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("write");
@@ -240,9 +242,9 @@ fn refused_429() -> String {
 fn relay_over(d: Arc<dyn comms_outward::Destinations>) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         d,
-        super::key::key_tests::test_keys(),
+        crate::relay::test_support::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
-        super::open_for(std::sync::Arc::new(|_| None)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
@@ -1153,7 +1155,7 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
     );
     let hit = std::panic::catch_unwind(|| {
         comms_outward::fetch(
-            &super::open_here,
+            &crate::relay::open_here,
             &ep.base,
             "POST",
             &ep.rest,
@@ -1190,7 +1192,7 @@ fn a_throttled_answer_logs_one_line_of_who_and_when_to_retry() {
         heads: &[],
     };
     let said = |status: u16, headers: &[(String, String)]| {
-        crate::stream::run_route::tests::heard(|| {
+        test_meters::heard(|| {
             accounts.observe(
                 Mode::Passthrough,
                 &key,
