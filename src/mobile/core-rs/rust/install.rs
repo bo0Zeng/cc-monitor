@@ -89,7 +89,9 @@ fn read_capped(p: &std::path::Path, cap: Cap) -> Result<Vec<u8>, Said> {
     let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
     let meta = std::fs::metadata(p).map_err(io)?;
     let c = cap.bytes.to_string();
-    match relay_route_core::read_capped_regular(&meta, || std::fs::File::open(p), cap).map_err(io)? {
+    match relay_route_core::read_capped_regular(&meta, || std::fs::File::open(p), cap)
+        .map_err(io)?
+    {
         Regular::Whole(buf) => Ok(buf),
         Regular::NotRegular => Err(Said::from(copy_text("reason.fs.notRegular", &[]))),
         Regular::OverCap(Some(size)) => Err(Said::from(copy_text(

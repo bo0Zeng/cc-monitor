@@ -1,6 +1,7 @@
 // 正文排好之后补的占位（公式 · 图）与几处「界面手上有原文」的 Markdown：一律后端解析成树（`md-doc`），照 `md-view` 排。
 // 界面这一侧没有解析器：marked · highlight.js · dompurify 不在依赖里；KaTeX 有公式才载。
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const katexLoads = vi.hoisted(() => ({ n: 0 }));
 vi.mock("katex", async (orig) => {
@@ -96,7 +97,7 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
     d.dispatchEvent(new Event("toggle"));
-    await vi.waitFor(() => expect(d.querySelector("[data-math-pending], .katex")).not.toBeNull());
+    await vi.waitFor(() => expect(d.querySelector("[data-math-pending], .katex")).not.toBeNull(), UNTIL_CEILING);
     expect(callMock).toHaveBeenCalledWith(LOCAL_ORIGIN, "md-doc", { text, as: "prose", refs: [] }, expect.anything());
     await __mathSettledForTests();
     expect(d.querySelector(".katex")).not.toBeNull();
@@ -109,7 +110,7 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
     d.dispatchEvent(new Event("toggle"));
-    await vi.waitFor(() => expect(d.textContent).toContain("原文 **字**"));
+    await vi.waitFor(() => expect(d.textContent).toContain("原文 **字**"), UNTIL_CEILING);
   });
 });
 

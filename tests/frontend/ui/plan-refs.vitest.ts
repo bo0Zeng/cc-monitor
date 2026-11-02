@@ -5,6 +5,7 @@
  * 回空 ⇒ 正文逐字原样；点标题 ⇒ 开计划页那一格；同一帧几块 ⇒ 只问一次。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 vi.mock("../../../src/frontend/ui/plan-reads", () => ({ fetchMsgRefs: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
@@ -132,7 +133,7 @@ describe("回复正文：后端回标好引用的树，照它重排", () => {
     const tails = () => [...c.querySelectorAll(".block-text button:not(.block-body-show-full)")].map((b) => b.textContent);
     expect(tails()).toEqual(["标0"]);
     c.querySelector<HTMLButtonElement>(".block-body-show-full")!.click();
-    await vi.waitFor(() => expect(tails()).toEqual(["标0", "标1", "标2"]));
+    await vi.waitFor(() => expect(tails()).toEqual(["标0", "标1", "标2"]), UNTIL_CEILING);
   });
 
   it("同一帧几张卡 · 几块 ⇒ 只问一次，回来的各落各的那一块", async () => {

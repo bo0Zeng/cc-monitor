@@ -24,17 +24,17 @@ fn tool_result_strips_line_numbers() {
 
 #[test]
 fn plan_body_refs_become_ref_nodes_with_the_label_left_to_the_view() {
-    let src = "见 A1-2 的写法";
+    let src = "见 a1-2 的写法";
     let start = "见 ".encode_utf16().count() as u32;
-    let r = req(json!({ "text": src, "as": "prose", "refs": [{"start": start, "end": start + 4, "ids": ["A1-2"]}] })).unwrap();
+    let r = req(json!({ "text": src, "as": "prose", "refs": [{"start": start, "end": start + 4, "ids": ["a1-2"]}] })).unwrap();
     assert_eq!(
         doc_of(&r).blocks,
         vec![md_core::MdBlock::P {
             k: vec![
                 md_core::Inl::S("见 ".into()),
                 md_core::Inl::N(md_core::InlNode::Ref {
-                    x: "A1-2".into(),
-                    ids: vec!["A1-2".into()],
+                    x: "a1-2".into(),
+                    ids: vec!["a1-2".into()],
                     label: String::new(),
                 }),
                 md_core::Inl::S(" 的写法".into()),

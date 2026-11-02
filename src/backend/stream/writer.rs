@@ -53,7 +53,7 @@ pub async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     let mut burst = 0u32;
     let mut burst_bytes = 0usize;
     // flush 只在三路此刻都没有排着的时候做（排空了再一次），另有 `WRITE_FLUSH_BYTES` 封顶；不用计时器。
-    //   一帧一 flush 时，分页应答与成批的行是一帧一次写系统调用，开了 deflate 还一帧一次 sync flush。
+    //   一帧一 flush 时，分页应答与成批的行是一帧一次写系统调用。开了 deflate，每帧一个压缩上下文由 `wire::listen::Down` 按行切，不靠这里 flush。
     let mut unflushed = 0usize;
     loop {
         let picked = {

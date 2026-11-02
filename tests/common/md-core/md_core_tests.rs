@@ -579,42 +579,42 @@ fn r(x: &str, label: &str) -> Inl {
 
 #[test]
 fn ref_text_keeps_words_only_and_gaps_the_rest() {
-    let doc = parse("先看 **A1-1**，`A2` 在代码里\n\n```\nA3\n```\n\n- 末 $x$ 项");
+    let doc = parse("先看 **a1-1**，`A2` 在代码里\n\n```\nA3\n```\n\n- 末 $x$ 项");
     assert_eq!(
         ref_text(&doc),
-        "先看 A1-1，\u{FFFC} 在代码里\n\n\u{FFFC}\n\n末 \u{FFFC} 项"
+        "先看 a1-1，\u{FFFC} 在代码里\n\n\u{FFFC}\n\n末 \u{FFFC} 项"
     );
 }
 
 #[test]
 fn with_refs_turns_the_number_into_a_ref_node() {
-    let doc = parse("😀 先看 **A1-1**，再看 A1-2 的写法。");
+    let doc = parse("😀 先看 **a1-1**，再看 a1-2 的写法。");
     let text = ref_text(&doc);
-    let got = with_refs(&doc, &[at(&text, "A1-1", "甲"), at(&text, "A1-2", "乙")]);
+    let got = with_refs(&doc, &[at(&text, "a1-1", "甲"), at(&text, "a1-2", "乙")]);
     assert_eq!(
         got.blocks,
         vec![MdBlock::P {
             k: vec![
                 s("😀 先看 "),
                 n(InlNode::B {
-                    k: vec![r("A1-1", "甲")]
+                    k: vec![r("a1-1", "甲")]
                 }),
                 s("，再看 "),
-                r("A1-2", "乙"),
+                r("a1-2", "乙"),
                 s(" 的写法。"),
             ]
         }]
     );
     // 没有一处 ⇒ 原样；跨了加粗边界的那一处 ⇒ 不插。
     assert_eq!(with_refs(&doc, &[]), doc);
-    let cross = parse("**A1**-2 后");
+    let cross = parse("**a1**-2 后");
     let t = ref_text(&cross);
-    assert_eq!(with_refs(&cross, &[at(&t, "A1-2", "丙")]), cross);
+    assert_eq!(with_refs(&cross, &[at(&t, "a1-2", "丙")]), cross);
 }
 
 #[test]
 fn parse_marked_reads_refs_at_utf16_spans() {
-    let src = "😀 见 A1-2 与 `A3`\n\n## 标题 A4";
+    let src = "😀 见 a1-2 与 `A3`\n\n## 标题 A4";
     let u16 = |piece: &str| {
         let b = src.find(piece).unwrap();
         let s = src[..b].encode_utf16().count();
@@ -625,14 +625,14 @@ fn parse_marked_reads_refs_at_utf16_spans() {
             label: String::new(),
         }
     };
-    let got = parse_marked(src, &[u16("A1-2"), u16("A3"), u16("A4")]);
+    let got = parse_marked(src, &[u16("a1-2"), u16("A3"), u16("A4")]);
     assert_eq!(
         got.blocks,
         vec![
             MdBlock::P {
                 k: vec![
                     s("😀 见 "),
-                    r("A1-2", ""),
+                    r("a1-2", ""),
                     s(" 与 "),
                     n(InlNode::C { x: "A3".into() })
                 ]

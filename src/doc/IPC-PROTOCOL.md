@@ -11,7 +11,7 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | stdio | 本机：Windows 上 monitor 监护的子进程（管道） | `ccm -- --stream …`：后端写 stdout、读 stdin。脱离起的常驻后端（monitor 在 Linux 上起它 · `--resident-ensure`）也以这一行起，但只在下一行的套接字上说话 |
-| 常驻套接字 | 本机常驻后端 · 远端常驻后端（本机后端经池里那条 SSH 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"deflate"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的；带了 `"deflate":true` ⇒ 多一格 `"deflate":true`，这一行之后这台写过去的字节整条是一个 raw deflate 流、每帧 sync flush，客户端 → 这台照原样；远端那条流都要、本机的不要）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的：桌面当旧、装上这一版再接；手机不带 `deflate` 再接一次，接上了照不压走）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（本机后端经池里那条 SSH 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"deflate"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的；带了 `"deflate":true` ⇒ 多一格 `"deflate":true`，这一行之后这台写过去的字节整条是一个 raw deflate 流、每帧 full flush（帧之间不回指），客户端 → 这台照原样；远端那条流都要、本机的不要）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的：桌面当旧、装上这一版再接；手机不带 `deflate` 再接一次，接上了照不压走）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -297,7 +297,7 @@
 
 ## 加一条协议
 
-- **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（还要进 `lib.rs` 的 `SUBCOMMANDS`）；重生成 `IPC-COMMANDS.md`。
+- **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（子命令闸门 `stream::cli::is_subcommand` 跟着认）；重生成 `IPC-COMMANDS.md`。
 - **帧字段**：加在 `wire/mod.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
-- **CLI 独有子命令**：进 `SUBCOMMANDS` 与 `stream/oneshot.rs` 的 `ONESHOTS`（子命令 ＋ 用法 ＋ 一句话 ＋ 实现）。
+- **CLI 独有子命令**：进 `stream/oneshot.rs` 的 `ONESHOTS`（子命令 ＋ 用法 ＋ 一句话 ＋ 实现），闸门照它认。
 - **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在 INVARIANTS §2.1 那张表里登它是真相还是缓存。后端自己的那份先在 `relay_route_core` 加一个 `Decl` 常量、排进 `OWN_FILES`，读写经 `Doc::of` 取的那一个（INVARIANTS §2.2）；几个进程之间交接的，再在 §9 那张表里写它的格式。

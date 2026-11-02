@@ -301,8 +301,9 @@ fn the_last_client_is_the_last_of_all_connections_not_the_first_to_leave() {
     assert_eq!(c.leave(b), 0);
 }
 
-/// 回认之后那一侧的写半边：每帧写完 flush 一次 ⇒ 对端就地解得出这一帧（sync flush），整串解出来与写进去的逐字节相同、
-/// 远少于原样；不压那一形原样过。
+/// 回认之后那一侧的写半边：每帧写完 flush 一次 ⇒ 对端就地解得出这一帧（full flush 也对齐到字节），整串解出来与写进去的逐字节相同、
+/// 少于原样；不压那一形原样过。
+/// 只判「少于原样」、不判压到几分之一：每帧各一个上下文，这几帧一模一样也互相回指不到，一帧两百来字节单独压省不下多少。
 #[tokio::test]
 async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
     use tokio::io::AsyncWriteExt;
@@ -333,10 +334,89 @@ async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
     }
     let raw: usize = frames.iter().map(String::len).sum();
     assert_eq!(back.len(), raw);
-    assert!(fed * 4 < raw, "线上 {fed} 字节，原样 {raw}：没压下来");
+    assert!(fed < raw, "线上 {fed} 字节，原样 {raw}：没压下来");
 
     let mut p = Down::new(Vec::new(), false);
     p.write_all(frames[0].as_bytes()).await.unwrap();
     p.flush().await.unwrap();
     assert_eq!(p.get_ref(), frames[0].as_bytes(), "不压那一形原样过");
+}
+
+/// 一帧 `n` 个随机小写字母再接换行（xorshift，种子定死；夹具不放真正文）。
+fn random_letters(seed: u64, n: usize) -> Vec<u8> {
+    let mut s = seed | 1;
+    let mut v: Vec<u8> = (0..n)
+        .map(|_| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            b'a' + (s % 26) as u8
+        })
+        .collect();
+    v.push(b'\n');
+    v
+}
+
+/// 每帧一个压缩上下文：两帧一模一样，第二帧也回指不到第一帧 ⇒ 线上那一段与第一帧差不多长
+/// （连着一个上下文时第二帧整段回指第一帧，只剩十几个字节：外来内容就能借长度猜别的帧里的秘密）。
+#[tokio::test]
+async fn frames_do_not_point_back_into_earlier_frames() {
+    use tokio::io::AsyncWriteExt;
+    let frame = random_letters(0x5eed, 4096);
+    let mut w = Down::new(Vec::new(), true);
+    w.write_all(&frame).await.unwrap();
+    w.flush().await.unwrap();
+    let first = w.get_ref().len();
+    w.write_all(&frame).await.unwrap();
+    w.flush().await.unwrap();
+    let second = w.get_ref().len() - first;
+    assert!(
+        second * 10 >= first * 9,
+        "第二帧线上 {second} 字节、第一帧 {first}：第二帧回指了第一帧"
+    );
+}
+
+/// 写者一次排空写下好几帧、最后才 flush 一次（洪峰里就是这样）：同一批里的两帧也各一个上下文 ⇒ 第二帧线上照样不少于单独一帧的九成。
+#[tokio::test]
+async fn two_frames_in_one_flush_do_not_point_back_either() {
+    use tokio::io::AsyncWriteExt;
+    let frame = random_letters(0x5eed, 4096);
+    let mut one = Down::new(Vec::new(), true);
+    one.write_all(&frame).await.unwrap();
+    one.flush().await.unwrap();
+    let first = one.get_ref().len();
+    let mut w = Down::new(Vec::new(), true);
+    w.write_all(&frame).await.unwrap();
+    w.write_all(&frame).await.unwrap();
+    w.flush().await.unwrap();
+    let second = w.get_ref().len() - first;
+    assert!(
+        second * 10 >= first * 9,
+        "同一批里第二帧线上 {second} 字节、单独一帧 {first}：回指了同一批里的前一帧"
+    );
+}
+
+/// 客户端那一份读法（`resident_client::line::Inflate`，一个 raw inflate 流）接这台写出的流 ⇒ 逐字节相同：
+/// 只换写的那一侧，解的那一侧不动。几帧一批才 flush 一次、一帧拆成几次写，照样。
+#[tokio::test]
+async fn the_client_inflater_reads_the_stream_back_byte_for_byte() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let frames: Vec<Vec<u8>> = (0..40u64)
+        .map(|i| random_letters(0x9e37_79b9 + i % 3, 700 + (i % 5) as usize * 900))
+        .collect();
+    let mut w = Down::new(Vec::new(), true);
+    for (i, f) in frames.iter().enumerate() {
+        let (a, b) = f.split_at(f.len() / 3);
+        w.write_all(a).await.unwrap();
+        w.write_all(b).await.unwrap();
+        if i % 7 == 6 {
+            w.flush().await.unwrap();
+        }
+    }
+    w.flush().await.unwrap();
+    let wire = w.get_ref().clone();
+    let mut r = resident_client::line::Inflate::new(tokio::io::BufReader::new(&wire[..]));
+    let mut back = Vec::new();
+    r.read_to_end(&mut back).await.unwrap();
+    assert_eq!(back, frames.concat(), "客户端解出来与写进去的不一样");
 }
