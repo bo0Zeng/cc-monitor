@@ -70,7 +70,7 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     // 投出去那一形（`named`）：码 · 那一句 · 复制详情三格，没有按码定形的 `data` 就不出那一格。
     let f = s.named("load_config");
     assert_eq!(f.said, "读取配置失败");
-    assert_eq!(f.code, copy_core::said::FALLBACK_CODE);
+    assert_eq!(f.code, cmd_wire::failed::FALLBACK_CODE);
     let lines: Vec<&str> = f.detail.lines().collect();
     assert_eq!(lines.len(), 4, "{}", f.detail);
     assert!(

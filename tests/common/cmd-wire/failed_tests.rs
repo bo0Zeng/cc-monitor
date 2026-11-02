@@ -49,7 +49,7 @@ fn local_has_fallback_code_and_no_detail() {
     let f = Failed::local("没走通".into());
     assert_eq!(
         (f.code.as_str(), f.said.as_str(), f.detail.as_str(), f.data),
-        (copy_core::said::FALLBACK_CODE, "没走通", "", None)
+        (FALLBACK_CODE, "没走通", "", None)
     );
 }
 

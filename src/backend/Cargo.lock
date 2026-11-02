@@ -120,6 +120,7 @@ dependencies = [
  "cmd-wire",
  "comms-outward",
  "copy-core",
+ "face-core",
  "guard-core",
  "md-core",
  "relay-route-core",
@@ -548,7 +549,6 @@ dependencies = [
 name = "cmd-wire"
 version = "0.1.0"
 dependencies = [
- "copy-core",
  "serde",
  "serde_json",
  "shell-quote-core",
@@ -643,6 +643,7 @@ dependencies = [
 name = "copy-core"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "serde_json",
 ]
 

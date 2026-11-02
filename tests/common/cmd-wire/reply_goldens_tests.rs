@@ -51,7 +51,7 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
         "说明": [
             "手机读的那几条回包的跨语言金样。",
             "sample：结构夹具（每格都填、并集取第一形；node tests/scripts/gen-kotlin-wire.mjs --samples 现出，不放真正文）。",
-            "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
+            "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）；带记录的那几条按 face-core 的 OrUnread 解（tests/common/face-core/record_tests.rs）。",
             "Kotlin：core-wire 的 RepliesGoldenTest 拿生成的类解 rust、再写回，逐字节同。"
         ],
         "cases": fresh,

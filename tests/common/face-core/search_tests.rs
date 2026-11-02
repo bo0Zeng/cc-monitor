@@ -1,4 +1,4 @@
-//! 几台的搜索结果合一份（`cmd_wire::search::merge`）的判据：本机后端与手机核心调的是这一份。
+//! 几台的搜索结果合一份（`face_core::search::merge`）的判据：本机后端与手机核心调的是这一份。
 //!
 //! 1. `updatedAt` 倒序、同一刻照台的先后；命中数 · 读不动的份数相加；任一行被砍 ⇒ `truncated`；不覆盖的那几家去重；
 //!    远端的行带那台的名字、本机的不带；没答上的那几台原样带上。
@@ -8,6 +8,8 @@
 //! 4. 头底下那几句也在这里写好（读不动几份 · 只按标题的那几家），两端照摆。
 
 use super::*;
+use cmd_wire::search::{HistorySearchReply, Merged, SearchDown};
+use cmd_wire::Machine;
 use serde_json::{json, Value};
 
 /// 金样里那几行（那台真扫出来的形：`updatedAt` · `face.order` · `hits[].offset` 这类整数格都在）。
@@ -89,7 +91,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         .map(|s| (s.row.row.session_id.as_str(), s.origin.to_string()))
         .collect();
     // 倒序；同一刻照台的先后（本机那一台先交）；本机那几行照实写 `"<local>"`。
-    let (pi, here) = ("pi".to_string(), crate::LOCAL.to_string());
+    let (pi, here) = ("pi".to_string(), cmd_wire::LOCAL.to_string());
     assert_eq!(
         order,
         [
