@@ -140,6 +140,12 @@ pub fn note_own_window(file: &str, part: &str, machine: &str) -> String {
     )
 }
 
+/// 收尾：`line` 跑完删掉 [`note_own_window`] 写的那一份 `file`（已过 `dialect::ps_literal`）。包进 `try … finally`：
+/// Ctrl+C 停下那一行（`-NoExit` 的窗口里 shell 还留着）也删。
+pub fn then_forget_own_window(line: &str, file: &str) -> String {
+    format!("try {{ {line} }} finally {{ Remove-Item -LiteralPath {file} -ErrorAction Ignore }}")
+}
+
 /// `Set-Location -LiteralPath <词>; `
 pub fn set_location(dir_word: &str) -> String {
     format!("Set-Location -LiteralPath {dir_word}; ")

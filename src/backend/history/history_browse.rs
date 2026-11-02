@@ -387,9 +387,7 @@ pub(crate) async fn answer(
     };
     let range = req.range;
     blocking(move || {
-        let now = crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as i64);
+        let now = crate::common::time::now_ms() as i64;
         let (machines, answered) = per_machine(got, &ask, now, &tz);
         let filters = serde_json::json!([ask.query, ask.by_created, ask.within_ms, ask.hidden]);
         Ok(patch_from(

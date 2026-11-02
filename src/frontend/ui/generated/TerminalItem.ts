@@ -5,7 +5,7 @@ import type { TermInput } from "./TermInput";
 import type { TermSession } from "./TermSession";
 import type { TermState } from "./TermState";
 import type { TerminalCan } from "./TerminalCan";
-import type { WireTerminalHost } from "./WireTerminalHost";
+import type { TerminalHost } from "./TerminalHost";
 
 /**
  * 名单里的一个终端。
@@ -18,7 +18,7 @@ terminal: string,
 /**
  * 终端宿主。
  */
-host: WireTerminalHost, 
+host: TerminalHost, 
 /**
  * 给人看的名（tmux：会话名；托管：`ccm --attach <名>` 认的那个名）。
  */

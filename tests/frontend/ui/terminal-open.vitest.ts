@@ -36,7 +36,8 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const LINE = "& ssh -t -p 22 u@192.0.2.2 -- 'bash -lic ''claude --resume s1'''";
-const PRELUDE = "try { & { Set-Content 'C:\\d\\opened-windows\\s1' } } catch {}; ";
+/** 开窗那一串由本机后端拼好：前奏 · 那一行 · 收尾（这里只要它跟 `LINE` 不同）。 */
+const WINDOW = `try { & { Set-Content 'C:\\d\\opened-windows\\s1' } } catch {}; try { ${LINE} } finally { Remove-Item -LiteralPath 'C:\\d\\opened-windows\\s1' -ErrorAction Ignore }`;
 
 /** 替身：后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
 function serve(render: () => unknown): void {
@@ -61,7 +62,7 @@ beforeEach(() => invokeMock.mockReset());
 
 describe("远端", () => {
   it("★ 两步：只交名字 ＋ 命令给本机后端，开窗交的是后端渲的那一行", async () => {
-    serve(() => ({ prelude: "", line: LINE }));
+    serve(() => ({ window: LINE, line: LINE }));
     await openTerminal("devbox", "claude --resume s1");
     const ssh = asked("terminal-ssh");
     expect(ssh).toHaveLength(1);
@@ -75,8 +76,8 @@ describe("远端", () => {
     ]);
   });
 
-  it("★ 这个终端显示哪条会话 ⇒ 连 sid 一起交给本机后端（它另回一段前奏，开窗时接在那一行前面，开的那个 shell 记下窗口标签）", async () => {
-    serve(() => ({ prelude: PRELUDE, line: LINE }));
+  it("★ 这个终端显示哪条会话 ⇒ 连 sid 一起交给本机后端，开窗照它拼好的那一整串开（开的那个 shell 记下窗口标签，ssh 一退就删）", async () => {
+    serve(() => ({ window: WINDOW, line: LINE }));
     await openTerminal("devbox", "claude --resume s1", "s1");
     expect(chanArgsJson(asked("terminal-ssh")[0])).toEqual({
       machine: "devbox",
@@ -84,14 +85,14 @@ describe("远端", () => {
       sid: "s1",
     });
     expect(calls("open_terminal_window")).toEqual([
-      { command: PRELUDE + LINE },
+      { command: WINDOW },
     ]);
   });
 
-  it("★ 开不了窗 ⇒［复制命令］拿到的只有那一行，不带记录窗口标签的前奏", async () => {
+  it("★ 开不了窗 ⇒［复制命令］拿到的只有那一行，不带记录窗口标签的前奏与收尾", async () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) => {
       if (isChanCall(cmd, args, "terminal-ssh"))
-        return Promise.resolve(chanReply({ prelude: PRELUDE, line: LINE }));
+        return Promise.resolve(chanReply({ window: WINDOW, line: LINE }));
       return Promise.resolve(cmd === "open_terminal_window" ? "noWindow" : undefined);
     });
     const err = await openTerminal("devbox", "claude --resume s1", "s1").catch((e: unknown) => e);
@@ -102,7 +103,7 @@ describe("远端", () => {
 
 describe("本机", () => {
   it("★ 交来的就是成品：直接开窗，不问后端", async () => {
-    serve(() => ({ prelude: "", line: "不该被问到" }));
+    serve(() => ({ window: "不该被问到", line: "不该被问到" }));
     await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
     expect(asked("terminal-ssh")).toEqual([]);
     expect(calls("open_terminal_window")).toEqual([
@@ -116,7 +117,7 @@ describe("不开窗", () => {
     const shell = (outcome: "opened" | "noWindow") =>
       invokeMock.mockImplementation((cmd: string, args: unknown) => {
         if (isChanCall(cmd, args, "terminal-ssh"))
-          return Promise.resolve(chanReply({ prelude: "", line: LINE }));
+          return Promise.resolve(chanReply({ window: LINE, line: LINE }));
         return Promise.resolve(
           cmd === "open_terminal_window" ? outcome : undefined,
         );

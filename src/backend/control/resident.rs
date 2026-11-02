@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 
 /// `--resident-ensure` 起子进程时的流模式起参（每条连接要什么按它自己那一行 attach 定）。与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
 /// 打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）；流模式显式词（零参数是起会话）。
@@ -162,8 +163,13 @@ pub async fn attach() -> i32 {
     tokio::select! {
         _ = tokio::io::copy(&mut stdin, &mut up) => {}
         _ = async {
-            let _ = tokio::io::copy(&mut down, &mut stdout).await;
-            let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;
+            // 套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代
+            tokio::io::copy(&mut down, &mut stdout)
+                .await
+                .discard(Why::DeadLink);
+            tokio::io::AsyncWriteExt::flush(&mut stdout)
+                .await
+                .discard(Why::DeadLink);
         } => {}
     }
     0
@@ -460,7 +466,8 @@ pub fn ensure(args: &[String], own: &Own) -> i32 {
         (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
     ];
     // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
-    let _ = log_dir_chain(own);
+    // 一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说
+    log_dir_chain(own).discard(Why::Diag);
     run_ensure(args, &hosted, own)
 }
 
@@ -941,8 +948,9 @@ pub fn retire_legacy(own: &Own) -> Option<String> {
             &[("pid", &pid.to_string()), ("why", &e.logged())],
         ),
     };
-    let _ = own.delete_file(&rec_own);
-    let _ = own.delete_file(&token);
+    // 结局已写进日志。旧记录删不掉只剩一份陈记录，下一个新版起来会再核一次身份；旧钥匙新版不读
+    own.delete_file(&rec_own).discard(Why::Reap);
+    own.delete_file(&token).discard(Why::Reap);
     Some(said)
 }
 

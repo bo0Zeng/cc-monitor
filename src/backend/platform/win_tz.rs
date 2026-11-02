@@ -27,7 +27,7 @@ extern "system" {
 }
 
 /// 此刻的本地偏移（Windows 只答「此刻」，`t` 不用）。
-pub(crate) fn offset_secs(_t: u64) -> Option<i64> {
+pub fn offset_secs(_t: u64) -> Option<i64> {
     // SAFETY: 结构体逐格对着 Win32 `TIME_ZONE_INFORMATION` 写；全零是合法初值，函数只写进这一份。
     let mut info: TimeZoneInformation = unsafe { std::mem::zeroed() };
     let id = unsafe { GetTimeZoneInformation(&mut info) };

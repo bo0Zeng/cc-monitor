@@ -2268,10 +2268,10 @@
       }
     },
     "terminal-ssh": {
-      "rust": "{\"prelude\":\"prelude-x\",\"line\":\"line-x\"}",
+      "rust": "{\"window\":\"window-x\",\"line\":\"line-x\"}",
       "sample": {
         "line": "line-x",
-        "prelude": "prelude-x"
+        "window": "window-x"
       }
     },
     "terminal-unfollow": {
