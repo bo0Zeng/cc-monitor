@@ -31300,7 +31300,7 @@
     "rot.acct.prune": {
       "kind": "action",
       "role": "按钮",
-      "zh": "清掉库里没有的号",
+      "zh": "移出缺失的号",
       "args": []
     },
     "rot.acct.refused": {
