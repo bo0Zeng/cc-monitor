@@ -10,8 +10,6 @@
 #![cfg(windows)]
 
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::os::windows::io::{FromRawHandle, OwnedHandle, RawHandle};
-
 const AF_INET: u32 = 2;
 const AF_INET6: u32 = 23;
 /// `TCP_TABLE_OWNER_PID_CONNECTIONS`：除了在听的那些，全部（带拥有者进程号）。
@@ -20,8 +18,6 @@ const TCP_TABLE_OWNER_PID_CONNECTIONS: u32 = 4;
 const STATE_ESTABLISHED: u32 = 5;
 const NO_ERROR: u32 = 0;
 const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
-const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
-const MAX_PATH: usize = 260;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -47,20 +43,6 @@ struct TcpRow6 {
     pid: u32,
 }
 
-#[repr(C)]
-struct ProcessEntry32W {
-    size: u32,
-    usage: u32,
-    pid: u32,
-    default_heap_id: usize,
-    module_id: u32,
-    threads: u32,
-    parent_pid: u32,
-    pri_class_base: i32,
-    flags: u32,
-    exe_file: [u16; MAX_PATH],
-}
-
 #[link(name = "iphlpapi")]
 extern "system" {
     fn GetExtendedTcpTable(
@@ -71,13 +53,6 @@ extern "system" {
         class: u32,
         reserved: u32,
     ) -> u32;
-}
-
-#[link(name = "kernel32")]
-extern "system" {
-    fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> RawHandle;
-    fn Process32FirstW(snapshot: RawHandle, entry: *mut ProcessEntry32W) -> i32;
-    fn Process32NextW(snapshot: RawHandle, entry: *mut ProcessEntry32W) -> i32;
 }
 
 /// 端口那一格：低 16 位，网络字节序。
@@ -155,58 +130,31 @@ fn established() -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
-/// 进程表四格。启动时刻开不出句柄 ⇒ 0（系统没给）。
+/// 进程表四格（进程号 · 父进程号 · 名字取 `platform_core::proc::processes` 那一趟快照，monitor 同一份）。启动时刻开不出句柄 ⇒ 0（系统没给）。
 fn processes() -> Result<Vec<serde_json::Value>, String> {
-    // SAFETY：只按值收两个整数；失败回 `INVALID_HANDLE_VALUE`（-1）。成功的句柄归 `OwnedHandle`（`Drop` 时关）。
-    let raw = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if raw.is_null() || raw as isize == -1 {
-        return Err(format!(
-            "CreateToolhelp32Snapshot: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    // SAFETY：见上 —— 刚分配、无人持有的合法句柄。
-    let snap = unsafe { OwnedHandle::from_raw_handle(raw) };
-    let h = std::os::windows::io::AsRawHandle::as_raw_handle(&snap);
-    let mut e = ProcessEntry32W {
-        size: std::mem::size_of::<ProcessEntry32W>() as u32,
-        usage: 0,
-        pid: 0,
-        default_heap_id: 0,
-        module_id: 0,
-        threads: 0,
-        parent_pid: 0,
-        pri_class_base: 0,
-        flags: 0,
-        exe_file: [0; MAX_PATH],
-    };
-    let mut out = Vec::new();
-    // SAFETY：`e` 是栈上一份 `dwSize` 填好的结构，句柄在 `snap` 活着的这段里有效。
-    let mut ok = unsafe { Process32FirstW(h, &mut e) } != 0;
-    while ok {
-        let len = e.exe_file.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
-        let name = String::from_utf16_lossy(&e.exe_file[..len]);
-        let start = super::win_proc::start_filetime(e.pid).unwrap_or(0);
-        out.push(serde_json::json!({
-            "pid": e.pid,
-            "ppid": e.parent_pid,
-            "name": name,
-            "start": start,
-        }));
-        // SAFETY：同上。
-        ok = unsafe { Process32NextW(h, &mut e) } != 0;
-    }
-    Ok(out)
+    let table = platform_core::proc::processes()
+        .map_err(|e| format!("process snapshot: {e}"))?;
+    Ok(table
+        .into_iter()
+        .map(|p| {
+            let start = super::win_proc::start_filetime(p.pid).unwrap_or(0);
+            serde_json::json!({
+                "pid": p.pid,
+                "ppid": p.ppid,
+                "name": p.name,
+                "start": start,
+            })
+        })
+        .collect())
 }
 
 /// 这个进程的父进程号（现拍一次进程快照；拍不成 · 没有这个进程 ⇒ `None`）。agent 自问往上找会话用（`platform::proc::parent_of`）。
 pub(crate) fn parent_of(pid: u32) -> Option<u32> {
-    processes()
+    platform_core::proc::processes()
         .ok()?
-        .iter()
-        .find(|p| p["pid"].as_u64() == Some(u64::from(pid)))
-        .and_then(|p| p["ppid"].as_u64())
-        .and_then(|p| u32::try_from(p).ok())
+        .into_iter()
+        .find(|p| p.pid == pid)
+        .map(|p| p.ppid)
 }
 
 /// 现问一次连接表与进程表 ⇒ 那一行 JSON；哪一张没问成 ⇒ `Err(原话)`。

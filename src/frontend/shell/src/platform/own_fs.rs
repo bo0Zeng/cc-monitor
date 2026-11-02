@@ -52,18 +52,6 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
 
 // ── 写原语：放行只在这几个小函数上 ──────────────────────────────
 
-/// 新建一份只给本人的文件（已在 ⇒ 拒，`O_EXCL`）。
-#[expect(
-    clippy::disallowed_methods,
-    reason = "写盘只经本文件：只给本人地新建一份"
-)]
-fn create_new_private(at: &Path) -> Result<std::fs::File> {
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create_new(true);
-    super::fs::only_me_on_create(&mut opts);
-    opts.open(at)
-}
-
 /// 建（或截断）一份只给本人的文件。
 #[expect(
     clippy::disallowed_methods,
@@ -79,7 +67,7 @@ fn create_private(at: &Path) -> Result<std::fs::File> {
 /// 换名（同一目录里，目标已在 ⇒ 覆盖）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "写盘只经本文件：原子写与上位的换名"
+    reason = "写盘只经本文件：部署物上位的换名"
 )]
 fn rename(from: &Path, to: &Path) -> Result<()> {
     std::fs::rename(from, to)
@@ -97,8 +85,9 @@ fn fill(mut f: std::fs::File, bytes: &[u8]) -> Result<()> {
     f.sync_all()
 }
 
-/// 写满 → 落盘 → 换名到 `at`；中途失败删掉自己建的旁名。
-fn write_atomic(at: &Path, bytes: &[u8]) -> Result<()> {
+/// 整份写到 `at`：旁名 `.<名>.<pid>.<序>.tmp` 起在这里，「建旁名 → 写满 → 落盘 → 换上去 → 失败删旁名」只经全仓那一份
+/// （`platform_core::atomic::write_atomic`，后端同一份）。
+fn write_state(at: &Path, bytes: &[u8]) -> Result<()> {
     let dir = at.parent().unwrap_or(Path::new("."));
     let name = at
         .file_name()
@@ -109,13 +98,15 @@ fn write_atomic(at: &Path, bytes: &[u8]) -> Result<()> {
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    if let Err(e) = create_new_private(&tmp).and_then(|f| fill(f, bytes)) {
-        remove_file(&tmp).discard(Why::CleanupAfterFailure);
-        return Err(at_path(&tmp, &e));
-    }
-    rename(&tmp, at).map_err(|e| {
-        remove_file(&tmp).discard(Why::CleanupAfterFailure);
-        at_path(at, &e)
+    platform_core::atomic::write_atomic(
+        at,
+        &tmp,
+        platform_core::atomic::create_new_private,
+        |f| f.write_all(bytes),
+    )
+    .map_err(|fail| match fail.stage {
+        platform_core::atomic::Stage::Replace => at_path(at, &fail.err),
+        _ => at_path(&tmp, &fail.err),
     })
 }
 
@@ -183,7 +174,7 @@ impl OwnState {
     pub fn write(&self, rel: &str, bytes: &[u8]) -> Result<()> {
         let at = self.path(rel)?;
         Self::parent_ready(&at)?;
-        write_atomic(&at, bytes)
+        write_state(&at, bytes)
     }
 
     /// 建（或截断）一份只给本人的文件，交回句柄（锁旁件这一类：要的是那份文件本身，不是内容）。

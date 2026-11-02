@@ -12,7 +12,6 @@
 use super::Ro;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use copy_core::{Discard, Why};
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -255,7 +254,7 @@ impl Own {
         }
         let dir = self.kept_dir()?;
         self.own_dir(&dir)?;
-        let held = self.lock(&dir).map_err(Said::from)?;
+        let held = self.lock(&dir)?;
         self.write(&dir.join(name)?, &held, bytes)
     }
 
@@ -498,23 +497,13 @@ impl std::os::fd::AsFd for DiagFile {
     }
 }
 
-/// 后端自家目录**建的那一下**给的权限位：只给本人（远端 SFTP 部署建目录用同一个数）。
-pub const PRIVATE_DIR_MODE: u32 = 0o700;
+/// 后端自家目录**建的那一下**给的权限位：只给本人（远端 SFTP 部署建目录用同一个数；值住 `platform_core::dir`，monitor 同一个）。
+pub const PRIVATE_DIR_MODE: u32 = platform_core::dir::PRIVATE_DIR_MODE;
 
-/// 建**一层**目录、建的那一下就是 0700（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）；已在的不动。
-/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 与 [`own_dir`] 的本体。
+/// 建**一层**目录、建的那一下就是 0700；已在的不动；父目录不在 ⇒ 照实报错。建法只有一处（`platform_core::dir::private_dir`，
+/// monitor 同一份）。[`Own::ensure_dir`] 与 [`own_dir`] 的本体。
 fn create_dir_private(dir: &Path) -> std::io::Result<()> {
-    let mut b = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt as _;
-        b.mode(PRIVATE_DIR_MODE);
-    }
-    match b.create(dir) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(e) => Err(e),
-    }
+    platform_core::dir::private_dir(dir)
 }
 
 /// **后端自家目录**（一处实现）：建一层，建的那一下 0700；已在 ⇒ 核它是本人的真目录：`lstat` 不是链接（定死这一条：
@@ -598,8 +587,9 @@ fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
     atomic_write_with(path, |f| f.write_all(body))
 }
 
-/// 原子写本体（全后端一份）：旁名 → 正文由 `fill` 往里写（流式写的那一形不用先攒整份）→ sync → 改名。
-/// 那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
+/// 原子写（全后端一份）：旁名在这里起（`side_name::own_tmp`），建法交 `creds_core::perm::create_private`（Windows 上出生即只给本人的 DACL），
+/// 「写满 → 落盘 → 换上去（Windows 保目标 ACL）→ 失败删旁名」只经 `platform_core::atomic::write_atomic`（monitor 同一份）。
+/// 正文由 `fill` 往里写（流式写的那一形不用先攒整份）。那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
 fn atomic_write_with(
     path: &Path,
     fill: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
@@ -617,49 +607,30 @@ fn atomic_write_with(
         std::thread::current().id(),
         SEQ.fetch_add(1, Ordering::Relaxed),
     ));
-    let tmp_s = tmp.display().to_string();
-    let path_s = path.display().to_string();
-    let why = |e: &std::io::Error| copy_core::io_reason(e.kind());
-    // 建不出来 ⇒ 那个名字上的文件不是我们的，什么都不删。
-    let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
-        let w = why(&e);
-        Said::with_raw(
-            copy_text(
-                "beOwnState.write.tmpWriteFailed",
-                &[("tmp", &tmp_s), ("why", &w)],
-            ),
-            &e,
-        )
-    })?;
-    let result = fill(&mut f)
-        .and_then(|()| f.sync_all())
-        .map_err(|e| {
-            let w = why(&e);
-            Said::with_raw(
+    platform_core::atomic::write_atomic(path, &tmp, creds_core::perm::create_private, |f| {
+        fill(f)
+    })
+    .map_err(|platform_core::atomic::AtomicFail { stage, err }| {
+        let tmp_s = tmp.display().to_string();
+        let w = copy_core::io_reason(err.kind());
+        let said = match stage {
+            platform_core::atomic::Stage::CreateTmp | platform_core::atomic::Stage::WriteTmp => {
                 copy_text(
                     "beOwnState.write.tmpWriteFailed",
                     &[("tmp", &tmp_s), ("why", &w)],
-                ),
-                &e,
-            )
-        })
-        .and_then(|()| {
-            drop(f);
-            std::fs::rename(&tmp, path).map_err(|e| {
-                let w = why(&e);
-                Said::with_raw(
-                    copy_text(
-                        "beOwnState.write.renameFailed",
-                        &[("tmp", &tmp_s), ("path", &path_s), ("why", &w)],
-                    ),
-                    &e,
                 )
-            })
-        });
-    if result.is_err() {
-        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 主错误已在回；删不掉只剩一份 0600 的旁名
-    }
-    result
+            }
+            platform_core::atomic::Stage::Replace => copy_text(
+                "beOwnState.write.renameFailed",
+                &[
+                    ("tmp", &tmp_s),
+                    ("path", &path.display().to_string()),
+                    ("why", &w),
+                ],
+            ),
+        };
+        Said::with_raw(said, &err)
+    })
 }
 
 // 判据用的几种造法（临时家目录 · 只给数据目录 · 两个根各一处）：本包的判据与上层的测试档共用。

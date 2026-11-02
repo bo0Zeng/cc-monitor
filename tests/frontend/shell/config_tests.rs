@@ -340,8 +340,8 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
     );
 }
 
-/// 🔴 临时件先落盘再换名（反过来 ⇒ 断电后换上去的可能是一份空文件，用户配置全丢）：写口落盘恰好经 `own_fs` 那一口原子写一处，
-/// 而那一口里「写满 ＋ `sync_all`」排在换名之前。
+/// 🔴 临时件先落盘再换名（反过来 ⇒ 断电后换上去的可能是一份空文件，用户配置全丢）：写口落盘恰好经 `own.write` 一处，
+/// 它落到全仓那一份原子写（`platform_core::atomic::write_atomic`），而那一份里 `sync_all` 排在换上去之前。
 #[test]
 fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let prod =
@@ -353,19 +353,20 @@ fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let own_fs = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/platform/own_fs.rs"
     ));
-    let at = guard_core::find_pinned(&own_fs, "fn write_atomic(").expect("原子写那一口不在了");
-    let body = &own_fs[at..];
+    guard_core::find_pinned(&own_fs, "platform_core::atomic::write_atomic(")
+        .expect("`own_fs` 的原子写不是恰好经全仓那一份");
+    let core = guard_core::production_code(include_str!(
+        "../../../src/common/platform-core/src/atomic.rs"
+    ));
+    let at = guard_core::find_pinned(&core, "pub fn write_atomic(").expect("原子写那一口不在了");
+    let body = &core[at..];
     let body = &body[..body.find("\n}").expect("函数体没收尾")];
-    let fill = guard_core::find_pinned(body, "fill(f, bytes)").expect("原子写里写满不是恰好一处");
-    let swap = guard_core::find_pinned(body, "rename(&tmp, at)").expect("原子写里换名不是恰好一处");
+    let sync = guard_core::find_pinned(body, ".sync_all()").expect("原子写里落盘不是恰好一处");
+    let swap = guard_core::find_pinned(body, "replace(tmp, path)").expect("原子写里换上去不是恰好一处");
     assert!(
-        fill < swap,
-        "落盘排在换名之后 —— 换上去的那一份可能还没写到盘上"
+        sync < swap,
+        "落盘排在换上去之后 —— 换上去的那一份可能还没写到盘上"
     );
-    let at = guard_core::find_pinned(&own_fs, "fn fill(").expect("写满那一口不在了");
-    let fill_body = &own_fs[at..];
-    let fill_body = &fill_body[..fill_body.find("\n}").expect("函数体没收尾")];
-    guard_core::find_pinned(fill_body, ".sync_all()").expect("写满之后没落盘");
 }
 
 /// 路径超过 260 字符照样写得上（Windows 上换名要带长路径前缀；标准库自己补）。
@@ -383,51 +384,24 @@ fn a_config_path_longer_than_260_characters_is_written() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// 🔴 C-L3：monitor 那一份锁与后端第四层那一份是**同一种锁**（两份各一，读后端源码对拍，异源）：
-/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串逐字相等、摘要调同一个函数。
+/// 🔴 C-L3：monitor 那一把锁与后端第四层那一把是**同一把**（读后端源码对拍，异源）：两边各恰好一处调 `platform_core::dir::hold`，
+/// 自己不再拿锁（没有自己的互斥量名 · 没有自己的 `flock`）⇒ 两边进内核同一张表、互斥。
 #[test]
 fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let mine = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/platform/fs.rs"
     ));
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
-    for needle in [
-        "format!(\"{namespace}\\\\ccm-own-state-{h:016x}\")",
-        "cmd_wire::fnv::fnv1a64(",
-        "for ns in [\"Global\", \"Local\"] {",
-    ] {
+    for (who, src) in [("monitor", &mine), ("后端", &theirs)] {
         assert_eq!(
-            mine.matches(needle).count(),
+            src.matches("platform_core::dir::hold(dir)").count(),
             1,
-            "monitor 那一份没有恰好一处 `{needle}`"
+            "{who} 那一份没有恰好一处调 `platform_core::dir::hold`"
         );
-        assert_eq!(
-            theirs.matches(needle).count(),
-            1,
-            "后端那一份没有恰好一处 `{needle}`"
-        );
+        for own in ["ccm-own-state-", "flock(", ".lock()"] {
+            assert!(!src.contains(own), "{who} 那一份自己还在拿锁（`{own}`）");
+        }
     }
-    assert_eq!(
-        mine.matches("std::fs::File::open(dir)").count(),
-        1,
-        "monitor 那一份不是锁目录"
-    );
-    assert_eq!(
-        mine.matches("f.lock()").count(),
-        1,
-        "monitor 那一份不是排他锁"
-    );
-    // 后端那一份读盘只经 `platform::fs::Ro`（后端除 `platform/fs/` 外不许点名 `std::fs`）⇒ 开目录那一下是 `Ro::open(dir)`，同一个只读开法。
-    assert_eq!(
-        theirs.matches("crate::platform::fs::Ro::open(dir)").count(),
-        1,
-        "后端那一份不是锁目录"
-    );
-    assert_eq!(
-        theirs.matches("libc::LOCK_EX").count(),
-        1,
-        "后端那一份不是排他锁"
-    );
 }
 
 /// 盘上那一步没成（这里：数据目录的位置被一个普通文件占着）⇒ 句子是「写入失败 · 那个目录 · 原因词」，系统原话进复制详情、不上句子。
