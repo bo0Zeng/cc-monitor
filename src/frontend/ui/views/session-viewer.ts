@@ -4,7 +4,7 @@
  */
 
 import { speakerNameOf } from "../agent-profile";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { MessageStream } from "../stream";
 import {
   type LineRecord,
@@ -126,8 +126,8 @@ export interface ViewerOptions {
   scrollTo?: JumpTarget;
   /** 那条命中落在哪次工具调用的卡里（后端给的命中 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
   scrollToTool?: string;
-  /** 哪台机器的会话（本机 ＝ `LOCAL_ORIGIN`）。必填：「没说」不许当成本机。 */
-  origin: Origin;
+  /** 哪台机器的会话（本机 ＝ `LOCAL`）。必填：「没说」不许当成本机。 */
+  origin: Machine;
   /** 这个会话是哪一家（历史清单那一行的 `agent`，后端给的）：卡头那一家的名字按它取。 */
   agent?: string | null;
   /** 会话工作目录（历史条目的 projectPath）：分叉出新会话时作起始目录；缺了要多问一次。 */
@@ -557,7 +557,7 @@ export class SessionViewer {
     cardEl: HTMLElement,
     record: LineRecord,
     jsonlPath: string,
-    origin: Origin,
+    origin: Machine,
   ): void {
     if (record.t !== "said" && record.t !== "reply") return;
     attachBranchButton(cardEl, {

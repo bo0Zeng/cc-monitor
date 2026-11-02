@@ -13,7 +13,7 @@ import { chan, type Item } from "../../comms/inward/chan";
 import type { Host } from "./generated/Host";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { decodeJson } from "./ipc/decode";
-import { LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL } from "./ipc/origin";
 import type { ProbeCell } from "./generated/ProbeCell";
 import { PROBE_PROGRESS_KIND } from "./generated/shell-names";
 import { saidOf } from "./kit/detail";
@@ -21,7 +21,7 @@ import { saidOf } from "./kit/detail";
 export type { ProbeCell };
 
 function bad(): never {
-  throw new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
+  throw new ReplyUnreadable(LOCAL, "remoteProbe reply shape");
 }
 
 /** 这一问的期限（握手 ＋ hello ＋ 一次往返，秒级）。 */
@@ -54,7 +54,7 @@ export async function probeMachine(
         try {
           cell = decodeJson(it.body) as ProbeCell;
         } catch (e) {
-          broken = new ReplyUnreadable(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
+          broken = new ReplyUnreadable(LOCAL, e instanceof Error ? e.message : String(e));
           arrived();
           return;
         }
@@ -66,16 +66,16 @@ export async function probeMachine(
         }
       } else if (it.t === "gap" || it.t === "closed") {
         // 进度格不许丢；流关了而结局没到 ⇒ 两端契约对不上。
-        broken = new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");
+        broken = new ReplyUnreadable(LOCAL, "remoteProbe reply shape");
         arrived();
       }
     }
   };
 
-  const sub = await chan.subscribe(LOCAL_ORIGIN, `${PROBE_PROGRESS_KIND}/${ticket}`, null, PROBE_WINDOW, onItems);
+  const sub = await chan.subscribe(LOCAL, `${PROBE_PROGRESS_KIND}/${ticket}`, null, PROBE_WINDOW, onItems);
   try {
     try {
-      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine }, budgetWithin(PROBE_BUDGET_MS));
+      await callTyped(LOCAL, "remote-probe", { ticket, machine }, budgetWithin(PROBE_BUDGET_MS));
     } catch (e) {
       if (end !== null) return end;
       throw new Error(saidOf(e));

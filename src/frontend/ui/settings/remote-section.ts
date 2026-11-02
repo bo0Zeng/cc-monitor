@@ -50,11 +50,9 @@ import { machineFace, paintProblem, type MachineFace, type MachineFix, type Mach
 import { localBackendFace } from "../local-backend-face";
 import type { LocalBackend } from "../generated/LocalBackend";
 import type { FleetLines } from "../generated/FleetLines";
-import { isLocalOrigin } from "../ipc/origin";
+import { isLocalOrigin, LOCAL } from "../ipc/origin";
 import { machineName } from "../ipc/chan-caller";
 import type { AccountsState } from "../accounts";
-// 本机后端那条把手的 origin（后端注册表里的键 `cmd_wire::LOCAL`）。
-import { LOCAL_ORIGIN } from "../backend-policy";
 // 调用点（含测试）从本模块 import 它，原样再导出。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -137,8 +135,8 @@ export interface RemoteSectionOptions {
 
 /** 机器详情页的路由 id 前缀。 */
 export const MACHINE_PAGE_PREFIX = "machine:";
-/** 本机那一页的路由 id：本机的 origin（`LOCAL_ORIGIN`）不是任何一台远端的名字，不会撞车。 */
-export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_ORIGIN}`;
+/** 本机那一页的路由 id：本机的 origin（`LOCAL`）不是任何一台远端的名字，不会撞车。 */
+export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL}`;
 
 /**
  * 列表那一行右侧那一句：照那台账号库的成品排（做不了多账号 · 没启用 · `N 个账号 · 默认 X`）；问不到 ⇒ 空。
@@ -280,7 +278,7 @@ export class RemoteSection {
    * `remote-section.vitest.ts`「加了本机行之后写出去的机器数不变」钉着）。
    */
   private buildLocalRow(): HTMLElement {
-    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL_ORIGIN), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_ORIGIN);
+    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL), localMeta("list", this.factsOfOrigin(LOCAL)), LOCAL);
     row.classList.add("remote-machine-local");
     return row;
   }
@@ -534,7 +532,7 @@ export class RemoteSection {
   menuFor(pageId: string): MenuItem[] {
     if (pageId === LOCAL_MACHINE_PAGE_ID) {
       return [
-        { label: copyText("machineList.menu.refresh"), onClick: () => this.pages?.refreshMachine?.(LOCAL_ORIGIN) },
+        { label: copyText("machineList.menu.refresh"), onClick: () => this.pages?.refreshMachine?.(LOCAL) },
         { divider: true, label: "" },
         { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
       ];
@@ -567,7 +565,7 @@ export class RemoteSection {
 
   /** 列表那一行的第二行：`user@host · 系统`。 */
   private listMetaOfPage(pageId: string): string {
-    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN));
+    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("list", this.factsOfOrigin(LOCAL));
     const who = this.whoOfPage(pageId, false);
     if (!who) return "";
     return machineMeta("list", who, this.factsOfOrigin(this.originOfPage(pageId) ?? ""));
@@ -575,7 +573,7 @@ export class RemoteSection {
 
   /** 机器页卡头第二行：`user@host:端口 · 系统 · 版本 x`（没填主机 ⇒ 空；不是远端机器页 ⇒ `null`）。 */
   metaOfPage(pageId: string): string | null {
-    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("head", this.factsOfOrigin(LOCAL_ORIGIN));
+    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("head", this.factsOfOrigin(LOCAL));
     const who = this.whoOfPage(pageId, true);
     if (who === null || who === "") return who;
     return machineMeta("head", who, this.factsOfOrigin(this.originOfPage(pageId) ?? ""));
@@ -598,7 +596,7 @@ export class RemoteSection {
       // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
       const localPage = document.createElement("div");
       localPage.className = "machine-page-local";
-      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL_ORIGIN), localPage);
+      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL), localPage);
       this.machinePageIds.push(LOCAL_MACHINE_PAGE_ID);
     }
     for (const h of hosts) {

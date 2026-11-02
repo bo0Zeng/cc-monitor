@@ -6,7 +6,7 @@
 import { board, draftKey, type BoardActs, type BoardState, type TopActs } from "./rot-board";
 import { copyText } from "./copy-table";
 import { callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { openOnMachine } from "./file-window";
 import { button } from "./kit/button";
@@ -20,7 +20,7 @@ import type { RotationViewReply } from "./generated/RotationViewReply";
 import { saidOf } from "./kit/detail";
 
 export interface RotMountSpec {
-  origin: Origin;
+  origin: Machine;
   /** 第一行右边那台的名字。 */
   machine?: string;
   /** 问一句（测试注入）。 */
@@ -80,7 +80,7 @@ export async function sendWrite(what: string, run: () => Promise<unknown>, rerea
  * 设置页 ⇒ 在用旧版的会话都载入新版）· 旧格式那几份展开。`pick` 两处不同，由调用方给。
  */
 export function topActs(o: {
-  origin: Origin;
+  origin: Machine;
   sid: string | null;
   view: () => RotationViewReply | null;
   refresh: () => Promise<void>;

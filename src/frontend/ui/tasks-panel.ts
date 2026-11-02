@@ -26,7 +26,7 @@ import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Task } from "./generated/Task";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
 import { copyText } from "./copy-table";
@@ -216,25 +216,25 @@ export class TasksPanel {
 const TASKS_BUDGET_MS = 30_000;
 
 /** sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
-const originBySid = new Map<string, Origin>();
+const originBySid = new Map<string, Machine>();
 
 /** 这个会话住哪台机器；从没被问过 ⇒ `undefined`（不猜成本机）。 */
-export function originOfSession(sid: string): Origin | undefined {
+export function originOfSession(sid: string): Machine | undefined {
   return originBySid.get(sid);
 }
 
 /**
- * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL_ORIGIN`）。失败返空数组（panel 自然隐藏）。
+ * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL`）。失败返空数组（panel 自然隐藏）。
  *
  * 第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
- * （`Tab["origin"]`）而不是另写一份类型。那一格已收成 `Origin`（本机 = `LOCAL_ORIGIN`），
- * 原样过线 —— 上一版这里那个 `?? LOCAL_ORIGIN` 随之删了。
+ * （`Tab["origin"]`）而不是另写一份类型。那一格已收成 `Machine`（本机 = `LOCAL`），
+ * 原样过线 —— 上一版这里那个 `?? LOCAL` 随之删了。
  */
 export async function fetchSessionTasks(
   sessionId: string,
   tabOrigin: Tab["origin"],
 ): Promise<TaskEntry[]> {
-  const origin: Origin = tabOrigin;
+  const origin: Machine = tabOrigin;
   originBySid.set(sessionId, origin);
   try {
     const budget = budgetWithin(TASKS_BUDGET_MS);

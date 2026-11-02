@@ -4,7 +4,7 @@
  * # 钉什么
  *
  * 1. 每一台机器页上**恰好一份**后端几格，`data-backend-cells` 就是后端那套 origin
- *    （本机 = `LOCAL_ORIGIN`，不是本机那一页的路由键）—— 两向集合相等。
+ *    （本机 = `LOCAL`，不是本机那一页的路由键）—— 两向集合相等。
  * 2. 列表里有、后端清单里没有的一台 ⇒ 状态格说「未登记」＋ ⓘ，**不摆**起停与退出那几格（没有把手）。
  * 3. 后端清单里有、列表里没有的一台 ⇒ 不丢：列表尾巴里另起一行。
  * 4. 构造失败的那几格不许把机器列表带走。
@@ -63,7 +63,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { BACKEND_UNREGISTERED_WHY, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -87,7 +87,7 @@ const pages = {
   addMachinePage: (id: string) => {
     const page = document.createElement("div");
     page.dataset.pageId = id;
-    const origin = id === "machine:<local>" ? LOCAL_ORIGIN : cur.sec!.originOfPage(id);
+    const origin = id === "machine:<local>" ? LOCAL : cur.sec!.originOfPage(id);
     try {
       if (cur.cellsThrow) throw new Error("四格炸了");
       if (origin) page.appendChild(cur.backend!.cellsFor(origin));
@@ -131,7 +131,7 @@ describe("后端那几格住机器页", () => {
     const withCells = rows.filter((r) => r.querySelectorAll("[data-backend-cells]").length === 1);
     expect(withCells.length, "有的页没有、或挂了两份").toBe(rows.length);
     const origins = rows.map((r) => r.querySelector<HTMLElement>("[data-backend-cells]")!.dataset.backendCells);
-    expect(origins.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
+    expect(origins.sort()).toEqual([LOCAL, "甲机"].sort());
     expect(sec.element.querySelectorAll(".remote-machine-row [data-backend-cells]").length).toBe(0);
     expect(sec.element.querySelectorAll(".remote-machine-row").length).toBe(2);
   });
@@ -150,7 +150,7 @@ describe("后端那几格住机器页", () => {
     const asked = ipc.calls
       .filter((c) => c.name === "backend_status")
       .map((c) => (c.args as { origin: string }).origin);
-    expect(new Set(asked)).toEqual(new Set([LOCAL_ORIGIN, "甲机"]));
+    expect(new Set(asked)).toEqual(new Set([LOCAL, "甲机"]));
   });
 
   it("★★ 列表里有、后端清单里没有 ⇒「未登记」＋ ⓘ，起停与退出那几格不摆控件", async () => {
@@ -168,7 +168,7 @@ describe("后端那几格住机器页", () => {
     expect(asked, "没登记的那台还去问了状态").not.toContain("甲机");
     // 反向对照：登记了的本机照常画。
     expect(
-      pageBox.querySelector<HTMLElement>(`[data-backend-cells="${LOCAL_ORIGIN}"] .backend-row-state`)?.textContent,
+      pageBox.querySelector<HTMLElement>(`[data-backend-cells="${LOCAL}"] .backend-row-state`)?.textContent,
     ).toBe(copyText("backend.status.connected"));
   });
 
@@ -183,7 +183,7 @@ describe("后端那几格住机器页", () => {
     const all = [...document.querySelectorAll<HTMLElement>("[data-backend-cells]")].map(
       (c) => c.dataset.backendCells,
     );
-    expect(all.sort()).toEqual([LOCAL_ORIGIN, "乙机 (#2)", "甲机"].sort());
+    expect(all.sort()).toEqual([LOCAL, "乙机 (#2)", "甲机"].sort());
   });
 
   it("★ 页上那几格构造抛了 ⇒ 机器列表照常在；后端那几台退到尾巴里，一台不丢", async () => {
@@ -192,6 +192,6 @@ describe("后端那几格住机器页", () => {
     expect(rows.length).toBe(2);
     expect(sec.element.querySelectorAll(".remote-machine-row [data-backend-cells]").length).toBe(0);
     const orphans = [...backend.element.querySelectorAll<HTMLElement>(".backend-row")].map((r) => r.dataset.origin);
-    expect(orphans.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
+    expect(orphans.sort()).toEqual([LOCAL, "甲机"].sort());
   });
 });

@@ -16,7 +16,7 @@ import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown } from "../../../src/frontend/ui/height-estimate";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -556,7 +556,7 @@ describe("系统注入的旁注细条", () => {
     const stream = { contentElement: content, insertNode: (el: HTMLElement, ref: HTMLElement | null) => content.insertBefore(el, ref) };
     const timeline = new RecordTimeline(stream as never);
     const sink: StreamSink = { timeline };
-    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
+    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
     const feed = (seq: number, record: never) => renderContentRecord({ session_id: "s", seq, record } as unknown as JsonlLinePayload, ctx, sink);
     feed(1, tool("a1", "t1"));
     feed(2, injected("m1", "注入词乙"));

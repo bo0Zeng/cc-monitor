@@ -9,7 +9,7 @@
  * （格子按 sid 留住、组按机器留住，没变的一拍零 DOM 写）。
  */
 import { dispatcher } from "../keybindings/registry";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import type { GridSessionSnapshot, SessionPeek } from "../session-status";
 import type { MonitorAsk } from "../generated/MonitorAsk";
 import type { MonitorBoard } from "../generated/MonitorBoard";
@@ -137,9 +137,9 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
   }
 }
 
-/** 组的留存键 —— 版面里那一组的 `machine`（本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
- *  `"<local>"` 在全仓只指本机，`Origin::route` 就按它分本机）。 */
-const groupKey = (origin: Origin): string => origin;
+/** 组的留存键 —— 版面里那一组的 `machine`（本机是具名的 `LOCAL`，与主机名撞不上：
+ *  `"<local>"` 在全仓只指本机，`Machine::route` 就按它分本机）。 */
+const groupKey = (origin: Machine): string => origin;
 
 export class GridMonitorView {
   private root: HTMLElement;
@@ -352,7 +352,7 @@ export class GridMonitorView {
   }
 
   /** 某台机器的分组容器（没有就建一次）。 */
-  private groupFor(origin: Origin): GroupRefs {
+  private groupFor(origin: Machine): GroupRefs {
     const key = groupKey(origin);
     let g = this.groups.get(key);
     if (!g) {

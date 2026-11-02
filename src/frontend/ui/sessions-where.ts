@@ -10,7 +10,7 @@ import { machineName, settleTyped } from "./control-said";
 import type { StandingWord } from "./generated/StandingWord";
 import type { TerminalAt } from "./generated/TerminalAt";
 import type { Whereabouts } from "./generated/Whereabouts";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { Launch } from "./generated/Launch";
 import { copyText } from "./copy-table";
 
@@ -35,7 +35,7 @@ export function inTmux(s: Standing): boolean {
 const STANDING_BUDGET_MS = 10_000;
 
 /** 整批被那台拒了：那一句前面带上是哪台（批量的提示里机器只有界面知道）。停 · 起 · 问样子共用。 */
-export function batchRefused(origin: Origin): (said: string) => string {
+export function batchRefused(origin: Machine): (said: string) => string {
   return (said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said });
 }
 
@@ -45,14 +45,14 @@ export function standingsFrom(reply: Whereabouts): Standing[] {
 }
 
 /** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛（那一句已经说好）。 */
-export async function standingsOf(origin: Origin, sids: readonly string[]): Promise<Standing[]> {
+export async function standingsOf(origin: Machine, sids: readonly string[]): Promise<Standing[]> {
   const budget = budgetWithin(STANDING_BUDGET_MS);
   const v = await settleTyped(origin, "sessions-where", callTyped(origin, "sessions-where", { sids: [...sids] }, budget), batchRefused(origin));
   return standingsFrom(v);
 }
 
 /** 一个会话的样子；问不到 ⇒ `undefined`（不知道，不是「不在」）。 */
-export async function standingOf(origin: Origin, sid: string): Promise<Standing | undefined> {
+export async function standingOf(origin: Machine, sid: string): Promise<Standing | undefined> {
   try {
     return (await standingsOf(origin, [sid]))[0];
   } catch {

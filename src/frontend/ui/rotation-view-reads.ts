@@ -4,14 +4,14 @@
  * 判定全在后端：这里只问、交给画的那几处。
  */
 import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 
 /** 读盘 ＋ 跑策略 ＋ 回程。 */
 const BUDGET_MS = 15_000;
 
 /** 一个会话的 `rotation-view`；中转没见过这个会话（`no_session`）⇒ `null`。别的失败照抛。 */
-export async function readSessionView(origin: Origin, sid: string): Promise<RotationViewReply | null> {
+export async function readSessionView(origin: Machine, sid: string): Promise<RotationViewReply | null> {
   try {
     return await callTyped(origin, "rotation-view", { target: { sid } }, budgetWithin(BUDGET_MS));
   } catch (e) {

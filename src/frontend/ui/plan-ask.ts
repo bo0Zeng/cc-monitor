@@ -10,10 +10,10 @@ import { copyText } from "./copy-table";
 import { failToast } from "./kit/toast";
 import { openNewSession, type NewSessionSpec } from "./new-session";
 import { askPlan, type PlanAsk, type PlanCell, type PlanSlice } from "./plan-reads";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 /** 问图那一下开的框：照那台回的那一份预填；改选别名再问那台。 */
-export function askSpec(origin: Origin, workspace: string, slice: PlanSlice, cell: PlanCell, first: PlanAsk): NewSessionSpec {
+export function askSpec(origin: Machine, workspace: string, slice: PlanSlice, cell: PlanCell, first: PlanAsk): NewSessionSpec {
   const at = { workspace, slice: slice.name, id: cell.id };
   return {
     origin,
@@ -34,7 +34,7 @@ export function askSpec(origin: Origin, workspace: string, slice: PlanSlice, cel
 }
 
 /** ［问图…］：先问那台，再开框；问不到 ⇒ 那一句（不开框）。 */
-export async function openPlanAsk(origin: Origin, workspace: string, slice: PlanSlice, cell: PlanCell): Promise<void> {
+export async function openPlanAsk(origin: Machine, workspace: string, slice: PlanSlice, cell: PlanCell): Promise<void> {
   let first: PlanAsk;
   try {
     first = await askPlan(origin, { workspace, slice: slice.name, id: cell.id });

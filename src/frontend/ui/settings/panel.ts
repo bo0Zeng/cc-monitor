@@ -33,7 +33,7 @@ import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "../machine-context";
-import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
+import { LOCAL, isLocalOrigin } from "../ipc/origin";
 import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
 
@@ -513,8 +513,8 @@ export class SettingsPanel {
   private paintLocalBackend(l: LocalBackend): void {
     const face = localBackendFace(l);
     if (!face) return;
-    this.stateOf.delete(LOCAL_ORIGIN);
-    const machine = machineName(LOCAL_ORIGIN);
+    this.stateOf.delete(LOCAL);
+    const machine = machineName(LOCAL);
     this.remoteSection?.setLocalBackend(l);
     this.router.setNavDot(LOCAL_MACHINE_PAGE_ID, face.dot, `${machine} · ${face.word}`);
     this.machinePages.get(LOCAL_MACHINE_PAGE_ID)?.setMachine(face);
@@ -522,7 +522,7 @@ export class SettingsPanel {
 
   /** 问题行上交到宿主的修法：重试（叫那条流当场重拨）· 更新（换上这一版，再重拨）。 */
   private async runFix(pageId: string, fix: MachineFix): Promise<void> {
-    const origin = pageId === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(pageId);
+    const origin = pageId === LOCAL_MACHINE_PAGE_ID ? LOCAL : this.remoteSection?.originOfPage(pageId);
     if (!origin) return;
     if (fix === "compare_fingerprint") {
       await this.remoteSection?.compareFingerprint(pageId);
@@ -818,7 +818,7 @@ export class SettingsPanel {
   /** 一台机器的页（本机远端同形）：卡头（连接设置 · 这台上的 cc-monitor）＋ 账号 · 别名与配置文件。 */
   private buildMachinePage(pageId: string, title: string, parts?: MachineCardParts): MachinePage {
     const local = pageId === LOCAL_MACHINE_PAGE_ID;
-    const origin = local ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(pageId) ?? "");
+    const origin = local ? LOCAL : (this.remoteSection?.originOfPage(pageId) ?? "");
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
@@ -981,7 +981,7 @@ export class SettingsPanel {
               router.addRoute({ id, title, element: pageEl, parentId: PAGE.machines, hideHead: true });
               // 本机页一出现就让那几块分节落在它上面（与 `machine-context` 的初始值本机对齐），否则用户点进某台之前它们不在文档里。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(pageEl, true, id);
-              const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(id);
+              const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL : this.remoteSection?.originOfPage(id);
               if (origin) this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
               this.applyPendingTarget();
             },
@@ -1050,8 +1050,8 @@ export class SettingsPanel {
               ? buildUnknownOsAliasBlock()
               : buildConfigPage({
                   platform: shell,
-                  origin: () => LOCAL_ORIGIN,
-                  machine: () => machineName(LOCAL_ORIGIN),
+                  origin: () => LOCAL,
+                  machine: () => machineName(LOCAL),
                 });
           },
         ),
@@ -1140,11 +1140,11 @@ export class SettingsPanel {
       // 还没填主机地址的卡不是一台连得上的机器 ⇒ 不切当前机器、不把按机器的那几块搬过来（它们会去问一台不存在的机器）。
       if (!isLocal && this.remoteSection?.isUnconfiguredPage(id)) return;
       setCurrentMachine(
-        isLocal ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(id) ?? id.slice(MACHINE_PAGE_PREFIX.length)),
+        isLocal ? LOCAL : (this.remoteSection?.originOfPage(id) ?? id.slice(MACHINE_PAGE_PREFIX.length)),
       );
       // 回到机器页 ＝ 展开过的那几块重读一次（照提示在终端里改完回来，不该还是旧的）。
       // 换了机器的由各块自己的订阅重读，这里只管同一台再进来；本机别名块不跟机器走，进本机页就重读。
-      if (isLocal) rereadAliases(LOCAL_ORIGIN);
+      if (isLocal) rereadAliases(LOCAL);
       const page = router.pageContentOf(id);
       if (page) this.movePerMachineTo(page, isLocal, id);
     });

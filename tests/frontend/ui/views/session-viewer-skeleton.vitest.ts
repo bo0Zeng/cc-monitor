@@ -29,7 +29,7 @@ import {
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
 import { SKELETON_GAP_CLASS, SkeletonView } from "../../../../src/frontend/ui/skeleton-view";
 import { SkeletonLedger } from "../../../../src/frontend/ui/live-window";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 
 const ROWS = 1000;
 /** payload：偶数 seq 的 user 记录（`u{i}` 在第 i 条可显示记录上） */
@@ -64,7 +64,7 @@ async function mount(scrollToUuid?: string): Promise<SessionViewer> {
   await v.load({
     jsonlPath: "/p/s1.jsonl",
     displayTitle: "T",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     suppressBranch: true,
     ...(scrollToUuid === undefined ? {} : { scrollTo: { uuid: scrollToUuid, line: lineOf(scrollToUuid) } }),
   });
@@ -134,7 +134,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     viewerRig.chunk = payloads();
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     expect(gaps(v.element)).toEqual([]);
     expect(v.element.querySelector("[data-id]")).toBeNull();
     expect(ranges()).toEqual([]);

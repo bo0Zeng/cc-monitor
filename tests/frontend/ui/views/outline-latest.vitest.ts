@@ -60,7 +60,7 @@ import {
   type RigPayload,
 } from "../../../test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 const outlineCalls = (): unknown[] => sessionReadCalls(vi.mocked(invoke).mock.calls, "list_user_inputs");
@@ -155,7 +155,7 @@ describe("A2-15 大纲含到此刻为止人说的每一句", () => {
     await settleOutline();
     expect(rowsOf(), "前置：没有在途的那一趟替它要到").toEqual(["u1"]);
     vi.mocked(invoke).mockClear();
-    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "s1", path: "/p/s1.jsonl", seq: 3 });
+    tm.onSessionWatch(LOCAL, { sid: "s1", path: "/p/s1.jsonl", seq: 3 });
     await vi.waitFor(async () => {
       await settleOutline();
       expect(peek("s1").seenSeqs.has(2), "前置：补的那一行真喂进来了").toBe(true);

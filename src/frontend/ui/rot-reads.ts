@@ -3,7 +3,7 @@
  * 判定全在后端：这里只把手势翻成命令、把回包交给画的那一处；收不下 ⇒ 抛 `ChanError`（那一句 monitor 写好）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { RotTarget } from "./generated/RotTarget";
@@ -18,14 +18,14 @@ export function rotBudget(): ReturnType<typeof budgetWithin> {
 
 /** 那台的策略目录。 */
 export function readStrategies(
-  origin: Origin,
+  origin: Machine,
 ): Promise<RotationStrategiesReply> {
   return callTyped(origin, "rotation-strategies", {}, rotBudget());
 }
 
 /** 一个会话（或一份策略）要画的全部；设置页那一形推 `hours` 小时（会话那一形不画推演，不带）。 */
 export function readView(
-  origin: Origin,
+  origin: Machine,
   target: RotTarget,
   hours?: number,
 ): Promise<RotationViewReply> {

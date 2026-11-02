@@ -11,7 +11,7 @@ import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
 import { machineLabel } from "./acct-view";
 import { copyText } from "./copy-table";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { el } from "./kit/el";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
@@ -27,17 +27,17 @@ export interface AcctPanelHost {
   /** 会话的标题（面板头 `orders · 本机`）。 */
   sessionTitle(sid: string): string;
   /** 设置窗那台的账号页（`管理账号…` · `接入…`）。 */
-  openSettings(origin: Origin): void;
+  openSettings(origin: Machine): void;
   /** 底栏「新会话默认」那一颗：开那台的默认账号下拉（与无会话时状态栏按钮的同一个）。 */
-  openDefaultMenu(anchor: HTMLElement, origin: Origin): void;
+  openDefaultMenu(anchor: HTMLElement, origin: Machine): void;
   /** 新会话默认此刻是哪个号（底栏那颗按钮上的字）。 */
-  defaultOf(origin: Origin): string | null;
+  defaultOf(origin: Machine): string | null;
 }
 
 interface Open {
   /** `null` ＝ 没有当前会话：只有底栏。 */
   sid: string | null;
-  origin: Origin;
+  origin: Machine;
   drawer: DrawerHandle;
   body: HTMLElement;
   rot: SessionRot | null;
@@ -47,7 +47,7 @@ interface Open {
 let open: Open | null = null;
 
 /** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）；`sid` 为 `null` ＝ 没有当前会话那一形（`origin` 那台的新会话默认）。 */
-export function toggleAccountPanel(sid: string | null, origin: Origin, host: AcctPanelHost): void {
+export function toggleAccountPanel(sid: string | null, origin: Machine, host: AcctPanelHost): void {
   if (open !== null && open.sid === sid) {
     void open.drawer.close();
     return;
@@ -56,13 +56,13 @@ export function toggleAccountPanel(sid: string | null, origin: Origin, host: Acc
 }
 
 /** 当前 tab 换了：面板开着就跟着换成那个会话（不关）；没有会话了 ⇒ 换成本机那一形。 */
-export function followActive(a: { sid: string; origin: Origin } | null, host: AcctPanelHost, idle: Origin): void {
+export function followActive(a: { sid: string; origin: Machine } | null, host: AcctPanelHost, idle: Machine): void {
   if (!open || open.sid === (a?.sid ?? null)) return;
   if (a === null) openAccountPanel(null, idle, host);
   else openAccountPanel(a.sid, a.origin, host);
 }
 
-export function openAccountPanel(sid: string | null, origin: Origin, host: AcctPanelHost): void {
+export function openAccountPanel(sid: string | null, origin: Machine, host: AcctPanelHost): void {
   if (open) {
     const was = open;
     open = null;

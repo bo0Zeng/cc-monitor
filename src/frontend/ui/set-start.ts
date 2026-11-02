@@ -7,13 +7,13 @@ import { toast } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 import { launchSet, type SetLaunched } from "./set-reads";
 import { awaitArrival } from "./session-open";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 /** 在飞的那几组：连点不重发（补足本来幂等，省一趟）。 */
 const inFlight = new Set<string>();
 
 /** 照存好的那一组补足、立刻起。 */
-export async function startSet(origin: Origin, name: string): Promise<void> {
+export async function startSet(origin: Machine, name: string): Promise<void> {
   const key = `${origin}\u0000${name}`;
   if (inFlight.has(key)) return;
   inFlight.add(key);

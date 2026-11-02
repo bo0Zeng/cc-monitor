@@ -22,7 +22,7 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { agentOnline, readInbox } from "../../../src/frontend/ui/cc-bus-control";
 import { detailOf as errDetail, writtenSaid } from "../../../src/frontend/ui/kit/detail";
 import { REPO_ROOT } from "../../test-support/repo-root";
@@ -145,8 +145,8 @@ describe("〔C4e〕失败怎么说", () => {
 
   it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
     answer({ ok: LIST.reply });
-    await agentOnline(LOCAL_ORIGIN, "aaaaaaaa-0000-4000-8000-000000000001");
-    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-list", LIST.request]]);
+    await agentOnline(LOCAL, "aaaaaaaa-0000-4000-8000-000000000001");
+    expect(sentCalls()).toEqual([[LOCAL, "bus-list", LIST.request]]);
     answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
     expect(await saidOf(() => agentOnline("kr-remote-label", "aaaaaaaa-0000-4000-8000-000000000001"))).toBe("M-kr-remote-label");
   });

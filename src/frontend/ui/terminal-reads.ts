@@ -14,7 +14,7 @@
 import { copyText } from "./copy-table";
 import { settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import { screenText, type ScreenLine } from "./terminal-screen";
 import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
@@ -73,7 +73,7 @@ export interface TerminalShot {
 export type TerminalTarget = { terminal: string } | { sid: string };
 
 /** 抓一次那个终端此刻的一屏（只读快照，不过身份门），连指纹与抓的时刻一起（终端页要拿指纹送字）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
-export async function previewShot(origin: Origin, target: TerminalTarget): Promise<TerminalShot> {
+export async function previewShot(origin: Machine, target: TerminalTarget): Promise<TerminalShot> {
   const budget = budgetWithin(PREVIEW_BUDGET_MS);
   const v = await settleTyped(origin, "terminal-preview", callTyped(origin, "terminal-preview", { ...target, color: true }, budget));
   return shotOf(v);
@@ -103,7 +103,7 @@ export function rowsOf(v: TerminalsList): TerminalRow[] {
 }
 
 /** 那台此刻的终端名单。 */
-export async function listTerminals(origin: Origin): Promise<TerminalRow[]> {
+export async function listTerminals(origin: Machine): Promise<TerminalRow[]> {
   const budget = budgetWithin(LIST_BUDGET_MS);
   return rowsOf(await settleTyped(origin, "terminals-list", callTyped(origin, "terminals-list", {}, budget)));
 }
@@ -128,7 +128,7 @@ export function sentOf(v: Sent): TerminalSent {
 }
 
 /** 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。失败 ⇒ 抛 `ControlError`。 */
-export async function sendToTerminal(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent> {
+export async function sendToTerminal(origin: Machine, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent> {
   const req = { terminal, ...what, ...(seen !== null ? { seen_screen: seen } : {}) };
   const budget = budgetWithin(INPUT_BUDGET_MS);
   return sentOf(await settleTyped(origin, "terminal-input", callTyped(origin, "terminal-input", req, budget)));
@@ -146,15 +146,15 @@ const END_EACH_MS = 6_000;
  */
 export async function endTerminals(items: readonly TerminalsEndItem[]): Promise<TerminalsEndReply> {
   const budget = budgetWithin(HOLD_BUDGET_MS + END_EACH_MS * items.length);
-  return settleTyped(LOCAL_ORIGIN, "terminals-end", callTyped(LOCAL_ORIGIN, "terminals-end", { items: [...items] }, budget));
+  return settleTyped(LOCAL, "terminals-end", callTyped(LOCAL, "terminals-end", { items: [...items] }, budget));
 }
 
 /** 替这一端接管托管终端的输入（之后送字经它）；回那一行此刻的输入那一格。失败 ⇒ 抛（那一句后端写好）。 */
-export async function takeInput(origin: Origin, terminal: string): Promise<TermInput> {
+export async function takeInput(origin: Machine, terminal: string): Promise<TermInput> {
   return (await settleTyped(origin, "terminal-take-input", callTyped(origin, "terminal-take-input", { terminal }, budgetWithin(HOLD_BUDGET_MS)))).input;
 }
 
 /** 交还托管终端的输入（交给最近连上的真终端，没有就空着）；回那一行此刻的输入那一格。 */
-export async function releaseInput(origin: Origin, terminal: string): Promise<TermInput> {
+export async function releaseInput(origin: Machine, terminal: string): Promise<TermInput> {
   return (await settleTyped(origin, "terminal-release-input", callTyped(origin, "terminal-release-input", { terminal }, budgetWithin(HOLD_BUDGET_MS)))).input;
 }

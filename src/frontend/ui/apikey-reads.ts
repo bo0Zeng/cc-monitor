@@ -18,7 +18,7 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { saidOf } from "./kit/detail";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { KeySet } from "./generated/KeySet";
 
 /** 那一问的期限：10 秒：盖的是「那台后端写一份凭据文件再读回 ＋ 回程」，不含握手（长连接早就连着）。 */
@@ -31,7 +31,7 @@ const APIKEY_BUDGET_MS = 10_000;
  * `baseUrl` 缺席 = 不碰那一格。
  */
 export async function writeApikeyKey(
-  origin: Origin,
+  origin: Machine,
   configDir: string,
   key: string,
   baseUrl?: string,

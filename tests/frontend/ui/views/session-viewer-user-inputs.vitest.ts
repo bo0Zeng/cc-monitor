@@ -57,7 +57,7 @@ import { REPO_ROOT } from "../../../test-support/repo-root";
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
 import { invoke } from "@tauri-apps/api/core";
 import { chanArgsJson, sessionReadCalls, type ChanCallArgs } from "../../../test-support/chan-fake";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
@@ -84,7 +84,7 @@ async function mount(lines: RigPayload[], outline?: string[], shape: Constructor
     .map((u) => outlineEntry(u, text(lines.find((p) => (p.record as { id?: string }).id === u)!)));
   const v = new SessionViewer(shape);
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
   await settleOutline();
   expectLoaded(v.element);
   return v;
@@ -148,7 +148,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     document.body.appendChild(v.element);
     outlineBackend.available = false;
     outlineBackend.reason = "本机后端不在";
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
@@ -159,7 +159,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const w = new SessionViewer();
     document.body.appendChild(w.element);
     outlineBackend.failure = "transport";
-    await w.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await w.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expect(toggleOf(w).title).toContain("本机后端不在");
   });
@@ -266,7 +266,7 @@ describe("KR45D1 点一下跳过去", () => {
 
     viewerRig.chunk = [userLine(1, "n1", "新会话唯一一句")];
     outlineBackend.entries = [outlineEntry("n1", "新会话唯一一句")];
-    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expectLoaded(v.element);
 
@@ -450,7 +450,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     const badge = Object.assign(document.createElement("span"), { textContent: "Codex" });
     const act = Object.assign(document.createElement("button"), { textContent: "恢复" });
     const proj = Object.assign(document.createElement("span"), { textContent: "orders" });
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "支付回调验签", origin: LOCAL_ORIGIN, suppressBranch: true, head: { badges: [badge], actions: act, meta: [proj] } });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "支付回调验签", origin: LOCAL, suppressBranch: true, head: { badges: [badge], actions: act, meta: [proj] } });
     await settleOutline();
     const title = v.element.querySelector('[data-role="title"]')!;
     expect(title.textContent).toBe("支付回调验签");
@@ -464,7 +464,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     viewerRig.failPage = true;
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     const bar = v.element.querySelector<HTMLElement>('[role="alert"]')!;
     expect(bar.textContent).toMatch(copyPattern("sessionViewer.load.failed"));

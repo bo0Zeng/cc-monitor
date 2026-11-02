@@ -23,7 +23,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { readDriftOfAll, type DriftOfAll } from "../record-reads";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { LOCAL } from "../ipc/origin";
 import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 记多细：界面上的四档（后端那一格的值 ＋ 怎么说）。 */
@@ -337,7 +337,7 @@ async function driftOfAll(): Promise<DriftOfAll> {
     return await readDriftOfAll();
   } catch (e) {
     console.warn("[diagnostics] 本机后端问不到各台的记录账：", e);
-    return [{ origin: LOCAL_ORIGIN, report: null }];
+    return [{ origin: LOCAL, report: null }];
   }
 }
 

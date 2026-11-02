@@ -6,7 +6,7 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 import type { SessionsOp } from "./generated/SessionsOp";
 import type { SessionItem } from "./generated/SessionItem";
@@ -26,7 +26,7 @@ const BATCH_EACH_MS = 6_000;
  */
 export async function askSessions(op: SessionsOp, items: readonly SessionItem[], each: number = BATCH_EACH_MS): Promise<SessionsBatchReply> {
   const budget = budgetWithin(BATCH_BASE_MS + each * items.length);
-  return settleTyped(LOCAL_ORIGIN, "sessions-batch", callTyped(LOCAL_ORIGIN, "sessions-batch", { op, items: [...items] }, budget));
+  return settleTyped(LOCAL, "sessions-batch", callTyped(LOCAL, "sessions-batch", { op, items: [...items] }, budget));
 }
 
 /** 一个 tab ⇒ 一批里的那一项。 */
@@ -51,7 +51,7 @@ export async function startMany(tabs: readonly Tab[], run: Launch): Promise<Sess
 }
 
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 另出那一句。 */
-async function openWindow(origin: Origin, cmd: string, cwd: string | null, sid: string): Promise<void> {
+async function openWindow(origin: Machine, cmd: string, cwd: string | null, sid: string): Promise<void> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
     else await openTerminal(origin, cmd, sid);

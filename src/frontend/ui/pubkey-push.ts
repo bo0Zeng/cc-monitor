@@ -8,7 +8,7 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Host } from "./generated/Host";
-import { LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL } from "./ipc/origin";
 import type { PubkeyPushed } from "./generated/PubkeyPushed";
 import { saidOf } from "./kit/detail";
 
@@ -28,7 +28,7 @@ export async function pushPublicKey(
   pubKeyPath: string | null,
 ): Promise<PushResult> {
   try {
-    return await callTyped(LOCAL_ORIGIN, "pubkey-push", { machine, pubKeyPath }, budgetWithin(PUSH_BUDGET_MS));
+    return await callTyped(LOCAL, "pubkey-push", { machine, pubKeyPath }, budgetWithin(PUSH_BUDGET_MS));
   } catch (e) {
     throw new Error(saidOf(e));
   }

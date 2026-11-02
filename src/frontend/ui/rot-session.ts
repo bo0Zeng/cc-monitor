@@ -10,7 +10,7 @@
 import { accountLabel } from "./acct-words";
 import { copyText } from "./copy-table";
 import { callTyped, refusalIn } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { write } from "./ipc/write";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
@@ -45,7 +45,7 @@ export interface SessionRot {
   refresh(): Promise<void>;
 }
 
-export function mountSessionRotation(origin: Origin, sid: string): SessionRot {
+export function mountSessionRotation(origin: Machine, sid: string): SessionRot {
   const root = el("div", s.rotSession);
   let view: RotationViewReply | null = null;
   let list: RotationStrategiesReply | null = null;

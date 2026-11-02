@@ -7,7 +7,7 @@
  */
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { saidOf } from "./kit/detail";
 import type { Switched } from "./session-switch";
 
@@ -15,7 +15,7 @@ import type { Switched } from "./session-switch";
 const DELETE_BUDGET_MS = 30_000;
 
 /** 删 `origin` 那台机器上的会话 `sid`（回包里那一格 `path` 是删掉的那份，界面不用它）。 */
-export async function deleteSession(origin: Origin, sid: string): Promise<void> {
+export async function deleteSession(origin: Machine, sid: string): Promise<void> {
   await callTyped(origin, "files-delete-session", { sid }, budgetWithin(DELETE_BUDGET_MS));
 }
 
@@ -23,7 +23,7 @@ export async function deleteSession(origin: Origin, sid: string): Promise<void> 
 const SWITCH_BUDGET_MS = 30_000;
 
 /** 换这条会话的模型（`session-model`）：结局照回包读；没回来 ⇒ 那一句（发出去了没等到回话 ⇒ 不说，界面写「结果未知」）。不抛。 */
-export async function switchModel(origin: Origin, sid: string, model: string): Promise<Switched> {
+export async function switchModel(origin: Machine, sid: string, model: string): Promise<Switched> {
   try {
     const r = await callTyped(origin, "session-model", { sid, model }, budgetWithin(SWITCH_BUDGET_MS));
     return { done: r.result === "done", text: r.model, said: r.said ?? null };
@@ -33,7 +33,7 @@ export async function switchModel(origin: Origin, sid: string, model: string): P
 }
 
 /** 切这条会话的权限档（`session-permission`）：同 [`switchModel`]，读回的字是那一档写给人看的字。 */
-export async function switchPermission(origin: Origin, sid: string, mode: string): Promise<Switched> {
+export async function switchPermission(origin: Machine, sid: string, mode: string): Promise<Switched> {
   try {
     const r = await callTyped(origin, "session-permission", { sid, mode }, budgetWithin(SWITCH_BUDGET_MS));
     return { done: r.result === "done", text: r.modeText, said: r.said ?? null };

@@ -5,7 +5,7 @@
  * 什么都不会断 ⇒ 空，调用方就不弹框。这里不判什么，只排版。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
+import { LOCAL, isLocalOrigin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
 import type { DialogRow } from "../kit/dialog";
@@ -30,7 +30,7 @@ const INTERRUPTS_BUDGET_MS = 10_000;
 /** 问本机后端那一条；问不到 ⇒ `null`。 */
 async function askHub(req: MachineInterruptsReq): Promise<MachineInterruptsReply | null> {
   try {
-    return await callTyped(LOCAL_ORIGIN, "machine-interrupts", req, budgetWithin(INTERRUPTS_BUDGET_MS));
+    return await callTyped(LOCAL, "machine-interrupts", req, budgetWithin(INTERRUPTS_BUDGET_MS));
   } catch (e) {
     console.warn("[interrupts] 本机后端问不到会打断什么：", e);
     return null;

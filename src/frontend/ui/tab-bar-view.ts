@@ -37,7 +37,7 @@ import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./
 import { planRows, renderNeedsPanel, waitingNow, type PanelFacts } from "./needs-panel";
 import type { NeedsBook } from "./needs-book";
 import type { ManualItem } from "./login-reads";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
 import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "./session-face";
@@ -289,7 +289,7 @@ export class TabBarView {
   /**
    * 「需手动」的账（宿主挂进来，`needs-book.ts`：各台整份、本机合好）· 点会话外那一行开登录抽屉。数进「需手动 N」与窗口标题；会话外那几项不进 `Ctrl+J`。
    */
-  needs: { book: NeedsBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
+  needs: { book: NeedsBook | null; login: (origin: Machine, item: ManualItem) => void } = { book: null, login: () => {} };
 
   /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：照合好的那一份走，会话在前、计划项在后（先问一回各台）。没有 ⇒ 什么都不做。 */
   async nextNeeds(): Promise<void> {

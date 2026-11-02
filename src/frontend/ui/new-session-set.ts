@@ -17,7 +17,7 @@ import { detailOf, saidOf } from "./kit/detail";
 import { readProfiles, writeProfiles } from "./profiles-reads";
 import { planSet, type RowEdit, type SetPlan } from "./set-reads";
 import { startSet } from "./set-start";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { SetOut } from "./generated/SetOut";
 import s from "./new-session.module.css";
 
@@ -28,7 +28,7 @@ const PREVIEW_IDLE_MS = 300;
 export interface SetPage {
   el: HTMLElement;
   /** 换了机器（或第一次打开）：读那台存好的几组与别名，`name` 给了就打开那一组。 */
-  load(origin: Origin, name: string | null): Promise<void>;
+  load(origin: Machine, name: string | null): Promise<void>;
   /** 主按钮为什么点不了（`null` ＝ 能点）。 */
   blocked(): string | null;
   /** 主按钮的字：那台写好的「启动 N」/「已齐」（还没问到 ⇒ 正在读）。 */
@@ -57,7 +57,7 @@ export function rowsOf(drafts: readonly Draft[]): RowEdit[] {
  * 建一组页。`refresh` ＝ 叫框重判主按钮（字 · 能不能点）。
  */
 export function setPage(refresh: () => void): SetPage {
-  let origin: Origin = "";
+  let origin: Machine = "";
   let sets: SetOut[] = [];
   let aliases: string[] = [];
   let rev: string | null = null;

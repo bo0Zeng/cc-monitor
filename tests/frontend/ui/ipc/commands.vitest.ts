@@ -114,7 +114,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { TabManager } from "../../../../src/frontend/ui/tabs";
 import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-actions";
-import { LOCAL, LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, historyCalls, isChanCall, launchRenderShim, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../../test-support/non-empty.ts";
@@ -353,7 +353,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
     const root = document.createElement("div");
     document.body.append(bar, root);
     const tm = owned(announced(new TabManager(bar, root)));
-    const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
+    const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL);
     t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
     tm.onFace(sid, goldenFace("ended"));
     await (tm as unknown as { actions: TabSessionActions }).actions.resume(sid);
@@ -402,8 +402,8 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
 //
 // | 条 | 人群从哪来 | 谁写的 | 它一个人守不住什么 |
 // |---|---|---|---|
-// | ① 参数面 | `src/frontend/ui/ipc/commands.ts` 里每一处 `origin` 参数的**类型文本** | 加命令的那个人 | 有人往 Rust 里加回 `Origin::Unspecified` ⇒ 生成物变回 `null \| string` ⇒ 那 8 处写着 `Origin` 的参数**一个字不改**就又装得下 `null`，而本条照绿 |
-// | ② 生成物面 | `src/frontend/ui/generated/Origin.ts` 的**正文** | `ts-rs` 从 Rust 的 `origin::Origin` 生成 | 有人手写一处 `origin: string \| null` ⇒ 生成物一个字不动，而本条照绿 |
+// | ① 参数面 | `src/frontend/ui/ipc/commands.ts` 里每一处 `origin` 参数的**类型文本** | 加命令的那个人 | 有人往 Rust `cmd_wire::Machine` 里加回 `Unspecified` 变体 ⇒ 生成物变回 `null \| string` ⇒ 那 8 处写着 `Machine` 的参数**一个字不改**就又装得下 `null`，而本条照绿 |
+// | ② 生成物面 | `src/frontend/ui/generated/Machine.ts` 的**正文** | `ts-rs` 从 Rust 的 `cmd_wire::Machine` 生成 | 有人手写一处 `origin: string \| null` ⇒ 生成物一个字不动，而本条照绿 |
 //
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
 //   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机）——
@@ -451,9 +451,9 @@ describe("：origin 去 null 化（入方向）", () => {
       offenders.map((o) => `${o.cmd}: origin${o.optional ? "?" : ""}: ${o.type}`),
       "这几处 origin 参数**在类型上装得下「没说」**：\n" +
         "「`origin` 去 `null` 化 —— 本机也带 origin」\n" +
-        '⇒ 本机是一个**具名**的 origin（逐字 `LOCAL_ORIGIN` = `"<local>"`），\n' +
+        '⇒ 本机是一个**具名**的 origin（逐字 `LOCAL` = `"<local>"`），\n' +
         "   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」。\n" +
-        "⇒ 出路是把那一处改成 `Origin`（生成物）并在调用点送 `?? LOCAL_ORIGIN`，\n" +
+        "⇒ 出路是把那一处改成 `Machine`（生成物），调用点送那台的机器名（本机送 `LOCAL`），\n" +
         "   **不是**把这条判据放宽。`§8` 还逐字警告过「2 在 5 之前（否则 `call` 的\n" +
         "   第一个参数还得容忍 `null`）」—— 放宽这一条就是把那件事又还回去。",
     ).toEqual([]);
@@ -471,7 +471,7 @@ describe("：origin 去 null 化（入方向）", () => {
       expect(ps.some(admitsNothingSaid), `识别器没认出 ${bad} 装得下「没说」`).toBe(true);
     }
     for (const good of [
-      "  a: (args: { origin: Origin }) => 0,",
+      "  a: (args: { origin: Machine }) => 0,",
       "  b: (args: { origin: string; kill: boolean }) => 0,",
     ]) {
       const ps = originParamsIn(good);
@@ -506,7 +506,7 @@ describe("：origin 去 null 化（入方向）", () => {
         " 那个变体已**退役**（处置与理由逐条写在\n" +
         "   `src/common/cmd-wire/src/machine.rs` 头注里）。\n" +
         "⇒ 这一行变回带 `null` 的形状，只有一个原因：**Rust 那侧把变体加回去了**。\n" +
-        "   那时全仓 8 处写着 `origin: Origin` 的参数会**一个字不改**地又装得下 `null`，\n" +
+        "   那时全仓 8 处写着 `origin: Machine` 的参数会**一个字不改**地又装得下 `null`，\n" +
         "   而上面那条参数面判据照绿 —— 本条就是为这一形立的。",
     ).toBe("string");
   });
@@ -536,7 +536,7 @@ describe("：origin 去 null 化（入方向）", () => {
  * # 它治什么
  *
  * 步 2 之前 TS 侧「本机」有两种写法在同一张类型里并存：`null`（tab / 设置共用 store / 分叉流…）
- * 与 `"<local>"`（`LOCAL_ORIGIN`，与 Rust 跨语言对拍）。两者之间靠散在各处的 `?? LOCAL_ORIGIN` /
+ * 与 `"<local>"`（今天的 `LOCAL`）。两者之间靠散在各处的「缺省补本机」/
  * `origin === null` / `origin ? … : …` 互相翻译 —— 基线上现打 **37 处** `origin…: … null`
  * （手写 36 ＋ 生成物 1）。`§8` 逐字「⚠ 2 在 5 之前（否则 `call` 的第一个参数还得容忍 `null`）」。
  *
@@ -563,8 +563,7 @@ describe("：origin 去 null 化（入方向）", () => {
  *   今天 origin 一律必填（本机逐字 `<local>`），可选那一形由生成物与 tsc 管，
  *   不归本条。
  * - 换个名字装同一件事（`host: string | null`）—— 词是 `origin`，改名就出人群。
- * - 上一版这里记着「`accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**」——
- *   C4b 按裁「合」：它已退役，判据住本文件下一节（「本机只有一个表示」）。
+ * - 账号面的缓存键 `"__local__"` 已退役（C4b 按裁「合」），判据住本文件下一节（「本机只有一个表示」）。
  */
 
 /**
@@ -709,9 +708,9 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
     expect(
       found,
       "这几处 origin 在类型上装得下 `null`：\n" +
-        "本机是一个**具名**的 origin（`LOCAL_ORIGIN` = `\"<local>\"`，住 `backend-policy.ts`，与 Rust 跨语言对拍）；\n" +
+        "本机是一个**具名**的 origin（`LOCAL` = `\"<local>\"`，只住 `cmd-wire`，界面从生成物拿）；\n" +
         "「是不是本机」只经 `src/frontend/ui/ipc/origin.ts` 判（`isLocalOrigin` / `isRemoteOrigin`），\n" +
-        "⇒ 出路是把那一处改成 `Origin`，**不是**把它登记进 PENDING。",
+        "⇒ 出路是把那一处改成 `Machine`，**不是**把它登记进 PENDING。",
     ).toEqual(Object.keys(PENDING).sort());
   });
 
@@ -728,7 +727,7 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
   it("★ 识别器阳性对照五形 ＋ 阴性对照三形", () => {
     // 反例：「按 origin 找别的东西」回 `X | null` 是合法的（找不到），不是 origin 装 null。
     expect(
-      originDecls("probe.ts", "function findHostByOrigin(o: Origin): Host | null { return null; }").filter(
+      originDecls("probe.ts", "function findHostByOrigin(o: Machine): Host | null { return null; }").filter(
         (d) => d.nullable,
       ),
       "`…ByOrigin()` 回的不是 origin，被当成 origin 判了",
@@ -748,7 +747,7 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
     const good = [
       "interface B { originalType: string | null }", // 不是 origin
       "const x = { origin: null };", // 值，不是类型
-      "interface D { origin: Origin; remote: string | null }", // 干净；`remote` 不在人群
+      "interface D { origin: Machine; remote: string | null }", // 干净；`remote` 不在人群
     ];
     for (const src of good) {
       expect(
@@ -762,15 +761,15 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
 // ══════════════════════════════════════════════════════════════════════════
 // **本机只有一个表示** —— `"__local__"` 零命中带正控
 //
-// C4a 之后 TS 侧本机只剩 `LOCAL_ORIGIN`（`"<local>"`，住 `backend-policy.ts`），唯一的例外是
+// TS 侧本机只有 `LOCAL`（`"<local>"`，出自 `cmd-wire` 的生成物 `generated/judgment-rules.ts`，经 `ipc/origin.ts` 转出）。C4a 那时唯一的例外是
 // `accounts.ts` 自己那个同名的 `"__local__"`（账号缓存键 ＋ 本机 `AccountsState.origin`）。它的来历：
 // 账号面本机 / 远端各走一条命令，本机那条的结果需要一个缓存键，而那时本机还没有具名的 origin。
-// （账号面本机与远端同一条路、一个 Origin 类型）之下它装的就是「哪台机器」本身 ⇒ 合。
+// （账号面本机与远端同一条路、一个 Machine 类型）之下它装的就是「哪台机器」本身 ⇒ 合。
 // 钉的是「合并之前别顺手改」—— 合并就是它要等的那一次设计变更，它随之改成下面这两条的 Rust 那一侧。
 //
 // 判据（按 TS 语法树认**字符串字面量**，注释与模板里的字不算 —— 注释里讲历史是正当的）：
 // 1. `"__local__"` 字面量在全部前端 TS（含生成物）里**零命中**；
-// 2. `"<local>"` 字面量所在的文件 == `{ src/frontend/ui/backend-policy.ts }`（**正控 ＋ 唯一家**：同一识别器在真树上认得出本机那个值，
+// 2. `"<local>"` 字面量所在的文件 == `{ src/frontend/ui/generated/judgment-rules.ts }`（**正控 ＋ 唯一家**：同一识别器在真树上认得出本机那个值，
 //    而且它只有一个家 —— 哪个调用点自己再写一遍 `"<local>"` 也红）；
 // 3. 识别器阳性 / 阴性对照。
 // ══════════════════════════════════════════════════════════════════════════
@@ -793,8 +792,6 @@ function filesWithLiteral(want: string): string[] {
   for (const f of walk("src", ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
-    // 这一份生成物里的哨兵出自 cmd-wire 的常量（`KEYS_NOT_NAMES`，`npm run gen:types` 现生成），不是手抄的第二个家。
-    if (rel === "src/frontend/ui/generated/judgment-rules.ts") continue;
     const src = readFileSync(f, "utf8");
     // 字面量命中必含这个子串：先按子串筛，只对含它的那几份做词法扫描（负载下整树词法扫描会超时）。
     if (!src.includes(want)) continue;
@@ -807,12 +804,12 @@ describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", () => 
   it("★★ `\"__local__\"` 字面量零命中；`\"<local>\"` 字面量恰好住一个家（正控）", () => {
     expect(
       filesWithLiteral("__local__"),
-      "本机的第二种写法又长出来了 —— 本机只有 `LOCAL_ORIGIN`（经 `ipc/origin.ts` 导），账号缓存键也用它",
+      "本机的第二种写法又长出来了 —— 本机只有 `LOCAL`（经 `ipc/origin.ts` 导），账号缓存键也用它",
     ).toEqual([]);
     expect(
-      filesWithLiteral(LOCAL_ORIGIN),
-      "本机 origin 的字面量不止一个家（或识别器在真树上瞎了）—— 调用点一律导 `LOCAL_ORIGIN`，不许再写一遍",
-    ).toEqual(["src/frontend/ui/backend-policy.ts"]);
+      filesWithLiteral(LOCAL),
+      "本机 origin 的字面量不止一个家（或识别器在真树上瞎了）—— 调用点一律导 `LOCAL`，不许再写一遍",
+    ).toEqual(["src/frontend/ui/generated/judgment-rules.ts"]);
   });
 
   it("★ 识别器阳性三形 ＋ 阴性两形", () => {

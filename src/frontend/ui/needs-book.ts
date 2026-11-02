@@ -6,7 +6,7 @@
  * 一问没问到之后自己退避再问（[`RETRY_FIRST_MS`] 起、翻倍、封顶 [`RETRY_MAX_MS`]；问到了归零）。在读的时候旧的一份照留（入口照上一份的数），读回来才换。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { NeedsMerged } from "./generated/NeedsMerged";
 import type { NeedsRow } from "./generated/NeedsRow";
 import type { ManualItem } from "./generated/ManualItem";
@@ -15,7 +15,7 @@ import type { NeedsClock } from "./generated/NeedsClock";
 
 /** 簿上一条在等的会话：哪台 · 那一行 · 那台写好的会走的那一句（没有 ⇒ `null`）· 收到这一份的时刻（本机钟）。 */
 export interface BookSession {
-  origin: Origin;
+  origin: Machine;
   session: NeedsRow;
   clock: NeedsClock | null;
   receivedAt: number;
@@ -31,13 +31,13 @@ const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 
 /** 本机后端问到这几台、合一份。 */
-export function mergeNeeds(machines: Origin[]): Promise<NeedsMerged> {
-  return callTyped(LOCAL_ORIGIN, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
+export function mergeNeeds(machines: Machine[]): Promise<NeedsMerged> {
+  return callTyped(LOCAL, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
 }
 
 /** 计划里要人看的一条：哪台 · 哪个工作区 · 哪一片 · 落在哪一格（后端给的编号与「编号 标题」；没有格可落 ⇒ `null`，进那一片的概览）。 */
 export interface PlanNeedItem {
-  origin: Origin;
+  origin: Machine;
   workspace: string;
   slice: string;
   cell: NeedsCell | null;
@@ -53,7 +53,7 @@ const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [] };
 
 export class NeedsBook {
   /** 要问的那几台（问过的都记着，照先来的先后）。 */
-  private readonly origins: Origin[] = [];
+  private readonly origins: Machine[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** 没问到之后排着的那一次再问。 */
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -65,21 +65,21 @@ export class NeedsBook {
   /** 收到 `merged` 那一刻（本机钟）：会走的那一句从它起接着走。 */
   private at = 0;
 
-  constructor(private readonly merge: (machines: Origin[]) => Promise<NeedsMerged> = mergeNeeds) {}
+  constructor(private readonly merge: (machines: Machine[]) => Promise<NeedsMerged> = mergeNeeds) {}
 
   /** 那一台记进要问的、再问一次（叠着问 ⇒ 只收最后一问）。 */
-  refresh(origin: Origin): Promise<void> {
+  refresh(origin: Machine): Promise<void> {
     return this.refreshAll([origin]);
   }
 
   /** 这几台都记进要问的、问一次。 */
-  refreshAll(origins: readonly Origin[]): Promise<void> {
+  refreshAll(origins: readonly Machine[]): Promise<void> {
     for (const o of origins) if (!this.origins.includes(o)) this.origins.push(o);
     return this.ask();
   }
 
   /** 那台从机器表里删了：不再问它，剩下的再问一次。 */
-  drop(origin: Origin): Promise<void> {
+  drop(origin: Machine): Promise<void> {
     const i = this.origins.indexOf(origin);
     if (i < 0) return Promise.resolve();
     this.origins.splice(i, 1);
@@ -92,7 +92,7 @@ export class NeedsBook {
   }
 
   /** 那台可能变了（推送 · 会话帧）：稍等一下合成一次重问。 */
-  poke(origin: Origin): void {
+  poke(origin: Machine): void {
     if (!this.origins.includes(origin)) this.origins.push(origin);
     if (this.timer !== null) clearTimeout(this.timer);
     // 调度：合批 —— 推送 · 会话帧连着来时合成一次重问。
@@ -151,19 +151,19 @@ export class NeedsBook {
   }
 
   /** 会话外的每一项（带它是哪台的）。 */
-  manual(): { origin: Origin; item: ManualItem }[] {
-    const out: { origin: Origin; item: ManualItem }[] = [];
+  manual(): { origin: Machine; item: ManualItem }[] {
+    const out: { origin: Machine; item: ManualItem }[] = [];
     for (const { origin, item } of this.merged.items) if (item.kind === "manual") out.push({ origin, item: item.manual });
     return out;
   }
 
   /** 会话外那一截读不出的那几台（各带那台那一句）。 */
-  unreadable(): { origin: Origin; said: string }[] {
+  unreadable(): { origin: Machine; said: string }[] {
     return this.merged.unreadable.map((u) => ({ origin: u.origin, said: u.said }));
   }
 
   /** 这一问没问到的那几台（不计；各带后端那一句）。 */
-  offline(): { origin: Origin; said: string }[] {
+  offline(): { origin: Machine; said: string }[] {
     return this.merged.down.map((d) => ({ origin: d.origin, said: d.said }));
   }
 

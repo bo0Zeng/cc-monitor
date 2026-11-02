@@ -22,7 +22,7 @@ import { readClipboard, writeClipboard } from "./clipboard";
 import { accountAvatarEl } from "./account-color";
 import { accountLabel } from "./acct-words";
 import { machineName } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { subscribeTopics } from "./events";
 import type { PasteKind } from "./generated/PasteKind";
 import { accountsLoginCmd } from "./account-ops";
@@ -51,10 +51,10 @@ const COPIED_MS = 1500;
 /** 作业号 ⇒ 正开着的那个抽屉收推送的口。 */
 const waiting = new Map<string, (st: SignInState) => void>();
 /** 本窗口已经订了哪几台的 `changed/login`（一台订一次，之后一直在）。 */
-const fed = new Map<Origin, Promise<void>>();
+const fed = new Map<Machine, Promise<void>>();
 
 /** 订那台的 `changed/login`（起登录之前订好：本机自己回跳那一帧只推一次）。订不上 ⇒ 只是收不到自己结束的那一下，粘码照样能走。 */
-function feed(origin: Origin): Promise<void> {
+function feed(origin: Machine): Promise<void> {
   let p = fed.get(origin);
   if (!p) {
     p = subscribeTopics([origin], ["login"], (_o, changes) => {
@@ -84,7 +84,7 @@ function signInOf(v: unknown): SignInState | null {
 
 export interface LoginDrawerSpec {
   /** 登录那一台（帧命令问它；目标行里的机器名照它）。 */
-  origin: Origin;
+  origin: Machine;
   /** 登录什么（`login-start` 的入参：那一项的 `fix.args`，或照那一行拼的同一形）。 */
   target: LoginStartReq;
   /** 登成了（抽屉已关）：调用方要重读的自己重读（清单 · 账号行也会随推送自己变）。 */

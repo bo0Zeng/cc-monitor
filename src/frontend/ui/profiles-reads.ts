@@ -13,7 +13,7 @@
  * 回包形状由握手时的形状指纹管，这里不逐格判。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { ProfileForm as ProfileFormWire } from "./generated/ProfileForm";
 import type { ProfileSlotId } from "./generated/ProfileSlotId";
 import type { ProfileRow as ProfileRowWire } from "./generated/ProfileRow";
@@ -47,7 +47,7 @@ const PROFILES_BUDGET_MS = 30_000;
 
 const said = (e: unknown): Error => new Error(saidOf(e));
 
-export async function readProfiles(origin: Origin): Promise<ProfilesBook> {
+export async function readProfiles(origin: Machine): Promise<ProfilesBook> {
   try {
     return await callTyped(origin, "profiles-read", {}, budgetWithin(PROFILES_BUDGET_MS));
   } catch (e) {
@@ -55,7 +55,7 @@ export async function readProfiles(origin: Origin): Promise<ProfilesBook> {
   }
 }
 
-export async function resolveProfile(origin: Origin, name: string, edit: ProfileForm | null, at: string | null): Promise<Resolved> {
+export async function resolveProfile(origin: Machine, name: string, edit: ProfileForm | null, at: string | null): Promise<Resolved> {
   try {
     return await callTyped(origin, "profiles-resolve", { name, edit, at }, budgetWithin(PROFILES_BUDGET_MS));
   } catch (e) {
@@ -63,7 +63,7 @@ export async function resolveProfile(origin: Origin, name: string, edit: Profile
   }
 }
 
-export async function profileImpact(origin: Origin, changes: ProfileOp[]): Promise<Affected[]> {
+export async function profileImpact(origin: Machine, changes: ProfileOp[]): Promise<Affected[]> {
   try {
     const { affected } = await callTyped(origin, "profiles-impact", { changes }, budgetWithin(PROFILES_BUDGET_MS));
     return affected;
@@ -72,7 +72,7 @@ export async function profileImpact(origin: Origin, changes: ProfileOp[]): Promi
   }
 }
 
-export async function profileBases(origin: Origin, name: string): Promise<Base[]> {
+export async function profileBases(origin: Machine, name: string): Promise<Base[]> {
   try {
     const { bases } = await callTyped(origin, "profiles-bases", { name }, budgetWithin(PROFILES_BUDGET_MS));
     return bases;
@@ -82,6 +82,6 @@ export async function profileBases(origin: Origin, name: string): Promise<Base[]
 }
 
 /** 按条目改：结局交统一写口（`ipc/write.ts`）判 —— 盘上被别处改过是对端拒、码 `stale`（一个字节没写）。 */
-export function writeProfiles(origin: Origin, changes: ProfileOp[], ifRev: string | null): Promise<WriteDone> {
+export function writeProfiles(origin: Machine, changes: ProfileOp[], ifRev: string | null): Promise<WriteDone> {
   return callTyped(origin, "profiles-write", { changes, ifRev }, budgetWithin(PROFILES_BUDGET_MS));
 }

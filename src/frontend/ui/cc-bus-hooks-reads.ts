@@ -5,7 +5,7 @@
  * 成品的形状从后端类型生成（`generated/HooksReport.ts`），线上形状由握手指纹核过、由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住。
  * `HookState` 是后端 `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
  */
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import type { HookState } from "./generated/HookState";
@@ -18,8 +18,8 @@ export type { HookState, HooksDiagnosis, HooksReport };
 /** 读一份 `settings.json` ＋ 几次 stat ＋ 回程。 */
 const HOOKS_DIAG_BUDGET_MS = 30_000;
 
-/** 问 `origin` 那台后端要一份成品（本机逐字 `LOCAL_ORIGIN`）。问不出来 ⇒ 抛（带那台的原话）。 */
-export async function fetchHooksReport(origin: Origin): Promise<HooksReport> {
+/** 问 `origin` 那台后端要一份成品（本机逐字 `LOCAL`）。问不出来 ⇒ 抛（带那台的原话）。 */
+export async function fetchHooksReport(origin: Machine): Promise<HooksReport> {
   try {
     return await callTyped(origin, "hooks-diag", {}, budgetWithin(HOOKS_DIAG_BUDGET_MS));
   } catch (e) {

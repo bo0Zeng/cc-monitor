@@ -11,7 +11,7 @@
  * 判据：`tests/frontend/ui/rot-order.vitest.ts` · `rot-keys.vitest.ts`。
  */
 import { copyText } from "./copy-table";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { button } from "./kit/button";
 import { el } from "./kit/el";
 import { icon } from "./kit/icon";
@@ -90,7 +90,7 @@ function groupHead(g: RotLine["group"], text: string): HTMLElement {
 /** 勾的读屏名接到号名那一格上（一行一个，号名里可能有空格 · 引号，id 不拿它拼）。 */
 let nameSeq = 0;
 
-export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void): Order {
+export function createOrder(origin: Machine, acts: OrderActs, onIdle: () => void): Order {
   const root = el("div", s.rotOrder);
   root.dataset.rotOrder = "";
   const live = el("div", s.rotOrderLive);

@@ -6,7 +6,7 @@
  */
 import { machineName } from "../control-said";
 import { subscribeTopics } from "../events";
-import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { LOCAL, type Machine } from "../ipc/origin";
 import { readRemoteConfig } from "../remote-config";
 import { mountRotation, parseRotAnchor, type RotMount } from "../rot-mount";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
@@ -28,7 +28,7 @@ export class RotationSection {
   static live: RotationSection | null = null;
   readonly element: HTMLElement;
   private mount: RotMount | null = null;
-  private origin: Origin = LOCAL_ORIGIN;
+  private origin: Machine = LOCAL;
   private loaded = false;
   private subscribed = false;
 
@@ -72,7 +72,7 @@ export class RotationSection {
       (c) => c.hosts.map((r) => r.name),
       () => [] as string[],
     );
-    const origins: Origin[] = [LOCAL_ORIGIN, ...hosts];
+    const origins: Machine[] = [LOCAL, ...hosts];
     try {
       await subscribeTopics(origins, ["rotation_strategies", "rotation"], (origin) => {
         if (origin === this.origin) void this.mount?.refresh();

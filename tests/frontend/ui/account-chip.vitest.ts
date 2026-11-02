@@ -19,7 +19,7 @@ import * as readsMod from "../../../src/frontend/ui/account-reads";
 import * as opsMod from "../../../src/frontend/ui/account-ops";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../../../src/frontend/ui/account-commands";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -62,7 +62,7 @@ function acct(p: Partial<Account>): Account {
 /** `def` ＝ 那台写好的默认号（`meta.effectiveDefault`，夹具照成品给）。 */
 function state(p: Partial<AccountsState>, def: string | null = null): AccountsState {
   return {
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     available: true,
     oldBackend: false,
     error: null,
@@ -150,13 +150,13 @@ describe("本会话那一形照会话那台写好的那一份（`session-account
   });
 
   it("★ 点账号按钮永远开账号面板：没有当前会话 ⇒ 本机那一形（sid null）；有会话但号还没问到 ⇒ 那个会话；都不开下拉", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
+    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL, accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     const togglePanel = vi.fn();
     const chip = new AccountChip({ openSettings: () => {}, togglePanel });
     await chip.refresh();
     chip.element.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(togglePanel).toHaveBeenLastCalledWith(null, LOCAL_ORIGIN);
+    expect(togglePanel).toHaveBeenLastCalledWith(null, LOCAL);
     chip.setActive({ sid: "s9", origin: "b" });
     chip.element.click();
     await new Promise((r) => setTimeout(r, 0));
@@ -165,10 +165,10 @@ describe("本会话那一形照会话那台写好的那一份（`session-account
   });
 
   it("★ 没有会话 ⇒ 看本机那台的默认号", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
+    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL, accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
-    expect(fetchAccountsMock).toHaveBeenCalledWith(LOCAL_ORIGIN);
+    expect(fetchAccountsMock).toHaveBeenCalledWith(LOCAL);
     expect(chip.element.dataset.mode).toBe("default");
     expect(chip.element.textContent).toContain("wei");
   });
@@ -225,7 +225,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     amy.click();
     // selectDefault 链：accountsSetDefault → invalidateCache → refresh(含两次 async 数据源) → onDefaultChanged。
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(setDef).toHaveBeenCalledWith(LOCAL_ORIGIN, "amy"); // 没有会话 ⇒ 点非当前项 → 本机切到 amy
+    expect(setDef).toHaveBeenCalledWith(LOCAL, "amy"); // 没有会话 ⇒ 点非当前项 → 本机切到 amy
     expect(changed).toBe(1); // 切完回调 onDefaultChanged（让 main.ts 重算会话归属）
   });
 });
@@ -245,7 +245,7 @@ describe("新会话默认选单：再点那一颗收起；Esc 只关选单", () 
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     const pick = document.createElement("button");
-    pick.addEventListener("click", () => void chip.openDefaultMenu(pick, LOCAL_ORIGIN));
+    pick.addEventListener("click", () => void chip.openDefaultMenu(pick, LOCAL));
     document.body.appendChild(pick);
     dispatcher.applyOverrides({});
     dispatcher.start();
@@ -308,7 +308,7 @@ describe("account-ux U8 chip 头像休眠", () => {
     const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     expect(chip.element.textContent).toContain("wei");
     const fetches = fetchAccountsMock.mock.calls.length;
-    putIn(appStore.accounts, LOCAL_ORIGIN, state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
+    putIn(appStore.accounts, LOCAL, state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
     expect(chip.element.textContent).toContain("amy");
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });

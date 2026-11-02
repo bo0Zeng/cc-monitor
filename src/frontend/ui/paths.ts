@@ -4,16 +4,16 @@
  */
 
 import { DEFAULT_AGENT } from "./agent-profile";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL } from "./ipc/origin";
 import { readPrefs, setPrefs } from "./machine-prefs";
 
 /** 本机设了的 Claude 数据目录（没设 ⇒ null）。通道不通 ⇒ 抛。 */
 export async function readClaudeDir(): Promise<string | null> {
-  const v = (await readPrefs(LOCAL_ORIGIN)).prefs.agentHomes[DEFAULT_AGENT];
+  const v = (await readPrefs(LOCAL)).prefs.agentHomes[DEFAULT_AGENT];
   return typeof v === "string" && v.trim() ? v : null;
 }
 
 /** 改本机的 Claude 数据目录。传 null ⇒ 删掉那一格（回到环境变量 / 默认）。拒 / 通道不通 ⇒ 抛。 */
 export async function setClaudeDirOverride(dir: string | null): Promise<void> {
-  await setPrefs(LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: dir?.trim() ?? "" } });
+  await setPrefs(LOCAL, { agentHomes: { [DEFAULT_AGENT]: dir?.trim() ?? "" } });
 }

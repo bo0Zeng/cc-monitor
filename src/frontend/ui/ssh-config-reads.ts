@@ -6,7 +6,7 @@
  * 入参 · 回包都是后端类型生成的（`generated/`）；回包形状由握手时的形状指纹管，这里不逐格判。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL } from "./ipc/origin";
 import type { SshImportGroup } from "./generated/SshImportGroup";
 import type { SshImported } from "./generated/SshImported";
 import { saidOf } from "./kit/detail";
@@ -25,7 +25,7 @@ function said(e: unknown): Error {
 /** 批量导入预览。`known` ＝ 机器列表里已有的那几台（后端据它标「已在列表里」）。 */
 export async function importSshHosts(known: { host: string; user: string; port: number }[]): Promise<SshImported> {
   try {
-    return await callTyped(LOCAL_ORIGIN, "ssh-config-import", { known }, budgetWithin(SSH_IMPORT_BUDGET_MS));
+    return await callTyped(LOCAL, "ssh-config-import", { known }, budgetWithin(SSH_IMPORT_BUDGET_MS));
   } catch (e) {
     throw said(e);
   }

@@ -16,7 +16,7 @@ import s from "./plan-review.module.css";
 
 /** 计划页借给这里的几样。 */
 export interface ReviewHost {
-  origin(): import("../ipc/origin").Origin;
+  origin(): import("../ipc/origin").Machine;
   workspace(): string;
   who(w: PlanWho): HTMLElement;
   /** 会话的名字（标签页标题；没有 ⇒ 前后几位）。 */

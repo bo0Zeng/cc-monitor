@@ -16,7 +16,7 @@ import { saidOf } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
 import { fetchDoc, hlPullOf, mountWhole } from "../render";
 import { refSlots } from "../md-view";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
 import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans } from "./plan-model";
@@ -26,7 +26,7 @@ import s from "./plan-cell.module.css";
 export interface CellDetailHost {
   select(id: string | null): void;
   who(w: PlanWho): HTMLElement;
-  origin(): Origin;
+  origin(): Machine;
   workspace(): string;
   switchTo(sid: string): void;
   /** 头右那一颗：做完了 ⇒［退回…］；没做完 ⇒［说给负责的…］（同一个框）。 */
@@ -486,7 +486,7 @@ export function unbuiltTakeoverCell(): HTMLElement {
 }
 
 /** 接手那一下开的框：机器锁那台，目录锁在工作区根，第一句预填 pb 给的交接说明（拿不到 ⇒ 不预填）。 */
-export function takeoverSpec(origin: Origin, workspace: string, b: Pick<PlanBlock, "handoff">): NewSessionSpec {
+export function takeoverSpec(origin: Machine, workspace: string, b: Pick<PlanBlock, "handoff">): NewSessionSpec {
   const spec: NewSessionSpec = { origin, lockMachine: true, cwd: workspace, lockCwd: true };
   if (b.handoff !== null) spec.prompt = b.handoff;
   return spec;

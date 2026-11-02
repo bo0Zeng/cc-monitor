@@ -2,12 +2,12 @@
 // 出口省掉 `blocks[type=tool_result].content`（`omit` 声明）之后，结果那一行照样写「Output · 预览」；界面自己不从正文里截。
 import { describe, it, expect } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 
 const ctx = () => ({
   parentPath: "/p/s.jsonl",
-  origin: LOCAL_ORIGIN,
+  origin: LOCAL,
   toolUseNames: new Map(),
   toolUseElements: new Map(),
   pendingToolResults: new Map(),

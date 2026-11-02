@@ -20,7 +20,7 @@
 //! ⇒ 「勾掉开关」在那一支上**真的**是「继续跑」。
 //!
 //! ⇒ 开关文案**按状态分档**（由 `tests/frontend/ui/settings/backend-section.vitest.ts` 机检）：
-//! 用户可见的那四句话有**唯一一个家**（文案表 `backendPolicy.exit.*`；TS 那侧 `src/frontend/ui/backend-policy.ts` 按名字取）。
+//! 用户可见的那四句话有**唯一一个家**（文案表 `backendPolicy.exit.*`；那几句由后端出成品，界面原样摆）。
 //!
 //! ⚠⚠ **「无人监护」这半不许省**（原话：
 //! 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，

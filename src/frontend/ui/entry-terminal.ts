@@ -6,7 +6,7 @@
 import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
@@ -29,7 +29,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 壳开这扇窗时恒带句柄；缺了 ⇒ 不是壳开的，什么都不挂。
   if (!terminal || !root) return;
   const raw = q.get("origin");
-  const origin: Origin = raw === null || raw === "" || isLocalOrigin(raw) ? LOCAL_ORIGIN : raw;
+  const origin: Machine = raw === null || raw === "" || isLocalOrigin(raw) ? LOCAL : raw;
   const watched: Watched = { kind: "slot", origin, terminal, name: q.get("name") ?? "", title: q.get("title") ?? "" };
   installGlobalClickDelegation();
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());

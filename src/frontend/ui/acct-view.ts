@@ -3,9 +3,9 @@
  * 状态栏那颗按钮与它的悬停卡照会话那台写好的 `session-account` 画（`account-chip.ts`），这里不判、不合。
  */
 import { machineName } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 
 /** 采样那台在界面上叫什么。 */
-export function machineLabel(origin: Origin): string {
+export function machineLabel(origin: Machine): string {
   return machineName(origin);
 }

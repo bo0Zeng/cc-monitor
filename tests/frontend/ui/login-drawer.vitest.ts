@@ -24,7 +24,7 @@ vi.mock("../../../src/frontend/ui/events", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { openLoginDrawer } from "../../../src/frontend/ui/login-drawer";
-import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL, type Machine } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -71,7 +71,7 @@ const drawer = () => document.querySelector<HTMLElement>("aside[data-login-kind]
 const act = (name: string) => drawer()!.querySelector<HTMLButtonElement>(`[data-action="${name}"]`)!;
 const input = () => drawer()!.querySelector<HTMLInputElement>('[data-part="paste"] input')!;
 
-async function open(target: typeof ACCOUNT | typeof MCP = ACCOUNT, origin: Origin = LOCAL_ORIGIN) {
+async function open(target: typeof ACCOUNT | typeof MCP = ACCOUNT, origin: Machine = LOCAL) {
   const h = openLoginDrawer({ origin, target });
   handles.push(h);
   await settle();
@@ -84,9 +84,9 @@ describe("开抽屉 ＝ 起登录", () => {
     let release: (v: unknown) => void = () => {};
     answer["login-start"] = () => new Promise((r) => (release = r));
     invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => (cmd === "chan_call" && a.op === "login-start" ? chanReply(await (answer["login-start"](null) as Promise<unknown>)) : null));
-    handles.push(openLoginDrawer({ origin: LOCAL_ORIGIN, target: ACCOUNT }));
+    handles.push(openLoginDrawer({ origin: LOCAL, target: ACCOUNT }));
     await settle();
-    expect(sent()).toEqual([[LOCAL_ORIGIN, "login-start", { ...ACCOUNT, browserHere: true }]]);
+    expect(sent()).toEqual([[LOCAL, "login-start", { ...ACCOUNT, browserHere: true }]]);
     expect(act("login-open").dataset.busy).toBe("true");
     expect(drawer()!.querySelector('[data-part="paste"]')).toBeNull();
     release(started());
@@ -96,7 +96,7 @@ describe("开抽屉 ＝ 起登录", () => {
   });
 
   it("远端那台 ⇒ browserHere 假；标题照目标（账号 · MCP），目标行只摆名字", async () => {
-    await open(MCP, "gpu-01" as Origin);
+    await open(MCP, "gpu-01" as Machine);
     expect(sent()[0]).toEqual(["gpu-01", "login-start", { ...MCP, browserHere: false }]);
     expect(drawer()!.getAttribute("aria-label")).toBe(copyText("login.sheet.mcp"));
     expect(drawer()!.querySelector('[data-part="who"]')!.textContent).toContain("s1");
@@ -110,7 +110,7 @@ describe("开抽屉 ＝ 起登录", () => {
     expect(drawer()!.querySelector('[data-part="auto"]')?.textContent).toBe(copyText("login.sheet.auto"));
     expect(drawer()!.querySelector('[data-part="paste"] label')?.textContent).toBe(copyText("login.paste.code"));
     answer["login-start"] = () => started({ auto: false, paste: "redirectUrl" });
-    await open(MCP, "gpu-01" as Origin);
+    await open(MCP, "gpu-01" as Machine);
     expect(drawer()!.querySelector('[data-part="auto"]')).toBeNull();
     expect(drawer()!.querySelector('[data-part="paste"] label')?.textContent).toBe(copyText("login.paste.redirectUrl"));
   });
@@ -146,7 +146,7 @@ describe("粘贴 · 提交 · 结果照 again", () => {
     expect(input().value).toBe("  任意-xyz  ");
     act("login-submit").click();
     await settle();
-    expect(sent().at(-1)).toEqual([LOCAL_ORIGIN, "login-finish", { job: "job-1", pasted: "  任意-xyz  " }]);
+    expect(sent().at(-1)).toEqual([LOCAL, "login-finish", { job: "job-1", pasted: "  任意-xyz  " }]);
     expect(drawer()).toBeNull();
     expect(ops()).not.toContain("login-cancel");
   });
@@ -169,7 +169,7 @@ describe("粘贴 · 提交 · 结果照 again", () => {
     expect(act("login-bottom").textContent).toBe(copyText("kit.dialog.cancel"));
     act("login-bottom").click();
     await settle();
-    expect(sent().at(-1)).toEqual([LOCAL_ORIGIN, "login-cancel", { job: "job-1" }]);
+    expect(sent().at(-1)).toEqual([LOCAL, "login-cancel", { job: "job-1" }]);
   });
 
   it("★ again: restart ⇒ 粘贴区收起、红条那一句 ＋［重新开始］（再发一次同一份 login-start）、底部［关闭］、关时不撤", async () => {
@@ -244,7 +244,7 @@ describe("取消 · 推来的结局", () => {
     await open();
     drawer()!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("kit.drawer.close")}"]`)!.click();
     await settle();
-    expect(sent().at(-1)).toEqual([LOCAL_ORIGIN, "login-cancel", { job: "job-1" }]);
+    expect(sent().at(-1)).toEqual([LOCAL, "login-cancel", { job: "job-1" }]);
     expect(drawer()).toBeNull();
     await open();
     const scrim = drawer()!.previousElementSibling as HTMLElement;
@@ -256,10 +256,10 @@ describe("取消 · 推来的结局", () => {
 
   it("★ 推来 changed {login, key: job} done ⇒ 抽屉自己关、不撤；failed ⇒ 红条 ＋［重新开始］；别的作业号不认", async () => {
     await open();
-    const feed = pushes.find((p) => p.origin === LOCAL_ORIGIN);
+    const feed = pushes.find((p) => p.origin === LOCAL);
     expect(feed, "起登录之前订好那台的登录推送（一台订一次）").toBeDefined();
-    expect(pushes.filter((p) => p.origin === LOCAL_ORIGIN).length).toBe(1);
-    const push = (key: string, body: unknown) => feed!.onChanged(LOCAL_ORIGIN, "login", { cells: [{ key, rev: null, body }], all: false });
+    expect(pushes.filter((p) => p.origin === LOCAL).length).toBe(1);
+    const push = (key: string, body: unknown) => feed!.onChanged(LOCAL, "login", { cells: [{ key, rev: null, body }], all: false });
     push("job-other", { state: "done" });
     expect(drawer()).not.toBeNull();
     push("job-1", { state: "failed", said: "核心·登录程序退了", detail: "登录程序退出时的输出", again: "restart" });

@@ -1,7 +1,7 @@
 import { makeYieldToMain } from "./yield-to-main";
 import type { SessionHidden } from "./session-hidden";
 import { chan, type Item, type Sub } from "../../comms/inward/chan";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
 import { isLive, isUnclear } from "./face-can";
@@ -82,7 +82,7 @@ export interface EventHandlers {
   /**
    * 那台机器的活卡流看不见了（订阅里的 `Unseen`：那条流断了）⇒ 那台上还开着的卡不会再有下文，全撤。
    */
-  onLiveCardsLost?: (origin: Origin) => void;
+  onLiveCardsLost?: (origin: Machine) => void;
   /**
    * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。
@@ -100,18 +100,18 @@ export interface EventHandlers {
    * `change.cells` 是变了的那几格（`key` · `rev` · `body`），`change.all` ＝ 期间可能漏了（那台又接上 / 丢了几格 / 格读不懂 ⇒ 那台这一样整份重问）。
    * 来自通道 `subscribe(origin, "changed/<topic>")`（`changed-stream.ts::changedItems` 读格），一批叫一次。
    */
-  onChanged?: (origin: Origin, topic: Topic, change: Changed) => void;
+  onChanged?: (origin: Machine, topic: Topic, change: Changed) => void;
   /**
    * 那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`）。
    * 丢的是哪几个会话的哪几行，流里说不出来（一条订阅里混着多个会话）⇒ 宿主对那台机器的每个 tab 按行号补
    * （`TabManager.onStreamGap`）。进 queue：与行保序（丢在哪两格之间，补就从那里起）。
    */
-  onStreamGap?: (origin: Origin) => void;
+  onStreamGap?: (origin: Machine) => void;
   /**
    * 这个会话刚进了那台那条流的「在看」名单（`watch` 格）：它的这份记录从第 `seq` 行起上流，之前没上流的那段由宿主补
    * （`TabManager.onSessionWatch`）。进 queue：排在那之前到的行后面（补的起点按已有的算）。
    */
-  onSessionWatch?: (origin: Origin, p: WatchFrom) => void;
+  onSessionWatch?: (origin: Machine, p: WatchFrom) => void;
 }
 
 /**
@@ -144,7 +144,7 @@ type Queued =
   | { kind: "batch-start" }
   | { kind: "batch-end" }
   // 那台机器的流里丢了几格（`gap`）。
-  | { kind: "gap"; origin: Origin }
+  | { kind: "gap"; origin: Machine }
   // 三帧带的脸（宣告 · 活动那两帧连着名字）—— 与行同 queue 保序（见 onSessionFace）。
   | { kind: "face"; sessionId: string; face: SessionFace; name: { label: string; labelProject: string | null } | null }
   | {
@@ -170,7 +170,7 @@ type Queued =
   // 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里那一条的注释）。
   | { kind: "runs"; payload: SessionRuns }
   | { kind: "branch"; payload: SessionBranchPayload }
-  | { kind: "watch"; origin: Origin; payload: WatchFrom }
+  | { kind: "watch"; origin: Machine; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string };
@@ -274,26 +274,26 @@ export interface BindEventsOptions {
    * 会话内容只从这里来。在其余监听都注册完之后订，
    * `bindEvents` 返回时 monitor 那一侧已经登记好（主界面接着发 `frontend-ready` 就是它们的就绪点）。
    */
-  streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
+  streams?: ReadonlyArray<{ origin: Machine; kind: string }>;
   /**
    * 要订 `session-live-card` 的机器（每台的活卡住那台的常驻后端 ⇒ 每台都订）。
    * 与会话行同一条帧路、同一套 credit；窗口是 {@link LIVE_CARD_WINDOW}。
    */
-  liveCards?: ReadonlyArray<Origin>;
+  liveCards?: ReadonlyArray<Machine>;
   /**
    * 要订的「那台某样东西变了」：每项一条 `changed/<topic>`（⇒ {@link EventHandlers.onChanged}）。
    * 与会话行 · 活卡同一处 `chan.subscribe`；窗口是 `CHANGED_WINDOW`。
    */
-  changed?: ReadonlyArray<{ origin: Origin; topic: Topic }>;
+  changed?: ReadonlyArray<{ origin: Machine; topic: Topic }>;
   /**
    * 订的那几台跟着壳的机器表走（主窗口用）：起来问一次 `ask`（问不到 ⇒ 只订本机），每台照 `plan` 订；之后壳在本机
    * `changed/machines` 上说一声（它照机器表对齐完远端流之后说）⇒ 再问 · 新来的补订 · 没了的退订。
    * 每问定一次交 `moved(此刻那几台, 新订的, 退掉的)`（起来那一次新订的是全部）。
    */
   machines?: {
-    ask(): Promise<readonly Origin[]>;
-    plan(origin: Origin): BindEventsOptions;
-    moved?(now: readonly Origin[], added: readonly Origin[], dropped: readonly Origin[]): void;
+    ask(): Promise<readonly Machine[]>;
+    plan(origin: Machine): BindEventsOptions;
+    moved?(now: readonly Machine[], added: readonly Machine[], dropped: readonly Machine[]): void;
   };
 }
 
@@ -506,7 +506,7 @@ export async function bindEvents(
   //   进 queue：行 ⇒ payload，批边界 ⇒ batch-start / batch-end 哨兵。
   // 一台的会话流看不见了 · 关了：不在这里出声 —— 那台连没连上、为什么、怎么修由栏底机器条那一行照那台的成品说（A2-17-15-2）。
 
-  const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+  const onStreamItems = (origin: Machine, hold: StreamHold, items: Item[]): void => {
     // 每一格都占过一格 credit：进队的处理掉再还，不进队的 · 读不懂的当场记还。
     const take = (q: Queued): void => void queue.push({ ...q, grant: hold });
     const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "label_project">): Queued => ({
@@ -613,7 +613,7 @@ export async function bindEvents(
 
   // `session-live-card`：一格 = 那一处整份的活卡（`SessionLiveCardsPayload`），当场交活卡、当场还 credit；
   //   `Gap` 不补（下一格就是那一处的整份）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
-  const onLiveCardItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+  const onLiveCardItems = (origin: Machine, hold: StreamHold, items: Item[]): void => {
     let used = 0;
     for (const it of items) {
       if (it.t === "frame") {
@@ -636,21 +636,21 @@ export async function bindEvents(
     if (used > 0) hold.sub?.want(used);
   };
 
-  const onChangedItems = (origin: Origin, topic: Topic, hold: StreamHold, items: Item[]): void =>
+  const onChangedItems = (origin: Machine, topic: Topic, hold: StreamHold, items: Item[]): void =>
     feedChanged(hold, items, (change) => handlers.onChanged?.(origin, topic, change));
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // `session-live-card` 与会话行走同一处 `chan.subscribe`（前端对通信层入口的调用点各恰好一处）：
   //   两种流只差窗口与这一格怎么交。
-  const planOf = (o: BindEventsOptions): { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] => [
+  const planOf = (o: BindEventsOptions): { origin: Machine; kind: string; window: number; feed: typeof onStreamItems }[] => [
     ...(o.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
     ...(o.liveCards ?? []).map((origin) => ({ origin, kind: "session-live-card", window: LIVE_CARD_WINDOW, feed: onLiveCardItems })),
     ...(o.changed ?? []).map(({ origin, topic }) => ({
       origin,
       kind: changedStream(topic),
       window: CHANGED_WINDOW,
-      feed: (from: Origin, hold: StreamHold, items: Item[]) => onChangedItems(from, topic, hold, items),
+      feed: (from: Machine, hold: StreamHold, items: Item[]) => onChangedItems(from, topic, hold, items),
     })),
   ];
   const openAll = (o: BindEventsOptions): Promise<Sub[]> =>
@@ -665,8 +665,8 @@ export async function bindEvents(
   const m = opts.machines;
   if (m) await followMachines(m, openAll, (feed) => {
     const hold: StreamHold = { sub: null, owed: 0 };
-    return openStream(LOCAL_ORIGIN, changedStream("machines"), CHANGED_WINDOW, (items) => {
-      onChangedItems(LOCAL_ORIGIN, "machines", hold, items);
+    return openStream(LOCAL, changedStream("machines"), CHANGED_WINDOW, (items) => {
+      onChangedItems(LOCAL, "machines", hold, items);
       feed();
     }).then((s) => (hold.sub = s));
   });
@@ -681,17 +681,17 @@ async function followMachines(
   openAll: (o: BindEventsOptions) => Promise<Sub[]>,
   hear: (moved: () => void) => Promise<unknown>,
 ): Promise<void> {
-  const held = new Map<Origin, Sub[]>();
+  const held = new Map<Machine, Sub[]>();
   let queue: Promise<void> = Promise.resolve();
   const sync = (): Promise<void> =>
     (queue = queue.then(async () => {
-      let want: Origin[];
+      let want: Machine[];
       try {
         want = [...(await m.ask())];
       } catch (e) {
         console.warn("[events] 问不到机器表：", e);
         if (held.size > 0) return;
-        want = [LOCAL_ORIGIN];
+        want = [LOCAL];
       }
       const added = want.filter((o) => !held.has(o));
       const dropped = [...held.keys()].filter((o) => !want.includes(o));
@@ -707,7 +707,7 @@ async function followMachines(
 }
 
 /** 订一条流（前端对通信层 `subscribe` 的唯一调用点：整台机器的那几条与单个会话那一条都经这里）。 */
-function openStream(origin: Origin, kind: string, window: number, sink: (items: Item[]) => void): Promise<Sub> {
+function openStream(origin: Machine, kind: string, window: number, sink: (items: Item[]) => void): Promise<Sub> {
   return chan.subscribe(origin, kind, null, window, sink);
 }
 
@@ -748,20 +748,20 @@ function mergeChanged(a: Changed, b: Changed): Changed {
  * 「只看在看的那台」由调用方在 `on` 里按 `origin` 挑。返回时 monitor 那一侧已登记好；回的函数退掉这几条、丢掉没交的那一窗。
  */
 export async function subscribeTopics(
-  origins: readonly Origin[],
+  origins: readonly Machine[],
   topics: readonly Topic[],
-  on: (origin: Origin, changes: ReadonlyMap<Topic, Changed>) => void,
+  on: (origin: Machine, changes: ReadonlyMap<Topic, Changed>) => void,
 ): Promise<() => void> {
-  const pending = new Map<Origin, Map<Topic, Changed>>();
-  const timers = new Map<Origin, ReturnType<typeof setTimeout>>();
+  const pending = new Map<Machine, Map<Topic, Changed>>();
+  const timers = new Map<Machine, ReturnType<typeof setTimeout>>();
   let stopped = false;
-  const flush = (origin: Origin): void => {
+  const flush = (origin: Machine): void => {
     timers.delete(origin);
     const changes = pending.get(origin);
     pending.delete(origin);
     if (!stopped && changes) on(origin, changes);
   };
-  const take = (origin: Origin, topic: Topic, change: Changed): void => {
+  const take = (origin: Machine, topic: Topic, change: Changed): void => {
     if (stopped) return;
     let mine = pending.get(origin);
     if (!mine) pending.set(origin, (mine = new Map()));
@@ -811,7 +811,7 @@ export type FollowEvent =
  * **跟着一个会话**：订 `session-lines/<sid>`（与独立查看窗同一条订阅；留存订阅当场交、之后的实时行接着交），
  * 每一批格翻成 [`FollowEvent`] 交给 `sink`；每一格交完当场还一格 credit。返回时 monitor 那一侧已登记好。
  */
-export async function followSession(origin: Origin, sid: string, sink: (e: FollowEvent) => void): Promise<{ stop(): void }> {
+export async function followSession(origin: Machine, sid: string, sink: (e: FollowEvent) => void): Promise<{ stop(): void }> {
   const hold: StreamHold = { sub: null, owed: 0 };
   const feed = (items: Item[]): void => {
     const lines: JsonlLinePayload[] = [];

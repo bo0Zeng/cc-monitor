@@ -9,7 +9,7 @@
  * - 什么时候问：起来 · 那台接上 · 机器表加了台 · 那台推 `changed {groups}`（连着来的合成一问）。读失败 ⇒ 留着上一份。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL, type Machine } from "./ipc/origin";
 import type { TypedCommands } from "./generated/TypedCommands";
 import type { GroupsRead } from "./generated/GroupsRead";
 import type { GroupsWritten } from "./generated/GroupsWritten";
@@ -25,9 +25,9 @@ const POKE_MS = 300;
 type GroupCmd = "groups-read" | "groups-write" | "history-annotate";
 
 /** 问一台一条组那几条命令（生产 ＝ `callTyped`；判据换成替身）。 */
-export type GroupCall = <K extends GroupCmd>(origin: Origin, cmd: K, req: TypedCommands[K]["req"]) => Promise<TypedCommands[K]["reply"]>;
+export type GroupCall = <K extends GroupCmd>(origin: Machine, cmd: K, req: TypedCommands[K]["req"]) => Promise<TypedCommands[K]["reply"]>;
 
-const callGroups: GroupCall = (async (origin: Origin, cmd: GroupCmd, req: unknown) => {
+const callGroups: GroupCall = (async (origin: Machine, cmd: GroupCmd, req: unknown) => {
   // 每条命令名照字面写（交通道的那一处认得出说的是哪条）。
   switch (cmd) {
     case "groups-read":
@@ -41,7 +41,7 @@ const callGroups: GroupCall = (async (origin: Origin, cmd: GroupCmd, req: unknow
 
 export class GroupBook {
   /** 要问的那几台（问过的都记着，照先来的先后）。 */
-  private readonly origins: Origin[] = [];
+  private readonly origins: Machine[] = [];
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private seq = 0;
@@ -64,13 +64,13 @@ export class GroupBook {
   }
 
   /** 这几台记进要问的、问一次。 */
-  refreshAll(origins: readonly Origin[]): Promise<void> {
+  refreshAll(origins: readonly Machine[]): Promise<void> {
     for (const o of origins) if (!this.origins.includes(o)) this.origins.push(o);
     return this.ask();
   }
 
   /** 那台从机器表里删了：不再问它，剩下的再问一次。 */
-  drop(origin: Origin): Promise<void> {
+  drop(origin: Machine): Promise<void> {
     const i = this.origins.indexOf(origin);
     if (i < 0) return Promise.resolve();
     this.origins.splice(i, 1);
@@ -78,7 +78,7 @@ export class GroupBook {
   }
 
   /** 那台的组那一片变了（推 `changed {groups}` · 这里刚写过）：记进要问的，连着来的合成一问。 */
-  poke(origin: Origin): void {
+  poke(origin: Machine): void {
     if (!this.origins.includes(origin)) this.origins.push(origin);
     if (this.timer !== null) return;
     // 调度：合批 —— 那台连着推来的几帧 `changed {groups}` 合成一问
@@ -90,34 +90,34 @@ export class GroupBook {
 
   /** 起一个新组：本机起 id 与时刻、不写盘；回的那一份随第一位组员的 [`move`] 抄进它那一台。 */
   async make(name: string): Promise<HereGroup> {
-    const r = await this.call(LOCAL_ORIGIN, "groups-write", { op: "make", name });
+    const r = await this.call(LOCAL, "groups-write", { op: "make", name });
     if (r.is !== "made") throw new Error(`groups-write make replied ${r.is}`);
     return { id: r.id, name: r.name, made: r.made, named: r.named };
   }
 
   /** 进出组（问组员那一台）：出 `leave` 那一组、进 `join` 那一组（带整份记录）。 */
-  async move(origin: Origin, sid: string, join: HereGroup | null, leave: string | null): Promise<void> {
+  async move(origin: Machine, sid: string, join: HereGroup | null, leave: string | null): Promise<void> {
     await this.call(origin, "groups-write", { op: "move", sid, ...(join ? { join } : {}), ...(leave !== null ? { leave } : {}) });
     this.poke(origin);
   }
 
   /** 改名：本机发给 `machines` 那几片；有没送到的 ⇒ 抛出，说出哪几台。 */
-  async rename(id: string, name: string, machines: readonly Origin[]): Promise<void> {
-    this.sent(await this.call(LOCAL_ORIGIN, "groups-write", { op: "rename", id, name, machines: [...machines] }), machines);
+  async rename(id: string, name: string, machines: readonly Machine[]): Promise<void> {
+    this.sent(await this.call(LOCAL, "groups-write", { op: "rename", id, name, machines: [...machines] }), machines);
   }
 
   /** 解散：本机发给 `machines` 那几片（各片摘掉那一组，会话一条不动）；有没送到的 ⇒ 抛出，说出哪几台。 */
-  async dissolve(id: string, machines: readonly Origin[]): Promise<void> {
-    this.sent(await this.call(LOCAL_ORIGIN, "groups-write", { op: "dissolve", id, machines: [...machines] }), machines);
+  async dissolve(id: string, machines: readonly Machine[]): Promise<void> {
+    this.sent(await this.call(LOCAL, "groups-write", { op: "dissolve", id, machines: [...machines] }), machines);
   }
 
   /** 固定 · 取消固定（问会话那一台的注解）。 */
-  async pin(origin: Origin, sid: string, pinned: boolean): Promise<void> {
+  async pin(origin: Machine, sid: string, pinned: boolean): Promise<void> {
     await this.call(origin, "history-annotate", { sid, patch: { pinned } });
     this.poke(origin);
   }
 
-  private sent(r: GroupsWritten, machines: readonly Origin[]): void {
+  private sent(r: GroupsWritten, machines: readonly Machine[]): void {
     for (const o of machines) this.poke(o);
     if (r.is !== "sent") throw new Error(`groups-write replied ${r.is}`);
     if (r.missed.length > 0) throw new Error(`not delivered to: ${r.missed.map((m) => `${m.origin} (${m.why})`).join(", ")}`);
@@ -127,7 +127,7 @@ export class GroupBook {
     const n = ++this.seq;
     let got: GroupsRead;
     try {
-      got = await this.call(LOCAL_ORIGIN, "groups-read", { machines: [...this.origins] });
+      got = await this.call(LOCAL, "groups-read", { machines: [...this.origins] });
     } catch (e) {
       console.warn("[组] 本机没答 groups-read（留着上一份）：", e);
       return;

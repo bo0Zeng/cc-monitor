@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import GOLDEN from "../../__fixtures__/quota-read.golden.json";
 import { tookQuota } from "../../../src/frontend/ui/quota-reads";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { QuotaRead } from "../../../src/frontend/ui/acct-words";
 import { accountLabel, fiveHourCell } from "../../../src/frontend/ui/acct-words";
 import { nonEmpty } from "../../test-support/non-empty";
@@ -14,7 +14,7 @@ describe("quota-read 线上金样", () => {
   it("案例不少", () => expect(GOLDEN.cases.length).toBeGreaterThanOrEqual(10));
   for (const c of GOLDEN.cases) {
     it(c.name, () => {
-      const r = tookQuota(LOCAL_ORIGIN, c.reply as unknown as QuotaRead);
+      const r = tookQuota(LOCAL, c.reply as unknown as QuotaRead);
       for (const a of [...r.accounts, ...r.unseen]) {
         nonEmpty(a.rows);
         for (const row of a.rows) for (const cell of row) expect(TONES.has(cell.tone), JSON.stringify(cell)).toBe(true);

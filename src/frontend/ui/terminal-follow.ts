@@ -14,7 +14,7 @@ import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, isOldBackend, offlineSaid, refusalIn } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import { tryDecodeJson } from "./ipc/decode";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import { holderOf, shotOf, type TerminalHolder, type TerminalShot } from "./terminal-reads";
 import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
 import type { TerminalScreen } from "./generated/TerminalScreen";
@@ -41,9 +41,9 @@ export interface FollowEvents {
 
 /** 通道那几样（缺省走通道；测试换成假的）。 */
 export interface FollowPort {
-  subscribe(origin: Origin, kind: string, want: number, sink: (items: Item[]) => void): Promise<{ want(more: number): void; stop(): void }>;
-  follow(origin: Origin, args: { terminal: string; ticket: string }): Promise<unknown>;
-  ack(origin: Origin, args: { ticket: string; seq: number }): Promise<unknown>;
+  subscribe(origin: Machine, kind: string, want: number, sink: (items: Item[]) => void): Promise<{ want(more: number): void; stop(): void }>;
+  follow(origin: Machine, args: { terminal: string; ticket: string }): Promise<unknown>;
+  ack(origin: Machine, args: { ticket: string; seq: number }): Promise<unknown>;
 }
 
 export const CHANNEL_PORT: FollowPort = {
@@ -60,7 +60,7 @@ export interface Follow {
 let tickets = 0;
 
 /** 停了 · 那台断开（通道这一层的事）：那一句照那台成品的离线那一句；成品还没到（不知道 ≠ 离线）⇒ 照画面中断。 */
-const offline = (origin: Origin): FollowStop => {
+const offline = (origin: Machine): FollowStop => {
   const said = offlineSaid(origin);
   return said === null ? lost() : { kind: "stopped", said, offline: true };
 };
@@ -84,7 +84,7 @@ function stopOfEnd(cell: Omit<TerminalFollowEnd, "ticket">): FollowStop | null {
 }
 
 /** 订 `origin` 上 `terminal` 那个终端的实时画面。 */
-export function startFollow(origin: Origin, terminal: string, events: FollowEvents, port: FollowPort = CHANNEL_PORT): Follow {
+export function startFollow(origin: Machine, terminal: string, events: FollowEvents, port: FollowPort = CHANNEL_PORT): Follow {
   const ticket = `tf${++tickets}-${Math.random().toString(36).slice(2, 10)}`;
   let over = false;
   let sub: { want(more: number): void; stop(): void } | null = null;

@@ -21,7 +21,7 @@ import {
   openTerminal,
   NoTerminalWindow,
 } from "../../../src/frontend/ui/terminal-open";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import {
   chanArgsJson,
   chanReply,
@@ -66,7 +66,7 @@ describe("远端", () => {
     await openTerminal("devbox", "claude --resume s1");
     const ssh = asked("terminal-ssh");
     expect(ssh).toHaveLength(1);
-    expect(ssh[0].origin).toBe(LOCAL_ORIGIN);
+    expect(ssh[0].origin).toBe(LOCAL);
     expect(chanArgsJson(ssh[0])).toEqual({
       machine: "devbox",
       command: "claude --resume s1",
@@ -104,7 +104,7 @@ describe("远端", () => {
 describe("本机", () => {
   it("★ 交来的就是成品：直接开窗，不问后端", async () => {
     serve(() => ({ window: "不该被问到", line: "不该被问到" }));
-    await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
+    await openTerminal(LOCAL, "claude --resume s1");
     expect(asked("terminal-ssh")).toEqual([]);
     expect(calls("open_terminal_window")).toEqual([
       { command: "claude --resume s1" },
@@ -123,14 +123,14 @@ describe("不开窗", () => {
         );
       });
     shell("noWindow");
-    await expect(openTerminal(LOCAL_ORIGIN, "x")).rejects.toBeInstanceOf(
+    await expect(openTerminal(LOCAL, "x")).rejects.toBeInstanceOf(
       NoTerminalWindow,
     );
     await expect(openTerminal("devbox", "x")).rejects.toBeInstanceOf(
       NoTerminalWindow,
     );
     shell("opened");
-    await expect(openTerminal(LOCAL_ORIGIN, "x")).resolves.toBeUndefined();
+    await expect(openTerminal(LOCAL, "x")).resolves.toBeUndefined();
     await expect(openTerminal("devbox", "x")).resolves.toBeUndefined();
   });
 });

@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
@@ -55,7 +55,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
 /** `key`：成品没到时会上屏的那个键（远端）；本机的键是哨兵、不上屏，只判写成品名字。sid 不含名字（免得名字从标题 · 目录混进来）。 */
 const CASES = [
   { sid: "s1", origin: "devbox", name: "工作站 B", key: "devbox" },
-  { sid: "s2", origin: LOCAL_ORIGIN, name: "laptop", key: null },
+  { sid: "s2", origin: LOCAL, name: "laptop", key: null },
 ] as const;
 
 beforeAll(() => {

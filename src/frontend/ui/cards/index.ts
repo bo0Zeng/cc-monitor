@@ -43,7 +43,7 @@ import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, sizeText } from "../format";
 import { openFileWindow } from "../file-window";
-import { isRemoteOrigin, type Origin } from "../ipc/origin";
+import { isRemoteOrigin, type Machine } from "../ipc/origin";
 
 /**
  * 〔判定只在后端〕记过的一次 tool_use：工具名（标注用、存偏好用）＋ 后端给的卡型（没有 ＝ 普通工具卡）。
@@ -166,8 +166,8 @@ export interface RenderContext {
    * `null` ＝ 还不知道是哪一家（标签页的会话事实没到）⇒ 卡头那一格先空着，到了由宿主补上（`cards/speaker.ts`）。
    */
   speaker?: string | null;
-  /** 会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器名）。必填：每个造渲染上下文的地方都得说出是哪台机器。 */
-  origin: Origin;
+  /** 会话来源（本机 = `LOCAL`；其余 = 远端机器名）。必填：每个造渲染上下文的地方都得说出是哪台机器。 */
+  origin: Machine;
   /**
    * tool_use_id → 那一次 tool_use 的工具名与卡型。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
@@ -899,7 +899,7 @@ function buildResultBody(
   size: string,
   toolName: string,
   mdByDefault: boolean,
-  origin: Origin,
+  origin: Machine,
 ): void {
   // 秤 6（表第 6 行）：本函数下面建的每个闭包（`renderMode` /
   // 两个 click 监听 / `onToggle`）都捕获 `text`，而它们经 DOM 监听器被卡片长期持有。
@@ -1092,7 +1092,7 @@ function buildTextBody(text: string, size: string): HTMLElement {
  * 思考展开那一刻才问后端解析（`md-doc`），回来照树排、公式当场排：批里建的卡早被 `enhanceCard` 标过，这时才长出来的占位没人再补。
  * 没问成 ⇒ 照原文的字。
  */
-function buildThinkingBody(text: string, origin: Origin): HTMLElement {
+function buildThinkingBody(text: string, origin: Machine): HTMLElement {
   const body = document.createElement("div");
   body.className = "block-body block-body-md";
   fetchDoc(origin, text, "prose").then(
@@ -1109,7 +1109,7 @@ function buildThinkingBody(text: string, origin: Origin): HTMLElement {
  * 工具结果的 Markdown 模式：原文交后端解析（`md-doc {as: tool_result}`：Read / Grep 那种行号前缀后端先剥），回来的树照回复正文卡那样排
  * （长的按 `segs` 分段、只排第 0 段，下面一颗「展开 {大小}」）。没问成 ⇒ 照原文的字。
  */
-function buildMarkdownBody(text: string, size: string, origin: Origin): HTMLElement {
+function buildMarkdownBody(text: string, size: string, origin: Machine): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-body block-body-result block-body-md";
   fetchDoc(origin, text, "tool_result").then(

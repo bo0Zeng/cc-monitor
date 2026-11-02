@@ -14,7 +14,7 @@ import type { IconName } from "./kit/icon";
 import { machineDot } from "./machine-dot";
 import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { NoTerminalWindow, openLoginShell, sayNoTerminal } from "./terminal-open";
 import { openNewSession } from "./new-session";
 import { openOnMachine } from "./file-window";
@@ -25,11 +25,11 @@ import { detailOf, saidOf } from "./kit/detail";
 
 /** 各样动作的去处（调用方给；判据给假的）。 */
 export interface MachineActions {
-  openTerminal(origin: Origin): void;
-  newSession(origin: Origin): void;
-  files(origin: Origin): void;
-  status(origin: Origin): void;
-  addMachine(origin: Origin): void;
+  openTerminal(origin: Machine): void;
+  newSession(origin: Machine): void;
+  files(origin: Machine): void;
+  status(origin: Machine): void;
+  addMachine(origin: Machine): void;
 }
 
 const TITLE: Record<MenuAct, () => string> = {
@@ -48,7 +48,7 @@ const ICON: Record<MenuAct, IconName> = {
   add_machine: "plus",
 };
 
-const RUN: Record<MenuAct, (to: MachineActions, origin: Origin) => void> = {
+const RUN: Record<MenuAct, (to: MachineActions, origin: Machine) => void> = {
   open_terminal: (to, o) => to.openTerminal(o),
   new_session: (to, o) => to.newSession(o),
   files: (to, o) => to.files(o),
@@ -137,13 +137,13 @@ const ASK_BUDGET_MS = 5_000;
 export function machineSource(to: MachineActions): MachineSource {
   return {
     async rows() {
-      const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(ASK_BUDGET_MS));
+      const r = await callTyped(LOCAL, "machine-read", {}, budgetWithin(ASK_BUDGET_MS));
       return machineRows(r.machines);
     },
     async block(query, sessions) {
-      const { hit } = await callTyped(LOCAL_ORIGIN, "machine-find", { query }, budgetWithin(ASK_BUDGET_MS));
+      const { hit } = await callTyped(LOCAL, "machine-find", { query }, budgetWithin(ASK_BUDGET_MS));
       if (!hit) return null;
-      const menu = await callTyped(LOCAL_ORIGIN, "machine-menu", { machine: hit.machine }, budgetWithin(ASK_BUDGET_MS));
+      const menu = await callTyped(LOCAL, "machine-menu", { machine: hit.machine }, budgetWithin(ASK_BUDGET_MS));
       return machineBlock(hit, menu, sessions, to);
     },
   };

@@ -20,7 +20,7 @@ import { callTyped } from "../../../src/frontend/ui/ipc/chan-caller";
 import { renderMessage } from "../../../src/frontend/ui/cards";
 import { enhanceCard, mountWhole, __mathSettledForTests } from "../../../src/frontend/ui/render";
 import type { Doc } from "../../../src/frontend/ui/generated/Doc";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 const callMock = callTyped as unknown as ReturnType<typeof vi.fn>;
 const ROOT = resolve(__dirname, "../../..");
@@ -35,7 +35,7 @@ const doc = (name: string): Doc => {
   return d;
 };
 const ctx = (lazy = false) =>
-  ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy }) as never;
+  ({ parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy }) as never;
 
 beforeEach(() => {
   callMock.mockReset();
@@ -98,7 +98,7 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
     d.open = true;
     d.dispatchEvent(new Event("toggle"));
     await vi.waitFor(() => expect(d.querySelector("[data-math-pending], .katex")).not.toBeNull(), UNTIL_CEILING);
-    expect(callMock).toHaveBeenCalledWith(LOCAL_ORIGIN, "md-doc", { text, as: "prose", refs: [] }, expect.anything());
+    expect(callMock).toHaveBeenCalledWith(LOCAL, "md-doc", { text, as: "prose", refs: [] }, expect.anything());
     await __mathSettledForTests();
     expect(d.querySelector(".katex")).not.toBeNull();
     expect(d.querySelector("[data-math-pending]")).toBeNull();

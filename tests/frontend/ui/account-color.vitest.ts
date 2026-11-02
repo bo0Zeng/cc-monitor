@@ -4,9 +4,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { accountAvatarEl, accountColorOf } from "../../../src/frontend/ui/account-color";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
-import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL, type Machine } from "../../../src/frontend/ui/ipc/origin";
 
-const REMOTE = "ssh:box" as Origin;
+const REMOTE = "ssh:box" as Machine;
 
 function acct(name: string, color: number): Account {
   return {
@@ -25,7 +25,7 @@ function acct(name: string, color: number): Account {
   };
 }
 
-function put(origin: Origin, accounts: Account[]): void {
+function put(origin: Machine, accounts: Account[]): void {
   putIn(appStore.accounts, origin, { origin, available: true, error: null, oldBackend: false, meta: null, accounts, notice: null } as AccountsState);
 }
 
@@ -33,7 +33,7 @@ const slotClasses = (el: HTMLElement): string[] => [...el.classList].filter((c) 
 
 describe("号色照那台账号库给的那一格画", () => {
   beforeEach(() => {
-    put(LOCAL_ORIGIN, [acct("team", 0), acct("lab", 2)]);
+    put(LOCAL, [acct("team", 0), acct("lab", 2)]);
     put(REMOTE, [acct("team", 5)]);
   });
 
@@ -54,14 +54,14 @@ describe("号色照那台账号库给的那一格画", () => {
   });
 
   it("删了一个号，别的号色不变（照新那份清单画）", () => {
-    put(LOCAL_ORIGIN, [acct("lab", 2)]);
+    put(LOCAL, [acct("lab", 2)]);
     expect(slotClasses(accountAvatarEl("lab"))).toEqual(["acct-c2"]);
   });
 });
 
 describe("accountAvatarEl（头像元素）", () => {
   it("类含 .acct-avatar + 缩写文本 + aria-hidden", () => {
-    put(LOCAL_ORIGIN, [{ ...acct("zhang", 3), plate: "核牌" }]);
+    put(LOCAL, [{ ...acct("zhang", 3), plate: "核牌" }]);
     const el = accountAvatarEl("zhang");
     expect(el.classList.contains("acct-avatar")).toBe(true);
     expect(el.textContent, "号牌字照那台后端写好的那一格").toBe("核牌");

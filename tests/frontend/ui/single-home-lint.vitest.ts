@@ -4,7 +4,7 @@
  * 本文件只证每一项真的会抓人、家里真的放过：用仓里那份真配置，往一份真文件的原文后面补一段（`lintText`，路径落在那份真文件上，
  * 不往盘上写）。
  *
- * 买不到：拆开拼（`"tmux new-" + "session -d"`）· 转一手再比（`const L = LOCAL_ORIGIN; x === L`）· 经 `any` 拼出来的
+ * 买不到：拆开拼（`"tmux new-" + "session -d"`）· 转一手再比（`const L = LOCAL; x === L`）· 经 `any` 拼出来的
  * `JSON["pa" + "rse"]`；按语法树认，注释天然不算。
  */
 import { readFileSync } from "node:fs";
@@ -59,13 +59,13 @@ const CASES: ReadonlyArray<readonly [string, string, string, string | null]> = [
   ["界面判起会话挑哪个号", LEAF, fn("return withAccount(o, null, r);"), "自己判"],
   ["线上 named 从别处出", LEAF, fn('return { kind: "named", name: o };'), "launch-account.ts"],
   ["线上 named 从它的家出", join(UI, "launch-account.ts"), fn('return { kind: "named", name: o };'), null],
-  ["直比 LOCAL_ORIGIN", LEAF, fn("return o === LOCAL_ORIGIN;"), "是不是本机"],
+  ["直比 LOCAL", LEAF, fn("return o === LOCAL;"), "是不是本机"],
   ["反着写、比 <local> 字面量", LEAF, fn('return "<local>" !== o;'), "是不是本机"],
-  ["经属性访问比", LEAF, fn("return o == r.LOCAL_ORIGIN;"), "是不是本机"],
-  ["case 上的 LOCAL_ORIGIN", LEAF, fn("switch (o) { case LOCAL_ORIGIN: return 1; default: return 0; }"), "是不是本机"],
-  ["别名导入 LOCAL_ORIGIN", LEAF, 'import { LOCAL_ORIGIN as HERE } from "./ipc/origin";\nexport const _h = HERE;', "不起别名导入"],
-  ["LOCAL_ORIGIN 当参数传不算", LEAF, fn("return r(LOCAL_ORIGIN, o);"), null],
-  ["比本机在 origin.ts 里", join(UI, "ipc", "origin.ts"), fn("return o === LOCAL_ORIGIN;"), null],
+  ["经属性访问比", LEAF, fn("return o == r.LOCAL;"), "是不是本机"],
+  ["case 上的 LOCAL", LEAF, fn("switch (o) { case LOCAL: return 1; default: return 0; }"), "是不是本机"],
+  ["别名导入 LOCAL", LEAF, 'import { LOCAL as HERE } from "./ipc/origin";\nexport const _h = HERE;', "不起别名导入"],
+  ["LOCAL 当参数传不算", LEAF, fn("return r(LOCAL, o);"), null],
+  ["比本机在 origin.ts 里", join(UI, "ipc", "origin.ts"), fn("return o === LOCAL;"), null],
   ["界面写会话状态转移", LEAF, fn("return nextState(o, r);"), "状态转移"],
   ["界面攒判活那一轴（串里也算）", LEAF, fn('return r["liveness"];'), "状态转移"],
   ["alert 当错误反馈", LEAF, fn('alert("失败了"); return 0;'), "alert"],

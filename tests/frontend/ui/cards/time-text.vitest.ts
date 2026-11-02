@@ -2,10 +2,10 @@
 // 夹具故意让原始时刻与钟面对不上（原始是 UTC 02:01，钟面写 17:45）：界面若还在自己换算，这几条就红。
 import { describe, it, expect } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 
-const ctx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false });
+const ctx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false });
 const AT = "2026-10-06T02:01:00.000Z";
 
 describe("卡上的时刻照抄后端写好的钟面", () => {

@@ -18,8 +18,8 @@ import { openNewSession } from "./new-session";
 import { openSession } from "./session-open";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
-// 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+// 本机 = `LOCAL`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
+import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { inTmux, standingOf, type Standing } from "./sessions-where";
 import type { Launch } from "./generated/Launch";
 import {
@@ -40,7 +40,7 @@ import { renameTab } from "./tab-rename";
 const ITEM_OPS: Readonly<Record<string, string>> = { end: "sessions-stop" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、第二行写为什么。 */
-export function gateByOffer(origin: Origin, item: MenuItem): MenuItem {
+export function gateByOffer(origin: Machine, item: MenuItem): MenuItem {
   const op = item.id !== undefined ? ITEM_OPS[item.id] : undefined;
   if (op === undefined || item.enabled === false || item.pending) return item;
   const why = unavailableSaid(origin, op);
@@ -326,7 +326,7 @@ export class TabMenu {
   }
 
   /** 交那台接回：那一行那台渲（tmux 会话 ⇒ 接会话名 · 托管终端 ⇒ 瘦客户端 `--attach <句柄>`；远端经 SSH），这边开终端窗口跑它。 */
-  private async attach(origin: Origin, sid: string): Promise<void> {
+  private async attach(origin: Machine, sid: string): Promise<void> {
     await openSession(origin, { what: { kind: "look", sid }, local: isLocalOrigin(origin) });
   }
 
@@ -349,11 +349,11 @@ export class TabMenu {
     if (s === undefined) return this.unresolved();
     // 不在哪个终端里 · 本机 tmux 那一行（ccm 开的那个窗口 ·［切到终端］）⇒ 不出；只对托管终端那一行出。
     if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid)) || inTmux(s)) return removeMenuItem("attach");
-    updateMenuItem("attach", this.attachItem(LOCAL_ORIGIN, sid, s));
+    updateMenuItem("attach", this.attachItem(LOCAL, sid, s));
   }
 
   /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
-  private attachItem(origin: Origin, sid: string, s: Standing): MenuItem {
+  private attachItem(origin: Machine, sid: string, s: Standing): MenuItem {
     const ambiguous = s.kind === "ambiguous";
     return {
       id: "attach",
@@ -373,7 +373,7 @@ export class TabMenu {
   private resumePicks = new Map<string, ResumePick>();
 
   /** 那台的号 ⇒ 恢复菜单的账号组（按这个会话的那一家；还不知道是哪一家 ⇒ 不出账号组，不落哪一家）。 */
-  private resumeAccountsOf(origin: Origin, agent: string | null): Promise<ResumeAccounts> {
+  private resumeAccountsOf(origin: Machine, agent: string | null): Promise<ResumeAccounts> {
     if (agent === null) return Promise.resolve({ kind: "off" });
     return resumeAccounts(origin, agent, { hasAccounts: agentHasAccounts(agent), agentName: displayNameOf(agent) ?? agent });
   }

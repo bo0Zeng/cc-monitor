@@ -23,7 +23,7 @@
 import { commands } from "./ipc/commands";
 import { failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, type Machine } from "./ipc/origin";
 import { revealInFolder } from "./reveal-in-folder";
 
 /**
@@ -111,7 +111,7 @@ export async function openFileWindow(machine: string, at?: FileWindowTarget): Pr
  * 「在文件窗口打开」那一路（会话来源 ⇒ 落点）：本机 ⇒ 系统文件管理器里显示它；远端 ⇒ 文件窗口开到它。
  * 远端那台认不出（被删 / 改名）⇒ 壳那一句进失败 toast。
  */
-export async function openOnMachine(origin: Origin, at: FileWindowTarget): Promise<void> {
+export async function openOnMachine(origin: Machine, at: FileWindowTarget): Promise<void> {
   if (isLocalOrigin(origin)) {
     await revealInFolder("dir" in at ? at.dir : at.revealFile);
     return;

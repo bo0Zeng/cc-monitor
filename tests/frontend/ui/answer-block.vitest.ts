@@ -20,7 +20,7 @@ import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/f
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Ask, Needs } from "../../../src/frontend/ui/session-reads";
 import { liveFace } from "../../test-support/session-faces";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
 import { nonEmpty } from "../../test-support/non-empty";
@@ -35,7 +35,7 @@ function needs(ask: Ask | null, over: Partial<Needs> = {}): Needs {
 }
 
 function tab(n: Needs | null, sid = "s1"): Tab {
-  return { sessionId: sid, origin: LOCAL_ORIGIN, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
+  return { sessionId: sid, origin: LOCAL, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
 }
 
 function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
@@ -364,7 +364,7 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
   });
 
   it("★ 会话事实还没到（只有脸说在等）⇒ 不出：种类判不出，不猜", () => {
-    const t = { sessionId: "s1", origin: LOCAL_ORIGIN, face: liveFace("needs_you"), line: null, needs: null } as unknown as Tab;
+    const t = { sessionId: "s1", origin: LOCAL, face: liveFace("needs_you"), line: null, needs: null } as unknown as Tab;
     const { b } = rig(t);
     expect(b.el.hidden).toBe(true);
   });

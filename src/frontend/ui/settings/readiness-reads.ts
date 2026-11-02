@@ -5,7 +5,7 @@
  * 问不到 ⇒ `null`（不当 0，也不当没做完）。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { LOCAL } from "../ipc/origin";
 import { readRemoteConfig } from "../remote-config";
 import { markChore } from "./data-reads";
 import type { FirstRun } from "../generated/FirstRun";
@@ -23,7 +23,7 @@ const BUDGET_MS = 10_000;
 export async function readReadiness(known?: number): Promise<Readiness | null> {
   try {
     const remotes = known ?? (await readRemoteConfig()).hosts.length;
-    return await callTyped(LOCAL_ORIGIN, "first-run", { remotes }, budgetWithin(BUDGET_MS));
+    return await callTyped(LOCAL, "first-run", { remotes }, budgetWithin(BUDGET_MS));
   } catch (e) {
     console.warn("[readiness] 问不到「开始用」那份数：", e);
     return null;
@@ -32,5 +32,5 @@ export async function readReadiness(known?: number): Promise<Readiness | null> {
 
 /** 「开始用」那一块点了「跳过」：交本机后端记下（`chores-mark` 的 `skipStart`，写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
 export async function skipStart(): Promise<void> {
-  await markChore(LOCAL_ORIGIN, { op: "skipStart" });
+  await markChore(LOCAL, { op: "skipStart" });
 }

@@ -11,13 +11,13 @@ import { readPrefs, setPrefs } from "../machine-prefs";
 import { detailOf, sayWithDetail, saidOf } from "../kit/detail";
 import { PB_DIR_ANCHOR } from "../settings-dest";
 import { ccRow } from "./cc-row";
-import type { Origin } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 
 /** 校验那一问的期限：那台起一次 pb（后端给 pb 20 秒）＋ 回程。 */
 const CHECK_BUDGET_MS = 25_000;
 
 /** 那台那一行。建好不问；`load()` 才问那台（机器页第一次可见时宿主调）。 */
-export function pbDirRow(origin: Origin): { row: HTMLElement; load: () => void } {
+export function pbDirRow(origin: Machine): { row: HTMLElement; load: () => void } {
   const input = document.createElement("input");
   input.type = "text";
   input.className = "settings-input settings-input-mono";

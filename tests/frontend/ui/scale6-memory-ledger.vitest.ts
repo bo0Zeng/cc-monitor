@@ -91,7 +91,7 @@ import {
   type RigPayload,
 } from "../../test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { SessionBranchPayload } from "../../../src/frontend/ui/generated/SessionBranchPayload";
 
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
@@ -99,7 +99,7 @@ const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-record
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale6/session.jsonl",
-    origin: LOCAL_ORIGIN,
+    origin: LOCAL,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

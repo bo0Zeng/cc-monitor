@@ -93,7 +93,7 @@ import { MainDrawer } from "../../../src/frontend/ui/main-drawer";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import { closeMenu, openMenu } from "../../../src/frontend/ui/kit/menu";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { announced, goldenFace } from "../../test-support/session-faces";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -107,7 +107,7 @@ import { copyPattern } from "../../test-support/copy-pattern";
 
 const inside = (tm: TabManager): { store: TabStore } => tm as unknown as { store: TabStore };
 
-function makeTabs(sids: readonly string[], origin: string = LOCAL_ORIGIN): TabManager {
+function makeTabs(sids: readonly string[], origin: string = LOCAL): TabManager {
   const bar = document.createElement("div");
   const root = document.createElement("div");
   document.body.append(bar, root);
@@ -476,7 +476,7 @@ function results(rs: { id: string; text: string; error?: boolean }[]): LineRecor
 }
 const ctx = (): RenderContext => ({
   parentPath: "/p/s.jsonl",
-  origin: LOCAL_ORIGIN,
+  origin: LOCAL,
   toolUseNames: new Map(),
   toolUseElements: new Map(),
   pendingToolResults: new Map(),

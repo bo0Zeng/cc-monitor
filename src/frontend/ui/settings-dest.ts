@@ -18,26 +18,26 @@
  *
  * 认不出的那一节设置窗会忽略（照常打开那一页、高亮页头）。
  */
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { SettingsTarget } from "./open-settings";
 
 /** 那台的「账号」栏（没有当前标签页时调用方给本机）。 */
-export function accountsOf(origin: Origin): SettingsTarget {
+export function accountsOf(origin: Machine): SettingsTarget {
   return { machine: origin, tab: "acct" };
 }
 
 /** 那台 ›「别名与配置文件」› 接上终端。 */
-export function connectTerminalOf(origin: Origin): SettingsTarget {
+export function connectTerminalOf(origin: Machine): SettingsTarget {
   return { machine: origin, tab: "config", anchor: "connect-terminal" };
 }
 
 /** 那台机器的页。 */
-export function machinePageOf(origin: Origin): SettingsTarget {
+export function machinePageOf(origin: Machine): SettingsTarget {
   return { machine: origin };
 }
 
 /** 那台的上下文上限那一折（机器页「这台上的 cc-monitor」里）。 */
-export function contextLimitsOf(origin: Origin): SettingsTarget {
+export function contextLimitsOf(origin: Machine): SettingsTarget {
   return { machine: origin, anchor: "context-limits" };
 }
 
@@ -45,7 +45,7 @@ export function contextLimitsOf(origin: Origin): SettingsTarget {
 export const PB_DIR_ANCHOR = "pb-dir";
 
 /** 那台的 pb 路径那一行。 */
-export function pbDirOf(origin: Origin): SettingsTarget {
+export function pbDirOf(origin: Machine): SettingsTarget {
   return { machine: origin, anchor: PB_DIR_ANCHOR };
 }
 

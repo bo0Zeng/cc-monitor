@@ -14,7 +14,7 @@
  * 回包形状由握手时的形状指纹管，这里不逐格判；没成原样抛（那一句 ＋ 详情是出错那一端写的）。**前端不做安全判断**。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { ShellKind } from "./generated/ShellKind";
 import type { AliasWins } from "./generated/AliasWins";
 import type { PsHost as PsHostWire } from "./generated/PsHost";
@@ -51,29 +51,29 @@ export type AliasListing = AliasListingWire;
 const ALIAS_BUDGET_MS = 30_000;
 
 /** 读回那台上的启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
-export function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
+export function readAliases(origin: Machine, shell: Shell, rcPath: string | null): Promise<AliasListing> {
   return callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份、给人读的那一句（那台后端现问新开终端的 `PATH`）。 */
-export async function readCcmOnPath(origin: Origin): Promise<OnPath> {
+export async function readCcmOnPath(origin: Machine): Promise<OnPath> {
   const { onPath } = await callTyped(origin, "ccm-probe", {}, budgetWithin(ALIAS_BUDGET_MS));
   return onPath;
 }
 
 /** 用户级 PATH 那一格：读 · 加 · 撤，回做完之后现问的成品（状态 · 那一句 · 详情 · 那段命令）。 */
-export function userPath(origin: Origin, op: UserPathOp): Promise<UserPath> {
+export function userPath(origin: Machine, op: UserPathOp): Promise<UserPath> {
   return callTyped(origin, "ccm-user-path", { op }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 别名块预览（往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。 */
-export async function renderAliasBlock(origin: Origin, rcPath: string): Promise<string> {
+export async function renderAliasBlock(origin: Machine, rcPath: string): Promise<string> {
   const { text } = await callTyped(origin, "aliases-block-render", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
   return text;
 }
 
 /** 别名块装进那台上人选的那份启动文件（幂等，整块替换）。 */
-export async function installAliasBlock(origin: Origin, rcPath: string): Promise<void> {
+export async function installAliasBlock(origin: Machine, rcPath: string): Promise<void> {
   await callTyped(origin, "aliases-block-install", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
@@ -81,11 +81,11 @@ export async function installAliasBlock(origin: Origin, rcPath: string): Promise
  * 把那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（后端只做这一件固定的事）。
  * **只在用户点了、确认了之后调**（不代改）。
  */
-export function allowLocalScripts(origin: Origin, host: PsHost): Promise<PolicySet> {
+export function allowLocalScripts(origin: Machine, host: PsHost): Promise<PolicySet> {
   return callTyped(origin, "powershell-policy-set", { host }, budgetWithin(ALIAS_BUDGET_MS));
 }
 
 /** 别名块卸掉（整块删，块外一个字节不动）。 */
-export async function removeAliasBlock(origin: Origin, rcPath: string): Promise<void> {
+export async function removeAliasBlock(origin: Machine, rcPath: string): Promise<void> {
   await callTyped(origin, "aliases-block-remove", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
 }

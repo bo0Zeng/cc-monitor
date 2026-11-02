@@ -24,7 +24,7 @@
 import { copyText } from "./copy-table";
 import { ControlError, machineName, settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import type { Machine } from "./ipc/origin";
 import type { BusList as BusListWire } from "./generated/BusList";
 import type { BusInbox as BusInboxWire } from "./generated/BusInbox";
 
@@ -38,7 +38,7 @@ const READ_BUDGET_MS = 30_000;
  * 只回确定的答案；问不到 ⇒ 抛 [`ControlError`]（「问不到」不是「不在线」，见头注）。
  * 这是刻意的一次往返：只在用户点某一行的「检查」时问，不默认全量查、不轮询。
  */
-export async function agentOnline(origin: Origin, id: string): Promise<boolean> {
+export async function agentOnline(origin: Machine, id: string): Promise<boolean> {
   const { agents } = await readRoster(origin, ONLINE_BUDGET_MS);
   const hit = agents.find((a) => a.id === id);
   if (hit === undefined || hit.live === null) {
@@ -57,11 +57,11 @@ export type BusList = BusListWire;
 export type BusInbox = BusInboxWire;
 
 /** 读 `origin` 那台的名单。失败 ⇒ 抛 [`ControlError`]（读不到 ≠ 一个都没有）。 */
-export async function readRoster(origin: Origin, budgetMs: number = READ_BUDGET_MS): Promise<BusList> {
+export async function readRoster(origin: Machine, budgetMs: number = READ_BUDGET_MS): Promise<BusList> {
   return settleTyped(origin, "bus-list", callTyped(origin, "bus-list", {}, budgetWithin(budgetMs)));
 }
 
 /** 只读看 `origin` 上 agent `id` 收件箱的尾巴（不推已读位置）。失败 ⇒ 抛 [`ControlError`]。 */
-export async function readInbox(origin: Origin, id: string): Promise<BusInbox> {
+export async function readInbox(origin: Machine, id: string): Promise<BusInbox> {
   return settleTyped(origin, "bus-inbox", callTyped(origin, "bus-inbox", { id }, budgetWithin(READ_BUDGET_MS)));
 }
