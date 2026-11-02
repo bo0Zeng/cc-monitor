@@ -25,11 +25,11 @@ import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.wire.gen.HlCode
+import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
-import com.ccmonitor.mobile.core.wire.gen.HlCode
-import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.claude.LocalSaidImages
 import com.ccmonitor.mobile.ui.claude.LocalSegHl
 import kotlinx.coroutines.flow.drop

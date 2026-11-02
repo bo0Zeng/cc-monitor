@@ -13,14 +13,20 @@ fn code(lang: Option<&str>, x: &str) -> HlCode {
 
 /// 三元组 `[起点差, 长, 类]…` 里出现过的类。
 fn classes(hl: &[u32]) -> Vec<u32> {
-    hl.chunks(3).filter(|t| t.len() == 3).map(|t| t[2]).collect()
+    hl.chunks(3)
+        .filter(|t| t.len() == 3)
+        .map(|t| t[2])
+        .collect()
 }
 
 #[test]
 fn two_blocks_come_back_in_order_and_only_the_known_language_is_coloured() {
     let mut h = md_core::Highlighter::new(1 << 20);
     let req = ProseHlReq {
-        codes: vec![code(Some("rust"), "fn main() { let x = 1; }"), code(None, "plain words")],
+        codes: vec![
+            code(Some("rust"), "fn main() { let x = 1; }"),
+            code(None, "plain words"),
+        ],
     };
     let got = seg_hl(&mut h, req).expect("两块代码在上限之内");
     assert_eq!(got.hl.len(), 2, "交两块回两份");

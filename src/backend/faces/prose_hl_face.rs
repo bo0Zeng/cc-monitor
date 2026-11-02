@@ -14,12 +14,12 @@ pub(crate) const PROSE_HL_REQ_CAP: Cap = Cap {
     over: Over::Reject,
 };
 
-/// 高亮缓存的字节上限（每条按 键长 ＋ `hl` 长 × 4 计）。
-const CACHE_BYTES: usize = 8 << 20;
+/// 高亮缓存的字节预算（每条按 键长 ＋ `hl` 长 × 4 计）：满了先淘汰最久没用的那条，下次再算一遍；不限任何上行或下行的量。
+const HL_CACHE_BYTES: usize = 8 << 20;
 
 /// 进程里那一份高亮器。
 static HIGHLIGHTER: LazyLock<Mutex<md_core::Highlighter>> =
-    LazyLock::new(|| Mutex::new(md_core::Highlighter::new(CACHE_BYTES)));
+    LazyLock::new(|| Mutex::new(md_core::Highlighter::new(HL_CACHE_BYTES)));
 
 typed::codes! {
     /// `prose-hl` 的码。
@@ -78,7 +78,9 @@ pub(crate) fn seg_hl(hl: &mut md_core::Highlighter, req: ProseHlReq) -> Result<S
             .collect(),
         segs: Vec::new(),
     };
-    Ok(SegHl { hl: hl.seg(&doc, 0) })
+    Ok(SegHl {
+        hl: hl.seg(&doc, 0),
+    })
 }
 
 #[cfg(test)]
