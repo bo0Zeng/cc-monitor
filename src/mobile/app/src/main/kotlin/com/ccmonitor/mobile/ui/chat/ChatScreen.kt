@@ -28,7 +28,10 @@ import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
+import com.ccmonitor.mobile.core.wire.gen.HlCode
+import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.claude.LocalSaidImages
+import com.ccmonitor.mobile.ui.claude.LocalSegHl
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 
@@ -56,8 +59,10 @@ fun ChatScreen(
     onFollow: (Boolean) -> Unit = {},
     /** 人说的那一句里的图：画到那一格时按引用取字节（取不到 ⇒ `null`，留占位）。 */
     loadImage: suspend (SaidImage) -> ByteArray? = { null },
+    /** 助手正文一段的代码高亮：建好那一段时拉（拉不到 ⇒ `null`，照纯字）。 */
+    loadHl: suspend (List<HlCode>) -> SegHl? = { null },
 ) {
-    CompositionLocalProvider(LocalSaidImages provides loadImage) {
+    CompositionLocalProvider(LocalSaidImages provides loadImage, LocalSegHl provides loadHl) {
         Column(modifier.fillMaxSize()) {
             ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
             needs()
