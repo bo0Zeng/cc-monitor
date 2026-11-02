@@ -50,10 +50,6 @@ pub const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 4 * 1024 * 1024,
     over: relay_route_core::Over::DegradeAndSay,
 };
-/// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。读的那一口照声明表的那一格；
-/// 这里的名字给字节上限登记表认、远端拉回那一侧取同一个数，两处须相等（下一行编译期查）。
-pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
-const _: () = assert!(CATALOG_MAX_BYTES == relay_route_core::ASSET_CATALOG_FILE.row.cap.bytes);
 
 /// 资产目录：状态（读不出来不覆盖；版本照声明表、在顶层 `version`，更新的格式整份不认 —— 读写口管）。
 /// 旧文件里的 `"v":1` 读的时候不认、写的时候不再写。

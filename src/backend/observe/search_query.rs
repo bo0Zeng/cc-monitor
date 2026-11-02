@@ -196,7 +196,10 @@ static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
 /// 〔perfC2〕读数（680 MB 合成世界，`tests/shots/perf/backend/drive.mjs --only search`）：正文一共约 79 MB ⇒ 128 MB 整份装得下
 /// （不含工具每问 0.2–0.4 s CPU，64 MB 时 0.5–0.8 s）；含工具的文本约 400 MB，128 / 256 都装不下、只差在常驻多少 ⇒
 /// 不为它再往上调（它靠并行重读与正文层优先，不靠上界）。
-pub(crate) const RESIDENT_MAX_BYTES: usize = 128 << 20;
+pub(crate) const RESIDENT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 128 << 20,
+    over: relay_route_core::Over::IndexTrim,
+};
 
 /// 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
 fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> {
@@ -239,7 +242,7 @@ pub(crate) struct SearchIndex {
 
 impl Default for SearchIndex {
     fn default() -> Self {
-        Self::with_budget(RESIDENT_MAX_BYTES)
+        Self::with_budget(RESIDENT_MAX_BYTES.as_len())
     }
 }
 

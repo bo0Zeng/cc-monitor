@@ -156,7 +156,7 @@ tests/frontend/shell/backend_control_tests.rs	1
 tests/frontend/shell/backend_kill_tests.rs	9
 tests/frontend/shell/backend_route_senders_tests.rs	4
 tests/frontend/shell/byte_cap_registry.rs	4
-tests/frontend/shell/byte_cap_registry_tests.rs	9
+tests/frontend/shell/byte_cap_registry_tests.rs	6
 tests/frontend/shell/byte_table_tests.rs	1
 tests/frontend/shell/capability_registry_tests.rs	23
 tests/frontend/shell/chan/webview_tests.rs	2

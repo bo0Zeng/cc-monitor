@@ -196,7 +196,7 @@ fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
         code(json!({"origin": "devbox", "kind": "data", "value": [1]})),
         "bad_args"
     );
-    let big = "x".repeat(MAX_VALUE_BYTES + 1);
+    let big = "x".repeat(MAX_VALUE_BYTES.as_len() + 1);
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "data", "value": {"s": big}})),
         "too_large"

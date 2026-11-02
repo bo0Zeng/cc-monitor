@@ -19,7 +19,10 @@ pub(crate) const SAY_SINCE: u32 = 2;
 /// 托管进程从这一版起认 `interrupt`（回 `interrupted`）：低于它 ⇒ 不说、照实报旧版。
 pub(crate) const INTERRUPT_SINCE: u32 = 3;
 /// 一帧最长（种 ＋ 载荷）。整屏一帧最大也就几百 KB；超过它 ⇒ 不是我们的对端，断线。
-pub(crate) const MAX_FRAME: u32 = 16 * 1024 * 1024;
+pub(crate) const MAX_FRAME: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 16 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 pub(crate) const KIND_CTL: u8 = 0;
 pub(crate) const KIND_OUT: u8 = 1;
@@ -235,7 +238,7 @@ pub(crate) fn decode(buf: &[u8]) -> Result<Option<(Frame, usize)>, Bad> {
         return Ok(None);
     }
     let len = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if len == 0 || len > MAX_FRAME {
+    if len == 0 || u64::from(len) > MAX_FRAME.bytes {
         return Err(Bad::TooLong(len));
     }
     let total = 4 + len as usize;
@@ -266,7 +269,7 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option
         Err(e) => return Err(Bad::Io(e)),
     }
     let len = u32::from_be_bytes(head);
-    if len == 0 || len > MAX_FRAME {
+    if len == 0 || u64::from(len) > MAX_FRAME.bytes {
         return Err(Bad::TooLong(len));
     }
     let mut buf = vec![0u8; 4 + len as usize];

@@ -28,7 +28,10 @@ use crate::platform::shell::posix;
 use crate::platform::ssh_client::SshClient;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
-pub(crate) const MAX_COMMAND: usize = 4096;
+pub(crate) const MAX_COMMAND: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4096,
+    over: relay_route_core::Over::Reject,
+};
 
 use crate::common::said::Said;
 
@@ -57,12 +60,12 @@ fn check_command(cmd: &str, powershell: bool) -> Result<(), Said> {
     if cmd.trim().is_empty() {
         return Err(refused(copy_text("beTerminal.refuse.empty", &[])));
     }
-    if cmd.len() > MAX_COMMAND {
+    if cmd.len() > MAX_COMMAND.as_len() {
         return Err(refused(copy_text(
             "beTerminal.refuse.tooLong",
             &[
                 ("len", &cmd.len().to_string()),
-                ("max", &MAX_COMMAND.to_string()),
+                ("max", &MAX_COMMAND.bytes.to_string()),
             ],
         )));
     }

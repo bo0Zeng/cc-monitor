@@ -88,7 +88,10 @@ use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 ///
 /// 现在是 `fill_buf`/`consume` 手搓：超限之后**只找换行、不再往 buf 里塞字节**，
 /// 整行的内存占用与行长无关。
-pub const MAX_LINE_BYTES: usize = 1 << 20;
+pub const MAX_LINE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 20,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 应答通道容量。**刻意与出方向那条（按字节封顶，`CHANNEL_MAX_BYTES`）分开**。
 ///
@@ -212,7 +215,7 @@ where
                 None => (chunk.len(), false),
             };
             if !overflowed {
-                if buf.len() + take > MAX_LINE_BYTES {
+                if buf.len() + take > MAX_LINE_BYTES.as_len() {
                     overflowed = true;
                     // 丢之前先看一眼行首（至多 `ID_SNIFF_BYTES`）：buf 此刻就是这一行的开头；
                     // buf 若还是空的（一块就越线），行首就是这一块本身。
@@ -237,7 +240,8 @@ where
                         &overflow_id,
                         "line_too_long",
                         &crate::common::contract::malformed(&format!(
-                            "request line over {MAX_LINE_BYTES} bytes, dropped whole"
+                            "request line over {} bytes, dropped whole",
+                            MAX_LINE_BYTES.bytes
                         )),
                     ),
                 )

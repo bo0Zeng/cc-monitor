@@ -396,7 +396,7 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
         )
         .unwrap()
     };
-    let third = PUSH_MAX_BYTES / 3;
+    let third = PUSH_MAX_BYTES.as_len() / 3;
     let mine = cat::CatalogReply {
         self_id: "me".into(),
         machines: vec![
@@ -404,7 +404,7 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
             m("a", 1, third),
             m("b", 1, third),
             m("c", 4, 10),
-            m("big", 1, PUSH_MAX_BYTES + 1),
+            m("big", 1, PUSH_MAX_BYTES.as_len() + 1),
             m("them", 9, 10),
             m("old", 1, 10),
         ],
@@ -428,7 +428,7 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
     );
     for c in &chunks {
         let len: usize = c.iter().map(|x| json!(x).to_string().len() + 1).sum();
-        assert!(len <= PUSH_MAX_BYTES + 1, "一块超了上限：{len}");
+        assert!(len <= PUSH_MAX_BYTES.as_len() + 1, "一块超了上限：{len}");
     }
     assert_eq!(too_big.len(), 1);
     assert!(too_big[0].contains("big"));
@@ -500,8 +500,9 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
 fn one_push_chunk_fits_under_the_remote_cli_stdin_cap() {
     let overhead = "{\"catalog\":{\"machines\":[]}}\n".len() as u64;
     assert!(
-        PUSH_MAX_BYTES as u64 + overhead <= crate::control::cli_args::MAX_CLI_STDIN,
-        "PUSH_MAX_BYTES（{PUSH_MAX_BYTES}）＋ 外层 {overhead} 字节 > 远端 CLI 面 stdin 上限 —— 切块上限要跟着它"
+        PUSH_MAX_BYTES.bytes + overhead <= crate::control::cli_args::MAX_CLI_STDIN.bytes,
+        "PUSH_MAX_BYTES（{}）＋ 外层 {overhead} 字节 > 远端 CLI 面 stdin 上限 —— 切块上限要跟着它",
+        PUSH_MAX_BYTES.bytes
     );
 }
 

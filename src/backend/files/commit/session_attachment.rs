@@ -18,16 +18,26 @@ use cmd_wire::attachment::{
     SessionAttachmentCommitReq,
 };
 use copy_core::{copy_text, io_reason, size_text};
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
-/// 单份上限。
-pub const MAX_ONE_BYTES: u64 = 50 * 1024 * 1024;
+/// 单份上限（超了那一份不收，说清为什么）。
+pub const MAX_ONE_BYTES: Cap = Cap {
+    bytes: 50 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 一条最多几份。
 pub const MAX_COUNT: usize = 10;
 /// 一条合计上限。
-pub const MAX_MESSAGE_BYTES: u64 = 100 * 1024 * 1024;
+pub const MAX_MESSAGE_BYTES: Cap = Cap {
+    bytes: 100 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 一个工作目录的附件目录合计上限。
-pub const MAX_DIR_BYTES: u64 = 1024 * 1024 * 1024;
+pub const MAX_DIR_BYTES: Cap = Cap {
+    bytes: 1024 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 多久没动过的编号目录在下一次落的时候清掉（秒）。
 pub const STALE_SECS: u64 = 7 * 24 * 3600;
 /// 编号撞了（同一分钟、同一个尾巴）换尾巴再试几次。
@@ -50,19 +60,21 @@ pub fn code_of(why: AttachRefused) -> &'static str {
 pub fn said_of(why: AttachRefused) -> String {
     match why {
         AttachRefused::IsDir => copy_text("beAttach.no.isDir", &[]),
-        AttachRefused::TooBig => {
-            copy_text("beAttach.no.tooBig", &[("cap", &size_text(MAX_ONE_BYTES))])
-        }
+        AttachRefused::TooBig => copy_text(
+            "beAttach.no.tooBig",
+            &[("cap", &size_text(MAX_ONE_BYTES.bytes))],
+        ),
         AttachRefused::TooMany => {
             copy_text("beAttach.no.tooMany", &[("n", &MAX_COUNT.to_string())])
         }
         AttachRefused::TooMuch => copy_text(
             "beAttach.no.tooMuch",
-            &[("cap", &size_text(MAX_MESSAGE_BYTES))],
+            &[("cap", &size_text(MAX_MESSAGE_BYTES.bytes))],
         ),
-        AttachRefused::DirFull => {
-            copy_text("beAttach.no.dirFull", &[("cap", &size_text(MAX_DIR_BYTES))])
-        }
+        AttachRefused::DirFull => copy_text(
+            "beAttach.no.dirFull",
+            &[("cap", &size_text(MAX_DIR_BYTES.bytes))],
+        ),
         AttachRefused::NotWritable => copy_text("beAttach.no.notWritable", &[]),
         AttachRefused::NoSession => copy_text("beAttach.no.noSession", &[]),
     }
@@ -122,13 +134,13 @@ pub fn check(cwd: &Path, items: &[AttachItem]) -> Vec<AttachVerdict> {
         .map(|it| {
             let why = if it.dir {
                 Some(AttachRefused::IsDir)
-            } else if it.bytes > MAX_ONE_BYTES {
+            } else if it.bytes > MAX_ONE_BYTES.bytes {
                 Some(AttachRefused::TooBig)
             } else if count >= MAX_COUNT {
                 Some(AttachRefused::TooMany)
-            } else if sum + it.bytes > MAX_MESSAGE_BYTES {
+            } else if sum + it.bytes > MAX_MESSAGE_BYTES.bytes {
                 Some(AttachRefused::TooMuch)
-            } else if used + sum + it.bytes > MAX_DIR_BYTES {
+            } else if used + sum + it.bytes > MAX_DIR_BYTES.bytes {
                 Some(AttachRefused::DirFull)
             } else {
                 None
@@ -255,10 +267,10 @@ pub fn commit(
     if let Some(why) = cwd_state(cwd) {
         return Err(refused(why));
     }
-    if req.bytes > MAX_ONE_BYTES {
+    if req.bytes > MAX_ONE_BYTES.bytes {
         return Err(refused(AttachRefused::TooBig));
     }
-    if dir_usage(cwd) + req.bytes > MAX_DIR_BYTES {
+    if dir_usage(cwd) + req.bytes > MAX_DIR_BYTES.bytes {
         return Err(refused(AttachRefused::DirFull));
     }
     let root = ensure_root(face, cwd)?;

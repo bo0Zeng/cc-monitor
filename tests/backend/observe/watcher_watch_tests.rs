@@ -14,7 +14,7 @@ fn rig(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
     let dir = std::env::temp_dir().join(format!("ccm-watch-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(A.to_string());
     state.active_sids.insert(B.to_string());
@@ -214,7 +214,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
             }),
         );
     }
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let ask = crate::wire::WatchAsk {
         sids: vec![A.into()],
         branch: vec![crate::wire::BranchHeld {
@@ -288,7 +288,7 @@ fn conn(
     id: u64,
     ask: Option<crate::wire::WatchAsk>,
 ) -> FrameRx {
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     join(Sub::new(id, tx, crate::Tz::default()), ask, state, sink);
     rx
 }

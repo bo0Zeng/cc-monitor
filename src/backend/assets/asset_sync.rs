@@ -42,7 +42,10 @@ use crate::dial::remote_ask::{Remote, Table, REACH};
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
 /// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**。
-pub const PUSH_MAX_BYTES: usize = 96 * 1024;
+pub const PUSH_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 96 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
 
 /// 远端后端的两条一次性子命令（子命令闸门 `stream::cli::is_subcommand` 认的同名那两条，判据钉）。
 pub const PULL_FLAG: &str = "--assets-catalog";
@@ -118,12 +121,12 @@ pub fn push_plan(
             continue;
         }
         let len = json!(m).to_string().len();
-        if cur_len + len > PUSH_MAX_BYTES && !cur.is_empty() {
+        if cur_len + len > PUSH_MAX_BYTES.as_len() && !cur.is_empty() {
             chunks.push(std::mem::take(&mut cur));
             cur_len = 0;
         }
-        if len > PUSH_MAX_BYTES {
-            let why = too_big_to_push(id, len, PUSH_MAX_BYTES);
+        if len > PUSH_MAX_BYTES.as_len() {
+            let why = too_big_to_push(id, len, PUSH_MAX_BYTES.as_len());
             tracing::warn!("资产目录：{why}");
             too_big.push(why);
             continue;

@@ -254,7 +254,7 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
     }
     let dir = home.join(STAGING_DIR);
     let want = usize::try_from(bytes).unwrap_or(usize::MAX);
-    let mut out: Vec<u8> = Vec::with_capacity(want.min(crate::files::READ_TEXT_MAX_BYTES));
+    let mut out: Vec<u8> = Vec::with_capacity(want.min(crate::files::READ_TEXT_MAX_BYTES.as_len()));
     for seq in 0..chunks {
         let p = dir.join(chunk_name(key, seq));
         let meta = Ro::symlink_metadata(&p).map_err(|e| {
@@ -640,7 +640,7 @@ pub fn commit_text_at(
 ) -> Result<wire::FilesWrittenReply, Said> {
     let root = root_of(&req.root, "root")?;
     let (chunks, bytes) = (req.chunks, req.bytes);
-    let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
+    let cap = crate::files::READ_TEXT_MAX_BYTES.bytes;
     if bytes > cap {
         return Err(Said::new(
             "bad_args",

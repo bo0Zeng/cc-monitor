@@ -445,7 +445,10 @@ struct Planned {
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
 const PRINT_MAX_WORDS: usize = 64;
-const PRINT_MAX_WORD_BYTES: usize = 4096;
+const PRINT_MAX_WORD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4096,
+    over: relay_route_core::Over::Reject,
+};
 
 /// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
 #[derive(Debug, serde::Serialize)]
@@ -573,12 +576,16 @@ pub(crate) fn answer_print(
             )),
         ));
     }
-    if let Some(w) = words.iter().find(|w| w.len() > PRINT_MAX_WORD_BYTES) {
+    if let Some(w) = words
+        .iter()
+        .find(|w| w.len() > PRINT_MAX_WORD_BYTES.as_len())
+    {
         return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
-                w.len()
+                "an arg is too long: {} bytes (max {})",
+                w.len(),
+                PRINT_MAX_WORD_BYTES.bytes
             )),
         ));
     }

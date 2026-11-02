@@ -1639,7 +1639,7 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     for f in &frames {
         let line = to_line(f).unwrap();
         assert!(
-            line.len() <= crate::REPLY_PAGE_BYTES,
+            line.len() <= crate::REPLY_PAGE_BYTES.as_len(),
             "一帧 {} 字节",
             line.len()
         );

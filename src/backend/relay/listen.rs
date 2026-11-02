@@ -23,7 +23,10 @@ pub const INFLIGHT_CONNECTIONS: usize = 1024;
 /// 读体之前按 `Content-Length` 记账，记不下回 `503`（原因头 `body-budget`，条数满了是 `busy`），一个体字节都不读；这一发收场退账。
 /// 1 GiB：条数上限 × 单发上限（`BODY_CAP` 64 MiB）远大于一台机器的内存 —— 上游答得慢时在途攒起来，每条带着一整份体，
 /// 足以把常驻后端顶到几十 G。真实一发的体多在几 MB，1 GiB 容得下几百条同时在途。
-pub const INFLIGHT_BODY_CAP: usize = 1024 * 1024 * 1024;
+pub const INFLIGHT_BODY_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 pub const ENV_PORT: &str = "CCM_RELAY_PORT";
 

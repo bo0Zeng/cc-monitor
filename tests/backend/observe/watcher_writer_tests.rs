@@ -54,7 +54,7 @@ fn rig(tag: &str) -> Rig {
         face: crate::agents::record_face(kind).unwrap(),
         live: crate::agents::LiveBy::HeldOpen,
     });
-    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     Rig {
         _iso: iso,
         dir,

@@ -393,7 +393,7 @@ fn a_taken_name_answers_exists_and_fresh_takes_the_first_free_number() {
 #[cfg(unix)]
 fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
     let base = temp_root("longlink");
-    let long = "a/".repeat(LINK_TARGET_MAX_BYTES as usize / 2 + 1);
+    let long = "a/".repeat(LINK_TARGET_MAX_BYTES.as_len() / 2 + 1);
     plant(
         &base,
         "l.zip",
@@ -403,7 +403,7 @@ fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
         .expect_err("超长目标却解成了");
     assert_eq!(e.code_or_fallback(), "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(base.join("l")).is_err());
-    let ok = "a/".repeat(LINK_TARGET_MAX_BYTES as usize / 2 - 1);
+    let ok = "a/".repeat(LINK_TARGET_MAX_BYTES.as_len() / 2 - 1);
     plant(
         &base,
         "k.zip",

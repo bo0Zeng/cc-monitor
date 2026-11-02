@@ -166,7 +166,7 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
     let big = d.join("big.txt");
     std::fs::write(&big, "y".repeat(10)).expect("铺");
     let gone = d.join("gone.txt");
-    let ceiling = crate::files::READ_TEXT_MAX_BYTES as u64;
+    let ceiling = crate::files::READ_TEXT_MAX_BYTES.bytes;
     let cases: Vec<(serde_json::Value, &str)> = vec![
         (
             serde_json::json!({ "path": path_json(&nul), "max_bytes": 100 }),

@@ -120,9 +120,10 @@ fn uses_cap(line: &str, name: &str) -> bool {
 /// 只认吞掉的拼法不够（把 `Err(_)` 写成 `Err(e)` 就绕过去了），所以先要正向的一样；只认 `?` 又太窄：
 /// 尾表达式交回 `Result`、`match` 臂里 `return Err(…)` 都是传上去。
 fn passes_the_error_up(scope: &str) -> bool {
-    let builds_err = scope
-        .lines()
-        .any(|l| l.match_indices("Err(").any(|(at, _)| !l[at..].contains("=>")));
+    let builds_err = scope.lines().any(|l| {
+        l.match_indices("Err(")
+            .any(|(at, _)| !l[at..].contains("=>"))
+    });
     let up = scope.contains('?')
         || scope.contains("return Err")
         || builds_err
@@ -130,21 +131,24 @@ fn passes_the_error_up(scope: &str) -> bool {
     up && !scope.contains(".ok()") && !scope.contains("unwrap_or")
 }
 
-/// 从第 `i` 行起的这条语句收尾在哪（不含的那一行下标）：括号配平回到起点那一层、且该行以 `;` 收尾；
-/// 或者那一层先被一个 `}` 合上（尾表达式）。至多 [`STATEMENT_WINDOW`] 行。
+/// 从第 `i` 行起的这条语句收尾在哪（不含的那一行下标）：花括号与圆括号都回到不深于起点那一层、且该行以 `;` 收尾；
+/// 或者起点所在的块先被一个 `}` 合上（尾表达式）。至多 [`STATEMENT_WINDOW`] 行。
+/// 圆括号低于起点是常量写在一次调用的实参里（`fetch(…, CAP,\n)?`），语句还没完。
 /// 只按行尾认 `;` 会停在 `match` 臂里的头一条语句上，看不见臂里交回的 `Err(…)`。
 fn statement_end(lines: &[&str], i: usize) -> usize {
-    let mut depth: i64 = 0;
+    let (mut brace, mut paren): (i64, i64) = (0, 0);
     let hi = (i + STATEMENT_WINDOW).min(lines.len());
     for (k, l) in lines.iter().enumerate().take(hi).skip(i) {
         for c in l.chars() {
             match c {
-                '{' | '(' | '[' => depth += 1,
-                '}' | ')' | ']' => depth -= 1,
+                '{' => brace += 1,
+                '}' => brace -= 1,
+                '(' | '[' => paren += 1,
+                ')' | ']' => paren -= 1,
                 _ => {}
             }
         }
-        if depth < 0 || (depth == 0 && l.trim_end().ends_with(';')) {
+        if brace < 0 || (brace <= 0 && paren <= 0 && l.trim_end().ends_with(';')) {
             return k + 1;
         }
     }
@@ -273,16 +277,24 @@ fn hard_error_scan_sees_a_swallowed_call_site() {
         "a.rs",
         &format!("{decl}fn f(p: &Path) {{\n    match Ro::read_capped(p, A_CAP) {{\n        Ok(b) => use_it(b),\n        Err(e) => {{}}\n    }}\n}}\n"),
     )]);
-    assert_eq!(hard_error_swallows(&matched_away).1.len(), 1, "`Err(e) => {{}}` 是吞");
+    assert_eq!(
+        hard_error_swallows(&matched_away).1.len(),
+        1,
+        "`Err(e) => {{}}` 是吞"
+    );
 
     let tail_and_return = corpus(&[(
         "a.rs",
         &format!("{decl}fn f(p: &Path) -> Result<String, String> {{\n    Ro::read_string_capped(p, A_CAP)\n        .map_err(|e| e.to_string())\n}}\n\
-                  fn g(p: &Path) -> Result<(), String> {{\n    match Ro::read_capped(p, A_CAP) {{\n        Ok(b) => use_it(b),\n        Err(e) => return Err(e.to_string()),\n    }}\n    Ok(())\n}}\n"),
+                  fn g(p: &Path) -> Result<(), String> {{\n    match Ro::read_capped(p, A_CAP) {{\n        Ok(b) => use_it(b),\n        Err(e) => return Err(e.to_string()),\n    }}\n    Ok(())\n}}\n\
+                  fn h() -> io::Result<()> {{\n    let a = fetch(\n        url,\n        A_CAP.as_len(),\n    )\n    .context(\"x\")?;\n    Ok(())\n}}\n"),
     )]);
     let (checked, bad) = hard_error_swallows(&tail_and_return);
-    assert_eq!(checked, 2);
-    assert!(bad.is_empty(), "尾表达式交回 `Result` · 臂里 `return Err` 都是传上去：{bad:#?}");
+    assert_eq!(checked, 3, "实参里的 `A_CAP.as_len()` 也是一处调用");
+    assert!(
+        bad.is_empty(),
+        "尾表达式交回 `Result` · 臂里 `return Err` 都是传上去：{bad:#?}"
+    );
 
     let passed_up = corpus(&[(
         "a.rs",
@@ -294,12 +306,17 @@ fn hard_error_scan_sees_a_swallowed_call_site() {
     assert!(bad.is_empty(), "{bad:#?}");
 
     let unused = corpus(&[("a.rs", decl)]);
-    assert_eq!(hard_error_swallows(&unused).1.len(), 1, "一处调用都没看见要说出来");
+    assert_eq!(
+        hard_error_swallows(&unused).1.len(),
+        1,
+        "一处调用都没看见要说出来"
+    );
 }
 
 #[test]
 fn drop_and_report_scan_sees_a_silent_arm() {
-    let decl = "pub const L_CAP: Cap = Cap {\n    bytes: 64 << 20,\n    over: Over::DropAndReport,\n};\n";
+    let decl =
+        "pub const L_CAP: Cap = Cap {\n    bytes: 64 << 20,\n    over: Over::DropAndReport,\n};\n";
     let c = corpus(&[
         ("line.rs", decl),
         (

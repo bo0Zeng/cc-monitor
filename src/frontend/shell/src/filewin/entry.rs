@@ -193,7 +193,7 @@ pub(crate) async fn open_with(
         origin,
         cwd,
         reveal,
-        frame: crate::chan::host::FRAME_MAX_BYTES,
+        frame: crate::chan::host::FRAME_MAX_BYTES.as_len(),
         view,
         machines: machine_names(),
         work_area,

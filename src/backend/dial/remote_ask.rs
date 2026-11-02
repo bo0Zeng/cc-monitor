@@ -32,8 +32,11 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
-/// 拉回来那一份（远端 stdout）的上限。目录文件本身 16 MiB 封顶（`asset_catalog::CATALOG_MAX_BYTES`），这里取同一个数。
-pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
+/// 拉回来那一份（远端 stdout）的上限：取资产目录文件那一格的数（目录本身就这么大封顶）；超了整份不收、回错。
+pub const PULL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: relay_route_core::ASSET_CATALOG_FILE.row.cap.bytes,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 那台不认这条命令 / 子命令：与帧协议里同一个码。
 const UNKNOWN_COMMAND: &str = "unknown_command";
@@ -465,7 +468,7 @@ pub(crate) fn for_capture(
     req.use_ = crate::dial::Use::Capture;
     req.command = command;
     req.capture = Some(crate::dial::CaptureOpts {
-        max_bytes: PULL_MAX_BYTES,
+        max_bytes: PULL_MAX_BYTES.as_len(),
         abort_marker: Some(OLD_BACKEND_MARKER.to_string()),
         stdin,
     });
@@ -578,10 +581,10 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
             None => said,
         });
     }
-    if stdout.len() >= PULL_MAX_BYTES {
+    if stdout.len() >= PULL_MAX_BYTES.as_len() {
         return Err(Said::from(copy_text(
             "beRemoteAsk.run.tooLarge",
-            &[("max", &PULL_MAX_BYTES.to_string())],
+            &[("max", &PULL_MAX_BYTES.bytes.to_string())],
         )));
     }
     Ok(stdout.to_string())

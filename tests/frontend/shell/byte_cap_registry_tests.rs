@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 /// ⚠ 里面**没有「静默截断」**：报告 B-5 点名的那一处（`remote_history`）
 /// 已由 F06 上半改成「截断 + 说清」。这个集合就是那次修复的护栏。
 const ALLOWED_SEMANTICS: &[&str] = &[
-    "硬报错",
     "截断+说清",
     "拒收+回错",
     // ⚠ 第五种是**论证后**加的，不是顺手加的：搜索索引的字符封顶截掉的是
@@ -29,21 +28,8 @@ const ALLOWED_SEMANTICS: &[&str] = &[
     // 与「manifest 超限」（异常），两者被合并成同一种降级 —— 分开报要动账号错误面的
     // UX，超出 1x 的范围，进。
     "降级+说清",
-    // ⚠ 第八种，同样**论证后**加：backend 出方向单行超限时
-    // **丢掉那一行**，并往 `REMOTE_HEALTH` 发一条带 origin 的说明。
-    // 今天告用户的那一层换成**原位** `Gap`（`to_seq` 缺：知道丢了、不知道丢到哪）——
-    //   与行同一条流交给订阅，前端照往后补；旁路那条健康提示删了。分界照旧是「告用户 vs 告日志」。
-    //
-    // ★ 它与「跳过+说清」的分界是**谁被告知**：那一档告的是**日志**（`warn!`），
-    // 而这一档告的是**用户**（前端能看见的类型化事件）。为什么必须多这一档：
-    // 帧读跑在一个后台 task 里，**没有调用方可以回错**（回 `Err` 会被主循环当成
-    // 致命错误去重连，而超长行只是这一行坏了）；而只写日志的话用户看到的是
-    // 「这条会话少了一行」且无从得知为什么。⇒ 两者都不够，需要一个新名字。
-    "丢弃+带身份报告",
-    // ⚠ 第九种，**论证后**加：窗口存盘时一行写的上限（`editor::SAVE_LINE_CAP`，
-    // 与后端入方向一行同值）。保守判装不进它**不拒、不截、不丢**：改走与上传同一套分块逐块送进暂存区，
-    // 后端读回拼起来 —— 用户的字节一个不少。它与「拒收+回错」的分界就在这里：越界的那一份**照样存成了**。
-    "分块（不丢数据）",
+    // 「硬报错」「丢弃+带身份报告」「分块（不丢数据）」三档用到的上限都已是 `Cap`：
+    //   那三档是 `relay_route_core::Over` 的 `HardError` · `DropAndReport` · `Chunk`，分界写在那几个变体上。
 ];
 
 /// 扫到了但**不是体量上限**的，逐条写清为什么排除。
@@ -574,13 +560,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
 /// `(相对仓根的路径, 常量名, 它管的是什么量, 超限怎么办)`。值只在源码里写一份。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面第一条红。
+///
+/// 字节上限都是 `relay_route_core::Cap`（数与超了怎么办写在常量上，`tests/backend/cap_over_guard.rs` 对拍调用处），不在这里。
+/// 这里只剩两种：量的不是字节的（条数 · 字符数 · 毫秒 · 格数），与三条还没换成 `Cap` 的字节上限（`LINES_CAP_BYTES` ·
+/// 出网口的 `HEAD_CAP` · `RAW_CAP`，各自那一行上写着卡在哪）。
 const CAPS: &[(&str, &str, &str, &str)] = &[
-    // ---- monitor 侧 ----
-    // ---- P8a：插件面只读枚举 ----
-    // 这两条随读实现搬去了后端，后来随插件只读列表一起删了。
-    // `local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
-    //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
-    // 住址 `remote_history.rs` → `history.rs`；→ 后端 `read_face.rs` → 删了（查看器整份读那一道上限，见后端那一段）。
     // 🔴**它管的不是字节，是条目数** —— 如实登记这一点。
     //    本表的抽取器按「具名常量 ＋ 一个够大的数」取人群，不看单位；
     //    而「一屏最多多少行」与本表别的那几项**不是同一种量**，
@@ -588,14 +572,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     //    ⚠ 超限那一档走的是**后端回 `truncated: true` ＋ 窗口画一句话**
     //    （`shell.rs` 那一行橙字逐字「没看见的文件不代表它不在」）
     //    ⇒ 正是本表允许的「截断+说清」，而**不是**它明令排除的「静默截断」。
-    // 重放留存的总量（全部会话合起来的正文字节）。超了整条丢：先丢已经不活的会话、再丢最久没进过行的；
-    //   F5 之后界面按骨架 / 行号把那一段取回来（`event_replay·rs` 头注那张表）⇒ 不是静默丢，是「截断+说清」。
-    (
-        "src/frontend/shell/src/event_replay.rs",
-        "HELD_BYTES_CAP",
-        "monitor 重放留存里全部会话合起来的正文字节（单会话另有条数上界 `REPLAY_TAIL_KEEP` ＋ `TRIM_SLACK`）",
-        "截断+说清",
-    ),
     // 帧日志（查闪烁时才开）一扇窗最多记几帧（**条数，不是字节**）：记满写一行 `stopped=cap` 再关掉 ⇒ 「截断+说清」。
     (
         "src/frontend/filewin/src/frame_log.rs",
@@ -608,66 +584,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "LS_LIMIT",
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
-    ),
-    // 托管终端（A3-3-1/2）那三道：照各自调用点的真实处置登记。
-    // 一端排着的放不下：丢掉排着的、换成一帧 `resync` 整屏，那一端照它重来 ⇒ 截掉的是积压，被告知的是那一端。
-    (
-        "src/backend/host/managed/serve.rs",
-        "QUEUE_CAP",
-        "托管口给一端排着没写出去的帧（字节）：那一端不读时攒到多少；超了 ⇒ 清掉积压、换一帧 `resync` 整屏",
-        "截断+说清",
-    ),
-    // 超长帧：解帧回 `Err(TooLong)`，读的那一方断这条连接（对端不是我们的，或坏了）。
-    (
-        "src/backend/host/managed/wire.rs",
-        "MAX_FRAME",
-        "托管口一帧最长（种 ＋ 载荷，字节）；超了 ⇒ 解帧回错、断这条连接",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/class.rs",
-        "PREVIEW_TEXT_MAX_BYTES",
-        "预览一份文本读多少（跟着光标走，每挪一次一趟 `files-read-text`）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/class.rs",
-        "PREVIEW_IMAGE_MAX_BYTES",
-        "预览一张图读回多少字节（逐块经 `files-read-chunk`）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/class.rs",
-        "VIEW_IMAGE_MAX_BYTES",
-        "查看页一张图读回多少字节（逐块经 `files-read-chunk`）",
-        "拒收+回错",
-    ),
-    // 解码一张图最多占多少内存。超了：**不解**，说「像素过多 · 无法解码」（不说「解不开」）。
-    (
-        "src/frontend/filewin/src/picture.rs",
-        "DECODE_MAX_BYTES",
-        "文件窗口解码一张图时解码器最多分配的内存",
-        "拒收+回错",
-    ),
-    // 存盘时一条请求行最多多长 ＝ 后端入方向一行（对 F 读两侧源码钉相等）。
-    (
-        "src/frontend/filewin/src/editor.rs",
-        "SAVE_LINE_CAP",
-        "窗口存盘时一行写（`files-write-text` 整份）序列化后的长度（按内容 ×6 保守判）",
-        "分块（不丢数据）",
-    ),
-    (
-        "src/frontend/shell/src/stream_source/snapshot.rs",
-        "SNAPSHOT_MAX_BYTES",
-        "首连快照单会话体量",
-        "截断+说清",
-    ),
-    // 文件窗口通道（窗口进程的 stdin / stdout）上一帧的头 / 体各自的上限：一屏目录的 JSON 在兆字节级。两端同一个数（随种子交过去）。
-    (
-        "src/frontend/shell/src/chan/host.rs",
-        "FRAME_MAX_BYTES",
-        "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
-        "拒收+回错",
     ),
     // 一台的平铺清单（`history_list.rs`，手机 · 按会话 ID 那一问）：一台一次最多回多少行；窗外的不回、头里的总数比这一窗多 ⇒ 手机列表底「更早的用搜索找」。
     (
@@ -690,32 +606,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "常驻进程记着的会话记录摘要条数（按长度 · 修改时刻认没变，没变不再整份扫）",
         "索引截断（不丢数据）",
     ),
-    // 终端实时预览一帧画面（`terminal_follow.rs`）：那一屏序列化之后超了 ⇒ 不推，改推收尾帧 `too_big`，界面照实说「画面过大」、退回快照。
-    (
-        "src/backend/control/terminal_follow.rs",
-        "SCREEN_FRAME_CAP",
-        "终端实时预览一帧里那一屏（`terminal_screen.view` 序列化之后的字节）—— 200 × 60 满屏着色约 150 KiB",
-        "拒收+回错",
-    ),
-    // ──：**本机后端的 stderr 接进滚动日志**那一格 ───────
-    //
-    // 那一行不是 `Stdio::null()`（那样后端整层诊断的唯一出口被无条件丢弃）。
-    // 接出来就有一个量：**一条子进程一生往日志里搬多少字节**。
-    //
-    // 🔴 这两条的超限语义都**只砍「记」，不砍「读」** —— 读的一侧停下来，
-    //    管道写满之后子进程下一次 `write(2)` 就阻塞，那会把「诊断没人看」
-    //    升级成「**打印诊断会把后端挂住**」。判据看不见这个区别，写在这里。
-    (
-        "src/frontend/shell/src/local_backend.rs",
-        "STDERR_LOG_BUDGET_BYTES",
-        "一条被监护子进程**一生**往 monitor 滚动日志里搬的 stderr 字节数。\
-             ⚠ 它**不是**「读多少」：超了照旧读到 EOF（见上），只是不再逐行记；\
-             收尾按 pid 报一句「另有 N 行没记进来」。\
-             为什么要有它：后端崩溃循环时 stderr 可以很吵，而日志按天滚 —— \
-             没有上界的话，一次崩溃循环能把当天那份撑爆，\
-             于是**下一次故障的线索反而被这一次的噪音淹掉**",
-        "丢弃+带身份报告",
-    ),
+    // 还不是 `Cap`：copy-core 不依赖契约包，引它要动几份 `Cargo.lock`。
     (
         "src/common/copy-core/src/detail.rs",
         "RAW_CAP",
@@ -723,44 +614,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
              超了按字符边界往回退到上界以内，末尾接「…（截断）」⇒ 贴出去的人看得出后面还有",
         "截断+说清",
     ),
-    // 🔴 没有 `daemonless` 轮询读（定框 `K35`）⇒ 没有它的读上限 ——
-    //    **不是「上限放宽了」，是被限住的那条读根本不存在。**
-    (
-        "src/frontend/shell/src/launch.rs",
-        "MAX_REMOTE_CMD",
-        "本机那条送法的命令串长度（字节）",
-        "拒收+回错",
-    ),
-    // 〔「有字节与条数上界」〕按内容搜那三道。
-    (
-        "src/backend/files/grep.rs",
-        "FILE_MAX_BYTES",
-        "按内容搜时单份文件的表观大小（字节）",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/files/grep.rs",
-        "TOTAL_MAX_BYTES",
-        "按内容搜一趟累计读进来的字节",
-        "截断+说清",
-    ),
-    // 会话的项目目录只读记录开头：读满了还没找到 ⇒ 没有这一格（标题退到 aiTitle / sid），日志里说是哪份文件。
-    (
-        "src/backend/agents/mod.rs",
-        "HEAD_CAP",
-        "找会话的项目目录时，会话记录开头至多读多少字节",
-        "跳过+说清",
-    ),
     // ⚠ 判二进制看开头多远那个数（`BINARY_SNIFF_LEN`）不是上界 —— 什么都不因它被截掉，不登记。
-    // 远端那条送法（ssh 外壳）随渲染进了本机后端，上限同值搬过去。
-    (
-        "src/backend/dial/terminal.rs",
-        "MAX_COMMAND",
-        "开终端那一行里要在远端跑的命令串长度（字节）",
-        "拒收+回错",
-    ),
-    // 🔴 这两条只有一个家：两条封顶随通用口径住 `history/search_rules.rs`（只此一份）
-    // ⇒ **「两侧漂开」这件事在结构上不存在**，不用对拍（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
+    // 这两条只有一个家：两条封顶随通用口径住 `history/search_rules.rs`（只此一份）⇒ 「两侧漂开」在结构上不存在，不用对拍。
     (
         "src/backend/history/search_rules.rs",
         "MAIN_CAP",
@@ -781,48 +636,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
              面板据 `total > 条数` 说「只列了前 N 条」",
         "截断+说清",
     ),
-    // ── 以下七条此前**全都不在本表的扫描面里**。
-    // 前六条是**内联字面量**（`.take(32 * 1024 * 1024)` 这种），本表头注把那一族
-    // 划在范围外、交给一条「前提触发器」盯着别长大 —— 而那条触发器**一直在假绿**
-    // （它抠 `.take(` 之后的连续数字再要求紧跟 `.read_to_end`，
-    // `32 * 1024 * 1024` 抠出 `"32"`、后面是 `" * 1024"` ⇒ 形态不匹配 ⇒ 不计数）。
-    // ⇒ F10b 把六处提成具名常量（于是自然进主扫描面），并把触发器改成按事实取样。
-    //
-    // ★ 更要紧的是：它们的超限语义此前**全是「静默截断」** —— `.take(N).read_to_end()`
-    // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
-    // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
-    // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
-    // 🔴 **cc-bus 查在线没有读上限，不是「忘了」。**
-    //    查在线走后端的 `bus-list` 帧，**没有一条流要读** ——
-    //    帧应答是结构化的，上限由入方向通道自己那一层管。
-    //    ⇒ 没有这个常量；登记一条就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
-    (
-        "src/backend/control/cc_bus.rs",
-        "INBOX_CAP",
-        "`bus-inbox` 交回的收件箱尾巴（回显）",
-        // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
-        "截断+说清",
-    ),
-    // 一封 cc-bus 信的正文：信封只放短话和引用，长的写成文件、给路径。超了：`bus-send` 拒成 `too_long`，那一句叫写成文件。
-    (
-        "src/backend/control/cc_bus_envelope.rs",
-        "TEXT_MAX_BYTES",
-        "一封 cc-bus 信的正文（`bus-send` 核信封那一处）",
-        "拒收+回错",
-    ),
-    // `cc_bus.rs` 没有控制类回显上限：发消息与派生走后端原语，回显不经 SSH 读。
-    //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
-    // backend 出方向单行的上限 `BACKEND_FRAME_LINE_CAP` 不在本表：它是 `Cap`（`resident-client/line.rs`，monitor 与手机同一份），
-    //   超了怎么办写在它自己的 `over` 上（丢弃＋带身份报告），数为什么刻意不等于入方向的 `MAX_LINE_BYTES` 写在它的头注里。
-    // ---- backend 侧 ----
-    // 后端 `read_face.rs` 那一行（「整份读进查看器」读过 256 MiB 就明拒）出列：那一道连同 `history-page` 的 `whole` 入参一起删了
-    //   （查看器不再整份读：骨架 ＋ 按视口取，一问一段，那一段有自己的上限 `READ_PAGE_BYTES` / `LINE_CAP_BYTES`）。
-    (
-        "src/backend/control/launch.rs",
-        "MAX_FIELD_BYTES",
-        "启动请求单字段（载荷/名字/cwd）",
-        "拒收+回错",
-    ),
     (
         "src/backend/control/session_restart.rs",
         "MAX_WAIT_MS",
@@ -835,119 +648,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "终端预览往回多要的行数（行，不是字节）",
         "截断+说清",
     ),
-    (
-        "src/backend/control/cli_args.rs",
-        "MAX_CLI_STDIN",
-        "一次性 CLI 子命令（帧命令派生的那些）的 stdin args JSON",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/control/cli_args.rs",
-        "MAX_ARGS_B64_LEN",
-        "一次性 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/stream/inbound/mod.rs",
-        "MAX_LINE_BYTES",
-        "入方向单行",
-        "拒收+回错",
-    ),
-    // 聊天附件（会话那台判，开传前那一问与落的那一下同一组常量）。
-    (
-        "src/backend/files/commit/session_attachment.rs",
-        "MAX_ONE_BYTES",
-        "随一句发的一份附件",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/commit/session_attachment.rs",
-        "MAX_MESSAGE_BYTES",
-        "随一句发的附件合计",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/commit/session_attachment.rs",
-        "MAX_DIR_BYTES",
-        "一个工作目录下附件目录的合计",
-        "拒收+回错",
-    ),
-    // `files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
-    //   （编辑上限是调用方的，每趟经 `max_bytes` 送过来）。推算：JSON 转义最坏 ×6 ⇒ 48 MiB，
-    //   仍在 monitor 读后端一行（`BACKEND_FRAME_LINE_CAP` 64 MiB）与通道一帧（64 MiB）之内。
-    (
-        "src/backend/files/mod.rs",
-        "READ_TEXT_MAX_BYTES",
-        "`files-read-text` 调用方给的 `max_bytes` 最大能多大（一帧应答整份进内存、整份过线）",
-        "拒收+回错",
-    ),
-    // 用户文件读改写的**读那一半**一趟肯交多少。写那一半要把新内容与
-    //   读到的那一份装进同一行请求（后端一行 `MAX_LINE_BYTES` = 1 MiB）⇒ 两份各 256 KiB、给转义留余量。
-    // 非 UTF-8 名的下载逐块读回：一块多少原始字节（调用方的 `len` 越界 ⇒ `bad_args`、不夹小）。
-    (
-        "src/backend/files/mod.rs",
-        "READ_CHUNK_MAX_BYTES",
-        "`files-read-chunk` 一块读回的原始字节（b16 翻倍后一帧应答）",
-        "拒收+回错",
-    ),
-    // 解压：zip 里一条链接的目标文本（那一条的正文）最多读多少；超了整趟拒、不截一半当目标。
-    (
-        "src/backend/files/extract.rs",
-        "LINK_TARGET_MAX_BYTES",
-        "`files-extract` 读 zip 里一条符号链接的目标文本（那一条的正文）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/extract.rs",
-        "EXPAND_FLOOR_BYTES",
-        "`files-extract` 一个包解出的字节之和：这以内总放行，往上按包本身的 `EXPAND_RATIO_CAP` 倍卡（计划趟按包里写的大小、执行趟按真写出的）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/files/write.rs",
-        "PEEK_MAX_BYTES",
-        "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",
-        "拒收+回错",
-    ),
-    // 只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
-    (
-        "src/backend/faces/read_face.rs",
-        "READ_PAGE_BYTES",
-        "`history-read` 一页（一帧应答）的正文字节数",
-        "索引截断（不丢数据）",
-    ),
-    // 分页那四条一条应答（与 `session_branch` 一帧）的字节数：超了不截，切成下一页 / 下一帧（续点 `next` · `at`），一项不少。
-    (
-        "src/backend/wire/mod.rs",
-        "REPLY_PAGE_BYTES",
-        "`history-index` · `-user-inputs` · `-turns` · `-branch` 一条应答、`session_branch` 一帧的字节数",
-        "分块（不丢数据）",
-    ),
-    // `backend-log` 一帧回多少：只回诊断文件的尾部，`truncated: true` 说清前面还有。
-    (
-        "src/backend/faces/read_face.rs",
-        "LOG_TAIL_BYTES",
-        "`backend-log` 一帧回的后端诊断文件尾部字节数",
-        "截断+说清",
-    ),
-    (
-        "src/backend/faces/read_face.rs",
-        "LINE_CAP_BYTES",
-        "`history-read` 里单独一行比一页还长时最多续读多长",
-        "拒收+回错",
-    ),
+    // 还不是 `Cap`：用它的 `faces/search_face.rs` 在别的分片手里，换的时候连 `search_at` 的入参一起换。
     (
         "src/backend/faces/read_face.rs",
         "LINES_CAP_BYTES",
         "按行那几条帧查询（`history-search` 等）整份输出",
-        "拒收+回错",
-    ),
-    // 插件市场枚举那两个上限随插件只读列表整块删了（界面上没有可做的事）。
-    // 别名预览（`ccm-print`）入参里一个参数最长多少。
-    (
-        "src/backend/control/ccm/mod.rs",
-        "PRINT_MAX_WORD_BYTES",
-        "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
         "拒收+回错",
     ),
     // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
@@ -978,77 +683,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "从改前改后逐行比的格数（改前行数 × 改后行数）",
         "降级+说清",
     ),
-    // 资产目录那几个数（`asset_catalog.rs` · `asset_sync.rs`）。
-    (
-        "src/backend/assets/asset_catalog.rs",
-        "CATALOG_MAX_BYTES",
-        "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
-        "拒收+回错",
-    ),
-    // 后端自有状态文件的读上限（`common/own_state::read_bytes` 收它）：超了当读不出来 ⇒ 不覆盖、照实回错。
-    (
-        "src/backend/accounts/quota/ledger.rs",
-        "MAX_BYTES",
-        "后端自有的额度账 `~/.cc-monitor/quota.json`（读不出来就不覆盖）",
-        "拒收+回错",
-    ),
+    // 还不是 `Cap`：出网口那个包零依赖，引契约包要动 `Cargo.lock`。
     (
         "src/backend/egress/tunnel.rs",
         "HEAD_CAP",
         "出网口经 HTTP 代理那一跳的 `CONNECT` 回包头（读到空行为止）；超了 ⇒ 这一跳报错（代理那一步），连接不建",
         "拒收+回错",
-    ),
-    (
-        "src/backend/relay/key.rs",
-        "KEY_MAX_BYTES",
-        "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/relay/listen.rs",
-        "INFLIGHT_BODY_CAP",
-        "同时在途的下游请求体字节合计（读体之前按 Content-Length 记账）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/dial/known_hosts.rs",
-        "MAX_BYTES",
-        "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",
-        "拒收+回错",
-    ),
-    // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-    (
-        "src/backend/history/session_queue.rs",
-        "TEXT_MAX",
-        "投进输入队的一句（超了拒收：`text_too_long`，一个字节不落）",
-        "拒收+回错",
-    ),
-    // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
-    (
-        "src/backend/footprint/last_seen.rs",
-        "MAX_VALUE_BYTES",
-        "一台一样上次值（`accounts-list` / `data-report` 的一份应答）序列化后的字节数",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/assets/skill_ledger.rs",
-        "MAX_BYTES",
-        "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
-        "拒收+回错",
-    ),
-    // 〔第二问〕全文搜索常驻索引的上界：按最近优先留，留不下的那几份照搜、只是不留（下一问再读）。
-    (
-        "src/backend/observe/record_scan.rs",
-        "MAX_BYTES",
-        "冷开会话那几问共用的扫描图留在内存里的估算字节（超了先淘汰最久没用的；单张比它还大就不留、每次现扫）",
-        "索引截断（不丢数据）",
-    ),
-    // 一条流连接的出方向通道压住的字节：满了丢帧、记账，排空后先出 `Overflow`（内容帧客户端按行号补，丢了别处没有的那几帧带身份）。
-    (
-        "src/backend/observe/watcher.rs",
-        "CHANNEL_MAX_BYTES",
-        "一条流连接的出方向通道里压住的帧（按序列化的字节记账）",
-        "丢弃+带身份报告",
     ),
     // 这台那一本会话脸（`faces_here`，监控板这台那几条照它答）最多记几条（**条数，不是字节**）：收场那一帧就摘，这一格只兜漏摘的底；
     //   超了先挤最久没动静的（收场的在前），`warn!` 说挤了哪条 ⇒ 「跳过+说清」。
@@ -1059,87 +699,10 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
-        "src/backend/observe/search_query.rs",
-        "RESIDENT_MAX_BYTES",
-        "全文搜索常驻索引留在内存里的可搜文本（估算字节）；本机远端同一条",
-        "索引截断（不丢数据）",
-    ),
-    // 住址随「问远端那一跳」搬家（`asset_sync.rs` → `remote_ask.rs`，逻辑一字不改）；
-    //   量从「拉回来的那一份目录」放宽成「经那一跳问回来的任何一份 stdout」（资产目录 · 历史项目 / 会话清单）。
-    (
-        "src/backend/dial/remote_ask.rs",
-        "PULL_MAX_BYTES",
-        "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
-        "拒收+回错",
-    ),
-    // 脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
-    //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
-    (
-        "src/backend/stderr_log/mod.rs",
-        "CAP_BYTES",
-        "脱离常驻那条载体的本机后端 stderr 诊断文件每一份的大小（当前 ＋ 旧的一份 ⇒ 盘上 ≤ 两倍）",
-        "丢弃+带身份报告",
-    ),
-    (
         "src/backend/assets/ext.rs",
         "NOTE_MAX_CHARS",
         "扩展页上用户写的一条备注（字数；记进资产目录、随目录同步到别的后端）",
         "拒收+回错",
-    ),
-    (
-        "src/backend/assets/asset_sync.rs",
-        "PUSH_MAX_BYTES",
-        "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
-        "跳过+说清",
-    ),
-    // ⚠HTTP 中转带进来的第一处上限。它被用在**两个方向**上，
-    // 两处的处置**都是**「拒收+回错」，只是回的码不同 —— 逐字记下来，免得下一个人
-    // 以为它只管请求那一侧：
-    //   读**下游请求**头 ⇒ `read_head` 返回 `None` ⇒ 回 `400 Bad Request`
-    //   读**上游响应**头 ⇒ 同一个 `read_head`  ⇒ 回 `502 Bad Gateway`
-    //   两个调用点都在 `server.rs::serve_one` 里；`read_head` 的头注写的是「超了返回 `None`」，
-    //   两个调用点各自回 400 / 502 —— 与本表一致。
-    (
-        "src/comms/outward/server.rs",
-        "HEAD_CAP",
-        "一次 HTTP 请求/响应的**头部**字节数（不是体）",
-        "拒收+回错",
-    ),
-    // ⚠ **这一处守的是一个真缺陷，不只是一条登记**：
-    // 请求体的长度来自 `Content-Length` 的话，值域是 `usize` 全域、**没有任何上界**
-    // （`HEAD_CAP` 只管头字节数，管不到它）。一条 `Content-Length: 1000000000000`
-    // ⇒ `vec![0u8; n]` 分配失败 ⇒ `std::alloc::handle_alloc_error` ⇒ **abort（SIGABRT）**，
-    // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
-    // ⇒ 打掉的是**当时所有会话的在途流**。
-    (
-        "src/comms/outward/server.rs",
-        "BODY_CAP",
-        "一条下游 HTTP 请求的**请求体**字节数（`Content-Length` 那个值）",
-        "拒收+回错",
-    ),
-    // ⚠〔同上一轮〕与 `BODY_CAP` **不同族**：那一条防「拿外部给的一个数去分配」，
-    // 这一条防「按真实收到的字节无界增长」（上游发一条永不换行的 `data:` 行 /
-    // 永不结束的块长度行）。丢的只是 **tee 那一路**，下游拿到的字节一个不少。
-    (
-        "src/comms/outward/server.rs",
-        "TEE_DECODE_CAP",
-        "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
-        "丢弃+带身份报告",
-    ),
-    // tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了只交开头这么多、明标截断与原长（`TapBody::Clipped`）⇒
-    // 接收侧只从开头认类型与标识；下游的字节一个不少（tap 是抄一份）。
-    (
-        "src/comms/outward/tee.rs",
-        "TAP_DATA_CAP",
-        "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
-        "截断+说清",
-    ),
-    // 续订阅号登录令牌那一发：令牌端点回包的头与体各自的上限（经中转的一问一答原语读，超了整发作错、不截断）。
-    (
-        "src/backend/accounts/oauth/mod.rs",
-        "ANSWER_CAP",
-        "续登录令牌那一发令牌端点的回包（头 · 体各自）字节数",
-        "硬报错",
     ),
     // 🔴 **`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**
     // 它们管的是「backend 给自己拉一个可执行文件」那一跳，而那一跳随 `sidecars/` 整棵删了
@@ -1391,63 +954,6 @@ fn every_byte_cap_says_what_it_bounds_and_what_happens_past_it() {
             "登记表里的 `{f}::{n}` 已经不在源码里了 —— 删掉这条，别留僵尸账"
         );
     }
-}
-
-/// ★ 正题三：**跨 crate 那几对「与另一侧同值」的注释，变成机检**（账本 S3 的钉法）。
-///
-/// ⚠ 三对的**口径不一样**，不能一把梭都钉「相等」：
-/// 第三对的注释写的是「同**量级**」，而它们**今天就不等**（8 KiB vs 4 KiB）——
-/// 钉「相等」会造出一条假判据。
-#[test]
-fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
-    let by = |f: &str, n: &str| -> u64 {
-        scan()
-            .into_iter()
-            .find(|(g, m, _)| g == f && m == n)
-            .and_then(|(_, _, v)| v)
-            .unwrap_or_else(|| panic!("抠不到 `{f}::{n}` —— 本条会零命中地绿"))
-    };
-
-    // 对 A 🔴 **这一对没了，是被解决掉的**：monitor 那一侧（`local_accounts.rs` 的
-    //   `MANIFEST_CAP`，本机账号 manifest 参照实现）随那份实现删了 ⇒ 读 manifest 的上限只剩后端
-    //   `accounts/manage/scan.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
-
-    // 对 B 🔴 **这一对没了，是被解决掉的**：查看器整份读那一道上限（「一整份会话 jsonl」读过 256 MiB 就明拒）
-    //   随 `history-page` 的 `whole` 入参一起删了（查看器改成骨架 ＋ 按视口取，没有「整份读」这件事了）⇒ 「一整份会话 jsonl」的上限只剩分叉那一处
-    //   `control/fork_write.rs::MAX_SESSION_JSONL_BYTES`，「两侧漂开」在结构上不再可能（同对 A、对 D 的处置）。
-
-    // 对 D（搜索索引封顶）🔴 **这一对没了，是被解决掉的，不是被删掉的**。
-    //
-    // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
-    // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
-    // （它会变成「同一个数等于它自己」，恒绿）。
-    // 把这件事焊住的判据换了个形状，住（随家搬进后端）
-    // `tests/backend/history/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
-    // 它断言搜索那一侧（今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
-    // monitor 生产树里零处再搜由 `search_kou_jing_guard.rs::the_monitor_grows_no_search_helpers` 断言。
-    // ⇒ 这两个数搬回任何一侧，当场红。
-
-    // 对 F：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
-    //   窗口多给 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多走几趟分块（不错，但两份数漂了就该有人看）。
-    let f1 = by("src/frontend/filewin/src/editor.rs", "SAVE_LINE_CAP");
-    let f2 = by("src/backend/stream/inbound/mod.rs", "MAX_LINE_BYTES");
-    assert_eq!(
-        f1, f2,
-        "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
-             一行写那一支按它判（`editor::fits_one_line`），那一行得装进后端的一行。"
-    );
-
-    // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
-    let c1 = by("src/backend/control/launch.rs", "MAX_FIELD_BYTES");
-    let c2 = by("src/frontend/shell/src/launch.rs", "MAX_REMOTE_CMD");
-    let (hi, lo) = if c1 >= c2 { (c1, c2) } else { (c2, c1) };
-    assert!(
-        lo > 0 && hi <= lo * 4,
-        "「一条人能读的启动命令」两侧差得太远（backend {c1} / monitor {c2}）。\
-             ⚠ 这一对**刻意不同值**（今天 8192 vs 4096），注释写的是「同量级」；\
-             这里把「量级」形式化成**不超过 4 倍** —— 那是个约定，不是实测阈值。"
-    );
 }
 
 /// ★ **排除表不许长草**（上面 `scan()` 的注释引了这条 —— 铁律 14：
@@ -1905,70 +1411,4 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
         }
     }
     out
-}
-
-/// ★ **「丢弃+带身份报告」那一档的行为对拍**。
-///
-/// # 为什么它需要一条**专属**判据
-///
-/// 隔壁 `a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site` 是
-/// 「从常量被提到的那一行往下看 N 行找 marker」。那个形状对本档**不成立**：
-/// `BACKEND_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
-/// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
-///
-/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段 ＋ 读远端那条流的重连循环
-/// （`resident-client/feed.rs`，两端同一份）里每一处 `CappedLine::TooLong` 的处置臂。要求：
-/// ① 每一臂都得说点什么（至少 `warn!`）—— 定框 **E4**：静默失败要给身份；
-/// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：读流那一臂交 `Event::Gap`，收事那一头 `LineIntake::lost`）——
-///    那正是本档与「跳过+说清」的分界（告日志 vs 告用户）。
-///
-/// ⚠ 失效模式如实登记：臂体窗口是 **12 行**的启发式。臂特别长 ⇒ 假红；
-/// 紧邻的别的语句里恰好有 marker ⇒ 假绿。与隔壁那条同源取舍。
-#[test]
-fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
-    let prod = format!(
-        "{}\n{}",
-        guard_core::addr::stream_source_production(),
-        guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
-    );
-    let lines: Vec<&str> = prod.lines().collect();
-    let mut arms = 0usize;
-    let mut silent = Vec::new();
-    let mut reported = 0usize;
-    for (i, l) in lines.iter().enumerate() {
-        // ⚠ **必须同时要求 `=>`**〔本条首跑就红在这里〕：`CappedLine::TooLong` 既是
-        // **构造**（有界读函数里 `return Ok(… CappedLine::TooLong(seen) …)`）也是
-        // **模式**（处置臂 `Ok(CappedLine::TooLong(bytes)) => {`）。
-        // 第一版只按名字取样，于是把有界读里那两处构造当成了「什么都没说的处置臂」——
-        // **匹配单位（名字出现）比事实（这是一处处置）大**，本仓那一族的又一次。
-        if !l.contains("CappedLine::TooLong") || !l.contains("=>") {
-            continue;
-        }
-        arms += 1;
-        const WINDOW: usize = 12;
-        let body = lines[i..(i + WINDOW).min(lines.len())].join("\n");
-        if !body.contains("warn!") {
-            silent.push(format!("  stream_source/ ＋ feed.rs 生产段第 {} 行", i + 1));
-        }
-        if guard_core::contains_word(&body, "Event::Gap") {
-            reported += 1; // 原位 `Gap` 那一路（收事那一头 `LineIntake::lost`）
-        }
-    }
-    assert!(
-        arms > 0,
-        "一处超限处置臂都没找到 —— 抽取器坏了，本条此刻是空转的"
-    );
-    assert!(
-        silent.is_empty(),
-        "这些超限处置臂什么都没说：\n{}\n\n\
-             ★ 丢一行**不说**就是静默失败，而 `ALLOWED_SEMANTICS` 刻意排除了那一种。\n\
-             用户看到的会是「这条会话少了一行」且无从得知为什么。",
-        silent.join("\n")
-    );
-    assert!(
-        reported >= 1,
-        "没有任何一处超限把话说到**用户**那一层（原位 `Gap`，`Event::Gap`）。\n\
-             ★ 那是「丢弃+带身份报告」与「跳过+说清」的**唯一分界** —— \n\
-             只写 `warn!` 的话本档就该改登记成「跳过+说清」，别占一个更强的名字。"
-    );
 }

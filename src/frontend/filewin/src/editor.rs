@@ -24,9 +24,12 @@ use std::sync::{Arc, Mutex};
 ///
 /// 存盘用它分两支：整份装得进一行（[`fits_one_line`]，保守地判）⇒ 一条 `files-write-text`；
 /// 装不进 ⇒ 与上传同一套分块（`chunk_core::stage`，块按字节切、恒发 `{"b16": …}`）＋ `files-commit-text`。
-/// 两侧今天各写一个数（后端那一处不在窗口够得着的包里），由壳的读上限判据读两侧源码钉相等：
+/// 两侧各写一个数（后端那一处不在窗口够得着的包里），`editor_tests::the_save_line_cap_is_the_backend_line_cap` 读两侧源码钉相等：
 /// 窗口多给 ⇒ 后端整行丢弃；少给 ⇒ 只是多走几趟分块。
-pub const SAVE_LINE_CAP: usize = 1 << 20;
+pub const SAVE_LINE_CAP: host_core::Cap = host_core::Cap {
+    bytes: 1 << 20,
+    over: host_core::Over::Chunk,
+};
 
 /// 一行写里内容与路径以外那一圈（`id` · 命令名 · 字段名 · 摘要 · 期限 · 时区）留多少字节。
 /// 真用的不到四百（最长的 `id` 75 · 时区 [`host_core::TZ_ROOM`] · 摘要 64 · 期限 20 位），这里宽留，不逐字节量。
@@ -85,7 +88,7 @@ pub fn fits_one_line(at: &super::source::RemotePath, content: &str) -> bool {
         .saturating_add(path)
         .saturating_mul(WORST_ESCAPE)
         .saturating_add(LINE_ENVELOPE_ROOM)
-        <= SAVE_LINE_CAP
+        <= SAVE_LINE_CAP.as_len()
 }
 
 /// 后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开

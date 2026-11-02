@@ -441,7 +441,7 @@ async fn save_rig(
 
 /// 一行写装得下的最长内容（[`fits_one_line`] 对长度单调 ⇒ 二分）。
 fn one_line_room(at: &crate::source::RemotePath) -> usize {
-    let (mut lo, mut hi) = (0usize, SAVE_LINE_CAP);
+    let (mut lo, mut hi) = (0usize, SAVE_LINE_CAP.as_len());
     while lo < hi {
         let mid = (lo + hi).div_ceil(2);
         if fits_one_line(at, &"a".repeat(mid)) {
@@ -461,7 +461,7 @@ fn the_one_line_check_is_conservative_for_the_worst_escaping() {
     let at = crate::source::RemotePath::plain(SAVE_PATH);
     let k = one_line_room(&at);
     assert!(
-        k >= SAVE_LINE_CAP / 8,
+        k >= SAVE_LINE_CAP.as_len() / 8,
         "一行写只装得下 {k} 字节，保守过头了"
     );
     let worst = "\u{1}".repeat(k);
@@ -475,8 +475,34 @@ fn the_one_line_check_is_conservative_for_the_worst_escaping() {
     .unwrap()
     .len();
     assert!(
-        line <= SAVE_LINE_CAP,
-        "判装得下的那一份最坏转义之后一行 {line} 字节，越过上限 {SAVE_LINE_CAP}"
+        line <= SAVE_LINE_CAP.as_len(),
+        "判装得下的那一份最坏转义之后一行 {line} 字节，越过上限 {}",
+        SAVE_LINE_CAP.bytes
+    );
+}
+
+/// 窗口存盘一行的上限与后端入方向一行的上限是同一个数（后端那一处不在窗口够得着的包里，读它的源码比）。
+/// 窗口多给 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多走几趟分块，但两份数漂了就该有人看。
+#[test]
+fn the_save_line_cap_is_the_backend_line_cap() {
+    let backend =
+        guard_core::production_code(include_str!("../../../src/backend/stream/inbound/mod.rs"));
+    let at = backend
+        .find("pub const MAX_LINE_BYTES: relay_route_core::Cap = relay_route_core::Cap {")
+        .expect("后端入方向一行的上限认不出了（改了写法就把这里一起改）");
+    let bytes = backend[at..]
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("bytes: "))
+        .map(|v| v.trim_end_matches(','))
+        .expect("后端那个上限里没有 `bytes:`");
+    let want = match bytes.split_once("<<") {
+        Some((l, r)) => l.trim().parse::<u64>().unwrap() << r.trim().parse::<u32>().unwrap(),
+        None => bytes.trim().parse::<u64>().unwrap(),
+    };
+    assert_eq!(
+        SAVE_LINE_CAP.bytes, want,
+        "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {} / 后端 {want}）",
+        SAVE_LINE_CAP.bytes
     );
 }
 

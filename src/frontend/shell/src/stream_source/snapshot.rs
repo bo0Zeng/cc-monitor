@@ -16,7 +16,10 @@ use std::sync::Arc;
 const SNAPSHOT_CONCURRENCY: usize = 2;
 /// 单会话快照体量上限（防御：远端超巨文件不无界拉取；超限截断 warn——
 /// 历史浏览器按需查询不受此限）。
-const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const SNAPSHOT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 512 * 1024 * 1024,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 const SNAPSHOT_CHUNK_LINES: usize = 500;
 /// 快照只取最后这么多个可计行：**就是壳留存每会话留的那么多**（`event_replay::REPLAY_TAIL_KEEP`，一处口径）。
 ///
@@ -333,7 +336,9 @@ async fn fetch_snapshot(
     let mut cancelled = false;
     let mut page = tail.page;
     let body = frame_query::Deadline::within(frame_query::read_budget(
-        plan.end.saturating_sub(page.next).min(SNAPSHOT_MAX_BYTES),
+        plan.end
+            .saturating_sub(page.next)
+            .min(SNAPSHOT_MAX_BYTES.bytes),
     ));
     'read: loop {
         // 后端只交可计行、每行带成品（进不进界面 · `cwd` · 末端都是它给的）；这里只编号、攒批。
@@ -363,10 +368,11 @@ async fn fetch_snapshot(
         let offset = page.next;
         page = frame_query::read_page(&origin, path, offset, Some(plan.end), body).await?;
         total_bytes += page.next - offset;
-        if total_bytes > SNAPSHOT_MAX_BYTES {
+        if total_bytes > SNAPSHOT_MAX_BYTES.bytes {
             // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
             tracing::warn!(
-                "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
+                "snapshot [{host_label}] {sid}: 超过 {} 字节上限，截断",
+                SNAPSHOT_MAX_BYTES.bytes
             );
             break;
         }

@@ -17,7 +17,10 @@ use crate::common::said::Said;
 /// 标题的上界（按字算）。
 pub(crate) const TITLE_MAX_CHARS: usize = 80;
 /// 正文的上界（按字节算）。
-pub(crate) const TEXT_MAX_BYTES: usize = 1200;
+pub(crate) const TEXT_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1200,
+    over: relay_route_core::Over::Reject,
+};
 /// `tier` 缺省。
 pub(crate) const TIER_DEFAULT: u8 = 2;
 
@@ -126,10 +129,14 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Said> {
         ));
     }
     let text = req.text.clone().unwrap_or_default();
-    if text.len() > TEXT_MAX_BYTES {
+    if text.len() > TEXT_MAX_BYTES.as_len() {
         return Err(Said::new(
             "too_long",
-            format!("body is {} bytes, limit {TEXT_MAX_BYTES}", text.len()),
+            format!(
+                "body is {} bytes, limit {}",
+                text.len(),
+                TEXT_MAX_BYTES.bytes
+            ),
         ));
     }
     Ok(Checked {

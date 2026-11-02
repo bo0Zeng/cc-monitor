@@ -67,7 +67,7 @@ fn an_unknown_verb_from_a_newer_peer_reads_as_unknown() {
 
 #[test]
 fn a_frame_longer_than_the_limit_is_refused() {
-    let bytes = (MAX_FRAME + 1).to_be_bytes();
+    let bytes = (MAX_FRAME.bytes as u32 + 1).to_be_bytes();
     assert!(matches!(decode(&bytes), Err(Bad::TooLong(_))));
 }
 

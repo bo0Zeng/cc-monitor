@@ -38,19 +38,28 @@ use copy_core::{copy_text, Discard, Why};
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
 /// 量的是交出去的、不是读过的：不进界面的大行（请求体那一类）只占一个号，按源字节封顶会让尾段白白多出几页往返。
 /// 一页最多扫多少源字节见 `history_face::read_rows`（[`LINE_CAP_BYTES`]）。
-pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
+pub(crate) const READ_PAGE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 20,
+    over: relay_route_core::Over::Chunk,
+};
 
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
 /// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
 /// 要转义（引号、反斜杠）—— 留一半余量。
-pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
+pub(crate) const LINE_CAP_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 32 << 20,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 按行那六条整份输出的上限（同上，留一半余量）。
 pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
 
 /// `backend-log` 一次最多回多少字节（尾部）。
-pub(crate) const LOG_TAIL_BYTES: u64 = 256 << 10;
+pub(crate) const LOG_TAIL_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 256 << 10,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 
 /// 本进程的 stderr 此刻落在哪份文件（`main.rs` 装上之后交进来；没装 ⇒ 空）。
 static BACKEND_LOG: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
@@ -153,7 +162,7 @@ impl crate::wire::typed::Handle for BackendLog {
         async move {
             let max = req
                 .max_bytes
-                .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+                .map_or(LOG_TAIL_BYTES.bytes, |n| n.min(LOG_TAIL_BYTES.bytes));
             log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
                 .map_err(crate::wire::typed::of_fail_with(BackendLogErr::Failed))
         }

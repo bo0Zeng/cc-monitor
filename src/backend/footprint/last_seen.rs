@@ -131,7 +131,10 @@ fn strict<T: DeserializeOwned + Serialize>(v: &Value) -> Option<T> {
 /// 记哪几样（闭集，同 [`SeenKind`]）：`accounts` ＝ `accounts-list` 的应答 · `data` ＝ `data-report` 的应答。
 pub(crate) const KINDS: [&str; 2] = ["accounts", "data"];
 /// 一份最大多少字节（序列化后）。
-pub(crate) const MAX_VALUE_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_VALUE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 256 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 /// 最多记几台。
 pub(crate) const MAX_ORIGINS: usize = 64;
 /// 那一份：缓存（再连上一次就有；落点 · 版本 · 读上限照表，读上限 ＝ 每份封顶 × 两样 × 台数封顶）。
@@ -225,14 +228,14 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
             .ok_or_else(|| bad("`value` must be an object"))?,
     );
     let size = value.to_string().len();
-    if size > MAX_VALUE_BYTES {
+    if size > MAX_VALUE_BYTES.as_len() {
         return Err(crate::wire::spec::fail(
             "too_large",
             copy_text(
                 "beLastSeen.value.tooLarge",
                 &[
                     ("size", &size.to_string()),
-                    ("max", &MAX_VALUE_BYTES.to_string()),
+                    ("max", &MAX_VALUE_BYTES.bytes.to_string()),
                 ],
             ),
         ));

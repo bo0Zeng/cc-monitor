@@ -625,7 +625,7 @@ fn local_posix_sends_the_payload_itself_without_an_ssh_wrap() {
 fn local_argv_shares_the_transport_agnostic_validation() {
     assert!(build_local_posix_argv("   ").is_err(), "空命令");
     assert!(
-        build_local_posix_argv(&"x".repeat(MAX_REMOTE_CMD + 1)).is_err(),
+        build_local_posix_argv(&"x".repeat(MAX_REMOTE_CMD.as_len() + 1)).is_err(),
         "超长"
     );
     assert!(build_local_posix_argv("a\nb").is_err(), "控制字符");

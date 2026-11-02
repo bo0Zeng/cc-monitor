@@ -403,7 +403,10 @@ impl NameFaceExt for NameFace {
 /// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`stream/writer.rs::writer_task`）
 /// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
 /// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
-pub const REPLY_PAGE_BYTES: usize = 1 << 20;
+pub const REPLY_PAGE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 20,
+    over: relay_route_core::Over::Chunk,
+};
 
 /// hello 回显哪几格宿主交来的环境（[`Frame::Hello`] 的 `host_env`）。**名单只有这两格** —— 中转端口 ·
 /// 家（`CCM_DATA_DIR`，只有隔离跑才交），都是本机 monitor 起常驻后端时交的（monitor 那一侧 `local_backend_host::HANDED_ENVS`，
@@ -648,7 +651,7 @@ impl FrameRules for Frame {
         let fixed = serde_json::to_vec(&page(usize::MAX, &[], BranchSum::default().hex()))
             .map_or(0, |b| b.len())
             + 1;
-        let room = crate::REPLY_PAGE_BYTES.saturating_sub(fixed);
+        let room = crate::REPLY_PAGE_BYTES.as_len().saturating_sub(fixed);
         let mut out = Vec::new();
         let mut start = at;
         loop {

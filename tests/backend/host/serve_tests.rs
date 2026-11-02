@@ -55,7 +55,7 @@ fn a_client_whose_queue_overflows_gets_a_resync_and_rebuilds_the_same_screen() {
     let line = format!("\x1b[3{}m{}\r\n", 1, "x".repeat(70));
     let mut pushed = 0usize;
     let mut i = 0u32;
-    while pushed < QUEUE_CAP + 64 * 1024 {
+    while pushed < QUEUE_CAP.as_len() + 64 * 1024 {
         let chunk = format!("{i:06} {line}");
         pushed += chunk.len();
         hub.pty_out(chunk.as_bytes());

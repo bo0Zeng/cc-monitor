@@ -15,7 +15,10 @@ use std::time::Duration;
 
 /// stdin 上限（兜 DoS，不是兜格式）。超限是拒收，不是截断：
 /// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
-pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
+pub(crate) const MAX_CLI_STDIN: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 「只读一行 stdin」那个修饰词住 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
 pub(crate) use crate::wire::cli_words::STDIN_LINE_FLAG;
@@ -27,7 +30,10 @@ pub(crate) use crate::wire::cli_words::STDIN_LINE_FLAG;
 /// 超过系统那一道，本后端根本起不来（exec 回 E2BIG，调用方看到的是 shell / sshd 那一层的错），轮不到这里回码 ——
 /// 所以这道放在系统那一道**之内**：系统放得进来、这里嫌大的，回 `args_too_large`。4 的倍数：刚好到上限的合法 base64 不被拒。
 /// 要交更大的载荷走 stdin（[`MAX_CLI_STDIN`]）。
-pub(crate) const MAX_ARGS_B64_LEN: usize = 131_068;
+pub(crate) const MAX_ARGS_B64_LEN: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 131_068,
+    over: relay_route_core::Over::Reject,
+};
 
 /// stdin 开着、却这么久一个字节都没来 ⇒ 当「没给入参」立即回 `no_input`，不陪着挂。
 ///
@@ -87,12 +93,13 @@ fn source_of(opts: &[String]) -> Result<Source<'_>, crate::common::said::Said> {
 
 /// argv 那一形：base64 → UTF-8 串（JSON 由调用处与 stdin 那一形同一处解）。
 fn decode_argv(b64: &str) -> Result<String, crate::common::said::Said> {
-    if b64.len() > MAX_ARGS_B64_LEN {
+    if b64.len() > MAX_ARGS_B64_LEN.as_len() {
         return Err(crate::common::said::Said::new(
             "args_too_large",
             contract::malformed(&format!(
-                "{} value over the {MAX_ARGS_B64_LEN}-byte cap, refused (not truncated); send larger args on stdin",
-                crate::wire::cli_words::ARGS_B64_FLAG
+                "{} value over the {}-byte cap, refused (not truncated); send larger args on stdin",
+                crate::wire::cli_words::ARGS_B64_FLAG,
+                MAX_ARGS_B64_LEN.bytes
             )),
         ));
     }
@@ -183,15 +190,11 @@ pub(crate) fn read_input<R: std::io::BufRead>(
     let within = if one_line {
         let mut buf: Vec<u8> = Vec::new();
         // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
-        std::io::BufRead::read_until(&mut r.take(MAX_CLI_STDIN + 1), b'\n', &mut buf)
+        std::io::BufRead::read_until(&mut r.take(MAX_CLI_STDIN.bytes + 1), b'\n', &mut buf)
             .map_err(read_failed)?;
-        (buf.len() as u64 <= MAX_CLI_STDIN).then_some(buf)
+        (buf.len() as u64 <= MAX_CLI_STDIN.bytes).then_some(buf)
     } else {
-        let cap = relay_route_core::Cap {
-            bytes: MAX_CLI_STDIN,
-            over: relay_route_core::Over::Reject,
-        };
-        match relay_route_core::read_capped_from(r, cap).map_err(read_failed)? {
+        match relay_route_core::read_capped_from(r, MAX_CLI_STDIN).map_err(read_failed)? {
             relay_route_core::CappedAll::All(buf) => Some(buf),
             relay_route_core::CappedAll::OverCap => None,
         }
@@ -201,7 +204,8 @@ pub(crate) fn read_input<R: std::io::BufRead>(
             "args_too_large",
             // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
             contract::malformed(&format!(
-                "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
+                "args JSON over the {}-byte cap, refused (not truncated)",
+                MAX_CLI_STDIN.bytes
             )),
         ));
     };

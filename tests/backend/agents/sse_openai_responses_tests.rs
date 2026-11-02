@@ -113,7 +113,7 @@ fn each_known_responses_event_folds_and_everything_else_is_silent() {
 /// 认不出（id 在截断处之后 · 类型不是那几样 · 根本不是对象）⇒ 空，绝不出字。正文换成占位。
 #[test]
 fn a_clipped_event_yields_only_what_its_head_names() {
-    let cap = comms_outward::test_support::tee::TAP_DATA_CAP;
+    let cap = comms_outward::test_support::tee::TAP_DATA_CAP.as_len();
     let pad = "x".repeat(cap * 2);
     let clip = |s: &str| s[..cap.min(s.len())].to_string();
     let created = format!(

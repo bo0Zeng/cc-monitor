@@ -159,7 +159,7 @@ fn rig() -> (Arc<Fake>, Client) {
     let (host_rd, host_wr) = tokio::io::split(theirs);
     host::serve_with(host_rd, host_wr, fake.clone());
     let (rd, wr) = tokio::io::split(ours);
-    (fake, Client::over(rd, wr, host::FRAME_MAX_BYTES))
+    (fake, Client::over(rd, wr, host::FRAME_MAX_BYTES.as_len()))
 }
 
 // ════════════════════════════════════════════════════════════════════════════

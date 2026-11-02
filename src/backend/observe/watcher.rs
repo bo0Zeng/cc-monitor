@@ -399,7 +399,10 @@ fn start_tmux_probe(
 /// 一条流连接的出方向通道最多压住多少字节（帧按序列化的大小记账：进通道时记上，写出那一头取走时还回）。
 ///
 /// 挡的是写出那一头跟不上时内存无界增长；一帧装不下就丢、记账，排空后先出 `Overflow`（[`Sub::push`]）。
-pub const CHANNEL_MAX_BYTES: usize = 32 << 20;
+pub const CHANNEL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 32 << 20,
+    over: relay_route_core::Over::DropAndReport,
+};
 
 /// 造一条出方向通道，最多压住 `cap` 字节（生产只用 [`CHANNEL_MAX_BYTES`]，夹具给小的）。
 pub fn frame_channel(cap: usize) -> (FrameTx, FrameRx) {
@@ -1013,7 +1016,7 @@ impl WatcherPoke {
     ) -> (FrameRx, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+        let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         self.0
             .send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch))
             .discard(Why::PeerGone); // watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场
@@ -5371,8 +5374,9 @@ impl Sub {
                     _ => self.realign = true,
                 }
                 tracing::warn!(
-                    "frame channel full (cap {CHANNEL_MAX_BYTES} bytes); dropping a frame \
+                    "frame channel full (cap {} bytes); dropping a frame \
                      ({} line(s) lost so far, realign {})",
+                    CHANNEL_MAX_BYTES.bytes,
                     self.lines_lost,
                     self.realign
                 );

@@ -1,20 +1,11 @@
 //! 中转 · **交换面**：一条请求从读头到收尾的全程 —— 读头 → 问上游选择（`resolve`）
 //! → 连上游 → 逐块透传 + tee。
 //!
-//! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
+//! # 名字还叫 `server.rs`
 //!
-//! 那张拆分表要的名字是 **exchange**（交换面，本目录里还没有这份文件）。今天它仍叫 `server.rs`，
-//! 挡着改名的是**这里没改的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
-//!
-//! | 登记 | 它钉着什么 |
-//! |---|---|
-//! | `tests/common/guard-core/rules/creds_store_exits.rs`（照 `INNER_FIELD_USERS` 的 `HandsOut`） | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
-//! | 字节上限登记表（`HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条按这个路径登记） | 这几道上限收成 `relay_route_core::Cap`（数与超了怎么办写在常量上），那张表删掉就不挡 |
-//!
-//! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
-//! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
-//! ⇒ 这里**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
-//! 这里剩下的就是说的 `exchange`。改名要与那几处同拍，留给下一件。
+//! 拆分表要的名字是 **exchange**（交换面）。拿这个路径当住址的登记已经一处都没有了：凭据出口那张
+//! （`tests/common/guard-core/rules/creds_store_exits.rs`）不钉本文件，三道字节上限是 `relay_route_core::Cap`、数与超了怎么办写在常量上。
+//! 监听那半已经在 `listen.rs`，这里剩下的就是 `exchange`；改名是另一件。
 //!
 //! # 中转与上游选择的分界就在这一层里的一句话上
 //!
@@ -37,8 +28,11 @@ use std::sync::Arc;
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 
-/// 请求头部字节上限。
-const HEAD_CAP: usize = 64 * 1024;
+/// 请求头部字节上限（响应头同此）：超了拒收＋回错。
+const HEAD_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 /// **请求体**字节上限。
 ///
 /// 它管的是**一条下游请求的请求体**，超了**拒收+回错**：回 `413 Payload Too Large`，
@@ -51,15 +45,20 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
 /// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
-/// 超了：拒收＋回错（`relay_route_core::Over::Reject` 那一档）。
-const BODY_CAP: usize = 64 * 1024 * 1024;
+const BODY_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 /// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
 ///
 /// 它与 `BODY_CAP` **不同族**：那一条防的是「拿外部给的**一个数**去分配」（攻击方一个字节
 /// 不用发），这一条防的是「按**真实收到的字节**无界增长」（上游发一条永不换行的 `data:` 行 /
 /// 永不结束的块长度行）。超了**丢弃+带身份报告**：丢掉那一截并计数，
 /// 由 tee 在 tap 上占一个号不发报出去（接收侧看得见缺口）—— **tee 少一段，下游的字节一个不少**。
-const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
+const TEE_DECODE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 8 * 1024 * 1024,
+    over: relay_route_core::Over::DropAndReport,
+};
 /// 每次从上游读多少 —— **上限**，不是「要凑满这么多」。
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
 const READ_CHUNK: usize = 64 * 1024;
@@ -264,7 +263,7 @@ impl Relay {
         open: Arc<OpenFor>,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
-        in_flight_bodies: usize,
+        in_flight_bodies: relay_route_core::Cap,
     ) -> Self {
         Self {
             stream_headers: dest.stream_label_headers(),
@@ -276,7 +275,7 @@ impl Relay {
             downstream_deadline,
             upstream_deadline,
             open,
-            bodies: BodyBudget::within(in_flight_bodies),
+            bodies: BodyBudget::within(in_flight_bodies.as_len()),
         }
     }
 }
@@ -383,7 +382,7 @@ fn reply_and_drain(down: &mut TcpStream, bytes: &[u8]) -> std::io::Result<()> {
 fn drain_arrived(down: &mut TcpStream) {
     down.set_nonblocking(true).discard(Why::DeadLink); // 已经答完的那条连接上排掉已到的字节，排不掉就算了
     let mut sink = [0u8; 4096];
-    let mut left = HEAD_CAP;
+    let mut left = HEAD_CAP.as_len();
     while left > 0 {
         match down.read(&mut sink) {
             Ok(0) => break,
@@ -646,7 +645,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     };
     let mut down_r = BufReader::new(down);
 
-    let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
+    let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP.as_len())? else {
         return respond_and_drain(&mut down_w, BAD_REQUEST, "bad-request-head");
     };
     let Some(head) = http1::parse_request(&raw_head) else {
@@ -697,7 +696,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let _held: Option<BodyHeld<'_>>;
     let body = match head.content_length() {
         // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
-        http1::BodyLen::Exact(n) if n > BODY_CAP => {
+        http1::BodyLen::Exact(n) if n > BODY_CAP.as_len() => {
             return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large")
         }
         http1::BodyLen::Exact(n) => {
@@ -706,7 +705,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 return respond_and_drain(&mut down_w, BUSY, "body-budget");
             };
             _held = Some(held);
-            match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
+            match http1::read_exact_body(&mut down_r, n, BODY_CAP.as_len())? {
                 Some(b) => b,
                 None => {
                     return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large")
@@ -866,8 +865,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 没有体的那几形（`HEAD` 的应答 · 204 · 304）头写完就收尾，不读上游（读的话要等到期限）。
     let bodiless = view.ended();
     let outcome = pump(&mut up, &mut down_w, bodiless, &mut |raw| {
-        let decoded = view.feed(raw, TEE_DECODE_CAP);
-        for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
+        let decoded = view.feed(raw, TEE_DECODE_CAP.as_len());
+        for payload in splitter.feed(&decoded, TEE_DECODE_CAP.as_len()) {
             relay.tee.event(id, &mut at, &payload);
         }
         // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
@@ -957,7 +956,7 @@ fn read_final_head(
     let fail = |at, cause| UpstreamFailure::new(who, at, cause);
     let mut interim = 0usize;
     loop {
-        let raw = match http1::read_response_head(up, HEAD_CAP) {
+        let raw = match http1::read_response_head(up, HEAD_CAP.as_len()) {
             Ok(Some(raw)) => raw,
             Ok(None) => return Err(fail(FailedAt::ClosedBeforeAnswer, None)),
             Err(e) => return Err(fail(FailedAt::NoAnswer, Some(e))),

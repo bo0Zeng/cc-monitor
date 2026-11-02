@@ -16,8 +16,11 @@ use super::wire::{ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
-/// 一端的发送队列上限（字节）。比最大的一屏大得多，只有真不读的端才会塞满。
-pub(crate) const QUEUE_CAP: usize = 4 * 1024 * 1024;
+/// 一端的发送队列上限（字节）。比最大的一屏大得多，只有真不读的端才会塞满；塞满了清掉积压、换一帧 `resync` 整屏。
+pub(crate) const QUEUE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024 * 1024,
+    over: relay_route_core::Over::TruncateAndSay,
+};
 
 /// 一端的发送队列：托管那边放、写那一端的任务取。
 #[derive(Default)]
@@ -433,7 +436,7 @@ impl Hub {
         if q.closed {
             return;
         }
-        if q.bytes + bytes.len() > QUEUE_CAP {
+        if q.bytes + bytes.len() > QUEUE_CAP.as_len() {
             q.frames.clear();
             q.bytes = 0;
             q.overflows = q.overflows.saturating_add(1);

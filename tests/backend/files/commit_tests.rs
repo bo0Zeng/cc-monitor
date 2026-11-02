@@ -802,7 +802,7 @@ fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
     )
     .expect_err("缺块号");
     assert_eq!(e.code_or_fallback(), "bad_args");
-    let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
+    let cap = crate::files::READ_TEXT_MAX_BYTES.bytes;
     for (chunks, bytes) in [(1, cap + 1), (0, 5), (6, 5)] {
         let e = send_commit(&home, KEY, chunks, bytes, &root, "t.txt").expect_err("该拒");
         assert_eq!(
