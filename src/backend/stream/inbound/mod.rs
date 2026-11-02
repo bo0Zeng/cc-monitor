@@ -43,7 +43,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 mod caps;
-mod cli_only;
 mod doors;
 pub(crate) mod files_face;
 pub(crate) mod files_session_face;
@@ -59,7 +58,6 @@ pub(crate) use caps::until_of;
 // 协议参考逐条写总期限（生成器是判据，只在测试构建里）。
 #[cfg(test)]
 pub(crate) use caps::{cap_of, MARGIN_MS};
-pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
 pub use doors::{
     align_aliases, deliver_queues, fill_account_colors, share_on_demand_dirs, watch_account_mcp,

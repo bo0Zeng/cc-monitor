@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import java.io.File
 
 /**
@@ -79,6 +80,7 @@ internal object Fixtures {
             "atText" to "",
             "sectionText" to "",
             "spanText" to "",
+            "origin" to LOCAL,
         ) + set
 
     /** 整份脸金样（后端 `SessionFace::of` 每一形一份）里 [key] 那一形，原样（`Map` 形）。 */

@@ -21,13 +21,16 @@ pub(crate) const LOCK_FILE: &str = "filewin-bookmarks.json.lock";
 /// 旧文件那一形：机器名 ⇒ 那台上的目录。
 type Book = BTreeMap<String, Vec<String>>;
 
-/// 读整份：不在 ⇒ `Ok(None)`；读不懂 ⇒ `Err`。
+/// 读整份，上限照新的那份书签的声明（`relay_route_core::BOOKMARKS_FILE`：装的是同一批书签）：
+/// 不在 ⇒ `Ok(None)`；读不懂 · 超了上限 ⇒ `Err`（一格都不迁、一个字节不动）。
 fn read(file: &Path) -> Result<Option<Book>, String> {
-    match std::fs::read_to_string(file) {
-        Ok(raw) => serde_json::from_str(&raw)
+    let cap = relay_route_core::BOOKMARKS_FILE.row.cap;
+    match host_core::read_capped(file, cap) {
+        Ok(host_core::Capped::Whole(raw)) => serde_json::from_str(&raw)
             .map(Some)
             .map_err(|e| e.to_string()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Ok(host_core::Capped::Absent) => Ok(None),
+        Ok(host_core::Capped::TooBig) => Err(format!("> {} bytes", cap.bytes)),
         Err(e) => Err(e.to_string()),
     }
 }

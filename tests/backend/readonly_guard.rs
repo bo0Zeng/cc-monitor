@@ -728,8 +728,8 @@ mod tests {
     /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
     // 针不带括号：`Own::issue` 一族（照进程环境 · 照注入的环境）都只许启动入口造。
     const ISSUERS: &[(&str, &[&str])] = &[
-        ("Own::issue", &["main.rs"]),
-        ("DiagLog::issue", &["main.rs"]),
+        ("Own::issue", &["stream/entry.rs"]),
+        ("DiagLog::issue", &["stream/entry.rs"]),
         // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
         //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         ("Face::issue", &["stream/inbound/mod.rs", "wire/spec.rs"]),

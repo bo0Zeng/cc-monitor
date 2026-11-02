@@ -108,9 +108,18 @@ internal fun CellRows(
                 if (cell.kind == RotFormKind.TOGGLE) Switch(checked = cell.v.value == true, onCheckedChange = { set(it) }) else NumberCell(cell, set)
             }
         }
+        resetEdit(cell, row)?.let { e ->
+            SecondaryButton(onClick = { board.edit(e, id) }, modifier = Modifier.align(Alignment.End).testTag("rot-reset-$id")) { Text(copyText("rot.cell.reset")) }
+        }
         ui.cellFailed?.takeIf { it.cell == id }?.let { Text(it.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+/** 「恢复默认」那一发：后端标了 `reset` 的那一格才有。 */
+internal fun resetEdit(
+    cell: RotCell,
+    row: Int?,
+): Map<String, Any?>? = if (cell.reset == true) RotEdit.reset(cell.key, row) else null
 
 internal fun cellId(
     cell: RotCell,

@@ -113,6 +113,36 @@ fn use_now_is_stopped_only_by_facts() {
     go("a").expect("策略的上限不拦");
 }
 
+/// ★ 「现在用」认的号表同轮换那一张：账号库里合成的账号 0 不在里头 ⇒ `not_listed`（库里有它那一行也拒）。
+#[test]
+fn use_now_refuses_the_bare_account() {
+    let home = Home::new("usenow-bare");
+    let mut ctx = home.ctx();
+    let inner = std::sync::Arc::clone(&ctx.hop.library);
+    ctx.hop.library = std::sync::Arc::new(move |h: &std::path::Path| {
+        let mut lib = inner(h)?;
+        lib.accounts
+            .push(crate::accounts::upstream_select::rotate::tests::book_row(
+                acct_core::BARE_ACCOUNT,
+                None,
+                false,
+            ));
+        Some(lib)
+    });
+    home.saw(&ctx, S1);
+    let r = use_now_with(
+        &ctx,
+        &home.own(),
+        &RotationUseNowReq {
+            sid: S1.into(),
+            account: acct_core::BARE_ACCOUNT.into(),
+        },
+        now(),
+    );
+    assert!(matches!(r, Err(RotationUseNowErr::NotListed(_))), "{r:?}");
+    assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
+}
+
 /// ★ 不轮换的会话「现在用」照常：换过去、记一条手动换号，视图第一格跟着是它。
 #[test]
 fn use_now_works_without_a_strategy() {

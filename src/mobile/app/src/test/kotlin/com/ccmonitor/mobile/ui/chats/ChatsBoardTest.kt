@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -54,6 +55,7 @@ class ChatsBoardTest {
         "projectDir" to "/w",
         "untitled" to false,
         "spanText" to "09:00",
+        "origin" to LOCAL,
     )
 
     private class Host(
@@ -191,15 +193,15 @@ class ChatsBoardTest {
             runCurrent()
             board.filters { it.copy(withinDays = 7) }
             runCurrent()
-            assertEquals(mapOf("within_days" to 7), a.link.calls("history-list").last())
-            assertEquals(mapOf("within_days" to 7), b.link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "within_days" to 7), a.link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "within_days" to 7), b.link.calls("history-list").last())
             board.filters { it.copy(unchecked = setOf("h2")) }
             runCurrent()
             val before = b.link.calls("history-list").size
             board.filters { it.copy(hidden = true) }
             runCurrent()
             assertEquals("去掉的那台不再问", before, b.link.calls("history-list").size)
-            assertEquals(mapOf("within_days" to 7, "hidden" to true), a.link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "within_days" to 7, "hidden" to true), a.link.calls("history-list").last())
             assertEquals(listOf("h1"), board.checked.value.map { it.hostId })
         }
 
@@ -213,10 +215,10 @@ class ChatsBoardTest {
             board.query("登录")
             advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS - 1)
             runCurrent()
-            assertEquals(null, a.link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL), a.link.calls("history-list").last())
             advanceTimeBy(2)
             runCurrent()
-            assertEquals(mapOf("query" to "登录"), a.link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "query" to "登录"), a.link.calls("history-list").last())
         }
 
     @Test

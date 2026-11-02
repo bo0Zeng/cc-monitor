@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -57,6 +58,7 @@ class HostChatsSyncTest {
         "projectDir" to "/w",
         "untitled" to false,
         "spanText" to "09:00",
+        "origin" to LOCAL,
     )
 
     private val head = mapOf("total" to 2L, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null))
@@ -102,11 +104,11 @@ class HostChatsSyncTest {
             val c = chats(link, cache)
             runCurrent()
             assertEquals(listOf("a", "b"), c.labels())
-            assertEquals(listOf<Map<String, Any?>?>(null), link.calls("history-list"))
+            assertEquals(listOf<Map<String, Any?>?>(mapOf("origin" to LOCAL)), link.calls("history-list"))
             next = patch("e.1.1", same = true)
             c.fetch()
             runCurrent()
-            assertEquals(mapOf("held" to "e.1.1"), link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "held" to "e.1.1"), link.calls("history-list").last())
             assertEquals(listOf("a", "b"), c.labels())
             next = patch("e.1.2", up = mapOf("b" to row("b", "b 改了名")))
             c.fetch()
@@ -119,7 +121,7 @@ class HostChatsSyncTest {
             next = patch("e.2.1", whole = true, order = listOf("a"), up = mapOf("a" to row("a")), head = head)
             c.ask(ListAsk(query = "a"))
             runCurrent()
-            assertEquals(mapOf("query" to "a"), link.calls("history-list").last())
+            assertEquals(mapOf("origin" to LOCAL, "query" to "a"), link.calls("history-list").last())
             assertEquals(3, cache.keeps)
             assertEquals("e.1.2", cache.hand.held)
         }
@@ -133,7 +135,7 @@ class HostChatsSyncTest {
             val c = chats(link, Kept(had))
             runCurrent()
             assertEquals(listOf("上次的 a"), c.labels())
-            assertEquals(mapOf("held" to "e.9.4"), link.calls("history-list").single())
+            assertEquals(mapOf("origin" to LOCAL, "held" to "e.9.4"), link.calls("history-list").single())
         }
 
     @Test

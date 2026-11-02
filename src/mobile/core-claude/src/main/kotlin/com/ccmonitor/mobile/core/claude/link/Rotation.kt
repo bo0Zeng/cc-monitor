@@ -136,6 +136,15 @@ object RotEdit {
         v: Any?,
     ): Map<String, Any?> = mapOf("set" to at(row, mapOf("key" to key, "v" to v)))
 
+    /** 恢复默认：删掉这一格自己设的值（号那一行 ⇒ 回到跟总体；总体那一格 ⇒ 回到声明默认）。 */
+    fun reset(
+        key: String,
+        row: Int?,
+    ): Map<String, Any?> = mapOf("reset" to at(row, mapOf("key" to key)))
+
+    /** 清掉号列表里这台账号库没有的号。 */
+    fun prune(): Map<String, Any?> = mapOf("prune" to emptyMap<String, Any?>())
+
     /** 分段那一窗（[window]）里：[at] ＋ [seg] ⇒ 第 [at] 段换成它；只 [at] ⇒ 删第 [at] 段；只 [seg] ⇒ 加一段（[RotSegment]）。 */
     fun seg(
         key: String,

@@ -94,10 +94,10 @@ fn hello_commands_are_the_registry_names_in_order() {
             .collect::<std::collections::BTreeSet<_>>(),
         from_registry
     );
-    // hello 那一格读的就是它（`main.rs` 拼握手帧那一处）。
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    // hello 那一格读的就是它（进程入口 `stream/entry.rs` 拼握手帧那一处）。
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     guard_core::find_pinned(&main, "commands: inbound::command_names()")
-        .expect("`main.rs` 的 hello 不再从 `inbound::command_names()` 取 `commands`");
+        .expect("`stream/entry.rs` 的 hello 不再从 `inbound::command_names()` 取 `commands`");
 }
 
 /// ★ **命令表的族划分**：`registry/` 目录下的 `.rs` 文件集合 == `FAMILIES` 列的模块集合（两向，文件系统现取）；

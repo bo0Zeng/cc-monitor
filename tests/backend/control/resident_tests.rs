@@ -295,7 +295,7 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
 
 /// 〔升级那一跳〕旧版常驻后端占着中转口（这里用一个占着回环口的进程扮它，`<家>/listen-<口>.pid` 记着它）：
 /// `retire_legacy` 停掉它、删掉旧记录与旧钥匙文件 ⇒ 那个口空出来，新的常驻后端接得上中转；没有旧记录 ⇒ 什么都不做。
-/// 而 `main.rs` 里先停旧的、再接中转（同一条线程里，顺序钉住）。
+/// 而进程入口（`stream/entry.rs`）里先停旧的、再接中转（同一条线程里，顺序钉住）。
 #[test]
 #[cfg(target_os = "linux")]
 fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
@@ -344,10 +344,10 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     assert!(legacy_listen_pid_in(&dh).is_none());
     assert!(!dh.join(LEGACY_LISTEN_TOKEN_NAME).exists());
     // 顺序：同一条线程里先 `retire_legacy`，后 `host_relay`。
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let at = main
         .find("control::resident::retire_legacy")
-        .expect("main.rs 里没有升级那一跳");
+        .expect("stream/entry.rs 里没有升级那一跳");
     let relay_after = main[at..]
         .find("host_relay(")
         .expect("停了旧的之后没接中转");

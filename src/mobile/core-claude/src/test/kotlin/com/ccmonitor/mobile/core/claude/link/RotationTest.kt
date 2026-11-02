@@ -49,4 +49,11 @@ class RotationTest {
         assertEquals(mapOf("strategy" to "a", "edit" to RotEdit.add("x"), "ifRev" to "r"), Rotation.settings("a", RotEdit.add("x"), "r"))
         assertEquals(mapOf("sid" to "s", "strategy" to "a"), Rotation.use("s", "a"))
     }
+
+    @Test
+    fun `恢复默认带格名（号那一行再带行号）；清掉库里没有的号是空的一形`() {
+        assertEquals(mapOf("reset" to mapOf("key" to "close")), RotEdit.reset("close", null))
+        assertEquals(mapOf("reset" to mapOf("key" to "delay", "row" to 2)), RotEdit.reset("delay", 2))
+        assertEquals(mapOf("prune" to emptyMap<String, Any?>()), RotEdit.prune())
+    }
 }

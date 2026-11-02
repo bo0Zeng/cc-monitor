@@ -15,7 +15,7 @@
 ///
 /// # 人群与豁免
 ///
-/// 人群 = **流式那条路**（`main.rs` / `stream/writer.rs` / `stream/inbound/` 整个目录 / `wire/mod.rs`（帧）/ `wire/listen.rs`）生产段里所有
+/// 人群 = **流式那条路**（`stream/entry.rs` / `stream/writer.rs` / `stream/inbound/` 整个目录 / `wire/mod.rs`（帧）/ `wire/listen.rs`）生产段里所有
 /// `write_all(`。今天恰好三处，各自登记：
 /// · `wire::write_and_flush_hello`（`wire/mod.rs`）—— 握手前那一帧，写完才产出 `HelloFlushed`；
 ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
@@ -73,9 +73,11 @@ fn the_outbound_stream_has_exactly_one_writer() {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let by_rel = rel.starts_with("stream/inbound/") || rel == "stream/writer.rs";
-        // 只看流式那条路（`wire.rs` · `main.rs` · `listen.rs` ＋ 写者 ＋ 入方向那个目录）；`observe/*_query.rs` 是一次性子命令，理由见头注。
-        if !by_rel && !matches!(name.as_str(), "wire.rs" | "main.rs" | "listen.rs") {
+        let by_rel = rel.starts_with("stream/inbound/")
+            || rel == "stream/writer.rs"
+            || rel == "stream/entry.rs";
+        // 只看流式那条路（`wire.rs` · `listen.rs` ＋ 进程入口 ＋ 写者 ＋ 入方向那个目录）；`observe/*_query.rs` 是一次性子命令，理由见头注。
+        if !by_rel && !matches!(name.as_str(), "wire.rs" | "listen.rs") {
             continue;
         }
         let name = if by_rel { rel } else { name };
@@ -1269,7 +1271,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
         "{\"kind\":\"hello\",\"build_id\":\"b\",\"host_arch\":\"x86_64\",\
          \"host_env\":{\"CCM_DATA_DIR\":\"/d\",\"CCM_RELAY_PORT\":\"8788\"}}\n"
     );
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     assert_eq!(
         main.matches("host_env: wire::host_env_from(|name| std::env::var(name).ok()),")
             .count(),

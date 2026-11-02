@@ -141,9 +141,9 @@ impl crate::wire::typed::Handle for RotationTemp {
     }
 }
 
-/// 这个号在这台的账号里吗（开会话用的号算）。
+/// 这个号在轮换的号表里吗（同 `Hop::roster`：账号 0 不在里头；开会话用的号算）。
 fn listed(ctx: &Ctx, s: &Session, account: &str) -> bool {
-    account == s.start || ctx.hop.library().by_route(account).is_some()
+    account == s.start || ctx.hop.roster().iter().any(|a| a == account)
 }
 
 /// 顺序 `line` 里把 `account` 拖到第 `to` 格之后，「接下来先用谁」那一串：第二格起到挪动那一截的尽头（第一格在用的号不在里头）。

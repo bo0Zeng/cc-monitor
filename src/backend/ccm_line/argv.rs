@@ -258,7 +258,7 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
 ];
 
 /// 右边的一组词：一个认得的词连同它吃掉的值。几个词、值从哪来只住 [`word_at`]，含义只住 [`apply_word`] ——
-/// [`parse`] 与别名表单（`assets/aliases/form.rs`）都按这一份走。
+/// [`parse_layered`] 与别名表单（`assets/aliases/form.rs`）都按这一份走。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Word {
     /// 认得的那个词（[`flag`] 里的常量）。
@@ -269,7 +269,7 @@ pub(crate) struct Word {
     pub(crate) len: usize,
 }
 
-/// `args[i]` 起的那一组词（`args` 是 `--` 右边那一串）。认不得 / 缺值 ⇒ 与 [`parse`] 同一句。
+/// `args[i]` 起的那一组词（`args` 是 `--` 右边那一串）。认不得 / 缺值 ⇒ 与 [`parse_layered`] 同一句。
 pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
     let a = args[i].as_str();
     // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
@@ -400,16 +400,6 @@ pub(crate) fn tab_of(word: &str) -> Option<cmd_wire::session::Tab> {
         .find(|t| tab_word(*t) == word)
 }
 
-/// 这套 argv 的唯一解析口。
-///
-/// 格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，一个词都不拦）；
-/// 有 ⇒ 按最后一个 `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，没有 ccm 部分时末尾补一个空 `--`），
-/// 右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
-/// 逐词那一圈是 [`word_at`]（几个词）＋ [`apply_word`]（什么意思）。没有配置层的 [`parse_layered`]。
-pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
-    parse_layered(&[], args).map(|(p, _)| p)
-}
-
 /// 一层配置（配置文件里的一段）：名字 ＋ 交给 agent 的词 ＋ ccm 的词（`--` 右边那种写法）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Layer {
@@ -436,13 +426,18 @@ fn slot_of(f: &'static str) -> &'static str {
     }
 }
 
-/// **继承合并的唯一住址**：`layers` 按父 → 子排好（配置文件里「基于」那条链），`args` 是命令行当场给的（同 [`parse`] 的写法），
-/// 最后盖上去。合并规则：
+/// 这套 argv 的唯一解析口，也是**继承合并的唯一住址**。
+///
+/// 格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，一个词都不拦）；
+/// 有 ⇒ 按最后一个 `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，没有 ccm 部分时末尾补一个空 `--`），
+/// 右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
+///
+/// `layers` 按父 → 子排好（配置文件里「基于」那条链；没有配置层 ⇒ 空），`args` 是命令行当场给的，最后盖上去。合并规则：
 /// - 交给 agent 的词：父在前、子在后，命令行 `--` 左边那串接在最后；
 /// - `--cwd-if`：子那一层的规则排在父的前面（同一个「在哪」子的先对上），各层内照写的顺序；
 /// - 其余每一格（[`slot_of`]）：后来的一层写了就整格盖掉前面几层的；开关只能打开（写了就是开）。
 ///
-/// 合并完照 [`parse`] 同一套逐词落意图 ＋ [`finish`] 收尾；每一项来自哪一层一并交回（设置窗的合并预览照画）。
+/// 合并完逐词落意图（[`word_at`] 几个词 ＋ [`apply_word`] 什么意思）＋ [`finish`] 收尾；每一项来自哪一层一并交回（设置窗的合并预览照画）。
 pub(crate) fn parse_layered(
     layers: &[Layer],
     args: &[String],
@@ -506,7 +501,7 @@ pub(crate) fn parse_layered(
     Ok((Parsed::Opts(Box::new(finish(o)?)), origins))
 }
 
-/// 逐词落完之后的收尾：认是哪一家、按那一家的写法认 resume、组合校验。[`parse`] 与别名校验（`assets/aliases::check_alias`）共用。
+/// 逐词落完之后的收尾：认是哪一家、按那一家的写法认 resume、组合校验。[`parse_layered`] 与别名校验（`assets/aliases::check_alias`）共用。
 pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
     // 哪一家：空 ⇒ 默认那一家；注册表里没有 ⇒ 报错、列出认得的几家（不落默认）。下游只见解析好的 kind。
     let (kind, face) = crate::agents::pick_kind(Some(&o.agent)).map_err(Die)?;
