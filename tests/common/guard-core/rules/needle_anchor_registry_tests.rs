@@ -314,7 +314,10 @@ fn bare_matchers_on_disk_corpora_equal_the_debt_list() {
         ("src/backend", &[]),
         ("src/common", &[]),
         ("tests/frontend/shell", &[]),
-        ("tests/common/guard-core/rules", &["needle_anchor_registry_tests.rs"]),
+        (
+            "tests/common/guard-core/rules",
+            &["needle_anchor_registry_tests.rs"],
+        ),
         ("tests/frontend/filewin", &[]),
         ("tests/backend", &[]),
         ("tests/comms", &[]),

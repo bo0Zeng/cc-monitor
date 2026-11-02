@@ -67,7 +67,14 @@ fn registries_live_under_guard_core_rules() {
             .filter_map(|l| crate::path_attr(l.trim()))
             .filter(|f| is_head(f))
             .collect();
-        assert!(!heads.is_empty(), "`{RULES_DIR}` 里一张登记表都没有 —— 判不了");
-        equal("`rules/` 里的登记表 ↔ `rules/mod.rs` 挂上的", heads, mounted_here);
+        assert!(
+            !heads.is_empty(),
+            "`{RULES_DIR}` 里一张登记表都没有 —— 判不了"
+        );
+        equal(
+            "`rules/` 里的登记表 ↔ `rules/mod.rs` 挂上的",
+            heads,
+            mounted_here,
+        );
     });
 }

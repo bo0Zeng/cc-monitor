@@ -146,10 +146,10 @@ mod stream_watch;
 // 界面进程零 SSH：拨号全在本机常驻后端里；问别台一律经本机客户端 `call_at`，各台的流由本机后端转来（`relayed`）。
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
+// 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
-// 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
 mod frame_tally;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
@@ -168,6 +168,7 @@ mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/quote_singleton_guard.rs"]
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
+
 // 大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
 // 远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。

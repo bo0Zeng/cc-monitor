@@ -691,7 +691,10 @@ const SELF_REL: &str = "tests/common/guard-core/rules/scanning_guard_registry_te
 ///   写今天的住址：旧住址带 `--follow` 会列出它被挪走的那个提交，那个提交里旧住址已经没有 blob。
 const SELF_HOMES: &[(&str, bool)] = &[
     (SELF_REL, true),
-    ("tests/common/guard-core/rules/scanning_guard_registry.rs", true),
+    (
+        "tests/common/guard-core/rules/scanning_guard_registry.rs",
+        true,
+    ),
 ];
 
 /// 找 `PENDING` 那张表表头的针 —— 🔴 **运行时拼，别写成字面量**：
