@@ -433,11 +433,7 @@ fn home_dir() -> Result<PathBuf, Said> {
 
 /// 一次提交成功 ⇒ 顺手扫孤儿（暂存区清理「孤儿」那一格的事件）。
 fn sweep_after(face: &Face, home: &Path, key: &str) {
-    let now = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    sweep_stale(face, home, now, key);
+    sweep_stale(face, home, crate::common::time::now_secs(), key);
 }
 
 crate::files::write::acts! {
