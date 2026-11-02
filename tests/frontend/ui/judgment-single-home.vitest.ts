@@ -688,15 +688,20 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustNeedles: [{ file: "src/backend/control/launch_account.rs", text: '.find(|a| a.is_default)', count: 0 }],
   },
   J40: {
-    what: "助手正文怎么解析成块树 · 长正文在哪分段 · 代码高亮成哪一类",
-    // 唯一的家是后端链的判定类 crate `md-core`（线上形 `cmd_wire::md::Doc` · `SegHl`）；界面那一份（marked ＋ highlight.js）还在，
-    //   两端改照 `Doc` 排版之后删。
-    homes: ["md-core::parse", "md-core::segment", "md-core::seg"],
-    status: "open",
-    defs: ["renderMarkdown"],
+    what: "Markdown 怎么解析成块树 · 长正文在哪分段 · 代码高亮成哪一类 · 工具结果剥行号前缀 · 计划格引用插在树上哪",
+    // 唯一的家是后端链的判定类 crate `md-core`（线上形 `cmd_wire::md::Doc` · `SegHl`）；界面只照树排（`md-view.ts`），没有解析器。
+    homes: [
+      "md-core::parse",
+      "md-core::segment",
+      "md-core::seg",
+      "md-core::tool_result",
+      "md-core::ref_text",
+      "md-core::with_refs",
+      "md-core::parse_marked",
+    ],
+    status: "zero",
+    defs: ["renderMarkdown", "stripLineNumberPrefix"],
     needles: [],
-    owner: "桌面照 Doc 排版那一刀",
-    why: "线上还没交 Doc（拉块树那条命令接上之前），界面今天只能自己解析；两端照树排版那一刀删 renderMarkdown",
   },
   J41: {
     what: "一批会话做完 ⇒ 那一句 · 逐条明细 · 复制详情",
@@ -945,6 +950,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // `Highlighter` 的几个口：建 · 一段的 hl · 真算过几次 · 缓存占多少字节。
     new: NONE,
     seg: "J40",
+    tool_result: "J40",
+    ref_text: "J40",
+    with_refs: "J40",
+    parse_marked: "J40",
     computed: NONE,
     bytes: NONE,
   },
