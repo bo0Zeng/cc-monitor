@@ -196,8 +196,8 @@ private fun Card(
 @Composable
 internal fun Meters(f: RotAccount) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Meter(copyText("rot.card.w5h"), f.w5h, "5h" in f.full)
-        Meter(copyText("rot.card.w7d"), f.w7d, "7d" in f.full)
+        Meter(copyText("acct.slot.fiveHour"), f.w5h, "5h" in f.full)
+        Meter(copyText("acct.slot.sevenDay"), f.w7d, "7d" in f.full)
     }
 }
 
@@ -324,7 +324,7 @@ private fun EditSheet(
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
                 Marks(row.marks)
                 Text(row.line, style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                IconButton(onClick = { board.open(null) }, modifier = Modifier.semantics { contentDescription = copyText("rot.pane.close") }) {
+                IconButton(onClick = { board.open(null) }, modifier = Modifier.semantics { contentDescription = copyText("kit.drawer.close") }) {
                     PhIcon(Ph.X, contentDescription = null, size = Touch.iconInline, tint = muted)
                 }
             }

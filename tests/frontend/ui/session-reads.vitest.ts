@@ -200,8 +200,8 @@ describe("〔STC〕第五问：会话事实", () => {
       projectDir: "/g/proj",
       writers: [],
       pending: [
-        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", atMs: null, state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
-        { id: "tu-3", name: "Agent", what: null, at: "t4", atMs: null, state: "unclear", why: "noWriter", text: copyText("stream.step.unclear"), whyText: copyText("stream.step.unclearNoWriter") },
+        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", atMs: null, state: "unclear", why: "noWriter", text: copyText("sessionState.unseen.name"), whyText: copyText("stream.step.unclearNoWriter") },
+        { id: "tu-3", name: "Agent", what: null, at: "t4", atMs: null, state: "unclear", why: "noWriter", text: copyText("sessionState.unseen.name"), whyText: copyText("stream.step.unclearNoWriter") },
       ],
       lastSay: { text: "done", at: "t5", atMs: null },
       needs: null,

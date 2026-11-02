@@ -28,7 +28,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("结束会话的确认框", () => {
   it("★ 标题 · 按钮写个数，列出要结束的那几条，写会中断 · 会保留什么", () => {
     expect(endConfirm(["甲", "乙"], "另 ×1 已结束 · 跳过")).toEqual({
-      title: copyText("tabBatch.stop.title", { n: 2 }),
+      title: copyText("tabBatch.menu.stop", { n: 2 }),
       action: copyText("tabBatch.stop.action", { n: 2 }),
       danger: true,
       rows: [

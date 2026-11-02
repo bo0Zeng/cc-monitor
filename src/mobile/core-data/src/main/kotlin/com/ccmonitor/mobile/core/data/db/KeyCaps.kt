@@ -35,12 +35,12 @@ fun appActionName(a: AppAction): String =
         AppAction.NEXT_GROUP -> copyText("mobKeys.action.nextGroup")
         AppAction.GOTO_GROUP -> copyText("mobKeys.action.gotoGroup")
         AppAction.EDIT_KEYS -> copyText("mobKeys.action.editKeys")
-        AppAction.PASTE -> copyText("mobKeys.action.paste")
-        AppAction.SHOW_TABS -> copyText("mobKeys.action.tabs")
+        AppAction.PASTE -> copyText("login.act.paste")
+        AppAction.SHOW_TABS -> copyText("beProfile.slot.tab")
         AppAction.COMMAND_PALETTE -> copyText("mobKeys.action.palette")
-        AppAction.TMUX_SESSIONS -> copyText("mobKeys.action.tmux")
+        AppAction.TMUX_SESSIONS -> copyText("mobPalette.item.tmux")
         AppAction.SHOW_KEYBOARD -> copyText("mobKeys.action.keyboard")
-        AppAction.CAPTURE -> copyText("mobKeys.action.capture")
+        AppAction.CAPTURE -> copyText("mobPalette.item.capture")
         AppAction.PUSH_KEY -> copyText("mobKeys.action.pushKey")
     }
 

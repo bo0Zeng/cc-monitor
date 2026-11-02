@@ -144,12 +144,12 @@ describe("命令面板", () => {
       cmd("acct", "管理账号…", "account", "account"),
     ]);
     view.open();
-    expect(groupTitles()).toEqual([copyText("commandBar.group.needs"), copyText("commandBar.group.current"), copyText("commandBar.group.open"), copyText("commandBar.group.window"), copyText("commandBar.group.account")]);
+    expect(groupTitles()).toEqual([copyText("tabBar.needs.label"), copyText("commandBar.group.current"), copyText("mobTerms.row.attach"), copyText("commandBar.group.window"), copyText("newSession.label.account")]);
     expect(items().map((e) => e.textContent)).toEqual([`表格分页${copyText("commandBar.session.waiting", { what: "等批准" })}`, "在会话里找", "历史", "全屏", "管理账号…"]);
     type("日");
-    expect(groupTitles()).toEqual([copyText("commandBar.group.sessions")]);
+    expect(groupTitles()).toEqual([copyText("mobDrawer.item.sessions")]);
     type("i");
-    expect(groupTitles()).toEqual([copyText("commandBar.group.commands")]);
+    expect(groupTitles()).toEqual([copyText("detail.label.command")]);
     view.close();
   });
 
@@ -160,7 +160,7 @@ describe("命令面板", () => {
     type("历史");
     expect(items().map((e) => e.textContent)).toEqual(["打开历史"]);
     type("zzz");
-    expect(document.querySelector("[role=listbox]")?.textContent).toBe(copyText("commandBar.renderList.none"));
+    expect(document.querySelector("[role=listbox]")?.textContent).toBe(copyText("history.list.noMatch"));
   });
 
   it("ArrowDown/Up 移动选中（环绕，跳过灰着的）；组字中的方向键 / Enter 归输入法", () => {
@@ -325,7 +325,7 @@ describe("命令面板 · 机器", () => {
     const view = new CommandBarView(() => [cmd("f", "在会话里找", "find", "current"), cmd("h", "历史")], { rows: async () => [row], block });
     view.open();
     await flush();
-    expect(groupTitles()).toEqual([copyText("commandBar.group.current"), copyText("commandBar.group.machine"), copyText("commandBar.group.open")]);
+    expect(groupTitles()).toEqual([copyText("commandBar.group.current"), copyText("newSession.label.machine"), copyText("mobTerms.row.attach")]);
     key({ key: "ArrowDown" });
     expect(selectedText()).toBe("nas");
     key({ key: "Enter" });

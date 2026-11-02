@@ -233,7 +233,7 @@ internal fun ModifierPickSheet(
     onPick: (KeyMod) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    KeysSheet(copyText("mobKeys.add.modifier"), null, onDismiss) {
+    KeysSheet(copyText("mobKeys.mod.title"), null, onDismiss) {
         KeyMod.entries.forEach { m -> SheetRow(Ph.Keyboard, modName(m), onClick = { onPick(m) }) }
     }
 }
@@ -261,9 +261,9 @@ internal fun RecorderSheet(
         onDismiss,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconTextButton(Ph.ArrowCounterClockwise, copyText("mobKeys.rec.undo"), onClick = { rec = rec.undo() }, enabled = rec.presses.isNotEmpty())
-                SecondaryButton(onClick = { rec = rec.clear() }, enabled = rec.presses.isNotEmpty() || rec.armed.isNotEmpty()) { Text(copyText("mobKeys.rec.clear")) }
-                Button(onClick = { onDone(rec.presses) }) { Text(copyText("mobKeys.rec.done")) }
+                IconTextButton(Ph.ArrowCounterClockwise, copyText("kit.toast.undo"), onClick = { rec = rec.undo() }, enabled = rec.presses.isNotEmpty())
+                SecondaryButton(onClick = { rec = rec.clear() }, enabled = rec.presses.isNotEmpty() || rec.armed.isNotEmpty()) { Text(copyText("session.clear.ok")) }
+                Button(onClick = { onDone(rec.presses) }) { Text(copyText("runs.state.done")) }
             }
         },
     ) {
@@ -312,7 +312,7 @@ private fun RecorderKeys(
 ) {
     val tokens = LocalAppTokens.current
     var showF by remember { mutableStateOf(false) }
-    SectionLabel(copyText("mobKeys.rec.mods") + copyText("kit.text.sep") + copyText("mobKeys.rec.modsTip"))
+    SectionLabel(copyText("mobKeys.mod.title") + copyText("kit.text.sep") + copyText("mobKeys.rec.modsTip"))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         KeyMod.entries.forEach { m -> MiniCap(modName(m), active = m in rec.armed, onClick = { onRec(rec.toggle(m)) }) }
     }
@@ -369,7 +369,7 @@ internal fun DurationSheet(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs, Alignment.End)) {
                 SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
-                Button(onClick = { onSave(if (custom) value else null) }, enabled = ok) { Text(copyText("mobKeys.edit.save")) }
+                Button(onClick = { onSave(if (custom) value else null) }, enabled = ok) { Text(copyText("rsFilewinShell.editor.save")) }
             }
         }
     }
@@ -404,7 +404,7 @@ internal fun UnconvertedSheet(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm), horizontalArrangement = Arrangement.End) {
-                SecondaryButton(onClick = onDismiss) { Text(copyText("mobKeys.migrate.ok")) }
+                SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) }
             }
         }
     }

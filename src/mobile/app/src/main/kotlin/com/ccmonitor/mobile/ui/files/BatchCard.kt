@@ -72,10 +72,10 @@ fun BatchCard(
                     Text(e.said)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CopyDetailButton(e.said, e.details.orEmpty())
-                        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
+                        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) }
                     }
                 }
-                is BatchLine.Dropped -> Row { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) } }
+                is BatchLine.Dropped -> Row { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } }
             }
         }
     }
@@ -94,7 +94,7 @@ private fun EndedBody(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (e.failed.isNotEmpty()) SecondaryButton(onClick = onShowFailed) { Text(copyText("mobFiles.batch.failedShow")) }
         if (e.retry) SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.retry")) }
-        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
+        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) }
     }
 }
 

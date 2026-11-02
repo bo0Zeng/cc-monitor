@@ -119,7 +119,7 @@ fun MachineSheet(
         PickRow(
             title = m.name,
             tag = NewSessionTags.ROW,
-            second = if (m.up == false) copyText("newSession.machine.down") else null,
+            second = if (m.up == false) copyText("machinePage.state.down") else null,
             selected = m.hostId == current,
             onClick = { onPick(m.hostId) },
             lead = { MachineDot(m.up) },
@@ -198,7 +198,7 @@ fun AccountSheet(
         }, onSetDefault = { picker.setDefault(a.name) }, onLogin = { onLogin(a.name) })
     }
     HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-    SheetSection(copyText("rot.new.label"))
+    SheetSection(copyText("machinePage.tab.rot"))
     ui.rotationFailed?.let { Note(it) }
     ui.strategies?.forEach { st ->
         PickRow(
@@ -267,7 +267,7 @@ internal fun DefaultTag() {
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Text(
-            copyText("newSession.account.default"),
+            copyText("resumeSelect.option.defaultBare"),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),

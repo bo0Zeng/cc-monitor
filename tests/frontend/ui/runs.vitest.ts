@@ -124,7 +124,7 @@ describe("面板照帧里写好的三组与 chip 的字排", () => {
     const rows = () => [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => r.dataset.run);
     expect(rows()).toEqual(["c", "a", "d"]);
     expect([...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent)).toEqual([
-      copyText("agentsPanel.group.running"),
+      copyText("history.row.live"),
       copyText("agentsPanel.group.recent"),
       "核心·更早 ×1",
     ]);
@@ -245,7 +245,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(panelText).not.toContain("额度打断");
 
     expect(groupsIn(panel)).toEqual([
-      copyText("agentsPanel.group.running"),
+      copyText("history.row.live"),
       copyText("agentsPanel.group.recent"),
       "核心·更早 ×1",
     ]);

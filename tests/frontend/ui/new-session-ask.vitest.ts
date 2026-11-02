@@ -54,7 +54,7 @@ const choose = (b: HTMLButtonElement, label: string): void => {
 };
 const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*=nsRow]")!;
 const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
-const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
+const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("mobTerms.new.detached"))!;
 const opened = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-open").map((s) => s.body);
 
 const FACTS = { recent: [], tmux: true, hosts: ["tmux"], run: "direct", agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }], fork: null };

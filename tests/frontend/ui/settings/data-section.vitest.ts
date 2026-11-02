@@ -226,7 +226,7 @@ describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [�
     expect(backendLogs.querySelector("button"), "logs/backend/ 那一行也不该自带按钮").toBeNull();
     expect(backendLogs.querySelector('[data-see-also="logs"]')).not.toBeNull();
     // 反向对照：别的行照旧能打开（否则「logs/ 没按钮」可能是整张表都没按钮）。
-    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe(copyText("data.item.open"));
+    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe(copyText("mobTerms.row.attach"));
   });
 });
 

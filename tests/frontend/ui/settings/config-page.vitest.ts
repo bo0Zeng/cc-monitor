@@ -164,7 +164,7 @@ describe("别名与配置文件 · 账号与扩展", () => {
     show(el);
     await settle();
     const r = mcpRow(el);
-    byText(r, copyText("cfgPage.mcp.useFrom", { holders: ["z", "b"].join(copyText("accountsMcp.list.sep")) }))!.click();
+    byText(r, copyText("cfgPage.mcp.useFrom", { holders: ["z", "b"].join(copyText("kit.text.sep")) }))!.click();
     await settle();
     expect(calls.find((c) => c[0] === "accounts-mcp-pick")).toEqual(["accounts-mcp-pick", "devbox", { name: "cclsp", from: "z" }]);
   });

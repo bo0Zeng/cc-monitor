@@ -76,7 +76,7 @@ fun TerminalManagerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("mobTerms.dialog.title")) },
+        title = { Text(copyText("mobDrawer.item.terminal")) },
         text = {
             TerminalManagerBody(
                 terminals = terminals,
@@ -96,8 +96,8 @@ fun TerminalManagerDialog(
                 scope = scope,
             )
         },
-        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("mobTerms.dialog.refresh")) } },
-        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("accountChip.menu.refresh")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 
     KillConfirmDialog(
@@ -184,7 +184,7 @@ private fun KillConfirmDialog(
                     ?: copyText("mobTerms.kill.body"),
             )
         },
-        confirmButton = { SecondaryButton(onClick = { onConfirm(target) }) { Text(copyText("mobTerms.kill.ok")) } },
+        confirmButton = { SecondaryButton(onClick = { onConfirm(target) }) { Text(copyText("tabBatch.verb.stop")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
@@ -247,7 +247,7 @@ private fun TerminalRow(
             )
         }
         SecondaryButton(onClick = onAttach) { Text(copyText("mobTerms.row.attach")) }
-        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTerms.row.kill")) }
+        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("tabBatch.verb.stop")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
@@ -269,7 +269,7 @@ private fun TmuxNewSessionRow(
     OutlinedTextField(
         value = newName,
         onValueChange = onNameChange,
-        label = { Text(copyText("mobTerms.new.name")) },
+        label = { Text(copyText("newSession.label.tmuxName")) },
         singleLine = true,
         enabled = noTmux == null,
         modifier = Modifier.fillMaxWidth(),

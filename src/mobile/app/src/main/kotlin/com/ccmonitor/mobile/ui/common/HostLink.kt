@@ -124,7 +124,7 @@ fun EditHostButton(
     edit: String?,
     onEditHost: (hostId: String) -> Unit,
 ) {
-    if (edit != null) SecondaryButton(onClick = { onEditHost(edit) }) { Text(copyText("mobHosts.row.edit")) }
+    if (edit != null) SecondaryButton(onClick = { onEditHost(edit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
 }
 
 /** 会话列表屏的持有者标识。 */

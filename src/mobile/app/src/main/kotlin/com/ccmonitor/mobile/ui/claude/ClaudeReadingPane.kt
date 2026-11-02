@@ -206,7 +206,7 @@ private fun BriefCard(
         )
         if (long) {
             SecondaryButton(onClick = { open = !open }) {
-                Text(if (open) copyText("agentWindow.brief.less") else copyText("agentWindow.brief.more"))
+                Text(if (open) copyText("kit.dock.close") else copyText("agentWindow.brief.more"))
             }
         }
     }
@@ -360,7 +360,7 @@ private fun BashOutputCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             PhIcon(Ph.TerminalWindow, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(tokens.spacing.xs))
-            Text(copyText("mobReading.bash.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(copyText("bash.output.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (unit.stdout.isNotEmpty()) {
             Spacer(Modifier.padding(top = tokens.spacing.xs))
@@ -374,7 +374,7 @@ private fun BashOutputCard(
                 Caret(expanded)
                 Spacer(Modifier.width(tokens.spacing.xs))
                 Text(
-                    if (expanded) copyText("mobReading.bash.collapse") else copyText("mobReading.bash.expand", "n" to outLines),
+                    if (expanded) copyText("kit.dock.close") else copyText("bash.output.showAll", "n" to outLines),
                     style = monoSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -566,7 +566,7 @@ private fun UserBubble(
                 DeliveryState.FAILED ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
-                        SecondaryButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
+                        SecondaryButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("front.act.retry"), style = monoSmall) }
                     }
                 DeliveryState.FAILED_PERMANENT ->
                     line?.let { Text(it, style = monoSmall, color = tokens.errorText) }

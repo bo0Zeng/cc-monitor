@@ -241,7 +241,7 @@ private fun EmptyView(
                     if (face.hint.isNotEmpty()) Text(face.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             Empty.NO_MATCH -> {
-                Text(ui.query?.let { copyText("history.search.noMatch", "q" to it) } ?: copyText("history.list.noMatch"), style = MaterialTheme.typography.bodyMedium)
+                Text(ui.query?.let { copyText("kit.menu.noMatch", "q" to it) } ?: copyText("history.list.noMatch"), style = MaterialTheme.typography.bodyMedium)
                 if (ui.filters.active) {
                     SecondaryButton(onClick = { onFilters { Filters(view = it.view) } }) { Text(copyText("history.list.clearFilter")) }
                 }
@@ -297,7 +297,7 @@ private fun LazyListScope.contentHits(
     }
     when {
         c.searching -> items(SKELETON_HITS) { SkeletonRow() }
-        c.rows.isEmpty() && c.summary != null -> item { Text(copyText("history.search.noMatch", "q" to c.query), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) }
+        c.rows.isEmpty() && c.summary != null -> item { Text(copyText("kit.menu.noMatch", "q" to c.query), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) }
         else -> items(c.rows, key = { "hit-${it.hostId}\n${it.row.sessionId}" }) { HitsBlock(it, act) }
     }
 }
@@ -504,7 +504,7 @@ private fun HostBarView(
         return
     }
     if (b.offline && b.fix == null) {
-        DashedBar(b.problem.text, copyText("machineState.fix.retry"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
+        DashedBar(b.problem.text, copyText("front.act.retry"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
         Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }

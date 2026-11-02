@@ -88,7 +88,7 @@ import java.util.UUID
  * 服务器列表那一屏的标题。没有机器时冷启动落在这一屏，它是新用户看到的第一屏。
  * 「SSH 主机」在界面上一律叫「服务器」。
  */
-val HOSTS_SCREEN_TITLE: String get() = copyText("mobHosts.page.title")
+val HOSTS_SCREEN_TITLE: String get() = copyText("newSession.label.machine")
 
 /**
  * 钥匙（SSH 密钥）那一屏的标题，以及通往它那颗按钮的字。
@@ -196,7 +196,7 @@ private fun ImportSshConfigButton(vm: HostViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
-    PhIconButton(Ph.UploadSimple, copyText("mobHosts.import.action"), onClick = { show = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    PhIconButton(Ph.UploadSimple, copyText("mobIdentity.import.ok"), onClick = { show = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     if (show) {
         ImportSshConfigDialog(
             onDismiss = { show = false },
@@ -238,7 +238,7 @@ private fun ImportSshConfigDialog(
                 )
             }
         },
-        confirmButton = { SecondaryButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text(copyText("mobHosts.import.ok")) } },
+        confirmButton = { SecondaryButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text(copyText("mobIdentity.import.ok")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
@@ -269,7 +269,7 @@ private fun HostListActions(
 }
 
 /** 行首那颗点的读屏名：成品那个词；通着时成品不写词 ⇒ 在线（与桌面机器页同一句）。 */
-private fun hostDotLabel(look: HostRowLook): String = look.word ?: copyText("machinePage.state.up")
+private fun hostDotLabel(look: HostRowLook): String = look.word ?: copyText("ccBus.check.online")
 
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
@@ -341,8 +341,8 @@ private fun HostRowMenu(
         title = host.label,
         actions =
             listOf(
-                SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
-                SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
+                SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit),
+                SheetAction(Ph.FolderSimple, copyText("mobDrawer.item.files"), onClick = onFiles),
                 SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = {
                     onDismiss()
                     onDelete()
@@ -420,7 +420,7 @@ fun HostEditorScreen(
         Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorLine(copyText("mobHostEdit.load.missing"))
-                SecondaryButton(onClick = onDone) { Text(copyText("mobHostEdit.load.back")) }
+                SecondaryButton(onClick = onDone) { Text(copyText("mobKit.act.back")) }
             }
         }
         return
@@ -454,7 +454,7 @@ fun HostEditorScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(if (hostId == null) copyText("mobHostEdit.page.newTitle") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
+        Text(if (hostId == null) copyText("mobHosts.fab.aria") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
         OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(host, { host = it }, label = { Text(copyText("machineForm.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -493,7 +493,7 @@ fun HostEditorScreen(
         // 认证方式：钥匙或密码，二选一。
         Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow(copyText("mobHostEdit.auth.key"), !authIsPassword) { authIsPassword = false }
+            ChoiceRow(copyText("mobIdentity.page.title"), !authIsPassword) { authIsPassword = false }
             ChoiceRow(copyText("mobHostEdit.auth.password"), authIsPassword) { authIsPassword = true }
         }
         if (authIsPassword) {
@@ -541,7 +541,7 @@ fun HostEditorScreen(
                 },
                 // 密码模式必须填密码；钥匙模式只走基本校验；机器表那一道没过不许存。
                 enabled = host.isNotBlank() && user.isNotBlank() && (!authIsPassword || password.isNotBlank()) && fault == null,
-            ) { Text(copyText("mobHostEdit.page.save")) }
+            ) { Text(copyText("rsFilewinShell.editor.save")) }
         }
     }
 }
@@ -559,7 +559,7 @@ private fun ProxyJumpPicker(
 ) {
     val names = remember(candidates) { machineNames(candidates) }
     Text(copyText("machineForm.field.jump"), style = MaterialTheme.typography.labelMedium)
-    ChoiceRow(copyText("mobHostEdit.jump.none"), selected.isEmpty(), Modifier.fillMaxWidth()) { onSelect("") }
+    ChoiceRow(copyText("hostKey.compare.none"), selected.isEmpty(), Modifier.fillMaxWidth()) { onSelect("") }
     candidates.zip(names).forEach { (j, name) ->
         ChoiceRow("$name (${j.host})", selected == name, Modifier.fillMaxWidth()) { onSelect(name) }
     }
@@ -618,7 +618,7 @@ private fun BackendRow(hostId: String) {
     val conn = deploy.held
     val fix = link.deployFix()
     val busy = link.busy()
-    Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
+    Text(copyText("needs.windowTitle.base"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
         onClick = deploy.press,
         enabled = busy == null && conn != HostLink.Connecting,

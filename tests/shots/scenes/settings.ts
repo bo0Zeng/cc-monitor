@@ -138,9 +138,9 @@ function installingWorld(): World {
 const localRefused = {
   state: "older",
   word: copyText("machineState.word.needsUpdate"),
-  said: copyText("machineState.problem.needsUpdate", { machine: copyText("remote.cards.local") }),
+  said: copyText("machineState.problem.needsUpdate", { machine: copyText("detail.label.local") }),
   // 壳起不来那几样只有［重试］（`local_backend_host::local_backend`）。
-  fixes: [{ fix: "retry", label: copyText("machineState.fix.retry") }],
+  fixes: [{ fix: "retry", label: copyText("front.act.retry") }],
   next: copyText("rsLocalBackendHost.start.refusedNext", {
     why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
     pid: "4242",

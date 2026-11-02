@@ -16,7 +16,7 @@ describe("多选计数写法", () => {
   });
 
   it("结束确认框：标题「结束会话（n）」、按钮「结束（n）」（文案规矩不许问号与量词）", () => {
-    expect(copyText("tabBatch.stop.title", { n: 3 })).toBe("结束会话（3）");
+    expect(copyText("tabBatch.menu.stop", { n: 3 })).toBe("结束会话（3）");
     expect(copyText("tabBatch.stop.action", { n: 3 })).toBe("结束（3）");
   });
 });

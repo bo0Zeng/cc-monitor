@@ -90,7 +90,7 @@ fun UsageScreen(
         Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
             BackButton(onBack)
             Column {
-                Text(copyText("mobUsage.page.title"), style = MaterialTheme.typography.titleLarge)
+                Text(copyText("acct.hover.usage"), style = MaterialTheme.typography.titleLarge)
                 Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

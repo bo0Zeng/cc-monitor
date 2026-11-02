@@ -563,7 +563,7 @@ function detailOf(op: string, e: Refuse): string {
   const l = (k: Parameters<typeof copyText>[0]): string => copyText(k);
   return [
     `${l("detail.label.at")}：2026-10-08 14:35:50 +08:00`,
-    `${l("detail.label.machine")}：Linux x86_64 · ${copyText("detail.value.backend", { build: "p9k-shots" })}`,
+    `${l("newSession.label.machine")}：Linux x86_64 · ${copyText("detail.value.backend", { build: "p9k-shots" })}`,
     `${l("detail.label.command")}：${op}`,
     `${l("detail.label.code")}：${e.code}`,
     ...(e.raw !== undefined ? [`${l("detail.label.raw")}：${e.raw}`] : []),

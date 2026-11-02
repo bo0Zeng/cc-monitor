@@ -218,7 +218,7 @@ private fun MoreSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         item?.let { st ->
             SheetHead(st.id, null)
-            PickRow(copyText("rot.more.copy"), "rot-more-copy", onClick = {
+            PickRow(copyText("beFiles.batch.verbCopy"), "rot-more-copy", onClick = {
                 onDismiss()
                 board.copy(st.id)
             })
@@ -234,7 +234,7 @@ private fun MoreSheet(
             })
             val busy = st.inUse.size
             PickRow(
-                copyText("rot.more.delete"),
+                copyText("beFiles.batch.verbDelete"),
                 "rot-more-delete",
                 enabled = busy == 0,
                 onClick = {
@@ -350,7 +350,7 @@ private fun Hint(
 private fun NeedsTag() {
     val ink = toneInk(NoteTone.WARN)
     Surface(shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, ink), color = MaterialTheme.colorScheme.surface) {
-        Text(copyText("needs.bar.unknown"), style = MaterialTheme.typography.labelSmall, color = ink, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+        Text(copyText("tabBar.needs.label"), style = MaterialTheme.typography.labelSmall, color = ink, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
     }
 }
 
@@ -365,7 +365,7 @@ internal fun RotAsks(
 ) {
     when (val ask = ui.ask) {
         null -> Unit
-        is RotAsk.Delete -> Confirm(copyText("rot.ask.deleteTitle", "name" to ask.id), copyText("rot.ask.deleteBody"), copyText("rot.ask.deleteGo"), board)
+        is RotAsk.Delete -> Confirm(copyText("rot.ask.deleteTitle", "name" to ask.id), copyText("rot.ask.deleteBody"), copyText("beFiles.batch.verbDelete"), board)
         is RotAsk.Name -> AskName(ask, board)
     }
 }

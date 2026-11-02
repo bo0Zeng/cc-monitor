@@ -58,7 +58,7 @@ const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   legend: LEGEND,
   knownTitle: "〈认得〉",
   rows: [
-    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
+    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("mobDrawer.item.files"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
     row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
       about: "npx fs",
     }),
@@ -75,7 +75,7 @@ const diag = (snippet: string | null, supported = true) => ({
 });
 
 type ManyArgs = { kind: string; name: string; to: (string | null)[]; place: unknown; fill?: unknown; tokens?: unknown };
-const nameOf = (to: string | null) => (to === null ? copyText("extPage.machine.here") : to);
+const nameOf = (to: string | null) => (to === null ? copyText("detail.label.local") : to);
 /** 本机后端并好的那一张卡（判据只排版：落点交集 · 并好的要填格都照它画）。 */
 const manyCard = (a: ManyArgs, over: Record<string, unknown> = {}) => ({
   places: targets(),
@@ -143,7 +143,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
   it("后端报了读不出的几处：状态行说件数 ＋ 名单（计数事实，不另加状态头）", async () => {
     const s = await page([{ ...listWith(demoMissing), problems: ["~/.claude.json", "plugins"] }]);
-    const sep = copyText("extPage.list.sep");
+    const sep = copyText("kit.text.sep");
     expect(s.element.querySelector(".ext-status")!.textContent).toContain(copyText("extPage.status.problems", { n: "2", list: ["~/.claude.json", "plugins"].join(sep) }));
     expect(copyText("extPage.status.problems", { n: "2", list: "x" })).toMatch(/^2 /);
   });
@@ -152,7 +152,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const noted = row("skill", "noted", [here, demoMissing], { note: "我写的" });
     const s = await page([listWith(demoMissing, [noted])]);
     expect(dots(s, "demo")).toEqual([
-      ["icon:success", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: SAID.same })],
+      ["icon:success", copyText("extPage.dot.title", { machine: copyText("detail.label.local"), state: SAID.same })],
       ["icon:ring", copyText("extPage.dot.title", { machine: "laptop", state: SAID.missing })],
     ]);
     const rows = () => [...s.element.querySelectorAll(".ext-row[data-key]")].map((r) => r.getAttribute("data-key"));
@@ -238,7 +238,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const s = await page([list]);
     const head = s.element.querySelector(".ext-head")!;
     expect([...head.querySelectorAll(".ext-col")].map((c) => [c.textContent, c.classList.contains("is-offline")])).toEqual([
-      [copyText("extPage.machine.here"), false],
+      [copyText("detail.label.local"), false],
       ["laptop", true],
     ]);
     expect(s.element.querySelector(".ext-offline")?.textContent).toBe(copyText("extPage.offline.bar", { machine: "laptop" }));
@@ -248,8 +248,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       ["icon:half", LEGEND[1].said],
       ["icon:ring", LEGEND[2].said],
       ["icon:folder", LEGEND[3].said],
-      ["icon:success", copyText("extPage.legend.needsLogin")],
-      ["icon:success", copyText("extPage.legend.failed")],
+      ["icon:success", copyText("acct.tag.login")],
+      ["icon:success", copyText("beServer.words.cantConnect")],
     ]);
     open(s, "skill/demo");
     expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "断开的那台勾不了").toBe(true);
@@ -277,7 +277,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     open(s, "skill/demo");
     const per = machineLines(s).map((l) => [...l.querySelectorAll(".ext-place button")].map((b) => b.textContent));
     // 只有全局一处 ⇒「卸载…」跟在机器那一行后面，那一处下面只剩看目录的那一颗。
-    expect(per).toEqual([[copyText("extPage.button.reveal")], [copyText("extPage.button.openFiles")]]);
+    expect(per).toEqual([[copyText("data.item.reveal")], [copyText("extPage.button.openFiles")]]);
     expect(machineLines(s).map((l) => [...l.querySelectorAll(".ext-machine-top button")].map((b) => b.textContent))).toEqual([
       [copyText("extPage.button.uninstall")],
       [copyText("extPage.button.uninstall")],
@@ -531,7 +531,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
   const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
   const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
-  const failed = { said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err: refused" };
+  const failed = { said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beServer.words.cantConnect"), detail: "err: refused" };
   const laterSaid = copyText("beMcp.mark.failed", { title: "会话-乙", time: "10:50" });
   const answers = () => {
     mcpAnswers = {
@@ -547,7 +547,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     answers();
     const s = await page([mcpList()]);
     expect(marks(s, "tracker")).toEqual([
-      ["ext-dot-mark is-login", copyText("extPage.dot.titleMark", { machine: copyText("extPage.machine.here"), state: sameSaid, mark: login.tip })],
+      ["ext-dot-mark is-login", copyText("extPage.dot.titleMark", { machine: copyText("detail.label.local"), state: sameSaid, mark: login.tip })],
       ["ext-dot-mark is-fail", copyText("extPage.dot.titleMark", { machine: "laptop", state: sameSaid, mark: failed.tip })],
     ]);
     expect(marks(s, "demo").map(([m]) => m)).toEqual([null, null]);
@@ -557,7 +557,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] } };
     const s = await page([mcpList()]);
     expect(marks(s, "tracker")).toEqual([
-      [null, copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: sameSaid })],
+      [null, copyText("extPage.dot.title", { machine: copyText("detail.label.local"), state: sameSaid })],
       [null, copyText("extPage.dot.title", { machine: "laptop", state: sameSaid })],
     ]);
     open(s, "mcp/tracker");
@@ -654,9 +654,9 @@ describe("插件：一种 · 一颗筛选 · 关着一态（只读）", () => {
     const buttons = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
     expect(buttons.map((b) => b.textContent)).toEqual([
       copyText("extPage.filter.all"),
-      copyText("extPage.filter.skill"),
+      copyText("mobPlus.row.skills"),
       copyText("extPage.filter.mcp"),
-      copyText("extPage.filter.plugin"),
+      copyText("beExt.kind.plugin"),
     ]);
     buttons[3].click();
     expect(rows()).toEqual(["plugin/github"]);

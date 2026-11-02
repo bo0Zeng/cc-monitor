@@ -90,8 +90,8 @@ describe("：面板上没有重名的导航项 / 块标题", () => {
   it("人群锚：「日志」（通用页下）在，且人群不小", async () => {
     const got = await names();
     expect(got).toContain(copyText("settingsPanel.nav.logs"));
-    expect(got).toContain(copyText("settingsPanel.nav.machines"));
-    expect(got).toContain(copyText("settingsPanel.group.accounts"));
+    expect(got).toContain(copyText("newSession.label.machine"));
+    expect(got).toContain(copyText("newSession.label.account"));
     // 旧名一个都不许还在。
     expect(got.filter((t) => t.includes("还差什么"))).toEqual([]);
   });

@@ -17,7 +17,7 @@ class ReconnectOneKeyTest {
     fun `手机代码里原文是「重新连接」的文案键至多一个`() {
         val table = File(root, "../shared/copy/table.json").readText()
         // 原文从表里取（测试不照抄原文）：离线那一颗今天借的那个键的字。
-        val word = copyText("newSession.machine.reconnect")
+        val word = copyText("history.list.reconnect")
         val keys = Regex(""""([A-Za-z0-9_.]+)":\s*\{[^{}]*?"zh":\s*"${Regex.escape(word)}"""").findAll(table).map { it.groupValues[1] }.toSet()
         assertTrue("前提：表里得找得到这几个键（实得 $keys）", keys.size >= 2)
         val used =

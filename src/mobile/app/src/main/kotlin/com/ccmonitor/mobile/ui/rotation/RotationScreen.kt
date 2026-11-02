@@ -160,7 +160,7 @@ private fun RotTopBar(
         },
         title = {
             Column {
-                Text(copyText("mobRot.top.title"), style = MaterialTheme.typography.titleMedium)
+                Text(copyText("machinePage.tab.rot"), style = MaterialTheme.typography.titleMedium)
                 if (second.isNotEmpty()) {
                     Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -193,7 +193,7 @@ private fun ReadFailed(
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             CopyDetailButton(text, detail)
-            SecondaryButton(onClick = retry) { Text(copyText("rot.read.retry")) }
+            SecondaryButton(onClick = retry) { Text(copyText("front.act.retry")) }
         }
     }
 }
