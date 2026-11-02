@@ -310,7 +310,7 @@ fn the_monitor_has_no_capture_path_any_more() {
 
 /// ★ **monitor 里没有一处把目标插进 tmux 命令串**（`-t {…}`，零命中 ＋ 合成语料两向承重）。
 ///
-/// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析（F01，tmux 3.6 实测：只有 `sib-2` 时 `kill-session -t sib` 杀掉 `sib-2`）。
+/// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析（`INVARIANTS §31a`，tmux 3.6 实测：只有 `sib-2` 时 `kill-session -t sib` 杀掉 `sib-2`）。
 /// 精确匹配形 `=名:` 只住后端 `control/launch.rs::exact_target`；monitor 这一侧连那份跨轨锚点也删了 ⇒ 人群恒等 0，
 /// 牙压在两份合成语料上（同一把尺子在坏语料上红、在调了 `exact_target` 的语料上不红）。
 #[test]

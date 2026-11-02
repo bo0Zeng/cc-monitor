@@ -918,13 +918,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一个工作目录下附件目录的合计",
         "拒收+回错",
     ),
-    // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
-    (
-        "src/backend/assets/pubkey.rs",
-        "PUB_READ_MAX",
-        "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
-        "拒收+回错",
-    ),
     // `files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
     //   （编辑上限是调用方的，每趟经 `max_bytes` 送过来）。推算：JSON 转义最坏 ×6 ⇒ 48 MiB，
     //   仍在 monitor 读后端一行（`BACKEND_FRAME_LINE_CAP` 64 MiB）与通道一帧（64 MiB）之内。
@@ -1010,13 +1003,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`footprint-report` 这台自己列一个目录最多几个名字（数 glob 那一族；超了 ⇒ 列不动，不截断）",
         "跳过+说清",
     ),
-    // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
-    (
-        "src/backend/agents/claudecode/paths.rs",
-        "SETTINGS_CAP_BYTES",
-        "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
-        "降级+说清",
-    ),
     // 一次改动的行差（调用那一份 · 结果那一份）至多带多少字；超了在段的边界停下、立 `truncated`（数照整份）。
     (
         "src/backend/agents/claudecode/steps.rs",
@@ -1045,13 +1031,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "运行簿 / 按工具调用读子运行时读一份子 agent 的 `agent-<id>.meta.json`（只为取 `toolUseId`）",
         "跳过+说清",
     ),
-    // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
-    (
-        "src/backend/agents/codex/relay.rs",
-        "CONFIG_CAP_BYTES",
-        "「待办」里「直接敲的也走中转」那一件读那台 `~/.codex/config.toml` 多大",
-        "降级+说清",
-    ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/mcp.rs",
@@ -1063,36 +1042,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/agents/claudecode/assets.rs",
         "MAX_PROJECT_MCP_BYTES",
         "资产目录扫描时读一份项目 `.mcp.json`",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "SKILL_DOC_MAX_BYTES",
-        "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
-        "硬报错",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "COMMAND_DOC_MAX_BYTES",
-        "一条会话能用的命令：读一份斜杠命令文件（只为取简介与要不要参数）—— 读不出来那一份记进 `problems`、不列这一条",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "PLUGIN_MANIFEST_MAX_BYTES",
-        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（取名字 · 版本 · 说明 · 默认开不开）—— 读不出来：找插件根那一步那个目录不算插件；列插件那一步记日志、记进 `problems`，那几格当没有",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "PLUGIN_RECORD_MAX_BYTES",
-        "找插件时读配置根下的安装记录 `plugins/installed_plugins.json` —— 读不出 / 格式不认得 ⇒ 记日志、记进 `problems`，记录里的插件不列",
-        "跳过+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "SETTINGS_MAX_BYTES",
-        "读插件开关时读一份设置（托管 · 远端下发 · 用户 · 项目两份，只为取 `enabledPlugins`）与插件根里的 `hooks/hooks.json`（只为数事件名）—— 读不出那一份 ⇒ 记日志、记进 `problems`，当没写",
         "跳过+说清",
     ),
     (

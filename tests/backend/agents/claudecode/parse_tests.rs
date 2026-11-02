@@ -90,16 +90,15 @@ fn bom_prefix_does_not_corrupt_type() {
 #[test]
 fn malformed_json_returns_err() {
     // 半截 JSON / 非法语法 → Err，不 panic（caller 决定容错策略）。
-    // F63 后仍 Err：连合法 JSON 都不是 = 没身份可救。
+    // 看不懂的记录会被抢救，这种仍 Err：连合法 JSON 都不是 = 没身份可救。
     assert!(parse_line(&crate::agents::Line::new("{ not json", 0)).is_err());
     assert!(parse_line(&crate::agents::Line::new("{\"type\":\"user\",", 0)).is_err());
 }
 
-// === F63 (issue #49)：看不懂的记录 —— 留原文 + 留链上的身份 ===
+// === `INVARIANTS §18.1`：看不懂的记录 —— 留原文 + 留链上的身份 ===
 
 /// ★ 护栏：`Unknown` **绝不出 parse_line**。走到这里说明后处理漏了。
-/// （F63 前这条测试的旧名
-///  断言的正是"Unknown 不应 emit"——那就是静默丢弃 8,774 条的那扇门。）
+/// （只断言"Unknown 不应 emit"就是静默丢弃 8,774 条的那扇门。）
 #[test]
 fn unknown_type_is_salvaged_never_leaves_as_unknown() {
     let r = parse_line(&crate::agents::Line::new(
@@ -138,7 +137,7 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
     );
 }
 
-/// ★ 这条是 F63 真正要防的未来：Claude 发一个**带链身份**的新类型。
+/// ★ 这条防的是：Claude 发一个**带链身份**的新类型。
 /// 今天本机 771 会话里 7 个未知 type 的 uuid/parentUuid 全为 0（实测），
 /// 但一旦出现，丢掉它 = 它的 children 全成孤儿 root → 整棵误折叠。
 #[test]
@@ -278,12 +277,12 @@ fn zero_information_loss_over_mixed_fixture() {
     assert_eq!(errored, 1);
 }
 
-/// F63 长期对账工具：用真正的 `parse_line` 扫本机全部真实会话，量丢失面。
+/// 长期对账工具：用真正的 `parse_line` 扫本机全部真实会话，量丢失面。
 /// 依赖本机数据故 `#[ignore]`。跑法：
 /// `cargo test f63_real_data_ledger -- --ignored --nocapture`
 ///
 /// 2026-07-16 基线（771 会话 / 643MB / 157,385 行）：
-///   Ok 且 emit 132,489 · Ok 但故意不 emit 16,121 · **Unknown 丢弃 0**（F63 前 8,774）
+///   Ok 且 emit 132,489 · Ok 但故意不 emit 16,121 · **Unknown 丢弃 0**（不抢救时 8,774）
 ///   · 抢救 8,774 · Err 1（截断行）
 #[test]
 #[ignore]
@@ -339,12 +338,12 @@ fn f63_real_data_ledger() {
             }
         }
     }
-    println!("=== F63 真实数据对账 ===");
+    println!("=== 真实数据对账 ===");
     println!("总行            {total:>9}");
     println!("Ok 且 emit      {emitted:>9}");
     println!("Ok 但故意不 emit {deliberate:>9}  (已知类型的明示决定，不算丢)");
     println!(
-        "抢救 Unrecognized{:>9}  (F63 前这些是静默丢弃的)",
+        "抢救 Unrecognized{:>9}  (不抢救就是静默丢弃的)",
         salvaged.values().sum::<u64>()
     );
     for (t, n) in &salvaged {

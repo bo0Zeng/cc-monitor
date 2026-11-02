@@ -505,19 +505,22 @@ pub(crate) fn path_in(home: &str) -> String {
 /// ccm 那一趟直接读（一次性模式不经文件管理面）：不在 ⇒ 一段都没有；读不了 ⇒ 那一句。
 pub(crate) fn read_at(home: &str) -> Result<Book, String> {
     let path = path_in(home);
-    match Ro::read_to_string(&path) {
-        Ok(t) => Ok(parse_book(&t)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Book::default()),
-        Err(e) => Err(crate::common::said::Said::with_raw(
-            copy_text(
-                "reason.fs.readFailed",
-                &[("path", &path), ("why", &copy_core::io_reason(e.kind()))],
-            ),
-            &e,
-        )
-        .into_note()),
+    if matches!(Ro::metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return Ok(Book::default());
     }
+    Ro::read_string_capped(&path, PROFILES_CAP)
+        .map(|t| parse_book(&t))
+        .map_err(|e| {
+            e.wrap(|why| copy_text("reason.fs.readFailed", &[("path", &path), ("why", why)]))
+                .into_note()
+        })
 }
+
+/// 读配置文件的上限（手写的几段 TOML，远不到这个量级）：超了这一趟整个失败、那一句照实交上去。
+const PROFILES_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024,
+    over: relay_route_core::Over::HardError,
+};
 
 /// 合并的成品：落好的意图 ＋ 每一项来自哪一层 ＋ 继承链（父 → 子）。
 #[derive(Debug)]
