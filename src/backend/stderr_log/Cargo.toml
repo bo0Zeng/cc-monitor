@@ -1,0 +1,20 @@
+# 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件。只引纯工具与平台两层。
+[package]
+name = "backend-stderr-log"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
