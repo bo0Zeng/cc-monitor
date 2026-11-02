@@ -201,11 +201,11 @@ pub const DEFLATE_LEVEL: u32 = 6;
 const DEFLATE_CHUNK: usize = 64 * 1024;
 
 /// 接成流之后这台写过去的那一半：原样，或客户端要了 deflate（回话认了）⇒ 回话那一行之后整条是一个 raw deflate 流。
-/// `poll_write` 只往压缩器里喂、攒出来的往下写；`poll_flush` 先做一次 sync flush 再 flush 下面 ⇒ `writer_task` 三路排空才 flush（一直排着时每 64 KB 一次），
-/// flush 过的帧到了对端就解得出来。
-///
-/// 每帧一个上下文：full flush 清掉压缩器的字典，下一帧一个字节都回指不到前面的帧 ⇒ 外来内容（抓回来的网页 · 别人写的文件）
-/// 借密文长度猜不到别的帧里的秘密。解的那一侧照样是一个 raw inflate 流，不用跟着换。
+/// 每帧一个上下文：一帧是一行，`poll_write` 一次至多喂到这一行的换行为止；换行一喂进去，下一个字节之前先 full flush，
+/// 清掉压缩器的字典 ⇒ 下一帧一个字节都回指不到前面的帧，同一次排空里写下的几帧也一样。外来内容（抓回来的网页 · 别人写的文件）
+/// 就借密文长度猜不到别的帧里的秘密。解的那一侧照样是一个 raw inflate 流，不用跟着换。
+/// `poll_flush` 收尾那一帧（写到半行也切一刀）再 flush 下面 ⇒ `writer_task` 三路排空才 flush（一直排着时每 64 KB 一次），
+/// flush 过的帧到了对端就解得出来；几帧一批仍是一次写系统调用。
 pub struct Down<W> {
     inner: W,
     z: Option<Deflating>,
@@ -216,8 +216,10 @@ struct Deflating {
     /// 压出来、还没写下去的字节（`out[at..]`）。
     out: Vec<u8>,
     at: usize,
-    /// 上一次 full flush 之后喂过字节。
+    /// 上一刀之后喂过字节、这一帧的换行还没到。
     dirty: bool,
+    /// 该切一刀（一帧喂完了，或要 flush 了），full flush 还没做完。
+    cut: bool,
 }
 
 impl<W> Down<W> {
@@ -229,6 +231,7 @@ impl<W> Down<W> {
                 out: Vec::with_capacity(DEFLATE_CHUNK),
                 at: 0,
                 dirty: false,
+                cut: false,
             }),
         }
     }
@@ -252,6 +255,23 @@ fn drain<W: tokio::io::AsyncWrite + Unpin>(
     std::task::Poll::Ready(Ok(()))
 }
 
+/// 攒着的写下去，该切的那一刀切完（full flush 吐的攒满了 ⇒ 写下去再接着收）。
+fn settle<W: tokio::io::AsyncWrite + Unpin>(
+    inner: &mut W,
+    d: &mut Deflating,
+    cx: &mut std::task::Context<'_>,
+) -> std::task::Poll<std::io::Result<()>> {
+    loop {
+        std::task::ready!(drain(inner, d, cx))?;
+        if !d.cut {
+            return std::task::Poll::Ready(Ok(()));
+        }
+        d.z.compress_vec(&[], &mut d.out, flate2::FlushCompress::Full)
+            .map_err(deflate_failed)?;
+        d.cut = d.out.len() == d.out.capacity();
+    }
+}
+
 fn deflate_failed(e: flate2::CompressError) -> std::io::Error {
     std::io::Error::other(e)
 }
@@ -266,15 +286,28 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Down<W> {
         let Some(d) = this.z.as_mut() else {
             return std::pin::Pin::new(&mut this.inner).poll_write(cx, buf);
         };
+        // 这一次至多喂到这一帧的换行（含）：后面的字节属于下一帧，要等切过一刀再喂。
+        let frame = buf
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(buf, |i| &buf[..=i]);
         loop {
-            std::task::ready!(drain(&mut this.inner, d, cx))?;
+            std::task::ready!(settle(&mut this.inner, d, cx))?;
             let was = d.z.total_in();
-            d.z.compress_vec(buf, &mut d.out, flate2::FlushCompress::None)
+            d.z.compress_vec(frame, &mut d.out, flate2::FlushCompress::None)
                 .map_err(deflate_failed)?;
             let took = (d.z.total_in() - was) as usize;
-            d.dirty |= took > 0;
-            if took > 0 || buf.is_empty() {
+            if took > 0 {
+                if took == frame.len() && frame.last() == Some(&b'\n') {
+                    d.cut = true;
+                    d.dirty = false;
+                } else {
+                    d.dirty = true;
+                }
                 return std::task::Poll::Ready(Ok(took));
+            }
+            if buf.is_empty() {
+                return std::task::Poll::Ready(Ok(0));
             }
             // 一个字节没吃：压缩器先吐的那一截占满了 ⇒ 写下去再喂；什么都没吐 ⇒ 压缩器卡住了。
             if d.out.is_empty() {
@@ -291,16 +324,12 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Down<W> {
     ) -> std::task::Poll<std::io::Result<()>> {
         let this = self.get_mut();
         if let Some(d) = this.z.as_mut() {
-            loop {
-                std::task::ready!(drain(&mut this.inner, d, cx))?;
-                if !d.dirty {
-                    break;
-                }
-                d.z.compress_vec(&[], &mut d.out, flate2::FlushCompress::Full)
-                    .map_err(deflate_failed)?;
-                // 没攒满 ⇒ 这一次 flush 收完了；攒满了 ⇒ 写下去再接着收。
-                d.dirty = d.out.len() == d.out.capacity();
+            // 写到半行就 flush ⇒ 也切一刀（压过的字节要当场解得出来）。
+            if d.dirty {
+                d.cut = true;
+                d.dirty = false;
             }
+            std::task::ready!(settle(&mut this.inner, d, cx))?;
         }
         std::pin::Pin::new(&mut this.inner).poll_flush(cx)
     }

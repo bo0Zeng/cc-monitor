@@ -297,7 +297,7 @@
 
 ## 加一条协议
 
-- **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（还要进 `lib.rs` 的 `SUBCOMMANDS`）；重生成 `IPC-COMMANDS.md`。
+- **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（子命令闸门 `stream::cli::is_subcommand` 跟着认）；重生成 `IPC-COMMANDS.md`。
 - **帧字段**：加在 `wire/mod.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
-- **CLI 独有子命令**：进 `SUBCOMMANDS` 与 `stream/oneshot.rs` 的 `ONESHOTS`（子命令 ＋ 用法 ＋ 一句话 ＋ 实现）。
+- **CLI 独有子命令**：进 `stream/oneshot.rs` 的 `ONESHOTS`（子命令 ＋ 用法 ＋ 一句话 ＋ 实现），闸门照它认。
 - **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在 INVARIANTS §2.1 那张表里登它是真相还是缓存。后端自己的那份先在 `relay_route_core` 加一个 `Decl` 常量、排进 `OWN_FILES`，读写经 `Doc::of` 取的那一个（INVARIANTS §2.2）；几个进程之间交接的，再在 §9 那张表里写它的格式。
