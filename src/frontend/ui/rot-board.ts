@@ -520,11 +520,11 @@ function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): 
 
 /**
  * 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`，说明写在控件旁边）。
- * 自己设的（`from: own`）⇒ 控件后面跟［恢复默认］（交 `reset`，回到跟总体 · 声明默认）；分段后面那几窗另设的照［同第一窗］回去，不另出。
+ * 后端标了 `reset` 的那一格 ⇒ 控件后面跟［恢复默认］（交 `reset`，回到跟总体 · 声明默认）。
  */
 function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLElement[] {
   const [k, ctl] = cellParts(spec, cell, row);
-  if (cell.from !== "own" || cell.same !== undefined) return [k, ctl];
+  if (cell.reset !== true) return [k, ctl];
   const reset = button({
     label: copyText("rot.cell.reset"),
     kind: "ghost",

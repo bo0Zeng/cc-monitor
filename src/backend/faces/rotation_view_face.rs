@@ -808,6 +808,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
         lead: c.lead.as_ref().map(text_of),
         under: c.show_if.as_ref().map(|w| w.key.clone()),
         same: None,
+        reset: false,
     };
     if c.kind == form::Kind::DaySegments {
         let win = |w: &str| match w {
@@ -822,13 +823,14 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
             .enumerate()
             .map(|(i, w)| {
                 let (segs, from) = form::day_of(c, settings, row, w);
+                let same = c.follow && i > 0;
                 RotCell {
                     window: Some(w.clone()),
                     label: copy_text("rot.cell.win", &[("label", &label), ("win", &win(w))]),
                     from,
                     segs: segs.into_iter().map(day_seg).collect(),
-                    same: (c.follow && i > 0)
-                        .then(|| copy_text("rot.cell.same", &[("win", &first)])),
+                    same: same.then(|| copy_text("rot.cell.same", &[("win", &first)])),
+                    reset: from == form::RotFrom::Own && !same,
                     ..base.clone()
                 }
             })
@@ -845,6 +847,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
         v,
         num,
         from,
+        reset: from == form::RotFrom::Own,
         ..base
     }]
 }

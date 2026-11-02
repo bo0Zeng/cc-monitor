@@ -881,6 +881,10 @@ pub struct RotCell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub same: Option<String>,
+    /// 这一格能［恢复默认］（自己设的；分段后面那几窗另设的不算，它们照［同第一窗］回去）：两端照它出那颗按钮。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub reset: bool,
 }
 
 /// 号名旁的一个记号（照声明里那一项）：字形或虚线框 · 悬停那一句（「切入 · 强制切入」）。

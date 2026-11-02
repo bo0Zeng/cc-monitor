@@ -115,11 +115,11 @@ internal fun CellRows(
     }
 }
 
-/** 「恢复默认」那一发（同桌面）：自己设的那一格才有；分段后面那几窗另设的照［同第一窗］回去，不另出。 */
+/** 「恢复默认」那一发：后端标了 `reset` 的那一格才有。 */
 internal fun resetEdit(
     cell: RotCell,
     row: Int?,
-): Map<String, Any?>? = if (cell.from == RotFrom.OWN && cell.same == null) RotEdit.reset(cell.key, row) else null
+): Map<String, Any?>? = if (cell.reset == true) RotEdit.reset(cell.key, row) else null
 
 internal fun cellId(
     cell: RotCell,

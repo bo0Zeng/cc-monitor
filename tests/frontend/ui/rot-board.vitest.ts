@@ -44,14 +44,14 @@ const caps = (window: string, from: RotCell["from"]): RotCell => ({ key: "caps",
 const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
   caps("5h", "all"),
   caps("7d", "all"),
-  { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from },
+  { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from, ...(from === "own" ? { reset: true } : {}) },
   { key: "delay", kind: "minutes", label: "夹具·延迟", v: 0, num: 0, from: "default", min: 0, max: 1440 },
 ];
 const row = (account: string, cells: RotCell[], marks: RotRow["marks"] = [], at = ["work", "team", "lab"].indexOf(account)): RotRow => ({ account, row: at, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`], marks });
 const BOARD = {
   all: [
-    { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 },
-    { key: "force", kind: "percent", label: "夹具·阈值", v: 25, num: 25, from: "own", nullable: "夹具·空值", min: 0, max: 100 },
+    { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100, reset: true },
+    { key: "force", kind: "percent", label: "夹具·阈值", v: 25, num: 25, from: "own", nullable: "夹具·空值", min: 0, max: 100, reset: true },
   ] satisfies RotCell[],
   rows: [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", each(true, "own"))],
 };
@@ -473,10 +473,11 @@ describe("模拟（设置页：改一格就看得到接下来怎么换）", () =
 describe("恢复默认 · 清掉库里没有的号", () => {
   const resets = (root: HTMLElement): string[] => [...root.querySelectorAll<HTMLElement>("[data-reset]")].map((e) => e.dataset.reset ?? "");
 
-  it("★ 总体那一格自己设的（from: own）⇒ 旁边有［恢复默认］，点了交 {reset: {key}}；跟默认的那一格没有", () => {
+  it("★ 总体那一格后端标了 reset ⇒ 旁边有［恢复默认］，点了交 {reset: {key}}；没标的（哪怕 from: own）没有", () => {
     const a = acts();
-    const dflt: RotCell = { ...BOARD.all[0], key: "spare", label: "夹具·没设的", from: "default" };
-    const root = draw(view({ board: { ...BOARD, all: [BOARD.all[0], dflt] } }), state(), a);
+    const { reset: _, ...bare } = BOARD.all[0];
+    const unmarked: RotCell = { ...bare, key: "spare", label: "夹具·没标的" };
+    const root = draw(view({ board: { ...BOARD, all: [BOARD.all[0], unmarked] } }), state(), a);
     expect(resets(root)).toEqual(["close"]);
     const b = root.querySelector<HTMLButtonElement>('[data-reset="close"]')!;
     expect(b.textContent?.trim()).toBe(copyText("rot.cell.reset"));
@@ -484,7 +485,7 @@ describe("恢复默认 · 清掉库里没有的号", () => {
     expect(a.edit.mock.calls).toEqual([[{ reset: { key: "close" } }]]);
   });
 
-  it("★ 号那一行：自己设的那一格 ⇒ 交 {reset: {key, row}}（行号照那一行带的）；跟总体 · 跟默认的那几格没有", () => {
+  it("★ 号那一行：标了 reset 的那一格 ⇒ 交 {reset: {key, row}}（行号照那一行带的）；没标的那几格没有", () => {
     const a = acts();
     const pane = draw(view(), state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
     expect(resets(pane)).toEqual(["fallback"]);
@@ -494,8 +495,8 @@ describe("恢复默认 · 清掉库里没有的号", () => {
     expect(resets(work)).toEqual([]);
   });
 
-  it("★ 分段：第一窗自己设的才出（清的是整格）；后面那一窗另设的照［同第一窗］回去，不另出", () => {
-    const own5: RotCell = { ...each(false, "default")[0], from: "own" };
+  it("★ 分段：照每窗那一格的 reset 出（清的是整格）；后面那一窗另设的后端不标，不另出", () => {
+    const own5: RotCell = { ...each(false, "default")[0], from: "own", reset: true };
     const own7: RotCell = { ...each(false, "default")[1], from: "own", same: "夹具·同 5h" };
     const v = view({ board: { ...BOARD, rows: [BOARD.rows[0], BOARD.rows[1], row("lab", [own5, own7])] } });
     const a = acts();
