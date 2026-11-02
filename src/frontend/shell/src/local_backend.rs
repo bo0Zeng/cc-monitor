@@ -545,13 +545,33 @@ const STDERR_LOG_BUDGET_BYTES: u64 = 256 * 1024;
 /// ⚠ 超了**不丢字节**：这一段照记，只是末尾打一句 [`STDERR_CUT_MARK`] 说「它在这里被切开」，
 /// 余下的字节成为下一条。⇒ 超限语义是「**截断+说清**」里的「说清」那一半承重 ——
 /// 没有那句标记的话，日志里会出现一条**看起来完整、其实是半句**的诊断。
-pub(crate) const STDERR_MAX_LINE_BYTES: Cap = Cap {
+const STDERR_MAX_LINE_BYTES: Cap = Cap {
     bytes: 8 * 1024,
     over: Over::TruncateAndSay,
 };
 
 /// 一行被 [`STDERR_MAX_LINE_BYTES`] 切开时贴在断口上的话。
-pub(crate) const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
+const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
+
+/// 子进程 stderr 读一条（本机后端 · 文件窗口进程两处读 stderr 都经它）：至多 [`STDERR_MAX_LINE_BYTES`]，
+/// 切开的那一条断口贴上 [`STDERR_CUT_MARK`]，行尾的 `\r` 去掉；不是 UTF-8 ⇒ 按替换字符读。
+/// `None` = 读端到头了（子进程关掉了 stderr），或读不动了（管子那头没了）。
+pub(crate) fn next_stderr_line<R: std::io::BufRead>(rd: &mut R) -> Option<String> {
+    loop {
+        match read_capped_line_sync(rd, STDERR_MAX_LINE_BYTES) {
+            Ok(SyncLine::Line { text, cut, .. }) => {
+                let mut line = text.trim_end_matches('\r').to_owned();
+                if cut {
+                    line.push_str(STDERR_CUT_MARK);
+                }
+                return Some(line);
+            }
+            // 「截断＋说清」那一档不整行丢；真来了也照旧读下去（读的一侧不许停，见下）。
+            Ok(SyncLine::Dropped) => continue,
+            Ok(SyncLine::Eof) | Err(_) => return None,
+        }
+    }
+}
 
 /// 把一个子进程的 stderr **读到 EOF**，前 [`STDERR_LOG_BUDGET_BYTES`] 字节逐行接进
 /// monitor 的滚动日志（`logging.rs`：`~/.cc-monitor/logs/monitor/monitor.<日期>.log`）。
@@ -585,33 +605,23 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
     let mut reader = std::io::BufReader::new(err);
     let mut budget = STDERR_LOG_BUDGET_BYTES;
     let mut unlogged = 0usize;
-    loop {
-        let (text, cut) = match read_capped_line_sync(&mut reader, STDERR_MAX_LINE_BYTES) {
-            Ok(SyncLine::Line { text, cut, .. }) => (text, cut),
-            // 「截断＋说清」那一档不整行丢；真来了也照旧读下去（约束 1）。
-            Ok(SyncLine::Dropped) => continue,
-            Ok(SyncLine::Eof) => break, // EOF：子进程关掉了 stderr（通常就是它退了）。
-            // 读不动了 = 管子那头没了（子进程走了 / fd 被关）。这里 `break` 不违反约束 1：
-            // 已经没有「另一端会被我卡住」的另一端了。
-            Err(_) => break,
-        };
+    // `None`：EOF（子进程关掉了 stderr，通常就是它退了），或读不动了（管子那头没了）——
+    // 这里停不违反约束 1：已经没有「另一端会被我卡住」的另一端了。
+    while let Some(line) = next_stderr_line(&mut reader) {
         if budget == 0 {
             unlogged += 1;
             continue; // ← 约束 1：照旧读，只是不记。
         }
-        budget = budget.saturating_sub(text.len() as u64 + 1);
-        // 切开的那一条断口要说出来（`cut`：读满上界、还没见到 `\n`）。
-        let line = text.trim_end_matches('\r');
+        budget = budget.saturating_sub(line.len() as u64 + 1);
         if line.is_empty() {
             continue;
         }
-        let mark = if cut { STDERR_CUT_MARK } else { "" };
-        match backend_stderr_level(line) {
-            tracing::Level::TRACE => tracing::trace!("本机后端[pid {pid}] {line}{mark}"),
-            tracing::Level::DEBUG => tracing::debug!("本机后端[pid {pid}] {line}{mark}"),
-            tracing::Level::INFO => tracing::info!("本机后端[pid {pid}] {line}{mark}"),
+        match backend_stderr_level(&line) {
+            tracing::Level::TRACE => tracing::trace!("本机后端[pid {pid}] {line}"),
+            tracing::Level::DEBUG => tracing::debug!("本机后端[pid {pid}] {line}"),
+            tracing::Level::INFO => tracing::info!("本机后端[pid {pid}] {line}"),
             // `WARN` · `ERROR`（封顶，见约束 3）· 认不出的。
-            _ => tracing::warn!("本机后端[pid {pid}] {line}{mark}"),
+            _ => tracing::warn!("本机后端[pid {pid}] {line}"),
         }
     }
     if unlogged > 0 {
@@ -1253,10 +1263,7 @@ pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
 ///
 /// 行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
 /// 让调用方记进丢帧账（`frame_tally`）—— lossy 这条取舍不动，只是不再静默。
-pub(crate) fn read_capped_line_sync<R: std::io::BufRead>(
-    rd: &mut R,
-    cap: Cap,
-) -> std::io::Result<SyncLine> {
+fn read_capped_line_sync<R: std::io::BufRead>(rd: &mut R, cap: Cap) -> std::io::Result<SyncLine> {
     let truncate = cap.over == Over::TruncateAndSay;
     let cap = usize::try_from(cap.bytes).unwrap_or(usize::MAX);
     // 切开那一档至少交一个字节：上限 0 会让同一处每次都交出空的一段、读端原地不动。
@@ -1311,7 +1318,7 @@ pub(crate) fn read_capped_line_sync<R: std::io::BufRead>(
 
 /// [`read_capped_line_sync`] 读一行的结局。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SyncLine {
+enum SyncLine {
     /// 一行（不含 `\n`）。`lossy` = 不是合法 UTF-8、按替换字符读的；`cut` = 在上限处切开（「截断＋说清」那一档：余下的字节是下一条）。
     Line {
         text: String,

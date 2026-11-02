@@ -764,28 +764,28 @@ fn a_sync_line_that_is_not_utf8_reads_lossy_instead_of_failing() {
     );
 }
 
-/// stderr 那两处（本机后端 · 文件窗口进程）读一条都经同步有界读行、上限是那一个 `Cap` 常量：
+/// stderr 那两处（本机后端 · 文件窗口进程）读一条都经 `next_stderr_line`（同步有界读行 ＋ 那一个 `Cap` 常量）：
 /// 不许再手写 `take(..)` 接 `read_until`。
 #[test]
 fn both_stderr_drains_read_through_the_capped_line_reader() {
-    for (name, src) in [
-        (
-            "local_backend.rs",
-            include_str!("../../../src/frontend/shell/src/local_backend.rs"),
-        ),
-        (
-            "filewin/proc.rs",
-            include_str!("../../../src/frontend/shell/src/filewin/proc.rs"),
-        ),
-    ] {
-        let prod = guard_core::production_code(src);
+    let backend = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend.rs"
+    ));
+    let window = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/filewin/proc.rs"
+    ));
+    for (name, prod) in [("local_backend.rs", &backend), ("filewin/proc.rs", &window)] {
         assert!(
             !prod.contains(concat!(".read_", "until(")),
-            "{name} 里又手写了读行（`take(..)` 接 `read_until`）—— 读一行经 `read_capped_line_sync`，上限照它的 `Cap`"
+            "{name} 里又手写了读行（`take(..)` 接 `read_until`）—— 读 stderr 一条经 `next_stderr_line`"
         );
-        guard_core::find_pinned(&prod, "STDERR_MAX_LINE_BYTES")
-            .unwrap_or_else(|e| panic!("{name} 读 stderr 没用那一个上限常量（{e}）"));
+        assert!(
+            prod.contains("next_stderr_line(&mut "),
+            "{name} 读 stderr 没经 `next_stderr_line`"
+        );
     }
+    guard_core::find_pinned(&backend, "read_capped_line_sync(rd, STDERR_MAX_LINE_BYTES)")
+        .unwrap_or_else(|e| panic!("`next_stderr_line` 没照那一个上限常量读（{e}）"));
 }
 
 /// **生产入口真的把消费者传下去了**。
