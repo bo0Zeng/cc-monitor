@@ -1549,7 +1549,13 @@ fn this_module_only_reads() {
     assert!(rows_fs.is_empty(), "判定那一层碰了 fs：{rows_fs:?}");
     assert_eq!(
         face_fs,
-        ["Ro", "metadata", "metadata", "read_dir", "read_string_capped"],
+        [
+            "Ro",
+            "metadata",
+            "metadata",
+            "read_dir",
+            "read_string_capped"
+        ],
         "face 的 fs:: 用法变了（只准只读的 stat / 列目录 / 读钩子字样）"
     );
     assert_eq!(

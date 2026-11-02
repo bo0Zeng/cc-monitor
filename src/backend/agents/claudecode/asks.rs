@@ -111,11 +111,17 @@ fn installed_version(path: Option<&str>) -> Option<[u64; 3]> {
         return Some(v);
     }
     real.ancestors().skip(1).take(4).find_map(|d| {
-        crate::platform::fs::Ro::read_to_string(d.join("package.json"))
+        crate::platform::fs::Ro::read_string_capped(d.join("package.json"), PACKAGE_JSON_CAP)
             .ok()
             .and_then(|t| version_in_package(&t))
     })
 }
+
+/// 读那一家 `package.json` 的上限（几 KB 的清单）：超了那一份跳过（读的那一口 `warn!` 带路径），这一层当没有、接着往上找。
+const PACKAGE_JSON_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1024 * 1024,
+    over: relay_route_core::Over::SkipAndSay,
+};
 
 /// 文件名本身是一个版本号（`2.1.296`）⇒ 它。
 pub(crate) fn version_in_name(path: &str) -> Option<[u64; 3]> {
