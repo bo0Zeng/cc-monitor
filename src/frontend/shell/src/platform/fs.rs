@@ -29,6 +29,10 @@ use std::path::Path;
 
 pub fn make_executable(p: &Path) -> Result<(), Said> {
     #[cfg(unix)]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`own_fs` 底下那一层的平台原语：放部署物时置可执行位，落点由调用方（`own_fs::OwnBin` · 释放的注入参数）定"
+    )]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700)).map_err(|e| {
@@ -59,6 +63,10 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), Said> {
     if dir.is_dir() {
         return Ok(());
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`own_fs` 底下那一层的平台原语：只给本人地建自家目录，落点由调用方（`own_fs` 各组 · 释放的注入参数）定"
+    )]
     let mut b = std::fs::DirBuilder::new();
     b.recursive(true);
     #[cfg(unix)]

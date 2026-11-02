@@ -10,6 +10,8 @@
 #   经第三方 crate 间接开的连接认不出。中转包（`src/comms/outward`）另有一份同组的 `clippy.toml`。
 # 起子进程只在起子进程原语开（`platform/child.rs` 那一处放行）：期限必填 · 杀整组 · 自有环境无条件摘都在那里做。
 # 进程 argv 只在 `main` 取一次（`main.rs` 那一处放行）：要它的模块由调用方交。
+# 异步读对端的字节只经带上限的那一份（`comms_inward::line`：读一行 · 读整份，收 `Cap`）：tokio 的整读先读完再判、对端一直发就一直涨，
+#   后端里一处都不放行（那一份住 `comms-inward` 包，不归本文件管）。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管后端 · 拨号核心 · 出网口 · 部署四个包（各自的 `[lints.clippy]` 定成 deny）。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
@@ -64,4 +66,8 @@ disallowed-methods = [
   { path = "tokio::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`", allow-invalid = true },
   { path = "std::env::args", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
   { path = "std::env::args_os", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
+  { path = "tokio::io::AsyncBufReadExt::read_line", reason = "异步读一行只经 `comms_inward::line::read_capped_line`（收 `Cap`，超了回超限、不截断）" },
+  { path = "tokio::io::AsyncBufReadExt::read_until", reason = "异步读一行只经 `comms_inward::line::read_capped_line`（收 `Cap`，超了回超限、不截断）" },
+  { path = "tokio::io::AsyncReadExt::read_to_end", reason = "异步读整份只经 `comms_inward::line::read_capped_all`（收 `Cap`，超了回超限、不截断）" },
+  { path = "tokio::io::AsyncReadExt::read_to_string", reason = "异步读整份只经 `comms_inward::line::read_capped_all`（收 `Cap`，超了回超限、不截断）" },
 ]

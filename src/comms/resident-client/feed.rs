@@ -29,11 +29,12 @@ use crate::backoff::{
 };
 use crate::client::{deliver_answer, InboundClient};
 use crate::frames::Admit;
-use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
+use crate::line::BACKEND_FRAME_LINE_CAP;
 use crate::watch::Desk;
 use cmd_wire::attach::Relation;
 use cmd_wire::dial::OLD_BACKEND_MARKER;
 use cmd_wire::machine::{Blocker, Why};
+use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
 use copy_core::discard::{self, Discard};
 use std::future::Future;
@@ -966,8 +967,9 @@ impl<T: Transport> Feed<T> {
                 }
                 Ok(CappedLine::TooLong(n)) => {
                     tracing::warn!(
-                        "[{}] 常驻流上一行 {n} 字节，超过上限 {BACKEND_FRAME_LINE_CAP}，丢了这一行",
-                        self.cfg.machine
+                        "[{}] 常驻流上一行 {n} 字节，超过上限 {}，丢了这一行",
+                        self.cfg.machine,
+                        BACKEND_FRAME_LINE_CAP.bytes
                     );
                     (self.events)(Event::Gap).await;
                 }

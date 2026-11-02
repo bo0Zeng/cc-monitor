@@ -969,6 +969,7 @@ dependencies = [
  "copy-core",
  "futures",
  "guard-core",
+ "relay-route-core",
  "serde",
  "serde_json",
  "test-home",

@@ -350,7 +350,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "LOCAL_LINES_CAPACITY",
         "**件数**不是体量：本机内容通道（`local_lines·rs`）能排多少帧，量的是队列深度。满了是**背压**（读循环停在送上 ⇒ 不再读 ⇒ 本机后端写阻塞），**不丢、不截**，\
-             它不限任何一段用户数据的字节数（一帧的字节上限是 `BACKEND_FRAME_LINE_CAP`，本表 `CAPS` 那一行）。",
+             它不限任何一段用户数据的字节数（一帧的字节上限是 `resident-client/line.rs` 的 `BACKEND_FRAME_LINE_CAP`）。",
     ),
     (
         "LIMIT_MAX",
@@ -660,25 +660,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // ── 常驻监听口的握手（**两侧各一条，方向不同**）───────────
-    // 接常驻流那两行（hello · attach 回话）在 `resident-client` 里的上限（手机那一侧整段握手走它；值同下一行）。
-    (
-        "src/comms/resident-client/attach.rs",
-        "HANDSHAKE_LINE_CAP",
-        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测 8.6 KB（随 typed 命令变多）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/control/resident.rs",
-        "HELLO_CAP",
-        "停 / 换之前问在听的那一位读的那一行 hello（同上，几 KiB）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/control/resident.rs",
-        "FRAME_LINE_CAP",
-        "`--resident-call` 等那一条应答时读常驻连接上的一行帧（应答里一整份清单也在内；同问远端那一跳收 stdout 的上限）",
-        "拒收+回错",
-    ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
@@ -844,16 +825,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // `cc_bus.rs` 没有控制类回显上限：发消息与派生走后端原语，回显不经 SSH 读。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
-    // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
-    // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
-    // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `resident-client/line.rs::BACKEND_FRAME_LINE_CAP` 头注（monitor 与手机同一份）。
-    (
-        "src/comms/resident-client/line.rs",
-        "BACKEND_FRAME_LINE_CAP",
-        "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
-        "丢弃+带身份报告",
-    ),
+    // backend 出方向单行的上限 `BACKEND_FRAME_LINE_CAP` 不在本表：它是 `Cap`（`resident-client/line.rs`，monitor 与手机同一份），
+    //   超了怎么办写在它自己的 `over` 上（丢弃＋带身份报告），数为什么刻意不等于入方向的 `MAX_LINE_BYTES` 写在它的头注里。
     // ---- backend 侧 ----
     // 后端 `read_face.rs` 那一行（「整份读进查看器」读过 256 MiB 就明拒）出列：那一道连同 `history-page` 的 `whole` 入参一起删了
     //   （查看器不再整份读：骨架 ＋ 按视口取，一问一段，那一段有自己的上限 `READ_PAGE_BYTES` / `LINE_CAP_BYTES`）。
@@ -874,12 +847,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_SCROLLBACK",
         "终端预览往回多要的行数（行，不是字节）",
         "截断+说清",
-    ),
-    (
-        "src/backend/control/asks/hook.rs",
-        "STDIN_CAP",
-        "答题 hook 客户端读那一家交来的 hook 输入（一次待答请求的 JSON）",
-        "拒收+回错",
     ),
     (
         "src/backend/control/cli_args.rs",
@@ -1024,26 +991,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "从改前改后逐行比的格数（改前行数 × 改后行数）",
         "降级+说清",
     ),
-    // 前台派出、还在跑的子 agent：读子记录旁边派出那一刻落盘的 `agent-<id>.meta.json` 多大；超了不认它、记一笔（卡等父侧结果再对上）。
-    (
-        "src/backend/agents/claudecode/runs.rs",
-        "META_MAX",
-        "运行簿 / 按工具调用读子运行时读一份子 agent 的 `agent-<id>.meta.json`（只为取 `toolUseId`）",
-        "跳过+说清",
-    ),
-    // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
-    (
-        "src/backend/agents/claudecode/mcp.rs",
-        "MAX_CACHE_BYTES",
-        "判 MCP 状态时读一个号家目录里的那份「要登录」缓存",
-        "降级+说清",
-    ),
-    (
-        "src/backend/agents/claudecode/assets.rs",
-        "MAX_PROJECT_MCP_BYTES",
-        "资产目录扫描时读一份项目 `.mcp.json`",
-        "跳过+说清",
-    ),
+    // 资产目录那几个数（`asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
@@ -1101,12 +1049,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
-    (
-        "src/backend/assets/asset_catalog.rs",
-        "SKILL_MAX_FILE_BYTES",
-        "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
-        "降级+说清",
-    ),
     // 〔第二问〕全文搜索常驻索引的上界：按最近优先留，留不下的那几份照搜、只是不留（下一问再读）。
     (
         "src/backend/observe/record_scan.rs",
@@ -1143,19 +1085,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
-    // 端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
-    (
-        "src/backend/dial/forwards.rs",
-        "ACK_CAP",
-        "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/dial/forwards.rs",
-        "COUNT_CAP",
-        "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
-        "降级+说清",
-    ),
     // 脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
     (
@@ -1175,15 +1104,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "PUSH_MAX_BYTES",
         "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
         "跳过+说清",
-    ),
-    // ⚠这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
-    // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
-    // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
-    (
-        "src/backend/agents/claudecode/accounts.rs",
-        "MAX_CONFIG_BYTES",
-        "读 Claude 的账号配置文件",
-        "硬报错",
     ),
     // ⚠HTTP 中转带进来的第一处上限。它被用在**两个方向**上，
     // 两处的处置**都是**「拒收+回错」，只是回的码不同 —— 逐字记下来，免得下一个人

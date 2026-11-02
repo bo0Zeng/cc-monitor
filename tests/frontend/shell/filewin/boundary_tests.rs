@@ -389,13 +389,12 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::spawn_managed_with", Kind::Spawn),
     // 窗口那份二进制的文件名后缀（`window_bin_name`）：平台原语住壳的平台层。
     ("platform::proc::EXE_SUFFIX", Kind::Spawn),
-    // 自带的那份窗口程序：字节 · 放下来 · 放到哪 · 放的时候那两样平台知识（`proc::resolve_window_bin`）。
+    // 自带的那份窗口程序：字节 · 放下来 · 落点句柄（`proc::resolve_window_bin`；建目录 · 置可执行位在壳写盘的唯一一层里）。
     ("byte_table::native_filewin", Kind::Carried),
     ("local_backend::place_local_program", Kind::Carried),
+    ("platform::own_fs::OwnBin", Kind::Carried),
     // 窗口进程的 stderr 一条最多收多少字节：与被监护子进程那一份同一个上界（不另起一个数）。
     ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
-    ("platform::fs::make_executable", Kind::Carried),
-    ("platform::fs::ensure_private_dir", Kind::Carried),
     // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：本机后端机器表最近那一份里的名字，不新建数据源。
     ("machine_table::rows_now", Kind::Config),
     // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
@@ -403,8 +402,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
-    // 自带那份窗口程序放到哪（`~/.cc-monitor/bin`）：家目录经壳里取家目录的唯一住址。
-    ("data_paths::home", Kind::DataDir),
+    // 自带那份窗口程序放到哪（`~/.cc-monitor/bin`）：落点句柄经壳里写盘的唯一一层造。
+    ("platform::own_fs::OwnBin::issue", Kind::DataDir),
     // 问主窗所在显示器的工作区，放进种子。
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
     // 类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。

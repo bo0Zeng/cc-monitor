@@ -153,9 +153,9 @@ fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Said> {
     Ok(slots)
 }
 
-/// 读一格字节（本机文件）。超上限 ⇒ 拒收，那一句原样进错误（`deploy::Load` 收的是 `io::Error`）。
-fn load(p: &std::path::Path) -> std::io::Result<Vec<u8>> {
-    Ro::read_capped(p, BACKEND_BYTES_CAP).map_err(|s| std::io::Error::other(s.logged()))
+/// 读一格字节（本机文件）。超上限 ⇒ 拒收，那一句就是部署那一格的原因。
+fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
+    Ro::read_capped(p, BACKEND_BYTES_CAP)
 }
 
 /// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。

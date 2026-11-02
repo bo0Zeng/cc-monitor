@@ -8,12 +8,13 @@
 //! 过了有效期 Claude 会重连，那一笔就不再算数 ⇒ 这里同样不算。stdio 的 Claude 不拿这份跳过 ⇒ 不算。
 
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::path::Path;
 
 use serde_json::Value;
 
-use super::accounts::MAX_CONFIG_BYTES;
-use super::assets::{MAX_PROJECT_MCP_BYTES, PROJECT_MCP_FILE};
+use super::accounts::CONFIG_CAP;
+use super::assets::{PROJECT_MCP_CAP, PROJECT_MCP_FILE};
 use crate::agents::{McpEntry, McpLook, McpRead, McpStatus};
 use crate::common::said::IntoNote as _;
 
@@ -25,8 +26,11 @@ pub(crate) const NEEDS_AUTH_CACHE: &str = "mcp-needs-auth-cache.json";
 const NEEDS_AUTH_TTL_MS: i128 = 15 * 60 * 1000;
 /// Claude 容忍的钟差：记录时刻比此刻晚不到这么多也算。
 const CLOCK_SLACK_MS: i128 = 60 * 1000;
-/// 那份缓存的上限（一个服务器一小条）。
-const MAX_CACHE_BYTES: u64 = 1024 * 1024;
+/// 那份缓存的上限（一个服务器一小条）：超了那一句进返回值的 `problems`，这个号的状态判不出。
+const MAX_CACHE_BYTES: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::DegradeAndSay,
+};
 
 /// 注册表那一格的实现：按这台机器的环境现解 `.claude.json`。
 pub(crate) fn read(project_dir: Option<&Path>, look: &McpLook) -> McpRead {
@@ -42,7 +46,7 @@ pub(crate) fn read_at(
     let mut out = McpRead::default();
     let mut disabled: Vec<String> = Vec::new();
     if let Some(path) = claude_json {
-        if let Some(cj) = read_json(path, MAX_CONFIG_BYTES, &mut out.problems) {
+        if let Some(cj) = read_json(path, CONFIG_CAP, &mut out.problems) {
             let src = path.display().to_string();
             push(&mut out.entries, cj.get("mcpServers"), "user", &src);
             if let Some(dir) = project_dir {
@@ -74,7 +78,7 @@ pub(crate) fn read_at(
     }
     if let Some(dir) = project_dir {
         let file = dir.join(PROJECT_MCP_FILE);
-        if let Some(v) = read_json(&file, MAX_PROJECT_MCP_BYTES, &mut out.problems) {
+        if let Some(v) = read_json(&file, PROJECT_MCP_CAP, &mut out.problems) {
             push(
                 &mut out.entries,
                 v.get("mcpServers"),
@@ -156,7 +160,7 @@ fn push(out: &mut Vec<McpEntry>, servers: Option<&Value>, scope: &'static str, s
 }
 
 /// 不在 ⇒ `None`、不出声；在而读不出 / 不是 JSON ⇒ `None` 并记一句（「这台没有」与「那份坏了」不合成一句）。
-fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value> {
+fn read_json(path: &Path, cap: Cap, problems: &mut Vec<String>) -> Option<Value> {
     match Ro::metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
@@ -177,7 +181,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
         }
         Ok(_) => {}
     }
-    match crate::platform::fs::Ro::read_json_capped(path, cap) {
+    match Ro::read_json(path, cap) {
         Ok(v) => Some(v),
         // 那一句只带原因词进说明；原话记日志（说明没有复制详情那一格）。
         Err(e) => {

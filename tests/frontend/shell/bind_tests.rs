@@ -4,6 +4,15 @@ use crate::platform::console::{
     window_of_console, ConsoleLook, HelperRequest,
 };
 
+/// 根在 `dir` 的数据目录句柄（经 `CCM_DATA_DIR` 喂成它；真数据目录不碰）。
+fn own_in(dir: &Path) -> OwnState {
+    let dir = dir.to_path_buf();
+    OwnState::issue_with(&|k| {
+        (k == crate::config::DATA_DIR_ENV).then(|| dir.clone().into_os_string())
+    })
+    .expect("临时目录是绝对路径")
+}
+
 #[test]
 fn hwnd_entry_roundtrip() {
     let e = HwndEntry {
@@ -1138,7 +1147,7 @@ fn a_registration_goes_away_the_moment_its_shell_exits() {
     let file = reg.join(format!("{pid}.json"));
     std::fs::write(&file, serde_json::to_string(&e).unwrap()).unwrap();
 
-    let bind = BindRegistry::spawn(dir.clone());
+    let bind = BindRegistry::spawn(own_in(&dir));
     assert!(bind.lookup_hwnd_for_ps(pid).is_some(), "活着的那条读回来了");
 
     child.kill().unwrap();
@@ -1170,7 +1179,7 @@ fn a_registration_whose_shell_is_already_gone_is_dropped_on_load() {
     let file = reg.join(format!("{me}.json"));
     std::fs::write(&file, serde_json::to_string(&e).unwrap()).unwrap();
 
-    let bind = BindRegistry::spawn(dir.clone());
+    let bind = BindRegistry::spawn(own_in(&dir));
     let gone = bind.lookup_hwnd_for_ps(me).is_none() && !file.exists();
     let _ = std::fs::remove_dir_all(&dir);
     assert!(gone, "起始时刻对不上的那条留下来了");

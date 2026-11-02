@@ -16,10 +16,11 @@ pub struct RemoteExec {
     pub exit_status: Option<u32>,
 }
 
-// 出方向单行的上限（`BACKEND_FRAME_LINE_CAP`）与有界读行（`read_capped_line` · `CappedLine`）住 `resident-client`（手机同一份），这里转用。
-pub(crate) use resident_client::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
+// 有界读行（`read_capped_line` · `CappedLine`）住 `comms_inward::line`，出方向单行的上限（`BACKEND_FRAME_LINE_CAP`）住 `resident-client`（手机同一份），这里转用。
+pub(crate) use comms_inward::line::{read_capped_line, CappedLine};
+pub(crate) use resident_client::line::BACKEND_FRAME_LINE_CAP;
 
-/// 有界读行的行为对拍：`byte_cap_registry` 那几条钉的是形态（常量进表了没、处置臂说话了没），判不出上限到底生不生效 ⇒ 本组用小 cap 直接喂 reader。
+/// 收帧那几臂的源码判据（P8c）；有界读行的行为对拍住 `tests/comms/inward/line_tests.rs`。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/capped_line_tests.rs"]
 mod capped_line_tests;

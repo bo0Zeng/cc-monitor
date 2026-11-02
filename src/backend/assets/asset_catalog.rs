@@ -50,9 +50,6 @@ pub const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 4 * 1024 * 1024,
     over: relay_route_core::Over::DegradeAndSay,
 };
-/// 同一个数的裸字节形（`asset_catalog_tests` 铺超限文件用）。
-#[cfg(test)]
-pub const SKILL_MAX_FILE_BYTES: u64 = SKILL_FILE_CAP.bytes;
 /// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。读的那一口照声明表的那一格；
 /// 这里的名字给字节上限登记表认、远端拉回那一侧取同一个数，两处须相等（下一行编译期查）。
 pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;

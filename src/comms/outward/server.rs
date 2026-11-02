@@ -9,7 +9,7 @@
 //! | 登记 | 它钉着什么 |
 //! |---|---|
 //! | `tests/common/guard-core/rules/creds_store_exits.rs`（照 `INNER_FIELD_USERS` 的 `HandsOut`） | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
-//! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
+//! | 字节上限登记表（`HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条按这个路径登记） | 这几道上限收成 `relay_route_core::Cap`（数与超了怎么办写在常量上），那张表删掉就不挡 |
 //!
 //! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
@@ -51,7 +51,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
 /// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
-/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// 超了：拒收＋回错（`relay_route_core::Over::Reject` 那一档）。
 const BODY_CAP: usize = 64 * 1024 * 1024;
 /// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
 ///
@@ -90,7 +90,7 @@ const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）· 在途请求体合计记不下（[`BodyBudget`]，原因头 `body-budget`）·
 /// 起不了连接线程。**「我们这侧现在吃不下」**。
 ///
-/// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
+/// 是一个状态码，不是读上限（读上限是 `relay_route_core::Cap`）：名字不带 `CAP`/`MAX`/`LIMIT`/`BYTES`。
 pub const BUSY: &str = "503 Service Unavailable";
 /// 🔴 **中转自己的传输失败、而且不是超时**：上游断开 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
 /// 上游选择的拒绝回的是 4xx，502 只留给这个本义。

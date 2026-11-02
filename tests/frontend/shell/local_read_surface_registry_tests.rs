@@ -50,27 +50,13 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "data_paths.rs",
         "home",
         "壳取家目录的唯一住址（`clippy.toml` 取家目录那一组只在这里放行）",
-        "filewin/proc 的 landing_dir · deploy 的 slots_dir · footprint_client 的 footprint_client_facts 都经它",
-    ),
-    (
-        "logging.rs",
-        "log_file_info",
-        "家目录本身（缩写日志路径的那一截）",
-        "**不是伸手拿用户的东西**：不读、不 stat 家里的文件；日志目录本身在 monitor 自己的数据目录里（`config::resolve_monitor_data_dir`）",
-    ),
-    (
-        "local_backend_host.rs",
-        "start_local_backend",
-        "`~/.cc-monitor/bin`（自释放内嵌后端的落点）",
-        "**不是伸手拿用户的东西**：这是 monitor 自己的缓存目录，只有我们写、只有我们读。\
-             它用 `home_dir()` 只是为了「每个用户各一份」。写侧登记在 `write_site_registry` 的\
-             `local_backend.rs::extract_embedded_to`；释放出来的文件按 build_id 命名 ⇒ 幂等、不覆盖别版",
-    ),
-    (
-        "config.rs",
-        "resolve_monitor_data_dir",
-        "`~/.cc-monitor`",
-        "monitor 自己的数据目录；写侧在 `write_site_registry`",
+        "经它的那几家，都**不是伸手拿用户的东西**：\
+             ① `config::resolve_monitor_data_dir`（`~/.cc-monitor`，monitor 自己的数据目录）—— 写它的句柄只在 \
+             `platform/own_fs.rs` 的 `OwnState::issue` 造，写侧登记在 `write_site_registry`；\
+             ② `own_fs.rs` 的 `OwnBin::issue`（`~/.cc-monitor/bin`：自释放内嵌后端 · 文件窗口程序的落点，只有我们写、只有我们读，\
+             `local_backend_host::start_local_backend` 经它拿；释放出来的文件按 build_id 命名 ⇒ 幂等、不覆盖别版）；\
+             ③ `logging::log_file_info` 缩写日志路径的那一截（不读、不 stat 家里的文件）；\
+             ④ filewin/proc 的 landing_dir · deploy 的 slots_dir · footprint_client 的 footprint_client_facts",
     ),
     (
         // 原生文件管理窗口「存到哪儿（本机）」那一问的缺省起点。
