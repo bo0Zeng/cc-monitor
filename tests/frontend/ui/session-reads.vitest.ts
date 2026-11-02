@@ -288,7 +288,7 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-reads.golden.json"), "utf8"),
   ) as Record<string, unknown>;
 
-  it("★★ 金样：整份读 · 按行号 · 一个子运行（按运行读）三份成品读得懂；远端那台的载荷带上它的名字、本机不带", async () => {
+  it("★★ 金样：整份读 · 按行号 · 一个子运行（按运行读）三份成品读得懂；载荷都带那台：远端是它的名字、本机逐字 <local>", async () => {
     const { pageOf, linesOf } = await import("../../../src/frontend/ui/record-reads");
     const page = pageOf("<local>", recordGolden["history-page"] as HistoryPage);
     expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
@@ -296,7 +296,7 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
       [1, "r", "/w", "r-1"],
       [2, "r", null, "r-2"],
     ]);
-    expect(page.payloads.every((p) => p.origin === undefined)).toBe(true);
+    expect(page.payloads.every((p) => p.origin === "<local>")).toBe(true);
     const lines = linesOf("devbox", recordGolden["history-lines"] as HistoryLines);
     expect([lines.from, lines.next, lines.eof]).toEqual([1, 3, true]);
     expect(lines.payloads.map((p) => [p.seq, p.origin])).toEqual([

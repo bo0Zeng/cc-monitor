@@ -54,8 +54,6 @@ fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
         user,
         "成品原样转交（一个字节都不改）"
     );
-    // 本机那台的行载荷上不带 origin（线上形状与原来 `None` 那一档逐字相同）。
-    assert_eq!(payloads[0].origin, None, "本地行 origin 应为 None");
     let wire = serde_json::to_string(&payloads[0]).unwrap();
     assert!(
         wire.contains(&format!("\"record\":{user}")),
@@ -63,21 +61,19 @@ fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
     );
 }
 
-/// 远端那台的 origin ⇒ 每条 payload 都带上它的名字（远端 Tab 标题前缀用）。
+/// 每条 payload 都带那台：本机逐字 `"<local>"`，远端是那台的名字（远端 Tab 标题前缀用）。线上恒有这一格，界面不补「缺 ＝ 本机」。
 #[test]
-fn origin_is_propagated_to_payloads() {
-    let lines = vec![jline("s-remote", 0, Some(r#"{"type":"user"}"#), None)];
-    let payloads = batch_to_payloads(
-        lines,
-        &crate::origin::Origin::named("pi".to_string()),
-        &mut SkipRuns::default(),
-    );
-    assert_eq!(payloads.len(), 1);
-    assert_eq!(
-        payloads[0].origin.as_deref(),
-        Some("pi"),
-        "远端行 origin 必须透传 host 标签"
-    );
+fn every_payload_names_its_machine_on_the_wire() {
+    for (origin, want) in [
+        (crate::origin::Origin::local(), "<local>"),
+        (crate::origin::Origin::named("pi".to_string()), "pi"),
+    ] {
+        let lines = vec![jline("s", 0, Some(r#"{"type":"user"}"#), None)];
+        let payloads = batch_to_payloads(lines, &origin, &mut SkipRuns::default());
+        assert_eq!(payloads.len(), 1);
+        let wire = serde_json::to_value(&payloads[0]).unwrap();
+        assert_eq!(wire["origin"], serde_json::json!(want), "那台的名字原样上线：{wire}");
+    }
 }
 
 /// 〔RENDER2 · 「要封顶得有后端的保证 ……」· 「不可显示的行照占 seq 却不发 payload，

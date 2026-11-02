@@ -730,7 +730,7 @@ export class HistoryView {
         this.refresh();
       },
       onNew: () => void openNewSession({ origin: g.origin, cwd: g.projectPath, agent: g.agent }),
-      onRetry: () => this.refresh(g.origin ? [g.origin] : []),
+      onRetry: () => this.refresh(isRemoteOrigin(g.origin) ? [g.origin] : []),
     });
   }
 
@@ -1101,7 +1101,7 @@ export class HistoryView {
       { label: copyText("history.menu.rename"), detail: "F2", onClick: () => void this.rename(r) },
       { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
       { label: "", divider: true },
-      ...(r.origin ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
+      ...(isRemoteOrigin(r.origin) ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
       { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }) },
       { label: "", divider: true },
       {
@@ -1153,7 +1153,7 @@ export class HistoryView {
     }
     const label = labelOf(r);
     const body = [
-      r.origin ? copyText("history.delete.bodyRemote", { machine: r.origin }) : copyText("history.delete.body"),
+      isRemoteOrigin(r.origin) ? copyText("history.delete.bodyRemote", { machine: r.origin }) : copyText("history.delete.body"),
       r.can.delete === "unsure" ? copyText("history.delete.unsure") : null,
     ].filter((l): l is string => l !== null);
     const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: body.join("\n") });
