@@ -230,5 +230,5 @@ fn assembled(hand: &Hand<ListingHead, RawRow>) -> Listing {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/comms/resident-client/listing_copy_tests.rs"]
+#[path = "../../../../tests/common/face-core/listing_copy_tests.rs"]
 mod tests;

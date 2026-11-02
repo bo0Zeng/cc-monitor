@@ -45,7 +45,7 @@ pub struct Desk {
 #[derive(Default)]
 struct Now {
     /// 此刻在看的 ＋ 手上留着的。
-    sids: BTreeSet<String>,
+    watched: BTreeSet<String>,
     kept: BTreeSet<String>,
     /// 当前那条连接（弱引用：连接走了就不报）。
     link: Weak<InboundClient>,
@@ -90,11 +90,11 @@ impl Desk {
     }
 
     /// 宿主：此刻在看这几条 ＋ 手上留着这几条（都整份换）。没变不惊动。
-    pub fn set(&self, sids: BTreeSet<String>, kept: BTreeSet<String>) {
+    pub fn set(&self, watched: BTreeSet<String>, kept: BTreeSet<String>) {
         let moved = {
             let mut n = lock(&self.now);
-            let moved = n.sids != sids || n.kept != kept;
-            n.sids = sids;
+            let moved = n.watched != watched || n.kept != kept;
+            n.watched = watched;
             n.kept = kept;
             moved
         };
@@ -107,13 +107,13 @@ impl Desk {
     /// 当前连接已经知道这一份 · 此刻没有连接 ⇒ 交空的（下一条连接的 attach 行照样带上这一份）。
     pub fn set_and_hear(
         &self,
-        sids: BTreeSet<String>,
+        watched: BTreeSet<String>,
         kept: BTreeSet<String>,
     ) -> tokio::sync::oneshot::Receiver<Vec<WatchFrom>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
             let mut n = lock(&self.now);
-            n.sids = sids;
+            n.watched = watched;
             n.kept = kept;
             n.waiting.push(tx);
         }
@@ -122,17 +122,17 @@ impl Desk {
     }
 
     /// 此刻的名单。
-    pub fn sids(&self) -> BTreeSet<String> {
-        lock(&self.now).sids.clone()
+    pub fn watched(&self) -> BTreeSet<String> {
+        lock(&self.now).watched.clone()
     }
 
     /// 连接那一侧：要写 attach 行了 ⇒ 此刻的名单 ＋ 各条手上的清单 ＋ 手上留着的。
     pub fn ask_for_attach(&self) -> WatchAsk {
-        let (sids, kept) = {
+        let (watched, kept) = {
             let n = lock(&self.now);
-            (n.sids.clone(), n.kept.clone())
+            (n.watched.clone(), n.kept.clone())
         };
-        self.ask(sids, kept)
+        self.ask(watched, kept)
     }
 
     /// 连接那一侧：接上了；`carried` ＝ 它的 attach 行带过的那一份（这条载体没有 attach 行 ⇒ `None`）。
@@ -151,10 +151,10 @@ impl Desk {
         self.poke.notify_one();
     }
 
-    fn ask(&self, sids: BTreeSet<String>, kept: BTreeSet<String>) -> WatchAsk {
-        let branch = (self.held)(&sids);
+    fn ask(&self, watched: BTreeSet<String>, kept: BTreeSet<String>) -> WatchAsk {
+        let branch = (self.held)(&watched);
         WatchAsk {
-            sids: sids.into_iter().collect(),
+            sids: watched.into_iter().collect(),
             branch,
             kept: kept.into_iter().collect(),
         }
@@ -171,7 +171,7 @@ impl Desk {
                     }
                     return;
                 };
-                let now = (n.sids.clone(), n.kept.clone());
+                let now = (n.watched.clone(), n.kept.clone());
                 if n.told.as_ref() == Some(&now) {
                     for w in n.waiting.drain(..) {
                         w.send(Vec::new()).discard(Why::PeerGone);

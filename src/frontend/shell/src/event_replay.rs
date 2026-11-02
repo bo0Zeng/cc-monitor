@@ -207,8 +207,8 @@ struct Inner {
     snapshot_level: u32,
     /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
     kept_moved: bool,
-    /// 每台的活卡板（端核心那一份折法，键 = origin 线上串）：界面收的是折好的整份或尾巴。那台看不见了 ⇒ 清空。
-    live: HashMap<String, resident_client::live::Board>,
+    /// 每台的活卡板（共享核心那一份折法，键 = origin 线上串）：界面收的是折好的整份或尾巴。那台看不见了 ⇒ 清空。
+    live: HashMap<String, face_core::live::Board>,
 }
 
 /// 退订那一问的期限（就地做完的记账；远端多一趟往返）。
@@ -261,7 +261,7 @@ struct Sub {
     /// 最后一次告诉它的「那台看不看得见」。
     told_seen: bool,
     /// `session-live-card` 那一形：丢过格（没 credit）、还没再交过整份的那几处（会话 · 运行）—— 那一处下一格交整份，不交尾巴。
-    live_stale: HashSet<resident_client::live::Where>,
+    live_stale: HashSet<face_core::live::Where>,
 }
 
 /// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（活卡 / `lines`），合并时收成这一个枚举。
@@ -1181,13 +1181,13 @@ impl EventReplay {
     }
 
     /// 那台后端发来的一帧活卡（核心拼好的成品；分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
-    /// 交那台的活卡板折（端核心 `resident_client::live`，手机核心同一份），变了的那一处（某会话某运行）带上哪台，
+    /// 交那台的活卡板折（共享核心 `face_core::live`，手机核心同一份），变了的那一处（某会话某运行）带上哪台，
     /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 一段字只换了一张卡的尾巴 ⇒ 交尾巴（前几块不变 ＋ 新的一两块），
     /// 别的交那一处整份。有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`（与会话行实时那一份同一个 [`plan_live`]）。
     /// **不等 credit、不攒**：一条订阅丢过某一处的格 ⇒ 那一处下一格交整份（界面从不在缺了一格的底子上接尾巴）。
     /// 对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
     pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
-        use resident_client::live::LiveChange;
+        use face_core::live::LiveChange;
         let origin_s = origin.to_string();
         let (sink, plans) = {
             let mut guard = self.inner.lock();

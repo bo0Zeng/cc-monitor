@@ -31,10 +31,6 @@ guard-core = { path = "../../common/guard-core" }
 # 替身后端回 attach 行的新旧照后端同一个函数算。
 deploy-contract = { path = "../../common/deploy-contract" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }
-# 会话簿 · 活卡的整份导给界面与手机（`src/frontend/ui/generated/` ⇒ Kotlin 照它生成）：codegen 只在测试档（同壳那一份 C01）。
-ts-rs = "12.0.1"
-# 整份里嵌着会话帧与活卡那几样 ⇒ 测试档开它们的 TS 派生（发布二进制不开）。
-cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 
 [features]
 default = []
@@ -50,3 +46,5 @@ allow_attributes_without_reason = "deny"
 # 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
 let_underscore_must_use = "deny"
 unused_result_ok = "deny"
+# 线上类型的 `match` 列全变体：加一个变体时编译器点名每一处（通信层三包同一条）。
+wildcard_enum_match_arm = "deny"

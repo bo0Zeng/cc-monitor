@@ -574,7 +574,7 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         .iter()
         .position(|r| matches!(r, Relayed::Ended { .. }))
         .unwrap();
-    let unclear = resident_client::book::unseen(crate::common::cells::Words(
+    let unclear = face_core::book::unseen(crate::common::cells::Words(
         comms_inward::chan::said::offline(machine),
     ));
     let said_left = |sid: &str| Relayed::Line {

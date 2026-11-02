@@ -253,19 +253,26 @@ fn the_search_kou_jing_has_exactly_one_home() {
         rules.contains("struct SnippetBudget") && rules.contains("enum SnippetVerdict"),
         "snippet 预算（含「预算用完」vs「单会话满」这一拆）必须住口径的家"
     );
-    // 预算顺序（最近优先）与几台合一份的展示顺序是同一个函数：住线上形那一份（`cmd_wire::search`，手机核心合几台也调它），口径的家只转出它。
+    // 预算顺序（最近优先）与几台合一份的展示顺序是同一个函数：住共享核心（`face_core::column`，手机核心合几台也调它），
+    // 线上形那一份（`cmd_wire::search`）只留类型、合结果头那一份（`face_core::search`）不另写，口径的家只转出它。
+    let home =
+        guard_core::production_code(include_str!("../../../src/common/face-core/src/column.rs"));
     let wire =
         guard_core::production_code(include_str!("../../../src/common/cmd-wire/src/search.rs"));
+    let merged =
+        guard_core::production_code(include_str!("../../../src/common/face-core/src/search.rs"));
     assert_eq!(
         (
+            defs(&home, "sort_by_recency<T>"),
             defs(&wire, "sort_by_recency<T>"),
+            defs(&merged, "sort_by_recency<T>"),
             defs(&rules, "sort_by_recency<T>")
         ),
-        (1, 0),
-        "预算顺序（最近优先）必须恰好一份、住 `cmd_wire::search`"
+        (1, 0, 0, 0),
+        "预算顺序（最近优先）必须恰好一份、住 `face_core::column`"
     );
     assert!(
-        rules.contains("pub(crate) use cmd_wire::search::sort_by_recency;"),
+        rules.contains("pub(crate) use face_core::column::sort_by_recency;"),
         "口径的家要转出那一份"
     );
     // ② 搜索那一侧：不许自己再有一份，且必须真的调家里那一份。

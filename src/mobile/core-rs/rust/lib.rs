@@ -416,10 +416,10 @@ pub fn search_merge_json(data: &str) -> String {
     serde_json::to_string(&face_core::search::merge(&q, answered, down)).unwrap_or_default()
 }
 
-/// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`resident_client::column`）；读不动 ⇒ 空串。
+/// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`face_core::column`）；读不动 ⇒ 空串。
 pub fn chats_column_json(ask: &str) -> String {
-    serde_json::from_str::<resident_client::column::ChatsColumnAsk>(ask)
-        .map(|a| serde_json::to_string(&resident_client::column::column(&a)).unwrap_or_default())
+    serde_json::from_str::<face_core::column::ChatsColumnAsk>(ask)
+        .map(|a| serde_json::to_string(&face_core::column::column(&a)).unwrap_or_default())
         .unwrap_or_default()
 }
 

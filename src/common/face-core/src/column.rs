@@ -1,5 +1,6 @@
-//! **几台的会话清单并成一列**：各台各自排好（最近优先、组按那台的先后），这里只并 —— 同一刻照台的先后（稳定），不另判。
-//! 本机后端并历史页那一列（`history_browse::lay`）与手机会话屏（`mobcore::chats_column_json`）都调 [`merge_by`]；
+//! **最近优先 · 几台并成一列**：一列怎么排只有 [`sort_by_recency`] 一条（倒序、稳定）；几台并一列（[`merge_by`]）是照台的先后拼起来再照它排 ——
+//! 同一刻照台的先后，不另判。本机后端每台花片段预算的先后（`search_rules`）· 几台的全文搜索结果合一份（[`crate::search::merge`]）·
+//! 本机后端并历史页那一列（`history_browse::lay`）· 手机会话屏（`mobcore::chats_column_json`）都调这两个；
 //! 分叉挂在父会话下那一步（[`nest`]）也只住这里：历史页那一列与手机会话屏都照它摊。
 //! 手机那一屏的段也在这里切（[`column`]）：段头是那台写好的字，换了字就起新的一段；挂在父下的分叉跟着父，不另起段。
 
@@ -7,22 +8,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-/// 各台各自按 `key` 倒序排好的几列 ⇒ 并成一列；同值照台的先后（稳定）。只并、不另判。
+/// **最近优先**（全仓唯一的排法）：按 `key` 倒序，同值照原先后（稳定）。
+pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
+    items.sort_by(|a, b| key(b).cmp(&key(a)));
+}
+
+/// 几台各一列 ⇒ 并成一列：照台的先后拼起来、照 [`sort_by_recency`] 排 —— 同值照台的先后，台里照原先后。只并、不另判。
 pub fn merge_by<'a, T>(lists: &[&'a [T]], key: impl Fn(&T) -> i64) -> Vec<&'a T> {
-    let mut at = vec![0usize; lists.len()];
-    let mut out = Vec::with_capacity(lists.iter().map(|l| l.len()).sum());
-    loop {
-        let mut best: Option<usize> = None;
-        for (i, l) in lists.iter().enumerate() {
-            let Some(x) = l.get(at[i]) else { continue };
-            if best.is_none_or(|b| key(x) > key(&lists[b][at[b]])) {
-                best = Some(i);
-            }
-        }
-        let Some(b) = best else { return out };
-        out.push(&lists[b][at[b]]);
-        at[b] += 1;
-    }
+    let mut out: Vec<&'a T> = lists.iter().flat_map(|l| l.iter()).collect();
+    sort_by_recency(&mut out, |x| key(x));
+    out
 }
 
 /// 一行在分叉树里的样子：`child` ＝ 挂在展开了的父会话下；`forks` ＝ 它下面挂着几个分叉（`forks_open` 展没展开）；
@@ -269,3 +264,7 @@ pub fn column(ask: &ChatsColumnAsk) -> ChatsColumn {
             .collect(),
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/face-core/column_tests.rs"]
+mod tests;

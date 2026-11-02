@@ -48,6 +48,8 @@ cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 tokio = { workspace = true, features = ["test-util"] }
 # 契约错记进日志的那条诊断怎么读（纯工具那一层的 `test-support`）。
 backend-common = { path = "../common", features = ["test-support"] }
-# 对拍客户端那一侧：会话簿的「那台看不见」那一张 · 握手行的读法（判据两端同一份）。
+# 对拍客户端那一侧：握手行的读法（判据两端同一份）。
 resident-client = { path = "../../comms/resident-client" }
+# 对拍会话簿的「那台看不见」那一张（共享核心那一份，桌面与手机核心同一处）。
+face-core = { path = "../../common/face-core" }
 comms-inward = { path = "../../comms/inward" }

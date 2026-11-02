@@ -185,5 +185,5 @@ impl SessionBook {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/comms/resident-client/book_tests.rs"]
+#[path = "../../../../tests/common/face-core/book_tests.rs"]
 mod tests;

@@ -19,8 +19,8 @@ use cmd_wire::cells::Words;
 use cmd_wire::listing::{HistoryGroup, HistoryHead, HistoryRow};
 use cmd_wire::sync::{Patch, Range};
 use cmd_wire::Machine;
-// 几台并一列 · 分叉挂父：手机会话屏同一份（端核心）。
-use resident_client::column::{merge_by, nest, Nest};
+// 几台并一列 · 分叉挂父：手机会话屏同一份（共享核心）。
+use face_core::column::{merge_by, nest, Nest};
 use serde::{Deserialize, Serialize};
 
 use super::history_list::{answer_from, blocking, filters, listing_annotations, Sort};

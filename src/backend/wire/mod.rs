@@ -133,7 +133,7 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
 }
 
 /// **一条会话整份脸的构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判；那台看不见时那一张住会话簿那一层
-/// （`resident_client::book::unseen`，桌面与手机核心同一处）。
+/// （`face_core::book::unseen`，桌面与手机核心同一处）。
 pub trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
