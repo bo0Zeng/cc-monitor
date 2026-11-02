@@ -20202,6 +20202,7 @@ data class RotCell(
     val lead: String? = null,
     val under: String? = null,
     val same: String? = null,
+    val reset: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20224,9 +20225,10 @@ data class RotCell(
             Field("lead", { opt(Str) }, optional = true, nullable = true),
             Field("under", { opt(Str) }, optional = true, nullable = true),
             Field("same", { opt(Str) }, optional = true, nullable = true),
+            Field("reset", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> RotCell(a[0] as String, a[1] as RotFormKind, a[2] as String?, a[3] as String, a[4] as String?, a[5] as Raw, a[6] as Double?, a[7] as RotFrom, a[8] as String?, a[9] as List<RotChoice>?, a[10] as Double?, a[11] as Double?, a[12] as List<RotDaySeg>?, a[13] as String?, a[14] as String?, a[15] as String?) },
-            { v -> arrayOf(v.key, v.kind, v.window, v.label, v.help, v.v, v.num, v.from, v.nullable, v.choices, v.min, v.max, v.segs, v.lead, v.under, v.same) },
+            { a -> RotCell(a[0] as String, a[1] as RotFormKind, a[2] as String?, a[3] as String, a[4] as String?, a[5] as Raw, a[6] as Double?, a[7] as RotFrom, a[8] as String?, a[9] as List<RotChoice>?, a[10] as Double?, a[11] as Double?, a[12] as List<RotDaySeg>?, a[13] as String?, a[14] as String?, a[15] as String?, a[16] as Boolean?) },
+            { v -> arrayOf(v.key, v.kind, v.window, v.label, v.help, v.v, v.num, v.from, v.nullable, v.choices, v.min, v.max, v.segs, v.lead, v.under, v.same, v.reset) },
         )
     }
 }
