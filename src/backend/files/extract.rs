@@ -431,7 +431,11 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Pl
                     )));
                 }
                 let mut f = z.by_index(i).map_err(|e| broken(archive, e))?;
-                let name = f.name().as_bytes().to_vec();
+                let name = f
+                    .name()
+                    .map_err(|e| broken(archive, e))?
+                    .as_bytes()
+                    .to_vec();
                 let raw = if f.is_dir() {
                     Raw::Dir
                 } else if f.is_symlink() {
