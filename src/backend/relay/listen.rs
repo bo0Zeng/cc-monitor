@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
 
 /// 同时在途的下游连接数上限。住宿主不住中转：上界与绑口同是策略值。
-/// 是条数不是体量（名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`：那是 `byte_cap_registry` 的钩子）。超了回 `503` 并关连接，不是静默 FIN。
+/// 是条数不是体量（字节上限才是 `Cap`）。超了回 `503` 并关连接，不是静默 FIN。
 /// 1024：每条在途约占 3 个 fd（下游 · 下游的 dup · 上游）、1 条线程 ⇒ 约 3000 个 fd、1000 条线程，常驻后端起来时软上限已抬到硬上限
 /// （`platform::raise_open_files_limit`）。要够 100 多个 agent 各开两三条流：顶满时每秒完成的条数就卡在「上界 ÷ 每条时长」。
 pub const INFLIGHT_CONNECTIONS: usize = 1024;
