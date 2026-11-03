@@ -53,4 +53,4 @@ fun MacrobenchmarkScope.openLongSessionAndScrollUp() {
 }
 
 private fun MacrobenchmarkScope.waitFor(selector: BySelector): UiObject2 =
-    device.wait(Until.findObject(selector), WAIT_MS) ?: error("$WAIT_MS ms 内屏上没出现 $selector")
+    device.wait(Until.findObject(selector), WAIT_MS) ?: error("not on screen within $WAIT_MS ms: $selector")
