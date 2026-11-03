@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 // @ts-expect-error 纯 JS 脚本，没有类型声明
-import { declsFrom, kotlinTypes, loadDecls, rustFloatFields } from "../../scripts/gen-kotlin-wire.mjs";
+import { declsFrom, kotlinTypes, loadDecls, rustFieldWidths, rustFloatFields } from "../../scripts/gen-kotlin-wire.mjs";
 
 /** 每一族体内裸写的嵌套名（声明那一处除外）：`族: 名 @ 那一行`。 */
 function shadowed(kt: string): string[] {
@@ -53,5 +53,47 @@ describe("一族体内不被嵌套名遮住", () => {
 
   it("仓里真导出的那一份：每一族体内都没有裸写的嵌套名", () => {
     expect(shadowed(kotlinTypes(loadDecls(), rustFloatFields()))).toEqual([]);
+  });
+});
+
+describe("Rust 格宽照类型读，不看可见性", () => {
+  const ts = "#[derive(Serialize, TS)]\n";
+  const widths = (src: string): Map<string, Set<string>> => rustFieldWidths([src]);
+  const of = (w: Map<string, Set<string>>, name: string): string[] => [...(w.get(name) ?? [])];
+
+  it("pub · pub(crate) · pub(super) · pub(in …) · 不写，格宽都读到", () => {
+    const w = widths(
+      [
+        `${ts}pub struct A {\n    pub n: u32,\n}`,
+        `${ts}pub(crate) struct B {\n    pub(crate) n: u32,\n    pub(crate) big: u64,\n}`,
+        `${ts}pub(super) struct C {\n    pub(super) x: f64,\n}`,
+        `${ts}pub(in crate::x) struct D {\n    n: Option<u16>,\n}`,
+        `${ts}struct E {\n    n: Vec<i32>,\n}`,
+        `${ts}pub(crate) enum F {\n    One { n: u8 },\n}`,
+      ].join("\n\n"),
+    );
+    expect(of(w, "A")).toContain("i:n");
+    expect(of(w, "B")).toEqual(expect.arrayContaining(["i:n", "u:big"]));
+    expect(of(w, "C")).toContain("x");
+    expect(of(w, "D")).toContain("i:n");
+    expect(of(w, "E")).toContain("i:n");
+    expect(of(w, "F")).toContain("i:n");
+  });
+
+  it("`pub(crate)` 的 flatten 格把被铺进来那个类型的格宽带上", () => {
+    const w = widths(
+      `${ts}pub(crate) struct Outer {\n    #[serde(flatten)]\n    pub(crate) inner: Inner,\n}\n\n${ts}pub(crate) struct Inner {\n    pub(crate) n: u32,\n}`,
+    );
+    expect(of(w, "Outer")).toContain("i:n");
+  });
+
+  it("没派生 TS 的类型不读", () => {
+    expect(widths(`#[derive(Serialize)]\npub(crate) struct G {\n    n: u32,\n}`).has("G")).toBe(false);
+  });
+
+  it("仓里真的一个 `pub(crate)` 带 u32 的线上类型（SetLaunched.started）⇒ 生成物里是 Int", () => {
+    const kt: string = kotlinTypes(loadDecls(), rustFloatFields());
+    const body = kt.match(/^data class SetLaunched\(\n([\s\S]*?)^\)/m)?.[1] ?? "";
+    expect(body).toContain("val started: Int,");
   });
 });

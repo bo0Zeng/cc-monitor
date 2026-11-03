@@ -189,45 +189,52 @@ function phoneCommands() {
   return [...new Set(names)];
 }
 
-// ───────────────────── Rust 里哪些格是小数 ─────────────────────
+// ───────────────────── Rust 字段的格宽 ─────────────────────
 
+/** 仓里 `src/common` · `src/backend` 底下每一份 Rust 源的格宽（见 [rustFieldWidths]）。 */
 export function rustFloatFields() {
-  const own = new Map(); // Rust 类型名 ⇒ { ts: 导出名, floats: Set, flat: [被 flatten 进来的类型名] }
+  const texts = [];
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, e.name);
       if (e.isDirectory()) { if (!["target", "vendor", "node_modules"].includes(e.name)) walk(p); continue; }
-      if (!e.name.endsWith(".rs")) continue;
-      const text = readFileSync(p, "utf8");
-      for (const m of text.matchAll(/pub (?:struct|enum) (\w+)[^{;]*\{([\s\S]*?)\n\}/g)) {
-        // 紧挨着它的那几行属性里的 `ts(rename = "…")`（导出名与 Rust 名不同）。
-        const before = text.slice(Math.max(0, m.index - 800), m.index);
-        const attrs = before.slice(Math.max(before.lastIndexOf("}\n"), before.lastIndexOf(";\n")) + 1);
-        // 只认导出到线上的类型（派生了 `TS`）：别处同名、不上线的类型（如落盘声明的 `Doc<T>`）不许盖掉线上那一份的格宽。
-        if (!/\bTS\b/.test(attrs)) continue;
-        const rn = attrs.match(/ts\([^)]*rename\s*=\s*"(\w+)"/);
-        const x = { ts: rn ? rn[1] : m[1], floats: new Set(), flat: [] };
-        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?f(?:32|64)\b/g)) {
-          x.floats.add(g[1]);
-          x.floats.add(g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
-        }
-        // 无符号 64 位（摘要一类，可以大过 Long）⇒ Kotlin 的 Long 照位存、写回照无符号；记成 `u:格名`。
-        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?u64\b/g)) {
-          x.floats.add("u:" + g[1]);
-          x.floats.add("u:" + g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
-        }
-        // 32 位以内的整数（Rust 那头装不下更大的）⇒ Kotlin 的 Int；记成 `i:格名`。
-        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?[ui](?:8|16|32)\b/g)) {
-          x.floats.add("i:" + g[1]);
-          x.floats.add("i:" + g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
-        }
-        for (const g of m[2].matchAll(/#\[serde\(flatten\)\][\s\S]*?pub \w+: (?:[\w:]+::)?(\w+)/g)) x.flat.push(g[1]);
-        own.set(m[1], x);
-      }
+      if (e.name.endsWith(".rs")) texts.push(readFileSync(p, "utf8"));
     }
   };
   walk(join(ROOT, "src/common"));
   walk(join(ROOT, "src/backend"));
+  return rustFieldWidths(texts);
+}
+
+/**
+ * 几段 Rust 源里派生了 `TS` 的 struct / enum ⇒ 导出名 ⇒ 格宽记号的集合（小数记格名 · 无符号 64 位记 `u:格名` · 32 位以内整数记 `i:格名`；
+ * snake 与 camel 都记；flatten 进来的类型的格一并带上）。格宽照 Rust 的字段类型定，类型与字段写成哪种可见性都一样读。
+ */
+export function rustFieldWidths(texts) {
+  const own = new Map(); // Rust 类型名 ⇒ { ts: 导出名, floats: Set, flat: [被 flatten 进来的类型名] }
+  const both = (x, tag, name) => {
+    x.floats.add(tag + name);
+    x.floats.add(tag + name.replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+  };
+  for (const text of texts) {
+    // 可见性（`pub` · `pub(crate)` · `pub(super)` · `pub(in …)` · 不写）不进判断：格宽是类型的事。
+    for (const m of text.matchAll(/(?<![\w])(?:struct|enum) (\w+)[^{;]*\{([\s\S]*?)\n\}/g)) {
+      // 紧挨着它的那几行属性里的 `ts(rename = "…")`（导出名与 Rust 名不同）。
+      const before = text.slice(Math.max(0, m.index - 800), m.index);
+      const attrs = before.slice(Math.max(before.lastIndexOf("}\n"), before.lastIndexOf(";\n")) + 1);
+      // 只认导出到线上的类型（派生了 `TS`）：别处同名、不上线的类型（如落盘声明的 `Doc<T>`）不许盖掉线上那一份的格宽。
+      if (!/\bTS\b/.test(attrs)) continue;
+      const rn = attrs.match(/ts\([^)]*rename\s*=\s*"(\w+)"/);
+      const x = { ts: rn ? rn[1] : m[1], floats: new Set(), flat: [] };
+      for (const g of m[2].matchAll(/(\w+): (?:Option<)?(?:Vec<)?f(?:32|64)\b/g)) both(x, "", g[1]);
+      // 无符号 64 位（摘要一类，可以大过 Long）⇒ Kotlin 的 Long 照位存、写回照无符号；记成 `u:格名`。
+      for (const g of m[2].matchAll(/(\w+): (?:Option<)?(?:Vec<)?u64\b/g)) both(x, "u:", g[1]);
+      // 32 位以内的整数（Rust 那头装不下更大的）⇒ Kotlin 的 Int；记成 `i:格名`。
+      for (const g of m[2].matchAll(/(\w+): (?:Option<)?(?:Vec<)?[ui](?:8|16|32)\b/g)) both(x, "i:", g[1]);
+      for (const g of m[2].matchAll(/#\[serde\(flatten\)\][\s\S]*?(?<![\w])\w+: (?:[\w:]+::)?(\w+)/g)) x.flat.push(g[1]);
+      own.set(m[1], x);
+    }
+  }
   const all = (name, seen = new Set()) => {
     const x = own.get(name);
     if (!x || seen.has(name)) return new Set();
