@@ -1,7 +1,7 @@
 /**
  * **活卡**：壳交来的成品照画（会话流 `session-live-card`，一格 = 那台某会话某运行此刻整份的卡，或某张卡只换了正文的尾巴）。
- * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁在后端（`src/backend/stream/live.rs`）；一帧一帧折好在端核心
- * （`src/comms/resident-client/live.rs`，壳与手机核心同一份）。这里不认 `op`、不对号：整份一格换掉那一处手上那一份；
+ * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁在后端（`src/backend/stream/live.rs`）；一帧一帧折好在共享核心
+ * （`src/common/face-core/src/live.rs`，壳与手机核心同一份）。这里不认 `op`、不对号：整份一格换掉那一处手上那一份；
  * 尾巴一格把那张卡的正文前 `keep` 块原样留着（同一批对象）、后面换成交来的那几块 —— 画法照对象认哪几块没变。
  *
  * {@link LiveCards} 把每个 tab 此刻的卡画到它流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
@@ -15,7 +15,7 @@ import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayloa
 import type { RunInfo } from "./generated/RunInfo";
 import { RunBoard, type RunTable } from "./runs";
 
-/** 一张活卡此刻的样子（给视图 / 判据读）：头一行与正文是端核心折卡时写好的（`resident-client` 的活卡板），这里照摆、不按块的种类取字。 */
+/** 一张活卡此刻的样子（给视图 / 判据读）：头一行与正文是共享核心折卡时写好的（`face-core` 的活卡板），这里照摆、不按块的种类取字。 */
 export interface LiveCardState {
   key: string;
   messageId: string;

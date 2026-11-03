@@ -6,9 +6,11 @@
 //! 与头底下那几句（读不动几份 · 只按标题的那几家）也在这里写一次。
 
 use cmd_wire::cells::Words;
-use cmd_wire::search::{sort_by_recency, HistorySearchReply, Merged, MergedRow, SearchDown};
+use cmd_wire::search::{HistorySearchReply, Merged, MergedRow, SearchDown};
 use cmd_wire::Machine;
 use copy_core::copy_text;
+
+use crate::column::merge_by;
 
 /// `q` 是搜的那个词（结果头那一句里说它），`answered` 照台的先后（每台 `(名字, 它答回来的那一份)`），
 /// `down` 是没答上的那几台（原样带上）。纯计算：不读盘、不起进程、不看钟。
@@ -18,7 +20,7 @@ pub fn merge(
     answered: Vec<(Machine, HistorySearchReply)>,
     down: Vec<SearchDown>,
 ) -> Merged {
-    let mut sessions: Vec<MergedRow> = Vec::new();
+    let mut per_host: Vec<Vec<MergedRow>> = Vec::new();
     let mut total_hits: u64 = 0;
     let mut truncated = false;
     let mut unreadable = 0usize;
@@ -30,20 +32,27 @@ pub fn merge(
                 skipped.push(s);
             }
         }
+        let mut rows: Vec<MergedRow> = Vec::with_capacity(reply.sessions.len());
         for row in reply.sessions {
             total_hits = total_hits
                 .saturating_add(row.row.hits.len() as u64)
                 .saturating_add(u64::from(row.row.more_hits));
             truncated |= row.row.hits_truncated;
-            sessions.push(MergedRow {
+            rows.push(MergedRow {
                 reveal: false,
                 delete_ask: Words::default(),
                 row,
                 origin: machine.clone(),
             });
         }
+        per_host.push(rows);
     }
-    sort_by_recency(&mut sessions, |r| r.row.row.updated_at);
+    // 几台并一列：历史页 · 手机会话屏同一条并法（各台的行由那台照最近优先排好）。
+    let lists: Vec<&[MergedRow]> = per_host.iter().map(Vec::as_slice).collect();
+    let sessions: Vec<MergedRow> = merge_by(&lists, |r| r.row.row.updated_at)
+        .into_iter()
+        .cloned()
+        .collect();
     let session_count = sessions.len();
     let (n, m) = (total_hits.to_string(), session_count.to_string());
     let summary = if truncated {

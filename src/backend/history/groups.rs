@@ -511,7 +511,7 @@ pub(crate) fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) ->
             let face = if seen {
                 m.face.clone()
             } else {
-                resident_client::book::unseen(Words(comms_inward::chan::said::offline(
+                face_core::book::unseen(Words(comms_inward::chan::said::offline(
                     &origin.to_string(),
                 )))
             };

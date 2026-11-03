@@ -29,7 +29,7 @@ const { backendPool, settledAs } = (await import(POOL)) as {
  * 认别的帧（如 `state`）⇒ 永远等不到，每个带收场的场景等满上限。帧照壳会话簿金样里那几条离开的会话（真线上那一形）。
  */
 describe("收场认得出裁出来的那一帧", () => {
-  const book = JSON.parse(readFileSync(path.join(__dirname, "../comms/resident-client/book.golden.json"), "utf8")) as { left: Record<string, unknown>; live: Record<string, unknown> };
+  const book = JSON.parse(readFileSync(path.join(__dirname, "../common/face-core/book.golden.json"), "utf8")) as { left: Record<string, unknown>; live: Record<string, unknown> };
   it("left 帧 ⇒ 那条会话 · 去向", () => {
     expect(Object.values(book.left).map((left) => settledAs({ left }))).toEqual([
       { sid: "b", fate: "reconnectable" },

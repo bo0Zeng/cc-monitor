@@ -10,7 +10,7 @@
 //!
 //! - 问的是那台**热着的常驻**（`--resident-call`）：那台扫过的清单缓存与这一问的备忘都在它那里；
 //!   那台常驻不在 ⇒ 照实失败（`resident_absent`），不在那台起一个冷进程顶上。
-//! - 副本表是端核心那一份（`resident_client::listing_copy`，手机核心同一份）；本机后端把它落在数据目录底下
+//! - 副本表是共享核心那一份（`face_core::listing_copy`，手机核心同一份）；本机后端把它落在数据目录底下
 //!   `cache/remote-listing/<机器>.json`（缓存：读不懂当没有、不迁移），重启后头一问带盘上那份的记号；
 //!   不按时间过期（这一层不看钟）：历史页开页 · 刷新带 `fresh` 才同步。
 //! - 等多久只归发起方：`history-list` · `history-browse` 那一发交来的截止时刻（请求信封 `within_ms`）原样往下带（本机等它、那台 `--resident-call --within-ms` 也等它）；
@@ -109,8 +109,8 @@ pub(crate) fn answer_with(
 
 // ───────────────────────── 本机后端怎么取、怎么存 ─────────────────────────
 
-use resident_client::listing_copy::{Ask, Shelf};
-pub(crate) use resident_client::listing_copy::{Copies, Kept};
+use face_core::listing_copy::{Ask, Shelf};
+pub(crate) use face_core::listing_copy::{Copies, Kept};
 
 /// 那一台手上那份（生产：本进程的副本表）。
 pub(crate) fn kept(machine: &str) -> Kept {
@@ -162,7 +162,7 @@ fn copy_at(own: &Own, machine: &str) -> Option<(Vec<OwnPath>, OwnPath)> {
         let next = dirs.last()?.join(seg).ok()?;
         dirs.push(next);
     }
-    let name = format!("{}.json", resident_client::listing_copy::file_stem(machine));
+    let name = format!("{}.json", face_core::listing_copy::file_stem(machine));
     let file = dirs.last()?.join(&name).ok()?;
     Some((dirs, file))
 }

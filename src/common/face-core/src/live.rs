@@ -351,5 +351,5 @@ impl Board {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/comms/resident-client/live_tests.rs"]
+#[path = "../../../../tests/common/face-core/live_tests.rs"]
 mod tests;

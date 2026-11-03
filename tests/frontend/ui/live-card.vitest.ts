@@ -2,7 +2,7 @@
  * 活卡的判据（界面那一半：照壳交来的整份或尾巴画；同一张卡逐帧复用节点、正文前面没变的块不动、只重建尾巴）。
  *
  * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁都在后端（`src/backend/stream/live.rs`，判据 `tests/backend/stream/live_tests.rs`）；
- * 一帧一帧折好在端核心（`src/comms/resident-client/live.rs`，判据 `tests/comms/resident-client/live_tests.rs`）。
+ * 一帧一帧折好在共享核心（`src/common/face-core/src/live.rs`，判据 `tests/common/face-core/live_tests.rs`）。
  * 这里只钉：整份照画；尾巴接在那张卡前 `keep` 块后面；空的一格 ⇒ 那一处撤；没这个 tab ⇒ 不留；主 tab 只画主运行；那台看不见了 ⇒ 全撤。
  * T8：活卡那一路怎么来、怎么断，都不碰记录那条对的路（真 TabManager，记录建出的 DOM 逐字相等）。
  */

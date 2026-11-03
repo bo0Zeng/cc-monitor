@@ -37,18 +37,18 @@ fn listed(o: &str) -> In {
 }
 
 /// ★ 同一串帧喂桌面与手机，两端拿到的会话簿逐格相同、出自同一个函数：壳这一侧照分派那一路（会话帧原样交 `In::Told`）喂夹具那一串，
-/// 那台那一本就是端核心对着的那一份 golden（手机核心那一侧的判据对着同一份，`mobcore::resident`）。
+/// 那台那一本就是共享核心对着的那一份 golden（手机核心那一侧的判据对着同一份，`mobcore::resident`）。
 #[test]
 fn the_shared_frames_fold_into_the_same_book_the_phone_gets() {
     let mut b = Book::default();
-    for line in include_str!("../../comms/resident-client/book-frames.jsonl").lines() {
+    for line in include_str!("../../common/face-core/book-frames.jsonl").lines() {
         let frame: crate::stream_source::Frame =
             cmd_wire::frame::decode(line).expect("夹具每一行是一帧");
         b.step(told("pi", frame));
     }
     let got = serde_json::to_value(b.of("pi").expect("那台那一本")).unwrap();
     let want: serde_json::Value =
-        serde_json::from_str(include_str!("../../comms/resident-client/book.golden.json")).unwrap();
+        serde_json::from_str(include_str!("../../common/face-core/book.golden.json")).unwrap();
     assert_eq!(got, want);
 }
 

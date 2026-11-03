@@ -9,7 +9,7 @@
 //! - 版本号：那台 hello 自报的那一格（`version`；没带 ⇒ 空）。
 //! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `main.rs` 接上）：
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
-//!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（端核心的会话簿）。
+//!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（共享核心的会话簿）。
 //!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
 //! - 在看名单：每台一张名单台（[`Desk`]，随这个进程一直留着，那台换连接重报）；连着本机后端的各条流报那台的名单
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
@@ -18,7 +18,7 @@ use crate::wire::Frame;
 use cmd_wire::frame::Relayed;
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
-use resident_client::book::SessionBook;
+use face_core::book::SessionBook;
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -199,7 +199,7 @@ struct Seen {
     attached: bool,
     /// 那台 hello 自报的版本号（最近一次接上的那一份）。
     version: Option<String>,
-    /// 那台说过的会话（端核心的会话簿，只折 `session_*` 那几种）：随这一台的 feed 活着，换连接不丢 ——
+    /// 那台说过的会话（共享核心的会话簿，只折 `session_*` 那几种）：随这一台的 feed 活着，换连接不丢 ——
     /// 断的那一刻照它说哪几条说不清（[`unclear_now`]），重连之后那台重报的帧把它们一条条换掉。
     book: SessionBook,
 }
