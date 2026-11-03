@@ -27180,9 +27180,9 @@
     "beRotation.hint.old": {
       "kind": "body",
       "role": "说明",
-      "zh": "需手动 · {n} 份旧格式的策略未加载",
+      "zh": "需手动 · {n} 份旧格式的策略没有加载",
       "args": ["n"],
-      "waive": {"C-W11": "用户定的句子（轮换的提示表）"}
+      "waive": {"C-W11": "用户定的句子（轮换的提示表）", "C-W17": "用户定的句子（轮换的提示表）"}
     },
     "beRotation.hint.words": {
       "kind": "body",
