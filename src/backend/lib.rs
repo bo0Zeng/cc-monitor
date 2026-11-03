@@ -60,7 +60,10 @@ use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 �
 #[cfg(test)]
 #[path = "../../tests/backend/common/cross_tests.rs"]
 mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）
-mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
+use backend_control as control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划（独立的包 `backend-control`：只引资产 · 账号域 · agents · 拨号 · 历史清单 · 宿主口 · 诊断文件 · 帧面零件 · 纯工具 · 平台十层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/control.rs"]
+mod cross_control; // 控制面判据里引到上层的那几条（那一层是独立的包、够不到上层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/dial.rs"]
 mod cross_dial; // 拨号那一侧判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -88,7 +91,10 @@ use backend_history::lineage; // 会话血缘：谁起的谁（中转那一处�
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
-mod observe; // U3：观测面 —— 读，不改变世界
+use backend_observe as observe; // U3：观测面 —— 读，不改变世界（独立的包 `backend-observe`：只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/observe.rs"]
+mod cross_observe; // 观测面判据里引到上层的那几条（那一层是独立的包、够不到上层）
 mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
 use backend_platform as platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线；独立的包 `backend-platform`）
 #[cfg(test)]
