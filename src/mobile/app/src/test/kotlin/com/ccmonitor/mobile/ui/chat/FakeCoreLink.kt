@@ -383,7 +383,7 @@ internal fun liveSeat(
     face: SessionFace,
     path: String? = null,
     cwd: String? = null,
-) = SessionAdded(sid = sid, agentKind = "claude", cwd = cwd, path = path, face = face, pid = 0, label = sid)
+) = SessionAdded(sid = sid, agentKind = "claude", cwd = cwd, path = path, face = face, pid = 0, label = sid, title = sid)
 
 /** 簿里走了的一条（可重连那一种；测试只看脸）。 */
 internal fun leftSeat(
