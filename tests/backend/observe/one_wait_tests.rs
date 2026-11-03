@@ -130,14 +130,18 @@ fn a_rewritten_record_is_reread_from_the_start() {
     assert!(got, "换过的那份里有摘要，没认出来");
 }
 
-/// 一次性等待的期限只由发起方给：后端里每一处等（`.within(`）登记在这里，交的都是请求里那一格（换号重启：`compact_within_ms`）。
+/// 一次性等待的期限只由发起方给：后端里每一处等（`.within(`）登记在这里，交的都是请求里那一格（换号重启：`compact_within_ms`），
+/// 或原样转交上一层给的那个数（帧面宿主壳把本体的 `Wait` 接到观测面的 `Armed`：`ms` 就是本体交的那一格）。
 /// 多一处 · 交了别的（自定的常量）⇒ 红。
 #[test]
 fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
-    const WAITS: &[(&str, &str)] = &[(
-        "control/session_restart.rs",
-        ".within(req.compact_within_ms)",
-    )];
+    const WAITS: &[(&str, &str)] = &[
+        (
+            "control/session_restart.rs",
+            ".within(req.compact_within_ms)",
+        ),
+        ("faces/session_restart_face.rs", ".within(ms)"),
+    ];
     let root = guard_core::addr::backend_src_root();
     let mut seen = Vec::new();
     for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

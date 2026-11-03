@@ -252,6 +252,10 @@ fn stopping_cancels_the_files_not_yet_sent() {
 }
 
 #[test]
+#[expect(
+    clippy::type_complexity,
+    reason = "进度那几格照回调的类型记，另起类型名只为过这条提示"
+)]
 fn progress_counts_bytes_across_the_group_and_moves_inside_a_file() {
     let (a, b) = rig("bytes");
     let t = format!("tc-bytes-{}", std::process::id());
@@ -325,6 +329,10 @@ impl RigBackend {
     }
 
     /// 问完：台架上的文件盘上没了的删掉，回包里那个落点（建出来的目录 · 提交落地的文件）照盘上补进台架。
+    #[expect(
+        clippy::wrong_self_convention,
+        reason = "「照盘上补进台架」读作从盘上来，改的是台架自己"
+    )]
     fn from_disk(&self, landed: Option<&str>) {
         let mut g = self.fs.lock().unwrap();
         let disk = &self.disk;
@@ -362,7 +370,7 @@ impl RigBackend {
                     &face,
                     &self.disk,
                     take::<cwf::FilesCommitUploadReq>(args)?,
-                    &crate::Tz::default(),
+                    &crate::common::time::Tz::default(),
                 )
                 .map_err(|e| e.flat())?,
             )
@@ -457,7 +465,7 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
                 fa,
                 fb,
                 serde_json::json!({}),
-                crate::Tz::default(),
+                crate::common::time::Tz::default(),
                 &here,
                 Box::new(back.clone()),
             ))

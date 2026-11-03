@@ -22,8 +22,6 @@ fn record_lines(turn: &str) -> String {
 }
 
 struct Rig {
-    /// 打标那一跳走假 tmux（不往跑测试那个终端所在的真 tmux 上打标）。
-    _iso: crate::control::identity_tag::door::Isolated,
     dir: PathBuf,
     record: PathBuf,
     state: ReaderState,
@@ -33,7 +31,6 @@ struct Rig {
 
 /// 记录树那一家的根（空）＋ Codex 那一家的根（判活认写者），一份造好的 rollout。
 fn rig(tag: &str) -> Rig {
-    let iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-wr-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let sessions = dir.join("codex").join("sessions");
@@ -46,7 +43,8 @@ fn rig(tag: &str) -> Rig {
         .join(format!("rollout-2026-10-10T00-00-00-{SID}.jsonl"));
     std::fs::write(&record, record_lines("t1")).unwrap();
     let mut state = ReaderState::new(dir.join("projects"));
-    state.tag = crate::control::identity_tag::tag_seen; // 金样里带打标回的容器（落假 tmux）
+    // 金样里带打标回的容器：写者的环境里没有 tmux 那两格 ⇒ 控制面打标那一手答「不在 tmux 里」，这里用它的替身。
+    state.tag = super::tests::no_terminal_host;
     let kind = crate::agents::codex::AGENT_KIND;
     state.follow(&crate::agents::Followed {
         kind,
@@ -56,7 +54,6 @@ fn rig(tag: &str) -> Rig {
     });
     let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     Rig {
-        _iso: iso,
         dir,
         record,
         state,
@@ -338,9 +335,7 @@ fn the_codex_sample_walks_into_the_golden_frames() {
         .collect();
     gone(w);
     std::fs::remove_dir_all(&r.dir).ok();
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(CODEX_STREAM_GOLDEN);
+    let path = guard_core::addr::repo_root().join(CODEX_STREAM_GOLDEN);
     if std::env::var_os("REGOLD_CODEX_STREAM").is_some() {
         std::fs::write(&path, &produced).expect("写金样");
     }

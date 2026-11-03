@@ -3,4 +3,4 @@
 /**
  * 失败信封里按码定形的 `data`（`account_unavailable` 那一形是 [`la::AccountUnavailable`]，与起会话那几条同一份）。
  */
-export type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
+export type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped?: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };

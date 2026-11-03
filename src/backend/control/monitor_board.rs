@@ -14,7 +14,7 @@ use face_core::book::SessionBook;
 use std::collections::BTreeMap;
 
 /// 问到的那几条里这台认得的写成行（照请求先后）：序与活不活照这台发出去的那张脸，`running` 照这台运行簿。
-pub(crate) fn rows_here(
+pub fn rows_here(
     sids: &[String],
     book: &SessionBook,
     running: &dyn Fn(&str) -> usize,
@@ -35,14 +35,14 @@ pub(crate) fn rows_here(
 }
 
 /// 一台叫什么 · 离线时那一句（取自那台的机器成品：`name` · `offline_said`）。
-pub(crate) struct Called {
-    pub(crate) name: String,
-    pub(crate) offline: String,
+pub struct Called {
+    pub name: String,
+    pub offline: String,
 }
 
 /// 各台的结局合成一份。`asked` ＝ 请求里那几条（台 · sid，照界面列的先后）；`got` ＝ 每台答的那份（没答 ⇒ `None`）；
 /// `table` ＝ 机器表里各台的名字（照表的序）；`called` ＝ 各台成品里的名字与离线那一句（键 ＝ 台）。
-pub(crate) fn merge(
+pub fn merge(
     asked: &[(Machine, String)],
     got: Vec<(Machine, Option<MonitorHere>)>,
     table: &[String],

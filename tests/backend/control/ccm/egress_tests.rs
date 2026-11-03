@@ -59,7 +59,7 @@ fn launch_from(
     };
     let mut e = env(relay);
     e.inherited_base_url = base.map(str::to_string);
-    let mut p = plan::build(&o, &e, &plan::tests::no_library, None).expect("算得出计划");
+    let mut p = plan::build(&o, &e, &plan::test_support::no_library, None).expect("算得出计划");
     let get = |k: &str| {
         vars.iter()
             .find(|(n, _)| *n == k)

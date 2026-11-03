@@ -125,7 +125,7 @@ fn locked(
             ))
         })?;
     }
-    let held = own.lock(&dir).map_err(|e| io(Said::from(e).said))?;
+    let held = own.lock(&dir).map_err(|e| io(e.said))?;
     Ok((dir, held))
 }
 

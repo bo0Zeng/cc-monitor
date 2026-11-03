@@ -66,6 +66,14 @@ const SUPPORT: &[&str] = &[
     "tests/backend/cross/wire.rs",          // 只挂帧面零件那几条上层判据，自己没有测试
     "tests/backend/cross/dial.rs",          // 只挂拨号那一侧几条上层判据，自己没有测试
     "tests/backend/cross/host.rs",          // 只挂宿主口与 ccm 行那几条上层判据，自己没有测试
+    "tests/backend/cross/observe.rs",       // 只挂观测面那几条上层判据，自己没有测试
+    "tests/backend/cross/control.rs",       // 只挂控制面那几条上层判据，自己没有测试
+    "tests/backend/observe/watcher_support.rs", // 跟读的判据夹具：本包与上层判据经 `test-support` 共用
+    "tests/backend/observe/recognize/index_row_support.rs", // 从原文起的骨架索引行：本包与上层判据经 `test-support` 共用
+    "tests/backend/observe/query/body_support.rs", // 照记录树那一家读一页成品：本包与上层判据经 `test-support` 共用
+    "tests/backend/platform/proc_support.rs", // 等子进程环境读得到的 `sleep` 夹具：平台层的包与上层测试档经 `test-support` 共用
+    "tests/backend/control/ccm/plan_support.rs", // 计划判据的无库造法（直接用线上类型造）：本包与上层判据经 `test-support` 共用
+    "tests/backend/control/launch_render/ccm_invocation_support.rs", // ccm 调用的字节表 · 拆词：本包与上层判据经 `test-support` 共用
     "tests/backend/ccm_line/argv_support.rs", // ccm 行的拆分夹具（混写的一行拆成两半 · 只解析不校验）：本包与上层判据经 `test-support` 共用
     "tests/backend/host/run_support.rs", // 托管终端的沙箱夹具：本包与上层判据经 `test-support` 共用
     "tests/backend/history/history_list_support.rs", // 这台记录树的串行锁：历史清单的包与上层判据经 `test-support` 共用
@@ -239,7 +247,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/control/exit_policy_tests.rs",
         "wire_child",
-        Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
+        Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "exit_policy::tests::wire_child" },
     ),
     (
         "tests/backend/test_home_tests.rs",
@@ -289,12 +297,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
         "history_resume_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "control::launch_render::history_resume_e2e::history_resume_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "cross_control::history_resume_e2e::history_resume_child_entry_point" },
     ),
     (
         "tests/backend/control/ccm/launch_note_e2e_tests.rs",
         "launch_note_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "control::ccm::launch_note_e2e::launch_note_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "cross_control::launch_note_e2e::launch_note_child_entry_point" },
     ),
     (
         "tests/backend/platform/shell/dialect_tests.rs",
@@ -1101,6 +1109,7 @@ fn module_path(
         "src/backend/agents/",
         "src/backend/relay/",
         "src/backend/stderr_log/",
+        "src/backend/control/",
         "src/backend/test-meters/",
         "src/backend/",
     ];

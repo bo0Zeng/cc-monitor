@@ -15,13 +15,13 @@ use std::time::Duration;
 
 /// stdin 上限（兜 DoS，不是兜格式）。超限是拒收，不是截断：
 /// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
-pub(crate) const MAX_CLI_STDIN: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_CLI_STDIN: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 1024 * 1024,
     over: relay_route_core::Over::Reject,
 };
 
 /// 「只读一行 stdin」那个修饰词住 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
-pub(crate) use crate::wire::cli_words::STDIN_LINE_FLAG;
+pub use crate::wire::cli_words::STDIN_LINE_FLAG;
 
 /// argv 形载荷口 [`crate::wire::cli_words::ARGS_B64_FLAG`] 的值（base64 编码后）的上限。
 ///
@@ -30,7 +30,7 @@ pub(crate) use crate::wire::cli_words::STDIN_LINE_FLAG;
 /// 超过系统那一道，本后端根本起不来（exec 回 E2BIG，调用方看到的是 shell / sshd 那一层的错），轮不到这里回码 ——
 /// 所以这道放在系统那一道**之内**：系统放得进来、这里嫌大的，回 `args_too_large`。4 的倍数：刚好到上限的合法 base64 不被拒。
 /// 要交更大的载荷走 stdin（[`MAX_CLI_STDIN`]）。
-pub(crate) const MAX_ARGS_B64_LEN: relay_route_core::Cap = relay_route_core::Cap {
+pub const MAX_ARGS_B64_LEN: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 131_068,
     over: relay_route_core::Over::Reject,
 };
@@ -44,7 +44,7 @@ pub(crate) const MAX_ARGS_B64_LEN: relay_route_core::Cap = relay_route_core::Cap
     clippy::disallowed_methods,
     reason = "CLI 面读入参的静默窗（`cli_args::STDIN_QUIET`）：只交给那一次有界等待"
 )]
-pub(crate) const STDIN_QUIET: Duration = Duration::from_millis(1000);
+pub const STDIN_QUIET: Duration = Duration::from_millis(1000);
 
 /// 入参从哪个口来：argv 上的修饰词决定，**位置无关**（同 [`crate::wire::cli_words::TEXT_FLAG`]）。
 #[derive(Debug, PartialEq, Eq)]
@@ -53,7 +53,7 @@ enum Source<'a> {
     Argv(&'a str),
 }
 
-pub(crate) fn bad_args(why: &str) -> crate::common::said::Said {
+pub fn bad_args(why: &str) -> crate::common::said::Said {
     crate::common::said::Said::new("bad_args", contract::malformed(why))
 }
 
@@ -167,7 +167,7 @@ fn read_stdin_within<R: Read + Send + 'static>(
 }
 
 /// **读入参的唯一一处**：`opts` 是子命令之后的那些词，`stdin` 是进程的 stdin（测试喂替身）。回那段 JSON 的原文（空 ＝ 没给）。
-pub(crate) fn read_args<R: Read + Send + 'static>(
+pub fn read_args<R: Read + Send + 'static>(
     opts: &[String],
     stdin: R,
     quiet: Duration,
@@ -180,7 +180,7 @@ pub(crate) fn read_args<R: Read + Send + 'static>(
 
 /// 读入参那一段（可喂任意读端 —— 生产交进程的 stdin）。`one_line` ⇒ 读到第一个换行就停，**不再多要一个字节**
 /// （调用方的 stdin 可能永远不关）；否则读到 EOF。两形同一个上限、同一种拒法。
-pub(crate) fn read_input<R: std::io::BufRead>(
+pub fn read_input<R: std::io::BufRead>(
     r: R,
     one_line: bool,
 ) -> Result<String, crate::common::said::Said> {
@@ -216,7 +216,7 @@ pub(crate) fn read_input<R: std::io::BufRead>(
 
 /// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；
 /// 值的读法与帧面信封那一格同一处（[`crate::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
-pub(crate) fn within_of(opts: &[String]) -> Result<Option<u64>, crate::common::said::Said> {
+pub fn within_of(opts: &[String]) -> Result<Option<u64>, crate::common::said::Said> {
     let mut seen: Option<Option<u64>> = None;
     let mut i = 0;
     while i < opts.len() {

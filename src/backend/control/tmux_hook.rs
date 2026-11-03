@@ -8,7 +8,7 @@
 //! └─> <backend exe> --tmux-notify <backend_pid> <backend_starttime>
 //! ├─ 读 /proc/<pid>/stat 校验 starttime 相符（挡 PID 复用误伤无关进程）
 //! └─ kill(pid, SIGUSR1)
-//! backend: SIGUSR1 流（main.rs）
+//! backend: SIGUSR1 流（stream/entry.rs）
 //! └─> WatcherPoke::poke() ⇒ 往统一 channel 发一拍 ⇒ 立刻重探
 //! ```
 //!
@@ -31,7 +31,7 @@ pub(crate) const HOOK_SLOT_COUNT: u32 = 50;
 
 /// 装哪几个 hook。`session-renamed` 也要 —— 名字是 monitor 侧查表的键，
 /// 改名不通知的话下一次差分会把它误判成「一个消失了、一个新出现」。
-pub(crate) const HOOK_EVENTS: [&str; 3] = ["session-created", "session-closed", "session-renamed"];
+pub const HOOK_EVENTS: [&str; 3] = ["session-created", "session-closed", "session-renamed"];
 
 /// POSIX 单引号包裹。**只用于我们自己产生的路径/数字**（exe 路径、pid、starttime），
 /// 不用于任何来自 tmux 或用户的字符串 —— 那条路本设计里根本不存在（见模块头注）。
@@ -87,7 +87,7 @@ pub(crate) fn hook_show_args(event: &str) -> Vec<String> {
     vec!["show-hooks".into(), "-g".into(), event.into()]
 }
 
-/// 载荷里认「这是一个 ccm 后端装的 hook」的那个旗标 —— 与 `main.rs` 分派的那一臂同一个字。
+/// 载荷里认「这是一个 ccm 后端装的 hook」的那个旗标 —— 与一次性子命令表（`stream/oneshot.rs`）分派的那一臂同一个字。
 const NOTIFY_FLAG: &str = "--tmux-notify";
 
 /// 一格里住着谁。
@@ -143,7 +143,7 @@ pub(crate) type Board = BTreeMap<(usize, u32), Occupant>;
 
 /// 一次装之前要做的事（纯函数 [`plan`] 的产物）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Plan {
+pub struct Plan {
     /// 要摘的格：段内、载荷认得出、那个后端已经不在了（死槽），以及**自己**落在别的格里的旧条目。
     pub(crate) unset: Vec<(usize, u32)>,
     /// 自己该装进的那一格。`None` = 段里一格都挑不出来。
@@ -273,7 +273,7 @@ pub(crate) fn install_hooks(exe: &Path, pid: u32, starttime: u64) -> usize {
     install_hooks_with(&mut run_tmux, exe, pid, starttime, &backend_alive)
 }
 
-/// P4b：给当前 tmux server 装通知 hook（观测侧看见 server 起来了就调它：`observe::watcher::Reactions::tmux_server_up`，由 `main.rs` 接上）。**尽力而为**：拿不到自己的 exe 路径 /
+/// P4b：给当前 tmux server 装通知 hook（观测侧看见 server 起来了就调它：`observe::watcher::Reactions::tmux_server_up`，由 `stream/entry.rs` 接上）。**尽力而为**：拿不到自己的 exe 路径 /
 /// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
 ///
 /// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，

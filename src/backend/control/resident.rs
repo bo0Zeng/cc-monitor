@@ -62,7 +62,7 @@ fn data_home() -> Option<PathBuf> {
     )
 }
 
-/// 这台的家（给 `main.rs` 记「谁在听」、升级那一跳用）。
+/// 这台的家（给入口 `stream/entry.rs` 记「谁在听」、升级那一跳用）。
 pub fn here() -> Option<PathBuf> {
     data_home()
 }
@@ -91,9 +91,9 @@ fn fail(cmd: &str, code: &str, said: impl Into<copy_core::said::Said>) -> i32 {
     crate::wire::detail::emit_err(cmd, code, said)
 }
 
-/// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
-/// （本层不许伸手进 `relay/`，`layering_guard`）。
-pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 {
+/// `--resident-ensure [--replace]`。`hosted`：[`ensure`] 备好的额外环境 —— 中转口 · 诊断文件那两格
+/// （控制面不引中转宿主那一包）。
+pub(crate) fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 {
     let (Some(home), Some(dh)) = (home(), data_home()) else {
         return fail(ENSURE, "no_home", copy_text("beResident.home.missing", &[]));
     };
@@ -186,7 +186,7 @@ const FRAME_LINE_CAP: Cap = Cap {
 };
 
 /// `--resident-call`：问这台的常驻一条帧命令（头注）。
-pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
+pub async fn call(args: &[String], tz: &crate::common::time::Tz) -> i32 {
     let refuse = |code: &str, said: String| {
         crate::wire::detail::emit_to(
             &crate::wire::detail::failed(Some(CALL), code, said, None, None),
@@ -237,11 +237,11 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
 
 /// [`call_at`]，同时看发起方还在不在：`gone` 先交回（发起方走了：ssh 断开）⇒ 不再等那台常驻、交回 `None`
 /// （答了也没人收；不攥着一条常驻连接空等到期限）。
-pub(crate) async fn call_while(
+pub async fn call_while(
     data_home: &Path,
     asked: &crate::wire::listen::ResidentCall,
     within_ms: Option<u64>,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     total: Deadline,
     gone: impl std::future::Future<Output = ()>,
 ) -> Option<Result<serde_json::Value, crate::wire::detail::Failed>> {
@@ -254,9 +254,10 @@ pub(crate) async fn call_while(
 /// 发起方走了：`out`（本进程 stdout 的一份）那根管子 · 套接字的读端没人了 —— ssh 断开后 sshd 关掉的就是它。
 /// 只看内核报的错误态（`EPOLLERR`），不写、不轮询、零定时器。注册不进（终端以外的普通文件 · 不是 unix）⇒ 永不交回，只剩期限那一处收场。
 #[cfg(unix)]
-pub(crate) async fn stdout_gone(out: std::os::fd::OwnedFd) {
+pub async fn stdout_gone(out: std::os::fd::OwnedFd) {
     use tokio::io::{unix::AsyncFd, Interest};
-    match AsyncFd::with_interest(out, Interest::ERROR) {
+    // SAFETY：`out` 是本函数独占的那一份 `OwnedFd`，交给 `AsyncFd` 之后由它持有到注销；`as_raw_fd` 回的就是它自己那个描述符。
+    match unsafe { AsyncFd::register_with_interest(out, Interest::ERROR) } {
         Ok(fd) => {
             if fd.ready(Interest::ERROR).await.is_ok() {
                 return;
@@ -301,7 +302,7 @@ pub(crate) async fn call_at(
     data_home: &Path,
     asked: &crate::wire::listen::ResidentCall,
     within_ms: Option<u64>,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     total: Deadline,
 ) -> Result<serde_json::Value, crate::wire::detail::Failed> {
     let peer = copy_core::peer_machine();
@@ -375,7 +376,7 @@ pub(crate) enum Unreached {
 
 impl Here {
     /// 连这台家里的套接字、握手。
-    pub(crate) async fn open(data_home: &Path) -> Result<Here, Unreached> {
+    pub async fn open(data_home: &Path) -> Result<Here, Unreached> {
         use cmd_wire::attach::{AttachLine, AttachReply};
         let sock = own_chan::connect(&relay_route_core::listen_socket_for(data_home))
             .await
@@ -599,7 +600,7 @@ fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
 }
 
 /// 子进程的环境：常驻开关 · 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。纯函数，判据钉它。
-pub(crate) fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
+pub fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
     let mut env = vec![(crate::wire::listen::ENV_RESIDENT.into(), "1".into())];
     env.extend(hosted.iter().map(|(k, v)| {
         let v = crate::platform::paths::expand_tilde_from(v, Some(home));
@@ -767,7 +768,7 @@ fn swap_lock(own: &Own) -> Result<OwnLock, Said> {
     ensure_dir(own, &root)?;
     own.own_dir(&run)?;
     own.own_dir(&swap)?;
-    own.lock(&swap).map_err(Said::from)
+    own.lock(&swap)
 }
 
 /// 按旧版记录停（只剩 [`retire_legacy`]）：先拿进程把手、再核程序路径（pid 会被复用；拿到把手之后信号只打得到它）→ [`finish`]。

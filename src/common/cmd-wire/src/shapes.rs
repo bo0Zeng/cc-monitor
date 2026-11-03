@@ -195,7 +195,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-queue-cancel", "5286ec18"),
     ("session-queue-put", "0fb18ffe"),
     ("session-queue-read", "1114c7b0"),
-    ("session-restart", "b6553026"),
+    ("session-restart", "c5e0688d"),
     ("session-rewind-options", "41410372"),
     ("session-self", "51f6d1ee"),
     ("session-terminals", "e5ffdbdb"),

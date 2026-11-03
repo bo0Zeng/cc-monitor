@@ -14477,7 +14477,7 @@ type LaunchedAccount = { name: string, configDir: string,
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
  */
 model: string | null, };
-type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
+type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped?: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
 type RestartReq = { 
 /**
  * 会话 id。

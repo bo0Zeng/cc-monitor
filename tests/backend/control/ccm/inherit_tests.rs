@@ -175,7 +175,7 @@ fn rows_of(layers: &[(&str, &[&str])], args: &[&str], e: &Env) -> Vec<(String, S
     let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
         panic!("该是起会话")
     };
-    let t = super::tests::no_library;
+    let t = super::test_support::no_library;
     let plan = build(&o, e, &t, None).expect("算得出计划");
     from_rows(&o, &origins, e, &t, &plan)
         .into_iter()
@@ -276,7 +276,7 @@ fn the_from_section_is_comment_lines_only() {
     let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
         panic!("该是起会话")
     };
-    let t = super::tests::no_library;
+    let t = super::test_support::no_library;
     let plan = build(&o, &env(), &t, None).expect("算得出计划");
     let text = render_from(&from_rows(&o, &origins, &env(), &t, &plan));
     // 每一行都是注释（混进那条命令交给 shell 就会被当命令跑）：标题一行 ＋ 四项各一行（值 · 从哪来）。
@@ -392,7 +392,7 @@ fn the_tab_slot_goes_with_the_launch_and_names_its_alias() {
         let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
             panic!("该是起会话")
         };
-        let t = super::tests::no_library;
+        let t = super::test_support::no_library;
         let plan = build(&o, &env(), &t, None).expect("算得出计划");
         let rows = from_rows(&o, &origins, &env(), &t, &plan);
         (plan, rows)
@@ -492,7 +492,7 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
             crate::ccm_line::argv::Parsed::Opts(o) => o,
             _ => panic!("该是起会话"),
         };
-        build(&o, &env(), &super::tests::no_library, None).map_err(|e| e.0)
+        build(&o, &env(), &super::test_support::no_library, None).map_err(|e| e.0)
     };
     let direct = |args: &[&str]| match plan_of(args).expect("算得出计划") {
         Plan::Direct(d) => d,
@@ -645,7 +645,7 @@ fn the_alias_name_goes_with_the_launch() {
         let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
             panic!("该是起会话")
         };
-        build(&o, &env(), &super::tests::no_library, None).expect("算得出计划")
+        build(&o, &env(), &super::test_support::no_library, None).expect("算得出计划")
     };
     let alias_of = |p: &Plan| match p {
         Plan::Direct(d) => d.alias.clone(),

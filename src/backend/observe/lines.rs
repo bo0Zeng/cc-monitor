@@ -4,14 +4,14 @@
 use std::io::{BufRead, Take};
 
 /// 一行行读：`r` 已定位在字节 `from`；[`Lines::upto`] 给了就读到那个字节为止（之后的不读）。
-pub(crate) struct Lines<R> {
+pub struct Lines<R> {
     r: Take<R>,
     end: u64,
     buf: Vec<u8>,
 }
 
 /// 读出来的一行：起点字节 ＋ 连换行在内的原文。
-pub(crate) struct Row<'a> {
+pub struct Row<'a> {
     pub(crate) at: u64,
     /// 连结尾 `\n` 在内（长度就是这一行占的字节数）。
     pub(crate) whole: &'a [u8],
@@ -19,13 +19,13 @@ pub(crate) struct Row<'a> {
 
 impl Row<'_> {
     /// 不含结尾 `\n` 的那一截（`\r` 留着：算不算一行与解析都会去掉它）。
-    pub(crate) fn body(&self) -> &[u8] {
+    pub fn body(&self) -> &[u8] {
         &self.whole[..self.whole.len() - 1]
     }
 }
 
 impl<R: BufRead> Lines<R> {
-    pub(crate) fn new(r: R, from: u64) -> Self {
+    pub fn new(r: R, from: u64) -> Self {
         Lines {
             r: r.take(u64::MAX),
             end: from,
@@ -34,13 +34,17 @@ impl<R: BufRead> Lines<R> {
     }
 
     /// 读到字节 `upto` 为止（不含）。
-    pub(crate) fn upto(mut self, upto: u64) -> Self {
+    pub fn upto(mut self, upto: u64) -> Self {
         self.r.set_limit(upto.saturating_sub(self.end));
         self
     }
 
     /// 下一个完整行；读完了（或只剩半行）⇒ `None`，半行不计进 [`Self::end`]。
-    pub(crate) fn next(&mut self) -> std::io::Result<Option<Row<'_>>> {
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "交出的那一行借着读者自己的缓冲（下一次读就覆盖）、读本身又会出错 ⇒ 套不上 `Iterator::next` 的形状"
+    )]
+    pub fn next(&mut self) -> std::io::Result<Option<Row<'_>>> {
         self.buf.clear();
         let read = self.r.read_until(b'\n', &mut self.buf)?;
         if read == 0 || self.buf.last() != Some(&b'\n') {
@@ -101,16 +105,16 @@ pub(crate) fn counts(line: &[u8]) -> bool {
 }
 
 /// 一行记录解析成 `Value`（去 BOM 与两头空白，同适配层那几问吃的 [`crate::agents::Line`]）。解析不了 ⇒ `None`。
-pub(crate) fn parse(line: &[u8]) -> Option<serde_json::Value> {
+pub fn parse(line: &[u8]) -> Option<serde_json::Value> {
     crate::agents::Line::new(&String::from_utf8_lossy(line), 0).into_value()
 }
 
 /// 尾段那张图（`history-tail` 回包里那一块）＋ 最后一个可计行的起点（记号从它算到 `end`；一行都没有 ⇒ `None`）。
 /// 现数一遍行（查询那一层）与扫描图上切（扫描图那一层）都出它。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Tail {
-    pub(crate) plan: cmd_wire::session::TailPlan,
-    pub(crate) last: Option<u64>,
+pub struct Tail {
+    pub plan: cmd_wire::session::TailPlan,
+    pub last: Option<u64>,
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@
 //!   channel drops the frame rather than ever blocking the notify callback — but
 //!   it **counts** the dropped frames and emits a [`Frame::Overflow`] signal once
 //!   the channel drains (#32)；丢的是行以外的，紧跟着在同一条连接上整份重报一次（[`report_to`]）。
-//! - the **writer** ([`crate::main`]'s stdout task) drains the channel and
+//! - the **writer** (the stdout task of the process entry, `stream/writer.rs::writer_task`) drains the channel and
 //!   writes one wire line per frame. A slow SSH pipe back-pressures the channel
 //!   (the writer awaits on a full pipe), and the bound on the channel means
 //!   that back-pressure stops at the channel — it never reaches the inotify
@@ -286,7 +286,7 @@ pub struct Reactions {
 }
 
 /// 打身份标那一手的形状（[`Reactions::tag`]）。
-pub type Tag = fn(u32, &str) -> (Option<crate::wire::SessionContainer>, bool);
+pub(crate) type Tag = fn(u32, &str) -> (Option<crate::wire::SessionContainer>, bool);
 
 /// 没接上打标的那一手（夹具）：不打、不写。
 fn untagged(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
@@ -426,6 +426,10 @@ pub struct FrameTx {
 }
 
 impl FrameTx {
+    #[expect(
+        clippy::result_large_err,
+        reason = "回的是 tokio 的 `TrySendError<Frame>`：满了要把那一帧原样交还调用方（它定丢不丢、记不记账），装箱只为过这条会多一次分配"
+    )]
     pub fn try_send(&self, frame: Frame) -> Result<(), mpsc::error::TrySendError<Frame>> {
         let n = wire_bytes(&frame);
         if self.held.load(Ordering::Acquire) + n > self.cap {
@@ -473,6 +477,18 @@ fn wire_bytes(frame: &Frame) -> usize {
     serde_json::to_writer(&mut c, frame).map_or(0, |()| c.0)
 }
 
+/// 把 watch 挂到某个目录上，**可重入**：目录没了就翻记账，在就先 `unwatch` 再 `watch`。
+///
+/// # 为什么每个挂点都要这一套
+///
+/// inotify 的 watch 绑在 **inode** 上。本仓 08-13 一天之内在**三处**踩到同一个形状：
+/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（最后一拍）——
+/// 症状都是「目录被删掉再重建之后，那一路的帧永远不来，而且没有任何错误」。
+/// ⇒ 与其每处各写一遍，不如**只有一份**：改一处漏两处正是本仓一路在收的那族。
+///
+/// ⚠ 不做重扫：`sessions/` 那侧需要「挂上顺带把已有 pidfile 过一遍」，那是它**特有**的
+/// （见 `rewatch_sessions`）；`projects/` 的历史由 `process_jsonl` 按 sid 决定要不要读，
+/// 在这里重扫会把**整棵历史**拉一遍 —— 那正是 `P0` 立件时要消灭的行为。
 fn rewatch_dir(
     fs_watch: &mut impl notify::Watcher,
     dir: &Path,
@@ -1011,7 +1027,7 @@ impl WatcherPoke {
     /// `watch` ＝ attach 行带的名单：从那一份此刻的样子起就照它发（没带 ⇒ 全看，等 `stream-watch`）。
     pub fn attach(
         &self,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
         watch: Option<crate::wire::WatchAsk>,
     ) -> (FrameRx, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -1075,7 +1091,7 @@ impl WatchHandle {
 }
 
 /// 这台那一本运行簿（[`spawn`] 记下的；没起 watcher ⇒ `None`）。只读着用：编辑已发的一句发送那一下数「这句之后派出、还在跑的子 agent」。
-pub(crate) fn run_book() -> Option<std::sync::Arc<crate::observe::runs::RunBook>> {
+pub fn run_book() -> Option<std::sync::Arc<crate::observe::runs::RunBook>> {
     RUN_BOOK.get().cloned()
 }
 
@@ -1084,7 +1100,7 @@ static RUN_BOOK: std::sync::OnceLock<std::sync::Arc<crate::observe::runs::RunBoo
 
 /// 这台发出去的会话成品折成的那一本（[`FrameSink`] 扇出那一个出口折，与客户端同一折法 `SessionBook::fold`；没起过发帧口 ⇒ `None`）。
 /// 只读着用：`monitor-board-here` 照它答这台那几条会话的序与活不活。
-pub(crate) fn faces_here() -> Option<std::sync::Arc<std::sync::Mutex<Faces>>> {
+pub fn faces_here() -> Option<std::sync::Arc<std::sync::Mutex<Faces>>> {
     FACES.get().cloned()
 }
 
@@ -1097,7 +1113,7 @@ const FACES_MAX: usize = 4096;
 /// 这台那一本（[`faces_here`]）：只记此刻在场的会话。收场（`session_left`）那一帧就摘，与运行簿收场同一下；
 /// 漏摘的超了 [`FACES_MAX`] ⇒ 先挤最久没动静的那几条（收场的在前），`warn!` 说挤了哪条。
 #[derive(Default)]
-pub(crate) struct Faces {
+pub struct Faces {
     book: SessionBook,
     /// 每条会话最近一次有动静是第几帧。
     touched: HashMap<String, u64>,
@@ -1105,7 +1121,7 @@ pub(crate) struct Faces {
 }
 
 impl Faces {
-    pub(crate) fn book(&self) -> &SessionBook {
+    pub fn book(&self) -> &SessionBook {
         &self.book
     }
 
@@ -1260,7 +1276,7 @@ pub(crate) fn expect_arrival(
 /// **手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
 /// 回（差异，几份 watcher 答了）。增删取各份最大（每份看的是同一台机器），标签写入相加（只有第一份真写），补读行数相加（各份交的是各自的帧）。
 /// 中途退掉的那份丢了 `done` ⇒ 这里不会挂住。
-pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
+pub fn resync(only: Option<&str>) -> (Reconciled, usize) {
     let (tx, rx) = std::sync::mpsc::channel::<Reconciled>();
     let live: Vec<_> = LIVE
         .lock()
@@ -2400,7 +2416,7 @@ pub fn read_new_lines(
 /// 少一截会让 torn-tail 判定把「还没读到的字节」误当成「写了一半」，
 /// 于是游标停在半路且**再也不前进**（下一次又从同一处读起、又差同一截）。
 /// ⚠ 这类错**无声且自洽** —— 所以这里用 `assert!` 而不是 `debug_assert!`。
-pub fn read_new_lines_at(
+pub(crate) fn read_new_lines_at(
     chunk: &[u8],
     chunk_start: u64,
     file_len: u64,
@@ -2420,7 +2436,7 @@ pub fn read_new_lines_at(
 ///
 /// ⚠ 它与 [`read_new_lines_at`] **共用同一段扫描逻辑**（`scan_new_lines`），不是抄一份 ——
 /// torn-tail 延后、`seen_len` 高水位、seq 推进这些语义抄一份迟早漂。
-pub fn count_new_lines_at(
+pub(crate) fn count_new_lines_at(
     chunk: &[u8],
     chunk_start: u64,
     file_len: u64,
@@ -2533,7 +2549,7 @@ fn scan_new_lines(
 /// 取更多只是多读几个字节，取更少（< 36）就可能只落在行尾那几个常见的 `"}` 上。
 /// ⚠ 买不到的（如实登记）：**长度一字不差**的原地改写（只改了已读过的几行里的同长字）⇒ 对得齐、后面照读，
 ///   那几行已经画出去的旧样子不会变（「看的，不是管的」）。
-pub const TAIL_PROBE: u64 = crate::observe::skeleton::WITNESS;
+pub(crate) const TAIL_PROBE: u64 = crate::observe::skeleton::WITNESS;
 
 /// 一次续读前看到的那一份。
 enum Look {
@@ -4170,12 +4186,12 @@ fn arm_then_scan<T>(
 
 /// 一次对齐的差异（`resync` 的应答）。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Reconciled {
-    pub(crate) added: usize,
-    pub(crate) removed: usize,
-    pub(crate) retagged: usize,
+pub struct Reconciled {
+    pub added: usize,
+    pub removed: usize,
+    pub retagged: usize,
     /// 这一趟从游标补读出几行（[`catch_up_session`] 的合计）。
-    pub(crate) caught_up: usize,
+    pub caught_up: usize,
 }
 
 /// 「重新对齐」那一趟的会话部分：对表（与起步同一个 [`reconcile_sessions`]）＋ 每个在跟的会话从游标补读
@@ -4976,7 +4992,7 @@ fn add_time_check(
 }
 
 /// pidfile 目录（一次性扫描问注册表里后端盯着的那一家，`agents::pidfile_dir`）。
-pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
+pub fn pidfile_dir(agent_home: &Path) -> PathBuf {
     crate::agents::pidfile_dir(agent_home)
 }
 
@@ -5040,7 +5056,7 @@ pub(crate) struct Sub {
     id: u64,
     tx: FrameTx,
     /// 这条连接看的那一台的时区（按连接现写的那几帧用）。
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     /// 上一次 `overflow` 之后丢了几行。
     lines_lost: u64,
     /// 上一次 `overflow` 之后丢过行以外的帧（重报才对得上）。
@@ -5176,7 +5192,7 @@ impl FrameSink {
     }
 
     /// 按连接现写的一帧（体按各连接的时区写，如任务清单变了那一帧）：不过会话账本（它只看会话那几帧）。
-    fn send_each(&mut self, make: impl Fn(&crate::Tz) -> Frame) {
+    fn send_each(&mut self, make: impl Fn(&crate::common::time::Tz) -> Frame) {
         for s in &mut self.subs {
             let f = make(&s.tz);
             if s.wants(&f) {
@@ -5293,7 +5309,7 @@ fn row_moved_by(frame: &Frame) -> Option<&str> {
 }
 
 impl Sub {
-    pub(crate) fn new(id: u64, tx: FrameTx, tz: crate::Tz) -> Self {
+    pub(crate) fn new(id: u64, tx: FrameTx, tz: crate::common::time::Tz) -> Self {
         Sub {
             id,
             tx,
@@ -5433,6 +5449,11 @@ fn is_session_json(p: &Path) -> bool {
 fn file_stem_str(p: &Path) -> Option<String> {
     p.file_stem().and_then(|s| s.to_str()).map(str::to_string)
 }
+
+// 判据夹具（不等地取一帧 · 夹具那一份发帧口 · 读者 · 在跑名单的耳朵）：本包的判据与上层判据经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/observe/watcher_support.rs"]
+pub mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_tests.rs"]

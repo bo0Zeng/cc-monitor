@@ -14,9 +14,12 @@ struct Prod {
     files: crate::faces::launch_account_face::Files,
 }
 
-impl Wait for Armed {
+/// 等压缩摘要那一份（观测面的 `Armed`）交给本体：本体的 `Wait` 与观测面的类型各住一个包，接在这一层。
+struct Ears(Armed);
+
+impl Wait for Ears {
     fn within(self, ms: u64) -> impl Future<Output = bool> + Send {
-        Armed::within(self, ms)
+        self.0.within(ms)
     }
 }
 
@@ -29,7 +32,7 @@ async fn joined<T>(h: tokio::task::JoinHandle<T>) -> T {
 }
 
 impl Host for Prod {
-    type Ears = Armed;
+    type Ears = Ears;
 
     fn blocking<T: Send + 'static>(
         &self,
@@ -74,11 +77,12 @@ impl Host for Prod {
         crate::agents::compact_request_of(agent)
     }
 
-    fn watch_compact(&self, sid: &str) -> impl Future<Output = Result<Armed, String>> + Send {
+    fn watch_compact(&self, sid: &str) -> impl Future<Output = Result<Ears, String>> + Send {
         let sid = sid.to_string();
-        joined(tokio::task::spawn_blocking(move || {
+        let armed = joined(tokio::task::spawn_blocking(move || {
             one_wait::compact_summary(&crate::history::listing::agent_home(), &sid)
-        }))
+        }));
+        async move { armed.await.map(Ears) }
     }
 
     fn arrival(&self, sid: &str, since: u64, ms: u64) -> impl Future<Output = bool> + Send {

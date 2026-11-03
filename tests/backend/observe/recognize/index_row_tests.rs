@@ -4,19 +4,7 @@
 //! 偏移是绝对的、续传从 `end` 接得上 · 宽度无关料按块型分开数 · 选项解析拒写错的尾随参数。
 //! **买不到**：料「数得准不准」只对到原料层（前端最终建不建卡、建成哪种卡，这里不知道）；
 
-use super::*;
-
-/// 一行原文 → [`IndexRow`]（判据从原文起；生产里扫描图逐行已解析过、直接走 [`index_row_of`]）。
-pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
-    let text = String::from_utf8_lossy(line);
-    let at = crate::agents::Line::new(&text, offset);
-    let rec = crate::agents::record_face(kind)
-        .and_then(|f| (f.parse)(&at).ok().flatten())
-        .and_then(|t| t.record);
-    let v = crate::observe::lines::parse(line);
-    let beat = v.as_ref().and_then(|v| crate::agents::beat_of(kind, v));
-    index_row_of(kind, v.as_ref(), beat.as_ref(), rec.as_ref(), offset, len)
-}
+use super::test_support::index_row;
 
 /// 这几份夹具是记录树那一家的记录。
 fn tree() -> &'static str {

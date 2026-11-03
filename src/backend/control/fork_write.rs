@@ -42,10 +42,10 @@ struct ForkResult {
 
 /// `session-fork` 的入参：从 `sid` 那条会话的 `uuid` 那条消息处分叉。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ForkReq {
+pub struct ForkReq {
     /// 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件）。
     pub(crate) sid: String,
     /// 从哪条消息处分叉。
@@ -54,10 +54,10 @@ pub(crate) struct ForkReq {
 
 /// `session-fork` 的回包。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Forked {
+pub struct Forked {
     /// 新会话的 id。
     pub(crate) session_id: String,
     /// 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）。
@@ -68,7 +68,7 @@ pub(crate) struct Forked {
 
 crate::wire::typed::codes! {
     /// `session-fork` 的码。
-    pub(crate) enum ForkErr {
+    pub enum ForkErr {
         /// 记录树读不出 · 源会话找不着 · 那条消息不在 · 落盘失败。
         ForkFailed = "fork_failed",
     }
@@ -131,7 +131,7 @@ fn new_session_id(source_sid: &str) -> String {
 ///
 /// 本机远端都经那台机器常驻后端的长连接说这一条。家目录由顶层壳 `fork_face` 交进来（本层自己找就得问 `observe::`，反向边）；
 /// 判据直接喂夹具家目录。回包比本体多一格 `launch`：由入口按「源会话那份记录 ＋ 源 sid」收齐交回，本层不读观测层。
-pub(crate) fn fork_at(
+pub fn fork_at(
     nf: &NewFile,
     agent_home: &Path,
     req: &ForkReq,
@@ -147,7 +147,7 @@ pub(crate) fn fork_at(
 }
 
 /// 起新会话那一条（`session-open` 新起带 `fork`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
-pub(crate) fn fork_for_launch(
+pub fn fork_for_launch(
     nf: &NewFile,
     agent_home: &Path,
     sid: &str,

@@ -203,7 +203,7 @@ fn every_kind_matches_the_golden_full_and_minimal() {
         .map(|(name, raw)| {
             // 金样是线上那一形：出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
             let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
-            r.stamp(&crate::Tz::default());
+            r.stamp(&crate::common::time::Tz::default());
             format!(
                 "{}\n",
                 serde_json::to_string(&serde_json::json!({ "case": name, "record": r })).unwrap()
@@ -262,7 +262,7 @@ fn the_skeleton_row_is_what_the_record_says() {
             .map_or((None, crate::agents::record::Draw::None, false), |r| {
                 (Some(r.body.class()), r.draw, r.human)
             });
-        let row = crate::observe::recognize::index_row::tests::index_row(
+        let row = crate::observe::recognize::index_row::test_support::index_row(
             crate::agents::claudecode::AGENT_KIND,
             raw.as_bytes(),
             0,

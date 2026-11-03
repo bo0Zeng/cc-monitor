@@ -62,7 +62,7 @@ impl Loaded {
 }
 
 /// 某个家目录底下那份文件。
-pub(crate) fn path_in(home: &Path) -> PathBuf {
+pub fn path_in(home: &Path) -> PathBuf {
     home.join(DOC.rel)
 }
 
@@ -132,8 +132,8 @@ fn mkdir_said(dir: &Path, e: std::io::Error) -> Said {
 /// 认一台的一条：那一台里 `fields` 按序取**第一个非空字符串**，它 == `equals`
 /// （名字就是 `["label", "host"]`：`label` 非空取它、否则 `host`）。
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ElemKey {
     pub(crate) fields: Vec<String>,
@@ -142,23 +142,27 @@ pub(crate) struct ElemKey {
 
 /// 一条补丁：全按键认一台（`where` 每一条都对得上的**恰好一台**），锁内现读现判。
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "线上 `op` 的值照这几个名字小写，改名就是改协议"
+)]
 pub(crate) enum MachineEdit {
     /// 只改认出的那一台的 `field` 那一格。
     #[serde(rename = "setin", rename_all = "camelCase")]
     SetIn {
         r#where: Vec<ElemKey>,
         field: String,
-        #[cfg_attr(test, ts(type = "unknown"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         value: Value,
     },
     /// 加一台：已有满足 `where` 的 ⇒ 整批拒；否则追加到末尾。
     #[serde(rename = "insertin")]
     InsertIn {
         r#where: Vec<ElemKey>,
-        #[cfg_attr(test, ts(type = "unknown"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         value: Value,
     },
     /// 删一台：认出恰好一台才删。
@@ -200,7 +204,7 @@ enum Applied {
 crate::wire::typed::codes! {
     /// `machines-set` 的码：盘上那份读不懂（不拿空的盖掉它）· 认不出那一台（`ambiguous` ＝ 认出了不止一台）·
     /// 要加的那一台已在 · 改完的表不成立（那一处）· 写没成。
-    pub(crate) enum MachinesSetErr {
+    pub enum MachinesSetErr {
         Unreadable = "unreadable",
         ElementGone = "element_gone" => Gone,
         ElementExists = "element_exists",
@@ -211,9 +215,9 @@ crate::wire::typed::codes! {
 
 /// 认不出那一台时多带的那一格。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Gone {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Gone {
     /// 认出了不止一台（不猜是哪台）。
     pub(crate) ambiguous: bool,
 }
@@ -338,7 +342,7 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit]) -> Result<Patched, M
 // ───────────────────────────── 推送 ─────────────────────────────
 
 /// 进程里那条「机器表变了」的铃（流连接订它推 `changed {machines}`）。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
+pub fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> = std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
 }
@@ -357,10 +361,10 @@ fn ring() {
 
 /// `machines-read` / `machines-set` 读回的那一份：状态 ＋ 照用的那一张（读不懂 ⇒ 空表）。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MachinesReply {
+pub struct MachinesReply {
     /// 没有这份 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
     pub(crate) state: cmd_wire::FileState,
     /// `unreadable` 时的原因（那一句不带原话）。
@@ -370,7 +374,7 @@ pub(crate) struct MachinesReply {
     /// 那份文件的路径（家目录说不出 ⇒ `null`）。
     pub(crate) path: Option<String>,
     /// 照用的那一张：一台一行，带后端算好的名字（`{name, host}`；名字的算法只在拨号核心 `Host::name`，界面 · 壳都不再算）。
-    pub(crate) hosts: Vec<MachineRow>,
+    pub hosts: Vec<MachineRow>,
     /// 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
     pub(crate) host_keys: std::collections::BTreeMap<String, Vec<String>>,
 }
@@ -412,7 +416,7 @@ fn reply(l: &Loaded, path: Option<&Path>, home: Option<&Path>) -> MachinesReply 
 }
 
 /// `machines-read` 的本体（家目录是参数）。
-pub(crate) fn answer_read_in(home: Option<&Path>) -> MachinesReply {
+pub fn answer_read_in(home: Option<&Path>) -> MachinesReply {
     let path = home.map(path_in);
     let l = path.as_deref().map_or(Loaded::Absent, read_at);
     reply(&l, path.as_deref(), home)
@@ -420,24 +424,24 @@ pub(crate) fn answer_read_in(home: Option<&Path>) -> MachinesReply {
 
 /// `machines-try` / `machines-set` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct MachinesEdits {
+pub struct MachinesEdits {
     pub(crate) edits: Vec<MachineEdit>,
 }
 
 /// `machines-try` 的回包。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachinesTried {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MachinesTried {
     /// 这串补丁若现在落盘，机器表那一道没过的那一处；过 ⇒ `null`（补丁本身认不出那一台 · 不成形 ⇒ 也是 `null`，留给写口去拒）。
     pub(crate) fault: Option<MachineFault>,
 }
 
 /// `machines-try` 的本体：盘上一个字节不动。
-pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> MachinesTried {
+pub fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> MachinesTried {
     let base = home
         .map(path_in)
         .map_or(Loaded::Absent, |p| read_at(&p))
@@ -462,14 +466,14 @@ pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> Machine
 
 /// `machines-set` 的回包：写完读回的那一张。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachinesSet {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MachinesSet {
     pub(crate) machines: MachinesReply,
 }
 
 /// `machines-set` 的本体（家目录是参数）：锁内现读 → 逐条打 → 判 → 整份写 → 读回 → 响一下。一条都没动 ⇒ 不写、不响。
-pub(crate) fn answer_set_in(
+pub fn answer_set_in(
     home: Option<&Path>,
     own: &Own,
     req: &MachinesEdits,
@@ -481,7 +485,7 @@ pub(crate) fn answer_set_in(
     let dir = own.home_dir().map_err(io)?;
     own.ensure_dir(&dir)
         .map_err(|e| io(mkdir_said(dir.as_path(), e)))?;
-    let held = own.lock(&dir).map_err(|e| io(e.into()))?;
+    let held = own.lock(&dir).map_err(&io)?;
     let base = match read_at(&path) {
         Loaded::Unreadable(why) => {
             return Err(MachinesSetErr::Unreadable(crate::common::contract::joined(
@@ -505,16 +509,16 @@ pub(crate) fn answer_set_in(
 
 crate::wire::typed::codes! {
     /// `machines-read` 没有别的码：读不懂是一个状态，不是一次失败。
-    pub(crate) enum MachinesReadErr {}
+    pub enum MachinesReadErr {}
 }
 
 crate::wire::typed::codes! {
     /// `machines-try` 没有别的码：说不出的一律当「这一道没话说」。
-    pub(crate) enum MachinesTryErr {}
+    pub enum MachinesTryErr {}
 }
 
 /// `machines-read`：这一端的机器表（同步文件 I/O ⇒ 阻塞档）。
-pub(crate) struct MachinesRead;
+pub struct MachinesRead;
 
 impl crate::wire::typed::Command for MachinesRead {
     const NAME: &'static str = "machines-read";
@@ -526,21 +530,18 @@ impl crate::wire::typed::Command for MachinesRead {
 
 impl crate::wire::typed::Handle for MachinesRead {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachinesReply, MachinesReadErr>> + Send + 'static
-    {
-        async move {
-            Ok(answer_read_in(
-                crate::platform::paths::home_dir().as_deref(),
-            ))
-        }
+    ) -> Result<MachinesReply, MachinesReadErr> {
+        Ok(answer_read_in(
+            crate::platform::paths::home_dir().as_deref(),
+        ))
     }
 }
 
 /// `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动）。
-pub(crate) struct MachinesTry;
+pub struct MachinesTry;
 
 impl crate::wire::typed::Command for MachinesTry {
     const NAME: &'static str = "machines-try";
@@ -551,22 +552,19 @@ impl crate::wire::typed::Command for MachinesTry {
 
 impl crate::wire::typed::Handle for MachinesTry {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: MachinesEdits,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachinesTried, MachinesTryErr>> + Send + 'static
-    {
-        async move {
-            Ok(answer_try_in(
-                crate::platform::paths::home_dir().as_deref(),
-                &req,
-            ))
-        }
+    ) -> Result<MachinesTried, MachinesTryErr> {
+        Ok(answer_try_in(
+            crate::platform::paths::home_dir().as_deref(),
+            &req,
+        ))
     }
 }
 
 /// `machines-set`：改机器表，写完读回（写自家状态 ⇒ 只递写句柄）。
-pub(crate) struct MachinesSetCmd;
+pub struct MachinesSetCmd;
 
 impl crate::wire::typed::Command for MachinesSetCmd {
     const NAME: &'static str = "machines-set";
@@ -595,16 +593,16 @@ impl crate::wire::typed::Handle for MachinesSetCmd {
 
 /// `host-keys-forget` 的入参：哪一台（名字）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HostKeysForgetReq {
+pub struct HostKeysForgetReq {
     pub(crate) machine: cmd_wire::Machine,
 }
 
 crate::wire::typed::codes! {
     /// `host-keys-forget` 的码：机器表读不懂 · 表里没有这一台 · 写没成。
-    pub(crate) enum HostKeysForgetErr {
+    pub enum HostKeysForgetErr {
         Unreadable = "unreadable",
         ElementGone = "element_gone",
         IoFailed = "io_failed",
@@ -644,7 +642,7 @@ pub(crate) fn answer_forget_in(
 }
 
 /// `host-keys-forget`：忘掉这台记下的主机指纹（用户点了才调；写自家状态 ⇒ 只递写句柄）。
-pub(crate) struct HostKeysForget;
+pub struct HostKeysForget;
 
 impl crate::wire::typed::Command for HostKeysForget {
     const NAME: &'static str = "host-keys-forget";

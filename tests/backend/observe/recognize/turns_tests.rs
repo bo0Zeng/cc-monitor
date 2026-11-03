@@ -9,7 +9,7 @@ fn scan(body: &str, from: u64) -> Vec<TurnRow> {
     raw_scan(body, from)
         .into_iter()
         .map(|mut t| {
-            t.stamp(&crate::Tz::default());
+            t.stamp(&crate::common::time::Tz::default());
             t
         })
         .collect()
@@ -53,7 +53,7 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
         "扫描那一层不写钟面"
     );
     let mut sh = raw[0].clone();
-    sh.stamp(&crate::Tz::named("Asia/Shanghai").unwrap());
+    sh.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
     assert_eq!(
         (sh.start_text.as_str(), sh.end_text.as_str()),
         ("04:30", "04:31")
@@ -64,7 +64,7 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
         sh.folds[0].span.text
     );
     let mut utc = raw[0].clone();
-    utc.stamp(&crate::Tz::default());
+    utc.stamp(&crate::common::time::Tz::default());
     assert_eq!(utc.start_text, "20:30");
     assert!(
         utc.folds[0].span.text.contains("20:31"),
@@ -162,7 +162,8 @@ fn start_and_end_carry_their_clock_faces() {
     ];
     let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
     let all = scan(&body, 0);
-    let face = |t: &str| crate::common::time::iso_hm(t, &crate::Tz::default()).unwrap();
+    let face =
+        |t: &str| crate::common::time::iso_hm(t, &crate::common::time::Tz::default()).unwrap();
     assert_eq!(
         (all[0].start_text.as_str(), all[0].end_text.as_str()),
         (face(a).as_str(), face(b).as_str())
@@ -382,7 +383,8 @@ fn span_is_written_with_a_duration_slot() {
         said("a2", b, calls("t2")),
     ];
     let rows = scan(&body_of(&lines), 0);
-    let face = |t: &str| crate::common::time::iso_hm(t, &crate::Tz::default()).unwrap();
+    let face =
+        |t: &str| crate::common::time::iso_hm(t, &crate::common::time::Tz::default()).unwrap();
     let ms = |t: &str| crate::common::time::parse_iso8601_ms(t).unwrap();
     let range = copy_text(
         "rsTurns.span.range",
@@ -512,7 +514,7 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
             Tone::Now
         ))
     );
-    let face = crate::common::time::iso_hm(t, &crate::Tz::default()).unwrap();
+    let face = crate::common::time::iso_hm(t, &crate::common::time::Tz::default()).unwrap();
     assert_eq!(
         running.folds[0].span.text,
         copy_text("rsTurns.span.since", &[("hm", &face), ("dur", "{dur}")])

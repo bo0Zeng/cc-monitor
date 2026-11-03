@@ -43,7 +43,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
              `src/backend/control/gate_rules.rs` 的 `new_tmux_name_issue`（禁字集 `NEW_TMUX_NAME_REFUSED` 逐字拒 `* ? . : =`，\
              另拒前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128；规则全仓只剩这一份）；\
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
-             **构造上产不出禁字**。三条入口都由 `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
+             **构造上产不出禁字**。三条入口都由 `cross_control::ccm_plan_tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
     ),
     // 🔴 **monitor 不建任何 tmux 会话**（会话由后端 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）
     //    ⇒ monitor 这一侧没有创建路径；表里多一条不建会话的就是幽灵条目，本表的遍历会当场逮住。

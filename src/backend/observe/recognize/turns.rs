@@ -26,14 +26,14 @@ pub(crate) const REPLY_LINES: usize = 3;
 
 /// 一轮。键名全称。
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TurnRow {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct TurnRow {
     /// 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub at: u64,
     /// 你那句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) line: u64,
     /// 你那句的 uuid（跳过去时按它找卡）。
     pub(crate) uuid: String,
@@ -72,20 +72,20 @@ pub(crate) struct TurnRow {
     pub(crate) tail_fold: bool,
     /// 这一轮里还没有结果的工具调用（文件序）：拼「现在：…」「等你批准：…」用，不出帧。
     #[serde(skip)]
-    pub(crate) pending: Vec<PendingCall>,
+    pub pending: Vec<PendingCall>,
 }
 
 /// 一段过程（一行）。
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "FoldSegment"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "FoldSegment"))]
 pub(crate) struct Fold {
     /// 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
     pub(crate) after: String,
     /// `after` 那一条的行号（界面按它与 `untilLine` 在骨架账本里取这一段的那几行）。
     #[serde(rename = "afterLine")]
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) after_line: u64,
     /// 那一行的字（后端写好，界面按语气排版、段间加分隔）。
     pub(crate) parts: Vec<Part>,
@@ -96,7 +96,7 @@ pub(crate) struct Fold {
     pub(crate) until: Option<String>,
     /// `until` 那一条的行号（没有 ⇒ 没有）。
     #[serde(rename = "untilLine")]
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) until_line: Option<u64>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
@@ -116,22 +116,22 @@ pub(crate) struct Fold {
 /// 一处失败落在哪一张卡上：工具结果出错 ⇒ 那次调用画成的那一块（`tool` ＝ 调用 id，`uuid` · `line` ＝ 发出调用的那一条）；
 /// 收场通知说失败 ⇒ 那条通知自己（`tool` 没有）。
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "FoldFail"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "FoldFail"))]
 pub(crate) struct FailAt {
     pub(crate) uuid: String,
-    #[cfg_attr(test, ts(type = "string | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
     pub(crate) tool: Option<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) line: u64,
 }
 
 /// 一轮 / 一段此刻的样子。
 #[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "TurnPhase"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "TurnPhase"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Phase {
     #[default]
@@ -142,9 +142,9 @@ pub(crate) enum Phase {
 
 /// 过程行的一段字。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "TurnPart"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "TurnPart"))]
 pub(crate) struct Part {
     pub(crate) text: String,
     pub(crate) tone: Tone,
@@ -155,14 +155,14 @@ pub(crate) use crate::common::cells::Tone;
 
 /// 右端那一截：字里若有 `{dur}`，界面填 `to − from`（`to` 缺 ⇒ 现在 − `from`，毫秒）的用时；别的照抄。
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "TurnSpan"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(rename = "TurnSpan"))]
 pub(crate) struct Span {
     pub(crate) text: String,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) from: Option<i64>,
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) to: Option<i64>,
 }
 
@@ -440,7 +440,7 @@ fn step_of(name: &str, what: Option<&str>) -> String {
 
 /// **正在跑的那一轮**按这台此刻的会话事实补上「现在 / 在等你」那一截（判定同会话事实：`needs` 由 [`super::facts::needs_of`] 判，
 /// 活不活看这台 pidfile），写在这一轮尾巴那一段上。收尾了的轮不动；尾巴不是一段过程（最后露着的是正文）⇒ 只改 `phase`。
-pub(crate) fn dress_live(row: &mut TurnRow, needs: Option<&Needs>, live: bool) {
+pub fn dress_live(row: &mut TurnRow, needs: Option<&Needs>, live: bool) {
     if row.done {
         return;
     }

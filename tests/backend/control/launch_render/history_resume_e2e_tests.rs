@@ -11,8 +11,7 @@
 use std::path::{Path, PathBuf};
 
 const CHILD_MARK: &str = "HRE_CHILD";
-const CHILD_TEST_NAME: &str =
-    "control::launch_render::history_resume_e2e::history_resume_child_entry_point";
+const CHILD_TEST_NAME: &str = "cross_control::history_resume_e2e::history_resume_child_entry_point";
 const SID_CLAUDE: &str = "0000c1a0-0000-4000-8000-000000000001";
 const SID_CODEX: &str = "0000c0de-0000-4000-8000-000000000002";
 const CWD: &str = "/w/proj";
@@ -169,7 +168,7 @@ fn history_resume_child_entry_point() {
     .unwrap_or_else(|e| panic!("session-open 没起：{e:?}"));
     let line = opened.line.expect("直路那一形回包里有那一行");
     eprintln!("ccm 那一行：{line}");
-    let argv = super::ccm_invocation::tests::shell_words(&line);
+    let argv = crate::control::launch_render::ccm_invocation::test_support::shell_words(&line);
     let code = crate::control::ccm::run(
         &argv[1..],
         &argv[..1],

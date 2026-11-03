@@ -32,18 +32,18 @@ use std::time::SystemTime;
 
 /// 一遍扫出来的那几样（都是从字节 0 起）。
 #[derive(Debug, Default)]
-pub(crate) struct ScanMap {
+pub struct ScanMap {
     /// 最后一个完整行之后的字节位置（残尾不算）。
-    pub(crate) end: u64,
+    pub end: u64,
     /// 扫的那一刻的文件长度（进程里留着的那张续扫时认「变长了」用）。
     seen: u64,
     /// 每个可计行的字节起点（尾段按 `n` 现切）。
     starts: Vec<u64>,
     pub(crate) index: Vec<IndexRow>,
-    pub(crate) inputs: Vec<UserInputRow>,
+    pub inputs: Vec<UserInputRow>,
     pub(crate) turns: Vec<TurnRow>,
     /// 主线外清单（回退掉的那几条，文件序；`history-branch`）。用户输入与轮次已经不含它们。
-    pub(crate) off: Vec<String>,
+    pub off: Vec<String>,
     /// 定上下文上限之前的事实（上限按每次问的上限表现定，[`RecordScans::facts`]）。
     pub(crate) facts: SessionFacts,
     /// 接着扫要的那几样（骨架也落它）。
@@ -266,7 +266,7 @@ impl ScanMap {
 
     /// 某一条记录（`uuid`）落在主线的第几轮、那一轮从何时起（分叉框顶上那一句）：数它之前起了几轮（轮次同 `history-turns`）。
     /// 找不到那一条 / 它在第一句之前 ⇒ `None`。
-    pub(crate) fn turn_at(&self, uuid: &str) -> Option<(u64, String)> {
+    pub fn turn_at(&self, uuid: &str) -> Option<(u64, String)> {
         let at = self.index.iter().find(|r| r.u.as_deref() == Some(uuid))?.o;
         let n = self.turns.partition_point(|t| t.at <= at);
         let t = self.turns.get(n.checked_sub(1)?)?;
@@ -419,7 +419,7 @@ impl Inner {
 }
 
 /// 扫描图的缓存。
-pub(crate) struct RecordScans {
+pub struct RecordScans {
     max_entries: usize,
     max_bytes: usize,
     inner: Mutex<Inner>,
@@ -442,7 +442,7 @@ const MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
 pub(crate) const TAIL_KEEP: usize = 64;
 
 /// 全进程那一份。
-pub(crate) fn global() -> &'static RecordScans {
+pub fn global() -> &'static RecordScans {
     static G: std::sync::OnceLock<RecordScans> = std::sync::OnceLock::new();
     G.get_or_init(|| {
         let scans = RecordScans::new(MAX_ENTRIES, MAX_BYTES.as_len());
@@ -589,7 +589,7 @@ impl RecordScans {
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
     /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。界面问的走这里：扫出来的那张留着（之后几问共用）。
-    pub(crate) fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {
+    pub fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {
         self.fetch(path, true)
     }
 

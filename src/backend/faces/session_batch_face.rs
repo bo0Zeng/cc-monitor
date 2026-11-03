@@ -100,7 +100,7 @@ fn with_deps_on<T>(
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let open_shell =
         |name: &str, cwd: Option<&str>| crate::control::launch::open_shell(name, cwd, client);
-    let caps = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+    let caps = crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

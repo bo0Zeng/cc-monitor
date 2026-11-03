@@ -22,7 +22,7 @@ pub(crate) fn agent_homes_in(l: &Loaded) -> BTreeMap<String, PathBuf> {
     }
 }
 
-/// 流模式起来时调一次（`main.rs`，在解析 agent 家目录、起任何线程之前）：这台给某一家设了数据目录 ⇒ 交成本进程里
+/// 流模式起来时调一次（`stream/entry.rs`，在解析 agent 家目录、起任何线程之前）：这台给某一家设了数据目录 ⇒ 交成本进程里
 /// 那一家的目录环境变量（变量名问注册表那一格 `account_env_of`；解析只在 `agents::home_at` 一处，起的会话照旧继承）；
 /// 没设 / 那一家没有这个变量 ⇒ 不动。改了要重启后端才生效。
 pub fn apply_agent_homes() {
@@ -51,10 +51,10 @@ pub(crate) use cmd_wire::FileState;
 
 /// `prefs-read` / `prefs-set` 的回包：状态 ＋ 照用的那一份（读不懂 ⇒ 缺省那一份）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PrefsReply {
+pub struct PrefsReply {
     /// `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
     pub(crate) state: FileState,
     /// `unreadable` 时的原因（那一句不带原话）。
@@ -97,7 +97,7 @@ fn offered_modes(req: &PrefsSet) -> Result<(), String> {
 }
 
 /// `kind` 那一家的清单里那一档（不在 / 那一家没有权限档 ⇒ `None`）。
-pub(crate) fn offered(kind: &str, mode: &str) -> Option<crate::agents::Choice> {
+pub fn offered(kind: &str, mode: &str) -> Option<crate::agents::Choice> {
     crate::agents::launch_face_among(crate::agents::REGISTRY, kind)?
         .permission?
         .modes
@@ -125,45 +125,48 @@ pub(crate) fn answer_read_in(home: Option<&Path>) -> PrefsReply {
 
 /// `prefs-set` 的入参：给了的那一节整节换掉，没给的不动。`models` 里值为 `null` 的那一条删掉、别的号不动。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct PrefsSet {
+pub struct PrefsSet {
     /// 某一家的启动命令：`{kind: 命令}`，空串 ⇒ 删掉那一家（回到它的默认）。只动点到的那几家。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) launchers: Option<BTreeMap<String, String>>,
     /// 恢复时放在哪（三选）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) resume_where: Option<cmd_wire::session::ResumeWhere>,
     /// 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) models: Option<BTreeMap<String, Option<String>>>,
     /// 某几家新会话的权限档：`{kind: 档 | null}`，`null` ⇒ 删掉那一条。写的时候核在那一家的清单里。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) permission_modes: Option<BTreeMap<String, Option<String>>>,
     /// 整张上限表（整张换掉）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, u32>>"))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<BTreeMap<String, u32>>")
+    )]
     pub(crate) context_limits: Option<BTreeMap<String, u64>>,
     /// 某一家的数据目录：`{kind: 路径}`，空串 ⇒ 删掉那一家（回到它自己的解析）。只动点到的那几家；改了要重启后端才生效。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) agent_homes: Option<BTreeMap<String, String>>,
     /// 子会话进不进标签页。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) child_tab: Option<cmd_wire::session::Tab>,
     /// 分身会话进不进标签页。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) bg_tab: Option<cmd_wire::session::Tab>,
     /// pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) pb_dir: Option<String>,
 }
 
@@ -239,7 +242,7 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
 }
 
 /// 这台设了的 pb 路径（读不懂 / 没设 ⇒ `None`）。
-pub(crate) fn pb_dir_now() -> Option<PathBuf> {
+pub fn pb_dir_now() -> Option<PathBuf> {
     match read_now() {
         Loaded::Present(p) => p.pb_dir.map(PathBuf::from),
         Loaded::Absent | Loaded::Unreadable(_) => None,
@@ -253,14 +256,14 @@ fn joined(s: Said) -> String {
 
 crate::wire::typed::codes! {
     /// `prefs-set` 的码：值不对 · 盘上那份读不懂（不拿空的盖掉它）· 写没成。
-    pub(crate) enum PrefsSetErr {
+    pub enum PrefsSetErr {
         Unreadable = "unreadable",
         IoFailed = "io_failed",
     }
 }
 
 /// `prefs-set` 的本体（家目录是参数）：读 → 打补丁 → 校验 → 整份写 → 读回。
-pub(crate) fn answer_set_in(
+pub fn answer_set_in(
     home: Option<&Path>,
     own: &Own,
     req: &PrefsSet,
@@ -282,11 +285,11 @@ pub(crate) fn answer_set_in(
 
 crate::wire::typed::codes! {
     /// `prefs-read` 没有别的码：读不懂是一个状态（`state: "unreadable"`），不是一次失败。
-    pub(crate) enum PrefsReadErr {}
+    pub enum PrefsReadErr {}
 }
 
 /// `prefs-read`：这台的偏好（同步文件 I/O ⇒ 阻塞档）。
-pub(crate) struct PrefsRead;
+pub struct PrefsRead;
 
 impl crate::wire::typed::Command for PrefsRead {
     const NAME: &'static str = "prefs-read";
@@ -298,20 +301,18 @@ impl crate::wire::typed::Command for PrefsRead {
 
 impl crate::wire::typed::Handle for PrefsRead {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<PrefsReply, PrefsReadErr>> + Send + 'static {
-        async move {
-            Ok(answer_read_in(
-                crate::platform::paths::home_dir().as_deref(),
-            ))
-        }
+    ) -> Result<PrefsReply, PrefsReadErr> {
+        Ok(answer_read_in(
+            crate::platform::paths::home_dir().as_deref(),
+        ))
     }
 }
 
 /// `prefs-set`：改这台的偏好，写完读回（写自家状态 ⇒ 只递写句柄）。
-pub(crate) struct PrefsSetCmd;
+pub struct PrefsSetCmd;
 
 impl crate::wire::typed::Command for PrefsSetCmd {
     const NAME: &'static str = "prefs-set";

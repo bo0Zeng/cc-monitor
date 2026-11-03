@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) fn seed_running(book: &RunBook, sid: &str, run: &str, label: Option<&str>) {
+pub fn seed_running(book: &RunBook, sid: &str, run: &str, label: Option<&str>) {
     seed(
         book,
         sid,
@@ -15,7 +15,7 @@ pub(crate) fn seed_running(book: &RunBook, sid: &str, run: &str, label: Option<&
 }
 
 /// 记一项照给的事实（状态 · 名字 · 最近一件事 …）。
-pub(crate) fn seed(book: &RunBook, sid: &str, info: RunInfo) {
+pub fn seed(book: &RunBook, sid: &str, info: RunInfo) {
     book.with(|m| {
         m.entry(sid.to_string()).or_default().runs.push(Run {
             info,

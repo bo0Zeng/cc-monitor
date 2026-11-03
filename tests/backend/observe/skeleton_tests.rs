@@ -15,13 +15,7 @@ pub(crate) fn sandbox(tag: &str) -> (PathBuf, Own) {
     ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(d.join("data")).unwrap();
-    let data = d.join("data").to_string_lossy().into_owned();
-    let home = d.to_string_lossy().into_owned();
-    let own = Own::issue_with(&|k| match k {
-        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
-        "HOME" => Some(home.clone()),
-        _ => None,
-    });
+    let own = Own::issue_roots(&d, &d.join("data"));
     (d, own)
 }
 

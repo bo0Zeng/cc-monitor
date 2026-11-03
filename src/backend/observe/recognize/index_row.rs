@@ -15,46 +15,46 @@
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(default)]
-pub(crate) struct IndexRow {
+pub struct IndexRow {
     /// 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)`。
-    pub(crate) o: u64,
+    pub o: u64,
     /// 行字节长（**含**结尾 `\n`）。
-    pub(crate) n: u64,
+    pub n: u64,
     /// 这一行翻成的那条通用记录的类（`said` · `reply` · `retry` · `title` · `unread`，与读正文时那条记录的 `t` 同一个词）；
     /// 不进界面（元数据 · 解析不出）⇒ 省略。取自整条翻译出的那条记录。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) t: Option<crate::agents::record::RecordClass>,
+    pub t: Option<crate::agents::record::RecordClass>,
     /// `uuid`（帧面不逐行运它：只在用户输入那张小表里带；扫描图按它认一条记录在第几轮）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) u: Option<String>,
+    pub u: Option<String>,
     /// 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出）。
     #[serde(skip_serializing_if = "is_false")]
-    pub(crate) sc: bool,
+    pub sc: bool,
     /// 画成哪一形（就是那条通用记录的 `draw`）；不画 ⇒ 省略。
     #[serde(skip_serializing_if = "undrawn")]
-    pub(crate) dr: crate::agents::record::Draw,
+    pub dr: crate::agents::record::Draw,
     /// 人在这条里说了话（就是那条通用记录的 `human`）。
     #[serde(skip_serializing_if = "is_false")]
-    pub(crate) hu: bool,
+    pub hu: bool,
     /// 正文字符数（**代码块之外**；Unicode 标量计，不含换行）。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) ch: u32,
+    pub ch: u32,
     /// 其中 CJK/全宽字符数（口径 = `height-estimate.ts::factLines` 的码点 `> 0x2E80`）。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) cj: u32,
+    pub cj: u32,
     /// 正文**非空**硬行数（代码块之外）。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) pl: u32,
+    pub pl: u32,
     /// 围栏代码块数（```` ``` ```` / `~~~` 开合一对算一个；没合上的算到文末）。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) cb: u32,
+    pub cb: u32,
     /// 代码块内总行数。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) cl: u32,
+    pub cl: u32,
     /// 折叠单元数：`tool_use` / `tool_result` / `thinking` / `redacted_thinking` / `image` 块。
     /// 它们各渲染成一行 summary（纯工具的记录画成一张「几步」卡，每步一行），与正文长短无关。
     #[serde(skip_serializing_if = "is_zero")]
-    pub(crate) fd: u32,
+    pub fd: u32,
     /// 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
     ///
     /// 判定只住 [`crate::observe::recognize::user_inputs::user_input_of`]（与大纲清单 **同一个函数**），
@@ -62,10 +62,10 @@ pub(crate) struct IndexRow {
     /// 前端见到索引里**有** `x` ⇒ 对面是会出它的后端、每一条用户输入都带着 ⇒ 不再单独要清单；
     /// 一个 `x` 都没有 ⇒ 分不清「老后端」还是「真的零条」⇒ 照旧要一份（形状登记 `IPC-PROTOCOL.md §10.3`）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) x: Option<String>,
+    pub x: Option<String>,
     /// 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) ts: Option<String>,
+    pub ts: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -104,7 +104,7 @@ pub(crate) fn index_row_of(
         row.dr = r.draw;
         row.hu = r.human;
     }
-    row.sc = crate::agents::run_of_record(kind, &v).is_some();
+    row.sc = crate::agents::run_of_record(kind, v).is_some();
     // 大纲那一项（判定只住 `user_inputs`；这里只搬字段）
     if let Some(ui) =
         beat.and_then(|b| crate::observe::recognize::user_inputs::user_input_given(kind, v, b))
@@ -168,6 +168,11 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
+// 从原文起的那一行（`test_support::index_row`）：扫描图 · 适配层经观测面那几条 · 格目录的判据共用（上层经 `test-support`）。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/observe/recognize/index_row_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/observe/recognize/index_row_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：从原文起的那一行 `tests::index_row` 给扫描图 · 格目录的判据共用
+mod tests;

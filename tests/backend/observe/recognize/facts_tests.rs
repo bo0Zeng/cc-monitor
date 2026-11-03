@@ -1145,7 +1145,7 @@ fn background_commands_are_kept_until_their_end_notice() {
     for line in text.split_inclusive('\n') {
         at += line.len();
         let head = scan_all(&text[..at]);
-        let tail = scan_facts(text[at..].as_bytes(), head, &Vec::new(), None).unwrap();
+        let tail = scan_facts(&text.as_bytes()[at..], head, &Vec::new(), None).unwrap();
         assert_eq!(tail.bg_tasks, f.bg_tasks, "续点 {at}");
     }
     // 快路：每行都解析与先过滤再解析结果一样。
@@ -1910,7 +1910,7 @@ fn reply(uuid: &str, at: &str, blocks: Value) -> Value {
 /// 露着不止一条 ⇒ 组头写好（几条 · 时段 · 失败几条），只露一条 ⇒ 没有组头（那一条照自己那一行）；接力扫 == 一次扫完。
 #[test]
 fn adjacent_notices_make_one_group_and_handed_back_ones_hide() {
-    let tz = crate::Tz::named("Asia/Shanghai").unwrap();
+    let tz = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
     let mut recs = vec![
         notice("w1", "t1", "completed", "2026-01-01T06:02:00.000Z"),
         injected("s1", "2026-01-01T06:03:00.000Z"),
@@ -1999,7 +1999,7 @@ fn notice_groups_are_bounded() {
         ));
     }
     let mut f = scan_all(&jsonl(&recs));
-    settle_notices(&mut f, &crate::Tz::default());
+    settle_notices(&mut f, &crate::common::time::Tz::default());
     assert_eq!(f.notices.len(), NOTICE_KEEP);
     assert_eq!(f.notices[0].id, "n2", "超了丢最早的");
 }

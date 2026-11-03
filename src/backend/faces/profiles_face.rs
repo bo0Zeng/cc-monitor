@@ -61,8 +61,20 @@ impl crate::wire::typed::Handle for ProfilesResolve {
     }
 }
 
-/// `ccm-print`（一条别名实际会执行什么）：计划与渲染住控制面（`control::ccm::answer_print`），这里交这台的账号清单成品。
-impl crate::wire::typed::Handle for crate::control::ccm::CcmPrint {
+/// `ccm-print`：一条别名实际会执行什么。只读（读账号清单成品 ＋ 问会话快照）⇒ 阻塞档。
+/// 入参 · 回包 · 码住控制面（`control::ccm`）；命令标记与处理器住这里：要这台的账号清单成品，控制面不读观测层，
+/// 而命令的 `Handle` 只能跟标记类型同包。
+pub(crate) struct CcmPrint;
+
+impl Command for CcmPrint {
+    const NAME: &'static str = "ccm-print";
+    type Req = crate::control::ccm::CcmPrintReq;
+    type Reply = crate::control::ccm::CcmLine;
+    type Err = crate::control::ccm::PrintErr;
+}
+
+/// 计划与渲染住控制面（`control::ccm::answer_print`），这里交这台的账号清单成品。
+impl crate::wire::typed::Handle for CcmPrint {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: crate::control::ccm::CcmPrintReq,

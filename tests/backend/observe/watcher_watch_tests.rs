@@ -224,7 +224,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
         ..Default::default()
     };
     join(
-        Sub::new(7, tx, crate::Tz::default()),
+        Sub::new(7, tx, crate::common::time::Tz::default()),
         Some(ask),
         &mut state,
         &mut sink,
@@ -289,7 +289,12 @@ fn conn(
     ask: Option<crate::wire::WatchAsk>,
 ) -> FrameRx {
     let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
-    join(Sub::new(id, tx, crate::Tz::default()), ask, state, sink);
+    join(
+        Sub::new(id, tx, crate::common::time::Tz::default()),
+        ask,
+        state,
+        sink,
+    );
     rx
 }
 
@@ -425,7 +430,7 @@ fn narrow(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
         kept: vec!["k".into()],
     };
     join(
-        Sub::new(1, tx, crate::Tz::default()),
+        Sub::new(1, tx, crate::common::time::Tz::default()),
         Some(ask),
         &mut state,
         &mut sink,

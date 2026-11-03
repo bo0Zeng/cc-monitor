@@ -15,8 +15,11 @@
 //! | 快速订 / 退几十轮（切标签页 · 重载）之后照样订得满 | `rapid_follow_unfollow_never_fills_the_desk` |
 //! | 停了的帧带后端写好的那一句；拒绝分「只能快照 / 停了」两类 | `a_closed_pane_ends_the_follow` · `refusals_say_which_way_live_went` |
 //! | tmux 版本：3.2 起才有只读不改尺寸的客户端 | `tmux_version_gate` |
-use super::*;
+use crate::control::terminal_follow::*;
+use crate::wire::{FollowEnd, Frame};
+use copy_core::copy_text;
 use serde_json::json;
+use serde_json::Value;
 use std::process::Command;
 use std::time::{Duration, Instant};
 

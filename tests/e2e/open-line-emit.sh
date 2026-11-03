@@ -22,7 +22,7 @@ print(json.dumps(kv))' "$@")" || exit 2
   export CCM_E2E_OPEN
 fi
 [ -n "${CCM_E2E_OPEN:-}" ] || { echo "缺意图（参数或 CCM_E2E_OPEN）" >&2; exit 2; }
-OUT="$(cd "$REPO/src/backend" && cargo test --lib -- --ignored --nocapture --exact control::session_open::tests::emit_open_line_for_e2e 2>&1)"
+OUT="$(cd "$REPO/src/backend" && cargo test --lib -- --ignored --nocapture --exact cross_control::session_open_tests::emit_open_line_for_e2e 2>&1)"
 LINE="$(printf '%s\n' "$OUT" | grep -E 'OPEN_LINE(_ERR)?<<<' | head -1)"
 case "$LINE" in
   OPEN_LINE\<\<\<*) LINE="${LINE#OPEN_LINE<<<}"; printf '%s\n' "${LINE%>>>}" ;;

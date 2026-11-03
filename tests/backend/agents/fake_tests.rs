@@ -411,7 +411,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         o.agent = agent.to_string();
         *o
     };
-    let t = plan::tests::no_library;
+    let t = crate::control::ccm::plan::test_support::no_library;
     let mut seen: Vec<&str> = Vec::new();
     for a in &reg {
         let face = a.launch.expect("这张注册表里每一家都带起会话事实");
