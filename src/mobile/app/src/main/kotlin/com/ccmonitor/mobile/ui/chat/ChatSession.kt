@@ -24,9 +24,13 @@ import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
+import com.ccmonitor.mobile.core.wire.gen.MdAs
+import com.ccmonitor.mobile.core.wire.gen.MdDocReq
 import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -492,6 +496,12 @@ class ChatSession(
     suspend fun segHl(codes: List<HlCode>): SegHl? {
         val r = link.call(ProseHl.COMMAND, ProseHl.args(codes), ChatReads.READ_MS)
         return (r as? Reply.Ok)?.let { ProseHl.of(it.data) }
+    }
+
+    /** 思考展开那一刻：原文交那台解析成块树（`md-doc {as: prose}`）；问不到 · 解不开 ⇒ `null`（照原文的字）。 */
+    suspend fun mdDoc(text: String): Doc? {
+        val r = link.call(Commands.MdDoc.NAME, Commands.MdDoc.args(MdDocReq(text = text, `as` = MdAs.PROSE, refs = emptyList())), ChatReads.READ_MS)
+        return (r as? Reply.Ok)?.let { Commands.MdDoc.reply(it.data) }
     }
 
     /** 聊天屏进 / 出：进了名单这条会话的行才上流，退了就停（`stream-watch`）。 */

@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -86,6 +87,7 @@ import ru.noties.jlatexmath.JLatexMathDrawable
 // - 高亮先出字、后上色：一段先照纯字建；那一段的代码块（[codesOf]，先序）交后端 `prose-hl` 拉，拉到了 [MdDocState.paint] 带色重排那一段。
 //   第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
 // - 公式经 JLaTeXMath 画成图；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文）。
+// - 图也占一个行内槽（[IMG_TAG] 标着地址）：按地址取（`MdImage.kt`），取到了换成真图，取到之前 · 取不到照替代字。
 // - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段；点了「展开」（[MdDocState.expand]）才 [MdDocState.buildNext] 一段段往下接。
 
 /** 排版要的几样样式（主题给，测试里另给一份好认的）。`hl` 的下标就是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`）。 */
@@ -186,6 +188,12 @@ fun layoutSeg(
 
 /** 一段里每个行内公式的 TeX，照出现的先后。 */
 fun mathTexOf(text: AnnotatedString): List<String> = text.getStringAnnotations(MATH_TAG, 0, text.length).map { it.item }
+
+/** 图那个槽上的注记：值是图的地址（同时是行内槽的 id 后半）。 */
+const val IMG_TAG = "md-img"
+
+/** 一段里每张图的地址，照出现的先后。 */
+fun imagesOf(text: AnnotatedString): List<String> = text.getStringAnnotations(IMG_TAG, 0, text.length).map { it.item }
 
 /** 照三元组切：越过串尾的截在串尾，认不出的类当没着色，不成三的尾巴不看。 */
 fun highlighted(
@@ -342,7 +350,13 @@ private class Ctx(
                 appendInlineContent(MATH_TAG + n.tex, n.tex)
                 pop()
             }
-            is InlNode.Img -> withStyle(style.faint) { append(n.alt) }
+            // 图占一个行内槽（[IMG_TAG] 标着地址），取到之前 · 取不到画替代字；没有替代字的占一个零宽字（槽不能是空串）。
+            is InlNode.Img ->
+                withStyle(style.faint) {
+                    pushStringAnnotation(IMG_TAG, n.src)
+                    appendInlineContent(IMG_TAG + n.src, n.alt.ifEmpty { "​" })
+                    pop()
+                }
             InlNode.Br -> append('\n')
             is InlNode.Fn -> withStyle(style.fnRef) { append(n.n.toString()) }
             // 计划格引用：编号原样，后端写好的标题跟在后面、淡色（手机不接点）。
@@ -501,7 +515,7 @@ private fun textStyleOf(level: Int): TextStyle =
         else -> MaterialTheme.typography.bodyLarge.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight)
     }
 
-/** 一段字：带行内公式的给每条 TeX 备一个行内槽（量好图的大小再排）。 */
+/** 一段字：带行内公式的给每条 TeX 备一个行内槽（量好图的大小再排）；带图的取到一张换上一张（[mdImageSlots]）。 */
 @Composable
 private fun Prose(
     text: AnnotatedString,
@@ -509,25 +523,41 @@ private fun Prose(
     color: Color,
 ) {
     val texs = remember(text) { mathTexOf(text) }
-    if (texs.isEmpty()) {
+    val hasImg = remember(text) { imagesOf(text).isNotEmpty() }
+    if (texs.isEmpty() && !hasImg) {
         Text(text, style = style, color = color)
         return
     }
+    val math = mathSlots(texs, style, color)
+    if (!hasImg) {
+        Text(text, style = style, color = color, inlineContent = math)
+        return
+    }
+    BoxWithConstraints {
+        Text(text, style = style, color = color, inlineContent = math + mdImageSlots(text, maxWidth))
+    }
+}
+
+/** 每条 TeX 一个行内槽：JLaTeXMath 画好的图量出槽的大小。 */
+@Composable
+private fun mathSlots(
+    texs: List<String>,
+    style: TextStyle,
+    color: Color,
+): Map<String, InlineTextContent> {
     val density = LocalDensity.current
     val sizePx = with(density) { style.fontSize.toPx() }
     val argb = color.toArgb()
-    val inline =
-        remember(texs, sizePx, argb) {
-            texs
-                .distinct()
-                .mapNotNull { tex ->
-                    val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
-                    val w = with(density) { d.intrinsicWidth.toSp() }
-                    val h = with(density) { d.intrinsicHeight.toSp() }
-                    (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
-                }.toMap()
-        }
-    Text(text, style = style, color = color, inlineContent = inline)
+    return remember(texs, sizePx, argb) {
+        texs
+            .distinct()
+            .mapNotNull { tex ->
+                val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
+                val w = with(density) { d.intrinsicWidth.toSp() }
+                val h = with(density) { d.intrinsicHeight.toSp() }
+                (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
+            }.toMap()
+    }
 }
 
 private fun texDrawable(
