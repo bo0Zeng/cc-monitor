@@ -233,11 +233,29 @@ pub(crate) struct LabelFacts {
     pub(crate) first: String,
     /// 项目目录。
     pub(crate) project_dir: Option<String>,
+    /// 分叉来的（记录里写着源会话）。
+    pub(crate) forked: bool,
+    /// 后台会话（不是人坐在终端里对话的那种）。
+    pub(crate) background: bool,
+    /// 记录没读到（找不到 · 不在手上这份清单里）⇒ 它的会话号；读到了 ⇒ `None`。
+    pub(crate) unread_sid: Option<String>,
 }
 
-/// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是；都没有 ⇒ 「没有说过话的会话」那一句，不是）。
+impl LabelFacts {
+    /// 记录没读到的那一条：只知道会话号与这台注解里改的名。
+    pub(crate) fn unread(sid: &str, custom: Option<String>) -> Self {
+        LabelFacts {
+            custom,
+            unread_sid: Some(sid.to_string()),
+            ..Default::default()
+        }
+    }
+}
+
+/// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是；都没有 ⇒ 不是）。
 /// 只此一处：标签页（`session_added` / `session_status` 的 `label`）· 历史清单的 `label` · 全文搜索的标题 · 一轮结束的通知都是它出的。
-/// 顺序：改过的名 → 后台会话的 pidfile 名 → 标题记录 → 第一句 → 文案表 `history.row.untitled`；空白的当没有。项目不进名字（帧上另一格 `label_project`）。
+/// 顺序：改过的名 → 后台会话的 pidfile 名 → 标题记录 → 第一句 → 记录没读到 ⇒ 会话号头 8 位 → 文案表 `history.row.untitled`；
+/// 空白的当没有。项目不进名字（整行那一格 [`session_line`]）。
 pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
     let given = |s: &Option<String>| {
         s.as_deref()
@@ -250,8 +268,34 @@ pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
         .or_else(|| (!facts.first.trim().is_empty()).then(|| facts.first.clone()))
     {
         Some(named) => (named, true),
-        None => (copy_core::copy_text("history.row.untitled", &[]), false),
+        None => match &facts.unread_sid {
+            Some(sid) => (sid.chars().take(8).collect(), false),
+            None => (copy_core::copy_text("history.row.untitled", &[]), false),
+        },
     }
+}
+
+/// **整行标题**（帧上 `NameFace.title`，界面照抄、不拼）：`项目 ↳ ⚙ 名字` —— 不知道项目 ⇒ 不带；不是分叉来的 ⇒ 不带 `↳`；
+/// 不是后台 ⇒ 不带 `⚙`。名字是 [`session_label`]。那台机器不进整行：叫那台什么是看的那一侧的事，界面另画那台的标签。
+pub(crate) fn session_line(facts: &LabelFacts) -> String {
+    let (name, _) = session_label(facts);
+    let forked = facts
+        .forked
+        .then(|| copy_core::copy_text("sessionTitle.mark.forked", &[]));
+    let background = facts
+        .background
+        .then(|| copy_core::copy_text("sessionTitle.mark.background", &[]));
+    facts
+        .project_dir
+        .as_deref()
+        .and_then(project_name)
+        .map(str::to_string)
+        .into_iter()
+        .chain(forked)
+        .chain(background)
+        .chain(std::iter::once(name))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// 读到的一条记录改不改叫这条会话什么（改了 ⇒ 记进 `facts`、回 `true`）：agent 起的标题记录（[`TitleBy::Agent`]）·
@@ -286,15 +330,10 @@ pub(crate) fn project_name(dir: &str) -> Option<&str> {
     dir.split(['/', '\\']).rfind(|s| !s.is_empty())
 }
 
-/// **这条会话叫什么那两格的唯一构造口**（帧上的 [`crate::wire::NameFace`]）：`label` ＝ [`session_label`]，`label_project` ＝ 项目目录最后一截（[`project_name`]）。
+/// **这条会话叫什么那两格的唯一构造口**（帧上的 [`crate::wire::NameFace`]）：`label` ＝ [`session_label`]，`title` ＝ [`session_line`]。
 pub(crate) fn name_face(facts: &LabelFacts) -> crate::wire::NameFace {
     let (label, _) = session_label(facts);
-    let label_project = facts
-        .project_dir
-        .as_deref()
-        .and_then(project_name)
-        .map(str::to_string);
-    crate::wire::NameFace::of_parts(label, label_project)
+    crate::wire::NameFace::of_parts(label, session_line(facts))
 }
 
 #[cfg(test)]

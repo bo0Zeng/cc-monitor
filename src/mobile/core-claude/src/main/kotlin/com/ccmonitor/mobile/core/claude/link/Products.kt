@@ -40,7 +40,7 @@ fun Allow.blocked(): String? =
     }
 
 /*
- * 会话簿（[SessionBook]）是嵌的 Rust 核心折好交来的整份（`resident_client::book`，桌面壳同一份折法）：活着的（[SessionBook.live]）·
+ * 会话簿（[SessionBook]）是嵌的 Rust 核心折好交来的整份（`face_core::book`，桌面壳同一份折法）：活着的（[SessionBook.live]）·
  * 走了的（[SessionBook.left]）· 顶替 · 重读几回 · 清单报完没有。这里只有几个读法，不折。
  */
 

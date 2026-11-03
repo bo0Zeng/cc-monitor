@@ -2442,44 +2442,7 @@ fn parse_btime_from_realistic_proc_stat() {
 }
 
 // === procStart double-check ===
-
-/// A normal `/proc/<pid>/stat` line: starttime is field 22. Sample is a real
-/// kernel layout with a simple comm `(bash)`.
-#[test]
-fn parse_starttime_normal_line() {
-    // pid=1234 comm=(bash) state=S ... field22(starttime)=9876543 ...
-    let stat = "1234 (bash) S 1 1234 1234 0 -1 4194304 1 0 0 0 0 0 0 0 \
-                    20 0 1 0 9876543 12345678 100 18446744073709551615 1 1 0 0";
-    assert_eq!(parse_starttime_from_stat(stat), Some(9876543));
-}
-
-/// The comm gotcha: a process named with a space inside the parens must not
-/// derail field counting (splitting the whole line would shift every field).
-#[test]
-fn parse_starttime_comm_with_space() {
-    let stat = "4242 (my proc) R 1 4242 4242 0 -1 0 0 0 0 0 0 0 0 0 \
-                    20 0 1 0 555000 0 0";
-    assert_eq!(parse_starttime_from_stat(stat), Some(555000));
-}
-
-/// The hard comm gotcha: parentheses *inside* comm. We must key off the LAST
-/// `')'`, not the first, or the offset is wrong.
-#[test]
-fn parse_starttime_comm_with_inner_parens() {
-    let stat = "7 ((odd) name)) S 1 7 7 0 -1 0 0 0 0 0 0 0 0 0 \
-                    20 0 1 0 424242 0 0";
-    assert_eq!(parse_starttime_from_stat(stat), Some(424242));
-}
-
-/// Malformed / too-few-fields stat → None (never panics, no bad starttime).
-#[test]
-fn parse_starttime_malformed_returns_none() {
-    assert_eq!(parse_starttime_from_stat(""), None); // no ')'
-    assert_eq!(parse_starttime_from_stat("123 (x) S 1 2 3"), None); // < 22 fields
-                                                                    // ')' present but starttime token is non-numeric.
-    let bad = "1 (x) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 notanum 0";
-    assert_eq!(parse_starttime_from_stat(bad), None);
-}
+// `/proc/<pid>/stat` 一行怎么切（起始时刻第 22 栏、名字里的空格与括号）的判据住 `tests/common/platform-core/lib_tests.rs`。
 
 /// `session_alive` truth table around the captured procStart.
 ///

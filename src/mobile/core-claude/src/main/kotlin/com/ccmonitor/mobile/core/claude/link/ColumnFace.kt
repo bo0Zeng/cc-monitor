@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.wire.gen.ChatsColumn
 import com.ccmonitor.mobile.core.wire.gen.ChatsColumnAsk
 
 /**
- * 会话屏勾上的那几台并成一列：`libmobcore.so` 里那一个口（`core-rs/rust/lib.rs`），并法是 `resident_client::column`
+ * 会话屏勾上的那几台并成一列：`libmobcore.so` 里那一个口（`core-rs/rust/lib.rs`），并法是 `face_core::column`
  * （本机后端并历史页那一份），这里只装运。交回的是「第几台第几项」，屏照它摆各台那一行。
  */
 object ColumnFace {

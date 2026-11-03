@@ -10,13 +10,13 @@
 use cmd_wire::frame::Frame;
 use cmd_wire::phone::{CallEnd, LinkLine};
 use deploy::machine::{fold, product, Entry, Fact};
+use face_core::book::SessionBook;
+use face_core::live::{Board, LiveCards};
 use face_core::record::OrUnread;
-use resident_client::book::SessionBook;
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
-use resident_client::live::{Board, LiveCards};
 use resident_client::watch::Desk;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -186,7 +186,7 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     })
 }
 
-/// 一台手上的两样整份：会话簿 · 活卡板 —— 折法是端核心那一份（`resident_client::book` · `resident_client::live`，桌面壳同一份），
+/// 一台手上的两样整份：会话簿 · 活卡板 —— 折法是共享核心那一份（`face_core::book` · `face_core::live`，桌面壳同一份），
 /// Kotlin 只读折好的整份，不折。
 #[derive(Default)]
 pub struct Folds {
@@ -918,9 +918,7 @@ mod tests {
     fn the_shared_frames_fold_into_the_same_book_the_desktop_gets() {
         let mut folds = Folds::default();
         let mut last = None;
-        for line in
-            include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines()
-        {
+        for line in include_str!("../../../../tests/common/face-core/book-frames.jsonl").lines() {
             for (kind, body) in folds.frame(line) {
                 assert_eq!(kind, "book", "会话帧只交整份簿：{line}");
                 last = Some(body);
@@ -928,7 +926,7 @@ mod tests {
         }
         let got: serde_json::Value = serde_json::from_str(&last.expect("交过簿")).unwrap();
         let want: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../tests/comms/resident-client/book.golden.json"
+            "../../../../tests/common/face-core/book.golden.json"
         ))
         .unwrap();
         assert_eq!(got, want);
@@ -971,19 +969,17 @@ mod tests {
         );
     }
 
-    /// ★ 换流那一下簿照桌面那一路落（`resident_client::book::unseen_now`）：活的那一条落成看不见那一张、簿上记着它。
+    /// ★ 换流那一下簿照桌面那一路落（`face_core::book::unseen_now`）：活的那一条落成看不见那一张、簿上记着它。
     #[test]
     fn a_new_link_folds_the_live_ones_into_the_unseen_face_like_the_desktop() {
         let mut folds = Folds::default();
-        for line in
-            include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines()
-        {
+        for line in include_str!("../../../../tests/common/face-core/book-frames.jsonl").lines() {
             folds.frame(line);
         }
         let out = folds.reset(cmd_wire::cells::Words("m 离线".into()));
         let (_, book) = out.last().expect("交了簿");
         let book: SessionBook = serde_json::from_str(book).unwrap();
-        let face = resident_client::book::unseen(cmd_wire::cells::Words("m 离线".into()));
+        let face = face_core::book::unseen(cmd_wire::cells::Words("m 离线".into()));
         assert_eq!(book.unseen.as_ref(), Some(&face));
         assert!(book.live.is_empty(), "活的都落成说不清");
         assert!(book.left.values().any(|l| l.face == face));

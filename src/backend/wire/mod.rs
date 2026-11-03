@@ -54,6 +54,7 @@ pub use cmd_wire::frame::Life as WireLife;
 // 帧的线上形住 `cmd-wire`（`cmd_wire::frame`，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 // （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot, SessionFace};
+pub use cmd_wire::frame::{AttachFrom, CanAttach};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
@@ -138,10 +139,22 @@ pub trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
+    /// 带上 pidfile 说的接进去有没有意义（`attachable`，宣告时读的那一格）：`Some(false)` ⇒「在终端里打开」不能；没说 ⇒ 照原样。
+    fn attachable(self, attachable: Option<bool>) -> Self;
 }
 
 fn no(why: Words) -> Allow {
     Allow::No { why }
+}
+
+/// 接得进：在哪台看才给。
+fn attach_yes(from: AttachFrom) -> CanAttach {
+    CanAttach::Yes { from }
+}
+
+/// 接不进：那一句。
+fn attach_no(why: Words) -> CanAttach {
+    CanAttach::No { why }
 }
 
 /// 说得了：框里那一句占位（文案表那一条）。
@@ -152,6 +165,16 @@ fn say_yes(hint: String) -> CanSay {
 impl SessionFaceExt for SessionFace {
     fn under(mut self, account: Option<String>) -> Self {
         self.account = account;
+        self
+    }
+
+    fn attachable(mut self, attachable: Option<bool>) -> Self {
+        if attachable == Some(false) && matches!(self.can.attach, CanAttach::Yes { .. }) {
+            self.can.attach = attach_no(Words(copy_core::copy_text(
+                "sessionState.unattachable.why",
+                &[],
+            )));
+        }
         self
     }
 
@@ -186,6 +209,8 @@ impl SessionFaceExt for SessionFace {
                         resume: no(running()),
                         term: CanTerm::Yes { host: Launch::Tmux },
                         reattach: Allow::Yes,
+                        // tmux 会话还在：别的机器上接进去；本机那个 tmux 会话有 ccm 开的窗口，走 ↗。
+                        attach: attach_yes(AttachFrom::Elsewhere),
                         // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
                         model: Allow::Yes,
                         permission: Allow::Yes,
@@ -228,6 +253,7 @@ impl SessionFaceExt for SessionFace {
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
                         term: CanTerm::No { why: why.clone() },
                         reattach: no(why.clone()),
+                        attach: attach_no(why.clone()),
                         stop: no(why.clone()),
                         end: no(why),
                         // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
@@ -265,6 +291,7 @@ impl SessionFaceExt for SessionFace {
                         ))),
                         term: CanTerm::No { why: name.clone() },
                         reattach: no(name.clone()),
+                        attach: attach_no(name.clone()),
                         model: no(name.clone()),
                         permission: no(name.clone()),
                         stop: no(name.clone()),
@@ -386,6 +413,16 @@ fn live_face(
                 },
             },
             reattach: no(running()),
+            // 托管终端：瘦客户端哪台都接得进；tmux 会话（住哪判不了 ⇒ 交了由那台认）：别的机器上接，本机那个有 ccm 开的窗口、走 ↗；
+            // 不在任何宿主里 ⇒ 没有终端可接。
+            attach: match host {
+                Some(Housed::In(TerminalHost::Managed)) => attach_yes(AttachFrom::Anywhere),
+                Some(Housed::In(TerminalHost::Tmux)) | None => attach_yes(AttachFrom::Elsewhere),
+                Some(Housed::Bare) => attach_no(Words(copy_core::copy_text(
+                    "terminal.empty.notOurs",
+                    &[],
+                ))),
+            },
             model,
             permission,
             stop,
@@ -408,17 +445,17 @@ fn live_face(
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（[`NameFace`]）：`label` ＝ 历史那一层的 `search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；
-/// `label_project` ＝ 项目目录最后一截。
+/// `title` ＝ 写好的整行标题（`search_rules::session_line`）。
 pub trait NameFaceExt: Sized {
-    fn of_parts(label: String, label_project: Option<String>) -> Self;
+    fn of_parts(label: String, title: String) -> Self;
 }
 
 impl NameFaceExt for NameFace {
     /// 已经算好的那两格（只由 `history::search_rules::name_face` 调）。
-    fn of_parts(label: String, label_project: Option<String>) -> Self {
+    fn of_parts(label: String, title: String) -> Self {
         NameFace {
             label: Words(label),
-            label_project: label_project.map(Words::from),
+            title: Words(title),
         }
     }
 }
@@ -946,3 +983,7 @@ pub mod test_support;
 #[cfg(test)]
 #[path = "../../../tests/backend/wire/wire_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/wire/attach_tests.rs"]
+mod attach_tests;

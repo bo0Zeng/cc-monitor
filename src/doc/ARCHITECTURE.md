@@ -86,7 +86,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
 - **流只发要看的会话**：每台一张名单台（`resident-client` 的 `watch::Desk`）：attach 行带上「在看哪几个会话」、那台从第一帧起照它发，之后变了经 `stream-watch {sids}` 报；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。名单从空开始；桌面名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（壳 `stream_watch.rs` 交名单台），手机是它屏上的会话（核心 `resident.rs` 计数）。
 - **seq 是后端给的行号**，界面 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/recognize/turns.rs`）。
-- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是端核心那一份 `resident_client::book`，手机同一份）。到那台的连接断了，由本机后端给那台活的 · 可重连的每一条发一帧 `session_left`（「说不清」那张脸），并在机器状态里记「这台 N 条状态不明」（`MachineState.unclear`）；monitor 不合成，只把那台「清单报完了」作废。
+- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是共享核心那一份 `face_core::book`，手机同一份）。到那台的连接断了，由本机后端给那台活的 · 可重连的每一条发一帧 `session_left`（「说不清」那张脸），并在机器状态里记「这台 N 条状态不明」（`MachineState.unclear`）；monitor 不合成，只把那台「清单报完了」作废。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后。本机活会话的骨架 tab 也由这条流的起停帧给出。

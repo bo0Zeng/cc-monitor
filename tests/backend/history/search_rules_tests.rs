@@ -139,13 +139,75 @@ fn a_background_name_sits_between_the_rename_and_the_title() {
             bg_name: bg.map(str::to_string),
             title: Some("AI".into()),
             first: "首句".into(),
-            project_dir: None,
+            ..Default::default()
         })
         .0
     };
     assert_eq!(f(None, Some("夜间任务")), "夜间任务");
     assert_eq!(f(Some("修登录"), Some("夜间任务")), "修登录");
     assert_eq!(f(None, Some(" ")), "AI");
+}
+
+/// 记录没读到（找不到 · 不在手上这份清单里）⇒ 会话号头 8 位，改过的名照旧压过它；读到了却什么都没说 ⇒ 「没有说过话」那一句。
+#[test]
+fn an_unread_record_is_called_by_the_head_of_its_sid() {
+    let sid = "0123456789abcdef";
+    assert_eq!(
+        session_label(&LabelFacts::unread(sid, None)),
+        ("01234567".to_string(), false)
+    );
+    assert_eq!(
+        session_label(&LabelFacts::unread(sid, Some("改".into()))),
+        ("改".to_string(), true)
+    );
+    assert_eq!(session_label(&LabelFacts::unread("短", None)).0, "短");
+    assert_eq!(
+        session_label(&LabelFacts::default()).0,
+        copy_core::copy_text("history.row.untitled", &[])
+    );
+}
+
+/// 整行标题（帧上 `NameFace.title`，界面照抄）：`项目 ↳ ⚙ 名字`；没有项目 · 不是分叉来的 · 不是后台 ⇒ 那一截不带。
+#[test]
+fn the_title_line_is_project_then_marks_then_name() {
+    let f = |project: Option<&str>, forked: bool, background: bool| {
+        session_line(&LabelFacts {
+            title: Some("修登录".into()),
+            project_dir: project.map(str::to_string),
+            forked,
+            background,
+            ..Default::default()
+        })
+    };
+    let forked = copy_core::copy_text("sessionTitle.mark.forked", &[]);
+    let bg = copy_core::copy_text("sessionTitle.mark.background", &[]);
+    assert_eq!(f(Some("/w/cc-monitor"), false, false), "cc-monitor 修登录");
+    assert_eq!(f(None, false, false), "修登录");
+    assert_eq!(f(Some("/w/p/"), true, false), format!("p {forked} 修登录"));
+    assert_eq!(f(Some("C:\\w\\p"), true, true), format!("p {forked} {bg} 修登录"));
+    assert_eq!(f(None, false, true), format!("{bg} 修登录"));
+    assert_eq!(
+        session_line(&LabelFacts::unread("0123456789", None)),
+        "01234567"
+    );
+}
+
+/// 帧上那两格：`label` ＝ 名字（[`session_label`]），`title` ＝ 整行（[`session_line`]）。
+#[test]
+fn the_name_face_carries_the_name_and_the_whole_line() {
+    let facts = LabelFacts {
+        custom: Some("改".into()),
+        project_dir: Some("/w/p".into()),
+        forked: true,
+        ..Default::default()
+    };
+    let n = name_face(&facts);
+    assert_eq!(n.label.0, "改");
+    assert_eq!(n.title.0, session_line(&facts));
+    assert_eq!(
+        n.title.0,
+        format!("p {} 改", copy_core::copy_text("sessionTitle.mark.forked", &[]))
+    );
 }
 
 /// 读到的一条记录改不改叫这条会话什么：agent 起的标题收；人在 agent 里改的名（`TitleBy::User`，Claude `/rename`）不收 ——

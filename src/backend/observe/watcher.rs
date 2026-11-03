@@ -61,8 +61,8 @@ use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use copy_core::discard::{Discard, Why};
+use face_core::book::SessionBook;
 use notify::{RecursiveMode, Watcher as _};
-use resident_client::book::SessionBook;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -83,7 +83,7 @@ use super::tmux_observe::{
 #[cfg(test)]
 use crate::platform::liveness::is_same_live_process;
 #[cfg(test)]
-use crate::platform::proc::{parse_btime, parse_starttime_from_stat, session_alive};
+use crate::platform::proc::{parse_btime, session_alive};
 #[cfg(all(test, target_os = "linux"))]
 use pidwatch_core::pidfd_open;
 use tokio::sync::mpsc;
