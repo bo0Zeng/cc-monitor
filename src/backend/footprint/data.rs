@@ -25,15 +25,15 @@ const OWN_HOME: &str = "~/.cc-monitor";
 
 /// 设置窗的一处：页 · 栏 · 锚点（与设置窗「带目的地打开」同一种形状；没有的那一格不出）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct UndoAt {
     pub(crate) page: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) tab: Option<Cow<'static, str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) anchor: Option<Cow<'static, str>>,
 }
 
@@ -70,8 +70,8 @@ fn undo_of(tool_id: &str) -> Option<UndoAt> {
 
 /// cc-monitor 写进用户文件的一处。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct ChangedFile {
     pub(crate) path: Cow<'static, str>,
     pub(crate) what: String,
@@ -92,8 +92,8 @@ pub(crate) struct Missing {
 
 /// 删了会丢（`truth`）还是能重建（`cache`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum OwnClass {
     Truth,
@@ -102,8 +102,8 @@ pub(crate) enum OwnClass {
 
 /// cc-monitor 在这台自己家里放的一样。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct OwnItem {
     /// 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
     pub(crate) id: Cow<'static, str>,
@@ -120,10 +120,10 @@ pub(crate) struct OwnItem {
 
 /// `data-report` 的回包。也收（`Deserialize`）：本机后端替界面记的「上次值」按它核存档（`last_seen`）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DataReport {
+pub struct DataReport {
     /// 这台家目录（显示时 `~` 缩写按它）。
     pub(crate) home: String,
     pub(crate) changed_files: Vec<ChangedFile>,
@@ -131,7 +131,7 @@ pub(crate) struct DataReport {
     /// 这台有没有 tmux（查不动 ⇒ `null`）。
     pub(crate) tmux: Option<bool>,
     /// 「待办」各类的件数。
-    pub(crate) counts: super::chores::ChoreCounts,
+    pub counts: super::chores::ChoreCounts,
     /// 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
     pub(crate) rank: u8,
     pub(crate) own: Vec<OwnItem>,

@@ -12,13 +12,45 @@
 //! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，不截断：截断的清单会被当成完整的去数 glob）·
 //! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
 
-pub(crate) mod agent_home_check;
-pub(crate) mod chores;
-pub(crate) mod data;
-pub(crate) mod last_seen;
-pub(crate) mod readiness;
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
+    )
+)]
+
+// 包里照旧写 `crate::footprint::…` · `crate::control::…` · `crate::observe::…` · `crate::assets::…` · `crate::accounts::…` ·
+// `crate::agents::…` · `crate::history::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
+extern crate self as footprint;
+use backend_accounts as accounts;
+use backend_agents as agents;
+use backend_assets as assets;
+use backend_common as common;
+use backend_control as control;
+use backend_history as history;
+use backend_observe as observe;
+use backend_platform as platform;
+use backend_wire as wire;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
+
+pub mod agent_home_check;
+pub mod chores;
+pub mod data;
+pub mod last_seen;
+pub mod readiness;
 pub(crate) mod registry;
-pub(crate) mod rows;
+pub mod rows;
 
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
@@ -37,29 +69,29 @@ pub(crate) const MAX_HOOK_FILE_BYTES: relay_route_core::Cap = relay_route_core::
 
 /// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FootprintReq {
+pub struct FootprintReq {
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) client: Option<FootprintClient>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub client: Option<FootprintClient>,
 }
 
 /// monitor 交来的它自己那台独有的事实：家目录（绝对路径）· `PATH`（取不到 ⇒ `null`）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FootprintClient {
+pub struct FootprintClient {
     pub(crate) home: String,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) path: Option<String>,
 }
 
 /// 帧面入口（`footprint-report`）。
-pub(crate) fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
+pub fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
     let get = |k: &str| std::env::var(k).ok();
     answer_with(
         &get,
@@ -77,7 +109,7 @@ struct Client {
 
 /// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 待办 · 有没有 tmux」重排（[`data`] · [`chores`]）。
 /// `door` 是这台的文件管理面（别名块的候选经它读）。
-pub(crate) fn data_answer(
+pub fn data_answer(
     door: &dyn crate::common::door::Door,
     req: &FootprintReq,
 ) -> Result<data::DataReport, Said> {

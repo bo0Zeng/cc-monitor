@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 /// 记哪一样。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SeenKind {
     /// `accounts-list` 的应答。
@@ -52,36 +52,39 @@ impl SeenKind {
 
 /// `last-seen-read` 的入参。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LastSeenReadReq {
+pub struct LastSeenReadReq {
     /// 哪台（机器名）。
     pub(crate) origin: cmd_wire::Machine,
 }
 
 /// `last-seen-write` 的入参：记一份 `{origin, kind, value}`，或清掉那台 `{origin, forget: true}`（不带 `kind` / `value`）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LastSeenWriteReq {
+pub struct LastSeenWriteReq {
     pub(crate) origin: cmd_wire::Machine,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) kind: Option<SeenKind>,
     /// 那一份应答（对象，序列化后 ≤ 256 KiB）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "Record<string, unknown>"))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, type = "Record<string, unknown>")
+    )]
     pub(crate) value: Option<Map<String, Value>>,
     /// `true` ⇒ 清掉这台的上次值（删机器时）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) forget: Option<bool>,
 }
 
 /// 上次读数那一格（[`SeenAt`]）：`at_ms` 那一刻按这把钟写成「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
-pub(crate) fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
+pub fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
     let time = clock.text(at_ms / 1000);
     SeenAt {
         at_ms,
@@ -95,8 +98,8 @@ pub(crate) fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> See
 /// 记下的一份，按那条命令的回包类型核过：对得上 ⇒ 原样（已是类型）；
 /// 存档不是此刻这一版（形状指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。两样都带上次读数那一格。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub(crate) enum Seen<T> {
     Kept { seen: SeenAt, value: T },
@@ -105,21 +108,21 @@ pub(crate) enum Seen<T> {
 
 /// `last-seen-read` 的回包：没记过的那一样 ⇒ `null`。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LastSeen {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LastSeen {
     pub(crate) accounts: Option<Seen<cmd_wire::accounts::AccountsList>>,
     pub(crate) data: Option<Seen<crate::footprint::data::DataReport>>,
 }
 
 /// `last-seen-write` 的回包。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LastSeenWritten {
+pub struct LastSeenWritten {
     /// 记下的时刻（毫秒）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) at_ms: u64,
 }
 
@@ -282,7 +285,7 @@ fn locked_edit(
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
 ) -> Result<(), Said> {
     let io = |e| crate::wire::spec::fail("io_failed", e);
-    let held = own.lock(dir).map_err(|e| io(Said::from(e)))?;
+    let held = own.lock(dir).map_err(io)?;
     let mut origins = load(file.as_path());
     if edit(&mut origins) {
         DOC.write(own, dir, &held, &Store { origins }).map_err(io)?;
@@ -368,7 +371,7 @@ fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenW
 }
 
 /// `last-seen-read`：帧面入口（只读）；那一句按看的那一台的时区（请求信封的 `tz`）写。
-pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastSeen> {
+pub fn answer_read(req: &LastSeenReadReq, tz: &crate::common::time::Tz) -> Answer<LastSeen> {
     let path = store_path()
         .ok_or_else(|| Said::new("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
     read_at(
@@ -379,7 +382,7 @@ pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastS
 }
 
 /// `last-seen-write`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_write(req: &LastSeenWriteReq, own: &Own) -> Answer<LastSeenWritten> {
+pub fn answer_write(req: &LastSeenWriteReq, own: &Own) -> Answer<LastSeenWritten> {
     write_at(own, req, crate::common::time::now_ms())
 }
 

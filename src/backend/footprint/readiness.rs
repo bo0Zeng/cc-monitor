@@ -13,24 +13,24 @@ use serde::{Deserialize, Serialize};
 
 /// `first-run` 的入参。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FirstRunReq {
+pub struct FirstRunReq {
     /// 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) remotes: u64,
 }
 
 /// 三步里的哪一步。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "FirstRunStepId"
+        rename = "FirstRunStepId",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "snake_case")]
@@ -45,8 +45,8 @@ pub(crate) enum StepId {
 
 /// 一步。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct FirstRunStep {
     pub(crate) id: StepId,
     pub(crate) done: bool,
@@ -56,12 +56,12 @@ pub(crate) struct FirstRunStep {
 
 /// `first-run` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct FirstRun {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct FirstRun {
     pub(crate) steps: Vec<FirstRunStep>,
     /// 必做而还没打勾的几步（主窗口状态栏那一枚只数它）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) left: usize,
     /// 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）。
     pub(crate) skipped: bool,
@@ -107,7 +107,7 @@ fn terminal_here(door: &dyn Door) -> bool {
 }
 
 /// `first-run {remotes}`：帧面入口（只读）。
-pub(crate) fn answer(door: &dyn Door, req: &FirstRunReq) -> FirstRun {
+pub fn answer(door: &dyn Door, req: &FirstRunReq) -> FirstRun {
     let remotes = req.remotes;
     let skipped =
         super::chores::marks::current(super::chores::marks::marks_path().as_deref()).start_skipped;

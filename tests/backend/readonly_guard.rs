@@ -2108,6 +2108,13 @@ mod g6_dependency_signoff {
              写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
         ),
         (
+            "ring",
+            DEV_DEPS,
+            UNMEASURED,
+            "同上一行那一份，只在测试档：足迹判据照中转的派生法现算直通那一把（`ring::hmac` 纯内存算 HMAC-SHA256）。\
+             写不写盘：判据对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
+        ),
+        (
             "rustls",
             DEPS,
             UNMEASURED,

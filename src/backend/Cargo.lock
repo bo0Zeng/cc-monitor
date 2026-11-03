@@ -317,6 +317,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-footprint"
+version = "0.0.0"
+dependencies = [
+ "backend-accounts",
+ "backend-agents",
+ "backend-assets",
+ "backend-common",
+ "backend-control",
+ "backend-history",
+ "backend-observe",
+ "backend-platform",
+ "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "relay-route-core",
+ "ring",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "test-home",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "backend-history"
 version = "0.0.0"
 dependencies = [
@@ -670,6 +696,7 @@ dependencies = [
  "backend-control",
  "backend-dial",
  "backend-files",
+ "backend-footprint",
  "backend-history",
  "backend-host",
  "backend-observe",

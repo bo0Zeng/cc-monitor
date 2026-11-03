@@ -7,7 +7,7 @@
 //! - 判定只在这里：事实由 [`gather`] 从这台收（别名块 · PATH 上的 ccm · 设置文件 · 记下的选择），本模块是纯函数。
 
 pub(crate) mod gather;
-pub(crate) mod marks;
+pub mod marks;
 pub(crate) mod sshd;
 
 use crate::agents::StepResultExt as _;
@@ -129,8 +129,8 @@ pub(crate) struct McpLogin {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum ChoreKind {
     Must,
@@ -142,8 +142,8 @@ pub(crate) enum ChoreKind {
 
 /// 那台判出的态（「已复制」只住界面）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum ChoreState {
     Todo,
@@ -158,8 +158,8 @@ pub(crate) enum ChoreState {
 
 /// 收着时那颗主按钮。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum ChoreAction {
     CopyCommand,
@@ -196,8 +196,8 @@ fn row(kind: LineDiffKind, text: &str, old_no: Option<u32>, new_no: Option<u32>)
 
 /// 「待办」的一件（`data-report` 的 `todo[]`）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Chore {
     pub(crate) id: String,
@@ -246,10 +246,10 @@ impl Chore {
 
 /// 「待办」各类的件数（`data-report` 的 `counts`，跨台由 `chores-merge` 逐格相加）。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ChoreCounts {
+pub struct ChoreCounts {
     /// 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
     pub(crate) badge: usize,
     /// 还没做完的：不是已做、也不是不用了。
@@ -310,7 +310,7 @@ pub(crate) fn counts(chores: &[Chore]) -> ChoreCounts {
 }
 
 /// 几台的件数合成一份（`chores-merge`）：逐格相加。纯计算。
-pub(crate) fn merge_counts(machines: Vec<ChoreCounts>) -> ChoreCounts {
+pub fn merge_counts(machines: Vec<ChoreCounts>) -> ChoreCounts {
     machines
         .into_iter()
         .fold(ChoreCounts::default(), ChoreCounts::add)

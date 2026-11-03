@@ -78,7 +78,10 @@ use backend_files as files; // 文件管理那一块：只读族（常驻文件�
 mod cross_files; // 文件管理那一块的判据里引到上层的那几条（那一块是独立的包、够不到上层）
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
-mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
+use backend_footprint as footprint; // 「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读；独立的包 `backend-footprint`：只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/footprint.rs"]
+mod cross_footprint; // 足迹判据里引到上层的那几条（那一层是独立的包、够不到上层）
 use backend_history as history; // 历史清单那一族：项目 / 会话清单 · 注解 · 历史页那一列 · 组 · 会话输入队 · 判活那张表（独立的包 `backend-history`：只引 agents · dial · host · 帧面零件 · 纯工具 · 平台六层）
 use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引 agents · 帧面零件 · 纯工具 · 平台四层）
 #[cfg(test)]

@@ -333,8 +333,8 @@ fn the_scan_catches_a_single_use_field_on_touched_file_too() {
     // **先确认变异真落位**（本会话两次"全绿"其实是变异没写进文件）
     let n = mutated.matches("needs_sudo").count();
     assert!(
-        n >= 1 + 10,
-        "变异没落到位：声明 1 处 + 每个 TouchedFile 一处，实得 {n}"
+        n > 10,
+        "变异没落到位：声明 1 处 + 每个 TouchedFile 一处（至少 11 处），实得 {n}"
     );
     assert_eq!(mutated.matches("needs_sudo: true").count(), 1);
     let r = field_discipline_of(&mutated, "TouchedFile", "TouchedFile");
@@ -1293,10 +1293,12 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
             format!("{w:?} {n}")
         })
         .collect();
+    // 那棵树的名字拆开写（整串会被旧名扫描当成一处）。
+    let dash = "-";
     println!(
         "【旧名存量读数】面 = `src/frontend/shell/src` ＋ `src/common` 共 {} 份 `.rs`（现算）· \
              还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
-             ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
+             ⚠ 面外判不了：`remote{dash}daemon{dash}proto/` 那棵树与前端 `src/**/*.ts`",
         files.len(),
         got.keys()
             .map(|k| k.0.clone())
@@ -1304,8 +1306,6 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
             .len(),
         by_kind.join(" · "),
         SITES.len(),
-        "-",
-        "-"
     );
 }
 
