@@ -10,6 +10,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
@@ -86,7 +87,7 @@ describe("会话标题：后端写好的一行，界面照抄", () => {
         if (code.includes(name)) hits.push(`${file}: ${name}`);
       }
       if (!drawers.has(file)) continue;
-      for (const needle of ["↳", "⚙", "sessionId.slice(0, 8)"]) {
+      for (const needle of [copyText("sessionTitle.mark.forked"), copyText("sessionTitle.mark.background"), "sessionId.slice(0, 8)"]) {
         if (code.includes(needle)) hits.push(`${file}: ${needle}`);
       }
     }

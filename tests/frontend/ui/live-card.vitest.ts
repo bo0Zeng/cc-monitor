@@ -273,7 +273,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     expect(drawn.liveAfter).toBe("");
   });
 
-  it("tab 按旧机器标签建出来（固定的 tab 复活）、后端宣告这个会话在另一台 ⇒ tab 的机器改成宣告的那台，那台来的流上得了活卡、标题前缀跟着变", () => {
+  it("tab 按旧机器标签建出来（固定的 tab 复活）、后端宣告这个会话在另一台 ⇒ tab 的机器改成宣告的那台，那台来的流上得了活卡（标题里不带机器）", () => {
     installViewerRig();
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
@@ -286,8 +286,8 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     tm.createSkeletonTab("s9", "/w/p", "new-host"); // 后端宣告
     tm.onLiveCard(pay("s9", [now(0, "m9", "这台说的")], "new-host"));
     expect(trailer()).toContain("这台说的");
-    expect(tm.snapshotSessions().map((x) => [x.sessionId, x.origin, x.title.includes("[new-host]"), x.title.includes("old-host")])).toEqual([
-      ["s9", "new-host", true, false],
+    expect(tm.snapshotSessions().map((x) => [x.sessionId, x.origin, x.title.includes("new-host"), x.title.includes("old-host")])).toEqual([
+      ["s9", "new-host", false, false],
     ]);
     tm.onLiveCard(pay("s9", [now(1, "m10", "旧的")], "old-host"));
     expect(trailer()).not.toContain("旧的");
