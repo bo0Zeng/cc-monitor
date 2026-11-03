@@ -39,8 +39,8 @@ use crate::wire::SessionFaceExt as _;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
 };
-pub(crate) use cmd_wire::accounts::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
-pub(crate) use cmd_wire::needs::NeedsRow;
+pub use cmd_wire::accounts::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
+pub use cmd_wire::needs::NeedsRow;
 use copy_core::copy_text;
 use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
@@ -95,20 +95,20 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 
 /// 这台启用了多账号没有（账号库清单读得出 ⇒ 是）：与账号清单那一份的 `meta.enabled` 同一个判法（[`scan_accounts`]）。
 /// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
-pub(crate) fn accounts_enabled_here() -> bool {
+pub fn accounts_enabled_here() -> bool {
     manifest_or_why(&resolve_accts_dir()).is_ok()
 }
 
 /// 账号库清单在、却读不懂（读不出 · 不是 JSON · 版本不认）⇒ 为什么（同账号清单 `meta.error` 那一句）；读得懂 · 没有清单
 /// （没启用多账号，正常状态）⇒ `None`。需手动清单据此回 `unreadable`，不把读不懂当成「没有需登录的号」。
-pub(crate) fn library_unreadable(accts_dir: &Path) -> Option<String> {
+pub fn library_unreadable(accts_dir: &Path) -> Option<String> {
     crate::accounts::manage::scan::manifest_at(&manifest_path(accts_dir))
         .err()
         .map(crate::accounts::manage::scan::Unread::into_said)
 }
 
 /// [`library_unreadable`]，这台的账号库。
-pub(crate) fn library_unreadable_here() -> Option<String> {
+pub fn library_unreadable_here() -> Option<String> {
     library_unreadable(&resolve_accts_dir())
 }
 
@@ -137,18 +137,18 @@ use crate::platform::proc::{proc_env_var, EnvRead};
 
 /// 一条会话进程跑在哪个号下（[`session_accounts`] 一个进程一行）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SessionAccount {
+pub struct SessionAccount {
     pub(crate) pid: u32,
-    pub(crate) sid: Option<String>,
+    pub sid: Option<String>,
     pub(crate) cwd: Option<String>,
     /// 进程环境里的配置目录（规范过的写法）；没设 · 不知道 ⇒ `None`。
-    pub(crate) config_dir: Option<String>,
-    pub(crate) account: Option<String>,
+    pub config_dir: Option<String>,
+    pub account: Option<String>,
     /// 判活过了启动时刻对拍（活会话表 `start_checked`：PID 会被复用，错标签比缺标签危害大）。
-    pub(crate) alive: bool,
+    pub alive: bool,
     /// 进程活着（身份已确认）、环境读得到、且没设配置目录 —— 就是账号 0（`account` 给出名字）。
     /// 环境这一刻取不到（读失败 / 读回 0 字节）⇒ 假：不归属、也不算裸起。
-    pub(crate) bare: bool,
+    pub bare: bool,
     /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
     /// 用途：机器页「停」本机后端之前数一数有几条会话会断。
@@ -269,7 +269,7 @@ fn scan_accounts(
 }
 
 /// `accounts-list` 的入参住 `cmd-wire::accounts`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::accounts::AccountsListReq;
+pub use cmd_wire::accounts::AccountsListReq;
 
 /// ★ 选不了的那一句（唯一一处；判定本身是 `acct_core::account_selectable`，这里只说是四条里的哪一条没过）。
 /// 账号 0 不经选号 ⇒ 没有这一句。
@@ -303,7 +303,7 @@ fn needs_login(a: &ScannedAccount) -> bool {
 }
 
 /// ★ 每个号给不给［登录…］（唯一一处）：只差登录、而这一家能在 app 里登录（`sign_in`）⇒ 给；只差登录却登不了 ⇒ 那一句换成「需登录 · 不支持在 app 里登录」。
-pub(crate) fn with_sign_in(list: &mut AccountsList, sign_in: bool) {
+pub fn with_sign_in(list: &mut AccountsList, sign_in: bool) {
     for r in &mut list.accounts {
         let need = needs_login(&r.scanned);
         r.login = need && sign_in;
@@ -325,7 +325,7 @@ fn next_default(m: &Manifest) -> Option<String> {
 
 /// 这台账号库给每个号的号色（名 ⇒ 第几格；读不出 ⇒ 空表）：别处画号色（轮换那一页）与 `accounts-list` 同一份；
 /// 不在表里的号照 `color_fallback` 按名字算（同清单那一行）。
-pub(crate) fn account_colors() -> std::collections::BTreeMap<String, u8> {
+pub fn account_colors() -> std::collections::BTreeMap<String, u8> {
     manifest_or_why(&resolve_accts_dir())
         .map(|m| colors_of(&m))
         .unwrap_or_default()
@@ -352,7 +352,7 @@ fn colors_of(m: &Manifest) -> std::collections::BTreeMap<String, u8> {
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
 /// `relay_running` ＝ 这台的中转在不在（徽章要它；调用方读本进程的监听状态 ⇒
 /// 只有常驻进程答得出真话，`accounts-list` 在 `STREAM_ONLY`）。
-pub(crate) fn list_product(
+pub fn list_product(
     rows: &[String],
     agent: &str,
     table_agent: &str,
@@ -440,7 +440,7 @@ pub(crate) fn badge_of(
 /// - 每个号 `configDirShown`：号目录的显示形，按 `home`（这台的家目录）写（[`crate::platform::paths::home_short`]），界面照抄。
 /// - 每个号 `keyMasked` · `baseUrl`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点；
 ///   订阅号 / 表里没有它那一行 / 没配 key ⇒ `null`。key 本体从不出后端。
-pub(crate) fn list_product_with(
+pub fn list_product_with(
     accts_dir: &Path,
     home: Option<&Path>,
     rows: &[String],
@@ -500,7 +500,7 @@ pub(crate) fn list_product_with(
 
 /// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LiveMcpFailed {
+pub struct LiveMcpFailed {
     pub name: String,
     /// 说它的那条记录的时刻（epoch ms）；记录没写 / 解不出 ⇒ `None`。
     pub at_ms: Option<i64>,
@@ -548,7 +548,7 @@ static MCP_BOOK: std::sync::Mutex<Option<McpBook>> = std::sync::Mutex::new(None)
 /// 这台此刻活着的交互会话（`homes` 各号的家那一张活会话表，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
 /// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存，带上这台注解里改过的名（`history::listing::session_title_of`）。
-pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
+pub fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut book = MCP_BOOK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -612,7 +612,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
 
 /// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
 /// 哪一家照它落在哪棵树下认（`agents::record_kind_of`），怎么判照那一家声明的（[`crate::agents::Adapter::live`]，见 [`session_holders_by`]）。
-pub(crate) fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
+pub fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
     let kind = crate::agents::record_kind_of(record)?;
     session_holders_by(crate::agents::live_by(kind), agent_home, record)
 }
@@ -649,15 +649,15 @@ pub(crate) fn session_holders_by(
 
 /// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（活会话表）· 在等你时等的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct Doing {
+pub struct Doing {
     /// 说不清 ⇒ `None`（主窗口那颗点照「在跑」画）。
-    pub(crate) activity: Option<crate::agents::SessionActivity>,
+    pub activity: Option<crate::agents::SessionActivity>,
     /// 只在 `activity` 是在等你时有：配上记录里没结果的那一步判的种类（[`super::recognize::facts::needs_of`]）。
-    pub(crate) needs: Option<super::recognize::facts::NeedsKind>,
+    pub needs: Option<super::recognize::facts::NeedsKind>,
 }
 
 /// 这台此刻活着的每个会话在干什么（活会话表 `LiveTable::doing`）；在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
-pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
+pub fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
     let table = crate::history::live_table::now(agent_home);
     table
         .doing()
@@ -674,7 +674,7 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 /// **这台上需手动的会话**：活会话表说在等人的每一个（那台说在等 ∪ 有请求挂着，`LiveTable::needs`），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（`needs.rank` 小的先，[`super::recognize::facts::needs_rank`]）。
 /// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `history/session_hidden.rs` 判）。
-pub(crate) fn live_needs(
+pub fn live_needs(
     agent_home: &Path,
     dress: &dyn Fn(
         Option<super::recognize::facts::Needs>,
@@ -757,7 +757,7 @@ fn waiting_needs(
 
 /// 这条会话跑在哪个号的家目录下：活会话表里持着它、启动时刻核过的那个进程 ⇒ 读进程环境里的配置目录（没设 ⇒ 默认家目录，注册表 `agents::home_at`）。
 /// 找不到 · 进程不在了 · 环境读不到 ⇒ `None`（不猜）。
-pub(crate) fn session_home(table: &LiveTable, sid: &str) -> Option<PathBuf> {
+pub fn session_home(table: &LiveTable, sid: &str) -> Option<PathBuf> {
     let face = crate::agents::account_library_face()?;
     let pid = table.checked_pid(sid)?;
     let owner = owner_of(pid, face.session_env.config_dir, &[]);
@@ -771,13 +771,13 @@ pub(crate) fn session_home(table: &LiveTable, sid: &str) -> Option<PathBuf> {
 }
 
 /// 家目录 `home` 下的 `<rel>` 跟这台账号库里别的号共用同一份（[`shared_with_other_accounts_in`]）。
-pub(crate) fn shared_with_other_accounts(home: &Path, rel: &str) -> bool {
+pub fn shared_with_other_accounts(home: &Path, rel: &str) -> bool {
     shared_with_other_accounts_in(&resolve_accts_dir(), home, rel)
 }
 
 /// 看的是链接布局：`home` 下那一份解开链接后的真身，跟账号库里另一个号（家目录不是同一个）的那一份是同一份 ⇒ 共用。
 /// 它自己一份 · 没有账号库 · 这份文件还没有（解不开）⇒ `false`。
-pub(crate) fn shared_with_other_accounts_in(accts_dir: &Path, home: &Path, rel: &str) -> bool {
+pub fn shared_with_other_accounts_in(accts_dir: &Path, home: &Path, rel: &str) -> bool {
     use crate::common::fence::real_path;
     let (Some(me), Some(my_home)) = (real_path(&home.join(rel)), real_path(home)) else {
         return false;
@@ -854,7 +854,7 @@ pub(crate) fn default_accts_dir() -> PathBuf {
 }
 
 /// 正在跑的会话各属哪个号：活会话表（`history::live_table`）每个进程一行。
-pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<SessionAccount> {
+pub fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<SessionAccount> {
     // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
     let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
         return Vec::new();
@@ -913,7 +913,7 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Sessi
 /// `rows` 是这台活会话那几行（[`session_accounts`]）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
 /// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
 /// **纯函数**。
-pub(crate) fn machine_product(rows: &[SessionAccount], forwards: u32) -> Interrupts {
+pub fn machine_product(rows: &[SessionAccount], forwards: u32) -> Interrupts {
     let (mut relayed, mut maybe, mut live) = (0u32, 0u32, 0u32);
     for r in rows.iter().filter(|r| r.alive) {
         live += 1;
@@ -933,27 +933,23 @@ pub(crate) fn machine_product(rows: &[SessionAccount], forwards: u32) -> Interru
 
 /// `machine-interrupts` 的回包：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（[`machine_product`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Interrupts {
+pub struct Interrupts {
     /// 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）。
-    pub(crate) relayed_sessions: u32,
+    pub relayed_sessions: u32,
     /// 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）。
-    pub(crate) relayed_maybe: u32,
+    pub relayed_maybe: u32,
     /// 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）。
-    pub(crate) live_streams: u32,
+    pub live_streams: u32,
     /// 这台账上通往问的那台机器的转发（问的是重启 / 退出 cc-monitor ⇒ 账上全部）。
-    pub(crate) forwards: u32,
+    pub forwards: u32,
 }
 
 /// 「现在重启 cc-monitor」之前那一问（`machine-interrupts` 带 `appExit`）：这台后端随 cc-monitor 退出一起停（`kill` ＝ 它自己那份退出行为）
 /// ⇒ 这台的活会话照 [`machine_product`] 数、账上全部转发（`all_forwards`）都断；留着 ⇒ 什么都不断。**纯函数**。
-pub(crate) fn app_exit_product(
-    kill: bool,
-    rows: &[SessionAccount],
-    all_forwards: u32,
-) -> Interrupts {
+pub fn app_exit_product(kill: bool, rows: &[SessionAccount], all_forwards: u32) -> Interrupts {
     if kill {
         machine_product(rows, all_forwards)
     } else {
@@ -962,16 +958,16 @@ pub(crate) fn app_exit_product(
 }
 
 /// 帧面那几问要的「哪个会话在用哪个号」（[`session_accounts`]，账号库取这台的那一份）。
-pub(crate) fn session_accounts_here(agent_home: &Path) -> Vec<SessionAccount> {
+pub fn session_accounts_here(agent_home: &Path) -> Vec<SessionAccount> {
     session_accounts(agent_home, &resolve_accts_dir())
 }
 
 // ---------------------------------------------------------------- tests
 
-// 照类型造清单成品的夹具住测试树：起会话挑号 · 需手动清单几份判据共用。
-#[cfg(test)]
+// 照类型造清单成品 · 盘上一份账号库的夹具住测试树：起会话挑号 · 需手动清单几份判据共用（本包与上层判据经 `test-support`）。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/accounts_list_support.rs"]
-pub(crate) mod test_support;
+pub mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/accounts_query_tests.rs"]

@@ -41,7 +41,7 @@ pub(crate) const TASK_FILE_CAP: Cap = Cap {
 };
 
 /// 任务列表的根：后端盯着的那一家（注册表 `LocalFace.tasks_dir`）。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
-pub(crate) fn tasks_root(home: &Path) -> std::path::PathBuf {
+pub fn tasks_root(home: &Path) -> std::path::PathBuf {
     crate::agents::tree_local_face()
         .and_then(|f| f.tasks_dir)
         .map_or_else(|| home.join(NO_TASKS), |f| f(home))
@@ -168,7 +168,7 @@ pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
 
 /// 一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
 /// 顺序原样（任务号升序）。
-pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
+pub fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
     Ok(session_task_lines(home, sid)?
         .iter()
         .filter_map(|l| {

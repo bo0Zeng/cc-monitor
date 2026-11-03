@@ -302,7 +302,7 @@ fn brace_home_form_is_not_a_false_alarm() {
             std::path::PathBuf::from(s)
         };
         // 模拟"这个路径存在"
-        expanded == std::path::PathBuf::from("/home/u/.local/bin/cc-bus")
+        expanded == std::path::Path::new("/home/u/.local/bin/cc-bus")
     };
     for form in [
         "$HOME/.local/bin/cc-bus stop-hook",

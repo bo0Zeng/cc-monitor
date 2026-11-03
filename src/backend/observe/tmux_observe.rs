@@ -51,7 +51,7 @@ pub(super) fn classify_with_server_state(
 ///
 /// `@ccm_sid` 打在**窗格**上（一个会话里可以跑几个 claude）：末列逐窗口、逐窗格展开（解析见
 /// `common::session_snapshot::pane_sids`）；`#{session_id}` 是会话账本认会话的句柄（会话改名它不变）。
-pub(crate) const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}\t#{session_id}\t#{W:#{P:#{@ccm_sid} }}";
+pub const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}\t#{session_id}\t#{W:#{P:#{@ccm_sid} }}";
 
 /// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**。
 pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
@@ -273,19 +273,6 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     (pid, sock)
 }
 
-/// 把 watch 挂到某个目录上，**可重入**：目录没了就翻记账，在就先 `unwatch` 再 `watch`。
-///
-/// # 为什么每个挂点都要这一套
-///
-/// inotify 的 watch 绑在 **inode** 上。本仓 08-13 一天之内在**三处**踩到同一个形状：
-/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（最后一拍）——
-/// 症状都是「目录被删掉再重建之后，那一路的帧永远不来，而且没有任何错误」。
-/// ⇒ 与其每处各写一遍，不如**只有一份**：改一处漏两处正是本仓一路在收的那族。
-///
-/// ⚠ 不做重扫：`sessions/` 那侧需要「挂上顺带把已有 pidfile 过一遍」，那是它**特有**的
-/// （见 `rewatch_sessions`）；`projects/` 的历史由 `process_jsonl` 按 sid 决定要不要读，
-/// 在这里重扫会把**整棵历史**拉一遍 —— 那正是 `P0` 立件时要消灭的行为。
-
 /// tmux socket 目录 = 「本平台的临时根」＋ tmux 自己那条 `tmux-<uid>` 约定。
 ///
 /// 🔴 **两个平台原语（`uid` · 临时根）在 [`crate::platform::paths`]**，这里只做组合：
@@ -351,7 +338,7 @@ fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
 
 /// 把这一份观测切成**那张唯一的会话快照**认的行（`crate::common::session_snapshot::SessionRow`：
 /// 会话名 ＋ 它某个窗格上的 `@ccm_sid`，挂着几个就几行）。
-pub(crate) fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
+pub fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
     raw.lines()
         .filter_map(ls_row)
         .flat_map(|(name, _, sids)| crate::common::session_snapshot::rows_of(name, sids))
@@ -359,7 +346,7 @@ pub(crate) fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::Se
 }
 
 /// 会话账本读的那一份：会话句柄（`#{session_id}`，改名不变）→ 它各窗格挂着的 sid。
-pub(crate) fn ledger_view(
+pub fn ledger_view(
     raw: &str,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
     raw.lines()

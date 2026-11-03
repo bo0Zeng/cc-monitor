@@ -64,7 +64,7 @@ pub fn pid_alive(pid: u32) -> bool {
 ///   哪天有调用方把空串当有意义的值，这两支就得再拆）。
 ///
 /// exec 窗口还有一形不走支四：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是父进程的环境。生产调用方读的都是
-/// 自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（`identity_tag_tests::spawn_settled_sleep`）。
+/// 自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（[`test_support::spawn_settled_sleep`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvRead {
     /// 读到了这个键，且值非空。
@@ -484,3 +484,13 @@ pub fn lower_this_thread() -> bool {
 /// [`lower_this_thread`] 在 Linux 上给的 nice 值。
 #[cfg(target_os = "linux")]
 pub const BACKGROUND_NICE: libc::c_int = 10;
+
+// 判据用的子进程夹具（起一个 `sleep`、等到它的环境读得到才交回）：读进程环境的几层（打标 · 认号）的判据共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/platform/proc_support.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    clippy::let_underscore_must_use,
+    reason = "测试档的夹具：只在测试档与上层测试档（`test-support`）编；直接问系统钟等子进程、收尾时丢结果，同各包测试段放开的那几样"
+)]
+pub mod test_support;

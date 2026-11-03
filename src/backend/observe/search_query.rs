@@ -33,20 +33,20 @@ use walkdir::WalkDir;
 // `DEFAULT_LIMIT` 住 `history/search_rules.rs`。
 
 /// 查询选项（帧面 `history-search` 的入参按类型收好以后交进来，`faces/search_face.rs`）。
-pub(crate) struct SearchOpts {
-    pub(crate) include_tools: bool,
+pub struct SearchOpts {
+    pub include_tools: bool,
     /// None=全部；Some("user")/Some("assistant")/Some("report")=只搜该类型。
-    pub(crate) scope: Option<&'static str>,
-    pub(crate) after_ms: i64,
+    pub scope: Option<&'static str>,
+    pub after_ms: i64,
     /// 全局返回 snippet 上限（没给的照样记进 `moreHits`）。
-    pub(crate) limit: usize,
+    pub limit: usize,
     /// 只比会话标题与第一句（不搜内容）：命中的会话照样一行，`hits` 空、`moreHits` 0。
-    pub(crate) titles: bool,
+    pub titles: bool,
 }
 
 impl SearchOpts {
     /// 请求里给的上限 ⇒ 夹进口径里那一档（`search_rules::clamp_limit`；没给 ⇒ 缺省那一个）。
-    pub(crate) fn limit_of(given: Option<u64>) -> usize {
+    pub fn limit_of(given: Option<u64>) -> usize {
         given.map_or(search_rules::DEFAULT_LIMIT, |n| {
             search_rules::clamp_limit(usize::try_from(n).unwrap_or(usize::MAX))
         })
@@ -57,7 +57,7 @@ impl SearchOpts {
 pub(crate) use cmd_wire::search::{SearchHit, SessionHits};
 
 /// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
-pub(crate) fn search_into(
+pub fn search_into(
     agent_home: &Path,
     query: &str,
     opts: &SearchOpts,
@@ -118,7 +118,7 @@ pub(crate) fn search_counting(
 
 /// 会话内查找走同一份常驻索引：这一份 (mtime, 长度) 没变不读、变长只读尾巴。
 /// 回 `None` = 这一份不归索引管（不在 projects 下 / 读不动）⇒ 调用方退回现扫（[`scan_session_find`]，口径同一套）。
-pub(crate) fn find_indexed(
+pub fn find_indexed(
     agent_home: &Path,
     target: &Path,
     query: &str,
@@ -718,7 +718,7 @@ fn bring_up(
     // 坏在完整行里 ⇒ 不追加读（整份重读）；坏在残尾里 ⇒ 追加读会重看它。
     let may_append = prev
         .as_ref()
-        .is_some_and(|e| e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail));
+        .is_some_and(|e| e.bad.as_ref().is_none_or(|(at, _)| *at == BadAt::Tail));
     let (step, seen) = Tailed::step(
         prev.as_ref().map(|e| &e.read),
         path,
@@ -1042,15 +1042,15 @@ pub(crate) fn record_hit<'a>(
 }
 
 /// 会话内查找一次最多列多少条（缺省）。尾行照报**全量**命中数。
-pub(crate) const FIND_DEFAULT_LIMIT: usize = 500;
+pub const FIND_DEFAULT_LIMIT: usize = 500;
 /// 会话内查找的上限封顶（调用方要得再多也只列这么多）。
-pub(crate) const FIND_MAX_LIMIT: usize = 2000;
+pub const FIND_MAX_LIMIT: usize = 2000;
 
 /// 会话内查找要哪一页：跳过前 `skip` 条命中，再列至多 `limit` 条（滚到底续下一页时 `skip` ＝ 已拿到的条数）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FindPage {
-    pub(crate) skip: usize,
-    pub(crate) limit: usize,
+pub struct FindPage {
+    pub skip: usize,
+    pub limit: usize,
 }
 
 /// 一页的账：每条命中都记进全量数，只有落在这一页里的才交出去。
@@ -1114,37 +1114,37 @@ fn find_hit(
 
 /// 会话内查找的一条命中（`history-find` 的 `hits[]`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FindHit {
+pub struct FindHit {
     /// 命中的那条记录的 uuid（界面按它找卡）。
-    pub(crate) uuid: String,
+    pub uuid: String,
     /// 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) line: u64,
     /// `user` · `assistant` · `report`（agent 回报）· `tool`。
-    pub(crate) kind: String,
+    pub kind: String,
     /// 片段三段（同全局搜索的 `Hit`）。
     pub(crate) before: String,
     pub(crate) matched: String,
     pub(crate) after: String,
     /// 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) turn: u64,
     /// 那条记录的时刻（毫秒；读不出 ＝ 0）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) ts_ms: i64,
     /// `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
     pub(crate) ts_text: String,
     /// 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) tool: Option<String>,
 }
 
 /// 出口那一下：一条命中添上 `tsText`（`tsMs` 按看的那一台的时区写，[`crate::common::time::hit_text`]；界面照抄）。
-pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> FindHit {
+pub fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> FindHit {
     FindHit {
         ts_text: crate::common::time::hit_text(hit.ts_ms, tz),
         ..hit.clone()
@@ -1155,7 +1155,7 @@ pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> Find
 /// （`total` = 全量命中数）。帧面 `history-find`（`read_face.rs`）不归常驻索引管时跑它，把命中装成成品 `{total, hits}`。
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
-pub(crate) fn scan_session_find<R: std::io::BufRead>(
+pub fn scan_session_find<R: std::io::BufRead>(
     kind: &str,
     r: R,
     query: &str,
@@ -1224,10 +1224,10 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 // 与它们的单元测试只有一个家：通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
 
-// 判据用的两样（照选项词造选项 · 逐行写进缓冲）住测试树：几份判据共用。
-#[cfg(test)]
+// 判据用的几样（照选项词造选项 · 逐行写进缓冲 · 会话内查找的夹具）住测试树：本包的几份判据与上层判据经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/search_query_support.rs"]
-pub(crate) mod test_support;
+pub mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_tests.rs"]
@@ -1247,7 +1247,4 @@ mod golden_tests;
 #[path = "../../../tests/backend/observe/search_query_index_tests.rs"]
 mod index_tests;
 
-// 秤：真规模本机历史上的冷首趟 / 热态（`#[ignore]` 读数，不是判据）。
-#[cfg(test)]
-#[path = "../../../tests/backend/observe/search_query_reading.rs"]
-mod reading;
+// 秤（真规模本机历史上的冷首趟 / 热态，`#[ignore]` 读数）经登记表跑帧面那一问 ⇒ 挂主 crate（`cross/observe.rs`）。
