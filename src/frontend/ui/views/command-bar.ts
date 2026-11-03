@@ -29,7 +29,7 @@ export interface SessionFace {
   dotLabel: string | null;
   /** 远端那台的名字；本机 ⇒ `null`（不画徽标）。 */
   machine: string | null;
-  project: string | null;
+  /** 那台写好的整行标题（照抄）。 */
   title: string;
   /** 在等你什么（`等批准`）；不在等 ⇒ `null`。 */
   waiting: string | null;
@@ -350,14 +350,8 @@ export class CommandBarView {
       const f = cmd.session;
       main.appendChild(statusDot(f.dot, f.dotLabel, "compact"));
       if (f.machine) main.appendChild(tag(f.machine));
-      if (f.project) {
-        const p = document.createElement("span");
-        p.className = s.cbProject;
-        p.textContent = f.project;
-        main.appendChild(p);
-      }
       const t = document.createElement("span");
-      t.className = f.project ? s.cbSub : s.cbTitle;
+      t.className = s.cbTitle;
       t.textContent = f.title;
       main.appendChild(t);
       if (f.waiting) {

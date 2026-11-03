@@ -19,7 +19,7 @@ import type { UsageFact } from "./session-reads";
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
 export interface ActiveView {
   sid: string | null;
-  /** 当前 tab 的标题（`Tab.title`，照核心给的名字排好的）：改了名会话头 · 窗口标题跟着刷（不带它 ⇒ 同值不通知，会话头停在旧名）。 */
+  /** 当前 tab 的标题（`Tab.title`，核心写好的整行）：改了名会话头 · 窗口标题跟着刷（不带它 ⇒ 同值不通知，会话头停在旧名）。 */
   title: string | null;
   /** 当前会话的用量与上下文（后端那一份成品，照抄）。 */
   usage: UsageFact | null;
@@ -109,11 +109,6 @@ export class TabStore {
    *   否则后到的 tab 会拿一份旧顺序把用户刚拖的一下撤销。
    */
   savedOrder: string[] = [];
-  /**
-   * sid → attach 进去对人有没有意义（pidfile 的 `attachable`，经后端帧透传）。只记显式 false 的那些；缺席 = 可以。
-   * 单独一张表：它是「某个 sid 的一条会话级元信息」。
-   */
-  readonly notAttachableSids = new Set<string>();
   activeId: string | null = null;
   /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;
@@ -122,7 +117,7 @@ export class TabStore {
   /** 脸早于建 Tab 到（那台说的会话还没有 Tab）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
   readonly pendingFace = new Map<string, SessionFace>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
-  readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
+  readonly pendingName = new Map<string, { label: string; title: string }>();
 
   /** 「tab 集合变了」那一格。建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
   private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0, faces: "" }, sameSummary);

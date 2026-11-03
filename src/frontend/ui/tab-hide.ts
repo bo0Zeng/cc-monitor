@@ -12,7 +12,6 @@ import type { TabBarPrefs } from "./tab-bar-prefs";
 import { isEnded } from "./face-can";
 import { sameHidden, type SessionHidden } from "./session-hidden";
 import { copyText } from "./copy-table";
-import { fullTitle } from "./session-face";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 import type { SessionsOp } from "./generated/SessionsOp";
 import type { SessionItem } from "./generated/SessionItem";
@@ -35,7 +34,7 @@ const itemOf = (t: Tab): SessionItem => ({ machine: t.origin, sid: t.sessionId }
 /** 本机后端问不到时那一条的标题：一个 ⇒ 点名那一个；几个 ⇒ 那一项。`on` ＝ 交的是不是「隐藏」。 */
 function missedTitle(on: boolean, tabs: readonly Tab[]): string {
   if (tabs.length > 1) return on ? copyText("tabBatch.menu.hide", { n: tabs.length }) : copyText("tabBatch.menu.unhide", { n: tabs.length });
-  const title = fullTitle(tabs[0]);
+  const title = tabs[0].title;
   return on ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title });
 }
 

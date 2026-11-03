@@ -580,11 +580,3 @@ export function updateMenuItem(id: string, item: MenuItem): void {
   old.replaceWith(el);
   place(o);
 }
-
-export function removeMenuItem(id: string): void {
-  const o = current;
-  const old = o?.items.get(id);
-  if (!o || !old) return;
-  old.remove();
-  o.items.delete(id);
-}

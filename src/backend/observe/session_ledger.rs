@@ -59,6 +59,8 @@ pub(crate) struct SessionLedger {
     accounts: BTreeMap<String, String>,
     /// 宣告时就知道 claude 一退终端不留的活会话（容器 `none` · `managed`：托管终端跟着 claude 收）：走了当场已结束，不必等 tmux 观测。
     outside: BTreeSet<String>,
+    /// 宣告时 pidfile 说接进去没有意义的（`attachable: false`）：程序退了那一张脸照旧不给「在终端里打开」。
+    unattachable: BTreeSet<String>,
 }
 
 fn bound_in(view: &BTreeMap<String, BTreeSet<String>>, sid: &str) -> bool {
@@ -90,9 +92,15 @@ impl SessionLedger {
                 path,
                 face,
                 container,
+                attachable,
                 ..
             }) => {
                 self.live.insert(sid.clone());
+                if *attachable == Some(false) {
+                    self.unattachable.insert(sid.clone());
+                } else {
+                    self.unattachable.remove(sid);
+                }
                 if matches!(
                     container,
                     Some(SessionContainer::None | SessionContainer::Managed { .. })
@@ -260,12 +268,19 @@ impl SessionLedger {
     }
 
     fn reconnectable_frame(&self, sid: &str) -> Frame {
-        Frame::session_left(
+        use crate::wire::SessionFaceExt as _;
+        let mut f = Frame::session_left(
             sid.to_string(),
             Life::Reconnectable,
             None,
             self.accounts.get(sid).cloned(),
-        )
+        );
+        if let Frame::SessionLeft(l) = &mut f {
+            if self.unattachable.contains(sid) {
+                l.face = l.face.clone().attachable(Some(false));
+            }
+        }
+        f
     }
 
     /// 已结束那一帧：记录在 ⇒ 已结束，不在 ⇒ 记录已不在。

@@ -27,8 +27,8 @@ export interface EventHandlers {
    * Tab 还没建由宿主暂存）。同一 sid 后到的覆盖先到的。
    */
   onSessionFace: (sessionId: string, face: SessionFace) => void;
-  /** 核心报来叫这条会话什么（宣告 · 活动那两帧带的 `label` · `label_project`），与那一帧的脸同一格落。 */
-  onSessionName?: (sessionId: string, label: string, labelProject: string | null) => void;
+  /** 核心报来叫这条会话什么（宣告 · 活动那两帧带的名字 `label` 与写好的整行标题 `title`），与那一帧的脸同一格落。 */
+  onSessionName?: (sessionId: string, label: string, title: string) => void;
   /**
    * 本机会话宣告（`session_added`）：建骨架 Tab。与去向帧同进 queue（保持结束 / 复活的先后）。
    */
@@ -49,9 +49,7 @@ export interface EventHandlers {
     origin: string,
     meta: {
       background: boolean;
-      /** `null` = 没说 = 视为可以 attach。 */
-      attachable: boolean | null;
-      /** 会话的项目目录（后端给的那一格；标题只认它）。 */
+      /** 会话的项目目录（后端给的那一格）。 */
       projectDir: string | null;
       name: string | null;
       /** 隐藏那一格（后端判好；不隐藏 ⇒ `null`）。 */
@@ -146,7 +144,7 @@ type Queued =
   // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Machine }
   // 三帧带的脸（宣告 · 活动那两帧连着名字）—— 与行同 queue 保序（见 onSessionFace）。
-  | { kind: "face"; sessionId: string; face: SessionFace; name: { label: string; labelProject: string | null } | null }
+  | { kind: "face"; sessionId: string; face: SessionFace; name: { label: string; title: string } | null }
   | {
       kind: "started";
       sessionId: string;
@@ -161,8 +159,6 @@ type Queued =
       sessionId: string;
       origin: string;
       background: boolean;
-      /** attach 进去对人有没有意义。`null` = 没说 = 视为可以。 */
-      attachable: boolean | null;
       projectDir: string | null;
       name: string | null;
       hidden: SessionHidden | null;
@@ -414,7 +410,7 @@ export async function bindEvents(
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
       } else if (item.kind === "face") {
-        if (item.name) handlers.onSessionName?.(item.sessionId, item.name.label, item.name.labelProject);
+        if (item.name) handlers.onSessionName?.(item.sessionId, item.name.label, item.name.title);
         handlers.onSessionFace(item.sessionId, item.face);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
@@ -426,7 +422,6 @@ export async function bindEvents(
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
           background: item.background,
-          attachable: item.attachable,
           projectDir: item.projectDir,
           name: item.name,
           hidden: item.hidden,
@@ -509,11 +504,11 @@ export async function bindEvents(
   const onStreamItems = (origin: Machine, hold: StreamHold, items: Item[]): void => {
     // 每一格都占过一格 credit：进队的处理掉再还，不进队的 · 读不懂的当场记还。
     const take = (q: Queued): void => void queue.push({ ...q, grant: hold });
-    const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "label_project">): Queued => ({
+    const status = (p: Pick<SessionStatus, "sid" | "face" | "label" | "title">): Queued => ({
       kind: "face",
       sessionId: p.sid,
       face: p.face,
-      name: { label: p.label, labelProject: p.label_project ?? null },
+      name: { label: p.label, title: p.title },
     });
     const owe = (): void => {
       hold.owed += 1;
@@ -550,7 +545,6 @@ export async function bindEvents(
               sessionId: p.sid,
               origin,
               background: p.background ?? false,
-              attachable: p.attachable ?? null,
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
               hidden: p.hidden ?? null,

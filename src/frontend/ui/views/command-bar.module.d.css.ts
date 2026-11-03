@@ -11,7 +11,6 @@ declare const classes: {
   readonly cbMachineHead: string;
   readonly cbMachineName: string;
   readonly cbMain: string;
-  readonly cbProject: string;
   readonly cbRight: string;
   readonly cbSub: string;
   readonly cbText: string;

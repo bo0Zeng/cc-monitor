@@ -20,7 +20,7 @@
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
 import { machineName } from "./ipc/chan-caller";
-import { canResume, frontWhy, hasTerminal } from "./face-can";
+import { canAttach, canResume, frontWhy, hasTerminal } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
@@ -28,7 +28,7 @@ import { icon, type IconName } from "./kit/icon";
 import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
-import { dotOf, fullTitle, stateLine, stateWord } from "./session-face";
+import { dotOf, stateLine, stateWord } from "./session-face";
 import { tag } from "./kit/badge";
 import { openMenu, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
@@ -79,10 +79,10 @@ export interface SessionHeadHost {
 
 /**
  * 这个会话此刻能去它的终端的两条路（会话头与消息流里的报错卡同一道）：切到终端（↗ 真能用、还有终端可去）·
- * 在终端里打开（远端、Claude 已退出）。
+ * 在终端里打开（那台说接得进、在这里看给得了，`canAttach`）。
  */
 export function terminalActsOf(tab: Tab): { front: boolean; attach: boolean } {
-  return { front: terminalFrontAvailable() && hasTerminal(tab.face), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
+  return { front: terminalFrontAvailable() && hasTerminal(tab.face), attach: canAttach(tab.face, isRemoteOrigin(tab.origin)) };
 }
 
 type Chorded = Parameters<typeof dispatcher.effectiveChord>[0];
@@ -348,12 +348,12 @@ export class SessionHead {
     const extra = canResume(tab.face) ? "resume" : acts.attach ? "attach" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineName(tab.origin), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
+    const drawn = [tab.sessionId, d, tab.title, machineName(tab.origin), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
     setDot(this.dot, d, stateWord(tab));
-    this.title.textContent = fullTitle(tab);
+    this.title.textContent = tab.title;
     this.where.textContent = machineName(tab.origin);
     this.dir.textContent = tab.projectDir ?? "";
     this.dir.style.display = tab.projectDir === null ? "none" : "";

@@ -1201,7 +1201,7 @@ mod specimens {
         vec![node_of(&row)]
     }
 
-    /// 名字是起出来的那一形（`label_project` 也带）。
+    /// 名字是起出来的那一形（整行标题带项目）。
     fn named() -> crate::wire::NameFace {
         crate::history::search_rules::name_face(&crate::history::search_rules::LabelFacts {
             title: some("t"),

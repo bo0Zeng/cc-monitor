@@ -1966,20 +1966,23 @@ impl ReaderState {
             .and_then(|e| e.custom_title.clone())
     }
 
-    /// 此刻叫这条会话什么（[`crate::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
-    /// 活会话此刻那一态的整份脸：容器 · 号照宣告那一帧（判不了 ⇒ 不知道在不在 tmux 里 · 不带号）。
+    /// 活会话此刻那一态的整份脸：容器 · 号 · 接进去有没有意义照宣告那一帧（判不了 ⇒ 不知道在不在 tmux 里 · 不带号）。
     fn live_face(
         &self,
         sid: &str,
         activity: Option<crate::agents::SessionActivity>,
     ) -> crate::wire::SessionFace {
         use crate::wire::SessionFaceExt as _;
-        let (container, account) = match self.added.get(sid) {
-            Some(Frame::SessionAdded(a)) => (a.container.as_ref(), a.face.account.clone()),
-            _ => (None, None),
+        let (container, account, attachable) = match self.added.get(sid) {
+            Some(Frame::SessionAdded(a)) => {
+                (a.container.as_ref(), a.face.account.clone(), a.attachable)
+            }
+            _ => (None, None, None),
         };
         let activity = self.heard(sid, activity);
-        crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)).under(account)
+        crate::wire::SessionFace::of(crate::wire::Life::live(activity, container))
+            .under(account)
+            .attachable(attachable)
     }
 
     /// 这条会话此刻交出去的那一态，判法同活会话表（[`crate::history::live_table::doing_of`]）：有待答请求挂着 ⇒ 等人；
@@ -2011,13 +2014,14 @@ impl ReaderState {
             .min()
     }
 
+    /// 此刻叫这条会话什么（[`crate::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid（记录没读到那一档）。
     fn name_face(&self, sid: &str) -> crate::wire::NameFace {
         let facts = self
             .sessions
             .values()
             .find(|e| e.sid == sid)
             .map(|e| e.facts.clone())
-            .unwrap_or_default();
+            .unwrap_or_else(|| crate::history::search_rules::LabelFacts::unread(sid, None));
         crate::history::search_rules::name_face(&facts)
     }
 
@@ -2981,6 +2985,7 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
                 name_face,
                 path,
                 container,
+                attachable,
                 ..
             }),
             Some(e),
@@ -2992,6 +2997,7 @@ fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
                 state.heard(&sid, e.activity),
                 container.as_ref(),
                 account,
+                *attachable,
             );
             *name_face = crate::history::search_rules::name_face(&e.facts);
             if e.path.is_some() {
@@ -3168,7 +3174,13 @@ fn send_line(
         .and_then(|t| t.record.as_ref())
         .map(|r| &r.body)
     {
-        note_name(session_id, body, state, sink);
+        let forked = || {
+            parsed
+                .value()
+                .and_then(|v| crate::agents::beat_of(kind, v))
+                .is_some_and(|b| b.forked_from.is_some())
+        };
+        note_name(session_id, body, &forked, state, sink);
     }
     note_path(session_id, path_str, state, sink);
     let (mut record, cwd) = match translated {
@@ -3227,13 +3239,27 @@ fn note_activity(
 
 /// 读到的一条记录若改了叫这条会话什么（判法住 [`crate::history::search_rules::heard`]）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
 /// 子运行的记录也经这里：子运行里的人话不是这条会话的第一句 —— 它们的记录在子运行自己的文件里、sid 认不到这条会话的账上。
+/// 还没读到第一句时，`forked` 问这一行说没说是分叉来的（分叉来的记录头几条就写着；读到第一句之后不再问，省得每行解一拍）。
 fn note_name(
     sid: &str,
     body: &crate::agents::record::Body,
+    forked: &dyn Fn() -> bool,
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {
-    state.renamed(sid, |f| crate::history::search_rules::heard(f, body), sink);
+    state.renamed(
+        sid,
+        |f| {
+            let probe = !f.forked && f.first.is_empty();
+            let mut changed = crate::history::search_rules::heard(f, body);
+            if probe && forked() {
+                f.forked = true;
+                changed = true;
+            }
+            changed
+        },
+        sink,
+    );
 }
 
 /// **从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
@@ -3565,8 +3591,9 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     let facts = known.unwrap_or_else(|| crate::history::search_rules::LabelFacts {
         project_dir: project_dir.clone(),
         custom: state.custom_title(&sid),
-        // 头一份是后台的 ⇒ 叫它 pidfile 名（排在改过的名之后，[`crate::history::search_rules::session_label`]）。
+        // 头一份是后台的 ⇒ 叫它 pidfile 名（排在改过的名之后，[`crate::history::search_rules::session_label`]）、整行带后台那个记号。
         bg_name: a.name.clone().filter(|_| a.background),
+        background: a.background,
         ..Default::default()
     });
     let name_face = crate::history::search_rules::name_face(&facts);
@@ -3590,9 +3617,13 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     };
     entry.frozen = frozen_at(&entry, &state.book, now);
     state.sessions.insert(key, entry);
-    // 同一 sid 来了人坐着的那一份 ⇒ 不再是后台（交互压过后台，反向不降）：pidfile 名去掉，名字变了推一帧。
+    // 同一 sid 来了人坐着的那一份 ⇒ 不再是后台（交互压过后台，反向不降）：pidfile 名与后台那个记号去掉，名字变了推一帧。
     if !a.background {
-        state.renamed(&sid, |f| f.bg_name.take().is_some(), sink);
+        state.renamed(
+            &sid,
+            |f| f.bg_name.take().is_some() | std::mem::take(&mut f.background),
+            sink,
+        );
     }
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
     let announced = !state.active_sids.insert(sid.clone());
@@ -3644,6 +3675,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         state.heard(&sid, a.activity),
         container.as_ref(),
         account,
+        a.attachable,
     );
     let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
@@ -3837,6 +3869,7 @@ fn announced_face(
     activity: Option<crate::agents::SessionActivity>,
     container: Option<&crate::wire::SessionContainer>,
     account: Option<String>,
+    attachable: Option<bool>,
 ) -> crate::wire::SessionFace {
     use crate::wire::{Life, SessionFaceExt as _};
     crate::wire::SessionFace::of(if reading {
@@ -3845,6 +3878,7 @@ fn announced_face(
         Life::live(activity, container)
     })
     .under(account)
+    .attachable(attachable)
 }
 
 /// 给一条刚宣告的会话起一趟预读：记下代号、这条会话的内容帧从此刻拦下（[`FrameSink::send`]），交线程池（夹具没有池 ⇒ 就地跑、就地装回）。
@@ -4679,6 +4713,9 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
                 f.project_dir = f.project_dir.take().or_else(|| e.project_dir.clone());
                 f.custom = custom.clone();
                 f.bg_name = e.bg_name.clone();
+                // 是不是后台照进程状态文件（宣告那一下判的），不照记录；分叉来的记录里说了 ⇒ 记上，读到过的不丢。
+                f.background = e.background;
+                f.forked |= e.forked;
                 let changed = *e != f;
                 *e = f.clone();
                 changed

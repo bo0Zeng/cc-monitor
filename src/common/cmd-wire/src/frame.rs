@@ -995,6 +995,8 @@ pub struct SessionCan {
     pub term: CanTerm,
     /// 程序退了、tmux 会话还在 ⇒ 接回。
     pub reattach: Allow,
+    /// 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+    pub attach: CanAttach,
     /// 换模型（`session-model`）。
     pub model: Allow,
     /// 切权限档（`session-permission`）。
@@ -1051,16 +1053,35 @@ pub enum CanTerm {
     No { why: Words },
 }
 
+/// 接不接得进：`{can: "yes", from}` · `{can: "no", why: 写好的那一句}`。
+/// `from`：`anywhere` 哪台看都给（托管终端：瘦客户端接进去）· `elsewhere` 只在别的机器上看才给（tmux 会话：那台自己有 ccm 开的窗口，走 ↗）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanAttach {
+    Yes { from: AttachFrom },
+    No { why: Words },
+}
+
+/// [`CanAttach::Yes`] 在哪台看才给。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "snake_case")]
+pub enum AttachFrom {
+    Anywhere,
+    Elsewhere,
+}
+
 /// **这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
-/// `label` 与历史清单 · 全文搜索同一个函数算；`label_project` ＝ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
+/// `label` ＝ 名字（与历史清单 · 全文搜索同一个函数算）；`title` ＝ 写好的整行标题（项目 · 分叉 · 后台那几个记号 · 名字），界面照抄。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NameFace {
     pub label: Words,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub label_project: Option<Words>,
+    pub title: Words,
 }
 
 /// 终端住在哪种宿主里（线上 `host`）。容器那一格（[`SessionContainer`]）与 `terminals-list` 每一行的 `host` 同一套词。
