@@ -227,17 +227,44 @@ dependencies = [
 name = "backend-control"
 version = "0.0.0"
 dependencies = [
+ "acct-core",
  "backend-accounts",
  "backend-agents",
  "backend-assets",
  "backend-common",
  "backend-dial",
+ "backend-files",
  "backend-history",
  "backend-host",
  "backend-platform",
  "backend-stderr-log",
  "backend-wire",
+ "batch-core",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "creds-core",
+ "deploy",
+ "deploy-contract",
+ "face-core",
+ "guard-core",
+ "libc",
+ "own-chan",
+ "relay-route-core",
+ "resident-client",
+ "russh",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "shell-quote-core",
+ "ssh-dial",
  "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "upstream-url-core",
+ "win-path-core",
 ]
 
 [[package]]
@@ -342,6 +369,7 @@ dependencies = [
 name = "backend-observe"
 version = "0.0.0"
 dependencies = [
+ "acct-core",
  "backend-accounts",
  "backend-agents",
  "backend-assets",
@@ -350,7 +378,24 @@ dependencies = [
  "backend-host",
  "backend-platform",
  "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "creds-core",
+ "face-core",
+ "guard-core",
+ "libc",
+ "notify",
+ "pidwatch-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
  "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "walkdir",
 ]
 
 [[package]]
