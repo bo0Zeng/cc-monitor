@@ -25,7 +25,7 @@ pub(crate) fn entry_in(dir: &Path) -> Option<PathBuf> {
 
 /// 找不到 pb 的两种。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Missing {
+pub enum Missing {
     /// 设了的那个路径底下没有 pb 的入口。
     SetDir(PathBuf),
     /// 没设，装着的插件里也没有。
@@ -34,7 +34,7 @@ pub(crate) enum Missing {
 
 impl Missing {
     /// 给人看的那一句。
-    pub(crate) fn said(&self) -> String {
+    pub fn said(&self) -> String {
         match self {
             Missing::SetDir(d) => copy_text(
                 "bePlan.face.pbDirGone",
@@ -46,7 +46,7 @@ impl Missing {
 }
 
 /// 这台的 pb 入口：设了路径只认它，没设认装着的插件。
-pub(crate) fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<PathBuf, Missing> {
+pub fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<PathBuf, Missing> {
     match set {
         Some(d) => entry_in(d).ok_or_else(|| Missing::SetDir(d.to_path_buf())),
         None => entry_among(plugins).ok_or(Missing::NotInstalled),
@@ -55,7 +55,7 @@ pub(crate) fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<
 
 /// 校验一个路径：`{state: ok | missing | no_entry | not_runnable, said}`（以人的身份起一次 `pb help`：入口在、解释器在、
 /// pb 自己的几个模块都载得进来才算能用）。不写盘。
-pub(crate) fn check(dir: &Path) -> cmd_wire::plan::PlanPbCheck {
+pub fn check(dir: &Path) -> cmd_wire::plan::PlanPbCheck {
     let shown = dir.display().to_string();
     let out = |state: &str, said: String| cmd_wire::plan::PlanPbCheck {
         state: state.to_string(),

@@ -73,10 +73,12 @@ fn a_real_run_goes_from_the_given_dir_with_only_dump_and_no_pb_id() {
     let entry = fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
     let ws = workspace(&d.join("ws"), &fixture_dump("/synthetic"));
     let inner = ws.join("repos/alpha/src");
-    // 只这一条判据碰这个键；别的判据不读它。
+    // 读这个键的判据（代敲认不认 agent）同一把锁：设着的这一阵它不跑。
+    let held = crate::plan::fixture::pb_id_env();
     unsafe { std::env::set_var("PB_ID", "should-not-leak") };
     let ran = run(&entry, &inner);
     unsafe { std::env::remove_var("PB_ID") };
+    drop(held);
     assert!(matches!(ran, Ran::Dump { .. }), "{ran:?}");
     let log: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(d.join("pb/ran.json")).unwrap()).unwrap();

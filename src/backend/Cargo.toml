@@ -100,8 +100,6 @@ serde_json.workspace = true
 backend-platform = { path = "platform" }
 # 两边都要、又不含平台原语的纯工具那一层（只引平台层）。
 backend-common = { path = "common" }
-# 插件通用调用口（只引平台层）。
-backend-plugin = { path = "plugin" }
 # 文件管理那一块（只读族 ＋ 写面；只引纯工具与平台两层）。
 backend-files = { path = "files" }
 # agent 适配层（每个 agent 一份；只引纯工具与平台两层）。
@@ -128,6 +126,8 @@ backend-control = { path = "control" }
 backend-observe = { path = "observe" }
 # 足迹：申报表 · 判定 · 这台的 stat，出整份成品（只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层）。
 backend-footprint = { path = "footprint" }
+# 计划的读面：找 pb · 跑 `pb dump` · 加工成品 · 盯计划仓（只引足迹 · 观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层）。
+backend-plan = { path = "plan" }
 # 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
 comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
@@ -327,6 +327,10 @@ backend-control = { path = "control", features = ["test-support", "ts"] }
 backend-observe = { path = "observe", features = ["test-support", "ts"] }
 # 足迹那几个线上类型的 TS 派生。
 backend-footprint = { path = "footprint", features = ["ts"] }
+# 计划判据共用的夹具（合成 dump · 假 pb 插件；帧面那几份判据读）。
+backend-plan = { path = "plan", features = ["test-support"] }
+# 插件通用调用口（只引平台层）：本包生产段不直接起插件（计划读面经 `backend-plan` 起 pb），只有最小假插件那份判据走它。
+backend-plugin = { path = "plugin" }
 
 # 发布档按速度编：后端在 monitor 里内嵌三份（本机一份 · 远端两份）。
 # · opt-level 3 而不是 "s"：一份 587 MB 记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；
@@ -344,7 +348,7 @@ strip = true
 # 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "assets", "control", "observe", "footprint", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
+members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "assets", "control", "observe", "footprint", "plan", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。

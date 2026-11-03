@@ -56,7 +56,7 @@ pub(crate) fn repo_dir(ws: &str, sl: &PlanSlice) -> Option<String> {
 }
 
 /// 不在任何一片的仓库里（`workspace` 照给的）。
-pub(crate) fn nowhere(workspace: Option<String>) -> PlanFiles {
+pub fn nowhere(workspace: Option<String>) -> PlanFiles {
     PlanFiles {
         workspace,
         slice: None,
@@ -68,7 +68,7 @@ pub(crate) fn nowhere(workspace: Option<String>) -> PlanFiles {
 }
 
 /// `plan-files {dir}` 的本体：`doc` 是一个工作区标过的成品；`dir` 是那台机器上的绝对路径。
-pub(crate) fn of_dir(doc: &PlanRead, dir: &str) -> PlanFiles {
+pub fn of_dir(doc: &PlanRead, dir: &str) -> PlanFiles {
     let ws = doc.workspace.as_str();
     for sl in &doc.slices {
         let Some(repo) = repo_dir(ws, sl) else {

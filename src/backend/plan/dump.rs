@@ -16,7 +16,7 @@ const RC_USAGE: i32 = 4;
 
 /// 跑一次的结局。
 #[derive(Debug)]
-pub(crate) enum Ran {
+pub enum Ran {
     /// 读到了：整份 JSON ＋ 原始输出（取摘要用）。
     Dump {
         doc: serde_json::Value,
@@ -110,7 +110,7 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
 
 /// 在工作区根 `ws` 里跑 `<entry> dump --node <仓库> <编号> <工作区>`：一个节点的 agent 视角（pb 原样那一段）。
 /// 不成 ⇒ [`NodeMiss`]。
-pub(crate) fn run_node(entry: &Path, ws: &Path, repo: &str, id: &str) -> Result<String, NodeMiss> {
+pub fn run_node(entry: &Path, ws: &Path, repo: &str, id: &str) -> Result<String, NodeMiss> {
     let ws_s = ws.to_string_lossy().to_string();
     node_of(ran_of(super::pb(
         entry,
@@ -121,12 +121,7 @@ pub(crate) fn run_node(entry: &Path, ws: &Path, repo: &str, id: &str) -> Result<
 
 /// 在工作区根 `ws` 里跑 `<entry> dump --refs <仓库> <工作区>`，`text` 从标准输入进去：pb 认出的那几处与各自的标题（pb 那一份原样）。
 /// 起不来 · 超时 · 退出码不是 0 · 形状不认得 ⇒ `None`（那一批回空，正文原样）；pb 说那个仓库读不成（`error`）照样交回，调用方判。
-pub(crate) fn run_refs(
-    entry: &Path,
-    ws: &Path,
-    repo: &str,
-    text: &str,
-) -> Option<serde_json::Value> {
+pub fn run_refs(entry: &Path, ws: &Path, repo: &str, text: &str) -> Option<serde_json::Value> {
     let ws_s = ws.to_string_lossy().to_string();
     match ran_of(super::pb_fed(
         entry,
@@ -144,7 +139,7 @@ pub(crate) fn run_refs(
 
 /// `dump --node` 没给出那一段：pb 说那个仓库 · 那个节点不在（`error`，pb 那一句）· 别的结局（同 [`run`]）。
 #[derive(Debug)]
-pub(crate) enum NodeMiss {
+pub enum NodeMiss {
     Gone(String),
     Ran(Ran),
 }

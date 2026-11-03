@@ -14,7 +14,7 @@ use copy_core::said::Said;
 use std::path::Path;
 
 /// 界面能点的那几条（pb 的命令名原样）。
-pub(crate) const VERBS: [&str; 5] = ["continue", "pause", "adopt", "render", "repo"];
+pub const VERBS: [&str; 5] = ["continue", "pause", "adopt", "render", "repo"];
 
 /// 只许人发起的那几条（pb 的用户命令）：代敲只在这一侧不带 agent 身份时起。
 const USER_VERBS: [&str; 4] = ["continue", "pause", "repo", "adopt"];
@@ -31,7 +31,7 @@ const RC_USAGE: i32 = 4;
 const RENDER_WROTE: &str = "写了 ";
 
 /// 跑一条（`args[0]` 是动词，帧面先判）；这一侧带不带 agent 身份照本进程的环境。
-pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<PlanCmdReply, Said> {
+pub fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<PlanCmdReply, Said> {
     run_as(entry, ws, args, std::env::var_os(AGENT_ENV).is_some())
 }
 
@@ -74,18 +74,18 @@ pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, 
 }
 
 /// 要接过来的那个仓库（成品里那一片的几格）。
-pub(crate) struct Adopting<'a> {
-    pub(crate) slice: &'a str,
+pub struct Adopting<'a> {
+    pub slice: &'a str,
     /// 仓库相对工作区根在哪。
-    pub(crate) path: &'a str,
-    pub(crate) docs_only: bool,
+    pub path: &'a str,
+    pub docs_only: bool,
     /// 是不是当前仓库（pb 的 `adopt` 只接它）。
-    pub(crate) current: bool,
+    pub current: bool,
 }
 
 /// 接过一个仓库：已经接过 ⇒ 不起 pb；不是当前仓库 ⇒ 先 `repo <仓库名>`（只给名字 ＝ 切过去，路径与领域照旧）再 `adopt`。
 /// 回包多 `adopted`：接过来的是哪一个 · 仓库在哪 · 当前仓库换没换。
-pub(crate) fn adopt_with(
+pub fn adopt_with(
     t: &Adopting,
     run: &dyn Fn(&[&str]) -> Result<PlanCmdReply, Said>,
 ) -> Result<PlanCmdReply, Said> {

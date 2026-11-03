@@ -23,7 +23,7 @@ struct Seen {
 
 /// 读不成的几种（帧面翻成码）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Miss {
+pub enum Miss {
     /// 那个目录不在 pb 工作区里。
     NotWorkspace(String),
     /// pb 没有 `dump` / 形状不认得。
@@ -34,7 +34,7 @@ pub(crate) enum Miss {
 
 /// 进程里那一本。
 #[derive(Default)]
-pub(crate) struct Book {
+pub struct Book {
     seen: Mutex<BTreeMap<String, Seen>>,
     /// 目录 ⇒ 它所在的工作区（`None` ＝ pb 说它不在工作区里）。
     dirs: Mutex<BTreeMap<PathBuf, Option<String>>>,
@@ -62,7 +62,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 impl Book {
     /// 在 `dir` 里跑一次 dump、并进本子，回成品（顶上带 `rev` · `readAt` · `stale`）。
     /// `waiting(sid)` ＝ 活会话表说那条会话在等人（[`needs::of_slice`] 判 `ask` 只问它）。
-    pub(crate) fn read(
+    pub fn read(
         &self,
         entry: &Path,
         dir: &Path,
@@ -184,11 +184,11 @@ impl Book {
     }
 
     /// 这个目录上一次起 pb 读不成、又没有好的可给 ⇒ 那一次的结局；没记过 ⇒ `None`。
-    pub(crate) fn unread(&self, dir: &Path) -> Option<Miss> {
+    pub fn unread(&self, dir: &Path) -> Option<Miss> {
         lock(&self.unread).get(dir).cloned()
     }
 
-    pub(crate) fn known_dir(&self, dir: &Path) -> Option<Option<String>> {
+    pub fn known_dir(&self, dir: &Path) -> Option<Option<String>> {
         lock(&self.dirs).get(dir).cloned()
     }
 
@@ -203,18 +203,18 @@ impl Book {
     }
 
     /// 读好过的工作区（文件窗口反查只看这几个：不为每个目录起一次 pb）。
-    pub(crate) fn workspaces(&self) -> Vec<String> {
+    pub fn workspaces(&self) -> Vec<String> {
         lock(&self.seen).keys().cloned().collect()
     }
 
     /// 这个工作区上一次读好的成品。
-    pub(crate) fn last(&self, workspace: &str) -> Option<PlanRead> {
+    pub fn last(&self, workspace: &str) -> Option<PlanRead> {
         lock(&self.seen).get(workspace).map(|s| s.doc.clone())
     }
 }
 
 /// 进程里那一本。
-pub(crate) fn book() -> &'static Book {
+pub fn book() -> &'static Book {
     static B: std::sync::OnceLock<Book> = std::sync::OnceLock::new();
     B.get_or_init(Book::default)
 }

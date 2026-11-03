@@ -424,6 +424,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-plan"
+version = "0.0.0"
+dependencies = [
+ "backend-agents",
+ "backend-common",
+ "backend-footprint",
+ "backend-history",
+ "backend-observe",
+ "backend-platform",
+ "backend-plugin",
+ "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "creds-core",
+ "face-core",
+ "guard-core",
+ "md-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "test-home",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "backend-platform"
 version = "0.0.0"
 dependencies = [
@@ -700,6 +726,7 @@ dependencies = [
  "backend-history",
  "backend-host",
  "backend-observe",
+ "backend-plan",
  "backend-platform",
  "backend-plugin",
  "backend-relay",
