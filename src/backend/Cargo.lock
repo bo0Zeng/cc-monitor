@@ -244,6 +244,7 @@ dependencies = [
  "notify",
  "own-chan",
  "pidwatch-core",
+ "platform-core",
  "portable-pty",
  "relay-route-core",
  "russh",
@@ -523,6 +524,7 @@ dependencies = [
  "notify",
  "own-chan",
  "pidwatch-core",
+ "platform-core",
  "portable-pty",
  "relay-route-core",
  "resident-client",
@@ -2253,6 +2255,16 @@ dependencies = [
  "pkcs5",
  "rand_core",
  "spki",
+]
+
+[[package]]
+name = "platform-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "libc",
+ "win-path-core",
 ]
 
 [[package]]
