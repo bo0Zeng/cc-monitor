@@ -81,6 +81,11 @@ mod catalog_wire_tests;
 #[path = "../../../tests/backend/agents/on_assets_tests.rs"]
 mod agents_tests;
 
+// 纯工具那一层够用户文件的那扇门对文件管理面的每一问（经判据用的真盘门 · 别名的链接那几样；纯工具那个包够不到这一层）。
+#[cfg(test)]
+#[path = "../../../tests/backend/common/door_wire_tests.rs"]
+mod common_door_wire_tests;
+
 // 账号库判据里经判据用的真盘门（`aliases::test_support::HomeDoor`）真建库的那几条（账号域那个包够不到这一层）。
 #[cfg(test)]
 #[path = "../../../tests/backend/accounts/manage/library_any_os_tests.rs"]

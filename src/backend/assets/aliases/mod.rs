@@ -67,7 +67,7 @@ pub const ALIASES_READ_CAP: Deadline = Deadline::secs(28);
 pub const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 
 /// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`、落点住 `relay_route_core`，适配层不往上够 ⇒ 由这里交下去。
-pub const CALL: dialect::Call<'static> = dialect::Call {
+pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     word: crate::ccm_line::SUBCOMMAND_WORD,
     end: flag::END,
     landing: relay_route_core::BACKEND_LANDING_REL,
@@ -1030,3 +1030,8 @@ pub mod test_support;
 #[cfg(test)]
 #[path = "../../../../tests/backend/assets/aliases/aliases_tests.rs"]
 mod tests;
+
+// 两种方言的别名读法里用到这一族的调用形状与别名块正文的几条（方言住平台层，那个包够不到这一层）。
+#[cfg(test)]
+#[path = "../../../../tests/backend/assets/aliases/dialect_tests.rs"]
+mod dialect_tests;

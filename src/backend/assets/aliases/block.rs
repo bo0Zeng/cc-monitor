@@ -573,7 +573,7 @@ pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-a
 
 /// 我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
 /// POSIX 是 [`CCM_WRAPPER_SNIPPET`] 本身；PowerShell 是模板渲染出来的那一份（与数据目录无关 —— 喂一个占位目录）。
-pub fn own_block(shell: Shell) -> String {
+pub(crate) fn own_block(shell: Shell) -> String {
     match shell {
         Shell::Posix => CCM_WRAPPER_SNIPPET.to_string(),
         Shell::PowerShell => render_cc_code(Path::new("/_")),
