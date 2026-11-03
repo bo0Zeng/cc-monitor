@@ -8441,7 +8441,7 @@ enum class GrepStopped(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class GroupCount(
     val dot: SessionDot,
-    val n: Long,
+    val n: Int,
     val word: String,
     val text: String,
 ) : Ordered {
@@ -8451,11 +8451,11 @@ data class GroupCount(
         val ADAPTER: JsonAdapter<GroupCount> = obj(
             listOf(
             Field("dot", { SessionDot.ADAPTER }, optional = false, nullable = false),
-            Field("n", { Lng }, optional = false, nullable = false),
+            Field("n", { Int32 }, optional = false, nullable = false),
             Field("word", { Str }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> GroupCount(a[0] as SessionDot, a[1] as Long, a[2] as String, a[3] as String) },
+            { a -> GroupCount(a[0] as SessionDot, a[1] as Int, a[2] as String, a[3] as String) },
             { v -> arrayOf(v.dot, v.n, v.word, v.text) },
         )
     }
@@ -9031,7 +9031,7 @@ enum class HideAsk(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class HistoryBrowseHead(
     val machines: List<HistoryMachine>,
-    val projects: Long,
+    val projects: Int,
     val grouped: Long,
     val sections: List<HistorySection>,
 ) : Ordered {
@@ -9041,11 +9041,11 @@ data class HistoryBrowseHead(
         val ADAPTER: JsonAdapter<HistoryBrowseHead> = obj(
             listOf(
             Field("machines", { arr(HistoryMachine.ADAPTER) }, optional = false, nullable = false),
-            Field("projects", { Lng }, optional = false, nullable = false),
-            Field("grouped", { Lng }, optional = false, nullable = false),
+            Field("projects", { Int32 }, optional = false, nullable = false),
+            Field("grouped", { U64 }, optional = false, nullable = false),
             Field("sections", { arr(HistorySection.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> HistoryBrowseHead(a[0] as List<HistoryMachine>, a[1] as Long, a[2] as Long, a[3] as List<HistorySection>) },
+            { a -> HistoryBrowseHead(a[0] as List<HistoryMachine>, a[1] as Int, a[2] as Long, a[3] as List<HistorySection>) },
             { v -> arrayOf(v.machines, v.projects, v.grouped, v.sections) },
         )
     }
@@ -9075,7 +9075,7 @@ data class HistoryBrowseReq(
             Field("fresh", { arr(Str) }, optional = false, nullable = false),
             Field("query", { opt(Str) }, optional = true, nullable = true),
             Field("sort", { opt(HistorySort.ADAPTER) }, optional = true, nullable = true),
-            Field("within_days", { opt(Lng) }, optional = true, nullable = true),
+            Field("within_days", { opt(U64) }, optional = true, nullable = true),
             Field("hidden", { opt(Bool) }, optional = true, nullable = true),
             Field("by", { HistoryBy.ADAPTER }, optional = false, nullable = false),
             Field("groups", { HistoryFold.ADAPTER }, optional = false, nullable = false),
@@ -9404,7 +9404,7 @@ sealed interface HistoryLine {
     data class Row(
         val row: HistoryRow,
         val child: Boolean,
-        val forks: Long,
+        val forks: Int,
         val forksOpen: Boolean,
         val orphan: Boolean,
     ) : HistoryLine, Ordered {
@@ -9431,11 +9431,11 @@ sealed interface HistoryLine {
                         Field("kind", { tag("row") }, optional = false, nullable = false),
                         Field("row", { HistoryRow.ADAPTER }, optional = false, nullable = false),
                         Field("child", { Bool }, optional = false, nullable = false),
-                        Field("forks", { Lng }, optional = false, nullable = false),
+                        Field("forks", { Int32 }, optional = false, nullable = false),
                         Field("forksOpen", { Bool }, optional = false, nullable = false),
                         Field("orphan", { Bool }, optional = false, nullable = false),
                         ),
-                        { a -> HistoryLine.Row(a[1] as HistoryRow, a[2] as Boolean, a[3] as Long, a[4] as Boolean, a[5] as Boolean) },
+                        { a -> HistoryLine.Row(a[1] as HistoryRow, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean) },
                         { v -> arrayOf("row", v.row, v.child, v.forks, v.forksOpen, v.orphan) },
                     )),
                 ),
