@@ -36,7 +36,7 @@
 8. **第三方许可声明 ↔ 现打的依赖**（⑰）：`THIRD-PARTY-NOTICES.txt` 里的 crate ∪ `tests/evidence/third-party-not-shipped.txt`
    == 两份 `Cargo.lock` 的第三方包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
    （两向）；声明里的 Maven 坐标 == 手机 `src/mobile/app/gradle.lockfile` 进发布包那一档（两向），每个的许可都在
-   R16 名单（`third-party-about.toml` 的 `accepted`）里（⑰e）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
+   许可名单（`third-party-about.toml` 的 `accepted`：只收 MIT / Apache 兼容的，不收 GPL）里（⑰e）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
    （`tauri.sidecar.conf.json` 的 `bundle.resources`）。⚠ 「哪些包进产物」由 cargo-about 按目标平台算，本格不重算，只认生成器写下的那一分。
 
 9. **手机那一格**（⑱）：`build-mobile` 在、打 `:app:assembleRelease --no-daemon`、排在 `build-windows` 之后；
@@ -883,7 +883,7 @@ def maven_declared(notices):
 
 
 def accepted_licenses():
-    """R16 许可的那份名单（cargo-about 配置的 `accepted`，Rust 与 Maven 同一份）。"""
+    """依赖许可的名单（cargo-about 配置的 `accepted`，Rust 与 Maven 同一份；只收 MIT / Apache 兼容的）。"""
     m = re.search(r"^accepted = \[(.*?)\]", read_rel(ABOUT_CONF) or "", re.M | re.S)
     return set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
 
@@ -1646,7 +1646,7 @@ def run_checks(emit):
     allowed = accepted_licenses()
     off = sorted("%s (%s)" % (c, lic) for c, lic in mvn_got.items() if lic not in allowed)
     check(bool(allowed) and bool(mvn_got) and not off,
-          "⑰e手机 Maven 许可·声明里每个 Maven 依赖的许可都在 `%s` 的 accepted 名单里（R16：不许 GPL）" % ABOUT_CONF,
+          "⑰e手机 Maven 许可·声明里每个 Maven 依赖的许可都在 `%s` 的 accepted 名单里（不许 GPL）" % ABOUT_CONF,
           "名单 %d 种 · 不在名单里的 %s" % (len(allowed), off))
 
     # ══ ⑱ 手机那一格：签名包 · 签名材料只从 secrets 来 · 不进仓 · 不进日志 · 用完就删 ════════
