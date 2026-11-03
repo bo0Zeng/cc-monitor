@@ -11782,7 +11782,7 @@ enum class LineRecordUnreadTone(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class Link(
-    val pid: Long,
+    val pid: Int,
     val name: String,
     val start: Long,
 ) : Ordered {
@@ -11791,11 +11791,11 @@ data class Link(
     companion object {
         val ADAPTER: JsonAdapter<Link> = obj(
             listOf(
-            Field("pid", { Lng }, optional = false, nullable = false),
+            Field("pid", { Int32 }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
-            Field("start", { Lng }, optional = false, nullable = false),
+            Field("start", { U64 }, optional = false, nullable = false),
             ),
-            { a -> Link(a[0] as Long, a[1] as String, a[2] as Long) },
+            { a -> Link(a[0] as Int, a[1] as String, a[2] as Long) },
             { v -> arrayOf(v.pid, v.name, v.start) },
         )
     }
