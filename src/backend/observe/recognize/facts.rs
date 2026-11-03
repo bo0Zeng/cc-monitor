@@ -303,7 +303,7 @@ pub struct BgTask {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
@@ -329,7 +329,7 @@ pub struct Background {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
@@ -497,7 +497,7 @@ pub struct LastRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
