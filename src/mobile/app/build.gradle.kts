@@ -196,6 +196,14 @@ androidComponents {
     }
 }
 
+// 进发布包的那一档依赖锁进 `gradle.lockfile`（进仓）：第三方许可声明（`tests/scripts/third-party-notices.py`）与发版尺子 ⑰e
+// 都只读这份，不跑 Gradle。依赖一变、锁没跟上 ⇒ 解析失败；重写锁：
+//   ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --write-locks
+// 测试 · 基准 · 构建插件不进包，不锁。
+configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
+    resolutionStrategy.activateDependencyLocking()
+}
+
 dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-data"))
