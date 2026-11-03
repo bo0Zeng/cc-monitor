@@ -9,10 +9,10 @@ use ratex_layout::{layout, to_display_list, validate_layout, LayoutOptions};
 use ratex_types::{DisplayItem, MathStyle, PathCommand};
 
 /// 原文超过这么多字节就不排（照原文排）：排版耗时 · 画单大小都跟着原文长。
-pub const MAX_TEX_BYTES: usize = 4096;
+pub(crate) const MAX_TEX_BYTES: usize = 4096;
 
 /// 排一条公式；`display` ⇒ 块级样式，否则行内样式。排不出 ⇒ 空。
-pub fn lay(tex: &str, display: bool) -> Option<MathBox> {
+pub(crate) fn lay(tex: &str, display: bool) -> Option<MathBox> {
     if tex.trim().is_empty() || tex.len() > MAX_TEX_BYTES {
         return None;
     }
