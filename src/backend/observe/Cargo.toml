@@ -38,7 +38,7 @@ pidwatch-core = { path = "../../common/pidwatch-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
 relay-route-core = { path = "../../common/relay-route-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
-# 记录树的文件事件（跟读醒来的那一拍）。
+# 记录树的文件事件（跟读靠它醒来）。
 notify.workspace = true
 serde.workspace = true
 serde_json.workspace = true
