@@ -12,21 +12,21 @@ use crate::wire::NameFaceExt as _;
 //   由 `search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home` 逐个字面量扫着。
 
 /// 单条 user/assistant 正文的索引上限（字符）。正文极少超，兜底防超长粘贴。
-pub(crate) const MAIN_CAP: usize = 20_000;
+pub const MAIN_CAP: usize = 20_000;
 /// 单条 tool 文本的索引上限（字符）。`tool_result` 可能是几百 KB 的文件 dump，必须封顶。
-pub(crate) const TOOL_CAP: usize = 4_000;
+pub const TOOL_CAP: usize = 4_000;
 /// snippet 命中点前后各保留的字符数。
-pub(crate) const SNIPPET_CTX: usize = 48;
+pub const SNIPPET_CTX: usize = 48;
 /// 每个会话给几处命中的 snippet（两端照摆；其余只计数，记进那一行的 `moreHits`）。
-pub(crate) const PER_SESSION_CAP: usize = 3;
+pub const PER_SESSION_CAP: usize = 3;
 /// `limit` 缺省值（IPC 与 `--limit` 两侧同）。
-pub(crate) const DEFAULT_LIMIT: usize = 300;
+pub const DEFAULT_LIMIT: usize = 300;
 /// `limit` 的下界 / 上界。
 pub(crate) const LIMIT_MIN: usize = 1;
 pub(crate) const LIMIT_MAX: usize = 2_000;
 
 /// 把外部传进来的 `limit` 收进合法区间（两侧同一口径）。
-pub(crate) fn clamp_limit(n: usize) -> usize {
+pub fn clamp_limit(n: usize) -> usize {
     n.clamp(LIMIT_MIN, LIMIT_MAX)
 }
 
@@ -38,7 +38,7 @@ pub(crate) fn clamp_limit(n: usize) -> usize {
 /// 前者是「整份结果被砍了」（该让用户知道，缩小范围/加大 limit），
 /// 后者是「这个会话只摆前几处」（点进去看就行，结果没被砍）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SnippetVerdict {
+pub enum SnippetVerdict {
     /// 给 snippet（预算已记账）。
     Give,
     /// 🔴 **全局 `limit` 用完了** —— 这一条以及之后的都没有 snippet。
@@ -49,19 +49,19 @@ pub(crate) enum SnippetVerdict {
 
 /// 全局 snippet 预算。**判定只有这一处**；它说得出不给的原因（下游从条数反推分不开两种）。
 #[derive(Debug)]
-pub(crate) struct SnippetBudget {
+pub struct SnippetBudget {
     limit: usize,
     spent: usize,
 }
 
 impl SnippetBudget {
-    pub(crate) fn new(limit: usize) -> Self {
+    pub fn new(limit: usize) -> Self {
         Self { limit, spent: 0 }
     }
 
     /// 判定一条命中。`shown_in_session` = 本会话**已经**给出的 snippet 条数。
     /// 返回 `Give` 时预算已记账，调用方必须真的构造 snippet。
-    pub(crate) fn take(&mut self, shown_in_session: usize) -> SnippetVerdict {
+    pub fn take(&mut self, shown_in_session: usize) -> SnippetVerdict {
         if self.spent >= self.limit {
             return SnippetVerdict::BudgetExhausted;
         }
@@ -81,13 +81,13 @@ impl SnippetBudget {
 /// 预算顺序 ≠ 展示顺序时，缺 snippet 的正好是列表最上面那几张卡。按走序花，展示序最上面 10 张里没有 snippet 的张数明显更多。
 /// 买到的不是「少几张空卡」（最近的会话往往命中最多、一口气吃掉大半预算，空卡总数不一定少），是「空卡不在你眼前」。
 /// 走序也不是一个可复现的顺序：`WalkDir` 走的是 `readdir` 返回序（ext4 上是目录哈希序），跨机器不同；最近序由内容决定。
-pub(crate) use face_core::column::sort_by_recency;
+pub use face_core::column::sort_by_recency;
 
 // ── snippet ──────────────────────────────────────────────────────────────
 
 /// 在 `text` 里大小写不敏感地定位 `needle_lc`（已小写），返回前 / 中 / 后三段。
 /// 找不到（理论上不会，调用前已 `contains` 粗筛过）则退化成开头窗口。
-pub(crate) fn make_snippet(text: &str, needle_lc: &str) -> (String, String, String) {
+pub fn make_snippet(text: &str, needle_lc: &str) -> (String, String, String) {
     match find_ci(text, needle_lc) {
         Some((start, end)) => (
             tail_chars(&text[..start], SNIPPET_CTX),
@@ -106,7 +106,7 @@ pub(crate) fn make_snippet(text: &str, needle_lc: &str) -> (String, String, Stri
 /// （常驻索引每问都对每一条记录跑它；每条整段转小写的那一份分配是每问的大头）。
 /// 全 ASCII 的原文不拷贝、逐字节比；其余转小写进本线程一块复用的缓冲再找（缓冲长到最长那一条就不再长）。
 /// 原文里有大写 Σ ⇒ 照整段转小写那一条走（它按上下文把词尾的 Σ 变成 ς，逐字符转做不到）。
-pub(crate) fn contains_lc(hay: &str, needle_lc: &str) -> bool {
+pub fn contains_lc(hay: &str, needle_lc: &str) -> bool {
     if needle_lc.is_empty() {
         return true;
     }
@@ -210,7 +210,7 @@ pub(crate) fn tail_chars(s: &str, n: usize) -> String {
 }
 
 /// 按字符硬截断（不加 `…`，用于索引正文封顶）。
-pub(crate) fn truncate_plain(s: &str, n: usize) -> String {
+pub fn truncate_plain(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         return s.to_string();
     }
@@ -222,28 +222,28 @@ pub(crate) const EXCERPT_CHARS: usize = 120;
 
 /// 叫一条会话什么时用到的那几样（[`session_label`] 的入参）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct LabelFacts {
+pub struct LabelFacts {
     /// 在 monitor 里改的名（那台的注解）。
-    pub(crate) custom: Option<String>,
+    pub custom: Option<String>,
     /// 后台会话的 pidfile 名（只后台会话有；同一 sid 有人坐着的那一份 ⇒ 没有）。
-    pub(crate) bg_name: Option<String>,
+    pub bg_name: Option<String>,
     /// 最后一条标题记录（代理起的 · 在代理里改的）。
-    pub(crate) title: Option<String>,
+    pub title: Option<String>,
     /// 首条人说的话的摘录（压过空白、截到 [`EXCERPT_CHARS`] 字；没有 ⇒ 空串）。
-    pub(crate) first: String,
+    pub first: String,
     /// 项目目录。
-    pub(crate) project_dir: Option<String>,
+    pub project_dir: Option<String>,
     /// 分叉来的（记录里写着源会话）。
-    pub(crate) forked: bool,
+    pub forked: bool,
     /// 后台会话（不是人坐在终端里对话的那种）。
-    pub(crate) background: bool,
+    pub background: bool,
     /// 记录没读到（找不到 · 不在手上这份清单里）⇒ 它的会话号；读到了 ⇒ `None`。
-    pub(crate) unread_sid: Option<String>,
+    pub unread_sid: Option<String>,
 }
 
 impl LabelFacts {
     /// 记录没读到的那一条：只知道会话号与这台注解里改的名。
-    pub(crate) fn unread(sid: &str, custom: Option<String>) -> Self {
+    pub fn unread(sid: &str, custom: Option<String>) -> Self {
         LabelFacts {
             custom,
             unread_sid: Some(sid.to_string()),
@@ -256,7 +256,7 @@ impl LabelFacts {
 /// 只此一处：标签页（`session_added` / `session_status` 的 `label`）· 历史清单的 `label` · 全文搜索的标题 · 一轮结束的通知都是它出的。
 /// 顺序：改过的名 → 后台会话的 pidfile 名 → 标题记录 → 第一句 → 记录没读到 ⇒ 会话号头 8 位 → 文案表 `history.row.untitled`；
 /// 空白的当没有。项目不进名字（整行那一格 [`session_line`]）。
-pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
+pub fn session_label(facts: &LabelFacts) -> (String, bool) {
     let given = |s: &Option<String>| {
         s.as_deref()
             .filter(|s| !s.trim().is_empty())
@@ -277,7 +277,7 @@ pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
 
 /// **整行标题**（帧上 `NameFace.title`，界面照抄、不拼）：`项目 ↳ ⚙ 名字` —— 不知道项目 ⇒ 不带；不是分叉来的 ⇒ 不带 `↳`；
 /// 不是后台 ⇒ 不带 `⚙`。名字是 [`session_label`]。那台机器不进整行：叫那台什么是看的那一侧的事，界面另画那台的标签。
-pub(crate) fn session_line(facts: &LabelFacts) -> String {
+pub fn session_line(facts: &LabelFacts) -> String {
     let (name, _) = session_label(facts);
     let forked = facts
         .forked
@@ -303,7 +303,7 @@ pub(crate) fn session_line(facts: &LabelFacts) -> String {
 ///
 /// [`TitleBy::Agent`]: crate::agents::record::TitleBy::Agent
 /// [`TitleBy::User`]: crate::agents::record::TitleBy::User
-pub(crate) fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) -> bool {
+pub fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) -> bool {
     use crate::agents::record::{Body, TitleBy};
     use crate::agents::UserTextExt as _;
     match body {
@@ -331,7 +331,7 @@ pub(crate) fn project_name(dir: &str) -> Option<&str> {
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（帧上的 [`crate::wire::NameFace`]）：`label` ＝ [`session_label`]，`title` ＝ [`session_line`]。
-pub(crate) fn name_face(facts: &LabelFacts) -> crate::wire::NameFace {
+pub fn name_face(facts: &LabelFacts) -> crate::wire::NameFace {
     let (label, _) = session_label(facts);
     crate::wire::NameFace::of_parts(label, session_line(facts))
 }

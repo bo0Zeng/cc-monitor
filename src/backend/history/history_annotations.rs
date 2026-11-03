@@ -47,8 +47,8 @@ pub use cmd_wire::session::Hide;
 
 /// 线上 `patch.hide`：`on` · `off` 写单个那一格，`rule` 摘掉它、回到规则（`null` / 缺 ＝ 不改）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum HideAsk {
     On,
@@ -68,20 +68,20 @@ struct Doc {
 
 /// 这一片里的一组（文件 `groups` 那一节的一项）：名字（带它几时起的）＋ 几时建的（毫秒）。认不出的键写回时原样留着。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct GroupRec {
+pub struct GroupRec {
     #[serde(flatten)]
-    pub(crate) name: Named,
+    pub name: Named,
     #[serde(default)]
-    pub(crate) made: i64,
+    pub made: i64,
 }
 
 /// 集合的一样属性 ＋ 它几时改的（毫秒）：每一片各抄一份，读时取最新的那份（盘上是 `name` · `named` 两格）。
 /// 以后的颜色之类各带各的时刻，同此。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Named {
-    pub(crate) name: String,
+pub struct Named {
+    pub name: String,
     #[serde(default)]
-    pub(crate) named: i64,
+    pub named: i64,
 }
 
 /// 没有时刻的名字（盘上缺 `named` 那一格同此：0，任何改过的名字都比它新）。
@@ -95,7 +95,7 @@ impl From<&str> for Named {
 }
 
 /// 组 id ⇒ 那一组（这台有组员的）。
-pub(crate) type Book = BTreeMap<String, GroupRec>;
+pub type Book = BTreeMap<String, GroupRec>;
 
 /// 读的结局。「推不出家」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
 /// 文件不在 = 还没有任何注解（真的是 0）；读不懂 = 不知道（不许说成 0）。
@@ -110,7 +110,7 @@ pub enum Loaded {
 }
 
 /// 这条会话「没人答时自动答」那一格（现读这台那一份；读不到 ⇒ 关）。
-pub(crate) fn auto_answer_of(sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
+pub fn auto_answer_of(sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
     path().and_then(|p| auto_answer_at(&p, sid))
 }
 
@@ -123,7 +123,7 @@ pub(crate) fn auto_answer_at(path: &Path, sid: &str) -> Option<cmd_wire::needs::
 }
 
 /// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
-pub(crate) const AUTO_MAX_MIN: u32 = 30;
+pub const AUTO_MAX_MIN: u32 = 30;
 
 /// 替人答的那一句至多几个字。
 const AUTO_SAY_MAX: usize = 500;
@@ -155,12 +155,12 @@ pub(crate) fn auto_checked(
 }
 
 /// 这条会话「下次恢复用」那一格（现读这台那一份；读不到 ⇒ 没记）。还算不算数由读的那一方照记录长度判（`session_open_face::kept_for_resume`）。
-pub(crate) fn resume_with_of(sid: &str) -> Option<ResumeWith> {
+pub fn resume_with_of(sid: &str) -> Option<ResumeWith> {
     path().and_then(|p| resume_with_at(&p, sid))
 }
 
 /// [`resume_with_of`]，文件是参数。
-pub(crate) fn resume_with_at(path: &Path, sid: &str) -> Option<ResumeWith> {
+pub fn resume_with_at(path: &Path, sid: &str) -> Option<ResumeWith> {
     match load_at(path) {
         Loaded::Read(t) => t.get(sid).and_then(|e| e.resume_with.clone()),
         _ => None,
@@ -173,7 +173,7 @@ pub fn path() -> Option<PathBuf> {
 }
 
 /// [`path`] 有逻辑的那一半（环境取值器注入，判据不去动进程级环境变量）。
-pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     use creds_core::store::{monitor_data_dir, DATA_DIR_ENV, HISTORY_METADATA_FILE};
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
     monitor_data_dir(get(DATA_DIR_ENV).as_deref(), home).map(|d| d.join(HISTORY_METADATA_FILE))
@@ -204,7 +204,7 @@ fn parse(raw: &Value, path: &Path) -> Result<Doc, String> {
 }
 
 /// 读一份（给 join 那一层）。
-pub fn load_at(path: &Path) -> Loaded {
+pub(crate) fn load_at(path: &Path) -> Loaded {
     match load_all_at(path) {
         Ok((t, _)) => Loaded::Read(t),
         Err(e) => Loaded::Unreadable(e),
@@ -221,7 +221,7 @@ pub(crate) fn load_all_at(path: &Path) -> Result<(Table, Book), String> {
 }
 
 /// [`load_all_at`]，这台那一份；推不出家 ⇒ `None`。
-pub(crate) fn load_all() -> Option<Result<(Table, Book), String>> {
+pub fn load_all() -> Option<Result<(Table, Book), String>> {
     path().map(|p| load_all_at(&p))
 }
 
@@ -252,34 +252,34 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::common::sa
         ));
     }
     own.lock(dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 
 /// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
 #[derive(Debug, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Patch {
     /// 星标。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     starred: Option<bool>,
     /// 自定义标题：`null` = 不改；空白串 = 清空（也认蛇形 `custom_title`）。
     #[serde(default, rename = "customTitle", alias = "custom_title")]
-    #[cfg_attr(test, ts(type = "string | null", optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null", optional))]
     custom_title: Option<Option<String>>,
     /// 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     hide: Option<HideAsk>,
     /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
     #[serde(default, rename = "autoAnswer")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,
     /// 固定。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pinned: Option<bool>,
 }
 
@@ -382,7 +382,7 @@ fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said>
 
 codes! {
     /// `history-annotate` · `history-forget` 的码。
-    pub(crate) enum AnnotationErr {
+    pub enum AnnotationErr {
         /// 这份文件此刻读不懂（坏 JSON · 类型不对 · 同一格驼峰与蛇形都在）⇒ 拒写，原文件一个字节不动。
         Unreadable = "annotations_unreadable",
         /// 写不下去（建目录 · 拿锁 · 原子写）。
@@ -409,10 +409,10 @@ pub(crate) fn checked_sid(sid: &str) -> Result<&str, AnnotationErr> {
 
 /// `history-annotate` 的入参：改哪一条 ＋ 改哪几格。
 #[derive(Debug, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AnnotateReq {
+pub struct AnnotateReq {
     /// 会话 id。
     pub(crate) sid: String,
     /// 要改的那几格。
@@ -421,16 +421,16 @@ pub(crate) struct AnnotateReq {
 
 /// `history-forget` 的入参。
 #[derive(Debug, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ForgetReq {
+pub struct ForgetReq {
     /// 会话 id。
     pub(crate) sid: String,
 }
 
 /// `history-annotate`：改一条历史注解（星标 / 改名 / 隐藏），回改完的那一条。
-pub(crate) struct HistoryAnnotateCmd;
+pub struct HistoryAnnotateCmd;
 
 impl Command for HistoryAnnotateCmd {
     const NAME: &'static str = "history-annotate";
@@ -455,7 +455,7 @@ impl crate::wire::typed::Handle for HistoryAnnotateCmd {
 }
 
 /// `history-forget`：删一条历史注解（删会话时连带）。不在 ⇒ 不写。
-pub(crate) struct HistoryForgetCmd;
+pub struct HistoryForgetCmd;
 
 impl Command for HistoryForgetCmd {
     const NAME: &'static str = "history-forget";
@@ -560,13 +560,13 @@ pub(crate) fn keep_resume_at(
 
 /// 终端没了时换的那一项（注解 `resumeWith`）此刻还算不算数：记录还是记下那一刻那么长 ⇒ 算；长了（恢复过 · 又写过）· 读不到记录 ⇒ 作废。
 /// 恢复（`session_open_face::resume_of`）与会话事实读同一份。
-pub(crate) fn kept_for_resume(kept: Option<ResumeWith>, record: &Path) -> Option<ResumeWith> {
+pub fn kept_for_resume(kept: Option<ResumeWith>, record: &Path) -> Option<ResumeWith> {
     let len = crate::platform::fs::Ro::metadata(record).ok()?.len();
     kept.filter(|k| k.end == len)
 }
 
 /// 终端没了时换模型 / 权限档：把选的那一项记在这条会话上（`end` ＝ 此刻记录多长），下次恢复照它起。
-pub(crate) fn keep_for_resume(
+pub fn keep_for_resume(
     own: &Own,
     sid: &str,
     record: &Path,
@@ -650,21 +650,21 @@ pub(crate) fn edit_slice_at<T>(
 
 /// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格 · 改之前改过的名。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Annotated {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Annotated {
     pub(crate) entry: Entry,
     /// 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
-    pub(crate) prev: Option<Hide>,
+    pub prev: Option<Hide>,
     /// 改之前改过的名（没有 ⇒ `null`）：撤销改名照它交回去（`null` ⇒ 交空串，回到原标题）—— 标签页上只有定好的名，不知道这一格。
     pub(crate) prev_title: Option<String>,
 }
 
 /// `history-forget` 的回包。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Forgotten {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Forgotten {
     /// 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
     pub(crate) removed: bool,
 }

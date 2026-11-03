@@ -38,13 +38,13 @@ static VIEWS: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::ne
 
 /// 怎么看：按时间（缺省）· 按项目。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryBy"
+        rename = "HistoryBy",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "lowercase")]
@@ -56,13 +56,13 @@ pub(crate) enum By {
 
 /// 一台上的一组（按项目看时开合那一格认它）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryGroupId"
+        rename = "HistoryGroupId",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
@@ -74,13 +74,13 @@ pub(crate) struct GroupId {
 
 /// 一台上的一个会话（展开了分叉的那几行认它）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryRowId"
+        rename = "HistoryRowId",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
@@ -92,13 +92,13 @@ pub(crate) struct RowId {
 
 /// 按项目看时哪几组开着：`open` 是全部的样子，`except` 里那几组反过来。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryFold"
+        rename = "HistoryFold",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
@@ -109,30 +109,30 @@ pub(crate) struct Fold {
 
 /// `history-browse` 的入参。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryBrowseReq {
+pub struct HistoryBrowseReq {
     /// 带不带这台。
     pub(crate) here: bool,
     /// 远端那几台（并列时同一刻的行照这台 · 再照这里的先后）。
-    #[cfg_attr(test, ts(as = "Vec<String>"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
     pub(crate) remotes: Vec<Machine>,
     /// 先同步这几台的副本再答（开页 · 刷新 · 勾回一台；别的时候空）；须在 `remotes` 里。带了要带期限（请求信封 `within_ms`）：等多久归发起方。
-    #[cfg_attr(test, ts(as = "Vec<String>"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
     pub(crate) fresh: Vec<Machine>,
     /// 同 `history-list`。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) query: Option<String>,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) sort: Option<Sort>,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub(crate) within_days: Option<u64>,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) hidden: Option<bool>,
     /// 怎么看。
     pub(crate) by: By,
@@ -146,23 +146,23 @@ pub(crate) struct HistoryBrowseReq {
 
 /// 一台此刻读没读到。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryMachineRead"
+        rename = "HistoryMachineRead",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(tag = "is", rename_all = "snake_case")]
-pub(crate) enum Read {
+pub enum Read {
     /// 读到了；注解没并上 ⇒ 那一句。
     Ok { notice: Option<String> },
     /// 读不到、手上有上一次的副本：行照副本出，`at` ＝ 那份是几时读到的（写好的字），不冒充读到。
     Stale {
         why: String,
-        #[cfg_attr(test, ts(type = "string"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
         at: Words,
     },
     /// 读不到、从没读到过：那一句（没有行）。
@@ -173,13 +173,13 @@ pub(crate) enum Read {
 
 /// 一台那一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryMachine"
+        rename = "HistoryMachine",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct MachineHead {
@@ -192,31 +192,31 @@ pub(crate) struct MachineHead {
 
 /// 按时间看的一个段头：落在第 `at` 项之前（字是那台写好的）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistorySection"
+        rename = "HistorySection",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct Section {
     pub(crate) at: u32,
-    #[cfg_attr(test, ts(type = "string"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub(crate) text: Words,
 }
 
 /// 这一列的头。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryBrowseHead {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryBrowseHead {
     /// 问到的每台（先后同入参：这台在前）。
     pub(crate) machines: Vec<MachineHead>,
     /// 几个项目 · 组里一共几个会话（按项目看时列表头那一句）。
     pub(crate) projects: u32,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) grouped: u64,
     /// 按时间看的段头（按项目看 ⇒ 空）。
     pub(crate) sections: Vec<Section>,
@@ -224,16 +224,20 @@ pub(crate) struct HistoryBrowseHead {
 
 /// 这一列的一项。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub(crate) enum HistoryLine {
+pub enum HistoryLine {
+    // 组头与那一行都装箱：两种项一样大小，一列里混排不按大的那一种占位（线上形不变）。
     /// 按项目看的组头。
-    Group { group: HistoryGroup, open: bool },
+    Group {
+        group: Box<HistoryGroup>,
+        open: bool,
+    },
     /// 一行会话：`child` ＝ 挂在展开了的父会话下；`forks` ＝ 它下面挂着几个分叉（`forksOpen` 展没展开）；
     /// `orphan` ＝ 它是分叉、父会话不在这一列里。
     Row {
-        row: HistoryRow,
+        row: Box<HistoryRow>,
         child: bool,
         forks: u32,
         #[serde(rename = "forksOpen")]
@@ -244,14 +248,14 @@ pub(crate) enum HistoryLine {
 
 crate::wire::typed::codes! {
     /// `history-browse` 的码（一台读不到不算失败：在头里那一格说）。
-    pub(crate) enum HistoryBrowseErr {
+    pub enum HistoryBrowseErr {
         /// 并的那一趟没做完。
         Failed = "failed",
     }
 }
 
 /// `history-browse`：历史页那一列。扫这台在阻塞池里、同步远端那几台并着等，并 · 摊是纯计算 ⇒ 异步档。
-pub(crate) struct HistoryBrowseCmd;
+pub struct HistoryBrowseCmd;
 
 impl crate::wire::typed::Command for HistoryBrowseCmd {
     const NAME: &'static str = "history-browse";
@@ -262,16 +266,13 @@ impl crate::wire::typed::Command for HistoryBrowseCmd {
 
 impl crate::wire::typed::Handle for HistoryBrowseCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryBrowseReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Self::Reply, HistoryBrowseErr>> + Send + 'static
-    {
-        async move {
-            answer(req, cx.tz, cx.until)
-                .await
-                .map_err(crate::wire::typed::of_fail_with(HistoryBrowseErr::Failed))
-        }
+    ) -> Result<Self::Reply, HistoryBrowseErr> {
+        answer(req, cx.tz, cx.until)
+            .await
+            .map_err(crate::wire::typed::of_fail_with(HistoryBrowseErr::Failed))
     }
 }
 
@@ -297,7 +298,7 @@ pub(crate) enum Got {
 /// 帧面 `history-browse` 的本体（`tz` ＝ 看的那一台的时区；`until` ＝ 发起方给的截止时刻，同步远端那几台时照它等）。
 pub(crate) async fn answer(
     req: HistoryBrowseReq,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
 ) -> Result<Patch<HistoryBrowseHead, HistoryLine>, Said> {
     let ask = filters(req.query.as_deref(), req.sort, req.within_days, req.hidden)?;
@@ -409,7 +410,7 @@ pub(crate) fn per_machine(
     got: Vec<(Machine, Got)>,
     ask: &super::history_list::Ask,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> (Vec<MachineHead>, Vec<Answered>) {
     let mut heads = Vec::new();
     let mut answered = Vec::new();
@@ -463,7 +464,7 @@ fn product(
     origin: &Machine,
     ask: &super::history_list::Ask,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> (HistoryHead, Vec<HistoryRow>) {
     let ann = listing_annotations(l);
     answer_from(
@@ -536,7 +537,7 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
     // 分叉挂父（同一台；只认这一列里有的父会话）：挂在父下的跟在展开了的父后面。
     let nested = nest(&rows, id_of, parent_of, &shape.forks);
     let line = |r: &HistoryRow, n: Nest| HistoryLine::Row {
-        row: r.clone(),
+        row: Box::new(r.clone()),
         child: n.child,
         forks: n.forks,
         forks_open: n.forks_open,
@@ -583,7 +584,7 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
             for g in groups {
                 let open = shape.open(g);
                 laid.lines.push(HistoryLine::Group {
-                    group: g.clone(),
+                    group: Box::new(g.clone()),
                     open,
                 });
                 if !open {

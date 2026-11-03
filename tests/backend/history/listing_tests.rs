@@ -564,7 +564,8 @@ fn the_history_readers_stream_instead_of_slurping() {
         src[begin..begin + end].contains("ListingEntry::scan("),
         "analyze_session 不再转调 `ListingEntry::scan` —— 下面那条钉的就不是它读文件的那一段了"
     );
-    for (name, sig) in [("ListingEntry", "impl ListingEntry {")] {
+    {
+        let (name, sig) = ("ListingEntry", "impl ListingEntry {");
         let begin = src
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {name} —— 抽取器坏了，本条会零命中地绿"));

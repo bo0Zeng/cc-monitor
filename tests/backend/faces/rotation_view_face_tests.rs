@@ -418,7 +418,7 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert_eq!(v.lineup[0].group, RotGroup::Use);
 
     // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。写这台的记录树 ⇒ 先拿那把锁。
-    let _tree = crate::history::history_list::tests::MACHINE_TREE.blocking_lock();
+    let _tree = crate::history::history_list::test_support::MACHINE_TREE.blocking_lock();
     let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
         .expect("有记录树")
         .join("-p");

@@ -202,15 +202,16 @@ fn each_machine_says_whether_it_was_read() {
 
 /// 一台旧副本里的一行。
 fn stale_listing() -> cmd_wire::listing::Listing {
-    let mut l = cmd_wire::listing::Listing::default();
-    l.rows = vec![serde_json::from_value(json!({
-        "agent": "claude", "sessionId": "s-old", "projectPath": "/w/p", "projectName": "p", "aiTitle": null,
-        "firstUserExcerpt": "x", "title": "x", "startedAt": 1, "updatedAt": 2, "jsonlPath": "/x", "life": {"is": "unclear"},
-        "messageCountApprox": 0, "isBg": false, "starred": false, "customTitle": null, "launchTab": null, "parent": null,
-        "projectDir": "-w-p", "group": "claude:/w/p", "lastAccount": null
-    }))
-    .expect("旧副本那一行")];
-    l
+    cmd_wire::listing::Listing {
+        rows: vec![serde_json::from_value(json!({
+            "agent": "claude", "sessionId": "s-old", "projectPath": "/w/p", "projectName": "p", "aiTitle": null,
+            "firstUserExcerpt": "x", "title": "x", "startedAt": 1, "updatedAt": 2, "jsonlPath": "/x", "life": {"is": "unclear"},
+            "messageCountApprox": 0, "isBg": false, "starred": false, "customTitle": null, "launchTab": null, "parent": null,
+            "projectDir": "-w-p", "group": "claude:/w/p", "lastAccount": null
+        }))
+        .expect("旧副本那一行")],
+        ..Default::default()
+    }
 }
 
 async fn browse(args: Value, until: bool) -> Result<Value, crate::common::said::Said> {
