@@ -1,7 +1,8 @@
 /**
  * 图标只有一个出处：`kit/icon.ts` 的 Phosphor 登记表（图形图标由代码画，文案表里只留读屏名）。
  *
- * - 生产 TS 里建 `<svg>` 的只有 `kit/icon.ts`（别处不许手写 SVG）。
+ * - 生产 TS 里建 `<svg>` 的只有 `kit/icon.ts`（别处不许手写 SVG）；另一处是 `md-view.ts` 画公式 —— 那是照后端排好的画单画的图，不是图标，
+ *   它里面不许出现 Phosphor 的东西（图标照旧只经 `kit/icon.ts`）。
  * - 生产 CSS 的伪元素不画字符：`content:` 只许空串 / `none` / 分隔点 `var(--mark-sep)`（分隔点是句中符号，在符号表里）。
  * - CSS 里要画图标（`<details>` 摘要的箭头那一类伪元素）只走 `mask: var(--icon-…)`；`--icon-…` 只由 `css-marks.ts` 从登记表取（`iconMaskUrl`），CSS 里不写 svg 地址。
  * - 产品里的 `<details>` 都不出浏览器自带三角：三扇窗都加载的 `reset.css` 里一条全局规则关掉，
@@ -19,12 +20,12 @@ const css = productionCssFiles("src/frontend");
 const ts = productionTsFiles("src/frontend");
 
 describe("图标只有一个出处", () => {
-  it("只有 kit/icon.ts 建 svg", () => {
-    const bad = ts
-      .filter((f) => !f.file.endsWith("kit/icon.ts"))
-      .filter((f) => /createElementNS\(|<svg[\s>]|www\.w3\.org\/2000\/svg/.test(f.text))
-      .map((f) => f.file);
-    expect(bad).toEqual([]);
+  it("只有 kit/icon.ts 建 svg（md-view.ts 画公式那一处除外，且它不碰图标）", () => {
+    const svgMakers = ts.filter((f) => /createElementNS\(|<svg[\s>]|www\.w3\.org\/2000\/svg/.test(f.text)).map((f) => f.file);
+    expect(svgMakers.filter((f) => !f.endsWith("kit/icon.ts") && !f.endsWith("frontend/ui/md-view.ts"))).toEqual([]);
+    const mdView = ts.find((f) => f.file.endsWith("frontend/ui/md-view.ts"));
+    expect(mdView, "md-view.ts 不在生产 TS 里 —— 本条在空转").toBeDefined();
+    expect(/phosphor|<svg[\s>]/i.test(mdView?.text ?? ""), "md-view.ts 里出现了图标或手写的 svg 串").toBe(false);
   });
 
   it("CSS 伪元素的 content 不画字符", () => {

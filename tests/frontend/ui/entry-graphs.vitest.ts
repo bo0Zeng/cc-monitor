@@ -25,7 +25,7 @@
  * 禁止清单里的**每一个**模式，都必须在**别的**窗口的闭包里**命中** ——
  * 一个拼错的模式到处零命中，正控会当场红；
  * 另外每个窗口的闭包必须**含有**它该有的东西（设置窗有 `settings/panel.ts`，
- * viewer 有 `session-viewer.ts` ＋ `render.ts` ＋ KaTeX），免得零命中是因为整张图空了。
+ * viewer 有 `session-viewer.ts` ＋ `render.ts` ＋ `md-view.ts`），免得零命中是因为整张图空了。
  *
  * # 买到 / 买不到
  *
@@ -37,7 +37,7 @@
  *   `tasks-panel.ts` 等，`tabs.ts` 这里不改；老 SFTP 面板已退役，那一条不在了）。本文件只钉「不许有」清单，
  *   不钉「只许有」—— 钉全集会让每一次 `tabs.ts` 的正常改动都红在一个与拆分无关的数上。
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Rollup } from "vite";
 import ts from "typescript";
@@ -70,9 +70,8 @@ function hit(mods: ReadonlySet<string>, pat: string): string[] {
 
 /** 设置窗：只含设置面板 ＋ 主题 ＋ 键位 ⇒ 渲染栈与 tab 管理一个都不许有。 */
 const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
-  { pat: "npm:katex", what: "数学排版" },
   { pat: "src/frontend/ui/render.ts", what: "渲染栈" },
-  { pat: "src/frontend/ui/md-view.ts", what: "渲染栈（照树排版）" },
+  { pat: "src/frontend/ui/md-view.ts", what: "渲染栈（照树排版 · 画公式）" },
   { pat: "src/frontend/ui/render-stream-record.ts", what: "渲染栈（逐条记录）" },
   { pat: "src/frontend/ui/cards/index.ts", what: "卡片系" },
   { pat: "src/frontend/ui/tabs.ts", what: "tab 管理" },
@@ -111,9 +110,9 @@ const FORBIDDEN_IN_VIEWER: readonly { pat: string; what: string }[] = [
 
 /** 反空真：每个窗口**必须有**的东西（没有就说明闭包走空了，零命中不作数）。 */
 const REQUIRED: Record<Win, readonly string[]> = {
-  main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "npm:katex", "src/frontend/ui/views/history.ts"],
+  main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "src/frontend/ui/views/history.ts"],
   settings: ["src/frontend/ui/entry-settings.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/theme.ts", "src/frontend/ui/keybindings/registry.ts", "src/frontend/ui/keybindings/editor.ts"],
-  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "npm:katex", "src/frontend/ui/theme.ts"],
+  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "src/frontend/ui/md-view.ts", "src/frontend/ui/theme.ts"],
   terminal: ["src/frontend/ui/entry-terminal.ts", "src/frontend/ui/terminal-page.ts", "src/frontend/ui/theme.ts"],
 };
 
@@ -506,7 +505,7 @@ function builtClasses(win: Win): Set<string> {
 }
 
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
-const CSS_FORBIDDEN_IN_SETTINGS = ["katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold"];
+const CSS_FORBIDDEN_IN_SETTINGS = ["tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold"];
 /** viewer 的 CSS 里不许出现的类族。 */
 const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "ext-", "acct-row-"];
 function familyHits(classes: Set<string>, fam: string): string[] {
@@ -964,10 +963,9 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
 // ═══════════════════════════ 子步 3：层真包进去（对构建产物）═══════════════════════════
 //
 // 源码那一侧（每条规则都在层里、层名不拼错、声明次序）住 `tests/frontend/ui/css-ledger.vitest.ts` 格 ⑤。
-// 这里判**产物**，因为有两件事只在构建里发生：
-//   ① 第三方 CSS（KaTeX）由 `vite.config.ts` 的 postcss 插件包进 `@layer vendor` ——
-//      插件没生效，它们就是无层的，会反过来压住我们所有的覆盖；
-//   ② vite 按 JS chunk 重新归并 CSS 资产、重排 `<link>` —— 层声明那一句必须仍在每个窗口的**第一份**资产的最前面。
+// 这里判**产物**，因为有一件事只在构建里发生：
+//   vite 按 JS chunk 重新归并 CSS 资产、重排 `<link>` —— 层声明那一句必须仍在每个窗口的**第一份**资产的最前面。
+// 产物里也不许有无层规则：将来谁引进一份第三方样式表（没包进层），它会反过来压住我们所有的覆盖。
 
 /** 压缩过的 CSS：顶层（不在任何 at-rule 里）的规则 ＋ 每条规则所在的层。 */
 function builtLayerScan(css: string): { topLevelRules: string[]; layerOfClass: Map<string, Set<string>>; firstLayerStmt: string | null } {
@@ -1043,7 +1041,7 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
     }
   });
 
-  it("🔴 每个窗口的构建 CSS 里，一条无层规则都没有（含第三方）", () => {
+  it("🔴 每个窗口的构建 CSS 里，一条无层规则都没有", () => {
     for (const w of Object.values(WINDOWS)) {
       const scans = BUILT_CSS_BY_HTML[w.html].map(builtLayerScan);
       const classes = scans.reduce((n, s) => n + s.layerOfClass.size, 0);
@@ -1052,29 +1050,20 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
     }
   });
 
-  it("正控：第三方的类（katex）在主窗与 viewer 的产物里存在，且**只**在 vendor 层里", () => {
-    for (const html of ["index.html", "viewer.html"]) {
-      const merged = new Map<string, Set<string>>();
-      for (const s of BUILT_CSS_BY_HTML[html].map(builtLayerScan))
-        for (const [c, ls] of s.layerOfClass) merged.set(c, new Set([...(merged.get(c) ?? []), ...ls]));
-      const vendorish = [...merged].filter(([c]) => c === "katex" || c.startsWith("katex-"));
-      nonEmpty(vendorish);
-      // 我们自己也写了几条带 `katex-display` 的覆盖（在 components 层），所以判的是「第三方那份在 vendor 里」：
-      // 每个这一族的类至少有一处在 vendor 层，且**没有**任何一处无层
-      const bad = vendorish.filter(([, ls]) => ls.has("<无层>")).map(([c]) => c);
-      expect(bad, `${html}：这些第三方类出现在无层规则里 —— vite.config.ts 的 vendor 插件没生效`).toEqual([]);
-      const inVendor = vendorish.filter(([, ls]) => ls.has("vendor")).length;
-      expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(0);
-    }
+  it("正控：无层谓词认得出无层规则（不然上一条零命中地绿）", () => {
+    expect(builtLayerScan("@layer a{.x{color:red}}.y{color:red}").topLevelRules).toEqual([".y"]);
   });
 });
 
-describe("字体：KaTeX 只打 woff2", () => {
-  // 两个 WebView（WebView2 · WebKitGTK）都认 woff2；KaTeX 的样式表原样会把 ttf · woff · woff2 三种都引进来（约多 0.6 MB）。
-  it("产物里的字体文件全是 .woff2，且 KaTeX 那几份在", () => {
-    const fonts = ASSET_NAMES.filter((n) => /\.(?:woff2?|ttf|otf|eot)$/i.test(n));
-    expect(fonts.filter((n) => !n.endsWith(".woff2")), "产物里有 woff2 以外的字体").toEqual([]);
-    nonEmpty(fonts.filter((n) => n.includes("KaTeX")));
+describe("字体：产物里只有画公式的那几份 KaTeX 字体（两端共用 `src/shared/fonts/katex/`）", () => {
+  it("每份都打进了产物、只打一份，没有别的字体", () => {
+    const want = readdirSync(resolve(REPO_ROOT, "src/shared/fonts/katex"))
+      .filter((n) => n.endsWith(".ttf"))
+      .map((n) => n.replace(/\.ttf$/, ""))
+      .sort();
+    expect(want.length, "src/shared/fonts/katex 里一份字体都没有 —— 本条空转").toBeGreaterThan(10);
+    const fonts = ASSET_NAMES.filter((n) => /\.(?:woff2?|ttf|otf|eot)$/i.test(n)).map((n) => (n.split("/").pop() ?? n).replace(/-[\w-]{8}\.ttf$/, ""));
+    expect(fonts.sort()).toEqual(want);
   });
 });
 

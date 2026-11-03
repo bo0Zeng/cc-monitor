@@ -47,16 +47,11 @@
  * **反空真自检**（按名字点的正控），量具坏了当场红。
  * 也就是说这里不是"棘轮代替等号"，是"棘轮管方向 ＋ 等号管分母"，两条腿。
  *
- * ## 🔴 ② 的三个已知假阳性 —— 这是本条的正控
+ * ## 🔴 ② 的假阳性
  *
- * 上一轮（`S21` 步 3）现打：普查给出的 13 个"死规则"里 **3 个是活的**，三个各属一族。
- * 一把认不出它们的尺子会指挥人去删**正在生效**的样式 ⇒ 比没有尺子更坏。
- * 所以本文件把它们钉成正控，**并且连"靠哪条机制活下来"一起钉**（常量拼接那两个 `.status-first-run-*` 已随那条指路删了，今天只剩第三方那一个）：
- * 只钉"没被判死"是不够的 —— 那条断言在「尺子把所有东西都判活」时同样绿。
- *
- * | 名字 | 它凭什么活着 | 本条要求的裁决 |
- * |---|---|---|
- * | `.katex-display` | `katex/dist/katex.min.css` 自产 | `vendor` |
+ * 一把认不出「靠拼接活着的类名」的尺子会指挥人去删**正在生效**的样式 ⇒ 比没有尺子更坏。
+ * 量具对每一族都有一条识别路径（常量拼接 · 模板前缀），两条路径各自有没有货由「识别路径各自真的有货」那条盯着；
+ * 本仓不引第三方样式表，没有「第三方自产」那一族。
  *
  * ## 诚实边界
  *
@@ -96,13 +91,12 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
  *
  * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是最要紧的一条读数）**：
  * 登记了 11 个前缀，`S21` 三处说「今天的 11 个不够，至少还要加
- * `FIRST_RUN_HINT_CLASS` 这类常量拼接、第三方 `katex-*`，以及现打到的 8 处模板拼接点
+ * `FIRST_RUN_HINT_CLASS` 这类常量拼接，以及现打到的 8 处模板拼接点
  * （设置页按钮类前缀（那一族已随 `kit/button` 删）· `cc-bus-hooks-` · `cc-bus-online-` · `remote-test-` · `history-chip` ·
  * `bash-output-body` · `block-collapsible` · `paste-block`）」。
  *
- * **现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
+ * **现打的答案不是"补到 19 个"，是"那几族根本不该由前缀来管"**：
  * - 常量拼接 → 归 `const-concat`（把 `${CONST}` 填回去再扫），不占前缀格；
- * - 第三方 → 归 `vendor`（从 `import "<包>/….css"` 现读），不占前缀格；
  * - 那 8 处模板拼接点里有 7 处**根本不需要登记** —— 它们拼出来的类名（`cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
@@ -325,16 +319,14 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
     );
   });
 
-  it("三条识别路径各自真的有货（任何一条空了，② 的正控就会靠别的机制蒙混过关）", () => {
+  it("两条识别路径各自真的有货（任何一条空了，② 就会靠别的机制蒙混过关）", () => {
     const led = ledger();
     nonEmpty(led.constConcat);
-    nonEmpty(led.vendorClasses);
-    expect(led.vendorClasses.has("katex"), "第三方类名里没有 `katex` —— katex 的 CSS 没收进来").toBe(true);
     nonEmpty(led.prefixCandidates);
     denom(
       "⓪",
-      led.constConcat.size + led.vendorClasses.size + led.prefixCandidates.size,
-      `条识别证据（常量拼接 ${led.constConcat.size} · 第三方 ${led.vendorClasses.size}（${led.vendorSpecs.length} 份） · 前缀候选 ${led.prefixCandidates.size}）`,
+      led.constConcat.size + led.prefixCandidates.size,
+      `条识别证据（常量拼接 ${led.constConcat.size} · 前缀候选 ${led.prefixCandidates.size}）`,
     );
   });
 
@@ -389,34 +381,12 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
 });
 
 describe("S25 ② CSS 里的类名有人用", () => {
-  it("🔴 正控：三个已知假阳性，必须活着 —— 而且要靠对的那条机制活着", () => {
-    const led = ledger();
-    const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
-    const want: [string, string][] = [
-      // 常量拼接那一族今天在 CSS 里没有对象了（`.status-first-run-*` 随主窗口那句「诊断：…」一起删了）；
-      // 那条识别路径照在（`render.ts` 那一处），有没有货由上面「三条识别路径各自真的有货」那条盯着。
-      ["katex-display", "vendor"],
-    ];
-    for (const [name, kind] of want) {
-      // 先确认它今天真的还在 CSS 里 —— 不在的话下面那条断言会对着空气成立。
-      expect(led.cssClasses.has(name), `\`.${name}\` 已经不在 CSS 里了 —— 正控失去对象，本条会假绿`).toBe(true);
-      const v = explain(led, name, prefixes);
-      expect(
-        v.kind,
-        `\`.${name}\` 的裁决是 ${v.kind}，而它应该靠 ${kind} 活着。\n` +
-          "★ 只判「没被判死」是不够的：那条断言在尺子把所有东西都判活时同样绿。\n" +
-          "  裁决**必须是对的那一种**，否则识别路径断了也看不出来。",
-      ).toBe(kind);
-    }
-    denom("②", want.length, "个已知假阳性（裁决与机制都对上了）");
-  });
-
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
     nonEmpty(led.cssClasses);
 
-    const tally = { literal: 0, "const-concat": 0, vendor: 0, prefix: 0 };
+    const tally = { literal: 0, "const-concat": 0, prefix: 0 };
     const unexplained: string[] = [];
     for (const [name, sites] of led.cssClasses) {
       const v = explain(led, name, prefixes);
@@ -428,15 +398,15 @@ describe("S25 ② CSS 里的类名有人用", () => {
       "这些 CSS 类名今天没有任何人挂它：\n  " +
         unexplained.join("\n  ") +
         "\n★ 删之前**先确认它不是假阳性**（上一轮 13 个里有 3 个是活的，`S21` 步 3）：\n" +
-        "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？② 是不是第三方库自产的？\n" +
-        "  ③ 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
-        "  ④ 确实是死的 ⇒ 删掉那几行 CSS。",
+        "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？\n" +
+        "  ② 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
+        "  ③ 确实是死的 ⇒ 删掉那几行 CSS。",
     ).toEqual([]);
 
     denom(
       "②",
       led.cssClasses.size,
-      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix}）`,
+      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 模板前缀 ${tally.prefix}）`,
     );
   });
 
@@ -502,7 +472,7 @@ describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登�
   it("悬空的类名引用 == 登记", () => {
     const led = ledger();
     nonEmpty(led.usedClasses);
-    const dangling = [...led.usedClasses].filter(([name]) => !led.cssClasses.has(name) && !led.vendorClasses.has(name));
+    const dangling = [...led.usedClasses].filter(([name]) => !led.cssClasses.has(name));
     const where = new Map(dangling.map(([name, sites]) => [name, sites.slice(0, 2).join(" ")]));
     const got = dangling.map(([name]) => name).sort();
     const extra = got.filter((n) => !DANGLING.includes(n)).map((n) => `+ .${n}  ←  ${where.get(n)}`);
@@ -613,13 +583,12 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
 //     压过一切。这一形没有任何别的东西会叫。
 //
 // 买到 / 买不到：
-// - ✅ 源码层面零无层规则、零野层名、层序与设计一致。构建产物（含第三方 CSS 被
-//   `vite.config.ts` 的插件包进 `vendor` 那一步）另由 `tests/frontend/ui/entry-graphs.vitest.ts` 对产物再判一次。
+// - ✅ 源码层面零无层规则、零野层名、层序与设计一致。构建产物另由 `tests/frontend/ui/entry-graphs.vitest.ts` 对产物再判一次。
 // - ❌ **每条规则进的是不是「对的」那一层**（该进 `states` 的还在 `components`）判不了 ——
 //   那要语义。今天 `base` / `states` / `utilities` 三层是空的，理由写在末尾追加的那一节。
 
-/** 层的设计次序（七层 ＋ 第三方那一层 `vendor`，排在 `reset` 之后、我们所有层之前）。 */
-const LAYER_ORDER = ["reset", "vendor", "tokens", "base", "layout", "components", "states", "utilities"] as const;
+/** 层的设计次序（七层）。 */
+const LAYER_ORDER = ["reset", "tokens", "base", "layout", "components", "states", "utilities"] as const;
 
 interface LayerScan {
   /** 判过的规则条数（分母）。 */
@@ -728,7 +697,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
     const led = ledger();
     const decl = scanLayers(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/layers.css"), "utf8"), "layers.css");
     expect(decl.statements, "`layers.css` 里应该恰好一句 `@layer …;` 声明").toHaveLength(1);
-    expect(decl.statements[0], "层的次序与（＋ vendor）不一致").toEqual([...LAYER_ORDER]);
+    expect(decl.statements[0], "层的次序与设计不一致").toEqual([...LAYER_ORDER]);
     const wild: string[] = [];
     const used = new Set<string>();
     for (const f of led.cssFiles) {
@@ -739,7 +708,6 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
     expect(wild, "这些层名没在声明里 —— 浏览器会给它新开一层、排在所有声明过的层之后").toEqual([]);
     // 分母：今天真有规则落进的层（base / states / utilities 空着，末尾追加的那一节）
     for (const must of ["reset", "tokens", "layout", "components"]) expect(used.has(must), `没有任何文件用到 \`${must}\` 层`).toBe(true);
-    // `vendor` 不在源码里 —— 它由 `vite.config.ts` 的插件在构建时包上（产物那一侧由 entry-graphs 判）
     denom("⑤", used.size, `个层真装着规则（${[...used].sort().join(" · ")}），零野层名`);
   });
 

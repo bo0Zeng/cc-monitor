@@ -185,7 +185,7 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 查三道防线有没有被破坏：`stream.ts` 的 `snap()` 还是守卫式（落后底部超过 1px 才贴）；`.stream` 没被加上 `overflow-anchor: none`；`TabManager.onLine` 对尾块之前的旧记录仍只收进 `TailWindow`、不建卡（INVARIANTS §21）。`scrollTop` 本身单调增长，只测它发现不了抖动——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。
 
-### 字体 / 图片 / KaTeX 后载导致贴底跟随失灵
+### 字体 / 图片后载导致贴底跟随失灵
 
 `stream.ts` 的 `MessageStream` 用 `ResizeObserver` ＋ 守卫式 `snap()`：内容后载长高时若仍贴底就跟到底部。失灵时在 DevTools 看 ResizeObserver 回调有没有触发、`snap()` 的守卫条件是否满足。
 

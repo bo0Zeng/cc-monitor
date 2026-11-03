@@ -68,9 +68,10 @@ pub enum MdBlock {
         x: String,
         cont: bool,
     },
-    /// 块级公式（TeX 原文）。
+    /// 块级公式：`tex` 是原文（复制 · 朗读用），`m` 是核心排好的画单；排不出 ⇒ 空，两端照原文等宽排。
     Math {
         tex: String,
+        m: Option<MathBox>,
     },
     /// 列表：`start` 有 ⇒ 有序、从它起编号。
     List {
@@ -168,9 +169,10 @@ pub enum InlNode {
     C {
         x: String,
     },
-    /// 行内公式（TeX 原文）。
+    /// 行内公式：同 [`MdBlock::Math`]，按行内的样式排（更矮、上下标更紧）。
     M {
         tex: String,
+        m: Option<MathBox>,
     },
     /// 链接：只有放行的 scheme（http · https · mailto）才成链接。
     A {
@@ -193,6 +195,111 @@ pub enum InlNode {
         ids: Vec<String>,
         label: String,
     },
+}
+
+/// 一条排好的公式（核心排，两端只照着画）。几何一律是千分之一 em 的整数，乘上那一处的字号（÷ 1000）就是像素；
+/// 原点在左上、y 朝下，基线在 `y = h`；`w` 宽、`h` 基线以上、`d` 基线以下。颜色不上线，跟正文色。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MathBox {
+    pub w: i32,
+    pub h: i32,
+    pub d: i32,
+    pub items: Vec<MathItem>,
+}
+
+/// 画单里的一笔。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "t", rename_all = "snake_case")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum MathItem {
+    /// 一个字形：字体 `f` 里码位 `u` 那个字，基线左端在 (`x`, `y`)，字号乘 `s` ‰（上下标更小）。
+    G {
+        f: MathFont,
+        u: u32,
+        x: i32,
+        y: i32,
+        s: i32,
+    },
+    /// 一条横线（分数线 · 上划线 · 下划线）：左端 (`x`, `y`)，`y` 是线的中线，粗 `th`；`dash` ⇒ 虚线。
+    L {
+        x: i32,
+        y: i32,
+        w: i32,
+        th: i32,
+        dash: bool,
+    },
+    /// 实心矩形：左上 (`x`, `y`)。
+    R { x: i32, y: i32, w: i32, h: i32 },
+    /// 一条路径（伸缩的根号 · 括号 · 箭头）：命令里的坐标相对 (`x`, `y`)；`fill` ⇒ 填，否则描边。
+    P {
+        x: i32,
+        y: i32,
+        fill: bool,
+        d: Vec<MathPath>,
+    },
+}
+
+/// 路径命令。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "t", rename_all = "snake_case")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum MathPath {
+    M {
+        x: i32,
+        y: i32,
+    },
+    L {
+        x: i32,
+        y: i32,
+    },
+    C {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        x: i32,
+        y: i32,
+    },
+    Q {
+        x1: i32,
+        y1: i32,
+        x: i32,
+        y: i32,
+    },
+    Z,
+}
+
+/// 画字形用的字体：KaTeX 那一套（两端各自带同一份字体文件，`src/shared/fonts/katex/`）；
+/// `Sys` ⇒ KaTeX 里没有的字（汉字 · 表情），用系统字体。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum MathFont {
+    Ams,
+    CaligraphicRegular,
+    FrakturRegular,
+    FrakturBold,
+    MainRegular,
+    MainBold,
+    MainItalic,
+    MainBoldItalic,
+    MathItalic,
+    MathBoldItalic,
+    SansSerifRegular,
+    SansSerifBold,
+    SansSerifItalic,
+    ScriptRegular,
+    Size1,
+    Size2,
+    Size3,
+    Size4,
+    Typewriter,
+    Sys,
 }
 
 /// 代码高亮的类：高亮三元组里第三格是这里的序号（`as u32`）。

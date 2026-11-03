@@ -35,7 +35,8 @@
    ⚠ 只认文件名；glob 那几样（deb · 安装器 · msi）真叫什么由打包器定，它判不了。
 8. **第三方许可声明 ↔ 现打的依赖**（⑰）：`THIRD-PARTY-NOTICES.txt` 里的 crate ∪ `tests/evidence/third-party-not-shipped.txt`
    == 两份 `Cargo.lock` 的第三方包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
-   （两向）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
+   （两向）；声明里的 Maven 坐标 == 手机 `src/mobile/app/gradle.lockfile` 进发布包那一档（两向），每个的许可都在
+   许可名单（`third-party-about.toml` 的 `accepted`：只收 MIT / Apache 兼容的，不收 GPL）里（⑰e）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
    （`tauri.sidecar.conf.json` 的 `bundle.resources`）。⚠ 「哪些包进产物」由 cargo-about 按目标平台算，本格不重算，只认生成器写下的那一分。
 
 9. **手机那一格**（⑱）：`build-mobile` 在、打 `:app:assembleRelease --no-daemon`、排在 `build-windows` 之后；
@@ -853,6 +854,40 @@ def npm_production():
             for k, v in pk.items() if k and not v.get("dev")}
 
 
+MAVEN_LOCK = "src/mobile/app/gradle.lockfile"
+MAVEN_CONF = "releaseRuntimeClasspath"
+ABOUT_CONF = "tests/scripts/third-party-about.toml"
+
+
+def maven_release_locked():
+    """手机 `:app` 的 Gradle 锁文件里进发布包那一档的坐标（`组:件 版本`）；读不到给 `None`。"""
+    text = read_rel(MAVEN_LOCK)
+    if text is None:
+        return None
+    return {"%s:%s %s" % (g, a, v) for g, a, v, confs in re.findall(r"^([^#\s:]+):([^:\s]+):([^=\s]+)=(\S+)$", text, re.M)
+            if MAVEN_CONF in confs.split(",")}
+
+
+def maven_declared(notices):
+    """声明里 Maven 那一段：`组:件 版本` → 它所在那一组的许可（组头 `-------- 名 (许可) --------`）。"""
+    sec = re.search(r"^=+ Maven artifacts[^\n]*\n(.*?)(?=^=+ |\Z)", notices or "", re.M | re.S)
+    got, lic = {}, None
+    for line in (sec.group(1) if sec else "").splitlines():
+        head = re.match(r"^-------- .* \((.+)\) --------$", line)
+        if head:
+            lic = head.group(1)
+        m = re.match(r"^\s*maven: (\S+ \S+)\s*$", line)
+        if m:
+            got[m.group(1)] = lic
+    return got
+
+
+def accepted_licenses():
+    """依赖许可的名单（cargo-about 配置的 `accepted`，Rust 与 Maven 同一份；只收 MIT / Apache 兼容的）。"""
+    m = re.search(r"^accepted = \[(.*?)\]", read_rel(ABOUT_CONF) or "", re.M | re.S)
+    return set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+
+
 # ── ⑱ 手机那一格（签名包）──────────────────────────────────────────────────
 MOBILE_JOB = "build-mobile"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
@@ -1602,6 +1637,17 @@ def run_checks(emit):
     into = [v for k, v in (res.items() if isinstance(res, dict) else []) if leaf(k) == NOTICES]
     check(into == [NOTICES], "⑰d声明进安装包·`%s` 的 bundle.resources 把它放进包根" % SIDECAR_CONF,
           "现打 %r" % (res,))
+    mvn_want, mvn_got = maven_release_locked(), maven_declared(notices)
+    check(bool(mvn_want) and set(mvn_got) == mvn_want,
+          "⑰e手机 Maven 依赖·声明 == `%s` 里进发布包那一档（%s），两向" % (MAVEN_LOCK, MAVEN_CONF),
+          "锁里 %d · 声明 %d · 锁里有没声明 %s · 声明了锁里没有 %s"
+          % (len(mvn_want or []), len(mvn_got), sorted((mvn_want or set()) - set(mvn_got))[:8],
+             sorted(set(mvn_got) - (mvn_want or set()))[:8]))
+    allowed = accepted_licenses()
+    off = sorted("%s (%s)" % (c, lic) for c, lic in mvn_got.items() if lic not in allowed)
+    check(bool(allowed) and bool(mvn_got) and not off,
+          "⑰e手机 Maven 许可·声明里每个 Maven 依赖的许可都在 `%s` 的 accepted 名单里（不许 GPL）" % ABOUT_CONF,
+          "名单 %d 种 · 不在名单里的 %s" % (len(allowed), off))
 
     # ══ ⑱ 手机那一格：签名包 · 签名材料只从 secrets 来 · 不进仓 · 不进日志 · 用完就删 ════════
     mob = jobs.get(MOBILE_JOB) if isinstance(jobs, dict) else None

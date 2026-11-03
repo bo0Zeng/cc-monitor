@@ -6,7 +6,7 @@
  * - 高亮先出字、后上色：一段建出来代码照纯字排，同时把这一段的代码块（先序）交给 `pull`（后端 `prose-hl`），
  *   拉到了 `paint` 把那几块的字换成着色的 span：第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（JS 串直接切）。
  *   拉不到 ⇒ 照纯字。
- * - 公式只出占位 `data-math-pending`，进视口由 `render.ts::enhanceCard` 排（KaTeX 只住那一处）。
+ * - 公式由核心排好（`MathBox` 画单），这里当场照画成 SVG；排不出的照原文等宽排。
  * - 长正文按 `segs` 分段：`mountDoc` 只建第 0 段，`buildNext` 一段段往下接。
  * - 计划格引用（`ref`）只排编号那几个字、带上 `data-ref-*`，怎么点由宿主接（[`refSlots`]）。
  */
@@ -16,6 +16,10 @@ import type { Inl } from "./generated/Inl";
 import type { MdAlign } from "./generated/MdAlign";
 import type { MdBlock } from "./generated/MdBlock";
 import type { MdItem } from "./generated/MdItem";
+import type { MathBox } from "./generated/MathBox";
+import type { MathFont } from "./generated/MathFont";
+import type { MathItem } from "./generated/MathItem";
+import type { MathPath } from "./generated/MathPath";
 import type { SegHl } from "./generated/SegHl";
 import { copyText } from "./copy-table";
 import { el } from "./kit/el";
@@ -127,7 +131,7 @@ function block(b: MdBlock, ctx: Ctx): Node {
     case "code":
       return codeBlock(b.lang, b.x, ctx);
     case "math":
-      return mathSlot(b.tex, true);
+      return mathSlot(b.tex, b.m, true);
     case "list":
       return list(b.start, b.items, ctx);
     case "quote":
@@ -273,11 +277,136 @@ function hlSpan(cls: number, text: string): HTMLElement | null {
   return sp;
 }
 
-/** 公式占位：`render.ts::enhanceCard` 读 `data-math-pending` 与 `textContent` 排 KaTeX。 */
-function mathSlot(tex: string, display: boolean): HTMLElement {
-  const sp = el("span", "", tex);
-  sp.dataset.mathPending = display ? "display" : "inline";
-  return sp;
+/**
+ * 一条公式：核心排好了（`m`）⇒ 照画单画成内联 SVG；排不出 ⇒ `<code>` 照原文。
+ * SVG 的 viewBox 就是画单的千分之一 em，宽高写成 em ⇒ 跟着所在那一处的字号缩放；颜色一律 `currentColor`（跟正文色）。
+ */
+function mathSlot(tex: string, m: MathBox | null, display: boolean): HTMLElement {
+  const at = display ? "display" : "inline";
+  if (!m) {
+    const c = el("code", "", tex);
+    c.dataset.math = at;
+    return c;
+  }
+  const box = document.createElement(display ? "div" : "span");
+  box.dataset.math = at;
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", tex);
+  const total = m.h + m.d;
+  const svg = svgEl("svg", { width: em(m.w), height: em(total), viewBox: `0 0 ${m.w} ${total}`, "aria-hidden": "true" });
+  // 行内的基线对正文的基线：SVG 底边在基线下 `d` 处。
+  if (!display) svg.style.verticalAlign = em(-m.d);
+  for (const it of m.items) svg.appendChild(mathItem(it));
+  box.appendChild(svg);
+  if (m.items.some((it) => it.t === "g")) loadMathFonts();
+  return box;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svgEl(tag: string, attrs: Record<string, string | number>): SVGElement {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+  return e;
+}
+
+/** 千分之一 em ⇒ CSS 长度。 */
+function em(milli: number): string {
+  return `${milli / 1000}em`;
+}
+
+function mathItem(it: MathItem): SVGElement {
+  switch (it.t) {
+    case "g": {
+      const t = svgEl("text", { x: it.x, y: it.y, "font-size": it.s, "font-family": MATH_FAMILY[it.f], fill: "currentColor" });
+      t.textContent = String.fromCodePoint(it.u);
+      return t;
+    }
+    case "l":
+      if (it.dash) {
+        return svgEl("line", { x1: it.x, y1: it.y, x2: it.x + it.w, y2: it.y, stroke: "currentColor", "stroke-width": it.th, "stroke-dasharray": `${it.th * 3} ${it.th * 3}` });
+      }
+      return svgEl("rect", { x: it.x, y: it.y - it.th / 2, width: it.w, height: it.th, fill: "currentColor" });
+    case "r":
+      return svgEl("rect", { x: it.x, y: it.y, width: it.w, height: it.h, fill: "currentColor" });
+    case "p": {
+      const paint: Record<string, string> = it.fill ? { fill: "currentColor" } : { fill: "none", stroke: "currentColor" };
+      return svgEl("path", { d: it.d.map(pathCmd).join(""), transform: `translate(${it.x} ${it.y})`, ...paint });
+    }
+  }
+}
+
+function pathCmd(c: MathPath): string {
+  switch (c.t) {
+    case "m":
+      return `M${c.x} ${c.y}`;
+    case "l":
+      return `L${c.x} ${c.y}`;
+    case "c":
+      return `C${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
+    case "q":
+      return `Q${c.x1} ${c.y1} ${c.x} ${c.y}`;
+    case "z":
+      return "Z";
+  }
+}
+
+/** 画单里的字体 ⇒ 字体族名（每份 TTF 一族，族名就是文件名去掉扩展名）；`sys` 交系统字体。 */
+const MATH_FAMILY: Record<MathFont, string> = {
+  ams: "KaTeX_AMS-Regular",
+  caligraphic_regular: "KaTeX_Caligraphic-Regular",
+  fraktur_regular: "KaTeX_Fraktur-Regular",
+  fraktur_bold: "KaTeX_Fraktur-Bold",
+  main_regular: "KaTeX_Main-Regular",
+  main_bold: "KaTeX_Main-Bold",
+  main_italic: "KaTeX_Main-Italic",
+  main_bold_italic: "KaTeX_Main-BoldItalic",
+  math_italic: "KaTeX_Math-Italic",
+  math_bold_italic: "KaTeX_Math-BoldItalic",
+  sans_serif_regular: "KaTeX_SansSerif-Regular",
+  sans_serif_bold: "KaTeX_SansSerif-Bold",
+  sans_serif_italic: "KaTeX_SansSerif-Italic",
+  script_regular: "KaTeX_Script-Regular",
+  size1: "KaTeX_Size1-Regular",
+  size2: "KaTeX_Size2-Regular",
+  size3: "KaTeX_Size3-Regular",
+  size4: "KaTeX_Size4-Regular",
+  typewriter: "KaTeX_Typewriter-Regular",
+  sys: "serif",
+};
+
+/** 字体文件（两端共用 `src/shared/fonts/katex/` 那一份；`new URL` 的字面量路径让构建把它们当资源打进产物）。 */
+const MATH_FONT_URL: Record<Exclude<MathFont, "sys">, URL> = {
+  ams: new URL("../../shared/fonts/katex/KaTeX_AMS-Regular.ttf", import.meta.url),
+  caligraphic_regular: new URL("../../shared/fonts/katex/KaTeX_Caligraphic-Regular.ttf", import.meta.url),
+  fraktur_regular: new URL("../../shared/fonts/katex/KaTeX_Fraktur-Regular.ttf", import.meta.url),
+  fraktur_bold: new URL("../../shared/fonts/katex/KaTeX_Fraktur-Bold.ttf", import.meta.url),
+  main_regular: new URL("../../shared/fonts/katex/KaTeX_Main-Regular.ttf", import.meta.url),
+  main_bold: new URL("../../shared/fonts/katex/KaTeX_Main-Bold.ttf", import.meta.url),
+  main_italic: new URL("../../shared/fonts/katex/KaTeX_Main-Italic.ttf", import.meta.url),
+  main_bold_italic: new URL("../../shared/fonts/katex/KaTeX_Main-BoldItalic.ttf", import.meta.url),
+  math_italic: new URL("../../shared/fonts/katex/KaTeX_Math-Italic.ttf", import.meta.url),
+  math_bold_italic: new URL("../../shared/fonts/katex/KaTeX_Math-BoldItalic.ttf", import.meta.url),
+  sans_serif_regular: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Regular.ttf", import.meta.url),
+  sans_serif_bold: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Bold.ttf", import.meta.url),
+  sans_serif_italic: new URL("../../shared/fonts/katex/KaTeX_SansSerif-Italic.ttf", import.meta.url),
+  script_regular: new URL("../../shared/fonts/katex/KaTeX_Script-Regular.ttf", import.meta.url),
+  size1: new URL("../../shared/fonts/katex/KaTeX_Size1-Regular.ttf", import.meta.url),
+  size2: new URL("../../shared/fonts/katex/KaTeX_Size2-Regular.ttf", import.meta.url),
+  size3: new URL("../../shared/fonts/katex/KaTeX_Size3-Regular.ttf", import.meta.url),
+  size4: new URL("../../shared/fonts/katex/KaTeX_Size4-Regular.ttf", import.meta.url),
+  typewriter: new URL("../../shared/fonts/katex/KaTeX_Typewriter-Regular.ttf", import.meta.url),
+};
+
+/** 头一回画公式时把那几族字体注册进文档（浏览器到真用上某一族才去取那一份）；没公式的窗口一份都不注册。 */
+const mathFonts = { added: false };
+
+function loadMathFonts(): void {
+  if (mathFonts.added || typeof FontFace === "undefined") return;
+  mathFonts.added = true;
+  for (const [f, url] of Object.entries(MATH_FONT_URL) as [Exclude<MathFont, "sys">, URL][]) {
+    document.fonts.add(new FontFace(MATH_FAMILY[f], `url(${url.href})`));
+  }
 }
 
 function inlines(ks: readonly Inl[]): Node[] {
@@ -296,7 +425,7 @@ function inline(k: Inl): Node {
     case "c":
       return el("code", "", k.x);
     case "m":
-      return mathSlot(k.tex, false);
+      return mathSlot(k.tex, k.m, false);
     case "a": {
       // 树里只有放行的 scheme（http · https · mailto）才成链接 ⇒ 一律交系统浏览器开（main.ts 认 data-external）。
       const a = box("a", inlines(k.k));
