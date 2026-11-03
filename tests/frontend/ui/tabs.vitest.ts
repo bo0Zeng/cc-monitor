@@ -1081,8 +1081,7 @@ describe("TabManager 生命周期", () => {
    * # 这一格为什么能红
    *
    * 造的正是用户报的那一屏：**`scrollHeight` 说"滚得动"，而屏幕上是半屏空的**。
-   * 成因不是假设 —— 每张顶层卡都带 `contain-intrinsic-size: auto <估值>`
-   * （`height-estimate.ts`），没渲染过的卡按**估值**计入 `scrollHeight`。
+   * 成因：没建卡的行是骨架占位，占位高是估值（`height-estimate.ts`），按**估值**计入 `scrollHeight`。
    * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 截就成立 ⇒ 补批当场停手（只补 20 条）；
    * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 一次同步调用的 8 截补满（160 条）。
    *
