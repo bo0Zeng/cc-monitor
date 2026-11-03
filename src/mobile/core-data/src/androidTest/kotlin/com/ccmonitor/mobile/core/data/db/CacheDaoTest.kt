@@ -14,21 +14,46 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** 缓存那几张表的规矩：记录缓存只留最近看过的 50 条 · 列表不淘汰 · 草稿变待发同一个事务。 */
+/** 缓存库那几张表的规矩：记录缓存只留最近看过的 50 条 · 列表不淘汰 · 删一台清它的缓存；状态库那边草稿变待发同一个事务。 */
 @RunWith(AndroidJUnit4::class)
 class CacheDaoTest {
-    private lateinit var db: AppDatabase
+    private lateinit var cacheDb: CacheDatabase
+    private lateinit var stateDb: AppDatabase
     private lateinit var dao: CacheDao
+    private lateinit var hand: HandDao
 
     @Before
     fun setup() {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
-        db = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java).allowMainThreadQueries().build()
-        dao = db.cacheDao()
+        cacheDb = Room.inMemoryDatabaseBuilder(ctx, CacheDatabase::class.java).allowMainThreadQueries().build()
+        stateDb = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java).allowMainThreadQueries().build()
+        dao = cacheDb.cacheDao()
+        hand = stateDb.handDao()
     }
 
     @After
-    fun teardown() = db.close()
+    fun teardown() {
+        cacheDb.close()
+        stateDb.close()
+    }
+
+    /** 删一台：它在缓存库四张表里的行清光，别台不动。 */
+    @Test
+    fun forgettingAHostClearsOnlyItsCache() =
+        runTest {
+            for (h in listOf("h1", "h2")) {
+                dao.keepList(h, listOf("s" to "{}"), ListHold(h, "e.1.1", null))
+                dao.viewed(h, "s", at = 1)
+                dao.putPages(h, "s", listOf(RecordPage(h, "s", 0, 10, "[]", 1)), SyncAnchor(h, "s", "/p", 10, 1, "m"))
+            }
+            dao.forgetHost("h1")
+            assertTrue(dao.allSessions("h1").isEmpty())
+            assertNull(dao.listHold("h1"))
+            assertTrue(dao.pages("h1", "s").isEmpty())
+            assertNull(dao.anchor("h1", "s"))
+            assertEquals(1, dao.allSessions("h2").size)
+            assertEquals(1, dao.pages("h2", "s").size)
+        }
 
     private fun page(
         h: String,
@@ -91,14 +116,14 @@ class CacheDaoTest {
     fun promotingADraftIsOneTransaction() =
         runTest {
             val p = PendingSend("p1", "h", "s", "你好", null, 1, PendingOutcome.PENDING, 1)
-            dao.putDraft(Draft("h", "s", "你好", null, null, null, null, 1))
-            dao.promote("h", "s", p)
-            assertNull(dao.draft("h", "s"))
-            assertEquals(listOf(p), dao.pending("h", "s"))
+            hand.putDraft(Draft("h", "s", "你好", null, null, null, null, 1))
+            hand.promote("h", "s", p)
+            assertNull(hand.draft("h", "s"))
+            assertEquals(listOf(p), hand.pending("h", "s"))
 
-            dao.putDraft(Draft("h", "s", "再来", null, null, null, null, 2))
-            val failed = runCatching { dao.promote("h", "s", p) }
+            hand.putDraft(Draft("h", "s", "再来", null, null, null, null, 2))
+            val failed = runCatching { hand.promote("h", "s", p) }
             assertTrue("同一个 id 再落一次该失败", failed.isFailure)
-            assertNotNull("落不下 ⇒ 删草稿那一步跟着撤回", dao.draft("h", "s"))
+            assertNotNull("落不下 ⇒ 删草稿那一步跟着撤回", hand.draft("h", "s"))
         }
 }

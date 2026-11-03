@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.Annotated
+import com.ccmonitor.mobile.core.wire.gen.GroupsHere
 import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
@@ -169,18 +170,18 @@ object HistoryAnnotate {
 }
 
 /**
- * `groups-read`：手机直连一台、问它自己那一片（`machines` 只写 `<local>`）。组名 · 组头那几句（`counts[].text`）· 组员的脸与标题
- * 都是那台写好的；几台的组不在这里合。
+ * `groups-here`：手机直连一台、问它自己是主人的那一片（组的记录 · 带组或固定的会话，脸与标题是那台写好的）。
+ * 几台那几片由核心合一次（[GroupsFace]，本机后端 `groups-read` 合各台那一份），不在这里合。
  */
 object Groups {
-    const val COMMAND: String = "groups-read"
+    const val COMMAND: String = "groups-here"
 
-    val ARGS: Map<String, Any?> = mapOf("machines" to listOf(LOCAL))
+    val ARGS: Map<String, Any?> = emptyMap()
 
-    /** 回包（核心按 `cmd-wire` 那一份解过）；缺必填格 ⇒ `null`。 */
-    fun of(data: Any?): GroupsRead? = Wire.bind<GroupsRead>(data)
+    /** 回包照 `cmd-wire` 那一形解得开 ⇒ 原样交回（交核心合的就是这一份）；缺必填格 ⇒ `null`。 */
+    fun of(data: Any?): Any? = data.takeIf { Wire.bind<GroupsHere>(it) != null }
 
-    /** 那台这一问没读全的那几句（上次所知 · 读不到，照那台写的）。 */
+    /** 合好的那一份里没读全的那几句（读不到，照核心写的）。 */
     fun unread(r: GroupsRead): List<String> =
         r.machines.mapNotNull {
             when (val read = it.read) {

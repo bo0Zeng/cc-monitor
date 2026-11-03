@@ -1,13 +1,11 @@
 package com.ccmonitor.mobile.core.data.db
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 
-/** 缓存七张表的存取（[CachedSession] · [ListHold] · [RecordPage] · [SyncAnchor] · [PendingSend] · [Draft] · [PendingBatch]）。只搬原样，不认 JSON 里的格。 */
+/** 缓存库那四张表的存取（[CachedSession] · [ListHold] · [RecordPage] · [SyncAnchor]）。只搬原样，不认 JSON 里的格。 */
 @Dao
 abstract class CacheDao {
     // ---- 会话列表 ----------------------------------------------------------
@@ -167,77 +165,28 @@ abstract class CacheDao {
         }
     }
 
-    // ---- 待发 · 草稿 -------------------------------------------------------
+    // ---- 删一台 -------------------------------------------------------------
 
-    @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid = :sid ORDER BY mintedAt")
-    abstract suspend fun pending(
-        hostId: String,
-        sid: String,
-    ): List<PendingSend>
+    @Query("DELETE FROM sessions WHERE hostId = :hostId")
+    protected abstract suspend fun dropSessions(hostId: String)
 
-    /** 一台名下该再交的那几句：有会话、还没回执（`pending` · `unsure`），照落库的先后。 */
-    @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid IS NOT NULL AND outcome IN ('pending', 'unsure') ORDER BY mintedAt")
-    abstract suspend fun duePending(hostId: String): List<PendingSend>
+    @Query("DELETE FROM list_holds WHERE hostId = :hostId")
+    protected abstract suspend fun dropListHold(hostId: String)
 
-    @Insert(onConflict = OnConflictStrategy.ABORT)
-    abstract suspend fun insertPending(p: PendingSend)
+    @Query("DELETE FROM record_pages WHERE hostId = :hostId")
+    protected abstract suspend fun dropHostPages(hostId: String)
 
-    @Query("UPDATE pending SET outcome = :outcome, attempts = :attempts WHERE id = :id")
-    abstract suspend fun settle(
-        id: String,
-        outcome: String,
-        attempts: Int,
-    )
+    @Query("DELETE FROM sync_anchors WHERE hostId = :hostId")
+    protected abstract suspend fun dropHostAnchors(hostId: String)
 
-    /** 新建会话起成了：那几句归到这条会话。 */
-    @Query("UPDATE pending SET sid = :sid WHERE id IN (:ids)")
-    abstract suspend fun bind(
-        ids: List<String>,
-        sid: String,
-    )
-
-    @Query("DELETE FROM pending WHERE id IN (:ids)")
-    abstract suspend fun forget(ids: List<String>)
-
-    @Query("SELECT * FROM drafts WHERE hostId = :hostId AND sid = :sid")
-    abstract suspend fun draft(
-        hostId: String,
-        sid: String,
-    ): Draft?
-
-    @Upsert
-    abstract suspend fun putDraft(d: Draft)
-
-    @Query("DELETE FROM drafts WHERE hostId = :hostId AND sid = :sid")
-    abstract suspend fun dropDraft(
-        hostId: String,
-        sid: String,
-    )
-
-    /** 草稿变待发：删草稿与落待发同一个事务（落不下 ⇒ 草稿还在，字不会两头都没）。 */
+    /** 删了一台：它的缓存一并清掉（撤回了，下次连上照那台重取）。 */
     @Transaction
-    open suspend fun promote(
-        hostId: String,
-        draftSid: String,
-        p: PendingSend,
-    ) {
-        dropDraft(hostId, draftSid)
-        insertPending(p)
+    open suspend fun forgetHost(hostId: String) {
+        dropSessions(hostId)
+        dropListHold(hostId)
+        dropHostPages(hostId)
+        dropHostAnchors(hostId)
     }
-
-    // ---- 在做的一组 ---------------------------------------------------------
-
-    @Query("SELECT * FROM pending_batches WHERE hostId = :hostId")
-    abstract suspend fun batches(hostId: String): List<PendingBatch>
-
-    @Upsert
-    abstract suspend fun putBatch(b: PendingBatch)
-
-    @Query("DELETE FROM pending_batches WHERE hostId = :hostId AND ticket = :ticket")
-    abstract suspend fun dropBatch(
-        hostId: String,
-        ticket: String,
-    )
 
     companion object {
         /** 记录缓存留最近看过的这么多条会话。 */

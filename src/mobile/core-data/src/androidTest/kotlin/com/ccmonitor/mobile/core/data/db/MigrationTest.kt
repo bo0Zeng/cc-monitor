@@ -790,11 +790,30 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→24 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 24→25：状态库里那四张缓存表整张删掉（搬去缓存库，不搬行）；④ 那几张一行不丢。 */
     @Test
-    fun migrateAll1To24Validates() {
+    fun migrate24To25DropsTheCacheTablesAndKeepsTheRest() {
+        helper.createDatabase(dbName, 24).apply {
+            execSQL("INSERT INTO sessions (hostId, sid, listRow, ord, viewedAt) VALUES ('h', 's', NULL, NULL, 1)")
+            execSQL("INSERT INTO drafts (hostId, sid, text, cwd, account, model, permission, updatedAt) VALUES ('h', 's', '字', NULL, NULL, NULL, NULL, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 25, true, MIGRATION_24_25)
+        db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toSet()
+            assertTrue("缓存表还在状态库里：$names", names.none { it in setOf("sessions", "list_holds", "record_pages", "sync_anchors") })
+        }
+        db.query("SELECT text FROM drafts WHERE hostId = 'h'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("字", c.getString(0))
+        }
+    }
+
+    /** 全链路 1→25 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To25Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 24, true, *allMigrations(crypto))
+        val db = helper.runMigrationsAndValidate(dbName, 25, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

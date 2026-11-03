@@ -141,12 +141,13 @@ class HostChatsSyncTest {
         }
 
     @Test
-    fun `接上问一次 groups-read（只问这台自己那一片）；那台连着推 changed {groups} ⇒ 合成一问重问`() =
+    fun `接上问一次 groups-here（这台自己那一片，原样留着交核心合）；那台连着推 changed {groups} ⇒ 合成一问重问`() =
         runTest {
             val link = FakeCoreLink()
+            val slice = mapOf("groups" to emptyList<Any>(), "members" to emptyList<Any>())
             link.answer = { cmd, _ ->
-                if (cmd == "groups-read") {
-                    Reply.Ok(mapOf("groups" to emptyList<Any>(), "pinned" to emptyList<Any>(), "machines" to emptyList<Any>()))
+                if (cmd == "groups-here") {
+                    Reply.Ok(slice)
                 } else {
                     patch("e.1.1", whole = true, order = emptyList(), head = head)
                 }
@@ -154,16 +155,12 @@ class HostChatsSyncTest {
             val pushed = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
             val c = chats(link, Kept(), pushed)
             runCurrent()
-            assertEquals(listOf<Map<String, Any?>?>(mapOf("machines" to listOf("<local>"))), link.calls("groups-read"))
-            assertEquals(
-                emptyList<Any>(),
-                c.state.value.groups
-                    ?.groups,
-            )
+            assertEquals(listOf<Map<String, Any?>?>(emptyMap()), link.calls("groups-here"))
+            assertEquals(slice, c.state.value.groups)
             pushed.emit(Unit)
             pushed.emit(Unit)
             advanceTimeBy(HostChats.LIST_DEBOUNCE_MS + 1)
             runCurrent()
-            assertEquals("连着两帧合成一问", 2, link.calls("groups-read").size)
+            assertEquals("连着两帧合成一问", 2, link.calls("groups-here").size)
         }
 }

@@ -33,11 +33,11 @@ class SchemaDispositionTest {
     }
 
     /**
-     * 生产 builder 接了迁移链，且手机生产源里一处破坏性回退都没有。
-     * 没接迁移 ⇒ 版本一变 Room 当场抛异常（升级即崩）；有破坏性回退 ⇒ 迁移缺一跳时悄悄清库（钥匙与机器全没）。
+     * 生产 builder 接了迁移链，且手机生产源里破坏性回退只在缓存库那一口（`CacheDatabase.kt`：缓存不迁移、版本一换整份重建）。
+     * 没接迁移 ⇒ 版本一变 Room 当场抛异常（升级即崩）；状态库有破坏性回退 ⇒ 迁移缺一跳时悄悄清库（钥匙与机器全没）。
      */
     @Test
-    fun onlyMigrationsAreWiredAndThereIsNoDestructiveFallback() {
+    fun onlyMigrationsAreWiredAndOnlyTheCacheDatabaseFallsBackDestructively() {
         assertTrue(
             "`$DATA_MODULE` 里没接 `.addMigrations(*allMigrations(…))`：版本一变，Room 当场抛异常（用户升级即崩）。",
             MIGRATE_CALL.containsMatchIn(read(DATA_MODULE)),
@@ -50,8 +50,8 @@ class SchemaDispositionTest {
                 .map { it.relativeTo(repoRoot()).invariantSeparatorsPath }
                 .toList()
         assertEquals(
-            "手机生产源里出现了破坏性回退（升级时会清掉库里的钥匙与机器）：只许写迁移。",
-            emptyList<String>(),
+            "手机生产源里缓存库之外出现了破坏性回退（升级时会清掉库里的钥匙与机器）：状态库只许写迁移。",
+            listOf(CACHE_DATABASE),
             destructive,
         )
     }
@@ -184,9 +184,10 @@ class SchemaDispositionTest {
 
     private companion object {
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 24
+        const val PINNED_VERSION = 25
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
+        const val CACHE_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/CacheDatabase.kt"
         const val MIGRATIONS = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/Migrations.kt"
         const val DATA_MODULE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/di/DataModule.kt"
         const val MIGRATION_TEST = "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt"

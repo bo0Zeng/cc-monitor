@@ -384,6 +384,10 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "cache/listing.json",
             "数据目录里后端运行时落的文件（历史清单缓存），不是仓内路径；§2.1 那张表按这个名字与足迹逐样对拍",
         ),
+        (
+            "cache/last-seen.json",
+            "数据目录里后端运行时落的文件（离线那台的上次值），不是仓内路径；§2.1 那张表按这个名字与足迹逐样对拍",
+        ),
     ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 

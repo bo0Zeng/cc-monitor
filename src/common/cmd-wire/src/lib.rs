@@ -31,6 +31,7 @@
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
+//! - [`groups`]：组那一族的线上形（一台那一片 · 几台合好的那一份）；几台合一份那一步住 `face_core::groups::merge`（本机后端与手机核心调同一份）；
 //! - [`search`]：全文搜索那一族的线上形（一台的回包 · 几台合好的那一份）；几台合一份那一步住 `face_core::search::merge`（本机后端与手机核心调同一份）；
 //! - [`rewind`]：编辑已发的一句（发送时选怎么退）随那句带的那一份 · 发送那一下的选项（`session-rewind-options`）；
 //! - [`queue`]：会话输入队那三条（`session-queue-*`）的入参与回执 · 一条会话的名单（也是 `changed {session_queue}` 的体）；
@@ -64,6 +65,7 @@ pub mod fnv;
 pub mod frame;
 pub mod frame_shapes;
 pub mod front;
+pub mod groups;
 pub mod keys;
 pub mod listing;
 pub mod live;

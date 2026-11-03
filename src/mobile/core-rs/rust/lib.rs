@@ -436,6 +436,41 @@ pub fn search_merge_json(data: &str) -> String {
     serde_json::to_string(&face_core::search::merge(&q, answered, down)).unwrap_or_default()
 }
 
+/// 几台的组合成一份：`{answered: [{origin, reply}]}`（`reply` ＝ 那台 `groups-here` 回包原样，照机器表先后）⇒ `GroupsRead`。
+/// 合的那一步是本机后端 `groups-read` 调的同一份（`face_core::groups::merge`）：手机逐台直连问完，在这里照组 id 合一次。
+/// 某台那一片照类型解不开 ⇒ 那台读不到（serde 那一句）、别台照合；整份读不动 ⇒ 空串。
+pub fn groups_merge_json(data: &str) -> String {
+    use cmd_wire::groups::{GroupsHere, GroupsMachine};
+    use cmd_wire::listing::HistoryMachineRead;
+    use face_core::groups::Half;
+    let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
+        return String::new();
+    };
+    let Ok(all) = serde_json::from_value::<Vec<serde_json::Value>>(ask["answered"].take()) else {
+        return String::new();
+    };
+    let mut halves = Vec::new();
+    let mut heads = Vec::new();
+    for mut one in all {
+        let Ok(origin) = serde_json::from_value::<cmd_wire::Machine>(one["origin"].take()) else {
+            return String::new();
+        };
+        let (half, read) = match serde_json::from_value::<GroupsHere>(one["reply"].take()) {
+            Ok(h) => (Half::Now(h), HistoryMachineRead::Ok { notice: None }),
+            Err(e) => (
+                Half::None,
+                HistoryMachineRead::Failed { why: e.to_string() },
+            ),
+        };
+        heads.push(GroupsMachine {
+            origin: origin.clone(),
+            read,
+        });
+        halves.push((origin, half));
+    }
+    serde_json::to_string(&face_core::groups::merge(&halves, heads)).unwrap_or_default()
+}
+
 /// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`face_core::column`）；读不动 ⇒ 空串。
 pub fn chats_column_json(ask: &str) -> String {
     serde_json::from_str::<face_core::column::ChatsColumnAsk>(ask)
@@ -963,6 +998,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_ColumnFace_col
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &ask).unwrap_or_default();
         env.new_string(chats_column_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `GroupsFace.merge(data)`：几台的组合成一份（[`groups_merge_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_GroupsFace_merge<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    data: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &data).unwrap_or_default();
+        env.new_string(groups_merge_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -1676,6 +1726,49 @@ mod tests {
         assert_eq!(ack["ok"], false, "{ack}");
         super::close_link(id);
         assert!(!super::send_link(id, b"x".to_vec()));
+    }
+
+    /// 组几台合一份：B 把 C 上的 c 与 E 上的 e 收成 g1，E 那一片的名字更新 ⇒ 手机核心并出一组 g1、名字「乙」、组员 c · e
+    /// （`face_core::groups::merge` 那一份，本机后端 `groups-read` 调的同一个）；某台那一片解不开 ⇒ 那台读不到、别台照合。
+    #[test]
+    fn the_phone_merges_group_slices_by_group_id() {
+        use serde_json::{json, Value};
+        let face =
+            serde_json::to_value(face_core::book::unseen(cmd_wire::cells::Words("f".into())))
+                .unwrap();
+        let slice = |name: &str, named: i64, sid: &str| {
+            json!({
+                "groups": [{"id": "g1", "name": name, "made": 1, "named": named}],
+                "members": [{"sid": sid, "groups": ["g1"], "pinned": false, "face": face,
+                    "facts": {"title": sid, "cwd": null, "record": null, "account": null, "bg": false, "at": null}}],
+            })
+        };
+        let text = json!({"answered": [
+            {"origin": "C", "reply": slice("甲", 1, "c")},
+            {"origin": "E", "reply": slice("乙", 2, "e")},
+            {"origin": "F", "reply": {"groups": 3}},
+        ]})
+        .to_string();
+        let got: Value = serde_json::from_str(&super::groups_merge_json(&text)).unwrap();
+        let groups = got["groups"].as_array().expect("groups");
+        assert_eq!(groups.len(), 1, "同一个组 id 并成一组：{got}");
+        assert_eq!(groups[0]["id"], "g1");
+        assert_eq!(groups[0]["name"], "乙", "名字取 named 新的那片");
+        let who: Vec<(&str, &str)> = groups[0]["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| (m["origin"].as_str().unwrap(), m["sid"].as_str().unwrap()))
+            .collect();
+        assert_eq!(who, [("C", "c"), ("E", "e")]);
+        let heads: Vec<&str> = got["machines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["read"]["is"].as_str().unwrap())
+            .collect();
+        assert_eq!(heads, ["ok", "ok", "failed"], "解不开的那台照实说读不到");
+        assert_eq!(super::groups_merge_json("不是 JSON"), "");
     }
 
     /// 搜内容几台合一份：手机核心合出的就是 `face_core::search::merge` 那一份（本机后端扇出完调的同一个）；

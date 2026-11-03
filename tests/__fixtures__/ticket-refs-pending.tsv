@@ -5,7 +5,6 @@ src/backend/control/rewind.rs	1
 src/backend/control/session_open/mod.rs	1
 src/backend/control/terminals.rs	1
 src/backend/dial/remote_ask.rs	1
-src/backend/history/groups.rs	1
 src/backend/history/listing.rs	1
 src/backend/host/managed/attach.rs	4
 src/backend/host/managed/bin.rs	1

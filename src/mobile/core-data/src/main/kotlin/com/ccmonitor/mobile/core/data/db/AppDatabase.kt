@@ -4,7 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-/** Room 数据库。扩列走迁移，不重建。 */
+/** 状态库（④ 这一端自己的：机器 · 钥匙 · 指纹 · 按键 · 设置 · 待发 · 草稿 · 在做的一组）。扩列走迁移，不重建；缓存住 [CacheDatabase]。 */
 @Database(
     entities = [
         Host::class,
@@ -14,15 +14,11 @@ import androidx.room.TypeConverters
         TermKey::class,
         Bookmark::class,
         Settings::class,
-        CachedSession::class,
-        ListHold::class,
-        RecordPage::class,
-        SyncAnchor::class,
         PendingSend::class,
         Draft::class,
         PendingBatch::class,
     ],
-    version = 24,
+    version = 25,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class, HostConverters::class)
@@ -39,7 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun settingsDao(): SettingsDao
 
-    abstract fun cacheDao(): CacheDao
+    abstract fun handDao(): HandDao
 
     abstract fun hostRemovalDao(): HostRemovalDao
 }

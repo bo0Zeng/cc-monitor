@@ -3,6 +3,6 @@ import type { MemberFacts } from "./MemberFacts";
 import type { SessionFace } from "./SessionFace";
 
 /**
- * 这台一条带组或固定的会话：在哪几组 · 固没固定 · 这台此刻给它画的样子 · 复活那几格。
+ * 那台一条带组或固定的会话：在哪几组 · 固没固定 · 那台此刻给它画的样子 · 复活那几格。
  */
 export type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };

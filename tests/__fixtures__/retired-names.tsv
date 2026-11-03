@@ -377,6 +377,9 @@ bookmarks_migration	5.0.4
 OLD_FILE	5.0.4
 filewin-bookmarks.json	5.0.4
 BookmarkRepository	5.0.4
+# 上次读数挪进 cache/：旧位置那一份写盘时删一次。到期由打版本号的那一路连这一步一起删。
+OLD_LAST_SEEN_REL	5.0.4
+drop_old_last_seen	5.0.4
 adoptOldBookmarks	5.0.4
 tab-groups-migrate	5.0.4
 migrateTabGroups	5.0.4

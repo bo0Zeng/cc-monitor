@@ -137,3 +137,63 @@ data class Settings(
     @PrimaryKey val key: String,
     val value: String? = null,
 )
+
+/**
+ * 待发：投进会话输入队（`session-queue-put`）的一句，会话那台还没回执、或回执到了还没在记录里出现、或那台拒了。
+ * [id] 就是投队那一下交的编号：没回执 ⇒ 接上照同一个编号再交（那台去重只进一条）。[outcome] 是 [PendingOutcome] 那几种。
+ */
+@Entity(tableName = "pending")
+data class PendingSend(
+    /** 本地铸的 id。 */
+    @PrimaryKey val id: String,
+    val hostId: String,
+    /** 哪条会话；新建会话（还没起成）⇒ `null`。 */
+    val sid: String?,
+    val text: String,
+    /** 附件引用（JSON）；没有 ⇒ `null`。 */
+    val attachments: String?,
+    val mintedAt: Long,
+    val outcome: String,
+    val attempts: Int,
+)
+
+/** [PendingSend.outcome] 那几种（落盘的字，不上屏）。 */
+object PendingOutcome {
+    /** 交出去了、会话那台的回执还没到：接上照同一个编号再交。 */
+    const val PENDING = "pending"
+
+    /** 回执到了（会话那台已落盘、排进队）：等它在记录里出现。 */
+    const val DELIVERED = "delivered"
+
+    /** 新建会话随起交的头一句，那台说不知道送没送到（`session-open` 回包）；挂回来照「没回执」投进队再交，那台按编号去重。 */
+    const val UNSURE = "unsure"
+
+    /** 会话那台拒了（队满 · 太长 · 附件已不在）：不再交，字留着可改了再送。 */
+    const val REFUSED = "refused"
+}
+
+/** 在做的一组：核心交的那一串原样（票 · 发出去的那一份入参 · 断开时的完成数）；开始时写、收场删，进程没了再开照它带票再问。 */
+@Entity(tableName = "pending_batches", primaryKeys = ["hostId", "ticket"])
+data class PendingBatch(
+    val hostId: String,
+    val ticket: String,
+    val plan: String,
+)
+
+/** 草稿：一条会话（新建会话 [sid] 为空串）输入框里还没发的字 ＋ 新建会话那几样选项。 */
+@Entity(tableName = "drafts", primaryKeys = ["hostId", "sid"])
+data class Draft(
+    val hostId: String,
+    val sid: String,
+    val text: String,
+    val cwd: String?,
+    val account: String?,
+    val model: String?,
+    val permission: String?,
+    val updatedAt: Long,
+) {
+    companion object {
+        /** 新建会话那一张的 sid（主键不许空，空串代「还没有」）。 */
+        const val NEW: String = ""
+    }
+}

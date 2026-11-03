@@ -263,8 +263,9 @@ fn data_report_own_rows_keep_their_wire_bytes() {
     let d = std::env::temp_dir().join(format!("fp-own-pin-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(d.join(".cc-monitor/bin")).unwrap();
+    std::fs::create_dir_all(d.join(".cc-monitor/cache")).unwrap();
     std::fs::write(d.join(".cc-monitor/chores.json"), "{}").unwrap();
-    std::fs::write(d.join(".cc-monitor/last-seen.json"), "[1,2]").unwrap();
+    std::fs::write(d.join(".cc-monitor/cache/last-seen.json"), "[1,2]").unwrap();
     let got = wire(&super::data::own_rows(&d));
     let _ = std::fs::remove_dir_all(&d);
     check("data-report.own", got);
