@@ -2,6 +2,6 @@
 import type { Words } from "./Words";
 
 /**
- * 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟没人答，已自动答：…」）。
+ * 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟无人答 · 已自动答：…」）。
  */
 export type AnsweredRow = { sid: string, said: Words, };

@@ -125,7 +125,7 @@ autoAnswer: number | null,
  */
 autoAnswerChoices: Array<AutoChoice>, 
 /**
- * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟无人答 · 已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
  */
 autoAnswered: Words | null, 
 /**
