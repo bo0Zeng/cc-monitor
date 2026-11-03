@@ -46,14 +46,14 @@ impl Table {
 }
 
 /// 这个会话的一发请求（中转带回的那几个头）。带过一次就算带过（同一会话里不带它的小请求不把它抹掉）。
-pub(crate) fn note<V: AsRef<str>>(stream: &str, heads: &[(&str, V)]) {
+pub fn note<V: AsRef<str>>(stream: &str, heads: &[(&str, V)]) {
     let wide = crate::agents::wide_context(heads);
     let mut t = table().lock().unwrap_or_else(|e| e.into_inner());
     t.note(MARKED_SESSIONS_KEEP, stream, wide);
 }
 
 /// 中转看见过这个会话的请求吗；看见过 ⇒ 扩展上下文那一项带过没有。没看见过（直接敲的、没走中转的）⇒ `None`。
-pub(crate) fn seen(stream: &str) -> Option<bool> {
+pub fn seen(stream: &str) -> Option<bool> {
     table()
         .lock()
         .unwrap_or_else(|e| e.into_inner())

@@ -1,3 +1,4 @@
+use super::test_support::{account_default_golden, golden_library, write_manifest};
 use super::*;
 use crate::agents::claudecode::accounts as cc_accounts;
 use crate::platform::proc::proc_starttime;
@@ -15,11 +16,6 @@ fn tmpdir(tag: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&p);
     fs::create_dir_all(&p).unwrap();
     p
-}
-
-fn write_manifest(accts: &Path, body: &str) {
-    fs::create_dir_all(accts).unwrap();
-    fs::write(accts.join("accounts.json"), body).unwrap();
 }
 
 /// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
@@ -236,9 +232,9 @@ fn windows_shaped_config_dirs_are_accepted_and_dangerous_ones_still_are_not() {
     }
 
     // ② 危险形状**照旧拒**。四组分开列，坏在哪一组一眼看得出。
-    let relative = vec!["relative", "C:Users\\x", "z\\x"];
-    let bare_root = vec!["/"];
-    let updir = vec![
+    let relative = ["relative", "C:Users\\x", "z\\x"];
+    let bare_root = ["/"];
+    let updir = [
         "/a/../b",
         "/a/b/..",
         "C:\\Users\\..\\..\\x",
@@ -1908,60 +1904,8 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
 
 // ---- 能不能选 · 默认号是谁（跨三处金样 `tests/__fixtures__/account-default.golden.json`）----
 
-/// 金样那一格 ⇒ 盘上一份账号库（号目录 · 凭据文件 · 清单），回清单目录。
-/// 凭据在、目录不在的那一形（订阅号做不出来）写成 API 号（鉴权那一维恒就绪）。
-pub(crate) fn golden_library(tag: &str, case: &serde_json::Value) -> (PathBuf, PathBuf) {
-    let root = tmpdir(tag);
-    let accts = root.join("accts");
-    let shared = root.join("shared");
-    fs::create_dir_all(&shared).unwrap();
-    let mut rows = Vec::new();
-    for a in case["accounts"].as_array().unwrap() {
-        let name = a["name"].as_str().unwrap();
-        let ready = a["authReady"].as_bool().unwrap();
-        let exists = a["exists"].as_bool().unwrap();
-        let mut row = serde_json::json!({
-            "name": name,
-            "isDefault": a["isDefault"],
-            "mode": a["mode"],
-        });
-        if a["hasDir"].as_bool().unwrap() {
-            let dir = accts.join(format!("acct-{name}"));
-            if exists {
-                fs::create_dir_all(&dir).unwrap();
-                if ready {
-                    fs::write(dir.join(CREDENTIALS_FILE), "{}").unwrap();
-                }
-            } else if ready {
-                row["authKind"] = serde_json::json!("api-key");
-            }
-            row["configDir"] = serde_json::json!(dir.to_string_lossy());
-        } else if ready {
-            fs::write(shared.join(CREDENTIALS_FILE), "{}").unwrap();
-        }
-        rows.push(row);
-    }
-    write_manifest(
-        &accts,
-        &serde_json::json!({
-            "version": 1,
-            "sharedStore": shared.to_string_lossy(),
-            "accounts": rows,
-        })
-        .to_string(),
-    );
-    (root, accts)
-}
-
-pub(crate) fn account_default_golden() -> serde_json::Value {
-    serde_json::from_str(include_str!(
-        "../../__fixtures__/account-default.golden.json"
-    ))
-    .unwrap()
-}
-
-/// ★★ 清单成品逐号带 `selectable`、`meta` 带 `effectiveDefault`，与金样逐格相等；
-/// 起会话跟随（`launch_account::pick`）读的就是这一份成品：没有上次的号 ⇒ 落默认号（选得了）或不指定号。
+/// ★★ 清单成品逐号带 `selectable`、`meta` 带 `effectiveDefault`，与金样逐格相等。
+/// 起会话跟随（控制面 `launch_account::pick`）读的就是这一份成品，那一半挂主 crate（`accounts_query_on_upper_tests.rs`）。
 #[test]
 fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
     let golden = account_default_golden();
@@ -1993,19 +1937,6 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
             product["meta"]["effectiveDefault"], case["effectiveDefault"],
             "{what}：默认号"
         );
-        // 起会话跟随（没有上次的号）：默认号选得了 ⇒ 它；否则不指定号。
-        use crate::control::launch_account::{pick, AccountAsk, Settled};
-        let typed =
-            super::list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
-        let picked = pick(&AccountAsk::Follow, &typed, None).expect("跟随没有上次的号不会拒");
-        let want_pick = case["effectiveDefault"]
-            .as_str()
-            .filter(|d| want.contains(d));
-        match (picked, want_pick) {
-            (Settled::Account(a), Some(d)) => assert_eq!(a.name, d, "{what}：跟随落的号"),
-            (Settled::Unsaid, None) => {}
-            (p, w) => panic!("{what}：跟随落成 {p:?}，金样要 {w:?}"),
-        }
         let _ = fs::remove_dir_all(&root);
     }
 }
@@ -2358,59 +2289,7 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
     );
 }
 
-/// ★ 换模型写的那份设置共不共用，按**这条会话用的那个号**判：a · b 两个号链回共享库同一份、c 自己一份 ⇒
-/// a · b 说「各号新会话的默认」，c 说「此号」；都还没有这份文件 · 没有账号库 ⇒「此号」。
-#[cfg(unix)]
-#[test]
-fn whether_the_settings_are_shared_is_judged_for_the_session_s_own_account() {
-    let root = tmpdir("shared-settings");
-    let accts = root.join("accts");
-    let shared = root.join("shared");
-    let (a, b, c) = (accts.join("a"), accts.join("b"), accts.join("c"));
-    for d in [&shared, &a, &b, &c] {
-        fs::create_dir_all(d).unwrap();
-    }
-    write_manifest(
-        &accts,
-        &format!(
-            r#"{{"version":1,"accounts":[
-                {{"name":"a","configDir":"{a}"}},
-                {{"name":"b","configDir":"{b}"}},
-                {{"name":"c","configDir":"{c}"}}]}}"#,
-            a = a.display(),
-            b = b.display(),
-            c = c.display()
-        ),
-    );
-    let said = |home: &Path, accts: &Path| {
-        crate::faces::session_model_face::settled(
-            Some(crate::agents::ModelSaid {
-                name: "Sonnet 5.5".into(),
-                kept: false,
-                effort: None,
-            }),
-            shared_with_other_accounts_in(accts, home, "settings.json"),
-        )
-        .said
-        .unwrap()
-    };
-    let m = [("model", "Sonnet 5.5")];
-    let (each, own) = (
-        copy_core::copy_text("beSessionModel.set.savedShared", &m),
-        copy_core::copy_text("beSessionModel.set.saved", &m),
-    );
-    assert_eq!(said(&a, &accts), own, "都还没有这份文件就算共用了");
-    fs::write(shared.join("settings.json"), "{}").unwrap();
-    for d in [&a, &b] {
-        std::os::unix::fs::symlink(shared.join("settings.json"), d.join("settings.json")).unwrap();
-    }
-    fs::write(c.join("settings.json"), "{}").unwrap();
-    assert_eq!(said(&a, &accts), each, "a 与 b 共用一份，a 没说「各号」");
-    assert_eq!(said(&b, &accts), each, "a 与 b 共用一份，b 没说「各号」");
-    assert_eq!(said(&c, &accts), own, "c 自己一份，却说成了「各号」");
-    assert_eq!(said(&a, &root.join("none")), own, "没有账号库也算共用了");
-    let _ = fs::remove_dir_all(&root);
-}
+// 换模型写的那份设置共不共用（帧面那一句经 `faces::session_model_face`）那一条挂主 crate：`accounts_query_on_upper_tests.rs`。
 
 /// 金样那一形（一行账号归属的 JSON）⇒ 结构体：`machine_product` 只看活着与走不走中转两格。
 fn row_of(line: &str) -> Option<SessionAccount> {

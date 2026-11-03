@@ -11,14 +11,14 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 /// 装好了的一次等待（等到的是 `T`；只问到没到 ⇒ `()`）。丢掉它 ⇒ 耳朵一起摘。
-pub(crate) struct Armed<T = ()> {
+pub struct Armed<T = ()> {
     _ears: crate::platform::watch_file::Watching,
     hit: tokio::sync::oneshot::Receiver<T>,
 }
 
 impl<T> Armed<T> {
     /// 等到 ⇒ 等到的那一份；`ms` 毫秒内没等到 ⇒ `None`。
-    pub(crate) async fn fetch(self, ms: u64) -> Option<T> {
+    pub async fn fetch(self, ms: u64) -> Option<T> {
         let Armed { _ears: ears, hit } = self;
         let got = bounded(hit, ms).await;
         drop(ears);
@@ -26,7 +26,7 @@ impl<T> Armed<T> {
     }
 
     /// 此刻已经到了 ⇒ 那一份（交出去之后再 [`Self::fetch`] 等不到）；还没到 ⇒ `None`，不等。
-    pub(crate) fn take_now(&mut self) -> Option<T> {
+    pub fn take_now(&mut self) -> Option<T> {
         self.hit.try_recv().ok()
     }
 }
@@ -36,7 +36,7 @@ impl<T> Armed<T> {
     clippy::disallowed_methods,
     reason = "换号重启等压缩摘要 / 等会话报出 · 起会话等报到的一次有界等待：到了由事件（inotify · 那一帧 `session_added`）当场叫醒，没到就等到发起方给的期限、回「没等到」"
 )]
-pub(crate) async fn bounded<T>(hit: tokio::sync::oneshot::Receiver<T>, ms: u64) -> Option<T> {
+pub async fn bounded<T>(hit: tokio::sync::oneshot::Receiver<T>, ms: u64) -> Option<T> {
     #[expect(
         clippy::disallowed_methods,
         reason = "一次性等待的期限：值由发起方给（换号重启的界面交下来的等压缩 / 等会话报出的期限 · `session-arrive` 请求信封的期限），只交给那一次有界等待"
@@ -47,7 +47,7 @@ pub(crate) async fn bounded<T>(hit: tokio::sync::oneshot::Receiver<T>, ms: u64) 
 
 impl Armed {
     /// 等到 ⇒ `true`；`ms` 毫秒内没等到 ⇒ `false`。
-    pub(crate) async fn within(self, ms: u64) -> bool {
+    pub async fn within(self, ms: u64) -> bool {
         self.fetch(ms).await.is_some()
     }
 }
@@ -93,7 +93,7 @@ fn arm<T: Send + 'static>(
 }
 
 /// 等 `record` 里**此刻之后**长出满足 `hit` 的一条（已有的行不算）。读法同流式 watcher 的续读（[`Follow`]）。
-pub(crate) fn record_line(
+pub fn record_line(
     record: &Path,
     hit: impl Fn(&serde_json::Value) -> bool + Send + 'static,
 ) -> Result<Armed, String> {
@@ -101,7 +101,7 @@ pub(crate) fn record_line(
 }
 
 /// 同 [`record_line`]，等到的是 `pick` 从那一条里取出的那一份（此刻之后长出的、第一条取得出的）。
-pub(crate) fn record_pick<T: Send + 'static>(
+pub fn record_pick<T: Send + 'static>(
     record: &Path,
     pick: impl Fn(&serde_json::Value) -> Option<T> + Send + 'static,
 ) -> Result<Armed<T>, String> {
@@ -119,7 +119,7 @@ pub(crate) fn record_pick<T: Send + 'static>(
 }
 
 /// 等 `sid` 那份会话记录里此刻之后出现一条压缩摘要（记录按 sid 在这台的记录树里找，同分叉那一找）。
-pub(crate) fn compact_summary(agent_home: &Path, sid: &str) -> Result<Armed, String> {
+pub fn compact_summary(agent_home: &Path, sid: &str) -> Result<Armed, String> {
     let record = crate::observe::query::locate::session_record(agent_home, sid)?;
     let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
     record_line(&record, move |v| crate::agents::is_compact_summary(kind, v))

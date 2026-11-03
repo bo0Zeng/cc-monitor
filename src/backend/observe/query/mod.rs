@@ -1,17 +1,17 @@
 //! 查询层：每条帧命令的本体（只读扫描图切页 · 拼成品）；对外的面（`faces/`）只留入参 · 码与接线。
 
-pub(crate) mod body;
-pub(crate) mod branch;
-pub(crate) mod index;
-pub(crate) mod inputs;
-pub(crate) mod locate;
-pub(crate) mod tail;
-pub(crate) mod turns;
+pub mod body;
+pub mod branch;
+pub mod index;
+pub mod inputs;
+pub mod locate;
+pub mod tail;
+pub mod turns;
 
 // ───────────────────────── 分页（index · user-inputs · turns · branch）─────────────────────────
 
 /// 一条应答那一行里信封那一截的余量（`{"kind":"reply","id":…,"ok":true,"data":` 与收尾；`id` 是客户端起的短号）。
-pub(crate) const ENVELOPE_BYTES: usize = 256;
+pub const ENVELOPE_BYTES: usize = 256;
 
 /// **一页的装法**（四条分页命令共用这一份）：先占住回包里不随条目变的那一截（空回包按最长的续点序列化）＋ 信封，
 /// 再一项一项加它序列化后的字节数（上界）；装不下 · 到了 `limit` 项 ⇒ 停，下一项就是下一页的头。
@@ -53,7 +53,7 @@ impl Pager {
 }
 
 /// 一个值序列化后几个字节。
-pub(crate) fn jlen<T: serde::Serialize + ?Sized>(v: &T) -> usize {
+pub fn jlen<T: serde::Serialize + ?Sized>(v: &T) -> usize {
     serde_json::to_vec(v).map_or(0, |b| b.len())
 }
 

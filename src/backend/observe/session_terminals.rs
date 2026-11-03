@@ -22,7 +22,7 @@ const WINDOW_LABEL_ENV: &str = "LC_CCM_WINDOW";
 /// 一次最多报几个连着的终端（同一个会话连十几个客户端已经不正常；超出的按动静排在后面的丢掉）。
 const MAX_TERMINALS: usize = 16;
 
-pub(crate) use crate::common::seen_terminal::{SshConnection, Terminal};
+pub use crate::common::seen_terminal::{SshConnection, Terminal};
 
 /// 查到的事实：一串终端，或一条说得出的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,17 +42,17 @@ pub(crate) enum Shown {
 
 /// `session-terminals` 的入参。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SidReq {
+pub struct SidReq {
     /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
+    pub sid: cmd_wire::Sid,
 }
 
 /// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：此刻显示它的终端，或一条原因。
 /// 码：`bad_args`（sid 形状不对）· `no_such_session` · `failed` / `child_timed_out`（问 tmux 那一发）。
-pub(crate) fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing, Said> {
+pub fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing, Said> {
     let sid = req.sid.as_str();
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
@@ -72,26 +72,26 @@ pub(crate) fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing,
 /// `session-terminals` 的应答：此刻显示它的终端（一个都没有 ⇒ 空 ＋ 为什么）。
 /// 问它的那台本机后端（`session-window`）照同一个类型解回来。
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Showing {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Showing {
     /// 此刻显示它的终端，最近动静在前，最多 16 个。
-    pub(crate) terminals: Vec<Terminal>,
+    pub terminals: Vec<Terminal>,
     /// 一个都没有时为什么。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) why: Option<ShownWhy>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub why: Option<ShownWhy>,
     /// 会话在 tmux 里（问它的那台照带给出口：窗口关了时给不给［在终端里打开］）。旧版那台不带 ⇒ 当不在。
     #[serde(default)]
-    pub(crate) tmux: bool,
+    pub tmux: bool,
 }
 
 /// 一个终端都没有的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum ShownWhy {
+pub enum ShownWhy {
     /// 在 tmux 里、没终端连着。
     Detached,
     /// 不在 tmux 里、进程没有终端。
@@ -162,7 +162,7 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, Said> {
 
 /// 本机那一问（`session-window`）要的：此刻显示这个会话的终端进程（链从它起）和它的终端，最近动静在前；或没有终端连着。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Here {
+pub enum Here {
     /// `tmux`：会话在 tmux 里（它的环境里有 `TMUX`）。
     By {
         seen: Vec<(u32, Terminal)>,
@@ -173,7 +173,7 @@ pub(crate) enum Here {
 
 /// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
 /// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
-pub(crate) fn here_by(pid: u32) -> Result<Here, Said> {
+pub fn here_by(pid: u32) -> Result<Here, Said> {
     let in_tmux = env(pid, TMUX_ENV);
     if let Ok(Some(tmux)) = &in_tmux {
         match tmux_clients(pid, tmux)? {
@@ -221,7 +221,7 @@ fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, Said> {
         return Ok(Clients::Unreadable);
     }
     // 最近有动静的在前；同一秒的保持 tmux 列出的顺序（稳定排序）。
-    seen.sort_by(|a, b| b.1.activity.cmp(&a.1.activity));
+    seen.sort_by_key(|c| std::cmp::Reverse(c.1.activity));
     seen.truncate(MAX_TERMINALS);
     Ok(Clients::By(seen))
 }
@@ -273,7 +273,7 @@ fn pane_ok(p: &str) -> bool {
 const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
-pub(crate) fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
+pub fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])

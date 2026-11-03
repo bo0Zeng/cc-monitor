@@ -86,7 +86,7 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
         let at_line = line;
         if crate::observe::lines::counts(body) {
             line += 1;
-            let r = crate::observe::recognize::index_row::tests::index_row(
+            let r = crate::observe::recognize::index_row::test_support::index_row(
                 kind,
                 body,
                 row.at,
@@ -849,7 +849,9 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
                 .map(|_| s.spawn(|| scans.lend(&r, |m| m.lines()).unwrap()))
                 .collect();
             let gets: Vec<_> = (0..4).map(|_| s.spawn(|| scans.get(&r).unwrap())).collect();
-            lends.into_iter().for_each(|h| drop(h.join().unwrap()));
+            for h in lends {
+                h.join().unwrap();
+            }
             gets.into_iter().map(|h| h.join().unwrap()).collect()
         });
         let kept = scans.peek(&r).expect("界面同时问的那张没留下");

@@ -18,22 +18,22 @@ pub(crate) const EXCERPT_MAX: usize = 80;
 
 /// 一条可点的清单项。键名全称（一个会话最多几百条，省字节不值得牺牲可读）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct UserInputRow {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct UserInputRow {
     /// 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
     #[serde(default)]
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub at: u64,
     /// 这一句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。同 `at`，由扫的那一处填。
     #[serde(default)]
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) line: u64,
-    pub(crate) uuid: String,
+    pub uuid: String,
     /// 记录的 `timestamp`；没有 ⇒ 空串。
-    pub(crate) timestamp: String,
+    pub timestamp: String,
     /// 摘要：多行/多空白压成一行，截到 [`EXCERPT_MAX`]。
-    pub(crate) excerpt: String,
+    pub excerpt: String,
 }
 
 /// 一条**已解析**的记录（`kind` 那一家的）→ 是用户输入就给一条 [`UserInputRow`]（一拍现算；手上已有一拍的走 [`user_input_given`]）。

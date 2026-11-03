@@ -13,7 +13,7 @@ use crate::wire::Frame;
 pub(crate) type Tell = Arc<Mutex<Option<tokio::sync::oneshot::Sender<String>>>>;
 
 /// 交一件「等它」给这台每一份在跑的 watcher；回那一声的收端（没有在跑的 ⇒ 当场断）。
-pub(crate) fn expect(by: ArriveBy, since: u64) -> tokio::sync::oneshot::Receiver<String> {
+pub fn expect(by: ArriveBy, since: u64) -> tokio::sync::oneshot::Receiver<String> {
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     crate::observe::watcher::expect_arrival(&by, since, &Arc::new(Mutex::new(Some(tx))));
     rx
@@ -53,14 +53,14 @@ fn awaited(t: &Tell) -> bool {
 
 /// 一份 watcher 上的那一本（见模块头注）。
 #[derive(Debug, Default)]
-pub(crate) struct Arrivals {
+pub struct Arrivals {
     live: HashMap<String, (u64, Option<String>)>,
     waiting: Vec<(ArriveBy, u64, Tell)>,
 }
 
 impl Arrivals {
     /// 一帧要发出去之前：活会话来了 / 走了 ⇒ 记账，来了的交给在等它的。
-    pub(crate) fn on_frame(&mut self, f: &Frame) {
+    pub fn on_frame(&mut self, f: &Frame) {
         match f {
             Frame::SessionAdded(crate::wire::SessionAdded { sid, cwd, .. }) => {
                 if !self.live.contains_key(sid) {
@@ -75,7 +75,7 @@ impl Arrivals {
     }
 
     /// 活着的 `sid` 由一个新进程接上了（同一个会话不再宣告第二次）⇒ 记一次新报到。
-    pub(crate) fn again(&mut self, sid: &str) {
+    pub fn again(&mut self, sid: &str) {
         let cwd = self.live.get(sid).and_then(|(_, c)| c.clone());
         self.arrive(sid, cwd);
     }
@@ -95,7 +95,7 @@ impl Arrivals {
     }
 
     /// 交一件「等它」：已经报到过的当场交，否则等着。
-    pub(crate) fn expect(&mut self, by: ArriveBy, since: u64, t: Tell) {
+    pub fn expect(&mut self, by: ArriveBy, since: u64, t: Tell) {
         let early = self
             .live
             .iter()

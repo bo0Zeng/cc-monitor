@@ -19,7 +19,7 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 
 /// 钩子命令里那个程序（`Stop` → `cc-bus stop-hook`：唯一的入口 ＋ 动词）。会话起来时不用登记：会话 id 由 cc-monitor 认。
-pub(crate) const PROGRAM: &str = "cc-bus";
+pub const PROGRAM: &str = "cc-bus";
 /// 钩子命令里程序后面紧跟的那个词。
 pub(crate) const VERB: &str = "stop-hook";
 
@@ -31,10 +31,10 @@ const SETTINGS_CAP_BYTES: Cap = Cap {
 
 /// 一个钩子的诊断结论。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-pub(crate) enum HookState {
+pub enum HookState {
     /// 没有任何一条 command 调到这个程序。
     NotInstalled,
     /// 裸命令形态（走 PATH）。
@@ -49,7 +49,7 @@ pub(crate) enum HookState {
 
 impl HookState {
     /// 只有这两种算「能用」；`PathMissing` 刻意不算。
-    pub(crate) fn is_working(&self) -> bool {
+    pub fn is_working(&self) -> bool {
         matches!(
             self,
             HookState::InstalledViaPath { .. } | HookState::InstalledAtPath { .. }
@@ -59,25 +59,25 @@ impl HookState {
 
 /// 整份诊断。`note` 装「为什么没读到」（文件缺失 / 坏 JSON），不为空即应展示。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HooksDiagnosis {
-    pub(crate) stop: HookState,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HooksDiagnosis {
+    pub stop: HookState,
     pub(crate) note: String,
 }
 
 /// 成品（形状与界面 `HooksReport` 逐字同；跨语言金样 `tests/__fixtures__/hooks-diag.golden.json`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HooksReport {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HooksReport {
     /// 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
-    pub(crate) supported: bool,
-    pub(crate) diagnosis: HooksDiagnosis,
+    pub supported: bool,
+    pub diagnosis: HooksDiagnosis,
     /// 要合并进那份 `settings.json` 的内容；这台的 cc-bus 没装（那两个脚本不在）⇒ `None`。
-    pub(crate) snippet: Option<String>,
+    pub snippet: Option<String>,
     /// 读的是哪份文件（这台后端看到的路径）。
-    pub(crate) source: String,
+    pub source: String,
 }
 
 /// 剥掉**配对的**一层包裹引号；不配对原样返回（不替用户猜本意）。
@@ -251,7 +251,7 @@ fn expand(s: &str, home: Option<&Path>) -> PathBuf {
 }
 
 /// 帧面入口：这台后端进程的家目录 · agent 配置根 · skills 根 · 这份二进制所在平台有没有原生 tmux。
-pub(crate) fn answer() -> HooksReport {
+pub fn answer() -> HooksReport {
     let home = crate::platform::paths::home_dir();
     answer_at(
         home.as_deref(),
