@@ -516,32 +516,5 @@ pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, Said> {
 #[cfg(any(windows, test))]
 pub(crate) fn powershell_encoded_command(cmd: &str) -> String {
     let utf16le: Vec<u8> = cmd.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-    base64_encode(&utf16le)
-}
-
-/// 标准 RFC 4648 base64（含 `=` 填充）。仅 `powershell_encoded_command` 使用，
-/// 故不引第三方 crate（实现 ~15 行，且 RFC 测试向量守护）。
-#[cfg(any(windows, test))]
-pub(crate) fn base64_encode(bytes: &[u8]) -> String {
-    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(TBL[((n >> 18) & 63) as usize] as char);
-        out.push(TBL[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TBL[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TBL[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
+    cmd_wire::b64::b64_encode(&utf16le)
 }

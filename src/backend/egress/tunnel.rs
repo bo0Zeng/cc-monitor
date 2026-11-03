@@ -44,7 +44,7 @@ fn http_connect(tcp: &mut TcpStream, p: &Proxy, host: &str, port: u16) -> io::Re
     if let Some((u, pw)) = &p.auth {
         head.push_str(&format!(
             "Proxy-Authorization: Basic {}\r\n",
-            base64(format!("{u}:{pw}").as_bytes())
+            cmd_wire::b64::b64_encode(format!("{u}:{pw}").as_bytes())
         ));
     }
     head.push_str("\r\n");
@@ -191,28 +191,4 @@ fn socks5(tcp: &mut TcpStream, p: &Proxy, target: Target<'_>, port: u16) -> io::
     };
     read_exact(tcp, rest + 2)?;
     Ok(())
-}
-
-/// 标准 base64（带补位），只给 `Proxy-Authorization: Basic` 用。
-pub(crate) fn base64(b: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
-    for c in b.chunks(3) {
-        let n = (u32::from(c[0]) << 16)
-            | (u32::from(*c.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*c.get(2).unwrap_or(&0));
-        out.push(T[(n >> 18) as usize & 63] as char);
-        out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 {
-            T[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if c.len() > 2 {
-            T[n as usize & 63] as char
-        } else {
-            '='
-        });
-    }
-    out
 }

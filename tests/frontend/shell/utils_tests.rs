@@ -1,6 +1,6 @@
 use super::*;
-// PowerShell 编码那两个住 `platform/terminal.rs`（只有 Windows 那一臂用；`test` 也编）。
-use crate::platform::terminal::{base64_encode, powershell_encoded_command};
+// PowerShell 编码那一个住 `platform/terminal.rs`（只有 Windows 那一臂用；`test` 也编）；base64 本身是 `cmd_wire::b64`，判据在那边。
+use crate::platform::terminal::powershell_encoded_command;
 
 #[test]
 fn now_ms_increases_monotonically() {
@@ -49,20 +49,6 @@ fn scan_dir_jsons_parses_jsons_only() {
     assert!(m.contains_key("one"));
     assert!(m.contains_key("two"));
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn base64_rfc4648_vectors() {
-    // RFC 4648 §10 标准测试向量 —— 守护 base64 算法 + 三种填充情形
-    assert_eq!(base64_encode(b""), "");
-    assert_eq!(base64_encode(b"f"), "Zg==");
-    assert_eq!(base64_encode(b"fo"), "Zm8=");
-    assert_eq!(base64_encode(b"foo"), "Zm9v");
-    assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
-    assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
-    assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
-    // 经典 base64 教科书向量
-    assert_eq!(base64_encode(b"Man"), "TWFu");
 }
 
 #[test]

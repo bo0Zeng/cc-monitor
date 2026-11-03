@@ -1019,24 +1019,34 @@ fn front_of(requester: Option<&str>) -> String {
     requester.unwrap_or("desktop").to_string()
 }
 
-/// 键表里的 tmux 键名 ⇒ 送进伪终端的字节（`xterm` 那一套，与 `TERM=xterm-256color` 一致）。
-fn key_bytes(tmux: &str) -> &'static [u8] {
-    match tmux {
-        "Escape" => b"\x1b",
-        "C-c" => b"\x03",
-        "C-d" => b"\x04",
-        "Up" => b"\x1b[A",
-        "Down" => b"\x1b[B",
-        "Right" => b"\x1b[C",
-        "Left" => b"\x1b[D",
-        "Tab" => b"\t",
-        "BTab" => b"\x1b[Z",
-        "Enter" => b"\r",
-        "BSpace" => b"\x7f",
-        "PPage" => b"\x1b[5~",
-        "NPage" => b"\x1b[6~",
-        _ => b"",
-    }
+/// 键表里的 tmux 键名 ⇒ 送进伪终端的字节：tmux 名只在这里认成一下，字节由 `cmd_wire::keys` 那一张表出（手机同一张）。
+fn key_bytes(tmux: &str) -> Vec<u8> {
+    use cmd_wire::keys::{presses_bytes, Key, Mods, Press};
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    let press = match tmux {
+        "Escape" => Press::Special(Key::Esc, Mods::default()),
+        "C-c" => Press::Chord('c', ctrl),
+        "C-d" => Press::Chord('d', ctrl),
+        "Up" => Press::Special(Key::Up, Mods::default()),
+        "Down" => Press::Special(Key::Down, Mods::default()),
+        "Right" => Press::Special(Key::Right, Mods::default()),
+        "Left" => Press::Special(Key::Left, Mods::default()),
+        "Tab" => Press::Special(Key::Tab, Mods::default()),
+        "BTab" => Press::Special(Key::Tab, shift),
+        "Enter" => Press::Special(Key::Enter, Mods::default()),
+        "BSpace" => Press::Special(Key::Backspace, Mods::default()),
+        "PPage" => Press::Special(Key::PageUp, Mods::default()),
+        "NPage" => Press::Special(Key::PageDown, Mods::default()),
+        _ => return Vec::new(),
+    };
+    presses_bytes(&[press])
 }
 
 /// 送字那一份字节：粘的那几段各包一次括号粘贴；正文多行 ⇒ 也包括号粘贴（同 tmux 那一形按粘贴送）；要回车 ⇒ 补一个 `\r`。
@@ -1061,7 +1071,7 @@ pub(crate) fn managed_bytes(input: &Input, pastes: &[String]) -> Vec<u8> {
                 out.push(b'\r');
             }
         }
-        Input::Key(k) => out.extend_from_slice(key_bytes(k)),
+        Input::Key(k) => out.extend_from_slice(&key_bytes(k)),
     }
     out
 }

@@ -37,13 +37,16 @@
 //! - [`tasks`]：`tasks-list` 的回包（一个会话的任务列表，也是 `changed {tasks}` 的体）；
 //! - [`sync`]：带键集合的同步形（记号 · 一次答 · 客户端照答换的那一步）；
 //! - [`failed`]：交出去的那一形失败（码 · 那一句 · 复制详情 · 按码定形的 `data`），全仓只此一份定义；
-//! - [`fnv`]：FNV-1a（只求稳定、不防篡改）的唯一一份：形状指纹 · 记录摘要 · 骨架文件名 · 目录锁名等都调它。
+//! - [`fnv`]：FNV-1a（只求稳定、不防篡改）的唯一一份：形状指纹 · 记录摘要 · 骨架文件名 · 目录锁名等都调它；
+//! - [`keys`]：xterm 那一套键码（一下 ⇒ 送进终端的字节，与反过来）的唯一一张表：后端托管终端送键 · 手机键条与旧按钮迁移（经 JNI）都从它出；
+//! - [`b64`]：base64（RFC 4648 标准字母表、带补位）的唯一一份：后端 CLI 入参 · 出网口代理鉴权 · 壳的 PowerShell 编码命令都调它。
 
 pub mod accounts;
 pub mod agent;
 pub mod assets;
 pub mod attach;
 pub mod attachment;
+pub mod b64;
 pub mod batch;
 pub mod board;
 pub mod bookmarks;
@@ -61,6 +64,7 @@ pub mod fnv;
 pub mod frame;
 pub mod frame_shapes;
 pub mod front;
+pub mod keys;
 pub mod listing;
 pub mod live;
 pub mod machine;
