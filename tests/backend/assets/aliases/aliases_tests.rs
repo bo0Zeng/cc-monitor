@@ -1,7 +1,5 @@
+use super::test_support::HomeDoor;
 use super::*;
-use crate::common::said::Said;
-use crate::stream::inbound::LocalFiles;
-use cmd_wire::files as wire;
 use std::path::PathBuf;
 
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
@@ -18,47 +16,6 @@ fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, crate::commo
 }
 
 const P: Shell = Shell::Posix;
-
-/// 判据用的门：其余各问原样交本进程那扇门（[`crate::stream::inbound::LocalFiles`]），只有 `home` 答临时目录 ——
-/// 写的规则不在这里判（那一份住后端 `tests/backend/files/write_tests.rs`），也**绝不碰真实家目录**。
-pub(crate) struct HomeDoor(pub PathBuf);
-impl Door for HomeDoor {
-    fn home(&self, _req: wire::HomeReq) -> Result<wire::FilesPathReply, Said> {
-        Ok(wire::FilesPathReply {
-            path: self.0.display().to_string().as_str().into(),
-        })
-    }
-    fn stat(&self, req: wire::StatReq) -> Result<wire::StatReply, Said> {
-        LocalFiles.stat(req)
-    }
-    fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said> {
-        LocalFiles.ls(req)
-    }
-    fn peek(&self, req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said> {
-        LocalFiles.peek(req)
-    }
-    fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said> {
-        LocalFiles.put(req)
-    }
-    fn delete(&self, req: wire::FilesDeleteReq) -> Result<cmd_wire::batch::BatchReply, Said> {
-        LocalFiles.delete(req)
-    }
-    fn copy(&self, req: wire::FilesCopyReq) -> Result<cmd_wire::batch::BatchReply, Said> {
-        LocalFiles.copy(req)
-    }
-    fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said> {
-        LocalFiles.mkdir(req)
-    }
-    fn link(&self, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said> {
-        LocalFiles.link(req)
-    }
-    fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said> {
-        LocalFiles.rename_to(req)
-    }
-    fn chmod(&self, req: wire::FilesChmodReq) -> Result<cmd_wire::batch::BatchReply, Said> {
-        LocalFiles.chmod(req)
-    }
-}
 
 /// 读回口的薄包装：落在临时 home 上的门。
 fn read_in(home: &Path, shell: Shell, extra: Option<&str>) -> Result<AliasListing, String> {
@@ -125,15 +82,6 @@ fn names_on_disk(h: &TmpHome) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-/// 「这份文本里**有整整一行**逐字等于它」。
-///
-/// ⚠ 刻意不是 `hay.contains(needle)`：那种比法的**匹配单位（子串）比事实（一整行）小**
-/// —— 别名那一行被截断、或被加了个没人要的修饰，子串比法照样绿。
-/// `needle_anchor_registry` 里那条递减棘轮数的正是这一族，本模块一处都不往上加。
-fn pinned(hay: &str, needle: &str) -> bool {
-    hay.lines().any(|l| l == needle)
 }
 
 /// panic 也要清干净（`profile_installer` 那条纪律的同一份）。
@@ -922,7 +870,8 @@ fn sub_home(v: &Value, home: &str) -> Value {
     serde_json::from_str(&v.to_string().replace("<HOME>", home)).unwrap()
 }
 
-/// 读回口（启动文件候选）的成品 == 金样（`<HOME>` 换成临时 home）；块预览的键 · 这一族的码集合 == 登记表。
+/// 读回口（启动文件候选）的成品 == 金样（`<HOME>` 换成临时 home）；块预览的键 == 金样。
+/// 这一族的码集合 == 登记表那一条要命令表，住上层（`tests/backend/assets/on_upper_tests.rs`）。
 #[test]
 fn the_alias_wire_matches_the_cross_language_golden() {
     let g = golden();
@@ -946,17 +895,6 @@ fn the_alias_wire_matches_the_cross_language_golden() {
         .map(String::as_str)
         .collect();
     assert_eq!(json!(keys), g["blockRenderKeys"]);
-    let codes: std::collections::BTreeMap<String, Vec<String>> = crate::stream::inbound::REGISTRY
-        .iter()
-        .filter(|s| s.name.starts_with("aliases-"))
-        .map(|s| {
-            (
-                s.name.to_string(),
-                s.codes.iter().map(|c| c.to_string()).collect(),
-            )
-        })
-        .collect();
-    assert_eq!(serde_json::to_value(&codes).unwrap(), g["codes"]);
 }
 
 /// 从 monitor `user_files_tests.rs` 搬来：`door::rel_under` 两种路径写法都把写圈在 home 里。

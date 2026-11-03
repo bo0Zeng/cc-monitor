@@ -36,8 +36,8 @@ use crate::common::time::now_ms;
 
 /// 一个扩展住哪一级。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "level", rename_all = "lowercase")]
 pub enum ExtLoc {
     User,
@@ -46,8 +46,8 @@ pub enum ExtLoc {
 
 /// 一格的态（闭集）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub enum ExtState {
     /// 用户级有，且是「这一版」。
@@ -64,8 +64,8 @@ pub enum ExtState {
 
 /// 装到一台时两头各在哪一级。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtScope {
     pub from: ExtLoc,
     pub to: ExtLoc,
@@ -73,8 +73,8 @@ pub struct ExtScope {
 
 /// 「装到哪」的一个选项。`ok = false` 的照样列出来（显示但不可选），`note` 说为什么。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtTarget {
     pub at: ExtLoc,
     pub ok: bool,
@@ -84,8 +84,8 @@ pub struct ExtTarget {
 /// 机器那一行的「装到…」：从哪台拿哪一版（`from` = 来源那台的键，`null` = 本机后端自己，同枢纽的 `from` / `to`）·
 /// 建议的落点（与来源同级）· 可选的各处。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct ExtBring {
     pub from: Option<String>,
@@ -97,8 +97,8 @@ pub struct ExtBring {
 
 /// 抽屉里那台机器的一处（全局一行 ＋ 每个装着它的项目一行）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtPlace {
     pub at: ExtLoc,
     /// 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
@@ -113,14 +113,14 @@ pub struct ExtPlace {
     pub note: Option<String>,
     /// 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub line: Option<String>,
 }
 
 /// 表里一台机器（一列）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtMachine {
     /// 枢纽认它的键：本机后端自己 = `null`；别的台 = 可达表里的名字；没连上 = `null` 且 `reachable = false`。
     pub key: Option<String>,
@@ -135,14 +135,14 @@ pub struct ExtMachine {
     /// 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交、不读它：
     /// 形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub mcp: Option<serde_json::Value>,
 }
 
 /// 一格（一台机器）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtCell {
     /// 表上那个点。
     pub state: ExtState,
@@ -157,8 +157,8 @@ pub struct ExtCell {
 
 /// 抽屉里「看内容」那几行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtDetail {
     pub label: String,
     pub value: String,
@@ -166,8 +166,8 @@ pub struct ExtDetail {
 
 /// cc-monitor 认得的那一样（表顶那一组，[`KNOWN`]）：从哪来 ＋ 内置备注 ＋ 要不要列各台的钩子状态。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtKnown {
     /// 名字底下那一句：从哪来（cc-monitor 自带 · 发布处）。
     pub from: String,
@@ -179,8 +179,8 @@ pub struct ExtKnown {
 
 /// 表里一行（一个条目）。`cells` 与 [`ExtList::machines`] 同序。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtRow {
     pub kind: ExtKind,
     /// 种类那一格的字（后端写好）。
@@ -199,8 +199,8 @@ pub struct ExtRow {
 
 /// `ext-list` 的成品。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
@@ -214,8 +214,8 @@ pub struct ExtList {
 
 /// 图例里一项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtLegend {
     pub state: ExtState,
     pub said: String,
@@ -279,8 +279,8 @@ fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
 
 /// 确认卡上一格待填（或沿用目标机已有的值）的值。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtSlot {
     /// `env` 或 `headers`。
     pub field: String,
@@ -291,8 +291,8 @@ pub struct ExtSlot {
 
 /// 看过的那一份的记号：应用时原样交回，枢纽拿它判「看过之后变了没有」（界面不解读）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtTokens {
     pub source: String,
     pub target: Option<String>,
@@ -300,8 +300,8 @@ pub struct ExtTokens {
 
 /// `ext-hub-preview` 的成品：确认卡。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtCard {
     pub kind: ExtKind,
     pub name: String,
@@ -323,8 +323,8 @@ pub struct ExtCard {
 
 /// `ext-uninstall-preview` 的成品：卸之前那张卡。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtUninstallCard {
     pub kind: ExtKind,
     pub name: String,
@@ -342,8 +342,8 @@ pub struct ExtUninstallCard {
 
 /// 应用 / 卸完之后的成品。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ExtDone {
     pub path: String,
     /// 写了 / 删了的那几个。
@@ -826,7 +826,7 @@ pub(crate) fn same_place(
 }
 
 /// 各台目录 ＋ 可达表（`origin` → 那台目录的 id）⇒ 条目 × 机器一张表。**判定只在这里。**
-pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
+pub(crate) fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     let cols = columns(cat, reach);
     let mut by_key: BTreeMap<(ExtKind, String), Vec<Vec<&Asset>>> = BTreeMap::new();
     for k in KNOWN {
@@ -1144,18 +1144,18 @@ pub(crate) type Current<'a> = &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>),
 
 /// `ext-list` / `ext-list-here` 的入参。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExtListReq {
+pub struct ExtListReq {
     /// `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub visit: Option<bool>,
 }
 
 /// `ext-list`：这台现扫一次、记下（`current` = 目录的写口，由 `stream/inbound/` 递进来），出表。
-pub(crate) fn answer_list(
+pub fn answer_list(
     req: &ExtListReq,
     current: Current,
     reach: &[(String, Option<String>)],
@@ -1167,17 +1167,17 @@ pub(crate) fn answer_list(
 }
 
 /// 备注最长多少个字（超了拒，不截断）。
-pub const NOTE_MAX_CHARS: usize = 2000;
+pub(crate) const NOTE_MAX_CHARS: usize = 2000;
 
 /// 备注的写口（现扫 ＋ 记进本机目录自己那一格 ＋ 交回整份）：生产 = `asset_catalog::answer_note`。
 pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, Said>;
 
 /// `ext-note-set` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExtNoteReq {
+pub struct ExtNoteReq {
     pub kind: ExtKind,
     pub name: String,
     /// 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
@@ -1186,14 +1186,14 @@ pub(crate) struct ExtNoteReq {
 
 /// `ext-note-set` 的回包：现在生效的那一份（清掉了 ⇒ `null`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ExtNote {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ExtNote {
     pub note: Option<String>,
 }
 
 /// `ext-note-set`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
-pub(crate) fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote, Said> {
+pub fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote, Said> {
     if req.name.trim().is_empty() {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -1217,7 +1217,7 @@ pub(crate) fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote,
 }
 
 /// 「连这台」的那几台此刻：`(名字, 那台目录的 id)`。
-pub(crate) fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, Option<String>)> {
+pub fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, Option<String>)> {
     table
         .connected()
         .into_iter()
@@ -1231,7 +1231,7 @@ pub(crate) fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, O
 // ───────────────────────── 这台上的那几处（可喂夹具） ─────────────────────────
 
 /// 一台机器上扩展住哪（生产 = 这台的环境现解；判据交临时目录）。
-pub(crate) struct Env {
+pub struct Env {
     /// 用户级 skill 的根。
     pub skills: Option<PathBuf>,
     /// 用户级 MCP 那份文件（有账号库 ⇒ 各号共用的那一份；没有 ⇒ agent 自己那一份）。
@@ -1243,7 +1243,7 @@ pub(crate) struct Env {
 }
 
 impl Env {
-    pub(crate) fn here() -> Env {
+    pub fn here() -> Env {
         Env {
             skills: crate::agents::asset_kind().and_then(crate::agents::skills_root),
             user_mcp: crate::accounts::manage::mcp_share_exec::user_mcp_file(),
@@ -1407,10 +1407,10 @@ fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere,
 /// `ext-uninstall-preview {kind, name, at}`：卸之前那张卡（只读）。
 /// `ext-uninstall-preview` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExtUninstallReq {
+pub struct ExtUninstallReq {
     pub kind: ExtKind,
     pub name: String,
     /// 在这台哪一级（项目目录须是这台上的绝对路径）。
@@ -1419,17 +1419,17 @@ pub(crate) struct ExtUninstallReq {
 
 /// `ext-uninstall-apply` 的入参：卡上那一份记号原样交回（现在对不上 ⇒ `stale`、一个字节不动）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExtUninstallApplyReq {
+pub struct ExtUninstallApplyReq {
     pub kind: ExtKind,
     pub name: String,
     pub at: ExtLoc,
     pub token: String,
 }
 
-pub(crate) fn answer_uninstall_preview(
+pub fn answer_uninstall_preview(
     d: &dyn Door,
     env: &Env,
     req: &ExtUninstallReq,
@@ -1539,7 +1539,7 @@ fn stale() -> Said {
 
 /// `ext-uninstall-apply {kind, name, at, token}`：看卡时那一份（`token`）与现在不同 ⇒ `stale`、一个字节不动。
 /// 用户在卡上点了确认 = 同意（装完改过的 · 装时盖掉原有的 · 不是装的，卡上都说过）。
-pub(crate) fn answer_uninstall_apply(
+pub fn answer_uninstall_apply(
     d: &dyn Door,
     env: &Env,
     record: Record,

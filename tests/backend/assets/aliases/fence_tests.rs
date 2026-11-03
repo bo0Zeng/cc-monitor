@@ -35,7 +35,6 @@ pub(crate) struct FenceShape {
 }
 
 /// 🔴 **这几套形状的唯一一份账。**
-
 ///
 /// ⚠ 它**不判对错**，只记「现在是什么样」。
 pub(crate) const FENCE_SHAPES: &[FenceShape] = &[

@@ -38,8 +38,6 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;
 
-/// 本族的应答。
-
 /// 一个条目名在两边的样子。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum State {
@@ -274,10 +272,7 @@ pub(crate) fn servers_of(text: Option<&str>, side: &str) -> Result<Map<String, V
         Said::new(
             "bad_file",
             crate::common::said::IntoNote::into_note(Said::with_raw(
-                copy_text(
-                    "beMcpSync.serversOf.badJson",
-                    &[("side", &side.to_string())],
-                ),
+                copy_text("beMcpSync.serversOf.badJson", &[("side", side)]),
                 e,
             )),
         )
@@ -285,10 +280,7 @@ pub(crate) fn servers_of(text: Option<&str>, side: &str) -> Result<Map<String, V
     let root = v.as_object().ok_or_else(|| {
         Said::new(
             "bad_file",
-            copy_text(
-                "beMcpSync.serversOf.notObject",
-                &[("side", &side.to_string())],
-            ),
+            copy_text("beMcpSync.serversOf.notObject", &[("side", side)]),
         )
     })?;
     match root.get(super::mcp_servers_key()) {
@@ -296,10 +288,7 @@ pub(crate) fn servers_of(text: Option<&str>, side: &str) -> Result<Map<String, V
         Some(Value::Object(m)) => Ok(m.clone()),
         Some(_) => Err(Said::new(
             "bad_file",
-            copy_text(
-                "beMcpSync.serversOf.serversNotObject",
-                &[("side", &side.to_string())],
-            ),
+            copy_text("beMcpSync.serversOf.serversNotObject", &[("side", side)]),
         )),
     }
 }

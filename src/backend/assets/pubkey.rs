@@ -26,8 +26,8 @@ use crate::platform::shell::posix;
 
 /// 推送结果：key 是新加的还是本就存在。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum PushOutcome {
     Added,
@@ -186,31 +186,31 @@ pub(crate) fn answer_add(
 
 /// `authorized-keys-add` 的入参：一行公钥（本条自己也校验一遍）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct KeyAddReq {
+pub struct KeyAddReq {
     pub(crate) key: String,
 }
 
 /// `authorized-keys-add` 的应答。
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct KeyAdded {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct KeyAdded {
     pub(crate) outcome: PushOutcome,
 }
 
 crate::wire::typed::codes! {
     /// `authorized-keys-add` 的码：那一行不是一把公钥 · 读写那份文件没成。
-    pub(crate) enum KeyAddErr {
+    pub enum KeyAddErr {
         Refused = "refused",
         IoFailed = "io_failed",
     }
 }
 
 /// `authorized-keys-add`（被写那台答）：算经本文件，写经文件管理面（CAS ＋ 建父目录 ＋ 700 / 600）。
-pub(crate) struct AuthorizedKeysAdd;
+pub struct AuthorizedKeysAdd;
 
 impl crate::wire::typed::Command for AuthorizedKeysAdd {
     const NAME: &'static str = "authorized-keys-add";
@@ -298,7 +298,7 @@ impl Reach for Wire {
                 machine,
                 &req,
                 // 回包里没有时刻（只回 `outcome`）。
-                &crate::Tz::default(),
+                &crate::common::time::Tz::default(),
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
             )
@@ -332,23 +332,23 @@ impl Reach for Wire {
 
 /// `pubkey-push` 的入参：那一台的配置（同 `remote-probe`：测的是可能还没存的那一台，跳板照机器表按名字找）＋ 本机那份 `.pub` 的路径。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct PubkeyPushReq {
+pub struct PubkeyPushReq {
     /// 那台的配置（设置页表单里那台，可能还没保存）。
     #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
     pub(crate) machine: crate::dial::Host,
     /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) pub_key_path: Option<String>,
 }
 
 /// 走了哪条：那台后端的文件管理面 · 那一次 exec。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum PushVia {
     Backend,
@@ -357,10 +357,10 @@ pub(crate) enum PushVia {
 
 /// `pubkey-push` 的应答。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PubkeyPushed {
+pub struct PubkeyPushed {
     /// `added`（新加的）· `already`（本就有整行相等的一行，没写）。
     pub(crate) outcome: PushOutcome,
     /// 实际推的是哪一份（给人看）。
@@ -371,7 +371,7 @@ pub(crate) struct PubkeyPushed {
 
 crate::wire::typed::codes! {
     /// `pubkey-push` 的码：跳板查无 / 成环 · 那份 `.pub` 找不到 / 不是公钥 · 那台没加上。
-    pub(crate) enum PushErr {
+    pub enum PushErr {
         BadJump = "bad_jump",
         Refused = "refused",
         Failed = "failed",
@@ -379,7 +379,7 @@ crate::wire::typed::codes! {
 }
 
 /// `pubkey-push`（本机常驻后端答）：见头注。真异步（拨号 / 问那台）。
-pub(crate) struct PubkeyPush;
+pub struct PubkeyPush;
 
 impl crate::wire::typed::Command for PubkeyPush {
     const NAME: &'static str = "pubkey-push";
@@ -390,15 +390,13 @@ impl crate::wire::typed::Command for PubkeyPush {
 
 impl crate::wire::typed::Handle for PubkeyPush {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PubkeyPushReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<PubkeyPushed, PushErr>> + Send + 'static {
-        async move {
-            answer_push(&req, &Wire, &read_local_pub)
-                .await
-                .map_err(crate::wire::typed::of_fail_with(PushErr::Failed))
-        }
+    ) -> Result<PubkeyPushed, PushErr> {
+        answer_push(&req, &Wire, &read_local_pub)
+            .await
+            .map_err(crate::wire::typed::of_fail_with(PushErr::Failed))
     }
 }
 

@@ -23,17 +23,17 @@ use crate::common::said::Said;
 
 /// 表单的哪一格（[`ProfileForm`] 里那一格的名字）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileSlotId"
+        rename = "ProfileSlotId",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SlotId {
+pub enum SlotId {
     Account,
     Tmux,
     CwdIf,
@@ -49,12 +49,12 @@ pub(crate) enum SlotId {
 }
 
 /// 表单的一格：`id`（[`ProfileForm`] 里那一格的名字）· 标签（文案键）· 落在配置文件里的哪几个键。
-pub(crate) struct Slot {
+pub struct Slot {
     pub id: SlotId,
     /// 标签（文案表里那一句）。
     pub label: fn() -> String,
     /// ccm 选项（去掉 `--` 就是配置文件里的键）；空 ＝ 交给 agent 的那串（键 `args`）。
-    flags: &'static [&'static str],
+    pub flags: &'static [&'static str],
 }
 
 impl Slot {
@@ -64,7 +64,7 @@ impl Slot {
 }
 
 /// 表单的各格，按表单里从上到下的顺序（合并表、树里摘要也按这个顺序）。
-pub(crate) const SLOTS: &[Slot] = &[
+pub const SLOTS: &[Slot] = &[
     Slot {
         id: SlotId::Account,
         label: || copy_text("beProfile.slot.account", &[]),
@@ -129,13 +129,13 @@ pub(crate) const SLOTS: &[Slot] = &[
 
 /// 表单的一格交给界面的那一形：哪一格 ＋ 标签（写好的字）。`profiles-read` 按 [`SLOTS`] 的顺序带全，界面不另存一份标签表。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileSlot"
+        rename = "ProfileSlot",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct SlotOut {
@@ -156,13 +156,13 @@ fn slots_out() -> Vec<SlotOut> {
 
 /// 「在哪起」那三种 tmux 取名各一句（下拉的选项只有名字）：怎么取名 ＋ 撞名时怎样。界面照摆。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileTmuxNaming"
+        rename = "ProfileTmuxNaming",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct TmuxNamingOut {
@@ -208,7 +208,7 @@ fn slot_of(f: Option<&str>) -> &'static Slot {
 }
 
 /// 一项的值用人话怎么说（表单的继承值 · 树里摘要 · 合并表 · 连带表同一句）。
-pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
+pub fn said_of(f: Option<&str>, vals: &[String]) -> String {
     let v = |i: usize| vals.get(i).cloned().unwrap_or_default();
     match f {
         None => super::form::join_box(vals),
@@ -229,34 +229,34 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
 
 /// 号那一格：哪个号，或显式不用账号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileAccountPick"
+        rename = "ProfileAccountPick",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) enum AccountPick {
+pub enum AccountPick {
     Account { name: String },
     Base,
 }
 
 /// 「在哪起」那一格（子那一段只能写 tmux 的几种：当前终端是没写 tmux，继承来的 tmux 关不掉）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileTmuxMode"
+        rename = "ProfileTmuxMode",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum TmuxMode {
+pub enum TmuxMode {
     /// tmux，名字自动取。
     Auto,
     /// tmux，就用这个名（撞了不让）。
@@ -266,17 +266,17 @@ pub(crate) enum TmuxMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileTmuxPick"
+        rename = "ProfileTmuxPick",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct TmuxPick {
+pub struct TmuxPick {
     pub mode: TmuxMode,
     #[serde(default)]
     pub name: String,
@@ -284,17 +284,17 @@ pub(crate) struct TmuxPick {
 
 /// 按目录的一条：在 `at` 敲 ⇒ 进 `to`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileCwdCase"
+        rename = "ProfileCwdCase",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CwdCase {
+pub struct CwdCase {
     pub at: String,
     pub to: String,
 }
@@ -302,10 +302,10 @@ pub(crate) struct CwdCase {
 /// 一段配置的表单：名字 · 基于谁 · 各格（`None` / `false` ＝ 继承，没写进这一段）。
 /// 入参里缺的格当继承（`null` / `false`）；回包里格格都在。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProfileForm {
+pub struct ProfileForm {
     pub name: String,
     #[serde(default)]
     pub from: Option<String>,
@@ -340,7 +340,7 @@ pub(crate) struct ProfileForm {
 }
 
 /// 表单 ⇒ 配置文件里那一段要写成的样子（ccm 选项按 [`SLOTS`] 的顺序）。一格文本的引号没配对 ⇒ 那一句。
-pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
+pub fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     let s = |v: &Option<String>| {
         v.as_deref()
             .map(str::trim)
@@ -405,26 +405,26 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
 
 /// `profiles-from-line` 的入参：手机原来存的那一条启动配置（名字 · 命令 · 在哪个目录起 · 固定的会话名）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProfilesFromLineReq {
+pub struct ProfilesFromLineReq {
     pub(crate) name: String,
     /// 那一条命令原样（写法同 shell：空白分词、引号里原样）。
     pub(crate) line: String,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) cwd: Option<String>,
     /// 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) session_name: Option<String>,
 }
 
 /// 一条自由命令行 ⇒ 别名表单（[`ProfilesFromLineReq`]）：头一个词是哪一家的启动器 ⇒ 后面那串原样交那一家；
 /// 是 `ccm` ⇒ 照 ccm 自己的解析器切两半、折成表单（与旧别名清单一次性迁移同一条路：[`super::edit_of_alias`]）；
 /// 别的 ⇒ 那一句。命令行里没写目录 · tmux ⇒ 照给的那两格填。
-pub(crate) fn form_of_line(req: &ProfilesFromLineReq) -> Answer<ProfileForm> {
+pub fn form_of_line(req: &ProfilesFromLineReq) -> Answer<ProfileForm> {
     let words = super::form::split_box(&req.line)
         .map_err(|()| refused(copy_text("beAliasForm.passthru.unbalanced", &[])))?;
     let Some((head, rest)) = words.split_first() else {
@@ -604,13 +604,13 @@ fn here_shell() -> Shell {
 
 /// 一段自己写的一项：配置文件里的键 · 归表单哪一格 · 值 · 第几行。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileOwnItem"
+        rename = "ProfileOwnItem",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -618,24 +618,24 @@ pub(crate) struct OwnItem {
     key: String,
     slot: SlotId,
     vals: Vec<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     line: usize,
 }
 
 /// 一段（或整份文件）的坏处：第几行 · 那一句 · 复制详情。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileProblem"
+        rename = "ProfileProblem",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProblemOut {
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     line: Option<usize>,
     message: String,
     /// 复制详情（有下层原话时才有：TOML 解析器那一句）；没有 ⇒ `null`。
@@ -644,8 +644,8 @@ pub(crate) struct ProblemOut {
 
 /// 这一段装成什么：`~/.cc-monitor/bin` 里的链接 · 终端函数（撞了 PATH 上的同名程序 · Windows 上恒是函数）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ProfileKind {
     Link,
@@ -654,13 +654,13 @@ pub(crate) enum ProfileKind {
 
 /// 「账号那一形」：号与 tmux 按合并下来的算。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileAccountShape"
+        rename = "ProfileAccountShape",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct AccountShape {
@@ -670,13 +670,13 @@ pub(crate) struct AccountShape {
 
 /// 树里的一段：自己写的几项 · 能不能用 · 链接还是终端函数 · 树里那一行 · 表单回填。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileRow"
+        rename = "ProfileRow",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -807,7 +807,12 @@ fn modified_of(d: &dyn Door, path: &str) -> Option<u64> {
 }
 
 /// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好，界面照排）；没改过 ⇒ `None`。
-fn edited_at(d: &dyn Door, store: &super::Store, path: &str, tz: &crate::Tz) -> Option<String> {
+fn edited_at(
+    d: &dyn Door,
+    store: &super::Store,
+    path: &str,
+    tz: &crate::common::time::Tz,
+) -> Option<String> {
     if !super::edited_since_written(d, store) {
         return None;
     }
@@ -827,22 +832,22 @@ fn shown_in(path: &str, home: &str) -> String {
 
 /// 一组里的一行：目录 · 别名 · 补足到几个 · 改过的组名（缺省 ⇒ `null`）· 第几行。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SetRowOut {
     cwd: String,
     alias: String,
     n: u8,
     tab_group: Option<String>,
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     line: usize,
 }
 
 /// 存好的一组：名字 · 几行 · 写错的几处（有 ⇒ 这一组此刻不能用）。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SetOut {
     name: String,
@@ -878,10 +883,10 @@ fn set_out(s: &profile::Set) -> SetOut {
 
 /// `profiles-read` 的应答：配置文件整份。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProfilesBook {
+pub struct ProfilesBook {
     /// 配置文件的路径。
     path: String,
     /// `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
@@ -916,7 +921,11 @@ pub(crate) struct ProfilesBook {
 
 /// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
 /// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。有没有 tmux 由宿主探好交进来（`faces::profiles_face`；判据喂定值）。
-pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Answer<ProfilesBook> {
+pub fn read_with(
+    d: &dyn Door,
+    tmux: Option<bool>,
+    tz: &crate::common::time::Tz,
+) -> Answer<ProfilesBook> {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
     let path = profile::path_in(&store.home);
@@ -1004,13 +1013,13 @@ fn seed_changes() -> Vec<Change> {
 
 /// 合并表的一行：哪一项 · 归哪一格 · 标签 · 值与它的说法 · 来自哪一段 · 被哪一段盖掉（留下来的 ⇒ `null`）。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileMergeRow"
+        rename = "ProfileMergeRow",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -1089,34 +1098,34 @@ fn text_after(text: Option<&str>, changes: &[Change]) -> Result<String, String> 
 
 /// `profiles-resolve` 的入参：哪一段 · 未存的表单（`null` ＝ 按盘上那份算）· 假设在这个目录敲（`null` ＝ 家目录）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProfilesResolveReq {
+pub struct ProfilesResolveReq {
     /// 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字）。
     pub(crate) name: String,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) edit: Option<ProfileForm>,
     /// `~` 打头按这台家目录展开。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) at: Option<String>,
 }
 
 /// `profiles-resolve` 的应答：继承链 · 合并表 · 「等于」那一行（整条与短形）· 合不下来的那一句。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileResolved"
+        rename = "ProfileResolved",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Resolved {
+pub struct Resolved {
     /// 继承链（父 → 子）。
     chain: Vec<String>,
     rows: Vec<MergeRow>,
@@ -1150,7 +1159,7 @@ pub(crate) type RenderLine =
 
 /// `profiles-resolve` → [`Resolved`]（`lineShort` ＝ 「等于」那一格的短形）。`edit`：按表单那一刻算（未存）；
 /// `at`：假设在这个目录敲（缺省家目录）。`render` 见 [`RenderLine`]。
-pub(crate) fn answer_resolve(
+pub fn answer_resolve(
     d: &dyn Door,
     req: &ProfilesResolveReq,
     render: RenderLine,
@@ -1199,13 +1208,13 @@ pub(crate) fn answer_resolve(
 
 /// 线上那一种改动。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileOp"
+        rename = "ProfileOp",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
@@ -1213,13 +1222,14 @@ pub(crate) enum Op {
     /// 新增（`was` ＝ `null`）或改 `was` 那一段；名字变了 ⇒ 改名，基于它的那几段跟着改「基于」。
     Set {
         was: Option<String>,
-        form: ProfileForm,
+        // 装箱：表单那一格比别的几臂大一截（线上形不变：serde · ts 都照里面那一形写）。
+        form: Box<ProfileForm>,
     },
     /// 删一段；还被别的段基于 ⇒ 要给 `children`：`reparent`（改成基于它的父）· `cascade`（一起删）。
     Remove {
         name: String,
         #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         children: Option<Children>,
     },
     /// 配置文件还不在时建出来：`seed` ⇒ 带首建那两条，否则一段都没有。
@@ -1266,13 +1276,13 @@ fn fresh_set_problems(was: &Book, now: &Book) -> Vec<String> {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileChildren"
+        rename = "ProfileChildren",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -1426,22 +1436,22 @@ fn broken(book: &Book) -> std::collections::BTreeMap<Option<String>, String> {
 
 /// `profiles-impact` 的入参：同 `profiles-write` 的 `changes`（一个字节不写）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ProfilesImpactReq {
+pub struct ProfilesImpactReq {
     pub(crate) changes: Vec<Op>,
 }
 
 /// 连带的一格：哪一格 · 标签 · 改前改后各怎么说。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileSlotChange"
+        rename = "ProfileSlotChange",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct SlotChange {
@@ -1453,13 +1463,13 @@ pub(crate) struct SlotChange {
 
 /// 改动直接点名的那几段之外、合下来会变的一段（变得合不下来 ⇒ `problem` 是那一句，`changes` 空）。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileAffected"
+        rename = "ProfileAffected",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct Affected {
@@ -1470,15 +1480,15 @@ pub(crate) struct Affected {
 
 /// `profiles-impact` 的应答。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ProfilesImpact {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ProfilesImpact {
     affected: Vec<Affected>,
 }
 
 /// `profiles-impact` → [`ProfilesImpact`]：
 /// 这几处改动会让哪几段（改动直接点名的那几段之外）合下来变，改前改后各怎么说。一个字节不写。
-pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<ProfilesImpact> {
+pub fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<ProfilesImpact> {
     let ops = &req.changes;
     let store = super::load(d).map_err(refused)?;
     let changes = changes_of(store.text.as_deref(), ops).map_err(refused)?;
@@ -1554,22 +1564,22 @@ pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<Pro
 
 /// `profiles-bases` 的入参：正在改 / 新建的那一段的名字。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ProfilesBasesReq {
+pub struct ProfilesBasesReq {
     pub(crate) name: String,
 }
 
 /// 「基于」下拉的一项：名字 · 它基于谁 · 树里那一行 · 选不选得了（自己那一项 `false`）。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfileBase"
+        rename = "ProfileBase",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub(crate) struct Base {
@@ -1581,14 +1591,14 @@ pub(crate) struct Base {
 
 /// `profiles-bases` 的应答。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ProfilesBases {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ProfilesBases {
     bases: Vec<Base>,
 }
 
 /// `profiles-bases` → [`ProfilesBases`]：「基于」下拉能选的（选了不成圈的）＋ 自己（灰着）。
-pub(crate) fn answer_bases(d: &dyn Door, req: &ProfilesBasesReq) -> Answer<ProfilesBases> {
+pub fn answer_bases(d: &dyn Door, req: &ProfilesBasesReq) -> Answer<ProfilesBases> {
     let name = req.name.as_str();
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
@@ -1632,10 +1642,10 @@ pub(crate) fn answer_bases(d: &dyn Door, req: &ProfilesBasesReq) -> Answer<Profi
 
 /// `profiles-write` 的入参：依次做的改动 ＋ 读回时的版本 `ifRev`（必给，字符串或 `null`；盘上此刻不是那一份 ⇒ `stale`）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProfilesWriteReq {
+pub struct ProfilesWriteReq {
     pub(crate) changes: Vec<Op>,
     #[serde(deserialize_with = "Option::deserialize")]
     pub(crate) if_rev: Option<String>,
@@ -1643,9 +1653,9 @@ pub(crate) struct ProfilesWriteReq {
 
 /// `profiles-write` 的应答：配置文件 / 终端函数文件 / 链接动没动 · 写完那一份的版本 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ProfilesWriteDone {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ProfilesWriteDone {
     wrote: bool,
     rev: Option<String>,
     reload: Option<String>,
@@ -1653,7 +1663,7 @@ pub(crate) struct ProfilesWriteDone {
 
 /// `profiles-write` → [`ProfilesWriteDone`]。盘上被别处改过 ⇒ `stale`；
 /// 改完多出坏处（原来就坏的不算）⇒ `refused`，一个字节不写。
-pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWriteDone> {
+pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWriteDone> {
     let ops = &req.changes;
     let if_rev = req.if_rev.as_deref();
     let store = super::load(d).map_err(refused)?;
@@ -1732,21 +1742,21 @@ use crate::wire::typed::{of_fail_with, Command};
 
 crate::wire::typed::codes! {
     /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
-    pub(crate) enum ProfilesErr {
+    pub enum ProfilesErr {
         Refused = "refused",
     }
 }
 
 crate::wire::typed::codes! {
     /// `profiles-write` 的码：读写没成 · 改完多出坏处（那一句说清哪一样）· 盘上那份在读回之后被别处改过（一个字节没写）。
-    pub(crate) enum ProfilesWriteErr {
+    pub enum ProfilesWriteErr {
         Refused = "refused",
         Stale = "stale",
     }
 }
 
 /// `profiles-impact`：这几处改动会连带哪几段（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct ProfilesImpactCmd;
+pub struct ProfilesImpactCmd;
 
 impl Command for ProfilesImpactCmd {
     const NAME: &'static str = "profiles-impact";
@@ -1772,7 +1782,7 @@ impl crate::wire::typed::Handle for ProfilesImpactCmd {
 }
 
 /// `profiles-bases`：「基于」下拉能选的几段（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct ProfilesBasesCmd;
+pub struct ProfilesBasesCmd;
 
 impl Command for ProfilesBasesCmd {
     const NAME: &'static str = "profiles-bases";
@@ -1798,7 +1808,7 @@ impl crate::wire::typed::Handle for ProfilesBasesCmd {
 }
 
 /// `profiles-write`：按条目改配置文件（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct ProfilesWrite;
+pub struct ProfilesWrite;
 
 impl Command for ProfilesWrite {
     const NAME: &'static str = "profiles-write";
@@ -1824,7 +1834,7 @@ impl crate::wire::typed::Handle for ProfilesWrite {
 }
 
 /// `profiles-from-line`：一条自由命令行 ⇒ 别名表单（判法 [`form_of_line`]；不读不写盘）。
-pub(crate) struct ProfilesFromLine;
+pub struct ProfilesFromLine;
 
 impl Command for ProfilesFromLine {
     const NAME: &'static str = "profiles-from-line";
@@ -1835,14 +1845,12 @@ impl Command for ProfilesFromLine {
 
 impl crate::wire::typed::Handle for ProfilesFromLine {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: ProfilesFromLineReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<ProfileForm, ProfilesErr>> + Send + 'static {
-        async move { form_of_line(&req).map_err(of_fail_with(ProfilesErr::Refused)) }
+    ) -> Result<ProfileForm, ProfilesErr> {
+        form_of_line(&req).map_err(of_fail_with(ProfilesErr::Refused))
     }
 }
 
-#[cfg(test)]
-#[path = "../../../../tests/backend/assets/aliases/page_tests.rs"]
-mod tests;
+// 这五口的判据（`tests/backend/assets/aliases/page_tests.rs`）挂在主 crate（`cross/assets.rs`）：「等于」那一行要帧面宿主那一份。

@@ -77,10 +77,9 @@ fn the_profile_fence_keeps_writes_inside_home() {
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 #[test]
 fn every_profile_command_passes_through_the_fence() {
-    let lib = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/aliases/mod.rs"),
-    )
-    .expect("读不到 assets/aliases/mod.rs");
+    let lib =
+        std::fs::read_to_string(guard_core::addr::backend_src_root().join("assets/aliases/mod.rs"))
+            .expect("读不到 assets/aliases/mod.rs");
     let prod = guard_core::production_code(&lib);
     // 线上那两口（`aliases-block-install` / `-remove`）都先过 `block_target`，它再过围栏 `block::fence`。
     const CMDS: &[(&str, &str)] = &[
@@ -99,10 +98,10 @@ fn every_profile_command_passes_through_the_fence() {
             .expect("找不到函数体起点");
         let mut depth = 0i32;
         let mut end = bytes.len();
-        for i in open..bytes.len() {
-            if bytes[i] == b'{' {
+        for (i, &b) in bytes.iter().enumerate().skip(open) {
+            if b == b'{' {
                 depth += 1;
-            } else if bytes[i] == b'}' {
+            } else if b == b'}' {
                 depth -= 1;
                 if depth == 0 {
                     end = i + 1;
@@ -158,8 +157,8 @@ fn tmpdir(tag: &str) -> TmpDir {
 /// profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
 /// 判据用落在临时目录上的替身门，home = 那份文件所在的目录；写的规则（备份 · 原子替换 · 回读 · 回滚）
 /// 住后端，由 `tests/backend/files/write_tests.rs` 判。
-fn door_at(p: &std::path::Path) -> super::super::tests::HomeDoor {
-    super::super::tests::HomeDoor(p.parent().expect("有父目录").to_path_buf())
+fn door_at(p: &std::path::Path) -> super::super::test_support::HomeDoor {
+    super::super::test_support::HomeDoor(p.parent().expect("有父目录").to_path_buf())
 }
 /// 后端这一族是同步的；恒等包装，判据正文不必逐处改写。
 fn run<T>(x: T) -> T {
@@ -216,7 +215,7 @@ fn damaged_fence_leaves_the_file_byte_identical() {
             "{what}：应因围栏损坏中止，实得：{e}"
         );
         // 顺带：不许留下备份/临时文件（上一版变异② 的泄漏形态）
-        let leaked: Vec<String> = std::fs::read_dir(&dir)
+        let leaked: Vec<String> = std::fs::read_dir(dir)
             .expect("列 tempdir")
             .filter_map(|x| x.ok())
             .map(|x| x.file_name().to_string_lossy().into_owned())
@@ -892,7 +891,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     // 扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
     // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `Door::peek`）；这里的门是落在临时目录上的替身。
-    let door = super::super::tests::HomeDoor(td.0.clone());
+    let door = super::super::test_support::HomeDoor(td.0.clone());
     let names = ["cc".to_string(), "zz".to_string()];
     let cands = super::super::rc_candidates_via(
         &door,

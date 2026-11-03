@@ -14,7 +14,6 @@ pub(crate) mod footprint_face; // 足迹那一族四条小命令（typed）：ag
 pub(crate) mod footprint_report_face; // 「足迹」那两条成品（typed）：footprint-report · data-report（单住：data-report 问 tmux）
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
-pub(crate) mod hub_inner_face; // 枢纽问各台的那 8 条内层命令（typed）：名字 · 入参 · 回包取 `assets::hub_wire` 那三样
 pub mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份
 pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（进 `sessions-needs`）
 pub(crate) mod md_doc_face; // 帧面 `md-doc`（typed）：一段 Markdown 原文 ⇒ 块树（思考展开 · 工具结果切到 Markdown · 计划格正文）

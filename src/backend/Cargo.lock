@@ -170,6 +170,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-assets"
+version = "0.0.0"
+dependencies = [
+ "backend-accounts",
+ "backend-agents",
+ "backend-common",
+ "backend-dial",
+ "backend-files",
+ "backend-history",
+ "backend-host",
+ "backend-platform",
+ "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "creds-core",
+ "guard-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "tokio",
+ "toml_edit",
+ "tracing",
+ "ts-rs",
+ "walkdir",
+]
+
+[[package]]
 name = "backend-common"
 version = "0.0.0"
 dependencies = [
@@ -559,6 +589,7 @@ dependencies = [
  "acct-core",
  "backend-accounts",
  "backend-agents",
+ "backend-assets",
  "backend-common",
  "backend-dial",
  "backend-files",

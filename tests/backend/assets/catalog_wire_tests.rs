@@ -14,13 +14,6 @@ fn wire(v: &impl serde::Serialize) -> String {
     serde_json::to_string(&serde_json::to_value(v).unwrap()).unwrap()
 }
 
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("assets-cat-wire-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 use super::asset_catalog::{Asset, Catalog, ExtKind, Note, Snapshot};
 
 /// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
@@ -135,65 +128,4 @@ fn ext_note_set_keeps_its_wire_bytes() {
         note(json!({"kind": "mcp", "name": "zz", "text": ""})),
         r#"{"note":null}"#
     );
-}
-
-/// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
-#[test]
-fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::wire::spec::{invoke, Prepared};
-    let d = tmp("extra");
-    let own = crate::platform::fs::Own::issue_at(&d);
-    let cases = [
-        ("assets-catalog", json!({ "bogus": 1 })),
-        ("mcp-read", json!({ "projectDir": null, "bogus": 1 })),
-        ("hooks-diag", json!({ "bogus": 1 })),
-        ("ext-list", json!({ "visit": false, "bogus": 1 })),
-        ("ext-list-here", json!({ "visit": false, "bogus": 1 })),
-        (
-            "ext-uninstall-preview",
-            json!({ "kind": "skill", "name": "a", "at": { "level": "user" }, "bogus": 1 }),
-        ),
-        (
-            "ext-uninstall-apply",
-            json!({ "kind": "skill", "name": "a", "at": { "level": "user" }, "token": "t", "bogus": 1 }),
-        ),
-        (
-            "assets-catalog-merge",
-            json!({ "catalog": { "machines": [] }, "bogus": 1 }),
-        ),
-        (
-            "ext-note-set",
-            json!({ "kind": "skill", "name": "a", "text": "t", "bogus": 1 }),
-        ),
-    ];
-    for (cmd, args) in cases {
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == cmd)
-            .unwrap();
-        let req = crate::wire::Request {
-            id: "t".to_string(),
-            cmd: cmd.to_string(),
-            args,
-            within_ms: None,
-            view: Value::Null,
-            tz: Default::default(),
-            until: None,
-        };
-        // 阻塞档就地跑；异步档（`ext-list`：各台那一格 `mcp` 要问到别的台）照它的未来跑完。
-        let got = match invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {
-            Some(Prepared::Blocking(run)) => run(req),
-            Some(Prepared::Async(run)) => tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(run(req)),
-            _ => panic!("{cmd} 不在阻塞档也不在异步档"),
-        }
-        .map(|_| ())
-        .map_err(|f| f.code);
-        assert_eq!(got, Err(Some("bad_args".to_string())), "{cmd}");
-    }
-    assert!(!d.join(".cc-monitor").exists(), "多一个键的那几问写了盘");
-    let _ = std::fs::remove_dir_all(&d);
 }

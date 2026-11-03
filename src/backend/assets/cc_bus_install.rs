@@ -22,7 +22,7 @@ pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};
 
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。
-pub(crate) const NAME: &str = "cc-bus";
+pub const NAME: &str = "cc-bus";
 
 /// 装之前看一眼时读落点上那一份的上限：内嵌的每一份都比它小（下面编译期查）⇒ 超了的那一份必定不一样，
 /// 跳过不读（读的那一口 `warn!` 带路径）、照「要写」算。

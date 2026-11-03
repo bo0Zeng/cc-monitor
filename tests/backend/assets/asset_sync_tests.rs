@@ -495,38 +495,6 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     );
 }
 
-/// 一块载荷（连外面那层 `{"catalog":{"machines":[…]}}` 与换行）装得进远端 CLI 面 stdin 的上限 —— 否则切出来的块对面整块拒。
-#[test]
-fn one_push_chunk_fits_under_the_remote_cli_stdin_cap() {
-    let overhead = "{\"catalog\":{\"machines\":[]}}\n".len() as u64;
-    assert!(
-        PUSH_MAX_BYTES.bytes + overhead <= crate::control::cli_args::MAX_CLI_STDIN.bytes,
-        "PUSH_MAX_BYTES（{}）＋ 外层 {overhead} 字节 > 远端 CLI 面 stdin 上限 —— 切块上限要跟着它",
-        PUSH_MAX_BYTES.bytes
-    );
-}
-
-/// 两条一次性子命令与后端真登记的同名（跨半边：这里的常量 ↔ 子命令闸门 `stream::cli::is_subcommand` ↔ `inbound::REGISTRY`）。
-#[test]
-fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
-    for (flag, cmd) in [
-        (PULL_FLAG, "assets-catalog"),
-        (PUSH_FLAG, "assets-catalog-merge"),
-    ] {
-        assert!(crate::stream::cli::is_subcommand(flag), "{flag} 不是子命令");
-        assert_eq!(format!("--{cmd}"), flag);
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == cmd)
-            .unwrap_or_else(|| panic!("{cmd} 不在 REGISTRY"));
-        assert_eq!(
-            spec.takes_input,
-            flag == PUSH_FLAG,
-            "{cmd} 收不收 stdin 与推 / 拉那一形对不上"
-        );
-    }
-}
-
 /// `assets-sync` 换形之前用旧代码钉的字节：回包（界面 · 壳读）与推过去的那一行载荷（远端那台的 CLI 面读，可能是旧版）。
 /// 目录 id 换成 `<L>` / `<R>`，`seenAt`（现扫那一刻）换成 `<T>`。
 #[tokio::test]
@@ -595,46 +563,5 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
         norm(&wire(&serde_json::to_value(&gone).unwrap())),
         r#"{"reach":[{"machine":"<R>","origin":"o-r"},{"machine":null,"origin":"o-gone"}],"self":"<L>","synced":[{"changed":false,"error":"没这台","origin":"o-gone","peer":null,"pushed":0}]}"#
     );
-    let _ = std::fs::remove_dir_all(&d);
-}
-
-/// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，一次都不拨、可达表不动。
-#[tokio::test]
-async fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::wire::spec::{invoke, Prepared};
-    let d = temp_dir("extra");
-    let own = crate::platform::fs::Own::issue_at(&d);
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "assets-sync")
-        .unwrap();
-    let before = crate::dial::remote_ask::reach_rows(&REACH).len();
-    for args in [
-        json!({ "bogus": 1 }),
-        json!({ "origin": "o-extra", "dial": {"machine": {"host": "x"}}, "bogus": 1 }),
-    ] {
-        let Some(Prepared::Async(run)) =
-            invoke(spec.run, &crate::stream::inbound::hands(Some(&own)))
-        else {
-            panic!("assets-sync 不在异步档");
-        };
-        let req = crate::wire::Request {
-            id: "t".to_string(),
-            cmd: "assets-sync".to_string(),
-            args: args.clone(),
-            within_ms: None,
-            view: Value::Null,
-            tz: Default::default(),
-            until: None,
-        };
-        let got = run(req).await.map(|_| ()).map_err(|f| f.code);
-        assert_eq!(got, Err(Some("bad_args".to_string())), "{args}");
-    }
-    assert_eq!(
-        crate::dial::remote_ask::reach_rows(&REACH).len(),
-        before,
-        "多一个键的那一问动了可达表"
-    );
-    assert!(!d.join(".cc-monitor").exists(), "多一个键的那一问写了盘");
     let _ = std::fs::remove_dir_all(&d);
 }

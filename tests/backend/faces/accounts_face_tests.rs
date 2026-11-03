@@ -5,7 +5,7 @@
 #![cfg(unix)]
 
 use super::*;
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::test_support::HomeDoor;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

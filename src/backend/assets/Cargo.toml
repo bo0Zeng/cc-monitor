@@ -1,0 +1,66 @@
+# 后端代管的用户资产（别名 · MCP · skill · 扩展 · 枢纽 · 公钥 · 资产目录）。只引账号域 · agents · 宿主口（含 ccm 行）· 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台八层。
+[package]
+name = "backend-assets"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（落在临时目录上的真盘门）：上层的 `[dev-dependencies]` 开它。门的本体是文件管理那一块（只在这一档引）。
+test-support = ["dep:backend-files"]
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-dial/ts"]
+
+[dependencies]
+backend-accounts = { path = "../accounts" }
+backend-agents = { path = "../agents" }
+backend-host = { path = "../host" }
+backend-dial = { path = "../dial" }
+backend-history = { path = "../history" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 这台的数据目录怎么推（同常驻后端 hello 回显的那一对）。
+creds-core = { path = "../../common/creds-core" }
+# 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+# 机器表字段的宽松读法（同拨号核心那一份）。
+ssh-dial = { path = "../ssh-dial" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+# 配置文件的读与按条目改（保留用户手写的注释与排版）。
+toml_edit.workspace = true
+walkdir.workspace = true
+ts-rs = { workspace = true, optional = true }
+backend-files = { path = "../files", optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 判据用的真盘门问的本体（文件管理那一块）。
+backend-files = { path = "../files", features = ["test-support"] }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+backend-platform = { path = "../platform", features = ["test-support", "ts"] }
+backend-common = { path = "../common", features = ["test-support"] }
+backend-agents = { path = "../agents", features = ["test-support"] }
+backend-wire = { path = "../wire", features = ["test-support"] }
+backend-accounts = { path = "../accounts", features = ["test-support"] }
+backend-history = { path = "../history", features = ["test-support"] }
+backend-host = { path = "../host", features = ["test-support"] }
+backend-dial = { path = "../dial", features = ["test-support", "ts"] }

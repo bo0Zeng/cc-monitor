@@ -694,7 +694,7 @@ fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, Said> 
 }
 
 /// `ext-hub-preview {kind, name, to: [机器…], place?}` → [`HubPreview`]。只读。
-pub(crate) async fn ext_preview_many(
+pub async fn ext_preview_many(
     here: &Arc<dyn Here>,
     req: &HubReq,
     table: &Table,
@@ -777,7 +777,7 @@ fn fill_for(card: &ExtCard, fill: &Fill) -> Fill {
 
 /// `ext-hub-apply {kind, name, to: [机器…], place, tokens: {机器: 记号}, fill}` → [`HubApplied`]。
 /// 各台照它那张卡装（值取共用那一份里那张卡要的几格；没填的不交 ⇒ 沿用那台已有的）；一台没成不挡别台。
-pub(crate) async fn ext_apply_many(
+pub async fn ext_apply_many(
     here: &Arc<dyn Here>,
     req: &HubApplyReq,
     table: &Table,

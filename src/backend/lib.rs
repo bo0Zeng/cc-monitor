@@ -42,7 +42,7 @@ use test_meters::alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]
 mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
-mod assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
+use backend_assets as assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面（独立的包 `backend-assets`：只引账号域 · agents · 宿主口 · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台八层）
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]
 mod build_features; // 判据构建与发布构建的 serde_json 特性集相同（`cargo tree --frozen` 现取）
@@ -52,6 +52,9 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 #[cfg(test)]
 #[path = "../../tests/backend/cap_over_guard.rs"]
 mod cap_over_guard; // 读上限的 `over` 与调用处对得上（硬报错不被吞 · 丢弃＋带身份报告的每一臂都说话）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/assets.rs"]
+mod cross_assets; // 资产域判据里引到上层的那几条（那一层是独立的包、够不到上层）
 use backend_common as common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断；独立的包 `backend-common`）
 use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住宿主口那个包 `backend-host`）
 #[cfg(test)]

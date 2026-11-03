@@ -55,19 +55,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
     //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
     //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `Door::put`（CAS）。阻塞档（扫盘）。
-    super::typed::blocking::<crate::faces::hub_inner_face::SkillReadCmd>(
-        "读来源那台上的一个 skill",
-    ),
-    super::typed::blocking::<crate::faces::hub_inner_face::SkillPlanCmd>(
+    super::typed::blocking::<crate::assets::hub_inner::SkillReadCmd>("读来源那台上的一个 skill"),
+    super::typed::blocking::<crate::assets::hub_inner::SkillPlanCmd>(
         "在要被写的那一台判 skill 装不装得过来",
     ),
     // MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
     super::typed::blocking::<crate::faces::feature_face::McpReadCmd>("这台机器的 MCP 列表成品"),
     // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（`Own` 由分派那一层递）。
-    super::typed::blocking::<crate::faces::hub_inner_face::CcBusStateCmd>(
-        "装 cc-bus 到这台之前看一眼",
-    ),
-    super::typed::blocking::<crate::faces::hub_inner_face::CcBusInstallCmd>(
+    super::typed::blocking::<crate::assets::hub_inner::CcBusStateCmd>("装 cc-bus 到这台之前看一眼"),
+    super::typed::blocking::<crate::assets::hub_inner::CcBusInstallCmd>(
         "把这台二进制带着的 cc-bus 装到这台",
     ),
     // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
@@ -102,18 +98,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     super::typed::blocking::<crate::faces::ext_list_face::ExtUninstallApplyCmd>("从这台卸一个扩展"),
     // 〔D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
-    super::typed::blocking::<crate::faces::hub_inner_face::McpSourceCmd>(
-        "装到别的机器时来源那一条",
-    ),
-    super::typed::blocking::<crate::faces::hub_inner_face::McpPreviewCmd>(
+    super::typed::blocking::<crate::assets::hub_inner::McpSourceCmd>("装到别的机器时来源那一条"),
+    super::typed::blocking::<crate::assets::hub_inner::McpPreviewCmd>(
         "在要被写的那一台看装上之后那一条",
     ),
-    super::typed::blocking::<crate::faces::hub_inner_face::McpApplyCmd>(
+    super::typed::blocking::<crate::assets::hub_inner::McpApplyCmd>(
         "在要被写的那一台把那一条写进去",
     ),
     // 〔D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
     //   记（`skill_ledger::answer_record`，写口只从这扇门递进去）同一台。
-    super::typed::blocking::<crate::faces::hub_inner_face::SkillApplyCmd>(
+    super::typed::blocking::<crate::assets::hub_inner::SkillApplyCmd>(
         "在要被写的那一台把勾的那几个 skill 文件写进去",
     ),
     // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。

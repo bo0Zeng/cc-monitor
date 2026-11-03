@@ -1,6 +1,6 @@
 //! 账号域判据里引到上层的那几条：那一层是独立的包（`backend-accounts`）、够不到上层 ⇒ 挂在主 crate。
 
-// 账号库同步 MCP 的那一整套（经帧面 `accounts_face` 真跑改账号库那几条命令、文件经 `assets::aliases::tests::HomeDoor`）。
+// 账号库同步 MCP 的那一整套（经帧面 `accounts_face` 真跑改账号库那几条命令、文件经 `assets::aliases::test_support::HomeDoor`）。
 #[cfg(unix)]
 #[path = "../accounts/manage/mcp_share_exec_tests.rs"]
 mod mcp_share_exec_tests;

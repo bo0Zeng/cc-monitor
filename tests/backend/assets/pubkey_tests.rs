@@ -1,7 +1,7 @@
 //! 要求：公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 经那台（后端不在就一次 exec、只写这一件）。
 //! 判校验 · 规划 · 解记号 · 那一串 shell。
 use super::*;
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::test_support::HomeDoor;
 use serde_json::json;
 use std::sync::Mutex;
 
@@ -313,10 +313,7 @@ fn append_respects_newline_boundary_and_idempotent() {
         lines.iter().any(|l| l.contains("AAAAEXISTING")),
         "既有 key 应保留独占一行: {content:?}"
     );
-    assert!(
-        lines.iter().any(|l| *l == key),
-        "新 key 应独占一行: {content:?}"
-    );
+    assert!(lines.contains(&key), "新 key 应独占一行: {content:?}");
     assert!(
         !content.contains("AAAAEXISTINGssh-ed25519"),
         "两把 key 不得粘成一行: {content:?}"

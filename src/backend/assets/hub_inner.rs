@@ -3,8 +3,8 @@
 //! 写用户的文件经文件管理面、写装记录经写句柄；其余几条只读（要读 MCP 配置的那两条经文件管理面读）。
 
 use crate::assets::hub_wire as wire;
-// 标记类型住 `assets::hub_wire`（枢纽按它们问）；命令表从这里认它们（本体在这份文件里）。
-pub(crate) use crate::assets::hub_wire::{
+// 标记类型住 `assets::hub_wire`（枢纽按它们问）；命令表从这里认它们（`impl Command` 在这份文件里）。
+pub use crate::assets::hub_wire::{
     CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, SkillApplyCmd,
     SkillPlanCmd, SkillReadCmd,
 };
@@ -28,7 +28,7 @@ fn record(
 
 codes! {
     /// `skill-read` 的码。
-    pub(crate) enum SkillReadErr {
+    pub enum SkillReadErr {
         /// 这台找不到 skill 的根 · 走目录没成。
         IoFailed = "io_failed",
         /// 这台没有这个 skill。
@@ -47,20 +47,17 @@ impl Command for SkillReadCmd {
 
 impl crate::wire::typed::Handle for SkillReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: wire::SkillReadReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::SkillRead, SkillReadErr>> + Send + 'static
-    {
-        async move {
-            crate::assets::skill_install::answer_read(&req).map_err(own_err(SkillReadErr::IoFailed))
-        }
+    ) -> Result<wire::SkillRead, SkillReadErr> {
+        crate::assets::skill_install::answer_read(&req).map_err(own_err(SkillReadErr::IoFailed))
     }
 }
 
 codes! {
     /// `skill-install-plan` 的码。
-    pub(crate) enum SkillPlanErr {
+    pub enum SkillPlanErr {
         /// 这台那一份盖不了（不是文本）却勾了。
         BadFile = "bad_file",
         /// 这台找不到 skill 的根 · 走目录没成。
@@ -81,20 +78,17 @@ impl Command for SkillPlanCmd {
 
 impl crate::wire::typed::Handle for SkillPlanCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: wire::SkillPlanReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::SkillPlan, SkillPlanErr>> + Send + 'static
-    {
-        async move {
-            crate::assets::skill_install::answer_plan(&req).map_err(own_err(SkillPlanErr::IoFailed))
-        }
+    ) -> Result<wire::SkillPlan, SkillPlanErr> {
+        crate::assets::skill_install::answer_plan(&req).map_err(own_err(SkillPlanErr::IoFailed))
     }
 }
 
 codes! {
     /// `skill-install-apply` 的码。
-    pub(crate) enum SkillApplyErr {
+    pub enum SkillApplyErr {
         /// 这台那一份盖不了（不是文本）却勾了。
         BadFile = "bad_file",
         /// 这台找不到 skill 的根 · 走目录没成。
@@ -140,7 +134,7 @@ impl crate::wire::typed::Handle for SkillApplyCmd {
 
 codes! {
     /// `mcp-sync-source` 的码。
-    pub(crate) enum McpSourceErr {
+    pub enum McpSourceErr {
         /// 那份配置不是 JSON / 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
@@ -184,7 +178,7 @@ impl crate::wire::typed::Handle for McpSourceCmd {
 
 codes! {
     /// `mcp-sync-preview` 的码。
-    pub(crate) enum McpPreviewErr {
+    pub enum McpPreviewErr {
         /// 这台那份配置不是 JSON / 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
@@ -224,7 +218,7 @@ impl crate::wire::typed::Handle for McpPreviewCmd {
 
 codes! {
     /// `mcp-sync-apply` 的码。
-    pub(crate) enum McpApplyErr {
+    pub enum McpApplyErr {
         /// 这台那份配置不是 JSON / 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
@@ -264,7 +258,7 @@ impl crate::wire::typed::Handle for McpApplyCmd {
 
 codes! {
     /// `cc-bus-install-state` 的码。
-    pub(crate) enum CcBusStateErr {
+    pub enum CcBusStateErr {
         /// 这台找不到 skill 的根。
         Refused = "refused",
     }
@@ -280,20 +274,17 @@ impl Command for CcBusStateCmd {
 
 impl crate::wire::typed::Handle for CcBusStateCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: wire::NoReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::CcBusState, CcBusStateErr>> + Send + 'static
-    {
-        async move {
-            crate::assets::cc_bus_install::answer_state().map_err(own_err(CcBusStateErr::Refused))
-        }
+    ) -> Result<wire::CcBusState, CcBusStateErr> {
+        crate::assets::cc_bus_install::answer_state().map_err(own_err(CcBusStateErr::Refused))
     }
 }
 
 codes! {
     /// `cc-bus-install` 的码。
-    pub(crate) enum CcBusInstallErr {
+    pub enum CcBusInstallErr {
         /// 内嵌那一份不是 UTF-8。
         BadFile = "bad_file",
         /// 找不到根 · 围栏不过 · 写没成。

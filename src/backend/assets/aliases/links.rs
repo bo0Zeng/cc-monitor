@@ -8,14 +8,14 @@ use crate::common::door::{self, Door};
 use cmd_wire::files as wire;
 
 /// 链接住的目录（ccm 自己住的那个，`~/.cc-monitor/bin`）。
-pub(crate) fn bin_rel() -> &'static str {
+pub fn bin_rel() -> &'static str {
     relay_route_core::BACKEND_LANDING_REL
         .rsplit_once('/')
         .map_or("", |(dir, _)| dir)
 }
 
 /// 链接的目标文本：同一目录下的 ccm（ccm 的落点那一段的末段）。
-pub(crate) fn target() -> &'static str {
+pub fn target() -> &'static str {
     relay_route_core::BACKEND_LANDING_REL
         .rsplit('/')
         .next()
@@ -23,7 +23,7 @@ pub(crate) fn target() -> &'static str {
 }
 
 /// 那个目录里此刻是我们放的那几条链接的名字（目录不在 ⇒ 空）。
-pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
+pub fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
     let dir = door::join_under(home, bin_rel());
     let listed = match d.ls(wire::LsReq {
         path: dir.as_str().into(),

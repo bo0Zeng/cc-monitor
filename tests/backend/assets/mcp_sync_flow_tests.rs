@@ -1,8 +1,8 @@
 //! 要求：MCP 配置里像密钥的值不在机器之间复制 —— 确认卡上是待填或「沿用目标机已有的值」，值出不了来源机、缺了就拒；
 //! 写一趟不重算：看过之后被写那份变了 ⇒ `stale`、一个字节不写；用户级 MCP 只读。
 use super::*;
+use crate::assets::aliases::test_support::FilesHere;
 use crate::assets::mcp_sync::There;
-use crate::stream::inbound::LocalFiles;
 use serde_json::json;
 use std::cell::RefCell;
 
@@ -84,7 +84,7 @@ fn the_source_hands_over_the_entry_with_every_secret_value_blanked() {
     )
     .unwrap();
     let got = answer_source(
-        &LocalFiles,
+        &FilesHere,
         None,
         &json!({ "name": "s", "at": at(&d.join("src")) }),
     )
@@ -112,7 +112,7 @@ fn the_source_hands_over_the_entry_with_every_secret_value_blanked() {
     )
     .unwrap();
     let again = answer_source(
-        &LocalFiles,
+        &FilesHere,
         None,
         &json!({ "name": "s", "at": at(&d.join("src")) }),
     )
@@ -134,7 +134,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     .unwrap();
     let def = json!({ "command": "srv", "env": { "API_KEY": null, "TOKEN": null } });
     let pre = answer_preview(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         &json!({ "name": "s", "at": at(&dst), "def": def }),
     )
@@ -151,7 +151,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     };
     let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
     let code = answer_apply(
-        &LocalFiles,
+        &FilesHere,
         &record,
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": {}, "target": pre["target"] }),
     )
@@ -163,7 +163,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         before
     );
     let done = answer_apply(
-        &LocalFiles,
+        &FilesHere,
         &record,
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": { "env": { "TOKEN": "typed" } }, "target": pre["target"] }),
     )
@@ -186,7 +186,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     );
     // 交来的定义里夹着值 ⇒ 拒（值只许从卡上或这台来）
     let code = answer_preview(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         &json!({ "name": "s", "at": at(&dst), "def": { "command": "x", "env": { "API_KEY": "leak" } } }),
     )
@@ -204,7 +204,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{}}").unwrap();
     let def = json!({ "command": "a" });
     let pre = answer_preview(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         &json!({ "name": "a", "at": at(&dst), "def": def }),
     )
@@ -212,7 +212,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
     let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
     let code = answer_apply(
-        &LocalFiles,
+        &FilesHere,
         &record,
         &json!({ "name": "a", "at": at(&dst), "def": def, "target": pre["target"] }),
     )
@@ -225,7 +225,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     );
     // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
     let code = answer_preview(
-        &crate::assets::aliases::tests::HomeDoor(d.clone()),
+        &crate::assets::aliases::test_support::HomeDoor(d.clone()),
         &NoFacts,
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),
     )

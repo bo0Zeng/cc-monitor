@@ -32,7 +32,7 @@ use crate::assets::asset_catalog::{SKILL_FILE_CAP as FILE_CAP, SKILL_MAX_FILES a
 const MAX_PATHS_PER_FILE: usize = 8;
 
 /// 这一族的应答。
-pub type Answer = Result<Value, crate::common::said::Said>;
+pub(crate) type Answer = Result<Value, crate::common::said::Said>;
 
 /// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。装记录的写口也用它（`skill_ledger::record_at`）。
 pub(crate) fn valid_name(name: &str) -> bool {
@@ -43,7 +43,7 @@ pub(crate) fn valid_name(name: &str) -> bool {
 }
 
 /// skill 里的相对路径：`/` 分段、每段非空、不许 `.` / `..`、不许绝对 / 盘符 / 反斜杠 / NUL。
-pub fn valid_rel(p: &str) -> bool {
+pub(crate) fn valid_rel(p: &str) -> bool {
     !p.is_empty()
         && p.len() <= 512
         && !p.starts_with('/')
@@ -201,7 +201,7 @@ pub(crate) fn answer_read_at(
 }
 
 /// 一段文本里像绝对路径的词（两种系统的写法都认；引号 / 括号 / 标点当分隔）。去重、保序、最多 [`MAX_PATHS_PER_FILE`] 条。**纯**。
-pub fn abs_paths_in(text: &str) -> Vec<String> {
+pub(crate) fn abs_paths_in(text: &str) -> Vec<String> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for raw in text.split(|c: char| {
@@ -237,7 +237,7 @@ pub fn abs_paths_in(text: &str) -> Vec<String> {
 }
 
 /// 第一行 `#!` 里要靠 `PATH` 找的那个名字（`#!/usr/bin/env python3` ⇒ `python3`）。解释器本身是绝对路径的那一形归 `abs-path`。**纯**。
-pub fn shebang_command(text: &str) -> Option<String> {
+pub(crate) fn shebang_command(text: &str) -> Option<String> {
     let first = text.lines().next()?.strip_prefix("#!")?.trim();
     let mut words = first.split_whitespace();
     let interp = words.next()?;
@@ -516,13 +516,13 @@ pub(crate) fn answer_plan_with(
 #[cfg(test)]
 pub const UNINSTALL_STATES: &[&str] = &["gone", "intact", "modified", "unreadable"];
 /// 已经不在了（从记录里摘掉就行）。
-pub const UNINSTALL_GONE: &str = "gone";
+pub(crate) const UNINSTALL_GONE: &str = "gone";
 /// 在、是文本、摘要 == 装时写进去的那一份。
-pub const UNINSTALL_INTACT: &str = "intact";
+pub(crate) const UNINSTALL_INTACT: &str = "intact";
 /// 在、摘要不同 —— 装完被改过（删之前要问）。
-pub const UNINSTALL_MODIFIED: &str = "modified";
+pub(crate) const UNINSTALL_MODIFIED: &str = "modified";
 /// 不是普通文件 / 不是文本 / 读不出来 —— 没法按原文 CAS 删（不删）。
-pub const UNINSTALL_UNREADABLE: &str = "unreadable";
+pub(crate) const UNINSTALL_UNREADABLE: &str = "unreadable";
 
 /// 一个记着的文件现在的样子：`(state, 现有原文)`（原文只在 `intact` / `modified` 上有）。
 fn on_disk_now(
@@ -548,7 +548,7 @@ fn on_disk_now(
 }
 
 /// 卸的判定（被卸的那一台跑；`ext-uninstall-*` 经它判）：记录文件由调用方给。
-pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
+pub(crate) fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
         crate::common::said::Said::new(
             "bad_args",
@@ -566,10 +566,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let l = crate::assets::skill_ledger::load_at(ledger)?;
     let install = l.installs.get(dir).ok_or(crate::common::said::Said::new(
         "not_found",
-        copy_text(
-            "beSkillInstall.uninstall.notRecorded",
-            &[("dir", &dir.to_string())],
-        ),
+        copy_text("beSkillInstall.uninstall.notRecorded", &[("dir", dir)]),
     ))?;
     let base = Path::new(dir);
     let mut rows = Vec::new();
@@ -618,7 +615,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
                             "bad_args",
                             copy_text(
                                 "beSkillInstall.uninstall.badState",
-                                &[("p", p), ("state", &state.to_string())],
+                                &[("p", p), ("state", state)],
                             ),
                         ))
                     }

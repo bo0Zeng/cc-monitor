@@ -37,16 +37,16 @@ pub use cmd_wire::assets::{
 #[cfg(test)]
 pub const HERE_STATES: &[&str] = &[HERE_MISSING, HERE_DIFFERS, HERE_SAME];
 /// 这台一条同名的都没有。
-pub const HERE_MISSING: &str = "missing";
+pub(crate) const HERE_MISSING: &str = "missing";
 /// 这台有同名的，但没有一条与别处的摘要相同。
-pub const HERE_DIFFERS: &str = "differs";
+pub(crate) const HERE_DIFFERS: &str = "differs";
 /// 这台有一条同名且摘要相同的。
-pub const HERE_SAME: &str = "same";
+pub(crate) const HERE_SAME: &str = "same";
 
 /// 一个 skill 最多走这么多个文件（超了 `summary.truncated`，摘要按已走到的算）。
-pub const SKILL_MAX_FILES: usize = 512;
+pub(crate) const SKILL_MAX_FILES: usize = 512;
 /// 一个文件最多读这么多字节进摘要（超了只记长度 ＋ `truncated`；装的那一侧那一个 `text = null` ＋ `why`）。
-pub const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 4 * 1024 * 1024,
     over: relay_route_core::Over::DegradeAndSay,
 };
@@ -59,9 +59,9 @@ const DOC: crate::common::own_state::Doc<Catalog> =
 const MAX_ID_BYTES: usize = 64;
 
 /// MCP 定义里**原样**进目录的字段。其余字段只记键名（未知字段可能装着密钥）。
-pub const MCP_VERBATIM_FIELDS: &[&str] = &["args", "command", "cwd", "type", "url"];
+pub(crate) const MCP_VERBATIM_FIELDS: &[&str] = &["args", "command", "cwd", "type", "url"];
 /// MCP 定义里**只记键名**的对象字段（值是密钥的常见住处）。
-pub const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
+pub(crate) const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
 
 /// 一台机器自己扫出来的一整份。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -112,7 +112,7 @@ pub struct Catalog {
 
 /// 一台这一趟扫出来的全部：条目 · 开过会话的项目 · 读不出来的那几份。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Scanned {
+pub(crate) struct Scanned {
     pub assets: Vec<Asset>,
     pub projects: Vec<String>,
     pub problems: Vec<String>,
@@ -121,14 +121,14 @@ pub struct Scanned {
 }
 
 /// 一个条目的键（种类 ＋ 名字）：「新见到」按它记，扩展页一行也按它分。
-pub fn entry_key(kind: ExtKind, name: &str) -> String {
+pub(crate) fn entry_key(kind: ExtKind, name: &str) -> String {
     format!("{}/{name}", kind.as_str())
 }
 
 // ───────────────────────── 摘要（纯） ─────────────────────────
 
 /// JSON 的规范写法：对象按键排序（不依赖 `serde_json` 开没开 `preserve_order`）。
-pub fn canonical(v: &Value) -> String {
+pub(crate) fn canonical(v: &Value) -> String {
     match v {
         Value::Object(m) => {
             let mut keys: Vec<&String> = m.keys().collect();
@@ -148,7 +148,12 @@ pub fn canonical(v: &Value) -> String {
 }
 
 /// 一条 MCP 定义 → 目录条目。`digest` 按**整条原文**（含密钥值）的规范写法算；`summary` 去掉密钥值。
-pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&Path>) -> Asset {
+pub(crate) fn mcp_asset(
+    project: Option<&str>,
+    name: &str,
+    def: &Value,
+    file: Option<&Path>,
+) -> Asset {
     let mut f = crate::common::digest::Fnv::default();
     f.part(ExtKind::Mcp.as_str().as_bytes())
         .part(canonical(def).as_bytes());
@@ -165,7 +170,7 @@ pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&P
 
 /// 去掉密钥值的那一份：[`MCP_VERBATIM_FIELDS`] 原样；[`MCP_KEYS_ONLY_FIELDS`] 只留键名（排序）；
 /// 其余字段只留键名（`otherKeys`）。定义本身不是对象 ⇒ `{"shape":"not-an-object"}`（原样值不进目录）。
-pub fn mcp_summary(def: &Value) -> Value {
+pub(crate) fn mcp_summary(def: &Value) -> Value {
     let Some(obj) = def.as_object() else {
         return json!({ "shape": "not-an-object" });
     };
@@ -194,7 +199,7 @@ pub fn mcp_summary(def: &Value) -> Value {
 
 /// 一个 skill 目录 → 目录条目。按（相对路径, 内容）逐个进摘要；文件链接按它指向的内容算（目录链接不下去）。
 /// 可执行位不进摘要：读执行位是平台原语（只许住 `platform/`）⇒ 只差 `chmod +x` 的两份判成「相同」。
-pub fn skill_asset(
+pub(crate) fn skill_asset(
     project: Option<&str>,
     name: &str,
     dir: &Path,
@@ -303,7 +308,7 @@ pub fn skill_asset(
 }
 
 /// 插件开关出处的线上写法（目录 `summary.from`；字由扩展页那一层写）。
-pub fn plugin_from_code(from: crate::agents::PluginFrom) -> &'static str {
+pub(crate) fn plugin_from_code(from: crate::agents::PluginFrom) -> &'static str {
     use crate::agents::PluginFrom as F;
     match from {
         F::Managed => "managed",
@@ -315,7 +320,7 @@ pub fn plugin_from_code(from: crate::agents::PluginFrom) -> &'static str {
 }
 
 /// 一个插件 → 目录条目。`digest` 按市场 · 版本 · 组成算（同一版各台相同）；开不开不进摘要，记在 `off`。
-pub fn plugin_asset(p: &crate::agents::PluginSeen) -> Asset {
+pub(crate) fn plugin_asset(p: &crate::agents::PluginSeen) -> Asset {
     let parts = json!({
         "skills": p.parts.skills,
         "commands": p.parts.commands,
@@ -425,7 +430,7 @@ pub(crate) fn scan_here() -> Scanned {
 // ───────────────────────── 合并与判定（纯） ─────────────────────────
 
 /// 一份新目录（这台第一次记）。
-pub fn fresh(self_id: String) -> Catalog {
+pub(crate) fn fresh(self_id: String) -> Catalog {
     Catalog {
         self_id,
         machines: BTreeMap::new(),
@@ -435,7 +440,7 @@ pub fn fresh(self_id: String) -> Catalog {
 }
 
 /// 把这台刚扫出来的那一份放进自己那一格。**真变了**（条目 · 项目清单 · 称呼有一样不同）才 `gen + 1`、记时刻，回 `true`。
-pub fn refresh_self(
+pub(crate) fn refresh_self(
     cat: &mut Catalog,
     assets: Vec<Asset>,
     projects: Vec<String>,
@@ -470,7 +475,7 @@ pub fn refresh_self(
 }
 
 /// 这台有没有账号库记进自己那一格：变了才 `gen + 1`，回「变了没有」。自己那一格还没有 ⇒ 不记。
-pub fn mark_shared_mcp(cat: &mut Catalog, shared: bool, now: u64) -> bool {
+pub(crate) fn mark_shared_mcp(cat: &mut Catalog, shared: bool, now: u64) -> bool {
     let id = cat.self_id.clone();
     match cat.machines.get_mut(&id) {
         Some(me) if me.shared_mcp != shared => {
@@ -484,7 +489,7 @@ pub fn mark_shared_mcp(cat: &mut Catalog, shared: bool, now: u64) -> bool {
 }
 
 /// 一个条目现在生效的备注：各台里 `rev` 最大的那一条（打平按机器 id）；没有 / 清掉了 ⇒ `None`。
-pub fn note_of(cat: &Catalog, key: &str) -> Option<String> {
+pub(crate) fn note_of(cat: &Catalog, key: &str) -> Option<String> {
     cat.machines
         .iter()
         .filter_map(|(id, s)| s.notes.get(key).map(|n| (n.rev, id, n)))
@@ -495,7 +500,7 @@ pub fn note_of(cat: &Catalog, key: &str) -> Option<String> {
 
 /// 用户写 / 改 / 清（空串）一条备注：记进**这台自己那一格**（真变了才 `gen + 1`），随目录推到别的后端。回「变了没有」。
 /// 自己那一格还没有 ⇒ 不记（调用方先现扫一次）。
-pub fn set_note(cat: &mut Catalog, key: &str, text: &str, now: u64) -> bool {
+pub(crate) fn set_note(cat: &mut Catalog, key: &str, text: &str, now: u64) -> bool {
     let text = text.trim();
     if note_of(cat, key).as_deref().unwrap_or("") == text {
         return false;
@@ -524,7 +529,7 @@ pub fn set_note(cat: &mut Catalog, key: &str, text: &str, now: u64) -> bool {
 }
 
 /// 目录里任何一台有、`known` 里还没有的条目记下第一次见到的时刻。回「记了没有」（只影响要不要落盘，不算目录变了）。
-pub fn note_known(cat: &mut Catalog, now: u64) -> bool {
+pub(crate) fn note_known(cat: &mut Catalog, now: u64) -> bool {
     let keys: Vec<String> = cat
         .machines
         .values()
@@ -541,7 +546,7 @@ pub fn note_known(cat: &mut Catalog, now: u64) -> bool {
 }
 
 /// 把别处传来的各台快照并进来：**同一台取 `gen` 大的整份**；这台自己那一格一律不收。回「真变了没有」。
-pub fn merge(cat: &mut Catalog, incoming: BTreeMap<String, Snapshot>) -> bool {
+pub(crate) fn merge(cat: &mut Catalog, incoming: BTreeMap<String, Snapshot>) -> bool {
     let mut changed = false;
     for (id, snap) in incoming {
         if id == cat.self_id {
@@ -557,7 +562,7 @@ pub fn merge(cat: &mut Catalog, incoming: BTreeMap<String, Snapshot>) -> bool {
 }
 
 /// 「别的机器有的，这台怎样」—— 每个（种类, 名字）一行，只列别处有的。判定只在这里。
-pub fn rows(cat: &Catalog) -> Vec<CatalogRow> {
+pub(crate) fn rows(cat: &Catalog) -> Vec<CatalogRow> {
     let mine: Vec<&Asset> = cat
         .machines
         .get(&cat.self_id)
@@ -608,7 +613,7 @@ pub fn rows(cat: &Catalog) -> Vec<CatalogRow> {
 }
 
 /// 一份目录的线上形状（两条命令共用）。
-pub fn wire(
+pub(crate) fn wire(
     cat: &Catalog,
     problems: &[String],
     changed: bool,
@@ -639,7 +644,9 @@ pub fn wire(
 }
 
 /// 收进来的各台 ⇒ 快照（解码器管形状；种类不在闭集也是解码器拒；这里只判解码器判不了的：id 空 / 太长 ⇒ `bad_args`，不猜）。
-pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Snapshot>, String> {
+pub(crate) fn machines_of(
+    incoming: Vec<CatalogMachine>,
+) -> Result<BTreeMap<String, Snapshot>, String> {
     let mut out = BTreeMap::new();
     for m in incoming {
         if m.id.is_empty() || m.id.len() > MAX_ID_BYTES {
@@ -670,7 +677,7 @@ fn home() -> Option<PathBuf> {
 }
 
 /// 这台自报的称呼：`user@host`（环境里取；取不到的那一半写 `?`）。只给人看，不参与任何判定。
-pub fn machine_label() -> String {
+pub(crate) fn machine_label() -> String {
     let user = std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "?".into());
@@ -704,9 +711,9 @@ fn new_machine_id() -> String {
 }
 
 /// 读一次目录文件。三态：没有（第一次）/ 读得懂 / 读不出来（**不覆盖**）。更新的格式整份不认。
-pub type Read = crate::common::own_state::Read<Catalog>;
+pub(crate) type Read = crate::common::own_state::Read<Catalog>;
 
-pub fn read_at(path: &Path) -> Read {
+pub(crate) fn read_at(path: &Path) -> Read {
     DOC.read(path)
 }
 
@@ -725,7 +732,7 @@ fn write_at(
 // 不再生出第二个 id；同一台两个进程各自 +1 代数变成串行。
 
 /// 这台机器现扫一次、并进 `incoming`（若有）、真变了才落盘。**可喂夹具**：路径与扫描结果由调用方给。
-pub fn update_at(
+pub(crate) fn update_at(
     own: &Own,
     scanned: Scanned,
     label: &str,
@@ -743,7 +750,7 @@ pub fn update_at(
 
 /// [`update_at`] 的本体：交回并好的整份（扩展页的表从它算）。`visit` ⇒ 这一趟算「来看了一次」（挪 [`Visits`]）。
 /// 回 `(目录, 读不出来的那几份, 目录真变了没有)`；「新见到」的记账与来看那两格变了也落盘，但不算目录变了（不触发扇出）。
-pub fn update_with(
+pub(crate) fn update_with(
     own: &Own,
     scanned: Scanned,
     label: &str,
@@ -755,7 +762,7 @@ pub fn update_with(
 }
 
 /// [`update_with`] 再加一笔备注（`(条目键, 正文)`，见 [`set_note`]）：同一把锁里现扫 · 记备注 · 落盘。
-pub fn update_noting(
+pub(crate) fn update_noting(
     own: &Own,
     scanned: Scanned,
     label: &str,
@@ -796,7 +803,7 @@ fn update_core(
     })?;
     let held = own
         .lock(&dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     let mut cat = match read_at(path) {
         Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
@@ -838,7 +845,7 @@ fn update_now(
 }
 
 /// 扩展页那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
-pub(crate) fn answer_current(
+pub fn answer_current(
     visit: bool,
     own: &Own,
 ) -> Result<(Catalog, Vec<String>), crate::common::said::Said> {
@@ -848,11 +855,7 @@ pub(crate) fn answer_current(
 }
 
 /// 扩展页写备注那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、把备注记进自己那一格，交回整份。
-pub(crate) fn answer_note(
-    key: &str,
-    text: &str,
-    own: &Own,
-) -> Result<Catalog, crate::common::said::Said> {
+pub fn answer_note(key: &str, text: &str, own: &Own) -> Result<Catalog, crate::common::said::Said> {
     update_noting(own, scan_here(), &machine_label(), (key, text), now_secs()).map(|(c, _)| c)
 }
 

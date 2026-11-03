@@ -56,10 +56,10 @@ pub type Fold =
     std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Said> + Send + Sync>;
 
 /// `assets-sync` 的入参与回包住 cmd-wire（壳连上一台时照同一份交、照同一份收）。
-pub(crate) use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
+pub use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
-pub fn pull_command() -> String {
+pub(crate) fn pull_command() -> String {
     crate::dial::remote_ask::command_line(&[PULL_FLAG])
 }
 
@@ -69,7 +69,7 @@ pub fn push_command() -> String {
 }
 
 /// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。
-pub fn push_stdin(payload: &str) -> String {
+pub(crate) fn push_stdin(payload: &str) -> String {
     format!("{payload}\n")
 }
 
@@ -101,7 +101,7 @@ fn too_big_to_push(id: &str, len: usize, cap: usize) -> String {
 
 /// 远端缺的 / 比远端新的那几台快照（不含远端自己那格：`their_self` ＝ 对面目录的 id），切成不超过 [`PUSH_MAX_BYTES`] 的块。
 /// 单独一台就超了的 ⇒ 进第二个返回值（说出来，不推、不截断）。**纯函数**。
-pub fn push_plan(
+pub(crate) fn push_plan(
     mine: &CatalogReply,
     theirs: &CatalogIn,
     their_self: Option<&str>,
@@ -251,7 +251,7 @@ async fn sync_named(
 /// `assets-sync`：给了 `origin` ⇒ 对它做一趟，本机因此变了再对其余各台各一趟；
 /// 什么都没给 ⇒ 对机器表里「连这台」的每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
 /// 回 `{self, synced, reach}`（`self` = 本机目录的 id，界面据它把目录里本机那一格对回 `<local>`）。
-pub(crate) async fn answer(
+pub async fn answer(
     req: &AssetsSyncReq,
     fold: Fold,
     remote: &dyn Remote,

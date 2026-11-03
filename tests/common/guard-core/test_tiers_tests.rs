@@ -98,6 +98,8 @@ const SUPPORT: &[&str] = &[
     "tests/backend/accounts/upstream_select/upstreams_testing.rs", // 把一家的默认上游换成假上游（账号域的包与上层判据经 `test-support` 共用）
     "tests/backend/accounts/upstream_select/rotate_support.rs", // 号表里的一行：账号域的包与上层判据经 `test-support` 共用
     "tests/backend/cross/accounts.rs", // 只挂账号域那几条上层判据，自己没有测试
+    "tests/backend/assets/aliases/aliases_support.rs", // 判据用的真盘门：资产域的包与上层判据经 `test-support` 共用
+    "tests/backend/cross/assets.rs", // 只挂资产域那几条上层判据，自己没有测试
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/shell/frame_fixtures.rs", // 壳判据用的几帧（同一版后端的 hello · 帧去向 · 活会话宣告）
     "tests/frontend/filewin/copy_testing.rs",

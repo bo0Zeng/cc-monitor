@@ -1,13 +1,18 @@
 //! 设置窗那一页的五条命令（`profiles-read` · `-resolve` · `-impact` · `-bases` · `-write`）：
 //! 合并只问 `profile::resolve`，界面拿到的是成品（每格标签 · 值的说法 · 来自哪一段 · 被谁盖掉 · 「等于」那一行）。
+//! 「等于」那一行要帧面宿主那一份（`faces::profiles_face::preview_resolved`，同 `ccm @名 -- --ccm-print`）、金样里的码集合要命令表
+//! ⇒ 整份挂主 crate（`tests/backend/cross/assets.rs`）：资产域是独立的包、够不到上层。
 
-use super::*;
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::page::{self, *};
+use crate::assets::aliases::test_support::HomeDoor;
+use crate::assets::aliases::{self as aliases, profile};
+use crate::platform::shell::dialect::Shell;
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
 // 五口经帧面那一跳：入参按类型收（同 `typed::take`），回包成 `Value`（同 `spec::wire`）——下面的判据照线上那一形读。
-// 本地这几个同名函数盖住 `super::*` 里那几个。
+// 本地这几个同名函数盖住 `page::*` 里那几个。
 type Wired = Result<Value, crate::common::said::Said>;
 
 fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, crate::common::said::Said> {
@@ -18,13 +23,18 @@ fn wired<T: serde::Serialize>(got: Result<T, crate::common::said::Said>) -> Wire
     got.map(|v| serde_json::to_value(v).unwrap())
 }
 
-fn read_with(d: &HomeDoor, args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> Wired {
+fn read_with(
+    d: &HomeDoor,
+    args: &Value,
+    tmux: Option<bool>,
+    tz: &crate::common::time::Tz,
+) -> Wired {
     let crate::wire::typed::NoArgs {} = taken(args)?;
-    wired(super::read_with(d, tmux, tz))
+    wired(page::read_with(d, tmux, tz))
 }
 
 fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
-    wired(super::answer_resolve(
+    wired(page::answer_resolve(
         d,
         &taken(args)?,
         crate::faces::profiles_face::preview_resolved,
@@ -32,15 +42,15 @@ fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
 }
 
 fn answer_impact(d: &HomeDoor, args: &Value) -> Wired {
-    wired(super::answer_impact(d, &taken(args)?))
+    wired(page::answer_impact(d, &taken(args)?))
 }
 
 fn answer_bases(d: &HomeDoor, args: &Value) -> Wired {
-    wired(super::answer_bases(d, &taken(args)?))
+    wired(page::answer_bases(d, &taken(args)?))
 }
 
 fn answer_write(d: &HomeDoor, args: &Value) -> Wired {
-    wired(super::answer_write(d, &taken(args)?))
+    wired(page::answer_write(d, &taken(args)?))
 }
 
 struct Tmp(PathBuf);
@@ -59,8 +69,8 @@ fn tmp(tag: &str, profiles: Option<&str>) -> Tmp {
             .map(|x| x.as_nanos())
             .unwrap_or(0)
     ));
-    std::fs::create_dir_all(d.join(super::super::links::bin_rel())).unwrap();
-    std::fs::write(d.join(super::super::links::bin_rel()).join("ccm"), "").unwrap();
+    std::fs::create_dir_all(d.join(aliases::links::bin_rel())).unwrap();
+    std::fs::write(d.join(aliases::links::bin_rel()).join("ccm"), "").unwrap();
     if let Some(t) = profiles {
         std::fs::write(d.join(relay_route_core::PROFILES_REL), t).unwrap();
     }
@@ -204,7 +214,7 @@ fn a_name_that_clashes_with_a_program_on_path_is_a_function_and_says_why() {
     let r = read(&t);
     for p in r["profiles"].as_array().unwrap() {
         let name = p["name"].as_str().unwrap();
-        let fun = super::super::wants_function(name, Shell::Posix);
+        let fun = aliases::wants_function(name, Shell::Posix);
         assert_eq!(p["kind"], if fun { "function" } else { "link" }, "{name}");
         assert_eq!(p["functionWhy"].is_string(), fun, "{name}");
     }
@@ -837,7 +847,7 @@ fn every_profile_says_the_line_that_starts_it_in_a_terminal_here() {
 #[test]
 fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
     let form = |v: Value| -> Result<Value, crate::common::said::Said> {
-        wired(super::form_of_line(&taken::<ProfilesFromLineReq>(&v)?))
+        wired(page::form_of_line(&taken::<ProfilesFromLineReq>(&v)?))
     };
     let plain = form(
         json!({"name": "w", "line": "claude --model opus", "cwd": "~/w", "sessionName": "dev"}),
