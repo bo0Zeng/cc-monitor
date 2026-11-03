@@ -1,10 +1,10 @@
 /**
  * 骨架外框秤的一键复算：打包探针 → Chromium（Playwright 的 headless shell）跑一遍 → 写金样。
- * 不进门禁（门禁读金样，`tests/frontend/ui/scale2-height-truth.vitest.ts` 末尾「骨架外框」那一组）。
+ * 不进门禁（门禁读金样，`tests/frontend/ui/skel-outer.vitest.ts`）。
  *
  * 用法（仓根）：`npx tsx tests/evidence/skel-run.ts`
- * 要一份 playwright：`npm i --prefix .scratch/pw playwright`（浏览器本体在 `~/.cache/ms-playwright`，秤 2 那份同用）。
- * 产物落 `.scratch/skel-probe/`（不进仓）；时区 / locale 与秤 2 同钉（语料带时间戳，字数跟着变）。
+ * 要一份 playwright：`npm i --prefix .scratch/pw playwright`（浏览器本体在 `~/.cache/ms-playwright`）。
+ * 产物落 `.scratch/skel-probe/`（不进仓）；时区 / locale 与 `vitest.config.ts` 同钉（语料带时间戳，字数跟着变）。
  */
 import { build } from "vite";
 import { createRequire } from "node:module";

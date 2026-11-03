@@ -19,6 +19,8 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
         ".create_dir(",
         // 文件管理面经句柄建（`Face::make_dir`）：用户目录那几处都是这一形。
         "face.make_dir(",
+        // 只给本人地建那一下的建法住 `platform-core`（monitor 同一份）：调它那一处也是一处建目录。
+        "platform_core::dir::private_dir",
     ];
     let mut out = Vec::new();
     let mut cur = String::new();

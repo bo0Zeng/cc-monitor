@@ -48,6 +48,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 窗口夹进工作区；不裁决业务，后端不链"),
     ("own-chan", Class::Contract, "通道的形状：只有本人连得上的那一种系统通道（套接字住只给本人的目录 · 收连接核对端 uid · 目录独占锁），后端在听、monitor 去连，两边对上同一份，不裁决"),
     ("pidwatch-core", Class::Contract, "平台原语：等一个进程退出（Linux pidfd · Windows 进程句柄，内核叫醒），后端（会话的 claude）与 monitor（登记着窗口的 shell）同一份；「还是不是那个进程」由调用方判，它不裁决"),
+    ("platform-core", Class::Contract, "平台原语：目录的跨进程锁 · 只给本人的目录 · 自家状态文件的原子写 · `/proc/<pid>/stat` 怎么切 · Windows 进程表 · CREATE_NO_WINDOW，后端与 monitor（经 host-core 也给文件窗口）同一份；只回系统原话与结构化结局，不说话、不裁决"),
     ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转口与常驻后端套接字的门牌、后端落点，两侧拼 / 拆同一份"),
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
     ("win-path-core", Class::Contract, "路径：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份，不裁决"),

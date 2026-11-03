@@ -38,14 +38,6 @@ pub(crate) struct TcpLine {
     pub(crate) inode: u64,
 }
 
-/// `/proc/<pid>/stat` 里要的三格。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StatLine {
-    pub(crate) ppid: u32,
-    pub(crate) name: String,
-    pub(crate) start: u64,
-}
-
 /// `TCP_ESTABLISHED`（内核打成两位十六进制）。
 const ESTABLISHED: &str = "01";
 
@@ -94,21 +86,6 @@ pub(crate) fn parse_proc_net_tcp(text: &str, fam: Family) -> Vec<TcpLine> {
             })
         })
         .collect()
-}
-
-/// `/proc/<pid>/stat` 一行 ⇒ 父进程号 · 名字 · 启动时刻。名字夹在第一个左括号与**最后一个**右括号之间（名字里可以有括号与空格）。
-pub(crate) fn parse_stat(line: &str) -> Option<StatLine> {
-    let open = line.find('(')?;
-    let close = line.rfind(')')?;
-    if close <= open {
-        return None;
-    }
-    let name = line[open + 1..close].to_string();
-    let rest: Vec<&str> = line[close + 1..].split_whitespace().collect();
-    // 右括号之后：state(3) ppid(4) … starttime(22)
-    let ppid = rest.get(1)?.parse::<u32>().ok()?;
-    let start = super::proc::parse_starttime_from_stat(line)?;
-    Some(StatLine { ppid, name, start })
 }
 
 /// fd 链接 `socket:[N]` ⇒ N。
@@ -190,7 +167,7 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
     let proc: Vec<serde_json::Value> = pids
         .iter()
         .filter_map(|&pid| {
-            let s = parse_stat(
+            let s = platform_core::proc::parse_stat(
                 &Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?,
             )?;
             Some(
