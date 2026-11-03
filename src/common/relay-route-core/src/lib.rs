@@ -997,6 +997,15 @@ const SET_GROUPS_MAX_BYTES: Cap = Cap {
     bytes: 1 << 20,
     over: Over::Reject,
 };
+/// 组的待补：改名 · 解散发给各片时没送到的那几台，这一端欠它们的那几句（本机后端替这一端记，`history/groups_owed.rs`；
+/// 那台再答 `groups-here` 时补发、补成了消掉）。
+pub const GROUPS_OWED_FILE: Decl<State> =
+    Decl::<State>::json(".cc-monitor/groups-owed.json", 1, 1, GROUPS_OWED_MAX_BYTES);
+/// 待补那一份的读上限（一条几十字节，台数 × 组数封顶）。
+const GROUPS_OWED_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::Reject,
+};
 /// 一份轮换策略（`strategies/` 底下一份一个 `.rhai`，用户自己的源码）。
 pub const STRATEGY_SOURCE_FILE: Decl<State> = Decl::<State>::foreign(
     ".cc-monitor/strategies/<id>.rhai",
@@ -1043,6 +1052,7 @@ const OWN_FILES: &[Row] = &[
     CC_BUS_INBOX_FILE.row,
     ANSWER_PLUGIN_FILE.row,
     SET_GROUPS_FILE.row,
+    GROUPS_OWED_FILE.row,
     STRATEGY_SOURCE_FILE.row,
 ];
 

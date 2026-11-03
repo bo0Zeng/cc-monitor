@@ -14,6 +14,8 @@
 //! | G10 | 这台给的那几格照清单那一行出：改过的标题优先、记录路径 · 号 · 目录照行；清单里没有的照活会话表画样子、标题照注解 |
 //! | G11 | 改名 · 解散发给每一片：本机那一片当场写，转给别的台的那一问只写那台自己；没答的那台照实列进 `missed`；没有那一组的片不动 |
 //! | G12 | 解散在那一片摘掉每条会话身上的那一组、记录删掉，会话别的格不动 |
+//! | G13 | ★ B 改名时 E 没连上 ⇒ `missed` 有 E、记下待补；E 再答 `groups-here` ⇒ 给 E 补发（只写 E 自己）、E 那一片合出来是新名字、那一条消掉 |
+//! | G14 | 补发没送成 ⇒ 那一条留着、合的照那台原样；到期的（那台那一片已没有那一组）不补发也消掉 |
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
@@ -97,9 +99,11 @@ async fn read_at(
         peers,
         kept,
         now_ms,
+        &[],
     )
     .await
     .expect("合得出")
+    .0
 }
 
 fn machine<'a>(r: &'a GroupsRead, name: &str) -> &'a Read {
@@ -283,6 +287,7 @@ async fn g5_asking_another_machine_without_a_deadline_is_bad_args() {
         &Peers::new(&[]),
         &Kept::default(),
         0,
+        &[],
     )
     .await;
     assert!(matches!(got, Err(GroupsReadErr::BadArgs(_))));
@@ -672,4 +677,185 @@ async fn g12_dissolve_takes_the_group_off_every_session_in_the_slice() {
     assert_eq!(book.keys().collect::<Vec<_>>(), ["g2"]);
     assert!(t["s1"].groups.is_empty());
     assert_eq!(t["s2"].groups, vec!["g2".to_string()], "别的组不动");
+}
+
+/// 那几台的常驻：`groups-here` 答 `here`，`groups-write` 答 `write`（缺 ⇒ 那一问常驻不在）；记下每一问。
+struct ByCommand {
+    here: String,
+    write: Option<String>,
+    asked: std::sync::Mutex<Vec<(String, Value)>>,
+}
+
+impl ByCommand {
+    fn writes(&self) -> Vec<Value> {
+        self.asked
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, l)| l["cmd"] == "groups-write")
+            .map(|(_, l)| l.clone())
+            .collect()
+    }
+}
+
+impl Remote for ByCommand {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
+    {
+        unreachable!("问常驻走 run_coded")
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Said>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let line: Value = serde_json::from_str(stdin.as_deref().unwrap_or("")).unwrap();
+            let write = line["cmd"] == "groups-write";
+            self.asked.lock().unwrap().push((command, line));
+            if write {
+                self.write.clone().ok_or_else(|| {
+                    Said::new(crate::wire::listen::CALL_ABSENT, "absent".to_string())
+                })
+            } else {
+                Ok(self.here.clone())
+            }
+        })
+    }
+}
+
+/// B 那一台：改名 g1 → 乙，发给本机与 E（E 的常驻不在）⇒ 没送到的那几台记进待补。
+async fn rename_missing_e(own: &crate::platform::fs::Own) -> crate::history::groups_owed::Owed {
+    write(own, mv("s1", Some(rec("g1", "甲", 1, 1)), None), 2).unwrap();
+    let req = GroupsWriteReq::Rename {
+        id: "g1".into(),
+        name: "乙".into(),
+        machines: vec![m(cmd_wire::LOCAL), m("E")],
+    };
+    let got = send_with(
+        req.clone(),
+        |r| write_at(own, r, 50),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["E"]),
+        &Peers::new(&[]),
+    )
+    .await
+    .unwrap();
+    let GroupsWritten::Sent { missed, .. } = &got else {
+        panic!("{got:?}")
+    };
+    let who: Vec<String> = missed.iter().map(|x| x.origin.to_string()).collect();
+    assert_eq!(who, ["E"]);
+    let mut owed = crate::history::groups_owed::Owed::default();
+    owe(&mut owed, &req, missed, 50);
+    owed
+}
+
+/// E 那一片：g1 还叫「甲」（named 1），组员 e。
+fn e_slice() -> String {
+    wire(&slice(
+        vec![rec("g1", "甲", 1, 1)],
+        vec![member("e", &["g1"], false, WireLife::Ended { by: None })],
+    ))
+}
+
+#[tokio::test]
+async fn g13_a_rename_that_missed_e_is_owed_and_sent_once_e_answers_again() {
+    let d = temp_dir("owed");
+    let own = own_at(&d);
+    let owed = rename_missing_e(&own).await;
+    assert_eq!(owed.owed.len(), 1, "E 那一组记一条：{owed:?}");
+    let sent = serde_json::to_string(&GroupsWritten::Sent {
+        id: "g1".into(),
+        missed: vec![],
+    })
+    .unwrap();
+    let e = ByCommand {
+        here: e_slice(),
+        write: Some(sent),
+        asked: Default::default(),
+    };
+    let (got, settled) = read_with(
+        &[m("E")],
+        std::future::ready(Ok(GroupsHere::default())),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["E"]),
+        &e,
+        &Kept::default(),
+        1_000,
+        &owed.owed,
+    )
+    .await
+    .unwrap();
+    let writes = e.writes();
+    assert_eq!(writes.len(), 1, "给 E 补发一次：{writes:?}");
+    let s = writes[0].to_string();
+    assert!(s.contains("\"rename\"") && s.contains("乙"), "{s}");
+    assert!(
+        s.contains(&format!("\"machines\":[\"{}\"]", cmd_wire::LOCAL)),
+        "补发的那一问只写 E 自己：{s}"
+    );
+    assert_eq!(
+        got.groups[0].name.as_deref(),
+        Some("乙"),
+        "E 那一片合出来是新名字"
+    );
+    assert_eq!(settled, owed.owed, "补成了 ⇒ 那一条消掉");
+}
+
+#[tokio::test]
+async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
+    let d = temp_dir("owed-miss");
+    let own = own_at(&d);
+    let owed = rename_missing_e(&own).await;
+    let e = ByCommand {
+        here: e_slice(),
+        write: None,
+        asked: Default::default(),
+    };
+    let (got, settled) = read_with(
+        &[m("E")],
+        std::future::ready(Ok(GroupsHere::default())),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["E"]),
+        &e,
+        &Kept::default(),
+        1_000,
+        &owed.owed,
+    )
+    .await
+    .unwrap();
+    assert_eq!(e.writes().len(), 1);
+    assert!(settled.is_empty(), "没送成 ⇒ 留着：{settled:?}");
+    assert_eq!(got.groups[0].name.as_deref(), Some("甲"), "合的照那台原样");
+    let gone = ByCommand {
+        here: wire(&GroupsHere::default()),
+        write: None,
+        asked: Default::default(),
+    };
+    let (_, settled) = read_with(
+        &[m("E")],
+        std::future::ready(Ok(GroupsHere::default())),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["E"]),
+        &gone,
+        &Kept::default(),
+        1_000,
+        &owed.owed,
+    )
+    .await
+    .unwrap();
+    assert!(gone.writes().is_empty(), "那台那一片已没有那一组 ⇒ 不补发");
+    assert_eq!(settled, owed.owed, "到期 ⇒ 消掉");
 }

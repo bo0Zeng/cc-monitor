@@ -12,7 +12,8 @@
 //!     名字取 named 最新的那一片 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
 //!     从没答过 ⇒ 那台读不到；哪一片都没有那一组的记录、只有组员指着它 ⇒ 名字不知道（组照出、组员不漏）
 //! groups-write ⇒ make 只起 id；move 只写组员那一台（进组抄记录 · 最后一位出组删记录）；
-//!     rename · dissolve 由收到的那台发给各片（ask_each），没送到的那几台照实列进回包（下次连上补发这一步还没做）
+//!     rename · dissolve 由收到的那台发给各片（ask_each），没送到的那几台照实列进回包、记进这一端的待补（`groups_owed.rs`）；
+//!     那台下一次答这一端的 groups-here ⇒ 照它那一片判一次，该补的补发（只写那台自己），补成了 · 到期了消掉
 //! ```
 //!
 //! - 组 id 全局不重（起它的那一台随机起），所以注解上只记 id，不记别的台（机器名是相对问的那一端的，记了也对不上）。
@@ -31,6 +32,7 @@ use cmd_wire::Machine;
 use face_core::groups::{merge, Half};
 use serde::{Deserialize, Serialize};
 
+use super::groups_owed as owed;
 use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Named, Table};
 use crate::common::said::Said;
 use crate::dial::remote_ask::Remote;
@@ -209,29 +211,41 @@ impl Command for GroupsReadCmd {
 }
 
 impl crate::wire::typed::Handle for GroupsReadCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    async fn run(
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
         req: GroupsReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<GroupsRead, GroupsReadErr> {
-        let local = async {
-            tokio::task::spawn_blocking(here_now)
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r)
-                .map_err(Said::from)
-        };
-        read_with(
-            &req.machines,
-            local,
-            &cx.tz,
-            cx.until,
-            &crate::dial::remote_ask::REACH,
-            &crate::dial::remote_ask::DialRemote,
-            &KEPT,
-            crate::common::time::now_ms() as i64,
-        )
-        .await
+    ) -> impl std::future::Future<Output = Result<GroupsRead, GroupsReadErr>> + Send + 'static {
+        let (cx, own) = cx.split();
+        async move {
+            let local = async {
+                tokio::task::spawn_blocking(here_now)
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r)
+                    .map_err(Said::from)
+            };
+            // 待补读不懂 ⇒ 这一问不补（不覆盖那一份），照常合。
+            let owed = owed::load_at(&own).unwrap_or_default();
+            let (read, settled) = read_with(
+                &req.machines,
+                local,
+                &cx.tz,
+                cx.until,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
+                &KEPT,
+                crate::common::time::now_ms() as i64,
+                &owed.owed,
+            )
+            .await?;
+            if !settled.is_empty() {
+                if let Err(e) = owed::edit_at(&own, |o| o.owed.retain(|d| !settled.contains(d))) {
+                    tracing::warn!(target: "groups", reason = %e.said, "groups-owed not updated");
+                }
+            }
+            Ok(read)
+        }
     }
 }
 
@@ -253,15 +267,18 @@ pub async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String
         &crate::dial::remote_ask::DialRemote,
         &KEPT,
         crate::common::time::now_ms() as i64,
+        &[],
     )
     .await
+    .map(|(read, _)| read)
     .map_err(|e| format!("{e:?}"))
 }
 
-/// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻由调用方给）。
+/// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻 · 这一端欠各台的那几句由调用方给）。
+/// 回并好的一份 ＋ 这一问了结了的那几条待补（补成了 · 到期了；调用方从盘上那一份里消掉）。
 #[expect(
     clippy::too_many_arguments,
-    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 期限 · 此刻都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
+    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 期限 · 此刻 · 待补都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
 )]
 pub(crate) async fn read_with(
     machines: &[Machine],
@@ -272,8 +289,9 @@ pub(crate) async fn read_with(
     remote: &dyn Remote,
     kept: &Kept,
     now_ms: i64,
-) -> Result<GroupsRead, GroupsReadErr> {
-    let got = crate::dial::remote_ask::ask_each::<GroupsHereCmd, _>(
+    owed: &[owed::Debt],
+) -> Result<(GroupsRead, Vec<owed::Debt>), GroupsReadErr> {
+    let mut got = crate::dial::remote_ask::ask_each::<GroupsHereCmd, _>(
         machines,
         &crate::wire::typed::NoArgs::default(),
         local,
@@ -284,6 +302,26 @@ pub(crate) async fn read_with(
     )
     .await
     .map_err(GroupsReadErr::BadArgs)?;
+    // 欠的那台已不在机器表 ⇒ 到期；答了的那几台照它那一片补 · 丢。
+    let mut settled: Vec<owed::Debt> = owed
+        .iter()
+        .filter(|d| !table.has(&d.machine.to_string()))
+        .cloned()
+        .collect();
+    for (origin, r) in &mut got {
+        let Ok(here) = r else { continue };
+        for debt in owed.iter().filter(|d| d.machine == *origin) {
+            if settled.contains(debt) {
+                continue;
+            }
+            if owed::due(debt, here) == owed::Due::Drop {
+                settled.push(debt.clone());
+            } else if resend(debt, tz, until, table, remote).await {
+                owed::apply(debt, here);
+                settled.push(debt.clone());
+            }
+        }
+    }
     let mut halves: Vec<(Machine, Half)> = Vec::new();
     let mut heads = Vec::new();
     {
@@ -318,7 +356,68 @@ pub(crate) async fn read_with(
             halves.push((origin, half));
         }
     }
-    Ok(merge(&halves, heads))
+    Ok((merge(&halves, heads), settled))
+}
+
+/// 补发欠那台的一句（`groups-write`，转过去的那一问只写那台自己）：那台答了、它那一片写成了 ⇒ 真。
+async fn resend(
+    debt: &owed::Debt,
+    tz: &crate::common::time::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn Remote,
+) -> bool {
+    let here = vec![Machine::named(cmd_wire::LOCAL)];
+    let req = match &debt.what {
+        owed::Owe::Rename { name, .. } => GroupsWriteReq::Rename {
+            id: debt.id.clone(),
+            name: name.clone(),
+            machines: here,
+        },
+        owed::Owe::Dissolve => GroupsWriteReq::Dissolve {
+            id: debt.id.clone(),
+            machines: here,
+        },
+    };
+    // 欠的总是别的台：本机那一片当场就写了，不会欠。
+    let local = std::future::ready(Err(Said::from("groups-owed: never owed to this machine")));
+    let got = crate::dial::remote_ask::ask_each::<GroupsWriteCmd, _>(
+        std::slice::from_ref(&debt.machine),
+        &req,
+        local,
+        tz,
+        until,
+        table,
+        remote,
+    )
+    .await;
+    matches!(
+        got.as_deref(),
+        Ok([(_, Ok(GroupsWritten::Sent { missed, .. }))]) if missed.is_empty()
+    )
+}
+
+/// `rename` · `dissolve` 发完（`missed` 没送到的那几台）⇒ 记进这一端的待补（[`owed::note`]）；别的几样不欠。
+pub(crate) fn owe(owed: &mut owed::Owed, req: &GroupsWriteReq, missed: &[GroupMissed], now: i64) {
+    let (id, machines, what) = match req {
+        GroupsWriteReq::Rename { id, name, machines } => (
+            id,
+            machines,
+            owed::Owe::Rename {
+                name: name.trim().to_string(),
+                named: now,
+            },
+        ),
+        GroupsWriteReq::Dissolve { id, machines } => (id, machines, owed::Owe::Dissolve),
+        _ => return,
+    };
+    let missed: Vec<Machine> = missed.iter().map(|m| m.origin.clone()).collect();
+    let sent: Vec<Machine> = machines
+        .iter()
+        .filter(|m| !m.is_local() && !missed.contains(m))
+        .cloned()
+        .collect();
+    owed::note(owed, id, &sent, &missed, what);
 }
 
 /// 格目录的样本（`faces/cells_catalog.rs`）：真合（[`merge`]）出来的一份 —— 名字取自这一问答的那片 · 上次那片各一组，
@@ -733,15 +832,30 @@ impl crate::wire::typed::Handle for GroupsWriteCmd {
     {
         let (cx, own) = cx.split();
         async move {
-            send_with(
-                req,
-                |r| write_at(&own, r, crate::common::time::now_ms() as i64),
+            let now = crate::common::time::now_ms() as i64;
+            let got = send_with(
+                req.clone(),
+                |r| write_at(&own, r, now),
                 &cx.tz,
                 cx.until,
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
             )
-            .await
+            .await?;
+            // 没送到的那几台记进待补（那台再答 `groups-here` 时补发）；记不下照实留一行日志，这一问照答。
+            let other = match &req {
+                GroupsWriteReq::Rename { machines, .. }
+                | GroupsWriteReq::Dissolve { machines, .. } => {
+                    machines.iter().any(|m| !m.is_local())
+                }
+                _ => false,
+            };
+            if let (true, GroupsWritten::Sent { missed, .. }) = (other, &got) {
+                if let Err(e) = owed::edit_at(&own, |o| owe(o, &req, missed, now)) {
+                    tracing::warn!(target: "groups", reason = %e.said, "groups-owed not noted");
+                }
+            }
+            Ok(got)
         }
     }
 }
