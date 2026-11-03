@@ -243,7 +243,10 @@ pub(crate) const FILETIME_TICKS_PER_SEC: u64 = 10_000_000;
 /// 早于 1970 的值 ⇒ `None`（不是一个会话进程能有的起始时刻）。纯函数，放在 cfg 外 ⇒ 在 Linux 上就测得到。
 #[cfg_attr(
     all(not(windows), not(test)),
-    expect(dead_code, reason = "FILETIME 换算放在平台门外好测；生产段只有 Windows 臂用它")
+    expect(
+        dead_code,
+        reason = "FILETIME 换算放在平台门外好测；生产段只有 Windows 臂用它"
+    )
 )]
 pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
     filetime

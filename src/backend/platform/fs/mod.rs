@@ -35,7 +35,10 @@ const WIN_HELD: [i32; 2] = [32, 33];
 /// （换名到别的程序独占着的文件，系统回的是拒绝访问）；别的 ⇒ `None`（照原错，真没权限就是没权限）。
 #[cfg_attr(
     all(not(windows), not(test)),
-    expect(dead_code, reason = "纯函数放在平台门外好测；生产段只有 Windows 臂用它")
+    expect(
+        dead_code,
+        reason = "纯函数放在平台门外好测；生产段只有 Windows 臂用它"
+    )
 )]
 pub(crate) fn replace_refusal(rename: i32, probe: Option<i32>) -> Option<std::io::ErrorKind> {
     let held = |c: i32| WIN_HELD.contains(&c);

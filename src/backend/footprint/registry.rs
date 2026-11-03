@@ -434,10 +434,7 @@ pub struct EnvEntry {
     /// 给人看的那一句（取过文的）。
     pub why: String,
     /// 代码住址（从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "不上界面，只有判据核它")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "不上界面，只有判据核它"))]
     pub site: &'static str,
     pub backing: EnvBacking,
 }
