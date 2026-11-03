@@ -776,9 +776,11 @@ fn packed_calls(c: &Value) -> Vec<Vec<rhai::Dynamic>> {
     let ast = AST.get_or_init(|| probe_engine().compile(PACK).expect("编得过"));
     CALLS.with(|x| x.borrow_mut().clear());
     let ctx = rhai::serde::to_dynamic(c).expect("ctx");
-    probe_engine()
-        .call_fn::<rhai::Dynamic>(&mut rhai::Scope::new(), ast, "pack", (ctx,))
-        .unwrap_or_else(|e| panic!("跑出错（{}）：{e}", c["case"]));
+    drop(
+        probe_engine()
+            .call_fn::<rhai::Dynamic>(&mut rhai::Scope::new(), ast, "pack", (ctx,))
+            .unwrap_or_else(|e| panic!("跑出错（{}）：{e}", c["case"])),
+    );
     CALLS.with(|x| x.take())
 }
 

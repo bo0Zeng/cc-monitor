@@ -2,7 +2,7 @@
 
 use super::{UpstreamPick, Upstreams};
 
-pub(crate) fn with_pick(mut u: Upstreams, agent: &'static str, pick: UpstreamPick) -> Upstreams {
+pub fn with_pick(mut u: Upstreams, agent: &'static str, pick: UpstreamPick) -> Upstreams {
     u.by_agent.insert(agent, pick);
     u
 }

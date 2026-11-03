@@ -35,7 +35,7 @@ fn quota(tag: &str) -> QuotaRead {
         ))),
         hop: Hop::new(
             Arc::new(RotationStore::at(Some(root.join(rotation::FILE_NAME)))),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::new(Ledger::at(Some(root.join(ledger::FILE_NAME)))),
             Some(root.to_path_buf()),
             Arc::new(move |_| {
@@ -43,7 +43,7 @@ fn quota(tag: &str) -> QuotaRead {
                     accounts: ["work", "personal"]
                         .iter()
                         .map(|id| {
-                            crate::accounts::upstream_select::rotate::tests::book_row(
+                            crate::accounts::upstream_select::rotate::test_support::book_row(
                                 &id.to_string(),
                                 Some(accts.join(id)),
                                 false,

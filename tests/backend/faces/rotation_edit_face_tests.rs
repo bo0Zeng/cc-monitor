@@ -2,7 +2,7 @@
 //! 策略文件加 / 复制 / 改名 / 删 · 设时区。临时家目录。
 
 use super::*;
-use crate::accounts::quota::setup::form::RotSeg;
+use cmd_wire::rotation::RotSeg;
 use crate::faces::rotation_view_face::tests::{Home, S1, S2};
 use serde_json::{json, Value};
 

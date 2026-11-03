@@ -4,7 +4,7 @@
 use crate::accounts::quota::rules::code::{self, fail, Code};
 use crate::accounts::quota::strategy::{Fail, FailKind};
 /// 头里能写成一句、也能分语言写的字（线上形住 `cmd-wire`）。
-pub(crate) use cmd_wire::rotation::StrategyText as Text;
+pub use cmd_wire::rotation::StrategyText as Text;
 use serde::{Deserialize, Serialize};
 
 /// 头那一段的开头与结尾。
@@ -14,29 +14,29 @@ const HEAD_CLOSE: &str = "\n---*/";
 /// JSON 头。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Head {
+pub struct Head {
     pub(crate) format: u32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) time_varying: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) tz: Option<String>,
+    pub tz: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) tz_unknown: bool,
+    pub tz_unknown: bool,
     /// 这份策略自己的设置（形状它自己定，后端原样交给它）。
-    pub(crate) settings: serde_json::Value,
+    pub settings: serde_json::Value,
     /// 设置怎么画、怎么校验：界面照它画，后端照它校验形状，不认意思。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) form: Vec<super::form::Cell>,
+    pub form: Vec<super::form::Cell>,
 }
 
 /// 这一版的格式号。
 pub(crate) const FORMAT: u32 = 5;
 
 /// 一份读懂了的策略文件：说明 ＋ 头 ＋ 编好的代码。
-pub(crate) struct File {
+pub struct File {
     /// 文件开头那段 `//` 注释：去掉行首的 `// `，一行一行用 `\n` 接起来，空行是分段。界面只显示它。
-    pub(crate) about: String,
-    pub(crate) head: Head,
+    pub about: String,
+    pub head: Head,
     pub(crate) code: std::sync::Arc<Code>,
     /// 代码那一段原文，前面垫好空行（副本存的就是它）。
     pub(crate) code_text: String,
@@ -101,7 +101,7 @@ fn about_of(lead: &str) -> String {
 }
 
 /// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
-pub(crate) fn parse(source: &str) -> Result<File, Fail> {
+pub fn parse(source: &str) -> Result<File, Fail> {
     let (lead, head, code) = split(source)?;
     let about = about_of(lead);
     let head: Head = serde_json::from_str(head).map_err(|e| {
@@ -141,7 +141,7 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
 }
 
 /// ★ 换掉头那一块；说明和代码原样接回去，一个字节不动（存设置那一下）。
-pub(crate) fn with_head(source: &str, head: &Head) -> Result<String, Fail> {
+pub fn with_head(source: &str, head: &Head) -> Result<String, Fail> {
     let (lead, _, code) = split(source)?;
     let json = serde_json::to_string_pretty(head)
         .map_err(|e| fail(FailKind::BadShape, None, e.to_string()))?;

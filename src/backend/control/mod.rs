@@ -89,3 +89,8 @@ mod listen_on_control_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/host/on_control_tests.rs"]
 mod host_on_control_tests;
+
+// 账号域里在 app 里登录一个号那几条（连接号跟生产同一个发号器 `asks::Desk` 取；账号域那个包够不到这里）。
+#[cfg(test)]
+#[path = "../../../tests/backend/accounts/sign_in_tests.rs"]
+mod accounts_sign_in_tests;

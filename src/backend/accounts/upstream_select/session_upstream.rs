@@ -17,16 +17,16 @@ use std::path::Path;
 
 /// 一条会话的上游描述。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct UpstreamDesc {
+pub struct UpstreamDesc {
     /// agent 继承来的出网设置变量（名, 值），原样。可能带代理鉴权：只落在本人 0700 的目录里，不进日志。
-    pub(crate) egress: Vec<(String, String)>,
+    pub egress: Vec<(String, String)>,
     /// 用户自己的上游地址（agent 继承来的上游地址变量，不是我们那一形）原样；`None` ＝ 照这一家的默认上游。
     /// 有它 ⇒ 中转把这条会话的直通请求发到这里，鉴权头原样（[`super::Accounts`] 的 `resolve`）。
-    pub(crate) base: Option<String>,
+    pub base: Option<String>,
     /// 起 agent 的那个进程。
-    pub(crate) pid: u32,
+    pub pid: u32,
     /// 写下的时刻（unix 秒）。
-    pub(crate) at: u64,
+    pub at: u64,
 }
 
 impl UpstreamDesc {
@@ -52,7 +52,7 @@ const DESC: crate::common::own_state::Doc<UpstreamDesc> =
 const NOTES_DIR: &str = relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
 
 /// 留下来处 `origin` 那条会话的描述；顺手清掉 `alive` 答不在的进程的那几份。来处不过段闸 · 没有数据目录 ⇒ 拒。
-pub(crate) fn leave(
+pub fn leave(
     own: &Own,
     origin: &str,
     desc: &UpstreamDesc,
@@ -93,7 +93,7 @@ pub(crate) fn leave(
 }
 
 /// 来处 `origin` 那条会话的描述（`data` ＝ 数据目录）。没有 · 读不懂 · 来处不过段闸 ⇒ `None`。
-pub(crate) fn of(data: &Path, origin: &str) -> Option<UpstreamDesc> {
+pub fn of(data: &Path, origin: &str) -> Option<UpstreamDesc> {
     let f = data.join(NOTES_DIR).join(SUB).join(file_name(origin).ok()?);
     match DESC.read(&f) {
         crate::common::own_state::Read::Present(d) => Some(d),
@@ -134,7 +134,7 @@ pub(crate) fn own_upstream_of(data: &Path, sid: &str) -> bool {
 }
 
 /// [`own_upstream_of`]，数据目录照这台的。
-pub(crate) fn own_upstream_here(sid: &str) -> bool {
+pub fn own_upstream_here(sid: &str) -> bool {
     crate::platform::paths::data_home().is_some_and(|d| own_upstream_of(&d, sid))
 }
 

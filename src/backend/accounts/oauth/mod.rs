@@ -19,15 +19,15 @@ use serde_json::{Map, Value};
 use std::path::Path;
 
 /// 令牌端点：往哪儿续 ＋ 那一发的期限（期限由调用方给）。
-pub(crate) struct TokenEndpoint {
-    pub(crate) base: Base,
-    pub(crate) rest: String,
-    pub(crate) deadline: std::time::Duration,
+pub struct TokenEndpoint {
+    pub base: Base,
+    pub rest: String,
+    pub deadline: std::time::Duration,
 }
 
 impl TokenEndpoint {
     /// 那一家登记的令牌端点。
-    pub(crate) fn of(face: &LoginFace, deadline: std::time::Duration) -> Option<Self> {
+    pub fn of(face: &LoginFace, deadline: std::time::Duration) -> Option<Self> {
         let (scheme_host, rest) = split_url(face.token_url)?;
         Some(Self {
             base: Base::parse(scheme_host).ok()?,

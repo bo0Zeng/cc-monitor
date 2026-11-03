@@ -720,8 +720,16 @@ pub(super) mod tests {
             .filter(|l| !l.is_empty())
             .collect();
         // 挂判据的三行桩（`#[cfg(test)]` ＋ `#[path = …]` ＋ 私有的 `mod …;`）不是代码：中转宿主那几条引到账号域的判据挂在这里。
+        // 包根的样板（账号域是独立的包 `backend-accounts`）也不是代码：开头那一段 `#![…]`（测试段放开）· `extern crate self as …;` ·
+        // 每个依赖一行 `use backend_… ;` · 测试档的 `#[cfg(test)]` ＋ 一行 `use …;` 或 `#[used]` ＋ `static TEST_HOME …;`。
         let mut hub_lines: Vec<&str> = Vec::new();
         let mut i = 0;
+        if all_lines.first().is_some_and(|l| l.starts_with("#![")) {
+            while i < all_lines.len() && !all_lines[i].ends_with("]") {
+                i += 1;
+            }
+            i += 1;
+        }
         while i < all_lines.len() {
             let stub = all_lines[i] == "#[cfg(test)]"
                 && all_lines
@@ -730,8 +738,23 @@ pub(super) mod tests {
                 && all_lines
                     .get(i + 2)
                     .is_some_and(|l| l.starts_with("mod ") && l.ends_with(';'));
-            if stub {
+            let test_use = all_lines[i] == "#[cfg(test)]"
+                && all_lines
+                    .get(i + 1)
+                    .is_some_and(|l| l.starts_with("use ") && l.ends_with(';'));
+            let test_home = all_lines[i] == "#[cfg(test)]"
+                && all_lines.get(i + 1) == Some(&"#[used]")
+                && all_lines
+                    .get(i + 2)
+                    .is_some_and(|l| l.starts_with("static TEST_HOME"));
+            let package = all_lines[i].starts_with("extern crate self as ")
+                || (all_lines[i].starts_with("use backend_") && all_lines[i].ends_with(';'));
+            if stub || test_home {
                 i += 3;
+            } else if test_use {
+                i += 2;
+            } else if package {
+                i += 1;
             } else {
                 hub_lines.push(all_lines[i]);
                 i += 1;
@@ -819,7 +842,7 @@ pub(super) mod tests {
             "fn f() { super::super::manage::wire::run_change(&[]); }\n".to_string(),
         );
         assert!(
-            !cross_refs(&[&fake_iso], &[sel_mod.clone()], &sel_vocab).is_empty(),
+            !cross_refs(&[&fake_iso], std::slice::from_ref(&sel_mod), &sel_vocab).is_empty(),
             "正控：账号库管理引上游选择没被认出来"
         );
         assert!(
@@ -827,7 +850,7 @@ pub(super) mod tests {
             "正控：上游选择引账号库管理没被认出来"
         );
 
-        let fwd = cross_refs(&others, &[sel_mod.clone()], &sel_vocab);
+        let fwd = cross_refs(&others, std::slice::from_ref(&sel_mod), &sel_vocab);
         assert!(
             fwd.is_empty(),
             "🔴 账号库管理那一块引用了中转的上游选择：\n  {}\n\
@@ -841,7 +864,7 @@ pub(super) mod tests {
             back.join("\n  ")
         );
         // 服务块：不许引上游选择（依赖方向只许上游选择 → 它们），也不许引账号库管理（不给上游选择留绕过去的路）。
-        let up = cross_refs(&services, &[sel_mod.clone()], &sel_vocab);
+        let up = cross_refs(&services, std::slice::from_ref(&sel_mod), &sel_vocab);
         assert!(
             up.is_empty(),
             "🔴 账号域的服务块引用了上游选择：\n  {}",

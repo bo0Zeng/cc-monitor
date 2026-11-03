@@ -254,7 +254,7 @@ fn a_slot_cell_is_written_once_by_state() {
 #[test]
 fn the_usage_cell_is_written_by_the_core() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
     let shown = |r: Option<&QuotaReading>, kind: Kind| {
         let mut q = show(r.map(|r| (r, NOW)), facts(kind), NOW, &slot);
         q.stamp(&clock);
@@ -403,89 +403,6 @@ fn per_pct_is_written_for_windows_and_the_slot_that_took_them() {
     assert_eq!(slot_pp, vec![("5h", pp("2.1M")), ("7d", pp("25K"))]);
 }
 
-/// ★ 更细的窗口（窗口键带 `:`）在 7d 与超额之间各出一行（`rows`）：名字照窗口键（`7d:opus` ⇒「7d opus」，原名不上屏）·
-/// 值带语气（快满 warn · 用满 fail）· ↻ · 距今；重置已过 ⇒ 值「—」、↻.. 已过。5h · 7d · 不算用量的窗口不另出行。
-#[test]
-fn finer_windows_each_get_a_row_between_7d_and_overage() {
-    use cmd_wire::quota::Cell;
-    let mut o = observed();
-    o.reading.windows.push(win("overage", 1.0, LATER));
-    o.reading
-        .windows
-        .push(win("seven_day_sonnet", 0.5, EARLIER));
-    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
-    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
-    let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
-    sh.windows = windows_of(&o, &key, NOW);
-    let a = crate::faces::quota_read::account_of(
-        crate::faces::quota_read::Seen {
-            agent: o.agent.clone(),
-            account: o.account.clone(),
-            seen_at: o.seen_at,
-            reading: o.reading.clone(),
-            windows_seen: Default::default(),
-            show: sh,
-        },
-        &clock,
-    );
-    let cell = |t: String, tone| Cell {
-        text: Words(t),
-        tone,
-    };
-    let plain = |t: String| cell(t, Tone::Plain);
-    let tier = |t: &str| copy_core::copy_text("acct.window.tier", &[("slot", "7d"), ("tier", t)]);
-    let at = LATER + 86_400;
-    let rows: Vec<&Vec<Cell>> = a
-        .rows
-        .iter()
-        .filter(|r| r[0].text.0.starts_with("7d "))
-        .collect();
-    assert_eq!(
-        rows,
-        vec![
-            &vec![
-                plain(tier("opus")),
-                cell(
-                    copy_core::copy_text("acct.val.pct", &[("pct", "85")]),
-                    Tone::Warn
-                ),
-                plain(copy_core::copy_text(
-                    "acct.reset.at",
-                    &[("at", &clock.text(at).0)]
-                )),
-                plain(clock.rel(at).unwrap().0),
-            ],
-            &vec![
-                plain(tier("sonnet")),
-                plain(copy_core::copy_text("acct.val.none", &[])),
-                plain(copy_core::copy_text(
-                    "acct.reset.past",
-                    &[("at", &clock.text(EARLIER).0)]
-                )),
-            ],
-        ]
-    );
-    let labels: Vec<&str> = a.rows.iter().map(|r| r[0].text.0.as_str()).collect();
-    let i7 = labels.iter().position(|l| *l == "7d").expect("7d 那一行");
-    let over = copy_core::copy_text("acct.row.over", &[]);
-    assert_eq!(
-        labels[i7 + 1..=i7 + 3],
-        [
-            tier("opus").as_str(),
-            tier("sonnet").as_str(),
-            over.as_str()
-        ],
-        "更细的窗口紧跟 7d、在超额之前，各一行：{labels:?}"
-    );
-    assert!(
-        a.rows
-            .iter()
-            .flatten()
-            .all(|c| !c.text.0.contains("seven_day") && !c.text.0.contains("7d:")),
-        "原名或窗口键上了屏：{labels:?}"
-    );
-}
-
 /// ★ 语义位取哪个窗口与事实同一个挑法：用得多的那个已经重置 ⇒ 取还在计时的那个，用满也不照重置前的数判。
 #[test]
 fn a_slot_takes_the_live_window_not_one_already_reset() {
@@ -506,7 +423,7 @@ fn a_slot_takes_the_live_window_not_one_already_reset() {
 #[test]
 fn slot_reset_text_is_the_rows_reset_cell() {
     let o = observed();
-    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
     let mut r = o.reading.clone();
     r.windows[1].resets_at = Some(EARLIER);
     r.windows[2].resets_at = Some(EARLIER);

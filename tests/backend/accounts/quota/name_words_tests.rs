@@ -24,7 +24,8 @@ fn the_names_cell_writes_home_and_both_slots() {
 /// 后端自己拼号名 / 位名的那几处都走这里（别处不许再写一份 `"5h" =>` / `== "_"` 取字）。
 #[test]
 fn no_other_backend_module_maps_slots_or_home_to_words() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = guard_core::addr::backend_src_root();
+    let root = root.as_path();
     let mut bad = Vec::new();
     // 摘掉那一处本身（它就是唯一住址）；判据住 tests/、不在被扫的这棵树里。
     for (p, src) in

@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 /// 一份配置（已解开）里信任过的目录（表不在 / 不是对象 ⇒ 空）。
-pub(crate) fn trusted(cells: &TrustCells, root: &Value) -> BTreeSet<String> {
+pub fn trusted(cells: &TrustCells, root: &Value) -> BTreeSet<String> {
     let Some(table) = root.get(cells.table).and_then(Value::as_object) else {
         return BTreeSet::new();
     };

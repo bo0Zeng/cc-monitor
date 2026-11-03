@@ -14,7 +14,7 @@ fn parsed() -> Option<&'static script::File> {
 }
 
 /// ★ 照编辑器那一份新建：号列表 ＝ `accounts`（照这个先后；空 ⇒ 开会话的号那一行）· 时区 ＝ `tz`，别的照声明默认。
-pub(crate) fn fresh(accounts: &[String], tz: Option<String>) -> String {
+pub fn fresh(accounts: &[String], tz: Option<String>) -> String {
     let Some(e) = parsed() else {
         return SOURCE.to_string();
     };
@@ -33,7 +33,7 @@ pub(crate) fn fresh(accounts: &[String], tz: Option<String>) -> String {
 }
 
 /// ★ 这一份是不是照编辑器那一份存出来的：代码与声明跟它此刻的一字不差（设置 · 时区 · 说明怎么改都还算）。
-pub(crate) fn made_by(f: &script::File) -> bool {
+pub fn made_by(f: &script::File) -> bool {
     parsed().is_some_and(|e| f.head.form == e.head.form && f.code_text.trim() == e.code_text.trim())
 }
 

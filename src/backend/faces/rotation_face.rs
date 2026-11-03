@@ -13,14 +13,14 @@ pub(crate) fn books() -> BookAt {
     })
 }
 
-/// 交给中转装配的「会话用哪份策略问谁」：跟着那份 `rotation.json` 的配置编辑层。
-pub(crate) fn adoptions_at() -> crate::accounts::quota::rules::AdoptionsAt {
-    std::sync::Arc::new(|store| std::sync::Arc::new(Setup::of(std::sync::Arc::clone(store))))
-}
-
-/// **常驻后端里起中转**（`main.rs` 调）：上游选择的装配口 ＋ 这台的账号库 · 配置编辑层。
+/// **常驻后端里起中转**（进程入口 `stream/entry.rs` 调）：上游选择的装配口 ＋ 这台的账号库 · 配置编辑层（「会话用哪份策略问谁」住 [`crate::accounts::quota::adoptions_at`]）。
 pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> String {
-    crate::accounts::upstream_select::host_relay(books(), adoptions_at(), tap, own)
+    crate::accounts::upstream_select::host_relay(
+        books(),
+        crate::accounts::quota::adoptions_at(),
+        tap,
+        own,
+    )
 }
 
 /// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。

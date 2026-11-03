@@ -17,7 +17,7 @@ const SAMPLES: [&str; 3] = [
 ];
 
 /// 第 `n` 份样例的原文（`n` ＝ 0 照号列表 · 1 离重置近 · 2 余量多；大于 2 ⇒ 最后一份）。
-pub(crate) fn of(n: usize) -> &'static str {
+pub fn of(n: usize) -> &'static str {
     SAMPLES[n.min(SAMPLES.len() - 1)]
 }
 

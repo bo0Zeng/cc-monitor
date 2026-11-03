@@ -39,7 +39,7 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
         ))),
         hop: Hop::new(
             Arc::new(RotationStore::at(Some(root.join(rotation::FILE_NAME)))),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::new(Ledger::at(Some(root.join(ledger::FILE_NAME)))),
             Some(root.to_path_buf()),
             Arc::new(move |_| {
@@ -47,7 +47,7 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
                     accounts: [("b", false), ("c", false), ("api", true)]
                         .iter()
                         .map(|(id, api)| {
-                            crate::accounts::upstream_select::rotate::tests::book_row(
+                            crate::accounts::upstream_select::rotate::test_support::book_row(
                                 &id.to_string(),
                                 Some(accts.join(id)),
                                 *api,

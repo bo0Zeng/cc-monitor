@@ -1598,7 +1598,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "wire.rs::run_change",
-                definition: "pub(crate) fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n    live: &dyn Fn() -> Vec<LiveSession>,\n) -> Result<Done, Said> {",
+                definition: "pub fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n    live: &dyn Fn() -> Vec<LiveSession>,\n) -> Result<Done, Said> {",
             }),
             uninstall: None,
         },

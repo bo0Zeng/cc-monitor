@@ -6,7 +6,7 @@ use crate::accounts::quota::strategy::{Fail, FailKind};
 use rhai::{Dynamic, Map, AST};
 
 /// 编好的代码（要有 `fn decide(ctx)`）。
-pub(crate) struct Code {
+pub struct Code {
     ast: AST,
 }
 
@@ -347,13 +347,13 @@ impl Code {
 pub(crate) const SIMULATE_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// 给一趟推演用的策略：累计耗时到了 [`SIMULATE_BUDGET`] 就不再调、报超时。
-pub(crate) struct Budgeted<'a> {
+pub struct Budgeted<'a> {
     inner: &'a dyn Strategy,
     spent: std::cell::Cell<std::time::Duration>,
 }
 
 impl<'a> Budgeted<'a> {
-    pub(crate) fn new(inner: &'a dyn Strategy) -> Self {
+    pub fn new(inner: &'a dyn Strategy) -> Self {
         Self {
             inner,
             spent: std::cell::Cell::new(std::time::Duration::ZERO),

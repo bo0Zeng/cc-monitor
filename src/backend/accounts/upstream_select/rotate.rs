@@ -36,7 +36,7 @@ const TOKEN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(15_
 pub type BookAt = Arc<dyn Fn(&Path) -> Option<AccountBook> + Send + Sync>;
 
 /// 能当轮换里的号：过路由段闸、不是「没说是哪个号」那一格。
-pub(crate) fn account_ok(a: &str) -> bool {
+pub fn account_ok(a: &str) -> bool {
     crate::relay::segment_is_safe(a) && a != super::endpoint::UNDECLARED_ACCOUNT_SEGMENT
 }
 
@@ -96,15 +96,15 @@ pub(crate) type Live = Arc<dyn Fn() -> std::collections::BTreeSet<String> + Send
 type IdentityCache = Mutex<BTreeMap<PathBuf, (Option<(std::time::SystemTime, u64)>, String)>>;
 
 /// 换号要的几样：轮换的账本 · 新会话载入哪份问谁 · 额度账 · 家目录 · 账号库 · 令牌端点（缺省用那一家登记的）。
-pub(crate) struct Hop {
-    pub(crate) store: Arc<RotationStore>,
-    pub(crate) adoptions: Arc<dyn Adoptions>,
-    pub(crate) quota: Arc<Ledger>,
+pub struct Hop {
+    pub store: Arc<RotationStore>,
+    pub adoptions: Arc<dyn Adoptions>,
+    pub quota: Arc<Ledger>,
     pub(crate) home: Option<PathBuf>,
-    pub(crate) library: BookAt,
+    pub library: BookAt,
     pub(crate) token: Option<TokenEndpoint>,
     /// 这台此刻活着的会话。
-    pub(crate) live: Live,
+    pub live: Live,
     identities: IdentityCache,
     /// 每个会话上一判的结论，缓存到下一个节点（[`super::turn`]）。
     pub(super) cache: Mutex<super::turn::Cache>,
@@ -113,7 +113,7 @@ pub(crate) struct Hop {
 impl Hop {
     /// `token`：续令牌发到哪（`None` ＝ 那一家登记的端点；判据一律给一个本机的假端点）。
     /// `adoptions`：新会话载入哪份问谁（宿主交进来，照这份 `store` 给出那一位）。
-    pub(crate) fn new(
+    pub fn new(
         store: Arc<RotationStore>,
         adoptions: &AdoptionsAt,
         quota: Arc<Ledger>,
@@ -141,7 +141,7 @@ impl Hop {
     }
 
     /// [`Self::library_here`]，没有就是空表（列事实、拼一个号的样子用；判换不换先看 `library_here`）。
-    pub(crate) fn library(&self) -> AccountBook {
+    pub fn library(&self) -> AccountBook {
         self.library_here().unwrap_or_default()
     }
 
@@ -156,7 +156,7 @@ impl Hop {
     }
 
     /// 轮换里的号（[`Self::ids`]）：事实 · 新策略的号列表 · 清掉库里没有的号都照它。
-    pub(crate) fn roster(&self) -> Vec<String> {
+    pub fn roster(&self) -> Vec<String> {
         Self::ids(&self.library()).collect()
     }
 
@@ -348,7 +348,7 @@ impl Hop {
     }
 
     /// 账号库里续令牌被拒、要重新登录的那几个号（需手动清单列它们）。
-    pub(crate) fn needs_relogin(&self, agent: &str, now: u64) -> Vec<String> {
+    pub fn needs_relogin(&self, agent: &str, now: u64) -> Vec<String> {
         let lib = self.library();
         lib.accounts
             .iter()
@@ -361,7 +361,7 @@ impl Hop {
     }
 
     /// 一个号显示态要的几格：种类 · 登录（只读，不续令牌；续令牌被拒过 ⇒ 要重新登录）· 订阅标识（账号身份的散列，原值不出这里）。
-    pub(crate) fn show_facts(
+    pub fn show_facts(
         &self,
         agent: &str,
         lib: &AccountBook,
@@ -402,12 +402,12 @@ impl Hop {
     }
 
     /// ★ 这台这一家每个号此刻的事实（`rotation-facts` 与判 · 推演同用这一处；只读：不续令牌、不记）。号照账号库的先后。
-    pub(crate) fn facts(
+    pub fn facts(
         &self,
         agent: &str,
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> Vec<crate::accounts::quota::facts::Fact> {
         let lib = self.library();
         Self::ids(&lib)
@@ -416,14 +416,14 @@ impl Hop {
     }
 
     /// 一个号的事实（不在账号库里的号也拼得出：开会话用的号没说是哪个号时）。
-    pub(crate) fn fact_one(
+    pub fn fact_one(
         &self,
         agent: &str,
         lib: &AccountBook,
         id: &str,
         row: &dyn Fn(&str) -> Option<bool>,
         now: u64,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> crate::accounts::quota::facts::Fact {
         let slot = slot_fn(agent);
         let when = |t: u64| {
@@ -458,7 +458,7 @@ impl Hop {
 
     /// ★ 号换窗的历史交给策略的那两样（判 · 试跑拼完 `Acct` 同问这一处）：周窗重置时剩几点 · 开窗取整往哪边；
     /// 照 [`crate::accounts::quota::facts::pick`] 此刻挑的周窗 · 5 小时窗的原名问额度账，账上没这个号 ⇒ 照旧空着。
-    pub(crate) fn with_past(
+    pub fn with_past(
         &self,
         agent: &str,
         all: &mut [crate::accounts::quota::rules::Acct],
@@ -556,6 +556,11 @@ pub(crate) fn dispatch_go(
     }
 }
 
+// 只给测试用的那几样（号表里的一行）：本包判据与上层判据（`test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/accounts/upstream_select/rotate_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/upstream_select/rotate_tests.rs"]
-pub(crate) mod tests;
+mod tests;

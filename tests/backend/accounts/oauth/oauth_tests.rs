@@ -364,12 +364,12 @@ fn the_registered_token_endpoint_parses() {
 // ── 续期与被拒进日志：按号一行，令牌形状一样都不许进 ──────────────────────────────
 
 /// 跑 `f`，把这段里 `tracing` 打出来的全部文本收回来（只收本线程：续期是同步的）。
-/// 本线程上 `f` 期间 `tracing` 说了什么。听法只有一处（`stream::run_route::tests::heard`）：
+/// 本线程上 `f` 期间 `tracing` 说了什么。听法只有一处（量具包的 `test_meters::heard`）：
 /// 它进来先重算 callsite 的 interest 缓存 —— 这里原先自己起一个订阅者、不重算，并行的别的测试先碰到同一个
 /// callsite 就把它缓存成「没人要」，这条线程上那几行就听不见（`a_stale_lock_directory_…` 负载下间歇红的根因）。
 fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
     let mut out = None;
-    let lines = crate::stream::run_route::tests::heard(|| out = Some(f()));
+    let lines = test_meters::heard(|| out = Some(f()));
     (out.expect("f 跑过了"), lines.join("\n"))
 }
 

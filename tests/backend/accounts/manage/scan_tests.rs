@@ -154,7 +154,7 @@ mod on_disk {
         let cred = s(&h.0.join("cred.json"));
         write(Path::new(&cred), "{}");
 
-        let snap = scan(&hs, &["/nowhere/extra".into()], &[cred.clone()]);
+        let snap = scan(&hs, &["/nowhere/extra".into()], std::slice::from_ref(&cred));
         assert_eq!(snap.manifest_text.as_deref(), Some(manifest.as_str()));
         assert_eq!(snap.manifest().unwrap().managed().count(), 1);
         assert_eq!(

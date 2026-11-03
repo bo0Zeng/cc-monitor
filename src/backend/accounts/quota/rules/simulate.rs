@@ -14,10 +14,10 @@ pub(crate) const MAX_EVENTS: usize = 200;
 
 /// 号用起来时窗口没开 ⇒ 从此刻起计时（推演与回放同此一处）。
 fn open_windows(x: &mut Acct, t: u64) {
-    for w in 0..2 {
+    for (w, span) in WINDOW_SECS.iter().enumerate() {
         if !x.api && x.resets[w].is_none_or(|r| r <= t) {
             x.used[w] = standing::used_at(x, w, t);
-            x.resets[w] = Some(t + WINDOW_SECS[w]);
+            x.resets[w] = Some(t + span);
         }
     }
 }
@@ -40,47 +40,47 @@ fn expire(x: &mut Acct, te: u64) -> Vec<(usize, u64, f64)> {
 
 /// 「用哪个号」那一条的一段。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct UseSeg {
-    pub(crate) from: u64,
-    pub(crate) to: u64,
-    pub(crate) pick: Pick,
+pub struct UseSeg {
+    pub from: u64,
+    pub to: u64,
+    pub pick: Pick,
     /// 这一段的号来自用户拖出来的顺序。
-    pub(crate) from_temp: bool,
+    pub from_temp: bool,
     /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
-    pub(crate) cap_unknown: bool,
+    pub cap_unknown: bool,
     /// 这一判丢掉的拖出来的条目（画成「跳过」）。
-    pub(crate) skipped: Vec<String>,
+    pub skipped: Vec<String>,
 }
 
 /// 每个号那一行一段：事实上发得出去吗，以及这一段开头两窗的用量。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LaneSeg {
-    pub(crate) from: u64,
-    pub(crate) to: u64,
-    pub(crate) sendable: bool,
-    pub(crate) used: [f64; 2],
+pub struct LaneSeg {
+    pub from: u64,
+    pub to: u64,
+    pub sendable: bool,
+    pub used: [f64; 2],
     /// 这一段开头刚重置过。
-    pub(crate) reset: bool,
+    pub reset: bool,
     /// 这个会话先不用这个号（整行「不用」）。
-    pub(crate) off: bool,
+    pub off: bool,
 }
 
 /// 推演结果。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Timeline {
+pub struct Timeline {
     /// 推演开始那一刻在用的号（第一段要是换了号，它也是一次换号）。
     pub(crate) current: String,
-    pub(crate) uses: Vec<UseSeg>,
-    pub(crate) lanes: Vec<(String, Vec<LaneSeg>)>,
+    pub uses: Vec<UseSeg>,
+    pub lanes: Vec<(String, Vec<LaneSeg>)>,
     /// 到了事件上限 / 策略耗时用完，剩下的没画。
-    pub(crate) truncated: bool,
+    pub truncated: bool,
     /// 判过的每一个事件点。
     pub(crate) nodes: Vec<u64>,
 }
 
 impl Timeline {
     /// 将来每次换到别的号（时刻 · 号）：时间轴上方那几个「16:07 work」。
-    pub(crate) fn switches(&self) -> Vec<(u64, String)> {
+    pub fn switches(&self) -> Vec<(u64, String)> {
         let mut out = Vec::new();
         let mut last: Option<&str> = Some(self.current.as_str());
         for s in &self.uses {
@@ -96,7 +96,7 @@ impl Timeline {
 }
 
 /// ★ 从 `t0` 推到 `t1`。`clock_of(t)` ＝ 策略时区里 t 是一天的第几分钟。
-pub(crate) fn simulate(
+pub fn simulate(
     sigma: &Sigma,
     facts: &[Acct],
     settings: &Value,

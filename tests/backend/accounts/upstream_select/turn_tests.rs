@@ -90,7 +90,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             self.ledger(),
             Some(self.root.clone()),
             Arc::new(move |_| {
@@ -98,8 +98,8 @@ impl Home {
                     accounts: ["a", "b"]
                         .iter()
                         .map(|id| {
-                            crate::accounts::upstream_select::rotate::tests::book_row(
-                                &id.to_string(),
+                            crate::accounts::upstream_select::rotate::test_support::book_row(
+                                id,
                                 Some(accts.join(id)),
                                 false,
                             )
@@ -119,7 +119,7 @@ impl Home {
             None => serde_json::json!({}),
         };
         let src = crate::accounts::quota::setup::samples::of(0);
-        let mut head = script::parse(&src).expect("读得懂").head;
+        let mut head = script::parse(src).expect("读得懂").head;
         head.settings = serde_json::json!({
             "caps": caps,
             "capKind": if hard { "hard" } else { "soft" },
@@ -129,7 +129,7 @@ impl Home {
         shelf::write_file(
             &self.own(),
             "t",
-            &script::with_head(&src, &head).expect("头"),
+            &script::with_head(src, &head).expect("头"),
         )
         .expect("写");
         uses::Setup::of(Arc::new(RotationStore::at(Some(
@@ -625,7 +625,7 @@ fn fact_b(hop: &Hop, at: u64) -> Option<(crate::accounts::quota::facts::FactWhy,
         "b",
         &|_| None,
         at,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     )
     .blocked
     .map(|b| (b.why, b.until))
@@ -950,7 +950,7 @@ fn weekly_and_others_are_facts_of_the_reading_and_the_sessions() {
             acct,
             &|_| None,
             t,
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
         )
     };
     assert!(!fact("a").weekly, "只有 5 小时窗");
@@ -1037,7 +1037,7 @@ fn the_past_of_an_account_comes_from_its_ledger_windows() {
                 id,
                 &|_| None,
                 t,
-                &crate::Tz::default(),
+                &crate::common::time::Tz::default(),
             ))
         })
         .collect();

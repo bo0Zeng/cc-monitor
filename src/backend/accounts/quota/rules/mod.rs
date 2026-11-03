@@ -8,45 +8,45 @@
 //! - [`rollout`]：推演的原生内核（积木库里的 `lib::project_raw` · `lib::rollout`）与号的动态；
 //! - [`book`]：`rotation.json`（会话载入的策略副本 · 临时动作 · memo · 叫醒 · 换号记录）。
 
-pub(crate) mod book;
-pub(crate) mod code;
-pub(crate) mod decide;
+pub mod book;
+pub mod code;
+pub mod decide;
 pub(crate) mod rollout;
-pub(crate) mod simulate;
-pub(crate) mod standing;
+pub mod simulate;
+pub mod standing;
 
 /// 窗口长度（秒）：下标 0 ＝ 5 小时 · 1 ＝ 7 天。
 pub(crate) const WINDOW_SECS: [u64; 2] = [5 * 3600, 7 * 86_400];
 
 /// 判与推演看的那一份事实（一个号）：只有数，没有字。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Acct {
-    pub(crate) id: String,
-    pub(crate) api: bool,
+pub struct Acct {
+    pub id: String,
+    pub api: bool,
     /// 两窗用了多少（0–100）。
-    pub(crate) used: [f64; 2],
+    pub used: [f64; 2],
     /// 两窗几点重置（没开 ⇒ 空）。
-    pub(crate) resets: [Option<u64>; 2],
+    pub resets: [Option<u64>; 2],
     /// 被拒到几点（空 ＝ 没被拒）。
-    pub(crate) refused_until: Option<u64>,
+    pub refused_until: Option<u64>,
     /// 跟窗口无关的「用不了」：要重新登录 · 缺 key · 在超额上兜着（到 `until` 为止，说不出 ⇒ 空 ＝ 一直）。
-    pub(crate) barred: Option<Barred>,
+    pub barred: Option<Barred>,
     /// 用速（%/分）：这个号自己在额度账里量出来的（最近 30 分钟读数在涨；所有会话的用量都在里面）；量不到 ⇒ 空。
-    pub(crate) rate: [Option<f64>; 2],
+    pub rate: [Option<f64>; 2],
     /// 两窗「1% ≈ 多少用量」（折合输入 token）：这个号自己在额度账里量出来的；量不到 ⇒ 空。只交给策略，判与推演不看它。
-    pub(crate) per_pct: [Option<u64>; 2],
+    pub per_pct: [Option<u64>; 2],
     /// 有周上限（读数里有周用量那一格；没读数 ⇒ 当没有）。
-    pub(crate) weekly: bool,
+    pub weekly: bool,
     /// 别的会话压在 5 小时窗上的用速（点 / 分）：照会话算（[`crate::accounts::upstream_select::rotate::Hop::accts`]）；说不出 ⇒ 空。
-    pub(crate) others: Option<f64>,
+    pub others: Option<f64>,
     /// 这个号换窗时额度账记下的：周窗重置时剩几点 · 开窗取整往哪边（[`crate::accounts::upstream_select::rotate::Hop::with_past`]
     /// 填）；没记到 ⇒ 空。只交给策略，判与推演不看它。
-    pub(crate) past: Past,
+    pub past: Past,
 }
 
 /// 一个号换窗的历史交给策略的那两样。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Past {
+pub struct Past {
     /// 最近几次周窗重置时还剩几点（0–100，旧的在前）。
     pub(crate) weekly_left_at_reset: Vec<f64>,
     /// 5 小时窗开窗时刻取到格（[`super::ledger::GRID_STEP`] 秒）是往上（`true`）还是往下；说不出 ⇒ 空。
@@ -55,7 +55,7 @@ pub(crate) struct Past {
 
 /// 跟窗口无关的「用不了」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Barred {
+pub struct Barred {
     pub(crate) why: super::facts::FactWhy,
     pub(crate) until: Option<u64>,
 }
@@ -63,7 +63,7 @@ pub(crate) struct Barred {
 impl Acct {
     /// 由一条事实拼回判看的那几样（[`super::facts::Fact`]）：事实的 `blocked` 本是 [`standing`] 照同一份拼出来判的，
     /// 这里只把挡着的那一样还原成输入（被拒 · 跟窗口无关的那几种）；「用满」由两窗的数自己说，不另带。
-    pub(crate) fn of_fact(f: &super::facts::Fact) -> Self {
+    pub fn of_fact(f: &super::facts::Fact) -> Self {
         use super::facts::FactWhy;
         let barred = f.blocked.as_ref().and_then(|b| match b.why {
             FactWhy::Login | FactWhy::Key | FactWhy::Overage => Some(Barred {
@@ -94,7 +94,7 @@ impl Acct {
 }
 
 /// 策略所在时区里 `t` 是一天的第几分钟（判与推演交给策略的 `clock`）。
-pub(crate) fn clock_at(tz: &crate::Tz, t: u64) -> u16 {
+pub fn clock_at(tz: &crate::common::time::Tz, t: u64) -> u16 {
     let t = i64::try_from(t).unwrap_or(i64::MAX);
     let local = i128::from(t) + i128::from(tz.offset_secs(t));
     u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
@@ -104,7 +104,7 @@ pub(crate) fn clock_at(tz: &crate::Tz, t: u64) -> u16 {
 pub(crate) const ACCOUNTS: &str = "accounts";
 
 /// 设置里号列表照先后列出的号（`{start: true}` 换成 `start`）。
-pub(crate) fn listed_ids<'a>(settings: &'a serde_json::Value, start: &'a str) -> Vec<&'a str> {
+pub fn listed_ids<'a>(settings: &'a serde_json::Value, start: &'a str) -> Vec<&'a str> {
     settings
         .get(ACCOUNTS)
         .and_then(serde_json::Value::as_array)
@@ -122,20 +122,20 @@ pub(crate) fn listed_ids<'a>(settings: &'a serde_json::Value, start: &'a str) ->
 
 /// 会话照它判的那一份（照它载入的副本拼）：`id` 空 ⇒ 不轮换；代码编不过 ⇒ 判的时候走兜底（带原因）。
 #[derive(Clone)]
-pub(crate) struct Adopted {
-    pub(crate) id: String,
+pub struct Adopted {
+    pub id: String,
     /// 副本的内容版本。
-    pub(crate) rev: String,
-    pub(crate) code: Result<std::sync::Arc<code::Code>, super::strategy::Fail>,
-    pub(crate) time_varying: bool,
-    pub(crate) settings: serde_json::Value,
+    pub rev: String,
+    pub code: Result<std::sync::Arc<code::Code>, super::strategy::Fail>,
+    pub time_varying: bool,
+    pub settings: serde_json::Value,
     /// 分时段照它算（副本里没写 · 认不出 ⇒ UTC）。
-    pub(crate) tz: crate::Tz,
+    pub tz: crate::common::time::Tz,
 }
 
 impl Adopted {
     /// 照副本拼（缺 ⇒ 不轮换）；代码按版本缓存（[`code::cached`]）。
-    pub(crate) fn of(copy: Option<&book::Copy>) -> Self {
+    pub fn of(copy: Option<&book::Copy>) -> Self {
         let Some(c) = copy else {
             return Self {
                 id: String::new(),
@@ -143,7 +143,7 @@ impl Adopted {
                 code: Err(super::strategy::Fail::shape("no strategy")),
                 time_varying: false,
                 settings: serde_json::Value::Object(Default::default()),
-                tz: crate::Tz::default(),
+                tz: crate::common::time::Tz::default(),
             };
         };
         Self {
@@ -155,7 +155,7 @@ impl Adopted {
             tz: c
                 .tz
                 .as_deref()
-                .and_then(crate::Tz::iana)
+                .and_then(crate::common::time::Tz::iana)
                 .unwrap_or_default(),
         }
     }
@@ -175,13 +175,13 @@ impl decide::Strategy for Adopted {
 }
 
 /// 新会话载入哪份问谁（配置编辑层实现；宿主交进来，本层不认它）。
-pub(crate) trait Adoptions: Send + Sync {
+pub trait Adoptions: Send + Sync {
     /// 「新会话默认」那一份此刻的副本；不轮换 · 那份读不懂 / 没了 ⇒ 缺。
     fn for_new(&self) -> Option<book::Copy>;
 }
 
 /// 照这台那份 `rotation.json` 给出 [`Adoptions`] 的那一位（宿主交给上游选择：上游选择不认识策略文件）。
-pub(crate) type AdoptionsAt = std::sync::Arc<
+pub type AdoptionsAt = std::sync::Arc<
     dyn Fn(&std::sync::Arc<super::rotation::RotationStore>) -> std::sync::Arc<dyn Adoptions>
         + Send
         + Sync,

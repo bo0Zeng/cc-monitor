@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub(crate) const FILE_NAME: &str =
+pub const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::QUOTA_LEDGER_REL);
 
 /// 显示没变时，盘上那份「看到的时刻」至多落后这么多秒。
@@ -29,33 +29,33 @@ pub(crate) const PERSIST_EVERY: u64 = 60;
 /// 一个号的一条账。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Observed {
+pub struct Observed {
     /// 路由第 1 段（哪一家）。
-    pub(crate) agent: String,
+    pub agent: String,
     /// 路由第 2 段（哪个号；`_` ＝ 起会话时没说是哪个号）。
-    pub(crate) account: String,
+    pub account: String,
     /// 最后一次看到这个号（任何一个来源）的时刻（unix 秒）。
-    pub(crate) seen_at: u64,
-    pub(crate) reading: QuotaReading,
+    pub seen_at: u64,
+    pub reading: QuotaReading,
     /// 各窗口最后一次几点、从哪看到的（窗口名 → …）；没列的窗口 ＝ 与 `seen_at` 同一刻、来自回包头。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) windows_seen: BTreeMap<String, WindowSeen>,
+    pub windows_seen: BTreeMap<String, WindowSeen>,
     /// 各窗口用量的走势（窗口名 → …）：估「几点到」只按它（[`Observed::eta`]）。只在账上，不上 `quota-read`。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) trend: BTreeMap<String, Trend>,
+    pub trend: BTreeMap<String, Trend>,
     /// 各窗口量出来的「1% ≈ 多少用量」（窗口名 → …）：读只经 [`Observed::tokens_per_pct`]。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) per_pct: BTreeMap<String, PerPct>,
+    pub per_pct: BTreeMap<String, PerPct>,
     /// 各窗口换窗的历史（窗口名 → …）：周剩几点 · 开窗取整往哪边只按它（[`Observed::weekly_left_at_reset`] ·
     /// [`Observed::window_grid`]）。只在账上，不上 `quota-read`。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) history: BTreeMap<String, History>,
+    pub history: BTreeMap<String, History>,
 }
 
 /// 一个窗口换窗的历史：旧窗最后读到的用量（[`ENDS_KEPT`] 次）· 新窗头一次看到的时刻（[`OPENS_KEPT`] 次）；都照重置时刻排、旧的在前。
 /// 只在单发读数推一步、看到重置时刻往后换了的那一下记（[`turnover`]）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub(crate) struct History {
+pub struct History {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) ends: Vec<End>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -153,9 +153,9 @@ fn turnover(
 
 /// 量出来的「1% ≈ 多少用量」：折合输入 token（[`crate::agents::Spent`]）与量出来的时刻。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct PerPct {
-    pub(crate) tokens: u64,
-    pub(crate) at: u64,
+pub struct PerPct {
+    pub tokens: u64,
+    pub at: u64,
 }
 
 /// 量出来的「1% ≈ 多少」过了这么多秒就不作数（套餐可能换了；再量到就换新的）。
@@ -164,7 +164,7 @@ pub(crate) const PER_PCT_KEPT: u64 = 7 * 86_400;
 /// 一个窗口用量的走势：此刻这个值头一次看到的时刻 ＋ 同一窗口里此前**变过**的那几个值（旧的在前；只留离此刻这个值
 /// [`EST_FRESH`] 以内的，至少留上一个；又看到一次同一个值不算新采样：说不出涨多快）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Trend {
+pub struct Trend {
     pub(crate) since: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) steps: Vec<Sample>,
@@ -234,13 +234,13 @@ fn step(
 }
 
 /// 一个窗口的数从哪来 · 那份文件读到的三态：线上形住 `cmd-wire`（`quota-read` 带它们）。
-pub(crate) use cmd_wire::quota::{ReadState, Source};
+pub use cmd_wire::quota::{ReadState, Source};
 
 /// 一个窗口几点、从哪看到的。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct WindowSeen {
-    pub(crate) at: u64,
-    pub(crate) from: Source,
+pub struct WindowSeen {
+    pub at: u64,
+    pub from: Source,
 }
 
 impl Observed {
@@ -310,7 +310,7 @@ impl Observed {
     }
 
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。
-    pub(crate) fn window_seen(&self, name: &str) -> WindowSeen {
+    pub fn window_seen(&self, name: &str) -> WindowSeen {
         self.windows_seen.get(name).copied().unwrap_or(WindowSeen {
             at: self.seen_at,
             from: Source::Headers,
@@ -426,7 +426,7 @@ struct State {
 }
 
 /// 额度账本体。`path = None` ⇒ 家推不出来，只记在内存。
-pub(crate) struct Ledger {
+pub struct Ledger {
     path: Option<PathBuf>,
     state: Mutex<State>,
     /// 显示变了往哪发节点（生产是进程里那一条；判据各给自己的一条）。
@@ -437,7 +437,7 @@ pub(crate) struct Ledger {
 
 impl Ledger {
     /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
-    pub(crate) fn at(path: Option<PathBuf>) -> Self {
+    pub fn at(path: Option<PathBuf>) -> Self {
         Self::open(
             path,
             super::nodes::bus().clone(),
@@ -512,7 +512,7 @@ impl Ledger {
     }
 
     /// 那个号的最近一条（盘上别人写过 ⇒ 先并进来）。
-    pub(crate) fn entry(&self, agent: &str, account: &str) -> Option<Observed> {
+    pub fn entry(&self, agent: &str, account: &str) -> Option<Observed> {
         let mut g = self.state.lock().unwrap_or_else(|e| e.into_inner());
         self.refresh(&mut g);
         g.mem
@@ -538,13 +538,13 @@ impl Ledger {
         }
     }
 
-    pub(crate) fn path(&self) -> Option<&Path> {
+    pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 }
 
 /// 这台的落点：`<家>/quota.json`（家与 API key 凭据同一个出处）。推不出 ⇒ `None`。
-pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
     creds_core::store::monitor_data_dir(get(creds_core::store::DATA_DIR_ENV).as_deref(), home)
         .map(|d| d.join(FILE_NAME))
@@ -552,7 +552,7 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
 
 /// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 发一件读数节点（带这一发的会话）、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
 /// 落盘失败只出声，不影响这一发（额度账不是请求的前提）。
-pub(crate) fn record_seen(
+pub fn record_seen(
     ledger: &Ledger,
     own: &Own,
     sid: Option<&str>,
@@ -622,7 +622,7 @@ pub(crate) fn record_seen(
 
 /// 记一次官方客户端报的用量（`quota-probe` 那一路的写口，来源 `usage`）：只并窗口，不碰回包头那几格；一定落盘（落不了 ⇒ `Err`）。
 /// 交回合并好的那一条。
-pub(crate) fn record_probe(
+pub fn record_probe(
     ledger: &Ledger,
     own: &Own,
     agent: &str,
@@ -751,7 +751,7 @@ fn merge_trend_fresh(o: &mut Observed) {
 }
 
 /// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
-pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
+pub fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
     let (state, why, accounts) = match path.map(read_at) {
         None => (
             ReadState::Unreadable,
@@ -783,13 +783,13 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
 
 /// 额度账那份文件此刻读到的样子（`quota-read` 的底：文件三态 ＋ 每个号一条）。
 #[derive(Debug, Serialize)]
-pub(crate) struct LedgerRead {
-    pub(crate) state: ReadState,
-    pub(crate) reason: Option<String>,
-    pub(crate) detail: Option<String>,
-    pub(crate) path: Option<String>,
-    pub(crate) now: u64,
-    pub(crate) accounts: Vec<Observed>,
+pub struct LedgerRead {
+    pub state: ReadState,
+    pub reason: Option<String>,
+    pub detail: Option<String>,
+    pub path: Option<String>,
+    pub now: u64,
+    pub accounts: Vec<Observed>,
 }
 
 #[cfg(test)]

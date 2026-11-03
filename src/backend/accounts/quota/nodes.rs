@@ -17,12 +17,12 @@ use copy_core::{Discard, Why};
 
 /// 这台账号库里每个号的配置目录（给家目录 → 那几个目录）：宿主读好交进来（`faces::rotation_face::account_dirs`），
 /// 换号这一侧不认识账号库管理（与上游选择收账号库读法同一形）。
-pub(crate) type AccountDirs =
+pub type AccountDirs =
     std::sync::Arc<dyn Fn(&std::path::Path) -> Vec<std::path::PathBuf> + Send + Sync>;
 
 /// 这一件从哪来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Source {
+pub enum Source {
     /// 额度账上某个号的显示变了（回包头 · 官方客户端报的用量）。
     Reading,
     /// 这一发被拒（429 等），当场在同一发里重判。
@@ -41,7 +41,7 @@ pub(crate) enum Source {
 
 impl Source {
     /// 事实那几种（推送那一侧据此推 `changed {quota}`）。
-    pub(crate) fn is_fact(self) -> bool {
+    pub fn is_fact(self) -> bool {
         matches!(
             self,
             Source::Reading | Source::Refused | Source::Login | Source::QuotaFile | Source::Logins
@@ -51,23 +51,23 @@ impl Source {
 
 /// 一件节点。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Node {
-    pub(crate) source: Source,
+pub struct Node {
+    pub source: Source,
     /// 只关这一个会话（`Book` · `Refused`）；关所有会话 ⇒ `None`。
-    pub(crate) sid: Option<String>,
+    pub sid: Option<String>,
 }
 
 /// 通道的发送端（判据各用自己的一条，生产只有 [`bus`] 那一条）。
-pub(crate) type Nodes = tokio::sync::broadcast::Sender<Node>;
+pub type Nodes = tokio::sync::broadcast::Sender<Node>;
 
 /// 进程里唯一那条节点通道。可丢：落后的订阅者丢几件，下一件或重问补上。
-pub(crate) fn bus() -> &'static Nodes {
+pub fn bus() -> &'static Nodes {
     static TX: std::sync::OnceLock<Nodes> = std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<Node>(256).0)
 }
 
 /// 发一件（没人订 ⇒ 丢掉，不是错）。
-pub(crate) fn emit(tx: &Nodes, source: Source, sid: Option<&str>) {
+pub fn emit(tx: &Nodes, source: Source, sid: Option<&str>) {
     // 此刻没有流连接、没有判的缓存订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有
     tx.send(Node {
         source,
@@ -78,7 +78,7 @@ pub(crate) fn emit(tx: &Nodes, source: Source, sid: Option<&str>) {
 
 /// 账号库那一处的盯：清单所在的目录（只认清单那个文件名）＋ 每个号的配置目录（只认登录文件）。
 /// 清单一变就照新的清单重盯（号可能加了 / 删了）。返回的那一份活着就一直盯。
-pub(crate) struct LoginWatch {
+pub struct LoginWatch {
     held: std::sync::Arc<std::sync::Mutex<Option<crate::platform::watch_file::Watching>>>,
 }
 
@@ -142,7 +142,7 @@ fn logins_arm(
 
 impl LoginWatch {
     /// 盯 `home` 下的账号库，节点发到 `tx`；`library` 是宿主交进来的每号配置目录（[`AccountDirs`]）。
-    pub(crate) fn start(
+    pub fn start(
         home: &std::path::Path,
         tx: &Nodes,
         library: AccountDirs,
@@ -153,7 +153,7 @@ impl LoginWatch {
     }
 
     /// 此刻在盯的那一份还在（重盯失败过 ⇒ 假）。
-    pub(crate) fn armed(&self) -> bool {
+    pub fn armed(&self) -> bool {
         self.held
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -163,7 +163,7 @@ impl LoginWatch {
 
 /// 常驻 / 流那一路起来时调一次：盯这台的账号库，进程活着就一直盯。盯不上只出声。
 /// `library`：每号配置目录，宿主交（`faces::rotation_face::account_dirs`）。
-pub(crate) fn watch_logins_here(library: AccountDirs) {
+pub fn watch_logins_here(library: AccountDirs) {
     static HELD: std::sync::Mutex<Option<LoginWatch>> = std::sync::Mutex::new(None);
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {

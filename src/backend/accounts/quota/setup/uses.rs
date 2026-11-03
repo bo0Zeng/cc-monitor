@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 /// 在用 `id` 那份的会话（按 sid；`older` ⇒ 只要副本版本不是 `rev` 的）。
-pub(crate) fn in_use(book: &Book, id: &str, older_than: Option<&str>) -> Vec<String> {
+pub fn in_use(book: &Book, id: &str, older_than: Option<&str>) -> Vec<String> {
     book.sessions
         .iter()
         .filter(|(_, s)| {
@@ -26,33 +26,33 @@ pub(crate) fn in_use(book: &Book, id: &str, older_than: Option<&str>) -> Vec<Str
 }
 
 /// 这台的配置那一侧：拿着这台那份 `rotation.json`（新会话用哪份 · 载入副本 · 起之前那一笔都写它）＋ 策略目录。
-pub(crate) struct Setup {
-    pub(crate) book: Arc<RotationStore>,
+pub struct Setup {
+    pub book: Arc<RotationStore>,
 }
 
 impl Setup {
     /// 跟着这份 `rotation.json`（策略目录在同一层家）。
-    pub(crate) fn of(book: Arc<RotationStore>) -> Self {
+    pub fn of(book: Arc<RotationStore>) -> Self {
         Self { book }
     }
 
     /// 本机策略目录（家推不出 ⇒ `None`）。
-    pub(crate) fn dir(&self) -> Option<PathBuf> {
+    pub fn dir(&self) -> Option<PathBuf> {
         self.book.path().and_then(super::shelf::dir_from)
     }
 
     /// 新会话用哪份（空 ⇒ 不轮换）。
-    pub(crate) fn for_new_id(&self) -> String {
+    pub fn for_new_id(&self) -> String {
         self.book.now().for_new
     }
 
     /// 帧面那一路的写口（新会话用哪份）。
-    pub(crate) fn change<R>(&self, own: &Own, f: impl FnOnce(&mut Book) -> R) -> Result<R, Said> {
+    pub fn change<R>(&self, own: &Own, f: impl FnOnce(&mut Book) -> R) -> Result<R, Said> {
         rotation::face_change(&self.book, own, f)
     }
 
     /// 给这几个会话载入 `copy`（换了一份 ⇒ memo 与叫醒清掉：那是上一份记的；临时动作照留）。回载入了几个。
-    pub(crate) fn load(
+    pub fn load(
         &self,
         own: &Own,
         sids: &[String],
@@ -83,7 +83,7 @@ impl Adoptions for Setup {
 
 /// 起之前那一笔：给定好的 `sid` 记一条、载入 `copy`（缺 ⇒ 不轮换），会话一报到前界面就看得见它。
 /// 面上的 `session-open` 与 ccm 的 `--no-rotation` 都走这一下。
-pub(crate) fn preset(
+pub fn preset(
     setup: &Setup,
     own: &Own,
     sid: &str,
@@ -103,7 +103,7 @@ pub(crate) fn preset(
 }
 
 /// 起不成：撤掉 [`preset`] 记的那一条（只撤还没换过号的；写不成只出声）。
-pub(crate) fn forget_preset(setup: &Setup, own: &Own, sid: &str) {
+pub fn forget_preset(setup: &Setup, own: &Own, sid: &str) {
     let r = rotation::face_change(&setup.book, own, |b| {
         if b.sessions.get(sid).is_some_and(|s| s.log.is_empty()) {
             b.sessions.remove(sid);
@@ -163,7 +163,7 @@ pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, 
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的轮换账本与策略目录，进程活着就一直盯。盯不上只出声。
-pub(crate) fn watch_here(own: &Own) {
+pub fn watch_here(own: &Own) {
     static HELD: Mutex<Option<crate::platform::watch_file::Watching>> = Mutex::new(None);
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {

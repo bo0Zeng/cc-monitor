@@ -14,12 +14,12 @@ pub(crate) const HOME_ACCOUNT: &str = "_";
 
 /// 一个号能不能当换号 · 加号的候选（唯一一处）：`_`（起会话时没说是哪个号）不是 —— 它不顶任何一份登录，放上去只能回「需登录」。
 /// `quota-read` 的 `candidates` 与会话那一份的候选行都调它，界面只照抄。
-pub(crate) fn is_candidate(account: &str) -> bool {
+pub fn is_candidate(account: &str) -> bool {
     account != HOME_ACCOUNT
 }
 
 /// 一个号在人眼里叫什么：`_` ⇒「未指定账号」· 账号 0 ⇒ `~/.claude`；其余照原名。
-pub(crate) fn account_text(name: &str) -> String {
+pub fn account_text(name: &str) -> String {
     if name == HOME_ACCOUNT {
         copy_text("acct.tag.home", &[])
     } else if name == acct_core::BARE_ACCOUNT {
@@ -30,7 +30,7 @@ pub(crate) fn account_text(name: &str) -> String {
 }
 
 /// 号牌上那一两个字（号色那一格里画的）：字母数字开头 ⇒ 前两个字；别的 ⇒ 第一个字；空名 ⇒ `?`。
-pub(crate) fn plate_text(name: &str) -> String {
+pub fn plate_text(name: &str) -> String {
     let mut cs = name.chars();
     match cs.next() {
         None => "?".to_string(),
@@ -40,7 +40,7 @@ pub(crate) fn plate_text(name: &str) -> String {
 }
 
 /// 一个语义位在人眼里叫什么：`5h` · `7d` 各一个字；认不出的照原样。
-pub(crate) fn slot_text(w: &str) -> String {
+pub fn slot_text(w: &str) -> String {
     match w {
         "5h" => copy_text("acct.slot.fiveHour", &[]),
         "7d" => copy_text("acct.slot.sevenDay", &[]),
@@ -52,7 +52,7 @@ pub(crate) fn slot_text(w: &str) -> String {
 pub(crate) use cmd_wire::quota::Names;
 
 /// 唯一一处造 [`Names`]。
-pub(crate) fn names() -> Names {
+pub fn names() -> Names {
     Names {
         accounts: [HOME_ACCOUNT, acct_core::BARE_ACCOUNT]
             .iter()

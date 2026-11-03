@@ -30,15 +30,15 @@ pub(crate) struct Applied {
 }
 
 /// 这台 key 表的两口（账号库不认识它的格式、也不自己写它；门递进来）。
-pub(crate) struct KeyTable<'a> {
+pub struct KeyTable<'a> {
     /// 那份文件的绝对路径。
-    pub(crate) path: String,
+    pub path: String,
     /// 它此刻有哪几个号（账号 id）。
-    pub(crate) ids: Vec<String>,
+    pub ids: Vec<String>,
     /// 摘掉 `configDir` 那个号那一行。
-    pub(crate) drop: &'a dyn Fn(&str) -> Result<(), String>,
+    pub drop: &'a dyn Fn(&str) -> Result<(), String>,
     /// 从 `from`（备份里那一份）把 `configDir` 那个号那一行放回去。
-    pub(crate) restore: &'a dyn Fn(&str, &str) -> Result<(), String>,
+    pub restore: &'a dyn Fn(&str, &str) -> Result<(), String>,
 }
 
 /// 改权限位（经 `files-chmod`）。这台没有 unix 权限位那一格（Windows：家目录本来只给本人）⇒ 不改、照成功算 ——

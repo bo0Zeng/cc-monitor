@@ -4,7 +4,7 @@
 //! 夹具只造结构：登录状态是写死的假邮箱，MCP 是假的。
 #![cfg(unix)]
 
-use super::*;
+use crate::accounts::manage::trust_share_exec::*;
 use crate::accounts::upstream_select::file_face;
 use crate::assets::aliases::tests::HomeDoor;
 use crate::faces::accounts_face::{tests::answer, KeyDoor};

@@ -367,8 +367,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
                 None,
                 AuthStyle::DEFAULT,
             ),
-        ]
-        .into_iter(),
+        ],
     );
     // ⚠ 走的是**生产段那条真实的上游选择**（`Accounts`），不是判据自己造的一个假 `Destinations`。
     let relay = Arc::new(Relay::new(

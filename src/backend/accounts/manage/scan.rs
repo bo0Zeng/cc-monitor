@@ -258,14 +258,14 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
 
 /// 账号库清单在、却用不了：`Io` 读不动（不是常规文件 · 太大 · 不是文本）· `Bad` 读不懂（不是 JSON · 不是对象 · 版本不认）。各带一句话（原话在复制详情里）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Unread {
+pub enum Unread {
     Io(crate::common::said::Said),
     Bad(String),
 }
 
 impl Unread {
     /// 只成一句话（原话记一行日志）：快照 · 账号清单的 `meta.error` · 起会话那句「读不懂」。
-    pub(crate) fn into_said(self) -> String {
+    pub fn into_said(self) -> String {
         match self {
             Unread::Io(s) => s.into_note(),
             Unread::Bad(s) => s,
@@ -278,12 +278,12 @@ pub(crate) type ManifestRead = Result<Option<Manifest>, Unread>;
 
 /// ★ 账号库清单（`accounts.json`）的**唯一读口**：后端读这份文件只经这里（快照 [`scan`] 也是）。不在 ⇒ `Ok(None)`（没建账号库，正常状态）；
 /// 在却读不动 / 读不懂 ⇒ `Err`（版本不认的也在这里拒 —— 账号页与起会话同一个判法）。
-pub(crate) fn manifest_at(p: &Path) -> ManifestRead {
+pub fn manifest_at(p: &Path) -> ManifestRead {
     read_manifest(p).map(|(_, m)| m).transpose()
 }
 
 /// 家目录 `home` 下这台的号表（全仓那一张，经 [`manifest_at`]）；没建账号库 / 读不懂 ⇒ `None`。
-pub(crate) fn book_at(home: &Path) -> Option<acct_core::AccountBook> {
+pub fn book_at(home: &Path) -> Option<acct_core::AccountBook> {
     let p = crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL)
         .join(MANIFEST_FILE);
     manifest_at(&p).ok().flatten().map(|m| m.book)
