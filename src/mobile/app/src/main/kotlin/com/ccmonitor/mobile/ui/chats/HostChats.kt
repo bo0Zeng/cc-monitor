@@ -345,11 +345,7 @@ internal fun hostPart(
             s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy()) }
             else -> null
         }
-    val table = s.table.takeIf { down == null }
     val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, r, s.table) }
-    // 断着 ⇒ 不交那一片：组员的脸会过时，那几条回到按天那几段。
-    val book = table?.takeIf { ssh !is HostLink.Failed }
-    val slice = s.groups?.let { raw -> book?.let { Slice(raw, rows.associateBy { it.sessionId }, it) } }
     return HostPart(
         hostId = s.hostId,
         machine = s.machine,
@@ -360,9 +356,20 @@ internal fun hostPart(
         truncated = answer?.truncated == true,
         loading = down == null && ssh !is HostLink.Failed && s.list is Fetched.Loading && answer == null,
         deploying = s.deploying,
-        slice = slice,
+        slice = sliceOf(s, rows, ssh),
         groupLines = listOfNotNull(s.groupsProblem?.text),
     )
+}
+
+/** 这台组那一片（交核心合）：断着 · SSH 接不上 · 还没答过 ⇒ 不交（组员的脸会过时，那几条回到按天那几段）。 */
+private fun sliceOf(
+    s: HostSnap,
+    rows: List<ChatRow>,
+    ssh: HostLink?,
+): Slice? {
+    val raw = s.groups ?: return null
+    if (s.link is LinkLine.Down || ssh is HostLink.Failed) return null
+    return Slice(raw, rows.associateBy { r -> r.sessionId }, s.table)
 }
 
 /** 组里那一条清单里没有（窗外 · 被筛掉）⇒ 照组员那一行：那台写的标题 · 脸（流上有它 ⇒ 流上那一份）；能不能删这里说不清。 */

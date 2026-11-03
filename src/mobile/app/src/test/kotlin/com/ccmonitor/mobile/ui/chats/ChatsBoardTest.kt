@@ -188,7 +188,9 @@ class ChatsBoardTest {
             e.groups = slice(listOf(group("g1", "乙", named = 2L)), listOf(member("e1", listOf("g1"))))
             val board = board(c, e)
             runCurrent()
-            val band = board.ui.value.bands.single()
+            val band =
+                board.ui.value.bands
+                    .single()
             assertEquals("g1", band.groupId)
             assertEquals("乙", band.title)
             assertEquals(listOf("c" to "c1", "e" to "e1"), band.rows.map { it.hostId to it.sessionId })

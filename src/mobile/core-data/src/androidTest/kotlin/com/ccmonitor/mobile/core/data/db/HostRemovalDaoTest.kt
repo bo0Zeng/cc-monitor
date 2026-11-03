@@ -29,7 +29,7 @@ class HostRemovalDaoTest {
     private suspend fun fill(id: String) {
         db.hostDao().upsert(Host(id = id, label = id, host = "192.0.2.1", username = "u"))
         val hand = db.handDao()
-        hand.insertPending(PendingSend("p-$id", id, "s", "hi", null, 1, PendingOutcome.UNSURE, 1))
+        hand.promote(id, "s", PendingSend("p-$id", id, "s", "hi", null, 1, PendingOutcome.UNSURE, 1))
         hand.putDraft(Draft(id, "s", "draft", null, null, null, null, 1))
         hand.putBatch(PendingBatch(id, "t", "{}"))
         db.bookmarkDao().upsert(Bookmark("b-$id", id, "/srv", "srv"))

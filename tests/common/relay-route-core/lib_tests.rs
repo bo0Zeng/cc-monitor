@@ -390,15 +390,39 @@ fn repo_text(rel: &str) -> String {
 
 /// 手机 Room 那几张表的名字（core-data 每个 `@Entity` 的 `tableName`，写成常量的照 `const val` 解）。
 fn room_tables() -> std::collections::BTreeSet<String> {
-    let dir = "src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db";
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let mut text = String::new();
-    for e in std::fs::read_dir(root.join(dir)).expect("core-data 的 db 目录") {
-        let p = e.unwrap().path();
-        if p.extension().is_some_and(|x| x == "kt") {
-            text.push_str(&std::fs::read_to_string(&p).unwrap());
-        }
-    }
+    let db = "src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db";
+    // 两个库各自登的实体（`entities = [A::class, …]`）⇒ 实体住哪几份文件由下面那一核兜住：漏读一份就对不上。
+    let listed: std::collections::BTreeSet<String> = ["AppDatabase.kt", "CacheDatabase.kt"]
+        .iter()
+        .flat_map(|f| {
+            let t = repo_text(&format!("{db}/{f}"));
+            let body = t
+                .split_once("entities = [")
+                .and_then(|(_, b)| b.split_once(']'))
+                .expect("entities 那一段")
+                .0
+                .to_string();
+            body.split(',')
+                .filter_map(|c| c.trim().strip_suffix("::class").map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let text: String = ["Entities.kt", "CacheEntities.kt", "KeyEntities.kt"]
+        .iter()
+        .map(|f| repo_text(&format!("{db}/{f}")))
+        .collect();
+    let declared: std::collections::BTreeSet<String> = text
+        .match_indices("@Entity(")
+        .filter_map(|(i, _)| {
+            let after = &text[i..];
+            let name = after.split_once("data class ")?.1;
+            Some(name[..name.find(['(', ' '])?].to_string())
+        })
+        .collect();
+    assert_eq!(
+        listed, declared,
+        "两个库登的实体与那三份文件里的 @Entity 对不上（实体换了文件就把它加进上面那张）"
+    );
     let consts: std::collections::BTreeMap<&str, &str> = text
         .lines()
         .filter_map(|l| {

@@ -9,7 +9,7 @@
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 主人类 ①–⑤〔⑤ 即缓存〕· 谁写 · 格式与版本 · 读上限），
-//!   客户端那一侧的落点（手机 Room · 界面存储）登在 [`CLIENT_SPOTS`]；后端读写口
+//!   客户端那一侧的落点（手机 Room · 界面存储）登在 `CLIENT_SPOTS`（同 `OWN_FILES` 只有判据读）；后端读写口
 //!   `common/own_state.rs` 的 `Doc::of` 与 monitor 读写 `config.json`（[`CONFIG_FILE`]）从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
 //! - **读上限**（[`Cap`] · [`Over`]）与**同步整读**：读到流尽 [`read_capped_from`] · 读一个窗口 [`read_window`] ·
 //!   读一份本机文件 [`read_capped_regular`]。后端 · 壳 · 文件窗口 · 手机核心同步地整读字节只经这一族（异步那一形住 `comms_inward::line`）。
@@ -497,8 +497,9 @@ pub enum Place {
     Phone,
 }
 
-/// 一处落点：在哪 · 叫什么（后端那几份是相对家目录的路径，客户端那几处见 [`ROOM_SPOT`] · [`STORAGE_SPOT`] · [`PHONE_FILE_SPOT`]）·
-/// 主人类 · 等迁的旧行在哪一版删（`X.Y.Z`；不是等迁的 ⇒ 没有）。
+/// 一处落点：在哪 · 叫什么（后端那几份是相对家目录的路径；客户端那几处 `room:<表名>` · `storage:<键>` · `phone-file:<名字>`）·
+/// 主人类 · 等迁的旧行在哪一版删（`X.Y.Z`；不是等迁的 ⇒ 没有）。同 [`OWN_FILES`] 只有判据读（测试档）。
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spot {
     pub place: Place,
@@ -508,12 +509,13 @@ pub struct Spot {
 }
 
 /// 手机 Room 的一张表（`room:<表名>`）。
-pub const ROOM_SPOT: &str = "room:";
+#[cfg(test)]
+const ROOM_SPOT: &str = "room:";
 /// 界面网页存储的一个键（`storage:<键>`；带参数的键写固定的前半）。
-pub const STORAGE_SPOT: &str = "storage:";
-/// 手机核心那几份文件（`phone-file:<应用私有目录底下的名字>`）。
-pub const PHONE_FILE_SPOT: &str = "phone-file:";
+#[cfg(test)]
+const STORAGE_SPOT: &str = "storage:";
 
+#[cfg(test)]
 const fn room(table: &'static str, owner: Owner) -> Spot {
     Spot {
         place: Place::Phone,
@@ -523,6 +525,7 @@ const fn room(table: &'static str, owner: Owner) -> Spot {
     }
 }
 
+#[cfg(test)]
 const fn ui(key: &'static str) -> Spot {
     Spot {
         place: Place::Ui,
@@ -532,11 +535,13 @@ const fn ui(key: &'static str) -> Spot {
     }
 }
 
+#[cfg(test)]
 const PHONE: Owner = Owner::End(End::Phone);
 
 /// 〔「客户端的落点也登一行」〕不是后端家里文件的那几处：手机 Room 每张表 · 手机核心的主机指纹 · 界面存储的每个键。
 /// 判据两向核：Room 的 `@Entity` 表名 · 界面 `LS_KEYS` 的键与这里对得上；主人类照存储层那五类。
-pub const CLIENT_SPOTS: &[Spot] = &[
+#[cfg(test)]
+const CLIENT_SPOTS: &[Spot] = &[
     room("room:hosts", PHONE),
     room("room:identities", PHONE),
     room("room:known_hosts", PHONE),

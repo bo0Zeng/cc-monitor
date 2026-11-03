@@ -22,8 +22,9 @@ abstract class HandDao {
     @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid IS NOT NULL AND outcome IN ('pending', 'unsure') ORDER BY mintedAt")
     abstract suspend fun duePending(hostId: String): List<PendingSend>
 
+    /** 落一句待发只走 [promote]（草稿变待发同一个事务）。 */
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    abstract suspend fun insertPending(p: PendingSend)
+    protected abstract suspend fun insertPending(p: PendingSend)
 
     @Query("UPDATE pending SET outcome = :outcome, attempts = :attempts WHERE id = :id")
     abstract suspend fun settle(
