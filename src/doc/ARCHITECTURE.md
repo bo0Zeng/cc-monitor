@@ -152,12 +152,12 @@ subscribe(origin, kind)    → 流
 - `egress/`：出网口（独立 crate）：这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理（HTTP CONNECT · SOCKS5）；中转与拨号核心链同一份。
 - `test-meters/`：测试档的量具（独立 crate，只在各包的 dev 侧）：线程级内存量具 · 金样比对 · 听 `tracing` 说了什么；体住 `tests/backend/`。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
-- `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）。
+- `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）；会话血缘（谁起的谁，`history/lineage.rs`）也住这里（独立的包 `backend-history`）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
 - `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
 - `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
 - `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
-- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）；`stderr_log/`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
+- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`stderr_log/`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/`：读族 ＋ `write.rs` · `upload_chunks.rs` · `extract.rs` · `commit.rs` · `batch.rs`），两块只共用 `platform/` · `common/`；原生那一块够到文件管理那一块只经命令那一层（`stream/inbound/files_*_face.rs`）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。文件管理那一块是独立的包 `backend-files`：只依赖纯工具与平台两层由它的 `Cargo.toml` 管，上层够得到的只有它的 `pub` 项（谁读哪一项由 `pub_reader_registry` 数着）。
 
@@ -307,7 +307,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 推演 | `accounts/quota/rules/simulate.rs` | 离散事件推演，每个事件点调的是同一个 `turn`；每号照自己量出来的用速涨，量不到不编数 |
 | 策略文件 | `accounts/quota/setup/shelf.rs`（目录）· `setup/script.rs`（JSON 头 ＋ Rhai 代码）· 代码在沙箱里的调用 `rules/code.rs` · 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；第三版的旧脚本升级时挪进 `strategies/v3/`、不加载 |
 | 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程；要重启换就走 `session-restart` |
-| 血缘 | `src/backend/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
+| 血缘 | `src/backend/history/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
 | 帧面 | 基础层 `faces/rotation_facts_face.rs` · `rotation_act_face.rs`（拖出来的顺序 · 现在用）；配置层 `faces/rotation_view_face.rs` · `rotation_edit_face.rs` · `rotation_try_face.rs`；接线与 `quota-read` 在 `faces/rotation_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
