@@ -14,7 +14,7 @@ fn read_at(
 
 /// 判据那把钟：此刻 1970-01-01 00:10 UTC（判据记的时刻都在 00:00 那一分钟里，时刻字只写钟面）。
 fn utc() -> crate::common::time::TextClock {
-    crate::common::time::TextClock::new(600, &crate::Tz::named("UTC").unwrap())
+    crate::common::time::TextClock::new(600, &crate::common::time::Tz::named("UTC").unwrap())
 }
 
 /// 记得的那一样：上次读数那一格（时刻 ＋ 写好的那一句）＋ 原样。
@@ -41,8 +41,10 @@ fn 上次读数那一格_按看的那一台的时区写好() {
     .unwrap();
     let req = crate::wire::typed::take(&json!({"origin": "devbox"})).unwrap();
     let at = |tz: &str| {
-        let clock =
-            crate::common::time::TextClock::new(at_ms / 1000 + 60, &crate::Tz::named(tz).unwrap());
+        let clock = crate::common::time::TextClock::new(
+            at_ms / 1000 + 60,
+            &crate::common::time::Tz::named(tz).unwrap(),
+        );
         serde_json::to_value(super::read_at(&d.file(), &req, &clock).unwrap()).unwrap()["data"]
             ["seen"]
             .clone()
@@ -59,26 +61,6 @@ fn 上次读数那一格_按看的那一台的时区写好() {
     assert_eq!(at("UTC"), seen(at_ms, "02:03"));
 }
 
-/// 计划那一份的成品顶上也带这一格，与 `readAtText` 同一把钟写。
-#[test]
-fn 计划成品也带上次读数那一格() {
-    let at_ms = 1_767_232_980_000_u64;
-    let mut v = crate::plan::product::make(
-        &json!({}),
-        &|_: &str| crate::plan::Whose::Unknown,
-        "r".into(),
-        at_ms,
-    );
-    crate::plan::product::with_time_texts(
-        &mut v,
-        1_767_233_000_000,
-        &crate::Tz::named("Asia/Shanghai").unwrap(),
-    );
-    assert_eq!(
-        serde_json::to_value(&v).unwrap()["seen"],
-        seen(at_ms, "10:03")
-    );
-}
 fn write_at(
     own: &crate::platform::fs::Own,
     a: &serde_json::Value,

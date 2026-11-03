@@ -87,8 +87,8 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
         assert_eq!(
             env.iter().filter(|e| e.tier == *tier).count(),
             0,
-            "「{}」这一档有成员了 —— 从 `MAY_BE_EMPTY` 里摘掉它",
-            format!("{:?}", tier)
+            "「{:?}」这一档有成员了 —— 从 `MAY_BE_EMPTY` 里摘掉它",
+            tier
         );
     }
     for tier in ENV_TIERS {
@@ -99,10 +99,10 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
         let n = env.iter().filter(|e| e.tier == *tier).count();
         assert!(
             n > 0,
-            "「{}」这一档在闭集里一个成员都没有（共 {} 档 · 闭集 {} 项）——\n\
+            "「{:?}」这一档在闭集里一个成员都没有（共 {} 档 · 闭集 {} 项）——\n\
                  空的那一档等于**用缺席表达一个判断**，而读者分不出「没有这种东西」\n\
                  与「有人忘了写」。要么给它一个成员，要么把这一档从 EnvTier 里删掉。",
-            format!("{:?}", tier),
+            tier,
             ENV_TIERS.len(),
             env.len()
         );
@@ -192,8 +192,8 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
     assert_eq!(
         tier,
         EnvTier::AppInstalls,
-        "`{ID}` 在闭集里的档不是「{}」",
-        format!("{:?}", EnvTier::AppInstalls)
+        "`{ID}` 在闭集里的档不是「{:?}」",
+        EnvTier::AppInstalls
     );
 }
 
@@ -240,9 +240,9 @@ fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
     {
         assert!(
             e.tier == EnvTier::AppInstalls || e.tier == EnvTier::AppShipsNoInstallerYet,
-            "`{}` 是「app 自带」却落在「{}」",
+            "`{}` 是「app 自带」却落在「{:?}」",
             e.id,
-            format!("{:?}", e.tier)
+            e.tier
         );
     }
 }
@@ -405,9 +405,9 @@ fn the_prompt_tier_declares_how_it_will_look() {
     {
         let EnvBacking::Named { probe, .. } = e.backing else {
             panic!(
-                "`{}` 在「{}」这一档，却有 ToolSpec —— 那一档今天只该住手写那一半",
+                "`{}` 在「{:?}」这一档，却有 ToolSpec —— 那一档今天只该住手写那一半",
                 e.id,
-                format!("{:?}", EnvTier::UserInstallsWePrompt)
+                EnvTier::UserInstallsWePrompt
             )
         };
         match probe {
@@ -426,15 +426,15 @@ fn the_prompt_tier_declares_how_it_will_look() {
     }
     assert!(
         probeable + blind > 0,
-        "「{}」这一档一个成员都没有 —— 那 9 项没搬过来",
-        format!("{:?}", EnvTier::UserInstallsWePrompt)
+        "「{:?}」这一档一个成员都没有 —— 那 9 项没搬过来",
+        EnvTier::UserInstallsWePrompt
     );
     assert!(
         probeable > blind,
-        "「{}」这一档里查得动的 {probeable} 项、查不动的 {blind} 项 —— \
+        "「{:?}」这一档里查得动的 {probeable} 项、查不动的 {blind} 项 —— \
              查不动的过半就等于这一档只是「app 假设它在」换了个名字，\
              而那正是写死的失效方向",
-        format!("{:?}", EnvTier::UserInstallsWePrompt)
+        EnvTier::UserInstallsWePrompt
     );
 }
 

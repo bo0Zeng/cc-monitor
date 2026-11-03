@@ -94,7 +94,7 @@ use copy_core::copy_text;
 
 /// 五套既有机制 + cc-bus 的声明。**这里只声明，不改它们任何行为**
 /// （第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
-pub const TOOLS: &[ToolSpec] = &[
+pub(crate) const TOOLS: &[ToolSpec] = &[
     // 落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
     //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
     ToolSpec {
@@ -284,8 +284,8 @@ pub const TOOLS: &[ToolSpec] = &[
 /// [`EnvTier::UserInstallsWePrompt`]。每一档都要有成员（`every_tier_has_members_so_absence_never_encodes_a_judgement`）：
 /// 没有成员的档不留。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,
@@ -303,7 +303,7 @@ pub enum EnvTier {
 impl EnvTier {
     /// 🔴 **档由两格派生**：「谁该装」× 「今天有没有装口」。**没有兜底臂** ——
     /// 任何一侧加变体都会编译失败，逼人回答那一格该落哪一档。
-    pub fn of(who: Provisioning, has_installer_today: bool) -> EnvTier {
+    pub(crate) fn of(who: Provisioning, has_installer_today: bool) -> EnvTier {
         match (who, has_installer_today) {
             (Provisioning::AppShips, true) => EnvTier::AppInstalls,
             (Provisioning::AppShips, false) => EnvTier::AppShipsNoInstallerYet,
@@ -321,7 +321,7 @@ impl EnvTier {
 ///
 /// 🔴 它分两群：9 项通用工具是 [`Provisioning::UserProvides`]，
 /// [`Provisioning::AppShips`] 那一群今天是空的（账号库由后端自己建，不在表里）。
-pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
+pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
         id: "tmux",
@@ -406,7 +406,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
 ///
 /// 做成枚举而不是两个 `Option`：两个 `Option` 有四种组合，其中两种是不该存在的状态
 /// （都有 / 都没有），而那两种状态一旦能被构造出来，早晚有人构造。
-pub enum EnvBacking {
+pub(crate) enum EnvBacking {
     /// 有 `ToolSpec` —— **路径 · effect · host 只住 `TOOLS` 那一份**，这里不复述。
     Managed(&'static ToolSpec),
     /// 没有 —— 只有一个名字、它在哪台机器上、以及**怎么查它**。
@@ -420,7 +420,7 @@ pub enum EnvBacking {
 }
 
 /// 闭集里的一项。
-pub struct EnvEntry {
+pub(crate) struct EnvEntry {
     pub id: &'static str,
     pub display_name: String,
     /// **谁该装**。「app 自带」这个人群就是 `who == AppShips` 的那几项。上界面的是由它派生的 [`Self::tier`] ⇒ 生产段零读者。
@@ -433,14 +433,11 @@ pub struct EnvEntry {
     pub tier: EnvTier,
     /// 给人看的那一句（取过文的）。
     pub why: String,
-    /// 代码住址（从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
-    #[cfg_attr(not(test), expect(dead_code, reason = "不上界面，只有判据核它"))]
-    pub site: &'static str,
     pub backing: EnvBacking,
 }
 
 /// 受管工具的**全集**：本表 [`TOOLS`] ＋ 注册表里各家足迹面带来的那一半（落在那一家布局里的），按注册表顺序。
-pub fn tools() -> Vec<&'static ToolSpec> {
+pub(crate) fn tools() -> Vec<&'static ToolSpec> {
     TOOLS
         .iter()
         .chain(crate::agents::footprint_faces().flat_map(|f| f.tools.iter()))
@@ -448,7 +445,7 @@ pub fn tools() -> Vec<&'static ToolSpec> {
 }
 
 /// 环境清单手写那一半的**全集**：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
-pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
+pub(crate) fn unmanaged() -> Vec<&'static UnmanagedEnv> {
     UNMANAGED_ENV
         .iter()
         .chain(crate::agents::footprint_faces().flat_map(|f| f.env.iter()))
@@ -474,7 +471,7 @@ pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
 /// 「本页会去解析并观测它申报的每条路径」。远端那几条观测出来是 `Undetermined`
 /// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
 /// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
-pub fn environment() -> Vec<EnvEntry> {
+pub(crate) fn environment() -> Vec<EnvEntry> {
     let mut out: Vec<EnvEntry> = tools()
         .into_iter()
         .map(|t| {
@@ -485,7 +482,6 @@ pub fn environment() -> Vec<EnvEntry> {
                 who,
                 tier: EnvTier::of(who, t.installable),
                 why: copy_text("rsToolRegistry.environment.managedWhy", &[]),
-                site: "footprint/registry.rs::environment",
                 backing: EnvBacking::Managed(t),
             }
         })
@@ -499,7 +495,6 @@ pub fn environment() -> Vec<EnvEntry> {
         // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
         tier: EnvTier::of(u.who, false),
         why: u.why.get(),
-        site: u.site,
         backing: EnvBacking::Named {
             named: u.named,
             host: u.host,

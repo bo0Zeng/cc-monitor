@@ -12,17 +12,17 @@ const DOC: crate::common::own_state::Doc<Marks> =
 
 /// 记下的那几样（盘上那一份，也是 `chores-mark` 的回包：改完记着的整份）。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ChoresMarks"
+        rename = "ChoresMarks",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Marks {
+pub struct Marks {
     /// 点过「不用了」的那几件（件的 `id`）。
     #[serde(default)]
     pub declined: Vec<String>,
@@ -44,10 +44,10 @@ pub(crate) fn marks_path() -> Option<PathBuf> {
 
 /// `chores-mark` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`；不带参数的那几种也写成空结构体：内标签枚举的单元变体不拒多出来的键）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) enum ChoresMarkReq {
+pub enum ChoresMarkReq {
     /// 不用了（`id` 同 `data-report` 的 `todo[].id`）。
     Decline { id: String },
     /// 还是要做。
@@ -76,7 +76,7 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
 }
 
 /// 改一样（[`ChoresMarkReq`]）⇒ 改完的那一份。
-pub(crate) fn mark_at(
+pub fn mark_at(
     own: &crate::platform::fs::Own,
     req: &ChoresMarkReq,
 ) -> Result<Marks, crate::common::said::Said> {
@@ -116,9 +116,7 @@ pub(crate) fn mark_at(
             ),
         )
     })?;
-    let held = own
-        .lock(&dir)
-        .map_err(|e| io(crate::common::said::Said::from(e)))?;
+    let held = own.lock(&dir).map_err(io)?;
     let mut m = match read_at(path) {
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
@@ -143,7 +141,7 @@ pub(crate) fn mark_at(
 }
 
 /// `chores-mark`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_mark(
+pub fn answer_mark(
     req: &ChoresMarkReq,
     own: &crate::platform::fs::Own,
 ) -> Result<Marks, crate::common::said::Said> {

@@ -281,14 +281,12 @@ fn present_absent_and_dir_listing() {
         observe(&PathResolution::Local("/h/f".into()), &f),
         SurfaceState::Present {
             detail: copy_core::copy_text("rsConfigSurface.observe.fileSize", &[("bytes", "42")])
-                .into()
         }
     );
     assert_eq!(
         observe(&PathResolution::Local("/h/d".into()), &f),
         SurfaceState::Present {
             detail: copy_core::copy_text("rsConfigSurface.observe.dirCount", &[("count", "2")])
-                .into()
         }
     );
     assert_eq!(
@@ -337,7 +335,6 @@ fn glob_counts_only_real_matches() {
         observe(&g, &f),
         SurfaceState::Present {
             detail: copy_core::copy_text("rsConfigSurface.observe.globCount", &[("count", "2")])
-                .into()
         }
     );
     // 一个都不匹配 → 是真的没有，可以说 Absent
@@ -485,7 +482,7 @@ fn either_never_absent_with(probe: &FsProbe) {
             matches!(f, PathResolution::EitherHost { .. }),
             "Either 的路径必须解析成 EitherHost，实得 {f:?}"
         );
-        match observe(&f, &nothing) {
+        match observe(&f, nothing) {
             SurfaceState::Undetermined { why } => {
                 assert!(
                     copy_core::copy_matches("rsConfigSurface.observe.eitherAbsent", &why)
@@ -1115,8 +1112,8 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
         assert_eq!(
             e.tier,
             EnvTier::UserInstallsWePrompt,
-            "`{id}` 不在「{}」那一档 —— 先查闭集，别改断言",
-            format!("{:?}", EnvTier::UserInstallsWePrompt)
+            "`{id}` 不在「{:?}」那一档 —— 先查闭集，别改断言",
+            EnvTier::UserInstallsWePrompt
         );
     }
 
@@ -1240,7 +1237,6 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         who: crate::agents::footprint_decl::Provisioning::AppShips,
         tier: EnvTier::AppShipsNoInstallerYet,
         why: String::new(),
-        site: "rows.rs::unmanaged_row",
         backing: crate::footprint::registry::EnvBacking::Named {
             named: "owed-sample",
             host: HostScope::Client,
@@ -1568,6 +1564,16 @@ fn this_module_only_reads() {
     assert_eq!(
         face_use,
         [
+            // 包根那几行：依赖的包各起一个短名（照旧写 `crate::<名>::…`）。
+            "use backend_accounts as accounts;",
+            "use backend_agents as agents;",
+            "use backend_assets as assets;",
+            "use backend_common as common;",
+            "use backend_control as control;",
+            "use backend_history as history;",
+            "use backend_observe as observe;",
+            "use backend_platform as platform;",
+            "use backend_wire as wire;",
             "use crate::common::said::Said;",
             "use crate::platform::fs::Ro;",
             "use copy_core::copy_text;",
@@ -1648,7 +1654,9 @@ fn one_dir_with<'a>(
 fn the_session_shell_finds_each_windows_install_form() {
     let h = home();
     let dir = "/w/bin";
-    let cases: &[(&str, bool, &[&str], &[&str], bool)] = &[
+    // 一格：哪种装法 · 是不是 Windows · 目录里的文件 · 目录里的子目录 · 认不认得。
+    type Case<'a> = (&'a str, bool, &'a [&'a str], &'a [&'a str], bool);
+    let cases: &[Case] = &[
         ("原生安装器（.exe）", true, &["claude.exe"], &[], true),
         (
             "npm 全局（.cmd ＋ .ps1 ＋ sh 壳）",
@@ -1694,7 +1702,9 @@ fn the_session_shell_finds_each_windows_install_form() {
 fn every_path_row_finds_each_windows_install_form() {
     let h = home();
     let dir = "/w/bin";
-    let cases: &[(&str, &str, bool, &[&str], &[&str], bool)] = &[
+    // 一格：哪种装法 · 找的名字 · 是不是 Windows · 目录里的文件 · 目录里的子目录 · 认不认得。
+    type Case<'a> = (&'a str, &'a str, bool, &'a [&'a str], &'a [&'a str], bool);
+    let cases: &[Case] = &[
         (
             "Git for Windows 的 cmd\\git.exe",
             "git",

@@ -10,31 +10,31 @@ use std::path::{Path, PathBuf};
 
 /// `agent-home-check` 的入参。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AgentHomeCheckReq {
+pub struct AgentHomeCheckReq {
     /// 要查的目录：绝对路径，或 `~` 打头（`~` · `~/…` · `~\…`，按这台家目录展开）。
     pub(crate) path: String,
 }
 
 /// `agent-home-check` 的回包。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AgentHomeCheck {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AgentHomeCheck {
     pub(crate) state: Verdict,
 }
 
 /// 判出来的那一态（线上 `state`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "AgentHomeState"
+        rename = "AgentHomeState",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "snake_case")]
@@ -65,7 +65,7 @@ pub(crate) fn verdict(dir: &Path) -> Verdict {
 }
 
 /// 帧面入口：`{path}`（绝对路径，或 `~` 打头按这台家目录展开）⇒ `{state}`。
-pub(crate) fn answer_check(req: &AgentHomeCheckReq) -> Result<AgentHomeCheck, Said> {
+pub fn answer_check(req: &AgentHomeCheckReq) -> Result<AgentHomeCheck, Said> {
     answer_check_with(req, crate::platform::paths::home_dir())
 }
 

@@ -636,6 +636,27 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     assert_eq!(shanghai.read_at_text.as_deref(), Some("11:10"));
 }
 
+/// 计划成品顶上也带上次读数那一格（同足迹「最近见到」那一格的形），与 `readAtText` 同一把钟写。
+#[test]
+fn the_plan_product_carries_the_last_read_cell() {
+    let at_ms = 1_767_232_980_000_u64;
+    let mut v = super::make(
+        &json!({}),
+        &|_: &str| crate::plan::Whose::Unknown,
+        "r".into(),
+        at_ms,
+    );
+    with_time_texts(
+        &mut v,
+        1_767_233_000_000,
+        &crate::Tz::named("Asia/Shanghai").unwrap(),
+    );
+    assert_eq!(
+        serde_json::to_value(&v).unwrap()["seen"],
+        json!({"atMs": at_ms, "said": copy_core::copy_text("beLastSeen.said.sampled", &[("time", "10:03")])})
+    );
+}
+
 /// 每片的仓库位置照 pb 给的 `path`（相对工作区根），不拿名字补；读不成的也带；只做计划照 `plan_only`。
 #[test]
 fn every_slice_carries_pbs_repo_path_and_plan_only_as_given() {
