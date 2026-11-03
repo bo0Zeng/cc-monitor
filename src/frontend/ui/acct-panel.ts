@@ -130,20 +130,19 @@ function render(o: Open, host: AcctPanelHost): void {
     return;
   }
   const entry = appStore.sessionRotation.get().get(o.sid);
-  const head = stub(o, entry, quotaOf(o.origin), host);
+  const head = stub(o, entry, quotaOf(o.origin));
   // 中转没见过这个会话 ⇒ 轮换那几块没得画（头下那一条说清楚了）。
   o.body.replaceChildren(...head, ...(entry !== undefined && entry.read === null ? [] : [o.rot.root]), footer(o, host));
 }
 
 /**
- * 头下那一条：中转没见过这个会话 · 额度账还没问回来（读取中）· 整问失败（出错那一层写好的那一句 ＋ 重试）·
- * 那台读不出（后端写好的那一句）。读取中 · 重试是面板自己的骨架字，不随那份账变。
+ * 头下那一条：中转没见过这个会话（只一句；去那台账号设置走底栏［管理账号…］）· 额度账还没问回来（读取中）·
+ * 整问失败（出错那一层写好的那一句 ＋ 重试）· 那台读不出（后端写好的那一句）。读取中 · 重试是面板自己的骨架字，不随那份账变。
  */
-function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaSlot, host: AcctPanelHost): HTMLElement[] {
+function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaSlot): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (entry !== undefined && entry.read === null) {
-    const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) });
-    out.push(banner("warn", copyText("acct.now.noRelay"), [connect]));
+    out.push(banner("warn", copyText("acct.now.noRelay")));
     return out;
   }
   const reading = copyText("kit.state.reading");

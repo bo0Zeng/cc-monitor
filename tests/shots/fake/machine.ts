@@ -4,6 +4,7 @@
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
+import type { AliasListing } from "../../../src/frontend/ui/generated/AliasListing";
 import type { BackendStatus } from "../../../src/frontend/ui/generated/BackendStatus";
 import type { FootprintClient } from "../../../src/frontend/ui/generated/FootprintClient";
 import type { CommandHandler } from "./commands";
@@ -126,11 +127,11 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({
-      home: HOME,
       otherRc: null,
       rcCandidates: [
         {
           path: `${HOME}/.bashrc`,
+          shown: "~/.bashrc",
           sourced: false,
           exists: true,
           block: {
@@ -145,7 +146,7 @@ export function machineOps(): Record<string, OpHandler> {
           blockLines: 4,
         },
       ],
-    }),
+    }) satisfies AliasListing,
     "ccm-print": () => ({ line: "cd ~ && exec claude" }),
     "assets-sync": (_o, _r, w) => ({
       self: null,

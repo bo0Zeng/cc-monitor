@@ -161,7 +161,7 @@ pub enum LoginStartReq {
     },
 }
 
-/// 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟没人答，已自动答：…」）。
+/// 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟无人答 · 已自动答：…」）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]

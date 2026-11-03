@@ -132,7 +132,7 @@ pub(crate) struct SessionFacts {
     /// 不累加，每次现给。
     #[serde(default)]
     pub(crate) auto_answer_choices: Vec<cmd_wire::needs::AutoChoice>,
-    /// 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+    /// 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟无人答 · 已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
     pub(crate) auto_answered: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,

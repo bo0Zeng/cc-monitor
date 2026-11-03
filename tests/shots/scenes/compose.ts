@@ -17,7 +17,6 @@ REAL_OPS.add("set-plan");
 const W = 1280;
 const H = 800;
 const STORAGE = { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1" };
-const DRAWER = { ...STORAGE, "cc-monitor.bottom-drawer": JSON.stringify({ page: "terminal", height: 420 }) };
 
 /** 一张 96×60 的小图（两色格子）。 */
 const PNG_B64 =
@@ -78,19 +77,21 @@ function liveWorld(): World {
   return w;
 }
 
-async function openTerminal(tabTitle?: string): Promise<void> {
+/** 消息流底下那个输入框（附件那一排只住它；终端页的输入行只敲键）。 */
+const COMPOSER = "[data-role=composer]";
+
+async function openComposer(tabTitle?: string): Promise<void> {
   await mainReady(7);
   if (tabTitle) {
     await click(await byText("#tab-bar .tab", tabTitle));
     await sleep(800);
   }
-  if (!document.querySelector("#bottom-drawer:not([hidden]) pre")) await click("#session-head button[aria-label='看它的终端']");
-  await waitFor("#bottom-drawer textarea");
+  await waitFor(`${COMPOSER} textarea`);
   await sleep(800);
 }
 
 async function pick(files: File[]): Promise<void> {
-  const inp = await waitFor<HTMLInputElement>("#bottom-drawer [data-role=attach-plus] input[type=file]");
+  const inp = await waitFor<HTMLInputElement>(`${COMPOSER} [data-role=attach-plus] input[type=file]`);
   const dt = new DataTransfer();
   for (const f of files) dt.items.add(f);
   inp.files = dt.files;
@@ -98,7 +99,7 @@ async function pick(files: File[]): Promise<void> {
   await sleep(1200);
 }
 
-function attachScene(id: string, title: string, desc: string, world: () => World, act: () => Promise<void>, storage: Record<string, string> = DRAWER): Scene {
+function attachScene(id: string, title: string, desc: string, world: () => World, act: () => Promise<void>, storage: Record<string, string> = STORAGE): Scene {
   return { id, page: "index", dir: "发附件", title, desc, width: W, height: H, storage, world, act: async () => act() };
 }
 
@@ -136,10 +137,10 @@ const ATTACH_SCENES: Scene[] = [
     attachOps(w, ["login-narrow.png", "login.css", "design-spec.pdf"], { hangAt: { "login.css": 3 } });
     return w;
   }, async () => {
-    await openTerminal();
-    await type("#bottom-drawer textarea", "截图在这，样式表也附上了");
+    await openComposer();
+    await type(`${COMPOSER} textarea`, "截图在这，样式表也附上了");
     await pick([file("login-narrow.png", 4700), file("login.css", 1_300_000), file("design-spec.pdf", 4_000_000)]);
-    await hover(await byText("#bottom-drawer button", "送出"));
+    await hover(`${COMPOSER} [data-role=composer-send]`);
     await sleep(900);
   }),
   attachScene("compose-attach-offline", "附件 · 那台离线", "传字节那一跳断开 ⇒ 虚线 ＋ 连接层那一句；［送出］悬停也是那一句", () => {
@@ -148,10 +149,10 @@ const ATTACH_SCENES: Scene[] = [
     w.hopDown = { devbox: ["files-stage-chunk"] };
     return w;
   }, async () => {
-    await openTerminal("账单导出");
+    await openComposer("账单导出");
     await pick([file("trace.png", 4700), file("gateway.log", 3_100_000)]);
-    await type("#bottom-drawer textarea", "上面这个 trace 是 p99 那次的");
-    await hover(await byText("#bottom-drawer button", "送出"));
+    await type(`${COMPOSER} textarea`, "上面这个 trace 是 p99 那次的");
+    await hover(`${COMPOSER} [data-role=composer-send]`);
     await sleep(900);
   }),
   attachScene("compose-said-attach", "消息流 · 发出去的那一句", "附件画在气泡外、上方、靠右；那台已清掉的那份虚线「已清理」", streamWorld, async () => {
