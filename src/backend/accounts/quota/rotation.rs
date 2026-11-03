@@ -11,7 +11,7 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub(crate) const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ROTATION_REL);
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ROTATION_REL);
 
 /// 那一份的声明（落点 · 读上限 · 状态 · 版本）。
 const DOC: crate::common::own_state::Doc<Book> =
@@ -20,7 +20,7 @@ const DOC: crate::common::own_state::Doc<Book> =
 static ID_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// 起新会话先定好的 sid（UUID v4 的样子：那一家 `--session-id` 只收这一形）。
-pub(crate) fn new_session_id() -> String {
+pub fn new_session_id() -> String {
     use std::hash::{BuildHasher, Hash, Hasher};
     let seed = std::collections::hash_map::RandomState::new();
     let half = |salt: u8| {
@@ -53,7 +53,7 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
     super::ledger::path_from(get).map(|p| p.with_file_name(FILE_NAME))
 }
 
-pub(crate) fn path_now() -> Option<PathBuf> {
+pub fn path_now() -> Option<PathBuf> {
     path_from(&|k| std::env::var(k).ok())
 }
 
@@ -109,7 +109,7 @@ struct Held {
 }
 
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
-pub(crate) struct RotationStore {
+pub struct RotationStore {
     path: Option<PathBuf>,
     /// 改到的往哪发节点（生产是进程里那一条；判据各给自己的一条）。
     nodes: super::nodes::Nodes,
@@ -117,7 +117,7 @@ pub(crate) struct RotationStore {
 }
 
 impl RotationStore {
-    pub(crate) fn at(path: Option<PathBuf>) -> Self {
+    pub fn at(path: Option<PathBuf>) -> Self {
         Self::with_nodes(path, super::nodes::bus().clone())
     }
 
@@ -133,12 +133,12 @@ impl RotationStore {
         }
     }
 
-    pub(crate) fn path(&self) -> Option<&Path> {
+    pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 
     /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 照上一份读懂的）。
-    pub(crate) fn now(&self) -> Book {
+    pub fn now(&self) -> Book {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let Some(p) = self.path.as_deref() else {
             return g.doc.clone();
@@ -170,7 +170,7 @@ impl RotationStore {
     }
 
     /// 盘上那份此刻读不懂 ⇒ 为什么；读得懂 · 没有 ⇒ `None`。
-    pub(crate) fn unreadable(&self) -> Option<Said> {
+    pub fn unreadable(&self) -> Option<Said> {
         self.now();
         self.cache
             .lock()
@@ -249,7 +249,7 @@ pub(crate) fn io_said(path: &Path, e: &std::io::Error) -> Said {
 }
 
 /// 中转那一路的写口（第一次看见会话 · 换号 · 记一条 · 存 memo 与叫醒）。
-pub(crate) fn relay_change<R>(
+pub fn relay_change<R>(
     store: &RotationStore,
     own: &Own,
     f: impl FnOnce(&mut Book) -> R,
@@ -258,7 +258,7 @@ pub(crate) fn relay_change<R>(
 }
 
 /// 帧面那一路的写口（拖出来的顺序 · 现在用 · 新会话用哪份 · 载入策略、换了策略清 memo 与叫醒）。
-pub(crate) fn face_change<R>(
+pub fn face_change<R>(
     store: &RotationStore,
     own: &Own,
     f: impl FnOnce(&mut Book) -> R,

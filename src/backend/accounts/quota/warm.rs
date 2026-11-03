@@ -21,7 +21,7 @@ pub(crate) const AGAIN: u64 = 15 * 60;
 const SEND_WITHIN: Deadline = Deadline::secs(120);
 
 /// 命令那一形的总期限（分派那一层装；略长于那一发）。
-pub(crate) const WARM_CAP: Deadline = Deadline::secs(125);
+pub const WARM_CAP: Deadline = Deadline::secs(125);
 
 /// 一个号最近一次开窗：发出的时刻 · 回来的重置时刻（还没回来 · 没读到 ⇒ 空）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,10 +215,10 @@ fn resets_5h(quota: &super::ledger::Ledger, agent: &str, account: &str) -> Optio
 
 /// `quota-warm` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct QuotaWarmReq {
+pub struct QuotaWarmReq {
     /// 哪一家（线上的 kind）。
     pub(crate) agent: crate::agents::AgentKind,
     /// 账号库里的号（配置目录末段；账号 0 是 `0`）。
@@ -227,9 +227,9 @@ pub(crate) struct QuotaWarmReq {
 
 /// `quota-warm` 的回包。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Warmed {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Warmed {
     /// 哪一家（同入参）。
     pub(crate) agent: crate::agents::AgentKind,
     /// 号（同入参）。
@@ -237,16 +237,16 @@ pub(crate) struct Warmed {
     /// 这一趟真发了（`false` ＝ 15 分钟内发过，照那一次答）。
     pub(crate) sent: bool,
     /// 那一发发出的时刻（unix 秒）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) at: u64,
     /// 回来的重置时刻（额度账里那个号的 5 小时窗；没读到 ⇒ `null`）。
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) resets_at: Option<u64>,
 }
 
 crate::wire::typed::codes! {
     /// `quota-warm` 的码。
-    pub(crate) enum WarmErr {
+    pub enum WarmErr {
         /// 那一发没在期限里说完。
         ChildTimedOut = "child_timed_out",
         /// 起不来 · 退出码非零（它自己那句话进原话）。
@@ -261,7 +261,7 @@ crate::wire::typed::codes! {
 }
 
 /// `quota-warm`：用某个号发一句、让它的 5 小时窗开始计时（等那一发说完 ⇒ 阻塞档，总期限登记在 `caps.rs`）。
-pub(crate) struct QuotaWarm;
+pub struct QuotaWarm;
 
 impl crate::wire::typed::Command for QuotaWarm {
     const NAME: &'static str = "quota-warm";
@@ -272,14 +272,12 @@ impl crate::wire::typed::Command for QuotaWarm {
 
 impl crate::wire::typed::Handle for QuotaWarm {
     type Needs = crate::wire::typed::needs::Own;
-    fn run(
+    async fn run(
         req: QuotaWarmReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Warmed, WarmErr>> + Send + 'static {
-        async move {
-            answer(&req, &cx.needs, crate::common::time::now_secs())
-                .map_err(|f| crate::wire::typed::of_fail(f, WarmErr::NotSent))
-        }
+    ) -> Result<Warmed, WarmErr> {
+        answer(&req, &cx.needs, crate::common::time::now_secs())
+            .map_err(|f| crate::wire::typed::of_fail(f, WarmErr::NotSent))
     }
 }
 

@@ -66,7 +66,7 @@ pub(crate) fn read_text(p: &str, cap: Cap) -> Result<Option<String>, crate::comm
 
 /// 这台的账号库清单（各号之间同步 · 预标信任 · 别名都照它的具名号 `Manifest::managed`：名字与号目录过了写侧那一关）。
 /// `None` = 这台没有账号库 / 做不了多账号。
-pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Said> {
+pub fn manifest_in(home: &str) -> Result<Option<Manifest>, Said> {
     if layout::face().is_none() || crate::platform::acct_view::multi_account_supported().is_err() {
         return Ok(None);
     }
@@ -82,13 +82,13 @@ pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Said> {
 }
 
 /// 这台账号库里各号共用的用户级 MCP 住哪份文件；没有账号库 ⇒ `None`（用户级 MCP 就是 agent 自己那一份）。
-pub(crate) fn store_file_in(home: &str) -> Option<String> {
+pub fn store_file_in(home: &str) -> Option<String> {
     matches!(manifest_in(home), Ok(Some(_)))
         .then(|| door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL))
 }
 
 /// 这台的用户级 MCP 住哪份文件：有账号库 ⇒ 各号共用的那一份（扩展页读它）；没有 ⇒ agent 自己那一份。
-pub(crate) fn user_mcp_file() -> Option<std::path::PathBuf> {
+pub fn user_mcp_file() -> Option<std::path::PathBuf> {
     let home = crate::platform::paths::home_dir()?;
     store_file_in(&home.display().to_string())
         .map(std::path::PathBuf::from)
@@ -270,7 +270,7 @@ pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>,
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
             .map(Some)
-            .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
+            .map_err(|e| crate::wire::spec::fail("io_failed", e))
     } else {
         Ok(None)
     }
@@ -291,12 +291,11 @@ fn paused_view(h: &Here) -> AccountMcpView {
     view
 }
 
+/// cc-monitor 里定的那一下：照共享集合与各号读到的，交回新的共享集合。
+type StoreDecide<'a> = dyn Fn(&Store, &[Seen]) -> Result<Store, Said> + 'a;
+
 /// 一趟：锁 → 读 → `decide`（cc-monitor 里定的那一下；同步那一趟原样交回）→ 对照 → 落盘 → 写回共享集合。
-fn run(
-    d: &dyn Door,
-    asker: Asker,
-    decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Said>,
-) -> Result<AccountMcpView, Said> {
+fn run(d: &dyn Door, asker: Asker, decide: &StoreDecide<'_>) -> Result<AccountMcpView, Said> {
     let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
@@ -364,14 +363,14 @@ fn run(
 }
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。
-pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Said> {
+pub fn sync(d: &dyn Door) -> Result<AccountMcpView, Said> {
     run(d, Asker::Auto, &|s, _| Ok(s.clone()))
 }
 
 /// `accounts-mcp-sync {on}`：停 / 开各号之间的同步。只改共享集合那份文件里那一格。
 /// 停 ⇒ 之后各号各管各的，已经同步过去的一条不删；开 ⇒ 落下那一格之后立刻同步一趟（停着那段时间各号改的照三方对照采纳，
 /// 两边都改了的照常列出来等挑）。已经是那一态 ⇒ 不写，照答。
-pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Said> {
+pub fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Said> {
     let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     {
         let _held = lock(&home)?;
@@ -423,7 +422,7 @@ fn view_after(h: &Here) -> AccountMcpView {
 }
 
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
-pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Said> {
+pub fn read(d: &dyn Door) -> Result<AccountMcpView, Said> {
     let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
@@ -452,7 +451,7 @@ fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Said> {
 }
 
 /// `accounts-mcp-remove`：从共享集合里删一条，所有号一起撤（删除只有这一条路）。
-pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
+pub fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
     run(d, Asker::Asked, &|s, seen| {
         known(s, seen, name)?;
         Ok(mcp_share::decide(s, seen, name, None))
@@ -460,7 +459,7 @@ pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
 }
 
 /// `accounts-mcp-pick`：两边都改了的那一条用哪一版（`from` = 那个号里的；`None` = 共享的那一版）。
-pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
+pub fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
     run(d, Asker::Asked, &|s, seen| {
         known(s, seen, name)?;
         let to = mcp_share::pick(s, seen, name, from).map_err(|e| Said::new("refused", e))?;
@@ -469,7 +468,7 @@ pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<Accou
 }
 
 /// 装到全局：这一条写进共享集合、同步到所有号（名字空 / 定义不是对象 ⇒ 拒）。扩展页的确认卡接它。
-pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpView, Said> {
+pub fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpView, Said> {
     if name.trim().is_empty() || !def.is_object() {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -483,7 +482,7 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
 
 /// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
 /// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。足迹 · 帧面（MCP 读面 · 登录）都问它。
-pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
+pub fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
         .and_then(|h| manifest_in(&h.display().to_string()).ok().flatten())
         .map(|m| {
@@ -505,7 +504,3 @@ pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let now_ms = crate::common::time::now_ms();
     crate::agents::McpLook { homes, now_ms }
 }
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/accounts/manage/mcp_share_exec_tests.rs"]
-mod tests;

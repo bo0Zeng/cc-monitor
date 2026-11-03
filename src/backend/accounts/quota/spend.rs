@@ -170,7 +170,7 @@ impl Trail {
         let from = now.saturating_sub(PACE_SPAN);
         let mut it = self.prompts.iter().filter(|(t, _)| *t >= from);
         let (t0, k0) = *it.next()?;
-        let (t1, k1) = *it.last()?;
+        let (t1, k1) = *it.next_back()?;
         (t1 >= t0 + 60).then(|| (k1.saturating_sub(k0)) as f64 / ((t1 - t0) as f64 / 60.0))
     }
 }
@@ -226,7 +226,7 @@ impl Inner {
 
 /// 一本累计（生产是进程里那一本 [`book`]；判据各开各的）。
 #[derive(Default)]
-pub(crate) struct Spend {
+pub struct Spend {
     g: Mutex<Inner>,
 }
 
@@ -236,7 +236,7 @@ impl Spend {
     }
 
     /// 回包头到了：这一发由 `(agent, account)` 答。带会话标识 ⇒ 记下这个会话此刻在哪个号上；不带 ⇒ 这一发的用量数不到，记一笔。
-    pub(crate) fn answered(&self, sid: Option<&str>, agent: &str, account: &str) {
+    pub fn answered(&self, sid: Option<&str>, agent: &str, account: &str) {
         let key = (agent.to_string(), account.to_string());
         let mut g = self.lock();
         let Some(sid) = sid.filter(|s| !s.is_empty()) else {
@@ -259,7 +259,7 @@ impl Spend {
     }
 
     /// 流里的一件事（会话标识 · `data:` 原文 · 此刻）：说出了用量 ⇒ 记在那个会话此刻的号名下，并记进这个会话那一本。
-    pub(crate) fn heard(&self, stream: &str, data: &str, now: u64) {
+    pub fn heard(&self, stream: &str, data: &str, now: u64) {
         if stream.is_empty() {
             return;
         }
@@ -293,7 +293,7 @@ impl Spend {
 
     /// 一个响应开了头（流里 0 号那一件：会话标识 · 响应号）：会话此刻在哪个号上说得出 ⇒ 记进它那一本的在途。
     /// 子 agent · 工作流 · 分叉请求都带本会话的标识 ⇒ 一并记在这个会话名下。
-    pub(crate) fn began(&self, stream: &str, resp: u64, now: u64) {
+    pub fn began(&self, stream: &str, resp: u64, now: u64) {
         let mut g = self.lock();
         let Some(agent) = g.routes.get(stream).map(|(k, _)| k.0.clone()) else {
             return;
@@ -302,7 +302,7 @@ impl Spend {
     }
 
     /// 那个响应说完了（收尾那一件；断了也算说完）。
-    pub(crate) fn ended(&self, stream: &str, resp: u64, now: u64) {
+    pub fn ended(&self, stream: &str, resp: u64, now: u64) {
         if let Some(r) = self.lock().runs.get_mut(stream) {
             r.ended(resp, now);
         }
@@ -370,7 +370,7 @@ impl Spend {
     }
 
     /// 这个号这个窗口刚看到的读数（回包头那一份）⇒ 量得出就交「1% ≈ 多少」（折合输入 token，取整）；量不到 ⇒ `None`。
-    pub(crate) fn pace(&self, agent: &str, account: &str, w: &QuotaWindow) -> Option<u64> {
+    pub fn pace(&self, agent: &str, account: &str, w: &QuotaWindow) -> Option<u64> {
         let used = w.used? * 100.0;
         let key = (agent.to_string(), account.to_string());
         let mut g = self.lock();
@@ -408,7 +408,7 @@ impl Spend {
 }
 
 /// 进程里那一本（中转的 tap 口与额度账同用它）。
-pub(crate) fn book() -> &'static Arc<Spend> {
+pub fn book() -> &'static Arc<Spend> {
     static BOOK: std::sync::OnceLock<Arc<Spend>> = std::sync::OnceLock::new();
     BOOK.get_or_init(Default::default)
 }

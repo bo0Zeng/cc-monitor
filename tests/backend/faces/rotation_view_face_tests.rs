@@ -94,7 +94,7 @@ impl Home {
             ))),
             hop: Hop::new(
                 Arc::new(RotationStore::at(Some(self.root.join(rotation::FILE_NAME)))),
-                &crate::faces::rotation_face::adoptions_at(),
+                &crate::accounts::quota::adoptions_at(),
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 Arc::new(move |_| {
@@ -102,7 +102,7 @@ impl Home {
                         accounts: [("a", false), ("b", false), ("c", false), ("api", true)]
                             .iter()
                             .map(|(id, api)| {
-                                crate::accounts::upstream_select::rotate::tests::book_row(
+                                crate::accounts::upstream_select::rotate::test_support::book_row(
                                     &id.to_string(),
                                     Some(accts.join(id)),
                                     *api,

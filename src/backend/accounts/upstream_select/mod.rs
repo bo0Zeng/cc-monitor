@@ -47,23 +47,23 @@ pub(crate) mod creds; // 从哪儿拿 key（**只读**）+ 读之前查一次权
                       // 这台机器上那份凭据文件的**帧面写口**（`apikey-key-set`）与「表里有哪几行」。
                       // 上游选择自己的状态文件，不是用户文件 ⇒ 写经 `Own`，只从 `stream/inbound/` 递进来。
                       // ⚠ 它**不在**中转那条启动路径上：中转里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
-pub(crate) mod file_face;
+pub mod file_face;
 // 起会话那一发走哪、注入什么（`ccm` 在最终 exec 那一处问）· 账号清单「这几个号在表里有没有行」（`accounts-list` 的徽章）——
 // 那张表的唯一住址。
-pub(crate) mod endpoint;
-mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
+pub mod endpoint;
+mod policy; // 热重载
 pub mod rotate;
 // 每条会话一份的上游描述：`ccm` 起会话最终那一跳留 · 中转开上游那一口按这一发的来处读（读的那只手由 `host_relay` 递进中转）。
-pub(crate) mod session_upstream;
-pub(crate) mod table; // 路由表 —— 账号段 → **上游与 key 焊死的一个值**
-pub(crate) mod turn; // 换号：这个会话这一发走哪个号（叫策略、缓存到下一个节点 · 备令牌与身份 · 钉号）
+pub mod session_upstream;
+pub mod table; // 路由表 —— 账号段 → **上游与 key 焊死的一个值**
+pub mod turn; // 换号：这个会话这一发走哪个号（叫策略、缓存到下一个节点 · 备令牌与身份 · 钉号）
 
 pub(crate) use policy::Reload;
 
-// 判据用：把一家的默认上游换成假上游（读写 `Upstreams` 的私有格，所以挂在这一层底下）。
-#[cfg(test)]
+// 判据用：把一家的默认上游换成假上游（读写 `Upstreams` 的私有格，所以挂在这一层底下）：本包判据与上层判据（`test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../../tests/backend/accounts/upstream_select/upstreams_testing.rs"]
-pub(crate) mod upstreams_testing;
+pub mod upstreams_testing;
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/upstream_select/mod_tests.rs"]
@@ -89,20 +89,20 @@ use table::{RoutingTable, Row};
 /// 读它的只有本层自己（那张决策表住本层，[`endpoint`]）。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
-pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
+pub const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
 
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
 /// 适配层那一格（`agents::Adapter::upstream`）解析之后的样子：`路由名 → 那一家的默认上游`。**一个进程一份**，首次装表与每次重载共用。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Upstreams {
+pub struct Upstreams {
     by_agent: std::collections::BTreeMap<&'static str, UpstreamPick>,
 }
 
 /// 一家的默认上游解析之后：一个，或按这一发带没带那个头二选一（`agents::Fallback` 的两形）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum UpstreamPick {
+pub enum UpstreamPick {
     One(Base),
     ByHeader {
         header: &'static str,
@@ -160,7 +160,7 @@ impl Upstreams {
     /// ⚠ 取值器是**注入的**（与 `listen::run_reading` 同一条纪律：判据不许去改进程环境）。
     /// ⚠ 为什么是「一家坏了整个起不来」而不是「那一家当未登记」：后者会把一次打错字
     ///   变成「那一家的每一发都被拒」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
-    pub(crate) fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
+    pub fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
         let mut by_agent = std::collections::BTreeMap::new();
         // 默认上游只查适配层（`agents::Adapter::upstream`）。
         for a in crate::agents::default_upstreams() {
@@ -175,7 +175,7 @@ impl Upstreams {
     }
 
     /// 这一家登记了默认上游没有。
-    pub(crate) fn has(&self, agent: &str) -> bool {
+    pub fn has(&self, agent: &str) -> bool {
         self.by_agent.contains_key(agent)
     }
 
@@ -190,7 +190,7 @@ impl Upstreams {
     }
 }
 
-/// **常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处经 `faces::rotation_face::host_relay` 调它（那一层递进账号库与配置编辑层）。
+/// **常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。进程入口（主 crate 的 `stream/entry.rs`）流模式那一处经 `faces::rotation_face::host_relay` 调它（那一层递进账号库与配置编辑层）。
 ///
 /// # 它为什么住上游选择（而不是中转）
 ///
@@ -206,7 +206,7 @@ impl Upstreams {
 ///
 /// `library`：这台的号表怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
-pub(crate) fn host_relay(
+pub fn host_relay(
     library: rotate::BookAt,
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
@@ -230,10 +230,10 @@ pub(crate) fn host_relay(
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）：装上换号（额度满了换到轮换里下一个号），
 /// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
 /// 第二格是写自家状态的句柄（启动时造的那一份）；第三格是会话用哪份策略问谁（宿主交进来 —— 上游选择不认识策略文件）。
-pub(crate) struct Rotating(
-    pub(crate) rotate::BookAt,
-    pub(crate) crate::platform::fs::Own,
-    pub(crate) crate::accounts::quota::rules::AdoptionsAt,
+pub struct Rotating(
+    pub rotate::BookAt,
+    pub crate::platform::fs::Own,
+    pub crate::accounts::quota::rules::AdoptionsAt,
 );
 
 impl Startup for Rotating {
@@ -314,7 +314,7 @@ impl Ready for Booted {
 ///
 /// ⚠ 表与默认上游住这里，不住中转：中转那个结构体里
 /// 只有一个 `dest: Arc<dyn Destinations>` —— 上游选择整块藏在它后面。
-pub(crate) struct Accounts {
+pub struct Accounts {
     /// `(agent, 账号)` → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
@@ -344,11 +344,7 @@ type Clock = std::sync::Arc<dyn Fn() -> u64 + Send + Sync>;
 
 impl Accounts {
     /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层上游选择。
-    pub(crate) fn new(
-        table: RoutingTable,
-        upstreams: Upstreams,
-        own: crate::platform::fs::Own,
-    ) -> Self {
+    pub fn new(table: RoutingTable, upstreams: Upstreams, own: crate::platform::fs::Own) -> Self {
         Self {
             table: std::sync::RwLock::new(std::sync::Arc::new(table)),
             upstreams,
@@ -362,26 +358,20 @@ impl Accounts {
     }
 
     /// 装上换号（额度满了换到轮换里下一个号）。
-    pub(crate) fn rotating_with(mut self, hop: rotate::Hop) -> Self {
+    pub fn rotating_with(mut self, hop: rotate::Hop) -> Self {
         self.hop = Some(hop);
         self
     }
 
     /// 装上会话血缘（每一发换号之前先认「谁起的谁」）。
-    pub(crate) fn tracing_lineage(
-        mut self,
-        store: std::sync::Arc<crate::lineage::LineageStore>,
-    ) -> Self {
+    pub fn tracing_lineage(mut self, store: std::sync::Arc<crate::lineage::LineageStore>) -> Self {
         self.lineage = Some(store);
         self
     }
 
     /// 判据换钟的那一口（产品不走：恒是真钟）。读者只有中转整趟的判据（`observe_retry_tests.rs`，测试档）。
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "判据换钟的那一口，产品恒用真钟")
-    )]
-    pub(crate) fn clocked(mut self, clock: Clock) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn clocked(mut self, clock: Clock) -> Self {
         self.clock = clock;
         self
     }
@@ -433,7 +423,7 @@ impl Accounts {
     }
 
     /// 额度账记到这一本（缺省是只在内存里的一本）。
-    pub(crate) fn recording_to(mut self, quota: std::sync::Arc<Ledger>) -> Self {
+    pub fn recording_to(mut self, quota: std::sync::Arc<Ledger>) -> Self {
         self.quota = quota;
         self
     }
@@ -689,7 +679,7 @@ const TOO_MANY_REQUESTS: u16 = 429;
 
 /// 被拒那一发记进后端日志的一行：号名 · 状态码 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
 /// 被拒要求限流器说了被拒（读法那一侧定）⇒ 「有没有限额头」恒为有，不印。
-pub(crate) fn refusal_line(
+pub fn refusal_line(
     account: &str,
     status: u16,
     r: &crate::agents::QuotaReading,
@@ -736,7 +726,7 @@ fn names_of<'a>(ask: &Ask<'a>) -> Vec<&'a str> {
 /// ★ 剥出来只为一件事：判据要能**拿生产段这一份**去问，而不是自己再写一份同构的
 /// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取表 → 调它」
 /// ⇒ **实现只有这一份**，没有第二本账。
-pub(crate) fn decide(
+pub fn decide(
     table: &RoutingTable,
     upstreams: &Upstreams,
     mode: Mode,
@@ -922,6 +912,9 @@ fn headers_to_clear() -> &'static [&'static str] {
     })
 }
 
+/// 凭据文件的印记（修改时刻 ＋ 大小；读不到 ⇒ `None`）。
+type CredsStamp = Option<(std::time::SystemTime, u64)>;
+
 /// 读一次凭据并**把该说的话说出去**，返回装好的表 ＋ 那份文件的路径与印记（推不出路径 ⇒ `None`、空表）。
 ///
 /// ★ 它为什么被抽成一个有名字的函数（同 `listen::resolve_port` / `run_reading` 那两次的理由）：
@@ -932,10 +925,7 @@ pub(crate) fn load_credentials(
     get: &dyn Fn(&str) -> Option<String>,
     upstreams: &Upstreams,
     out: &mut dyn Write,
-) -> (
-    RoutingTable,
-    Option<(std::path::PathBuf, Option<(std::time::SystemTime, u64)>)>,
-) {
+) -> (RoutingTable, Option<(std::path::PathBuf, CredsStamp)>) {
     let path = match creds::resolve_path(get) {
         Ok(p) => p,
         Err(why) => {

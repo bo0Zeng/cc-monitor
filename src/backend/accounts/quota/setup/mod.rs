@@ -2,14 +2,15 @@
 //! 设置声明的校验（[`form`]）· 会话载入哪份（副本存在基础层，载入只在本层）与新会话默认用哪份（[`uses`]）。
 //! 本层可以问基础功能层（`quota/rules/` 等：一判 · 推演 · 事实），基础层不认本层：它只认会话里存的副本（新会话那一份经 [`uses::Setup`] 实现的 `Adoptions` 给）。
 
-pub(crate) mod editor;
-pub(crate) mod form;
-#[cfg(test)]
+pub mod editor;
+pub mod form;
+// 判据拿来当策略跑的三份样例：本包判据与上层判据（`test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../../../tests/backend/accounts/quota/setup/samples.rs"]
-pub(crate) mod samples;
-pub(crate) mod script;
-pub(crate) mod shelf;
-pub(crate) mod uses;
+pub mod samples;
+pub mod script;
+pub mod shelf;
+pub mod uses;
 
 use crate::accounts::quota::rules::book::Copy;
 use crate::accounts::quota::rules::Adopted;
@@ -17,14 +18,14 @@ use serde_json::Value;
 use std::path::Path;
 
 /// 策略头里的时区（缺 · 认不出 ⇒ UTC，界面另提示「时区不明」）。
-pub(crate) fn tz_of(head: Option<&script::Head>) -> crate::Tz {
+pub(crate) fn tz_of(head: Option<&script::Head>) -> crate::common::time::Tz {
     head.and_then(|h| h.tz.as_deref())
-        .and_then(crate::Tz::iana)
+        .and_then(crate::common::time::Tz::iana)
         .unwrap_or_default()
 }
 
 /// 一份读懂的策略文件 ⇒ 交给基础层判的那一份（设置页 · 试跑；`settings` 给了 ⇒ 照它，否则文件里的）。
-pub(crate) fn adopted_of_file(
+pub fn adopted_of_file(
     id: &str,
     rev: &str,
     file: &script::File,
@@ -58,12 +59,12 @@ pub(crate) fn copy_of_file(id: &str, rev: &str, file: &script::File) -> Copy {
 }
 
 /// 目录里那一份此刻的副本：没了 · 读不懂 ⇒ 缺（载入不了）。
-pub(crate) fn copy_of(s: &shelf::Shelved) -> Option<Copy> {
+pub fn copy_of(s: &shelf::Shelved) -> Option<Copy> {
     s.file.as_ref().ok().map(|f| copy_of_file(&s.id, &s.rev, f))
 }
 
 /// 策略目录 `dir` 里 id 那一份此刻的副本（`id` 空 · 没了 · 读不懂 ⇒ 缺）。
-pub(crate) fn copy_at(dir: Option<&Path>, id: &str) -> Option<Copy> {
+pub fn copy_at(dir: Option<&Path>, id: &str) -> Option<Copy> {
     if id.is_empty() {
         return None;
     }
@@ -71,6 +72,6 @@ pub(crate) fn copy_at(dir: Option<&Path>, id: &str) -> Option<Copy> {
 }
 
 /// 副本里存的声明（存的时候就是读懂的；读不回 ⇒ 空）。
-pub(crate) fn form_of(c: &Copy) -> Vec<form::Cell> {
+pub fn form_of(c: &Copy) -> Vec<form::Cell> {
     serde_json::from_value(c.form.clone()).unwrap_or_default()
 }

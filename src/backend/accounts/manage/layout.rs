@@ -687,3 +687,8 @@ pub(crate) fn describe(op: &Op, manifest_path: &str) -> String {
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/manage/layout_tests.rs"]
 mod tests;
+
+// 平台层造的旁名（`fs::side_name`）进不了账号库的共享集。
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/manage/side_name_exclusion_tests.rs"]
+mod side_name_exclusion_tests;

@@ -3,6 +3,7 @@
 //! 还有：认出 `_` 那一发在用哪个号（[`Hop::recognize`]）。
 //! 临时家目录、假凭据、假身份、续令牌发到本机一个绑着不听的口；不起中转。
 
+use super::test_support::book_row;
 use super::*;
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation;
@@ -101,7 +102,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::new(Ledger::open(
                 Some(self.root.join(ledger::FILE_NAME)),
                 self.tx.clone(),
@@ -430,7 +431,7 @@ fn account_zero_is_not_a_rotation_account() {
         ],
     });
     let ids: Vec<String> = hop
-        .facts(AGENT, &no_row, now(), &crate::Tz::default())
+        .facts(AGENT, &no_row, now(), &crate::common::time::Tz::default())
         .into_iter()
         .map(|f| f.account)
         .collect();
@@ -442,19 +443,9 @@ fn account_zero_is_not_a_rotation_account() {
             acct_core::BARE_ACCOUNT,
             &no_row,
             now(),
-            &crate::Tz::default()
+            &crate::common::time::Tz::default()
         )
         .account,
         acct_core::BARE_ACCOUNT
     );
-}
-
-/// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。换号那几族的判据共用。
-pub(crate) fn book_row(id: &str, dir: Option<PathBuf>, api: bool) -> acct_core::ManifestAccount {
-    acct_core::ManifestAccount {
-        name: id.to_string(),
-        config_dir: dir.map(|d| d.to_string_lossy().into_owned()),
-        auth_kind: api.then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
-        ..Default::default()
-    }
 }

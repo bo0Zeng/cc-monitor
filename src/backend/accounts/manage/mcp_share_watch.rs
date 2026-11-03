@@ -74,10 +74,7 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
                 tracing::warn!("账号之间同步 MCP：{} 两边都改了，等你在账号页里挑", c.name);
             }
         }
-        Err(f) => tracing::warn!(
-            "账号之间同步 MCP：这一趟没做成：{}",
-            crate::common::said::Said::from(f).logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步 MCP：这一趟没做成：{}", f.logged()),
     }
     match super::mcp_logins_exec::sync(d, own) {
         Ok(v) => {
@@ -88,26 +85,20 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
                 tracing::warn!("账号之间同步 MCP 登录：{n}");
             }
         }
-        Err(f) => tracing::warn!(
-            "账号之间同步 MCP 登录：这一趟没做成：{}",
-            crate::common::said::Said::from(f).logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步 MCP 登录：这一趟没做成：{}", f.logged()),
     }
     match super::trust_share_exec::sync(d) {
         Ok(changed) if !changed.is_empty() => {
             tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
         }
         Ok(_) => {}
-        Err(f) => tracing::warn!(
-            "账号之间同步信任：这一趟没做成：{}",
-            crate::common::said::Said::from(f).logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步信任：这一趟没做成：{}", f.logged()),
     }
 }
 
 /// 起监听（进程里只起一次），并立刻同步一趟（后端刚起来时各号可能已经不一样了）。
 /// `d` = 这台的文件管理面（写各号配置文件与共享集合都经它）；`own` = 写自家状态的句柄（各号凭据文件经它铸的窄句柄写）。
-pub(crate) fn start(d: &'static (dyn Door + Sync), own: crate::platform::fs::Own) {
+pub fn start(d: &'static (dyn Door + Sync), own: crate::platform::fs::Own) {
     let Ok(mut g) = LIVE.lock() else { return };
     if g.is_some() {
         return;
@@ -128,7 +119,7 @@ pub(crate) fn start(d: &'static (dyn Door + Sync), own: crate::platform::fs::Own
 }
 
 /// 踢工作线程一下（名单跟上 ＋ 同步一趟）。监听器没起 ⇒ 什么都不做。
-pub(crate) fn kick() {
+pub fn kick() {
     if let Ok(g) = LIVE.lock() {
         if let Some(live) = g.as_ref() {
             live.kick();

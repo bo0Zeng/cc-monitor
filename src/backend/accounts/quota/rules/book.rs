@@ -4,7 +4,7 @@
 //! 版本那一格归读写口（声明 `relay_route_core::ROTATION_FILE`）。
 
 /// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{
+pub use cmd_wire::rotation::{
     RotLog as Log, RotLogCause as Cause, RotSaw as Saw, RotSawAcct as SawAcct,
 };
 use serde::{Deserialize, Serialize};
@@ -18,31 +18,31 @@ pub(crate) const LOG_KEPT: usize = 50;
 /// 整份第四版（盘上那一形见 [`Disk`]）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "Disk", into = "Disk")]
-pub(crate) struct Book {
-    pub(crate) sessions: BTreeMap<String, Session>,
+pub struct Book {
+    pub sessions: BTreeMap<String, Session>,
     /// 新会话载入哪份（策略目录里的文件名去掉 `.rhai`）；空 ⇒ 新会话不轮换，只用开会话的号。
-    pub(crate) for_new: String,
+    pub for_new: String,
 }
 
 /// 一个会话。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Session {
-    pub(crate) agent: String,
+pub struct Session {
+    pub agent: String,
     /// 起会话的号（路由第 2 段）。
-    pub(crate) start: String,
-    pub(crate) current: String,
-    pub(crate) since: u64,
-    pub(crate) seen: u64,
+    pub start: String,
+    pub current: String,
+    pub since: u64,
+    pub seen: u64,
     /// 这个会话载入的那份策略（缺 ⇒ 不轮换）：载入之后文件再改也不跟，「载入新版」才换。
-    pub(crate) uses: Option<Arc<Copy>>,
+    pub uses: Option<Arc<Copy>>,
     /// 用户拖出来的「接下来先用谁」。
-    pub(crate) temp: Vec<String>,
+    pub temp: Vec<String>,
     /// 这个会话先不用的号（会话侧的临时动作：策略不变，会话没了就没了）。
-    pub(crate) off: Vec<String>,
+    pub off: Vec<String>,
     /// 策略上一判交的，原样存、下一判原样交回。
-    pub(crate) memo: Option<Value>,
-    pub(crate) wake: Wake,
-    pub(crate) log: Vec<Log>,
+    pub memo: Option<Value>,
+    pub wake: Wake,
+    pub log: Vec<Log>,
 }
 
 /// 盘上那一形：副本收在 `copies`（键 `<id>@<rev>`；同一键内容不同 ⇒ 后面那份键尾加 `~<n>`），会话的 `uses` 只写键。
@@ -184,12 +184,12 @@ impl TryFrom<Disk> for Book {
 /// 一份策略的副本：哪份文件 · 那时的内容版本 · 代码 · 设置 · 时区。`form` 原样存（本层不认，配置编辑层照它画）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Copy {
-    pub(crate) id: String,
-    pub(crate) rev: String,
+pub struct Copy {
+    pub id: String,
+    pub rev: String,
     /// 代码那一段，前面垫着空行（报第几行时与文件对得上）。
-    pub(crate) code: String,
-    pub(crate) settings: Value,
+    pub code: String,
+    pub settings: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) tz: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -201,7 +201,7 @@ pub(crate) struct Copy {
 /// 策略约的叫醒（上一判交的）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Wake {
+pub struct Wake {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) at: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -217,7 +217,7 @@ impl Wake {
 /// 某号某窗读数到多少再来问。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct WakeWhen {
+pub struct WakeWhen {
     pub(crate) acct: String,
     /// `5h` · `7d`。
     pub(crate) w: String,
@@ -225,13 +225,13 @@ pub(crate) struct WakeWhen {
 }
 
 /// 「看见」的时刻隔多久才刷新一次（秒）。
-pub(crate) const SEEN_REFRESH: u64 = 86_400;
+pub const SEEN_REFRESH: u64 = 86_400;
 /// 会话多久没被看见就从账本里清掉（秒）。
 pub(crate) const DROP_AFTER: u64 = 7 * 86_400;
 
 impl Session {
     /// 一个新会话：从开会话用的号起。
-    pub(crate) fn fresh(agent: &str, start: &str, now: u64) -> Self {
+    pub fn fresh(agent: &str, start: &str, now: u64) -> Self {
         Self {
             agent: agent.to_string(),
             start: start.to_string(),
@@ -248,12 +248,12 @@ impl Session {
     }
 
     /// 最后一次看见它的时刻（没记过 ⇒ 按 `since`）。
-    pub(crate) fn last_seen(&self) -> u64 {
+    pub fn last_seen(&self) -> u64 {
         self.seen.max(self.since)
     }
 
     /// 记一条换号（至多留 [`LOG_KEPT`] 条，最早的先丢）。
-    pub(crate) fn push_log(&mut self, l: Log) {
+    pub fn push_log(&mut self, l: Log) {
         self.log.push(l);
         let n = self.log.len();
         if n > LOG_KEPT {
@@ -270,7 +270,7 @@ impl Book {
 
     /// 中转第一次看见这个会话 ⇒ 记下、载入 `for_new` 那份副本（缺 ⇒ 不轮换）；会话换了开它的号 ⇒ 在用的号 · 临时动作 · memo · 叫醒清掉（副本照留）。
     /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻；新会话被看见时顺手清旧会话。改了 ⇒ `true`。
-    pub(crate) fn saw(
+    pub fn saw(
         &mut self,
         sid: &str,
         agent: &str,

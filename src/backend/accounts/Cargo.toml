@@ -1,0 +1,77 @@
+# 账号域（上游选择 · 账号库 · 登录 · 额度与轮换 · oauth）。只引历史清单（含会话血缘）· agents · 宿主口（含 ccm 行）· 中转宿主 · 帧面零件 · 纯工具 · 平台七层。
+[package]
+name = "backend-accounts"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（号表里的一行 · 三份样例策略 · 换掉一家默认上游）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts"]
+
+[dependencies]
+backend-history = { path = "../history" }
+backend-agents = { path = "../agents" }
+backend-host = { path = "../host" }
+backend-relay = { path = "../relay" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+# 号表的形状与读（桌面与手机同一份）。
+acct-core = { path = "../../common/acct-core" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 凭据文件的住址与权限判读。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# 钥匙文件与路由段的形状（中转与 `ccm` 共用的那一份）。
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+# 上游 base URL 能不能用的唯一一份。
+upstream-url-core = { path = "../../common/upstream-url-core" }
+# 中转本身（上游选择交进去的那几样类型）。
+comms-outward = { path = "../../comms/outward" }
+# 出网口（直连或经代理开上游 TCP）。
+egress = { path = "../egress" }
+# 轮换策略的脚本引擎。
+rhai.workspace = true
+ring.workspace = true
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 量具（线程级内存 · 金样 · 听 `tracing` 说了什么）：只在 dev 侧的包。
+test-meters = { path = "../test-meters" }
+# 拨了必被拒的本机口（续令牌一律发到它，绝不发到那一家的真端点）。
+ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+egress = { path = "../egress", features = ["test-support"] }
+comms-outward = { path = "../../comms/outward", features = ["test-support"] }
+acct-core = { path = "../../common/acct-core", features = ["fixtures"] }
+# 判据里异源算 sha256。
+sha2.workspace = true
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+backend-platform = { path = "../platform", features = ["test-support"] }
+backend-common = { path = "../common", features = ["test-support"] }
+# 假 agent 夹具（适配层那一侧的 `test-support`）。
+backend-agents = { path = "../agents", features = ["test-support"] }
+# 中转宿主那一侧够到的内部件（账号域那一侧的中转判据）。
+backend-relay = { path = "../relay", features = ["test-support"] }
+backend-wire = { path = "../wire", features = ["test-support"] }

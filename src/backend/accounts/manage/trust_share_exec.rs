@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Marked {
+pub enum Marked {
     /// 标上了。
     Wrote,
     /// 本来就信任过。
@@ -32,7 +32,7 @@ pub(crate) enum Marked {
 }
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。回改写了的号名。这台没有账号库 / 那一家没有「信任」这件事 ⇒ 什么都不做。
-pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Said> {
+pub fn sync(d: &dyn Door) -> Result<Vec<String>, Said> {
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Vec::new());
     };
@@ -76,7 +76,7 @@ fn listed<'a>(m: &'a Manifest, dir: &str) -> Option<&'a Account> {
 
 /// [`sync`] 的本体：信任那几格 · 配置文件名 · 清单（它的具名号）是参数（判据拿假适配层的格式喂它）。
 /// 家目录下那一份（账号 0）只读。读不出来的号这一趟不参与（不读它、也不写它）。
-pub(crate) fn sync_with(
+pub fn sync_with(
     d: &dyn Door,
     home: &str,
     cells: &TrustCells,
@@ -148,7 +148,7 @@ fn write_marks(
 }
 
 /// 起会话之前：`cwd` 标进 `config_dir` 那个号（必须在清单里）。这台没有账号库 / 那一家没有「信任」这件事 ⇒ [`Marked::Nothing`]。
-pub(crate) fn pretrust(
+pub fn pretrust(
     d: &dyn Door,
     config_dir: &str,
     cwd: &str,
@@ -157,8 +157,8 @@ pub(crate) fn pretrust(
         return Ok(Marked::Nothing);
     };
     let home = super::scan::home(d)?;
-    let _held = lock(&home).map_err(crate::common::said::Said::from)?;
-    let Some(m) = manifest_in(&home).map_err(crate::common::said::Said::from)? else {
+    let _held = lock(&home)?;
+    let Some(m) = manifest_in(&home)? else {
         return Ok(Marked::Nothing);
     };
     pretrust_with(
@@ -173,7 +173,7 @@ pub(crate) fn pretrust(
 }
 
 /// [`pretrust`] 的本体（同 [`sync_with`]，几格是参数）。被抢先改了 ⇒ 重读再试一次；还不成 ⇒ [`Marked::Stale`]。
-pub(crate) fn pretrust_with(
+pub fn pretrust_with(
     d: &dyn Door,
     home: &str,
     cells: &TrustCells,
@@ -199,7 +199,3 @@ pub(crate) fn pretrust_with(
     }
     Ok(Marked::Stale)
 }
-
-#[cfg(all(test, unix))]
-#[path = "../../../../tests/backend/accounts/manage/trust_share_exec_tests.rs"]
-mod tests;

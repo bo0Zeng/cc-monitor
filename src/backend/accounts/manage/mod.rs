@@ -26,22 +26,18 @@
 //! 由帧面宿主 `faces/accounts_face.rs` 接起来。
 //! 不引资产域（`layering_guard::ONE_WAY`）：写用户文件经 `common::door`；资产那边（MCP 装到这台 · 卸 · 资产目录 · 别名）反过来调这里的 MCP 共享与号清单。
 
-pub(crate) mod aliases;
+pub mod aliases;
 pub(crate) mod exec;
 pub(crate) mod json_key;
 pub(crate) mod layout;
 pub(crate) mod mcp_logins;
-pub(crate) mod mcp_logins_exec;
+pub mod mcp_logins_exec;
 pub(crate) mod mcp_share;
-pub(crate) mod mcp_share_exec;
-pub(crate) mod mcp_share_watch;
-pub(crate) mod model;
-pub(crate) mod scan;
-pub(crate) mod trust_share;
-pub(crate) mod trust_share_exec;
+pub mod mcp_share_exec;
+pub mod mcp_share_watch;
+pub mod model;
+pub mod scan;
+pub mod trust_share;
+pub mod trust_share_exec;
 pub(crate) mod verify;
-pub(crate) mod wire;
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/accounts/manage/library_any_os_tests.rs"]
-mod library_any_os_tests;
+pub mod wire;

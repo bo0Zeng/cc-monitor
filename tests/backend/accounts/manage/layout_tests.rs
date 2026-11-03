@@ -171,6 +171,7 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
 /// - 谁都没有 ⇒ 修复先在共享库里建出来，再给号链上；
 /// - 只有一个号里有一份实体 ⇒ 把那一份挪进共享库当共用的那一份，再链回去；
 /// - 两个号里各有一份 ⇒ 不替人合并：共享库里建一份空的，有实体的那两个只提示，其余照链。
+///
 /// 照 `agents` · `plans` 两个名字核（不是共享库里碰巧有的）；`telemetry` 是各号自己的（登在身份表里），不在这一族。
 #[test]
 fn the_shared_dirs_claude_makes_on_demand_are_linked_before_the_shared_store_has_them() {

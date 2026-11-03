@@ -490,7 +490,7 @@ impl Home {
                 accounts: ["a", "b"]
                     .iter()
                     .map(|id| {
-                        crate::accounts::upstream_select::rotate::tests::book_row(
+                        crate::accounts::upstream_select::rotate::test_support::book_row(
                             &id.to_string(),
                             Some(accts.join(id)),
                             false,
@@ -567,7 +567,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             library,
@@ -593,7 +593,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
@@ -627,7 +627,7 @@ impl Home {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
-            &crate::faces::rotation_face::adoptions_at(),
+            &crate::accounts::quota::adoptions_at(),
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
@@ -1504,7 +1504,7 @@ impl Home {
                 accounts: ids
                     .iter()
                     .map(|id| {
-                        crate::accounts::upstream_select::rotate::tests::book_row(
+                        crate::accounts::upstream_select::rotate::test_support::book_row(
                             &id.clone(),
                             (id != "0").then(|| accts.join(id)),
                             false,
@@ -1658,7 +1658,7 @@ fn the_undeclared_account_is_not_taken_for_the_default_login() {
     home.identity("0", UUID_ZERO);
     let hop = Hop::new(
         Arc::new(RotationStore::at(Some(home.rotation_path()))),
-        &crate::faces::rotation_face::adoptions_at(),
+        &crate::accounts::quota::adoptions_at(),
         Arc::new(Ledger::at(Some(home.root.join(ledger::FILE_NAME)))),
         Some(home.root.clone()),
         home.library_of(&["0", "a", "b"]),

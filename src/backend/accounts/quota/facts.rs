@@ -9,9 +9,9 @@ use super::show::LoginState;
 use crate::agents::{QuotaReading, QuotaWindow};
 
 /// 号的种类（线上 `sub` · `api`）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::quota::Kind;
+pub use cmd_wire::quota::Kind;
 /// 每个号的事实（`rotation-view` · `rotation-facts` 带它）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{Fact, FactBlocked, FactWhy, WinFact};
+pub use cmd_wire::rotation::{Fact, FactBlocked, FactWhy, WinFact};
 
 fn live(t: Option<u64>, now: u64) -> bool {
     !super::reset_since_seen(t, now)

@@ -48,55 +48,56 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// 本族的应答：`data` 或失败（码 ＋ 那一句 ＋ 下层原话，原话进复制详情）。
-pub(crate) type FileFaceAnswer = Result<Value, Said>;
+pub type FileFaceAnswer = Result<Value, Said>;
 
 /// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（`creds::resolve_path`，同一个进程环境；见模块头注）。
 /// 自己拼一条路径 = 长出第二份规则，不做。推不出 ⇒ `Err`（那句话）。
-pub(crate) fn machine_path() -> Result<PathBuf, String> {
+pub fn machine_path() -> Result<PathBuf, String> {
     super::creds::resolve_path(&|k| std::env::var(k).ok())
 }
 
 /// 这台那份表里有哪几行（[`rows_at`]）。推不出路径 ⇒ 零条，同「读不动」那一形。
-pub(crate) fn machine_rows() -> Vec<String> {
+pub fn machine_rows() -> Vec<String> {
     machine_path().map(|p| rows_at(&p)).unwrap_or_default()
 }
 
 /// `apikey-key-set` 的入参。明文只在 `key` 里（帧面：长连接入方向；派生 CLI 面：stdin），解码那一刻就是 `SecretKey`。
 /// 不收 `account`（账号 id 由这台后端按 `configDir` 推；不为旧形状留兼容）。
 #[derive(Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(Debug, ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, derive(Debug))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct KeySetReq {
+pub struct KeySetReq {
     /// 这个号的账号目录。
-    pub(crate) config_dir: String,
+    pub config_dir: String,
     /// 明文。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) key: SecretKey,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub key: SecretKey,
     /// 这个账号的第三方端点：缺 / `null` / 空串 ＝ 不碰那一格（只配 key 时已有端点原样留着）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) base_url: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub base_url: Option<String>,
 }
 
 /// `apikey-key-set` 的回包：盘上的事实（写完再读一遍）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct KeySet {
+pub struct KeySet {
     /// 推出来的账号 id。
     pub(crate) account: String,
     /// 那份文件的绝对路径。
     pub(crate) path: String,
     /// 这一行 key 的掩码（只留末四位）。
-    pub(crate) masked: String,
+    pub masked: String,
     /// 这一行此刻的端点（没配 ⇒ `null`）。
     pub(crate) base_url: Option<String>,
 }
 
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
-pub(crate) fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Said> {
+pub fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Said> {
     answer_set_at(own, req)
 }
 
@@ -107,7 +108,7 @@ fn own_file(own: &Own) -> Result<OwnPath, Said> {
 }
 
 /// [`answer_set`] 的本体，写句柄是参数（判据拿落在临时目录上的那一份喂它，不碰真家目录）。
-pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> {
+pub fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> {
     let file = own_file(own)?;
     let path = file.as_path();
     // 账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
@@ -195,12 +196,12 @@ fn config_dir_arg(args: &Value) -> Result<&str, Said> {
 }
 
 /// 删号那一步：摘掉一个号那一行（账号 id 按 `configDir` 推，同 [`answer_set`]）。那一行本来就不在 ⇒ 一个字节不写。
-pub(crate) fn answer_drop(args: &Value, own: &Own) -> FileFaceAnswer {
+pub fn answer_drop(args: &Value, own: &Own) -> FileFaceAnswer {
     answer_drop_at(own, args)
 }
 
 /// [`answer_drop`] 的本体，写句柄是参数。
-pub(crate) fn answer_drop_at(own: &Own, args: &Value) -> FileFaceAnswer {
+pub fn answer_drop_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
     let account = account_of(config_dir_arg(args)?)?;
     let dropped = rewrite_at(own, &file, &|cur| {
@@ -214,12 +215,12 @@ pub(crate) fn answer_drop_at(own: &Own, args: &Value) -> FileFaceAnswer {
 }
 
 /// 回滚那一步：从 `from`（删号之前备份下来的那一份）把一个号那一行放回去；表里别的行不动。`from` 里没有它 ⇒ 拒。
-pub(crate) fn answer_restore(args: &Value, own: &Own) -> FileFaceAnswer {
+pub fn answer_restore(args: &Value, own: &Own) -> FileFaceAnswer {
     answer_restore_at(own, args)
 }
 
 /// [`answer_restore`] 的本体，写句柄是参数。
-pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
+pub fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
     let account = account_of(config_dir_arg(args)?)?;
     let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
@@ -249,7 +250,7 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
 }
 
 /// 表里现有哪几个号（`accounts` 底下的键，按名排）。只读；文件不在 ⇒ 零个；解析不了 ⇒ `Err`（那句话）。
-pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
+pub fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
     let doc = read_doc(path).map_err(|f| f.said)?.unwrap_or_default();
     let mut ids: Vec<String> = doc
         .get(store::ACCOUNTS_FIELD)
@@ -262,7 +263,7 @@ pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
 
 /// 一把 key ＋ 一个 Base URL 写不写得进去（空 key · 装不进表的地址 ⇒ 拒）—— [`answer_set_at`] 落盘前判的就是这一条；
 /// 建 API 号那一趟在建目录**之前**先问它，免得号建好了 key 却写不进去。
-pub(crate) fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Said> {
+pub fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Said> {
     if !key.is_configured() {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -309,7 +310,7 @@ pub(crate) fn rows_at_with(path: &Path, get: &dyn Fn(&str) -> Option<String>) ->
 
 /// 这台那份表里一行的**给人看的那两格**：账号 id · 掩码（[`SecretKey::masked`]，只留末四位）· 端点。key 本体不出本函数。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct KeyFact {
+pub struct KeyFact {
     pub id: String,
     pub masked: Option<String>,
     pub base_url: Option<String>,
@@ -317,12 +318,12 @@ pub(crate) struct KeyFact {
 
 /// 这台那份表里每一行的 [`KeyFact`]（`accounts-list` 给每个 API 号带出去）。推不出路径 / 读不动 / 解析不了 ⇒ 零条
 /// （坏文件不出声，同上）。
-pub(crate) fn machine_key_facts() -> Vec<KeyFact> {
+pub fn machine_key_facts() -> Vec<KeyFact> {
     machine_path().map(|p| key_facts_at(&p)).unwrap_or_default()
 }
 
 /// [`machine_key_facts`] 的本体，路径是参数。
-pub(crate) fn key_facts_at(path: &Path) -> Vec<KeyFact> {
+pub fn key_facts_at(path: &Path) -> Vec<KeyFact> {
     let Ok(Some(doc)) = read_doc(path) else {
         return Vec::new();
     };
@@ -406,7 +407,7 @@ fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Said> 
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
     let held = own
         .lock(&dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let Some(merged) = change(&current) else {

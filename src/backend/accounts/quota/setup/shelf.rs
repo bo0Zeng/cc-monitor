@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// 策略目录的名字（同 `rotation.json` 一层）。
-pub(crate) const DIR_NAME: &str = "strategies";
+pub const DIR_NAME: &str = "strategies";
 /// 第三版脚本挪去的子目录。
 pub(crate) const OLD_DIR: &str = "v3";
 /// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖；上限照声明表）。
@@ -20,12 +20,12 @@ pub(crate) const MAX_FILES: usize = 64;
 pub(crate) const MAX_ID_CHARS: usize = 32;
 
 /// 目录里的一份。
-pub(crate) struct Shelved {
-    pub(crate) id: String,
-    pub(crate) source: String,
+pub struct Shelved {
+    pub id: String,
+    pub source: String,
     /// 内容版本（`h:` ＋ 内容摘要的前 12 位）：存的时候比它，别处改过就对不上。
-    pub(crate) rev: String,
-    pub(crate) file: Result<script::File, Fail>,
+    pub rev: String,
+    pub file: Result<script::File, Fail>,
 }
 
 impl std::fmt::Debug for Shelved {
@@ -53,7 +53,7 @@ fn name_char(c: char) -> bool {
 
 /// id（＝ 文件名 ＝ 标题）能不能用：1–32 字，字母数字（含中文）与 ` -_·()（）+`、至少一个字母数字，首尾不是空白，不是 Windows 的保留名。
 /// `.` `/` `\` 都不在里面 ⇒ 拼不出 `..`，也出不了策略目录。
-pub(crate) fn id_ok(id: &str) -> bool {
+pub fn id_ok(id: &str) -> bool {
     !id.is_empty()
         && id.chars().count() <= MAX_ID_CHARS
         && id.chars().all(name_char)
@@ -72,7 +72,7 @@ pub(crate) fn digest(bytes: &[u8]) -> String {
 }
 
 /// 内容版本。
-pub(crate) fn rev_of(source: &str) -> String {
+pub fn rev_of(source: &str) -> String {
     format!("h:{}", &digest(source.as_bytes())[..12])
 }
 
@@ -165,7 +165,7 @@ fn load(dir: &Path) -> Vec<Arc<Shelved>> {
 }
 
 /// ★ 此刻目录里的全部（按 id 排；目录的戳变了才重读）。`dir = None` ⇒ 家推不出，一份都没有。
-pub(crate) fn all(dir: Option<&Path>) -> Arc<Vec<Arc<Shelved>>> {
+pub fn all(dir: Option<&Path>) -> Arc<Vec<Arc<Shelved>>> {
     type DirSeen = std::collections::BTreeMap<PathBuf, (DirStamp, Arc<Vec<Arc<Shelved>>>)>;
     static SEEN: OnceLock<Mutex<DirSeen>> = OnceLock::new();
     let Some(dir) = dir else {
@@ -185,19 +185,19 @@ pub(crate) fn all(dir: Option<&Path>) -> Arc<Vec<Arc<Shelved>>> {
 }
 
 /// 按 id 找一份。
-pub(crate) fn find(all: &[Arc<Shelved>], id: &str) -> Option<Arc<Shelved>> {
+pub fn find(all: &[Arc<Shelved>], id: &str) -> Option<Arc<Shelved>> {
     all.iter().find(|s| s.id == id).cloned()
 }
 
 /// `v3/` 里挪开的第三版脚本有几份（不加载）。
-pub(crate) fn old_count(dir: Option<&Path>) -> usize {
+pub fn old_count(dir: Option<&Path>) -> usize {
     old_files(dir).len()
 }
 
 /// `v3/` 里挪开的第三版脚本（不加载），按文件名排。
-pub(crate) fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
+pub fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
     let Some(dir) = dir else { return Vec::new() };
-    let mut v: Vec<PathBuf> = crate::platform::fs::Ro::read_dir(&dir.join(OLD_DIR))
+    let mut v: Vec<PathBuf> = crate::platform::fs::Ro::read_dir(dir.join(OLD_DIR))
         .map(|rd| {
             rd.filter_map(Result::ok)
                 .map(|e| e.path())
@@ -210,12 +210,12 @@ pub(crate) fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// 一份策略在目录里的文件（id 已照 [`id_ok`] 过，拼不出目录外）。
-pub(crate) fn path_of(dir: &Path, id: &str) -> PathBuf {
+pub fn path_of(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{id}.rhai"))
 }
 
 /// 帧面那一路写一份策略文件：`<家>/strategies/<id>.rhai`（目录只建这一层，整份原子写）。读不读得懂由调用方先判。
-pub(crate) fn write_file(
+pub fn write_file(
     own: &crate::platform::fs::Own,
     id: &str,
     source: &str,
@@ -240,7 +240,7 @@ pub(crate) fn write_file(
 
 /// 账号库删了号 `account` ⇒ 每份读得懂、号列表里有它的策略摘掉它那一行（同「清掉库里没有的号」那一个意图，只重写头：
 /// 说明与代码一个字不动，版本跟着变；在用旧版的活会话照常「载入新版」才换）。没列它的不动。回写不成的那几句（全成 ⇒ 空）。
-pub(crate) fn unlist(own: &crate::platform::fs::Own, account: &str) -> Vec<String> {
+pub fn unlist(own: &crate::platform::fs::Own, account: &str) -> Vec<String> {
     let Ok(dir) = own.path(DIR_NAME) else {
         return Vec::new();
     };
@@ -276,7 +276,7 @@ pub(crate) fn unlist(own: &crate::platform::fs::Own, account: &str) -> Vec<Strin
 }
 
 /// 帧面那一路删一份策略文件（只删策略目录里的那一份）。
-pub(crate) fn remove_file(
+pub fn remove_file(
     own: &crate::platform::fs::Own,
     id: &str,
 ) -> Result<(), crate::common::said::Said> {

@@ -42,11 +42,11 @@ pub(crate) const BASE_ACCOUNT_SEGMENT: &str = acct_core::BARE_ACCOUNT;
 ///
 /// 不借账号 0 的 `0`：没表态 ≠ 账号 0（建了账号库的机器上，没表态时 pane 可能落到 shell rc 里导出的那个配置根上），
 /// 流标签不该替它说是哪个号。与表里某一行同名的风险同 `0`，由决策表第 ⑤ 行挡。
-pub(crate) const UNDECLARED_ACCOUNT_SEGMENT: &str = "_";
+pub const UNDECLARED_ACCOUNT_SEGMENT: &str = "_";
 
 /// 起会话时说的是哪个号（线上 `account`：`{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LaunchAccount {
+pub enum LaunchAccount {
     /// 一个具名账号（`configDir` 的末段目录名就是表里的 id，规则住 `acct-core`）。
     Named { config_dir: String },
     /// 账号 0。
@@ -143,11 +143,11 @@ pub(crate) const ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 /// [`ALL_SESSIONS_ENV`] 的值 ⇒ 开没开（缺席 / 其余任何值 ⇒ 开）。
 pub(crate) fn all_sessions_on(get: &dyn Fn(&str) -> Option<String>) -> bool {
-    get(ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
+    get(ALL_SESSIONS_ENV).is_none_or(|v| v != "0")
 }
 
 /// 同机中转住的口：常驻后端被交的那个（`crate::relay::ENV_PORT`）；没交 / 认不出 ⇒ 默认口。
-pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
+pub fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
     get(crate::relay::ENV_PORT)
         .and_then(|v| v.trim().parse::<u16>().ok())
         .filter(|p| *p != 0)
@@ -157,7 +157,7 @@ pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
 /// **ccm 在最终 exec 那一处问的那一句**：这一发指到哪个中转地址（不带钥匙；`None` = 不注入）。
 /// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 这台家目录下的钥匙读得到，且回环口连得上（断开立刻被拒，不等）。
 /// 钥匙那一格先判：口上的是别人（同机另一个用户）的中转时，这个用户没有那一把，当它不在。
-pub(crate) fn relay_for_exec(
+pub fn relay_for_exec(
     agent: &str,
     account: &LaunchAccount,
     own_upstream: bool,
@@ -178,24 +178,24 @@ pub(crate) fn relay_for_exec(
 }
 
 /// 非得经 shell 那一趟、`/t/` 地址照字面插的只许直通那一把（这台家目录下根钥匙派生的那一个）。只读。
-pub(crate) fn pass_key_for_shell(home: &std::path::Path) -> Option<String> {
+pub fn pass_key_for_shell(home: &std::path::Path) -> Option<String> {
     crate::relay::pass_key_on_disk(home)
 }
 
 /// 非得经 shell 那一趟：这条地址的钥匙段照字面写只许直通那一把（`/t/`），否则写成读钥匙文件的命令替换（`/s/`）。
-pub(crate) fn takes_pass_key(url: &str) -> bool {
+pub fn takes_pass_key(url: &str) -> bool {
     crate::relay::KeyKind::for_url(url) == Some(crate::relay::KeyKind::Pass)
 }
 
 /// `ccm` exec 那一刻：一条不带钥匙的中转地址 ⇒ 插上这台盘上那条路由要的那一把（`/t/` 只许直通 · `/s/` 全权）的那一形。
 /// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
-pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+pub fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
     crate::relay::keyed_with_key_on_disk(&home, url)
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。
-pub(crate) fn relay_for_preview(
+pub fn relay_for_preview(
     agent: &str,
     account: &LaunchAccount,
     own_upstream: bool,
@@ -214,7 +214,7 @@ pub(crate) fn relay_for_preview(
 
 /// 上两条的本体：人群与「中转在不在」注入（判据喂夹具，不碰真家目录、不连真口）。
 /// 非它不可（API 号代入 `/s/`）而没在听 ⇒ `Err(那一句)`；有它更好（`/t/`）而没在听 ⇒ 这一发直连（`None`）。
-pub(crate) fn relay_with(
+pub fn relay_with(
     agent: &str,
     account: &LaunchAccount,
     own_upstream: bool,
@@ -259,7 +259,7 @@ pub(crate) fn relay_with(
 }
 
 /// 中转地址拆成「`http://主机:口/`」与「`/s/…` 那一截」两半（钥匙段插在中间）。不是构造口的产物 ⇒ `None`。
-pub(crate) fn base_url_halves(base_url: &str) -> Option<(&str, &str)> {
+pub fn base_url_halves(base_url: &str) -> Option<(&str, &str)> {
     if !relay_route_core::base_url_shape_ok(base_url) {
         return None;
     }
@@ -270,7 +270,7 @@ pub(crate) fn base_url_halves(base_url: &str) -> Option<(&str, &str)> {
 
 /// 那份设置文件里的地址和现在该贴的那一条比，是哪一态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OptinState {
+pub enum OptinState {
     /// 贴过，且等于现在那一条。
     Installed,
     /// 是我们那一形（回环 ＋ 钥匙段 ＋ 我们的路由），但不等于现在那一条（钥匙 / 端口 / 路由换了）。
@@ -284,7 +284,7 @@ pub(crate) enum OptinState {
 }
 
 impl OptinState {
-    pub(crate) fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             OptinState::Installed => "installed",
             OptinState::Stale => "stale",
@@ -296,7 +296,7 @@ impl OptinState {
 }
 
 /// 一条地址是不是我们那一形（带钥匙段的、或没带钥匙段的构造口产物）。读者：设置文件判态 · `ccm` 不继承别的号的中转地址。
-pub(crate) fn ours(url: &str) -> bool {
+pub fn ours(url: &str) -> bool {
     relay_route_core::split_keyed_base_url(url).is_some()
         || relay_route_core::base_url_shape_ok(url)
 }
@@ -313,15 +313,15 @@ pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> Op
 }
 
 /// 一家「直接敲的也走中转」此刻的样子（「待办」那一件读它）。
-pub(crate) struct OptinReport {
-    pub(crate) state: OptinState,
-    pub(crate) source: std::path::PathBuf,
+pub struct OptinReport {
+    pub state: OptinState,
+    pub source: std::path::PathBuf,
     /// 要贴的那条地址（带钥匙）；已装或生成不了 ⇒ `None`。
-    pub(crate) url: Option<String>,
+    pub url: Option<String>,
 }
 
 /// 这一家的 [`OptinReport`]（家目录 · 那一家 · 表 · 已登记都是参数，判据喂夹具；「待办」按这台现取）。
-pub(crate) fn optin_report_at(
+pub fn optin_report_at(
     home: &std::path::Path,
     agent: &str,
     face: &SettingsEnvFace,

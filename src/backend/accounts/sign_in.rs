@@ -36,7 +36,7 @@ const TAIL_LINES: usize = 12;
 
 /// 一份作业怎么收的（交给「结束了」回调；也是 `login-finish` 等到的那一件）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SignInEnd {
+pub enum SignInEnd {
     /// 登成了（那一家退出码 0）。
     Done,
     /// 登不成：那一句 ＋ 它最后说的几行（原话）。
@@ -44,32 +44,32 @@ pub(crate) enum SignInEnd {
 }
 
 /// 「结束了」回调：作业号 · 怎么收的。只在作业自己退了时调（取消 · 替掉 · 连接断不调）。
-pub(crate) type OnEnd = Box<dyn Fn(&str, &SignInEnd) + Send>;
+pub type OnEnd = Box<dyn Fn(&str, &SignInEnd) + Send>;
 
 /// 起一份作业要的：那一家的登录形 · 目标（帧面给的键：同一个键新开就替掉旧的；`finish` 原样交回）· 号的配置目录（账号 0 ⇒ 无目录）·
 /// 子命令最后再接的几个参数（MCP：服务器名）· 发起它的那条连接。
-pub(crate) struct SignInAsk<'a> {
-    pub(crate) face: SignInFace,
-    pub(crate) target: &'a str,
-    pub(crate) dir: Option<&'a str>,
-    pub(crate) then: &'a [String],
-    pub(crate) conn: u64,
+pub struct SignInAsk<'a> {
+    pub face: SignInFace,
+    pub target: &'a str,
+    pub dir: Option<&'a str>,
+    pub then: &'a [String],
+    pub conn: u64,
     /// 起它时的工作目录（家）。
-    pub(crate) cwd: Option<std::path::PathBuf>,
+    pub cwd: Option<std::path::PathBuf>,
     /// 起会话那个 shell 的 `PATH`：判据交一份（假的登录子命令放在临时目录里）；生产 ⇒ `None`（现问，见 `platform::shell::agent_launch`）。
-    pub(crate) path: Option<String>,
+    pub path: Option<String>,
 }
 
 /// 起好了：作业号 ＋ 登录链接。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Started {
-    pub(crate) job: String,
-    pub(crate) url: String,
+pub struct Started {
+    pub job: String,
+    pub url: String,
 }
 
 /// `finish` 不成。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FinishFail {
+pub enum FinishFail {
     /// 没有这份作业（收了 · 被替掉 · 从没有过）。
     NoJob,
     /// 粘的东西格式不对，或那一家说码不对：作业还在，可以再粘。
@@ -116,7 +116,7 @@ fn new_job_id() -> String {
 
 /// 起一份作业：起那一家的登录子命令，等它打印链接（至多 [`START_WITHIN`]）。同一个号已有一份 ⇒ 先替掉（杀它）。
 /// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。给了链接 ⇒ 回链接，哪怕它随后（`start` 醒来之前）就退了：结局走「结束了」回调。
-pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
+pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     let f = a.face;
     let failed = |why: &str| {
         copy_core::copy_text(
@@ -284,7 +284,7 @@ fn listen(
     clippy::disallowed_methods,
     reason = "`login-finish` 等那一家换码的一次有界等待：码写进去之后，它去令牌端点换一次、再拉一次资料；卡住时没有它这条命令就一直挂着"
 )]
-pub(crate) fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
+pub fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
     let (tx, rx) = mpsc::channel::<Waited>();
     let account = {
         let mut t = jobs();
@@ -341,7 +341,7 @@ fn scrubbed(line: &str, secrets: &[String]) -> String {
 }
 
 /// 取消一份作业（杀它）。回：有没有这一份。
-pub(crate) fn cancel(job: &str) -> bool {
+pub fn cancel(job: &str) -> bool {
     let j = jobs().remove(job);
     j.is_some()
 }
@@ -361,13 +361,13 @@ fn withdraw_conn(conn: u64) {
 }
 
 /// 一条连接上的登录作业：随连接的读循环一起死 ⇒ 它发起的作业一律收。
-pub(crate) struct Desk {
+pub struct Desk {
     conn: u64,
 }
 
 impl Desk {
     /// `conn` ＝ 这条连接的号（与待答请求同一个号：`control::asks::Desk::conn`）。
-    pub(crate) fn of(conn: u64) -> Desk {
+    pub fn of(conn: u64) -> Desk {
         Desk { conn }
     }
 }
@@ -377,11 +377,3 @@ impl Drop for Desk {
         withdraw_conn(self.conn);
     }
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/accounts/sign_in_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "../../../tests/backend/accounts/sign_in_mcp_tests.rs"]
-mod mcp_tests;

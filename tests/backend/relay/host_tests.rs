@@ -129,7 +129,7 @@ fn rotating(creds: &std::path::Path) -> crate::accounts::upstream_select::Rotati
     crate::accounts::upstream_select::Rotating(
         std::sync::Arc::new(|_| Default::default()),
         own_of(creds),
-        crate::faces::rotation_face::adoptions_at(),
+        crate::accounts::quota::adoptions_at(),
     )
 }
 

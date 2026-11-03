@@ -4,11 +4,11 @@
 //! 夹具只造结构：登录状态是写死的假邮箱，密钥是 `sk-fake-…` 假串（判据顺带核它不出现在任何一句话里）。
 #![cfg(unix)]
 
-use super::*;
+use crate::accounts::manage::mcp_share_exec::*;
 use crate::accounts::upstream_select::file_face;
 use crate::assets::aliases::tests::HomeDoor;
 use crate::faces::accounts_face::{tests::answer, KeyDoor};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -433,7 +433,7 @@ fn bad_arguments_are_refused() {
 fn a_file_event_alone_brings_the_other_account_along() {
     let t = two("watch");
     let door: &'static HomeDoor = Box::leak(Box::new(t.door()));
-    super::super::mcp_share_watch::start(door, crate::platform::fs::Own::for_tests());
+    crate::accounts::manage::mcp_share_watch::start(door, crate::platform::fs::Own::for_tests());
     t.write(
         &cfg("z"),
         &claude_json(
@@ -488,9 +488,12 @@ impl Tmp {
     fn mcp(&self, acct: &str) -> Value {
         self.creds(acct)["mcpOAuth"][MCP_KEY].clone()
     }
-    fn logins(&self) -> super::super::mcp_logins_exec::Synced {
-        super::super::mcp_logins_exec::sync(&self.door(), &crate::platform::fs::Own::for_tests())
-            .unwrap()
+    fn logins(&self) -> crate::accounts::manage::mcp_logins_exec::Synced {
+        crate::accounts::manage::mcp_logins_exec::sync(
+            &self.door(),
+            &crate::platform::fs::Own::for_tests(),
+        )
+        .unwrap()
     }
 }
 

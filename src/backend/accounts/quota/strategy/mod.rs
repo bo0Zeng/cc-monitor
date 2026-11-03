@@ -81,13 +81,13 @@ pub(crate) fn call_in(
 /// 一次调用为什么没成。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "StrategyFailKind"
+        rename = "StrategyFailKind",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub enum FailKind {
@@ -126,27 +126,27 @@ pub enum FailWhy {
 /// 一次调用没成：哪一种 · 第几行（说得出才有）· 原话（英文诊断，不进文案表）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "StrategyFail"
+        rename = "StrategyFail",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Fail {
     pub kind: FailKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub line: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub col: Option<usize>,
     pub msg: String,
     /// 是哪一种常见的错（只在后端拼提示用，不上线）。
     #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub why: FailWhy,
 }
 

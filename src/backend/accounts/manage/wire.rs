@@ -1,7 +1,7 @@
 //! **命令那一层**：入参（`cmd_wire::accounts`，typed 那一处已严格收好）→ 读快照 → 算计划 → 预演就交出那几步、否则交执行器落盘。
 //! 帧面宿主（`faces/accounts_face.rs`）在这之上接 apikey 表与别名文件那两步。
 
-pub(crate) use super::exec::KeyTable;
+pub use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan};
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
@@ -15,7 +15,7 @@ use copy_core::copy_text;
 
 /// 一条改动请求（入参已由 typed 那一处按线上形状收好）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Request {
+pub enum Request {
     Init(AccountInitArgs),
     Add(AccountAddArgs),
     Remove(AccountRemoveArgs),
@@ -55,7 +55,7 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
             .map(Some)
-            .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
+            .map_err(|e| crate::wire::spec::fail("io_failed", e))
     } else {
         Ok(None)
     }
@@ -63,14 +63,14 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
 
 /// 账号表里一个号增 / 减那一刻要对别名清单做的事（清单只跟着它走）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AliasEvent {
+pub enum AliasEvent {
     Added(String),
     Removed(String),
 }
 
 /// 一趟改动的结局（帧面宿主据 `alias_events` 决定要不要改别名文件）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Done {
+pub struct Done {
     pub change: AccountChange,
     /// 真建了 / 删了号 ⇒ 那几件（回滚按前后账号表之差算）；预演 / 计划为空 / 别的命令 ⇒ 空。
     pub alias_events: Vec<AliasEvent>,
@@ -97,7 +97,7 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
 }
 
 /// 一条会话里账号库要的那三格。判活与「会话归哪个号」住观测侧，门面层读好、折成这一形交进来（账号域不认观测侧的类型）。
-pub(crate) struct LiveSession {
+pub struct LiveSession {
     pub alive: bool,
     /// 活着、环境读得到、没设配置目录（账号 0）。
     pub bare: bool,
@@ -124,10 +124,10 @@ fn cred_path(home: &str, raw: &str) -> Result<String, Said> {
     ));
     // 尾部 `/` 先去掉再判：`~/` · `<家>/` 就是家目录本身，不许当成「家目录底下」放过去。
     let abs = abs.trim_end_matches('/');
-    let ok = crate::platform::acct_view::is_absolute(&abs)
+    let ok = crate::platform::acct_view::is_absolute(abs)
         && !abs.split('/').any(|s| s == "..")
         && !abs.chars().any(char::is_control)
-        && is_under(&abs, home)
+        && is_under(abs, home)
         && abs != home;
     if ok {
         Ok(abs.to_string())
@@ -167,7 +167,7 @@ fn alias_names_for(account: &str) -> Vec<String> {
 
 /// 跑一条改动命令。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）；
 /// `live` = 这台此刻的会话（只「修复」那一趟问：有活会话的号不挪实体）。
-pub(crate) fn run_change(
+pub fn run_change(
     d: &dyn Door,
     req: &Request,
     keys: Option<&KeyTable>,
@@ -294,7 +294,7 @@ pub(crate) fn run_change(
 
 /// 这台的账号库补号色（一次）：清单里还有号没分到号色 ⇒ 拿账号库那把锁、照库序分好写回（留一份备份，同别的改动）；
 /// 都有了 · 没有账号库 · 做不了多账号 ⇒ 不动。只由占着常驻的那一个进程起来时调（与 `rotation.json` 换形写回同一处、同一个写的人）；写不成只出声。
-pub(crate) fn colors_here(d: &dyn Door) {
+pub fn colors_here(d: &dyn Door) {
     let run = || -> Result<bool, Said> {
         supported()?;
         let home = home_of(d)?;
@@ -326,7 +326,7 @@ pub(crate) fn colors_here(d: &dyn Door) {
 /// 这台的账号库对齐（[`layout::plan_align`]：按需才建的共用目录接上 · 各号缺的共享链接补上）：拿账号库那把锁、照计划做
 /// （留一份备份，同别的改动）；已经接好（空计划）· 没有账号库 · 做不了多账号 ⇒ 不动。
 /// 占着常驻的那一个进程起来时 · 核对之前（[`run_verify`]）· 经后端起会话之前调；写不成只出声（核对随后照实报补不上的那几条）。
-pub(crate) fn align_here(d: &dyn Door) {
+pub fn align_here(d: &dyn Door) {
     if supported().is_err() {
         return;
     }
@@ -439,7 +439,7 @@ fn rollback(
 }
 
 /// `accounts-verify`：先对齐（[`align_here`]：缺的共享链接补上），再逐项核 —— 缺链接只在补不上时才报。
-pub(crate) fn run_verify(d: &dyn Door) -> Result<VerifyReport, Said> {
+pub fn run_verify(d: &dyn Door) -> Result<VerifyReport, Said> {
     supported()?;
     let home = home_of(d)?;
     align_here(d);
@@ -447,7 +447,7 @@ pub(crate) fn run_verify(d: &dyn Door) -> Result<VerifyReport, Said> {
 }
 
 /// `accounts-login-cmd`：只算那一行（不起进程、不碰盘之外的读）。
-pub(crate) fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<AccountLoginCmd, Said> {
+pub fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<AccountLoginCmd, Said> {
     supported()?;
     let home = home_of(d)?;
     let snap = scan::scan(&home, &[], &[]);

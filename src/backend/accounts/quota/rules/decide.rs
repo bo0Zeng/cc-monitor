@@ -9,7 +9,7 @@ use serde_json::Value;
 
 /// 某号某窗读数到 n 再来问（按读数叫醒）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct WakeWhen {
+pub struct WakeWhen {
     pub(crate) acct: String,
     /// 0 ＝ 5 小时 · 1 ＝ 7 天。
     pub(crate) w: usize,
@@ -18,7 +18,7 @@ pub(crate) struct WakeWhen {
 
 /// 策略这一判交出的。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Verdict {
+pub struct Verdict {
     /// 此刻愿意用的号，先后即想用的先后；不在里面 ＝ 此刻不用。
     pub(crate) order: Vec<String>,
     /// 每个号一句为什么。
@@ -36,7 +36,7 @@ pub(crate) struct Verdict {
 }
 
 /// 策略那一侧（沙箱里的脚本，或判据里的假策略）。
-pub(crate) trait Strategy {
+pub trait Strategy {
     /// 出错 · 超时 · 形状不对 ⇒ `Err`（这一判走兜底）。
     fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, super::super::strategy::Fail>;
     /// 声明了「结论会随时间变」：没约时刻时后端每 [`FALLBACK_STEP`] 来问一次。
@@ -51,7 +51,7 @@ pub(crate) trait Strategy {
 
 /// 交给策略的那一份（算法 §2）。
 #[derive(Debug, Clone)]
-pub(crate) struct Ctx<'a> {
+pub struct Ctx<'a> {
     pub(crate) now: u64,
     pub(crate) clock: u16,
     pub(crate) start: &'a str,
@@ -69,7 +69,7 @@ pub(crate) struct Ctx<'a> {
 
 /// 本会话此刻量出来的（交给策略的 `session`；量不到的空着）。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Me {
+pub struct Me {
     /// 用速：折合输入 token / 分（最近半小时的平均）。
     pub(crate) pace: Option<f64>,
     /// 短窗用速：同一口径，最近 5 分钟（会话记满 2 分钟才给）。
@@ -124,24 +124,24 @@ pub(crate) struct CtxAcct {
 
 /// 会话状态 Σ（后端存 ＋ 本会话量出来的）。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Sigma {
+pub struct Sigma {
     /// 开会话用的号。
-    pub(crate) start: String,
-    pub(crate) current: String,
+    pub start: String,
+    pub current: String,
     /// 用户拖出来的「接下来先用谁」。
-    pub(crate) temp: Vec<String>,
+    pub temp: Vec<String>,
     /// 这个会话先不用的号（当用不了）。
-    pub(crate) off: Vec<String>,
+    pub off: Vec<String>,
     /// 上一判策略约的读数（记账那一下比对）。
-    pub(crate) wake_when: Vec<WakeWhen>,
-    pub(crate) memo: Option<Value>,
+    pub wake_when: Vec<WakeWhen>,
+    pub memo: Option<Value>,
     /// 本会话量出来的（不存，判的时候现量）。
-    pub(crate) me: Me,
+    pub me: Me,
 }
 
 /// 结论。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Pick {
+pub enum Pick {
     Use(String),
     /// 停发到 `until`；`account` 是到时最早恢复的那个号（说得出才有）。
     Hold {
@@ -152,21 +152,21 @@ pub(crate) enum Pick {
 
 /// 一判的结果。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Decision {
-    pub(crate) pick: Pick,
-    pub(crate) sigma: Sigma,
+pub struct Decision {
+    pub pick: Pick,
+    pub sigma: Sigma,
     /// 这一判丢掉的拖出来的条目（轮到时用不了 ⇒ 跳过）。
-    pub(crate) skipped: Vec<String>,
+    pub skipped: Vec<String>,
     /// 策略交的先后（显示用）与每号一句。
-    pub(crate) order: Vec<String>,
-    pub(crate) why: Vec<(String, String)>,
+    pub order: Vec<String>,
+    pub why: Vec<(String, String)>,
     /// 这一号来自用户拖出来的顺序。
-    pub(crate) from_temp: bool,
+    pub from_temp: bool,
     /// 下一个已知节点（重置 · 被拒到期 · 挡着的到期 · 策略约的时刻 · 停发到期）。
-    pub(crate) tn: Option<u64>,
+    pub tn: Option<u64>,
     /// 策略约的时刻（原样存进会话，推演与下一判从它接着）。
     pub(crate) wake_at: Option<u64>,
-    pub(crate) strategy_error: Option<super::super::strategy::Fail>,
+    pub strategy_error: Option<super::super::strategy::Fail>,
     /// 策略要开窗、后端收下的号（[`warmable`]）；没收的另列（只记一句，不发）。
     pub(crate) warm: Vec<String>,
     pub(crate) warm_dropped: Vec<String>,
@@ -324,7 +324,7 @@ fn choose(
 }
 
 /// ★ 一判。`tried` ＝ 这一发已经试过的号（429 同一发重判时排除），平时空。`clock` ＝ 策略时区里 t 是一天的第几分钟。
-pub(crate) fn turn(
+pub fn turn(
     sigma: &Sigma,
     facts: &[Acct],
     settings: &Value,
@@ -430,12 +430,7 @@ pub(crate) fn turn(
 
 /// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 · 这个会话先不用它 ⇒ 不改，回几点恢复。
 /// 策略的上限不拦它。
-pub(crate) fn use_now(
-    sigma: &Sigma,
-    facts: &[Acct],
-    t: u64,
-    a: &str,
-) -> Result<Sigma, Option<u64>> {
+pub fn use_now(sigma: &Sigma, facts: &[Acct], t: u64, a: &str) -> Result<Sigma, Option<u64>> {
     let x = fact(facts, a).ok_or(None)?;
     if sigma.off.iter().any(|b| b == a) {
         return Err(None);

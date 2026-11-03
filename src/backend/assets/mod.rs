@@ -44,3 +44,8 @@ mod catalog_wire_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/agents/on_assets_tests.rs"]
 mod agents_tests;
+
+// 账号库判据里经本进程文件管理面（`aliases::tests::HomeDoor`）真建库的那几条（账号域那个包够不到这一层）。
+#[cfg(test)]
+#[path = "../../../tests/backend/accounts/manage/library_any_os_tests.rs"]
+mod accounts_library_any_os_tests;

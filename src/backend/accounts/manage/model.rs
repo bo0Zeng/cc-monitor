@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 
 /// 一个具名的号。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Account {
+pub struct Account {
     pub name: String,
     pub email: String,
     pub config_dir: String,
@@ -34,7 +34,7 @@ impl Account {
 
 /// 清单里的一条。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Entry {
+pub enum Entry {
     Managed(Account),
     /// 形状不合规矩的那条：原样留着、原样写回，不参与任何改动。
     Kept(Value),
@@ -42,7 +42,7 @@ pub(crate) enum Entry {
 
 /// 整份清单。
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct Manifest {
+pub struct Manifest {
     pub shared_store: Option<String>,
     pub entries: Vec<Entry>,
     /// 账号 0（写时合成的那一条）的号色：读时从那一条上取下来，写时放回去。
@@ -105,7 +105,7 @@ const ACCOUNT_KEYS: &[&str] = &[
 pub(crate) const COLOR_SLOTS: u8 = 8;
 
 /// 8 格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
-pub(crate) fn color_fallback(name: &str) -> u8 {
+pub fn color_fallback(name: &str) -> u8 {
     let h = cmd_wire::fnv::fnv1a32(name.as_bytes());
     u8::try_from(h % u32::from(COLOR_SLOTS)).unwrap_or(0)
 }
@@ -248,7 +248,7 @@ impl Manifest {
         out
     }
 
-    pub(crate) fn managed(&self) -> impl Iterator<Item = &Account> {
+    pub fn managed(&self) -> impl Iterator<Item = &Account> {
         self.entries.iter().filter_map(|e| match e {
             Entry::Managed(a) => Some(a),
             Entry::Kept(_) => None,
@@ -281,7 +281,7 @@ impl Manifest {
 
     /// 给没有号色的号分色（唯一一处）：照库序（具名的号在前、账号 0 在末尾），每个分第一个没人占的格；
     /// 已有的色不动（删号不挪别人的色），原样留着那几条占的格也不给；8 格都占了 ⇒ 按名字哈希兜底（[`color_fallback`]）。
-    pub(crate) fn with_colors(&self) -> Manifest {
+    pub fn with_colors(&self) -> Manifest {
         let mut m = self.clone();
         let mut taken: Vec<u8> = m
             .entries
@@ -325,7 +325,7 @@ impl Manifest {
 
     /// 删一个号；删掉的是默认号而还有别的号 ⇒ 第一个号接着当默认（`ccm` 裸起要有个默认号）。
     /// 回 `(新清单, 新默认号)`。
-    pub(crate) fn without(&self, name: &str) -> (Manifest, Option<String>) {
+    pub fn without(&self, name: &str) -> (Manifest, Option<String>) {
         let was_default = self.find(name).is_some_and(|a| a.is_default);
         let mut m = self.clone();
         m.entries

@@ -62,14 +62,14 @@ impl Row {
 }
 
 /// `(agent, 账号 id)` → [`Row`]。一个进程一张，跨连接共享。键是二元组而不是拼接串：拼接串要靠「两段里都不许出现分隔符」才不撞。
-pub(crate) struct RoutingTable {
+pub struct RoutingTable {
     rows: BTreeMap<(String, String), Row>,
 }
 
 impl RoutingTable {
     /// 整个后端生产段里唯一一处造 `Row` 的地方（`table_guard::the_only_place_that_welds_an_upstream_to_a_key_is_inside_upstream_selection` 钉着）。
     /// 收分开的五样（agent / id / 上游 / key / 鉴权头形状），出焊死的一样。agent 只进键，不进 [`Row`]：「这一行属于谁」是索引，不是要发出去的字节。
-    pub(crate) fn build(
+    pub fn build(
         entries: impl IntoIterator<Item = (String, String, Base, Option<SecretKey>, AuthStyle)>,
     ) -> Self {
         let mut rows = BTreeMap::new();
@@ -134,7 +134,7 @@ pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
 
 /// 一条 `base_url` 能用 ⇒ 装成 `Base`；不能用 ⇒ 那一句（装表与写口 `file_face.rs` 共用）。
 /// 明文只许回环判的是**这一刻的字面**，不是「连出去之后落到哪」（解析到回环的域名照样拒）。
-pub(crate) fn base_if_usable(url: &str) -> Result<Base, &'static str> {
+pub fn base_if_usable(url: &str) -> Result<Base, &'static str> {
     let base = Base::parse(url).map_err(|i| i.0)?;
     match upstream_url_core::usable(url) {
         Err(upstream_url_core::Unusable::PlaintextOffLoopback) => {

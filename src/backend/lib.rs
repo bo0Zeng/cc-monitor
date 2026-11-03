@@ -23,7 +23,7 @@
         reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
-mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
+use backend_accounts as accounts; // 账号域：上游选择 · 账号库 · 登录 · 额度与轮换 · oauth。**不是中转**，不住 relay/（独立的包 `backend-accounts`：只引历史清单 · agents · 宿主口 · 中转宿主 · 帧面零件 · 纯工具 · 平台七层）
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
@@ -31,6 +31,9 @@ mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与
 #[path = "../../tests/backend/agent_locality_guard.rs"]
 mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ + 通用层零个 agent 名字面量（整体 #[cfg(test)]）
 use backend_agents as agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode；独立的包 `backend-agents`：只引纯工具与平台两层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/accounts.rs"]
+mod cross_accounts; // 账号域判据里引到上层的那几条（那一层是独立的包、够不到上层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/agents.rs"]
 mod cross_agents; // agent 适配层判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -77,7 +80,8 @@ use test_meters::golden; // 金样判据只比不写；现打的落 `.build/gold
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
-use backend_history::lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份；住历史清单那个包 `backend-history`）
+#[cfg(test)]
+use backend_history::lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份；住历史清单那个包 `backend-history`；生产段的读者都在账号域里，主 crate 只剩判据读它）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -106,9 +110,6 @@ mod ratchet_guard; // 动过的那几张登记表，**断言那几行**逐字没
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
-#[cfg(test)]
-#[path = "../../tests/backend/accounts/manage/side_name_exclusion_tests.rs"]
-mod side_name_exclusion_tests; // 平台层造的旁名进不了账号库的共享集（账号域拆成包时挪到 `accounts/manage/layout.rs` 底下）
 #[cfg(test)]
 use platform::tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；住平台层的 `test-support`）
 #[cfg(test)]

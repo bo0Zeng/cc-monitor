@@ -18,12 +18,12 @@ pub(crate) fn barred_at(a: &Acct, t: u64) -> bool {
 }
 
 /// ★ 用满的唯一判法：一窗此刻的用量（0–100，已重置的算 0）到了 100。显示那一侧（`show.rs`）也问这一处。
-pub(crate) fn used_up(pct: f64) -> bool {
+pub fn used_up(pct: f64) -> bool {
     pct >= 100.0
 }
 
 /// ★ 事实上发得出去（唯一一处）：事实的 `blocked` · `quota-read` 的「可发」· 判 · 推演都照它。
-pub(crate) fn sendable(a: &Acct, t: u64) -> bool {
+pub fn sendable(a: &Acct, t: u64) -> bool {
     !barred_at(a, t) && (a.api || (0..2).all(|w| !used_up(used_at(a, w, t))))
 }
 

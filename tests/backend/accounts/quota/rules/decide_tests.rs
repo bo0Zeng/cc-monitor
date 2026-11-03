@@ -1084,17 +1084,17 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
 fn step(f: &mut [Acct], using: Option<&str>, t: u64, dt: u64) {
     for x in f.iter_mut() {
         let in_use = using == Some(x.id.as_str());
-        for w in 0..2 {
+        for (w, &span) in WINDOW_SECS.iter().enumerate() {
             let rate = x.rate[w].unwrap_or(0.0);
             if in_use && x.resets[w].is_none_or(|r| r <= t) {
                 x.used[w] = standing::used_at(x, w, t);
-                x.resets[w] = Some(t + WINDOW_SECS[w]);
+                x.resets[w] = Some(t + span);
             }
             match x.resets[w] {
                 Some(r) if r <= t + dt => {
                     if in_use {
                         x.used[w] = rate * (t + dt - r) as f64 / 60.0;
-                        x.resets[w] = Some(r + WINDOW_SECS[w]);
+                        x.resets[w] = Some(r + span);
                     } else {
                         x.used[w] = 0.0;
                         x.resets[w] = None;

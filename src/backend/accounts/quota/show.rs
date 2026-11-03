@@ -18,7 +18,7 @@ use super::facts::{self, Kind};
 use super::rules::standing;
 use crate::agents::{QuotaReading, QuotaStatus};
 use crate::common::cells::{Tone, Words};
-pub(crate) use cmd_wire::quota::{LoginState, QuotaShow, QuotaState, SlotShow, Usage, WindowShow};
+pub use cmd_wire::quota::{LoginState, QuotaShow, QuotaState, SlotShow, Usage, WindowShow};
 
 /// 「快满」的门槛（%）。
 pub(crate) const NEAR_DEFAULT: u8 = 80;
@@ -31,12 +31,7 @@ const SLOTS: [&str; 2] = ["5h", "7d"];
 
 /// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
 /// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
-pub(crate) fn slot_words(
-    state: QuotaState,
-    here: bool,
-    pct: Option<u32>,
-    full: bool,
-) -> (Words, Tone) {
+pub fn slot_words(state: QuotaState, here: bool, pct: Option<u32>, full: bool) -> (Words, Tone) {
     if here && state == QuotaState::OverageInUse {
         return (
             Words(copy_core::copy_text("acct.row.over", &[])),
@@ -103,7 +98,7 @@ fn joined(u: &mut Usage) {
 }
 
 /// 出口那一下：按钟写时刻旁边那几格（线上类型住 `cmd-wire`，字在这里写）。
-pub(crate) trait Stamp {
+pub trait Stamp {
     fn stamp(&mut self, clock: &crate::common::time::TextClock);
 }
 
@@ -121,7 +116,7 @@ impl Stamp for Usage {
 }
 
 /// 一个号用量那一格（还没按钟写重置那一格）。`reading_reset` ＝ 回包说的几点能再用（卡着的那一格没给时刻时用它）。
-pub(crate) fn usage_of(
+pub fn usage_of(
     kind: Kind,
     state: QuotaState,
     limiting: Option<&str>,
@@ -190,7 +185,7 @@ impl Stamp for SlotShow {
 }
 
 /// 重置那一格的字（唯一写法）：还没到 ⇒ `↻18:30`；已过 ⇒ `↻13:10 已过`。
-pub(crate) fn reset_text(at: &Words, past: bool) -> Words {
+pub fn reset_text(at: &Words, past: bool) -> Words {
     Words(if past {
         copy_core::copy_text("acct.reset.past", &[("at", &at.0)])
     } else {
@@ -220,7 +215,7 @@ impl Stamp for QuotaShow {
 }
 
 /// 额度账上一条的各窗口（照原名、照出现的次序）。
-pub(crate) fn windows_of(
+pub fn windows_of(
     o: &super::ledger::Observed,
     key: &dyn Fn(&str) -> Option<String>,
     now: u64,
@@ -269,7 +264,7 @@ fn per_pct_text(n: u64) -> Words {
 }
 
 /// 各语义位那一格照它取的那个窗口带上「1% ≈ 多少用量」（[`windows_of`] 之后调）。
-pub(crate) fn per_pct_of_slots(sh: &mut QuotaShow) {
+pub fn per_pct_of_slots(sh: &mut QuotaShow) {
     for s in &mut sh.slots {
         s.per_pct_text = sh
             .windows
@@ -280,7 +275,7 @@ pub(crate) fn per_pct_of_slots(sh: &mut QuotaShow) {
 }
 
 /// 一个窗口那一行的名字：窗口键 `5h` · `7d` 照语义位的字；`7d:<档>` ⇒「7d <档>」；不算用量窗口的（超额）⇒「超额」。
-pub(crate) fn window_label(key: Option<&str>) -> String {
+pub fn window_label(key: Option<&str>) -> String {
     match key {
         None => copy_core::copy_text("acct.row.over", &[]),
         Some(k) => match k.split_once(':') {
@@ -303,10 +298,10 @@ fn pct_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
 
 /// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Facts {
-    pub(crate) kind: Kind,
-    pub(crate) login: LoginState,
-    pub(crate) sub_id: Option<String>,
+pub struct Facts {
+    pub kind: Kind,
+    pub login: LoginState,
+    pub sub_id: Option<String>,
 }
 
 fn slots_of(
@@ -338,7 +333,7 @@ fn slots_of(
 }
 
 /// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）。
-pub(crate) fn show(
+pub fn show(
     seen: Option<(&QuotaReading, u64)>,
     facts: Facts,
     now: u64,
@@ -419,7 +414,7 @@ pub(crate) fn show(
 
 /// 同一订阅的稳定标识：账号身份加一个固定前缀做 SHA-256，取前 12 字节的十六进制。不加每台的盐 ⇒ 两台算出来相同；
 /// 账号身份是随机的 128 位 ⇒ 由它反推不出原值。
-pub(crate) fn sub_id_of(identity: &str) -> String {
+pub fn sub_id_of(identity: &str) -> String {
     let d = ring::digest::digest(
         &ring::digest::SHA256,
         format!("cc-monitor/subscription\0{identity}").as_bytes(),

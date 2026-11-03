@@ -3,7 +3,7 @@
 /// 一个号那一条别名叫什么：账号名去掉 shell 函数名里放不下的字符（今天只有 `-`）＋ 账号库那一家的 wrapper 名
 /// （`agents::wrapper_alias`，Claude：`cc`；`tmux` ⇒ 再加 `t`）；以数字打头 ⇒ 前面补 `_`。
 /// 去完什么都不剩、或那一家没有 wrapper ⇒ `None`（不给它起别名）。
-pub(crate) fn alias_name(account: &str, tmux: bool) -> Option<String> {
+pub fn alias_name(account: &str, tmux: bool) -> Option<String> {
     let cleaned: String = account
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_')

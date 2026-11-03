@@ -149,7 +149,7 @@ pub(crate) fn sigma_of(s: &Session) -> Sigma {
 }
 
 /// 一判看的事实摘要（记进换号那一条）：照交给策略的那一份 ctx 摘（[`decide::ctx_of`]，不另算），小数截到够核对的位数。
-pub(crate) fn saw_of(sigma: &Sigma, facts: &[Acct], now: u64) -> book::Saw {
+pub fn saw_of(sigma: &Sigma, facts: &[Acct], now: u64) -> book::Saw {
     let round = |x: f64, places: i32| {
         let k = 10f64.powi(places);
         (x * k).round() / k
@@ -270,7 +270,7 @@ const PREPARE_TRIES: usize = 8;
 impl Hop {
     /// ★ 交给判的那一排事实（照 [`listed`] 的先后；开会话用的号不在账号库里也带上）。用速是每个号自己在额度账里量出来的，量不到就空着。
     /// `book` ＝ 判的时候看的那一份账本（别的会话此刻在哪个号上照它：同一把锁里判，前一个会话刚换到哪就算到哪）。
-    pub(crate) fn accts(
+    pub fn accts(
         &self,
         sid: &str,
         s: &Session,
@@ -280,7 +280,7 @@ impl Hop {
         now: u64,
     ) -> Vec<Acct> {
         let lib = self.library();
-        let tz = crate::Tz::default();
+        let tz = crate::common::time::Tz::default();
         let mut all: Vec<Acct> = self
             .facts(&s.agent, row, now, &tz)
             .iter()
@@ -345,7 +345,7 @@ impl Hop {
     }
 
     /// 判的会话状态：会话那一条 ＋ 本会话此刻量出来的。
-    pub(crate) fn sigma(&self, sid: &str, s: &Session, now: u64) -> Sigma {
+    pub fn sigma(&self, sid: &str, s: &Session, now: u64) -> Sigma {
         Sigma {
             me: self.quota.spend().me(sid, now),
             ..sigma_of(s)
@@ -353,7 +353,7 @@ impl Hop {
     }
 
     /// 照会话那一条判一次（纯：不写、不碰缓存）。
-    pub(crate) fn judge_session(
+    pub fn judge_session(
         &self,
         sid: &str,
         s: &Session,
@@ -520,7 +520,7 @@ impl Hop {
                     acct,
                     a.row,
                     a.now,
-                    &crate::Tz::default(),
+                    &crate::common::time::Tz::default(),
                 ))
             };
             // 自己的读数只在越过约的读数时作废；读数让在用的号事实上发不出去了（超额在兜 · 被拒）也作废 —— 那是事实变了。

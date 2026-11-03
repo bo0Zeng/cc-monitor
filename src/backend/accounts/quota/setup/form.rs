@@ -4,27 +4,25 @@
 
 use super::script::Text;
 /// 改设置的意图（`rotation-settings` 的 `edit`）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::RotEdit;
+pub use cmd_wire::rotation::RotEdit;
 #[cfg(test)]
 pub(crate) use cmd_wire::rotation::RotSeg;
 /// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{
-    FormCell as Cell, FormScope as Scope, RotFormKind as Kind, RotFrom,
-};
+pub use cmd_wire::rotation::{FormCell as Cell, FormScope as Scope, RotFormKind as Kind, RotFrom};
 use serde::Deserialize;
 use serde_json::Value;
 
 pub(crate) use crate::accounts::quota::rules::ACCOUNTS;
 
 /// 一天里的分钟数（`daySegments` 的上界）。
-pub(crate) const DAY_MIN: u64 = 1440;
+pub const DAY_MIN: u64 = 1440;
 
 /// 一格收不下：哪一格（`margin` · `accounts[2].delay` · `caps.5h[1]`）· 短码。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Bad {
-    pub(crate) cell: String,
+pub struct Bad {
+    pub cell: String,
     /// `type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap`。
-    pub(crate) code: &'static str,
+    pub code: &'static str,
 }
 
 /// 声明本身对不对（读策略文件那一下）：键不重、不空、不占号列表那一格；`choice` 有选项；`inherit` 只在 `each`；
@@ -70,7 +68,7 @@ pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
 }
 
 /// ★ 这一格此刻出不出（`showIf` 指的那一格此刻是不是那个值；`row` 同 [`value_of`]）。
-pub(crate) fn shown(form: &[Cell], c: &Cell, settings: &Value, row: Option<usize>) -> bool {
+pub fn shown(form: &[Cell], c: &Cell, settings: &Value, row: Option<usize>) -> bool {
     let Some(w) = &c.show_if else {
         return true;
     };
@@ -177,7 +175,7 @@ fn day_segments(c: &Cell, v: &Value, at: &str, out: &mut Vec<Bad>) {
 }
 
 /// ★ 照声明校验一份设置。收得下 ⇒ 空。只认形状与范围：哪一格是什么意思后端不知道。
-pub(crate) fn check(form: &[Cell], settings: &Value) -> Vec<Bad> {
+pub fn check(form: &[Cell], settings: &Value) -> Vec<Bad> {
     let mut out = Vec::new();
     let Some(top) = settings.as_object() else {
         return vec![Bad {
@@ -286,7 +284,7 @@ fn text_bad(t: &Text) -> bool {
 }
 
 /// 这份声明的字合不合文案规矩（标签 · 说明 · 空的那一项 · 选项）。
-pub(crate) fn words_bad(form: &[Cell]) -> bool {
+pub fn words_bad(form: &[Cell]) -> bool {
     form.iter().any(|c| {
         text_bad(&c.label)
             || c.help.as_ref().is_some_and(text_bad)
@@ -302,7 +300,7 @@ fn row_of(settings: &Value, row: usize) -> Option<&serde_json::Map<String, Value
 
 /// ★ 一格此刻生效的值与它从哪来（`row` ＝ 号列表第几行；缺 ⇒ 总体那一格）。号那一行有这一格（值是 `null` 也算有）⇒ 自己的；
 /// 声明说跟总体 ⇒ 总体的（总体也没设 ⇒ 声明默认）；否则声明默认。全仓只这一处解继承。
-pub(crate) fn value_of(c: &Cell, settings: &Value, row: Option<usize>) -> (Value, RotFrom) {
+pub fn value_of(c: &Cell, settings: &Value, row: Option<usize>) -> (Value, RotFrom) {
     let total = settings.get(&c.key);
     let Some(i) = row else {
         return total.map_or((c.default.clone(), RotFrom::Default), |v| {
@@ -336,7 +334,7 @@ fn segs_in(v: Option<&Value>, window: &str) -> Option<Vec<(u64, u64, f64)>> {
 
 /// ★ 分段某一窗此刻生效的那一组段与它从哪来（同 [`value_of`]，按窗：那一窗是段组才算设了）。没设：`follow` 的后面几窗 ⇒ 同第一窗；
 /// 否则声明默认（是数 ⇒ 一整天一段）。
-pub(crate) fn day_of(
+pub fn day_of(
     c: &Cell,
     settings: &Value,
     row: Option<usize>,
@@ -439,7 +437,7 @@ fn put_window(
 
 /// 照意图改出整份新设置（形状照声明的校验另做：[`check`]）。行号越界 · 那一格不是 24 小时条 · 分钟越界 ⇒ 那一句（入参不对）。
 /// `here`：这个号在这台账号库里（只有「清掉库里没有的号」问它）。
-pub(crate) fn apply(
+pub fn apply(
     form: &[Cell],
     settings: &Value,
     edit: &RotEdit,
@@ -575,8 +573,9 @@ pub(crate) fn day_paint(
     let n = DAY_MIN as usize;
     let mut day: Vec<Option<f64>> = vec![None; n];
     for &(a, b, x) in segs {
-        for m in a.min(DAY_MIN) as usize..b.min(DAY_MIN) as usize {
-            day[m] = Some(x);
+        let (a, b) = (a.min(DAY_MIN) as usize, b.min(DAY_MIN) as usize);
+        if a < b {
+            day[a..b].iter_mut().for_each(|m| *m = Some(x));
         }
     }
     let (from, to) = (from.min(DAY_MIN) as usize, to.min(DAY_MIN) as usize);

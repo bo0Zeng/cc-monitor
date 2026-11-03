@@ -4,7 +4,9 @@
 //! 链接 · 码 · 凭据都是写死的假串，配置目录在临时目录里；没碰真家目录，也没拿真号登（真号那一格没核）。
 #![cfg(unix)]
 
-use super::*;
+use crate::accounts::sign_in::*;
+use crate::agents::SignInFace;
+use crate::common::said::Said;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
