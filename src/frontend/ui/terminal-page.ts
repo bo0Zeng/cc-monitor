@@ -173,7 +173,7 @@ export class TerminalPage {
   private readonly at: HTMLElement;
   /** 「画面几点 ＋ 重新看」那一组（实时中整组收起）。 */
   private readonly snapGroup: HTMLElement;
-  /** 「● 实时」/「接入实时」。 */
+  /** 「● 实时」/「实时连接中」。 */
   private readonly liveTag: HTMLElement;
   /** 「仅快照」（悬停说为什么）。 */
   private readonly snapTag: HTMLElement;
