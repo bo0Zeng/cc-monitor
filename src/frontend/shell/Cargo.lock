@@ -1821,6 +1821,7 @@ dependencies = [
  "serde",
  "serde_json",
  "test-home",
+ "ts-rs",
 ]
 
 [[package]]
@@ -4848,7 +4849,6 @@ dependencies = [
  "test-home",
  "tokio",
  "tracing",
- "ts-rs",
 ]
 
 [[package]]

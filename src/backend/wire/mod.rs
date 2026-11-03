@@ -418,10 +418,9 @@ fn live_face(
             attach: match host {
                 Some(Housed::In(TerminalHost::Managed)) => attach_yes(AttachFrom::Anywhere),
                 Some(Housed::In(TerminalHost::Tmux)) | None => attach_yes(AttachFrom::Elsewhere),
-                Some(Housed::Bare) => attach_no(Words(copy_core::copy_text(
-                    "terminal.empty.notOurs",
-                    &[],
-                ))),
+                Some(Housed::Bare) => {
+                    attach_no(Words(copy_core::copy_text("terminal.empty.notOurs", &[])))
+                }
             },
             model,
             permission,

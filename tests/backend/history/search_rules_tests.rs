@@ -184,7 +184,10 @@ fn the_title_line_is_project_then_marks_then_name() {
     assert_eq!(f(Some("/w/cc-monitor"), false, false), "cc-monitor 修登录");
     assert_eq!(f(None, false, false), "修登录");
     assert_eq!(f(Some("/w/p/"), true, false), format!("p {forked} 修登录"));
-    assert_eq!(f(Some("C:\\w\\p"), true, true), format!("p {forked} {bg} 修登录"));
+    assert_eq!(
+        f(Some("C:\\w\\p"), true, true),
+        format!("p {forked} {bg} 修登录")
+    );
     assert_eq!(f(None, false, true), format!("{bg} 修登录"));
     assert_eq!(
         session_line(&LabelFacts::unread("0123456789", None)),
@@ -206,7 +209,10 @@ fn the_name_face_carries_the_name_and_the_whole_line() {
     assert_eq!(n.title.0, session_line(&facts));
     assert_eq!(
         n.title.0,
-        format!("p {} 改", copy_core::copy_text("sessionTitle.mark.forked", &[]))
+        format!(
+            "p {} 改",
+            copy_core::copy_text("sessionTitle.mark.forked", &[])
+        )
     );
 }
 

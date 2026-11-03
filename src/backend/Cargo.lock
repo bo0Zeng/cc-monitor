@@ -314,6 +314,7 @@ dependencies = [
  "copy-core",
  "creds-core",
  "deploy-contract",
+ "face-core",
  "flate2",
  "guard-core",
  "relay-route-core",
@@ -1095,6 +1096,7 @@ dependencies = [
 name = "egress"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "relay-route-core",
  "test-home",
  "upstream-url-core",
