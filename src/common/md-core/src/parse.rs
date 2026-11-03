@@ -217,9 +217,9 @@ impl<'s> Conv<'s> {
             if let NodeValue::Math(m) = &child.data().value {
                 if m.display_math {
                     flush(&mut cur, out);
-                    out.push(MdBlock::Math {
-                        tex: m.literal.trim().to_string(),
-                    });
+                    let tex = m.literal.trim().to_string();
+                    let m = crate::math::lay(&tex, true);
+                    out.push(MdBlock::Math { tex, m });
                     continue;
                 }
             }
@@ -302,7 +302,13 @@ impl<'s> Conv<'s> {
                 let n = *self.fn_ix.entry(f.name).or_insert(next);
                 out.node(InlNode::Fn { n });
             }
-            NodeValue::Math(m) => out.node(InlNode::M { tex: m.literal }),
+            NodeValue::Math(m) => {
+                let m_box = crate::math::lay(&m.literal, false);
+                out.node(InlNode::M {
+                    tex: m.literal,
+                    m: m_box,
+                })
+            }
             NodeValue::Raw(r) => out.text(&r),
             NodeValue::EscapedTag(t) => out.text(t),
             _ => {
@@ -427,7 +433,7 @@ fn plain(k: &[Inl]) -> String {
                 InlNode::B { k } | InlNode::I { k } | InlNode::Del { k } | InlNode::A { k, .. },
             ) => out.push_str(&plain(k)),
             Inl::N(InlNode::C { x }) => out.push_str(x),
-            Inl::N(InlNode::M { tex }) => out.push_str(tex),
+            Inl::N(InlNode::M { tex, .. }) => out.push_str(tex),
             Inl::N(InlNode::Img { alt, .. }) => out.push_str(alt),
             Inl::N(InlNode::Br) => out.push(' '),
             Inl::N(InlNode::Fn { .. } | InlNode::Ref { .. }) => {}

@@ -128,8 +128,34 @@ val stageBackends =
         backends.from(listOf("x86_64", "aarch64").map { rootProject.file("../frontend/shell/embedded-backends/cc-monitor-backend-$it") })
     }
 
+// 画公式的 KaTeX 字体进 assets（`katex/KaTeX_*.ttf`）：取 `src/shared/fonts/katex/`（桌面同一份，两端只放一份）。
+// 公式由后端排成画单，手机只照着画字形；哪一族用到了才载哪一族（`ui/claude/MathView.kt`）。
+abstract class StageMathFonts : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val fonts: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val dest = outDir.get().asFile.resolve("katex")
+        outDir.get().asFile.deleteRecursively()
+        fonts.files.filter { it.isFile }.forEach { it.copyTo(dest.resolve(it.name), overwrite = true) }
+    }
+}
+
+val stageMathFonts =
+    tasks.register<StageMathFonts>("stageMathFonts") {
+        fonts.from(rootProject.fileTree("../shared/fonts/katex") { include("*.ttf") })
+    }
+
 androidComponents {
-    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(stageBackends, StageBackends::outDir) }
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(stageBackends, StageBackends::outDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(stageMathFonts, StageMathFonts::outDir)
+    }
 }
 
 // ── Baseline Profile ──
@@ -196,6 +222,14 @@ androidComponents {
     }
 }
 
+// 进发布包的那一档依赖锁进 `gradle.lockfile`（进仓）：第三方许可声明（`tests/scripts/third-party-notices.py`）与发版尺子 ⑰e
+// 都只读这份，不跑 Gradle。依赖一变、锁没跟上 ⇒ 解析失败；重写锁：
+//   ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --write-locks
+// 测试 · 基准 · 构建插件不进包，不锁。
+configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
+    resolutionStrategy.activateDependencyLocking()
+}
+
 dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-data"))
@@ -222,9 +256,6 @@ dependencies {
 
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
-
-    // 正文公式：块树里的 TeX 经 JLaTeXMath 画成图（正文排版本身是 Compose，照后端的块树排）。
-    implementation(libs.jlatexmath.android)
 
     // 侧装的包（不经商店）首启后台把 Baseline Profile 装上；Macrobenchmark 也经它装。
     implementation(libs.androidx.profileinstaller)

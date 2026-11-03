@@ -127,6 +127,7 @@ tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 
 src/shared/cc-bus/**            e2e    cc-bus 脚本：backend-cc-bus 真跑它；ccbus-twophase 恒跑；shellcheck 由规则 ③ 另加
 src/shared/copy/**              mobile  文案表：编进手机那份核心（copy-core 内嵌），手机的 JVM 单测经宿主版那份 .so 读它
 src/shared/theme/**             mobile,android-device,shots  令牌正本：手机 core-ui 构建时从它生成 ThemeTokens；网页三窗链它（截图格看像素）；文件窗口判据的主题从它解（在恒跑的 cargo 里）
+src/shared/fonts/**             mobile,shots  公式字体：手机构建时铺进 assets（app/build.gradle.kts 的 stageMathFonts），桌面前端产物引它（截图格看像素）
 src/shared/**                   e2e,coverage  文案表 JSON（TS 与 Rust 都读、e2e 也读）· ccm 别名 · quota-warm；被 Rust include_str! 的由规则 ① 另加
 src/doc/**                      -      协议 / IPC 文档：读它的判据在 cargo / backend（恒跑）；被 include_str! 的由规则 ① 另加
 src/README.md                   -      只有恒跑判据读

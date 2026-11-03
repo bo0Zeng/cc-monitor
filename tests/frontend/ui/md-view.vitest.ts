@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { buildBlocks, mountDoc, paint, refSlots, segRange, type DocView } from "../../../src/frontend/ui/md-view";
-import { enhanceCard, __mathSettledForTests } from "../../../src/frontend/ui/render";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import s from "../../../src/frontend/ui/md-view.module.css";
 import type { Doc } from "../../../src/frontend/ui/generated/Doc";
@@ -62,6 +61,8 @@ function paintedGolden(name: string): Promise<DocView> {
 const TAGS = new Set([
   "DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "STRONG", "EM", "DEL", "CODE", "PRE", "SPAN", "A", "IMG", "BR", "SUP",
   "UL", "OL", "LI", "INPUT", "BLOCKQUOTE", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "HR", "SECTION", "BUTTON",
+  // 公式的画单（SVG 命名空间的元素 tagName 是小写）
+  "svg", "text", "rect", "line", "path",
 ]);
 
 describe("md-view：金样逐例", () => {
@@ -164,18 +165,53 @@ describe("md-view：金样逐例", () => {
     ]);
   });
 
-  it("公式：行内与块级各出占位，交 enhanceCard 排成 KaTeX", async () => {
+  it("公式：照核心排好的画单当场画成 SVG（宽高照画单，一个字形一个 text），原文挂在朗读名上", () => {
     const r = view("行内公式两种写法");
-    expect([...r.querySelectorAll("[data-math-pending]")].map((e) => [e.getAttribute("data-math-pending"), e.textContent])).toEqual([
-      ["inline", "E=mc^2"],
-      ["inline", "a+b"],
-    ]);
+    const inl = [...r.querySelectorAll<HTMLElement>("[data-math=inline]")];
+    expect(inl.map((e) => e.getAttribute("aria-label"))).toEqual(["E=mc^2", "a+b"]);
+    const svg = inl[0].querySelector("svg")!;
+    expect([svg.getAttribute("width"), svg.getAttribute("height"), svg.getAttribute("viewBox")]).toEqual(["3.84em", "0.814em", "0 0 3840 814"]);
+    expect([...svg.querySelectorAll("text")].map((t) => t.textContent)).toEqual(["E", "=", "m", "c", "2"]);
+    const two = svg.querySelectorAll("text")[4];
+    expect([two.getAttribute("x"), two.getAttribute("y"), two.getAttribute("font-size"), two.getAttribute("font-family")]).toEqual(["3440", "451", "700", "KaTeX_Main-Regular"]);
     const b = view("\\[ 块公式");
-    expect(b.querySelector("[data-math-pending=display]")?.textContent).toBe("\\sum_i x_i");
-    enhanceCard(b);
-    await __mathSettledForTests();
-    expect(b.querySelector("[data-math-pending]")).toBeNull();
-    expect(b.querySelector(".katex-display")).not.toBeNull();
+    const blk = b.querySelector<HTMLElement>("[data-math=display]")!;
+    expect(blk.getAttribute("aria-label")).toBe("\\sum_i x_i");
+    expect(blk.querySelector("svg")?.getAttribute("height")).toBe("2.408em");
+    expect(blk.querySelector("text")?.getAttribute("font-family")).toBe("KaTeX_Size2-Regular");
+  });
+
+  it("公式：分数线 · 矩形 · 路径照画单画；核心排不出的照原文等宽排", () => {
+    const doc: Doc = {
+      blocks: [
+        {
+          t: "math",
+          tex: "\\frac{a}{b}",
+          m: {
+            w: 1000,
+            h: 800,
+            d: 400,
+            items: [
+              { t: "l", x: 0, y: 500, w: 1000, th: 40, dash: false },
+              { t: "r", x: 10, y: 20, w: 30, h: 40 },
+              { t: "p", x: 5, y: 6, fill: true, d: [{ t: "m", x: 0, y: 0 }, { t: "l", x: 10, y: 0 }, { t: "q", x1: 1, y1: 2, x: 3, y: 4 }, { t: "c", x1: 1, y1: 2, x2: 3, y2: 4, x: 5, y: 6 }, { t: "z" }] },
+            ],
+          },
+        },
+        { t: "p", k: ["坏的 ", { t: "m", tex: "\\frac{a", m: null }] },
+      ],
+      segs: [],
+    };
+    const r = mountDoc(doc).root;
+    const rects = [...r.querySelectorAll("[data-math=display] rect")].map((e) => ["x", "y", "width", "height"].map((a) => e.getAttribute(a)));
+    expect(rects).toEqual([
+      ["0", "480", "1000", "40"],
+      ["10", "20", "30", "40"],
+    ]);
+    const p = r.querySelector("[data-math=display] path")!;
+    expect([p.getAttribute("d"), p.getAttribute("transform"), p.getAttribute("fill")]).toEqual(["M0 0L10 0Q1 2 3 4C1 2 3 4 5 6Z", "translate(5 6)", "currentColor"]);
+    const bad = r.querySelector<HTMLElement>("[data-math=inline]")!;
+    expect([bad.tagName, bad.textContent, bad.querySelector("svg")]).toEqual(["CODE", "\\frac{a", null]);
   });
 
   it("计划格引用：编号原样是字，那几格 · 标题挂在属性上交宿主（refSlots 照先后读回）", () => {
@@ -192,8 +228,8 @@ describe("md-view：金样逐例", () => {
     ]);
   });
 
-  it("钱数不是公式：没有占位", () => {
-    expect(view("钱数不是公式").querySelector("[data-math-pending]")).toBeNull();
+  it("钱数不是公式：没有公式", () => {
+    expect(view("钱数不是公式").querySelector("[data-math]")).toBeNull();
   });
 
   it("脚注 · 提示块 · 引用 · 分隔线 · 标题 · 起号", () => {

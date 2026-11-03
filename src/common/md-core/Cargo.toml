@@ -16,6 +16,12 @@ comrak = { version = "=0.59.0", default-features = false }
 syntect = { version = "=5.3.0", default-features = false, features = ["parsing", "regex-fancy"] }
 # bat 那一套语法表（补上 TypeScript · TOML · Kotlin 等；MIT OR Apache-2.0）。
 two-face = { version = "=0.5.2", default-features = false, features = ["syntect-fancy"] }
+# 公式排版：KaTeX 语法的纯 Rust 排版器（MIT），出一串定位好的字形 · 线 · 矩形 · 路径，两端照着画。
+#   只用解析与排版两层（字体文件不经 crate 进来，两端各带 `src/shared/fonts/katex/`）。0.1.15 的解析层不分特性：
+#   化学式 `\ce` 那一套连同 regex · regex-lite · fancy-regex · unicode-normalization 照带（都 MIT / Apache-2.0）。
+ratex-parser = "=0.1.15"
+ratex-layout = "=0.1.15"
+ratex-types = "=0.1.15"
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

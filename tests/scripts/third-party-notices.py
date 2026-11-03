@@ -12,9 +12,13 @@
     cargo-about（版本钉在 `CARGO_ABOUT_VERSION`），离线读 cargo 注册表缓存里各包自带的许可文件；目标平台与收纳的许可住
     `tests/scripts/third-party-about.toml`；开发期依赖不收。
   · npm：`package-lock.json` 里不带 `dev` 的包，读 `node_modules/` 里各包自带的许可文件（要先 `npm ci`）。
-  · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体，不经 cargo / npm 解析）：登记在 `VENDORED_FILES`，
-    许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`src/mobile` 下被跟踪的二进制（aar · jar · so · 字体）
-    每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
+  · Maven（手机 `:app` 打进 APK 的那一档）：坐标读 `src/mobile/app/gradle.lockfile` 里 `releaseRuntimeClasspath` 那几行，
+    许可读 `tests/scripts/third-party-maven.tsv`（坐标 · 许可 · 出处）；锁里有、表里没有 ⇒ 生成失败，表里多出来的也失败。
+    依赖变了：先在 `src/mobile` 重写锁（`./gradlew :app:dependencies --configuration releaseRuntimeClasspath --write-locks`），
+    再照新坐标自带的 POM 补表。
+  · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体 · 两端共用的 `src/shared` 里的字体，不经 cargo / npm 解析）：
+    登记在 `VENDORED_FILES`，许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`VENDORED_ROOTS` 下被跟踪的二进制
+    （aar · jar · so · 字体）每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
 
 用法（仓根下）：
     python3 tests/scripts/third-party-notices.py           # 重新生成两份
@@ -55,8 +59,21 @@ VENDORED_FILES = [
      "src/mobile/libs/LICENSES/Phosphor-MIT.txt", "Phosphor regular 图标字体的子集（只留手机用到的码位，src/mobile/scripts/phosphor-subset.py 从 egui-phosphor 0.14.0 自带的那份做）"),
     ("Gradle Wrapper", "8.14.3", "Apache-2.0", "src/mobile/gradle/wrapper/gradle-wrapper.jar",
      "src/mobile/libs/LICENSES/Apache-2.0.txt", "手机端构建用的 Gradle 启动器，不进 app"),
+    ("KaTeX fonts", "ratex-katex-fonts 0.1.15", "OFL-1.1", "src/shared/fonts/katex/",
+     "src/shared/fonts/katex/OFL.txt",
+     "画公式用的 19 份 KaTeX TTF（未改动，取自 crates.io 的 ratex-katex-fonts 0.1.15，它取自 KaTeX）；桌面打进前端产物、手机构建时铺进 assets"),
 ]
+#: 原样放第三方文件的目录：这几处下被跟踪的二进制都得在 `VENDORED_FILES` 里登记。
+VENDORED_ROOTS = ["src/mobile", "src/shared"]
 VENDORED_BINARY = re.compile(r"\.(aar|jar|so|ttf|otf|woff2?)$", re.I)
+#: 手机 `:app` 进发布包的那一档 Maven 依赖：坐标只认 Gradle 锁文件（`releaseRuntimeClasspath`，测试 · 基准 · 构建插件不在里面），
+#: 许可只认 `MAVEN_TABLE`（每个坐标一行：许可 · 出处，出处是它自带的 POM 或包里的许可文件）。两份都在仓里，不跑 Gradle、不联网。
+MAVEN_LOCK = ROOT / "src/mobile/app/gradle.lockfile"
+MAVEN_CONF = "releaseRuntimeClasspath"
+MAVEN_TABLE = ROOT / "tests/scripts/third-party-maven.tsv"
+#: Maven 那一段的许可全文：许可 → (仓里那份全文, 组头写的名字)。`third-party-about.toml` 的 accepted 名单里的许可缺全文 ⇒ 生成失败；
+#: 名单外的照实列出、注明全文没随附（发版尺子 ⑰e 对它红）。
+MAVEN_TEXTS = {"Apache-2.0": ("src/mobile/libs/LICENSES/Apache-2.0.txt", "Apache License 2.0")}
 
 MIT_TEXT = """MIT License
 
@@ -170,7 +187,7 @@ def npm_entries():
 
 
 def vendored_entries():
-    tracked = subprocess.run(["git", "ls-files", "-z", "--", "src/mobile"], capture_output=True, text=True,
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", *VENDORED_ROOTS], capture_output=True, text=True,
                              check=True).stdout.split("\0")
     out = []
     for name, ver, spdx, where, text_file, note in VENDORED_FILES:
@@ -184,8 +201,45 @@ def vendored_entries():
     stray = sorted(t for t in tracked if VENDORED_BINARY.search(t)
                    and not any(t == w or (w.endswith("/") and t.startswith(w)) for _, _, _, w, _, _ in VENDORED_FILES))
     if stray:
-        die("src/mobile 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % stray)
+        die("%s 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % (" · ".join(VENDORED_ROOTS), stray))
     return out
+
+
+def accepted_licenses():
+    m = re.search(r"^accepted = \[(.*?)\]", CONFIG.read_text(encoding="utf-8"), re.M | re.S)
+    return set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+
+
+def maven_groups():
+    """许可 → [(坐标 `组:件 版本`, 出处)]。"""
+    if not MAVEN_LOCK.is_file():
+        die("%s 不在 —— 在 src/mobile 里写锁再生成" % MAVEN_LOCK.relative_to(ROOT).as_posix())
+    locked = {"%s:%s %s" % (g, a, v) for g, a, v, confs in
+              re.findall(r"^([^#\s:]+):([^:\s]+):([^=\s]+)=(\S+)$", MAVEN_LOCK.read_text(encoding="utf-8"), re.M)
+              if MAVEN_CONF in confs.split(",")}
+    if not locked:
+        die("%s 里没有 %s 那一档" % (MAVEN_LOCK.name, MAVEN_CONF))
+    table = {}
+    for n, line in enumerate(MAVEN_TABLE.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        cols = line.split("\t")
+        if len(cols) != 3 or not all(cols) or cols[0].count(":") != 2:
+            die("%s 第 %d 行要写成 `组:件:版本<TAB>许可<TAB>出处`" % (MAVEN_TABLE.name, n))
+        g, a, v = cols[0].split(":")
+        table["%s:%s %s" % (g, a, v)] = (cols[1], cols[2])
+    if locked - table.keys():
+        die("锁里有、%s 里没有许可的：%s —— 照它自带的 POM 补一行" % (MAVEN_TABLE.name, sorted(locked - table.keys())))
+    if table.keys() - locked:
+        die("%s 里有、锁里没有的：%s —— 删掉这几行" % (MAVEN_TABLE.name, sorted(table.keys() - locked)))
+    accepted = accepted_licenses()
+    groups = {}
+    for coord in sorted(locked):
+        lic, src = table[coord]
+        if lic in accepted and lic not in MAVEN_TEXTS:
+            die("%s 用的许可 %s 在仓里没有全文 —— 在 MAVEN_TEXTS 里登记一份" % (coord, lic))
+        groups.setdefault(lic, []).append((coord, src))
+    return groups
 
 
 def lock_crates():
@@ -225,7 +279,16 @@ def render():
         lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    npm: %s %s" % (name, ver)]
         for t in texts:
             lines += ["", t, ""]
-    lines += ["", "=================== files vendored in the repo (mobile app, src/mobile) ==================="]
+    lines += ["", "================================ Maven artifacts (mobile app) ================================"]
+    for lic, users in sorted(maven_groups().items()):
+        lines += ["", "-------- %s (%s) --------" % (MAVEN_TEXTS.get(lic, ("", lic))[1], lic), "Used by:"]
+        lines += ["    maven: %s" % c for c, _ in users]
+        if lic in MAVEN_TEXTS:
+            lines += ["", (ROOT / MAVEN_TEXTS[lic][0]).read_text(encoding="utf-8").strip("\n"), ""]
+        else:
+            lines += ["", "License text not bundled in the repo; source:"] + ["    %s: %s" % (c, src) for c, src in users]
+            lines += [""]
+    lines += ["", "=================== files vendored in the repo (src/mobile · src/shared) ==================="]
     for name, ver, spdx, where, note, text in vendored_entries():
         lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    vendored: %s %s — %s" % (name, ver, where),
                   "    %s" % note, "", text, ""]

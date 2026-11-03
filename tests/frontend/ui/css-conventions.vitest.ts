@@ -628,7 +628,7 @@ describe("S30 ⑨ 活规则里的死声明", () => {
     nonEmpty(DECLS);
     expect([...WINDOWS.keys()].sort()).toEqual(["index.html", "settings.html", "viewer.html"]);
     for (const [w, sheets] of WINDOWS) expect(sheets[0], `${w} 的 CSS 清单第一份不是 layers.css —— 层序读错了`).toBe("src/frontend/ui/styles/layers.css");
-    expect(LAYERS, "层序读出来不是 layers.css 那一句").toEqual(["reset", "vendor", "tokens", "base", "layout", "components", "states", "utilities"]);
+    expect(LAYERS, "层序读出来不是 layers.css 那一句").toEqual(["reset", "tokens", "base", "layout", "components", "states", "utilities"]);
     expect(DECL_ANOMALIES, "规则体里又开了块 ⇒ 本量具拆声明的前提（不嵌套）不成立，下面的判定不可信").toEqual([]);
   });
 

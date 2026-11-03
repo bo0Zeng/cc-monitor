@@ -1,13 +1,8 @@
-// 正文排好之后补的占位（公式 · 图）与几处「界面手上有原文」的 Markdown：一律后端解析成树（`md-doc`），照 `md-view` 排。
-// 界面这一侧没有解析器：marked · highlight.js · dompurify 不在依赖里；KaTeX 有公式才载。
+// 正文排好之后补的占位（图）与几处「界面手上有原文」的 Markdown：一律后端解析成树（`md-doc`），照 `md-view` 排。
+// 界面这一侧没有解析器、没有公式排版器：marked · highlight.js · dompurify · katex 不在依赖里；公式是后端排好的画单。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
-const katexLoads = vi.hoisted(() => ({ n: 0 }));
-vi.mock("katex", async (orig) => {
-  katexLoads.n += 1;
-  return orig();
-});
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>()),
   callTyped: vi.fn(),
@@ -18,7 +13,7 @@ import { join, resolve } from "node:path";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { callTyped } from "../../../src/frontend/ui/ipc/chan-caller";
 import { renderMessage } from "../../../src/frontend/ui/cards";
-import { enhanceCard, mountWhole, __mathSettledForTests } from "../../../src/frontend/ui/render";
+import { mountWhole } from "../../../src/frontend/ui/render";
 import type { Doc } from "../../../src/frontend/ui/generated/Doc";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
@@ -42,20 +37,8 @@ beforeEach(() => {
   callMock.mockImplementation(async (_o: string, cmd: string) => (cmd === "prose-hl" ? { hl: [] } : undefined));
 });
 
-describe("KaTeX 有公式才载", () => {
-  it("没有公式的树排完不载；头一个公式才载、只载一次", async () => {
-    mountWhole(doc("标题"));
-    await __mathSettledForTests();
-    expect(katexLoads.n, "没有公式也载了 KaTeX").toBe(0);
-    mountWhole(doc("\\[ 块公式"));
-    mountWhole(doc("行内公式两种写法"));
-    await __mathSettledForTests();
-    expect(katexLoads.n).toBe(1);
-  });
-});
-
 describe("mountWhole：后端交的整棵树（来话 · 计划卡 · 思考 · 计划格）照正文卡同一套排", () => {
-  it("三种公式写法：急路排成 KaTeX，与正文卡排出来的同一份", async () => {
+  it("三种公式写法：当场画成 SVG，与正文卡排出来的同一份；惰路也不留占位", () => {
     for (const name of ["行内公式两种写法", "\\[ 块公式", "段落紧挨着的 $$ 块"]) {
       const el = mountWhole(doc(name));
       const prose = renderMessage(
@@ -63,22 +46,10 @@ describe("mountWhole：后端交的整棵树（来话 · 计划卡 · 思考 · 
         ctx(),
       );
       if (prose.kind !== "card") throw new Error(prose.kind);
-      await __mathSettledForTests();
-      expect(el.querySelectorAll(".katex").length, name).toBeGreaterThan(0);
-      expect(el.querySelector("[data-math-pending]"), name).toBeNull();
+      expect(el.querySelectorAll("[data-math] svg").length, name).toBeGreaterThan(0);
       expect(el.outerHTML, name).toBe(prose.element.querySelector(".block-text")?.firstElementChild?.outerHTML);
+      expect(mountWhole(doc(name), true).outerHTML, name).toBe(el.outerHTML);
     }
-  });
-
-  it("惰路留占位，enhanceCard 补成同一份", async () => {
-    const eager = mountWhole(doc("\\[ 块公式"));
-    const lazy = mountWhole(doc("\\[ 块公式"), true);
-    expect(lazy.querySelector("[data-math-pending]")).not.toBeNull();
-    const host = document.createElement("div");
-    host.append(lazy);
-    enhanceCard(host);
-    await __mathSettledForTests();
-    expect(lazy.innerHTML).toBe(eager.innerHTML);
   });
 
   it("多段的长树一次排完", () => {
@@ -97,11 +68,8 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
     const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
     d.open = true;
     d.dispatchEvent(new Event("toggle"));
-    await vi.waitFor(() => expect(d.querySelector("[data-math-pending], .katex")).not.toBeNull(), UNTIL_CEILING);
+    await vi.waitFor(() => expect(d.querySelector("[data-math] svg")).not.toBeNull(), UNTIL_CEILING);
     expect(callMock).toHaveBeenCalledWith(LOCAL, "md-doc", { text, as: "prose", refs: [] }, expect.anything());
-    await __mathSettledForTests();
-    expect(d.querySelector(".katex")).not.toBeNull();
-    expect(d.querySelector("[data-math-pending]")).toBeNull();
   });
 
   it("收着时那一行照抄后端写好的 `preview`，界面不自己截", () => {
@@ -121,13 +89,13 @@ describe("界面手上有原文的那几处：问后端要树（md-doc），照�
   });
 });
 
-describe("依赖棘轮：界面没有 Markdown 解析器", () => {
-  it("package.json 里没有 marked · marked-katex-extension · highlight.js · dompurify，src/frontend/ui 里没有一处引它们", () => {
+describe("依赖棘轮：界面没有 Markdown 解析器、没有公式排版器", () => {
+  it("package.json 里没有 marked · marked-katex-extension · highlight.js · dompurify · katex，src/frontend/ui 里没有一处引它们", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { dependencies?: object; devDependencies?: object };
     const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
-    const GONE = ["marked", "marked-katex-extension", "highlight.js", "dompurify"];
+    const GONE = ["marked", "marked-katex-extension", "highlight.js", "dompurify", "katex"];
     expect(deps.filter((d) => GONE.includes(d))).toEqual([]);
-    const USE = /(from|import)\s+["'](marked|marked-katex-extension|highlight\.js|dompurify)[/"']/;
+    const USE = /(from|import)\s*\(?\s*["'](marked|marked-katex-extension|highlight\.js|dompurify|katex)[/"']/;
     const files = productionTsFiles("src/frontend");
     expect(files.length, "一份都没读到 —— 本条在空转").toBeGreaterThan(50);
     expect(files.filter((f) => USE.test(f.text)).map((f) => f.file)).toEqual([]);
@@ -163,10 +131,15 @@ describe("D2 · 每个滚动容器一个 IO", () => {
       this.cb([{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry], this as never);
     }
   }
-  /** 一张卡：里面一块惰路排的树（公式留占位）。 */
-  const mk = (name = "\\[ 块公式"): HTMLElement => {
+  /** 一张卡：一块正文树 ＋（`img` 真）一张惰路建的、等着进视口才取的图。 */
+  const mk = (img = true): HTMLElement => {
     const el = document.createElement("div");
-    el.append(mountWhole(doc(name), true));
+    el.append(mountWhole(doc("标题"), true));
+    if (img) {
+      const ph = document.createElement("img");
+      ph.dataset.imagePending = "";
+      el.append(ph);
+    }
     return el;
   };
 
@@ -186,9 +159,8 @@ describe("D2 · 每个滚动容器一个 IO", () => {
       expect([...ioA.observed]).toEqual([a1, a2]);
       expect([...ioB.observed]).toEqual([b1]);
       ioA.fire(a1);
-      await __mathSettledForTests();
-      expect(a1.querySelector("[data-math-pending]")).toBeNull();
-      expect(a2.querySelector("[data-math-pending]")).not.toBeNull();
+      expect(a1.querySelector("[data-image-pending]")).toBeNull();
+      expect(a2.querySelector("[data-image-pending]")).not.toBeNull();
       expect([...ioA.observed]).toEqual([a2]);
       releaseEnhanceRoot(A);
       expect(ioA.disconnected).toBe(true);
@@ -200,18 +172,21 @@ describe("D2 · 每个滚动容器一个 IO", () => {
     }
   });
 
-  it("里面没有等着补的公式 · 图的卡不交给 IO（个个挂着 ＝ 滚动时每一帧都替它们算一遍交叉：300 轮的子运行 2495 个目标 → 299 个）", async () => {
+  it("里面没有等着取的图的卡不交给 IO（个个挂着 ＝ 滚动时每一帧都替它们算一遍交叉：300 轮的子运行 2495 个目标 → 299 个）", async () => {
     FakeIO.all = [];
     vi.stubGlobal("IntersectionObserver", FakeIO);
     try {
       const { observeForEnhance } = await import("../../../src/frontend/ui/render");
       const root = document.createElement("div");
-      const plain = mk("标题");
-      const math = mk();
+      const plain = mk(false);
+      const pic = mk();
+      const math = document.createElement("div");
+      math.append(mountWhole(doc("\\[ 块公式"), true));
       observeForEnhance(plain, root);
+      observeForEnhance(pic, root);
       observeForEnhance(math, root);
       const io = FakeIO.all.find((x) => x.opts.root === root)!;
-      expect([...io.observed]).toEqual([math]);
+      expect([...io.observed], "公式当场画好，不等进视口").toEqual([pic]);
     } finally {
       vi.unstubAllGlobals();
     }

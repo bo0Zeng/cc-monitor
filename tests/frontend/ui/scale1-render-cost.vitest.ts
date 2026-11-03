@@ -263,7 +263,7 @@ const lineBytes = fixtureLines.map((l) => new TextEncoder().encode(l).length);
 // ⇒ 默认 10s 会随机超时（单独跑全过）。不另给期限：钩子的上限是兜底的那一个数
 // （`tests/test-support/wall-ceiling.ts`，vitest.config 的 hookTimeout）；判的东西一律不看墙钟。
 beforeAll(() => {
-  // 预热一遍再开探针：marked / highlight.js / katex 的首次调用要初始化语言表与
+  // 预热一遍再开探针：首次调用要初始化语言表与
   // 正则，**第一遍的头几条会背走整份懒加载成本**（现打：不预热时 `2-8K` 桶的 max
   // 从 ~9ms 变成 **78ms**，而那 78ms 里绝大部分是 hljs 第一次注册语言）。
   // ⇒ 预热的样本不进缓冲，直方图量的是稳态。

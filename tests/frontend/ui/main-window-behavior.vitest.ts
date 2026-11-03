@@ -12,7 +12,6 @@ import { applyNotices } from "../../../src/frontend/ui/cards/speaker-bar";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
@@ -686,13 +685,13 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
 
   it("★ 交回默认展开、正文照树排、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", async () => {
     const c = { ...ctx(), runLabelOf: (run: string) => (run === "a7" ? "审面板交互" : undefined) };
-    const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, doc: para("甲乙丙", { t: "b", k: ["已查完"] }, " ", { t: "m", tex: "a+b" }) }), c);
+    const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, doc: para("甲乙丙", { t: "b", k: ["已查完"] }, " ", { t: "m", tex: "a+b", m: null }) }), c);
     if (r.kind !== "card") throw new Error(r.kind);
     const el = r.element as HTMLDetailsElement;
     expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", copyText("speaker.tag.handback")]);
     expect(el.querySelector(".speaker-body")?.textContent).toContain("甲乙丙已查完");
     expect(el.querySelector(".speaker-body strong")?.textContent, "照树排：加粗是树上的节点").toBe("已查完");
-    await vi.waitFor(() => expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull(), UNTIL_CEILING);
+    expect(el.querySelector(".speaker-body [data-math=inline]")?.textContent, "公式照树排（这棵树没带画单 ⇒ 照原文）").toBe("a+b");
     document.body.appendChild(el);
     const got: unknown[] = [];
     document.addEventListener("ccm:reveal-run", (e) => got.push((e as CustomEvent).detail), { once: true });

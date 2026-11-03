@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -36,9 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -73,12 +71,12 @@ import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
+import com.ccmonitor.mobile.core.wire.gen.MathBox
 import com.ccmonitor.mobile.core.wire.gen.MdAlign
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
 import com.ccmonitor.mobile.core.wire.gen.SegHl
 import kotlinx.coroutines.CompletableDeferred
-import ru.noties.jlatexmath.JLatexMathDrawable
 
 // 正文排版器：后端解析好的块树（`cmd_wire::md::Doc`）→ Compose。只照树排，不解析 Markdown、不判高亮类别。
 //
@@ -86,7 +84,8 @@ import ru.noties.jlatexmath.JLatexMathDrawable
 //   [MdDocView] 照 [MdPiece] 画（段落 · 标题 · 列表 · 引用 · 提示块 · 代码块 · 表格网格 · 公式 · 脚注）。
 // - 高亮先出字、后上色：一段先照纯字建；那一段的代码块（[codesOf]，先序）交后端 `prose-hl` 拉，拉到了 [MdDocState.paint] 带色重排那一段。
 //   第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
-// - 公式经 JLaTeXMath 画成图；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文）。
+// - 公式照核心排好的画单画（`MathView.kt`）；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文，画单按它从 [LocalInlineMath] 取）；
+//   核心排不出的（画单空）照原文等宽排。
 // - 图也占一个行内槽（[IMG_TAG] 标着地址）：按地址取（`MdImage.kt`），取到了换成真图，取到之前 · 取不到照替代字。
 // - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段；点了「展开」（[MdDocState.expand]）才 [MdDocState.buildNext] 一段段往下接。
 
@@ -117,8 +116,10 @@ sealed interface MdPiece {
         val cont: Boolean,
     ) : MdPiece
 
+    /** 块级公式：`m` 是核心排好的画单，空 ⇒ 照 `tex` 原文等宽排。 */
     data class Math(
         val tex: String,
+        val m: MathBox?,
     ) : MdPiece
 
     /** 列表：有序的每项带号（`number`），任务项带勾（`task`）。 */
@@ -300,7 +301,7 @@ private class Ctx(
             is MdBlock.P -> MdPiece.Text(0, inlines(b.k))
             is MdBlock.H -> MdPiece.Text(b.level.coerceIn(1, 6), inlines(b.k))
             is MdBlock.Code -> MdPiece.Code(b.lang, highlighted(b.x, hl.getOrNull(code++).orEmpty(), style), b.cont)
-            is MdBlock.Math -> MdPiece.Math(b.tex)
+            is MdBlock.Math -> MdPiece.Math(b.tex, b.m)
             is MdBlock.List -> MdPiece.Bullets(b.tight, b.items.mapIndexed { n, one -> item(b.start?.plus(n), one) })
             is MdBlock.Quote -> MdPiece.Quote(blocks(b.blocks))
             is MdBlock.Alert -> MdPiece.Alert(b.kind, blocks(b.blocks))
@@ -427,11 +428,14 @@ fun MdBlocksView(
 ) {
     val tokens = LocalAppTokens.current
     val style = rememberMdStyle()
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
-        blocks.forEachIndexed { i, b ->
-            key(i) {
-                val piece = remember(b, style) { layoutBlock(b, style) }
-                Piece(piece, color, tokens)
+    val maths = remember(blocks) { inlineMathOf(blocks) }
+    CompositionLocalProvider(LocalInlineMath provides maths) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
+            blocks.forEachIndexed { i, b ->
+                key(i) {
+                    val piece = remember(b, style) { layoutBlock(b, style) }
+                    Piece(piece, color, tokens)
+                }
             }
         }
     }
@@ -445,9 +449,12 @@ fun MdDocView(
     color: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val tokens = LocalAppTokens.current
-    SelectionContainer(modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
-            state.pieces.forEach { seg -> seg.forEach { Piece(it, color, tokens) } }
+    val maths = remember(state.doc) { inlineMathOf(state.doc.blocks) }
+    CompositionLocalProvider(LocalInlineMath provides maths) {
+        SelectionContainer(modifier) {
+            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
+                state.pieces.forEach { seg -> seg.forEach { Piece(it, color, tokens) } }
+            }
         }
     }
 }
@@ -473,7 +480,7 @@ private fun Piece(
         is MdPiece.Code -> CodeView(p, color, tokens)
         is MdPiece.Math ->
             Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                TexImage(p.tex, color, MaterialTheme.typography.bodyLarge.fontSize.value * 1.1f)
+                MathBlock(p, color, MaterialTheme.typography.bodyLarge.fontSize.value * 1.1f)
             }
         is MdPiece.Bullets ->
             Column(verticalArrangement = Arrangement.spacedBy(if (p.tight) tokens.spacing.xxs else tokens.spacing.s)) {
@@ -538,7 +545,7 @@ private fun Prose(
     }
 }
 
-/** 每条 TeX 一个行内槽：JLaTeXMath 画好的图量出槽的大小。 */
+/** 每条 TeX 一个行内槽：大小照画单 × 字号；树里那一条没画单 ⇒ 不备槽，那一处照原文的字。 */
 @Composable
 private fun mathSlots(
     texs: List<String>,
@@ -547,55 +554,40 @@ private fun mathSlots(
 ): Map<String, InlineTextContent> {
     val density = LocalDensity.current
     val sizePx = with(density) { style.fontSize.toPx() }
-    val argb = color.toArgb()
-    return remember(texs, sizePx, argb) {
+    val boxes = LocalInlineMath.current
+    return remember(texs, sizePx, color, boxes) {
         texs
             .distinct()
             .mapNotNull { tex ->
-                val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
-                val w = with(density) { d.intrinsicWidth.toSp() }
-                val h = with(density) { d.intrinsicHeight.toSp() }
-                (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
+                val m = boxes[tex] ?: return@mapNotNull null
+                val s = mathSizePx(m, sizePx)
+                val w = with(density) { s.width.toSp() }
+                val h = with(density) { s.height.toSp() }
+                (MATH_TAG + tex) to
+                    InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) {
+                        MathCanvas(m, sizePx, color, Modifier.fillMaxWidth().fillMaxHeight())
+                    }
             }.toMap()
     }
 }
 
-private fun texDrawable(
-    tex: String,
-    sizePx: Float,
-    argb: Int,
-): JLatexMathDrawable? =
-    runCatching {
-        JLatexMathDrawable
-            .builder(tex)
-            .textSize(sizePx)
-            .color(argb)
-            .build()
-            .also { it.setBounds(0, 0, it.intrinsicWidth, it.intrinsicHeight) }
-    }.getOrNull()
-
+/** 块级公式：照画单画；核心排不出（画单空）⇒ 照原文等宽排。 */
 @Composable
-private fun DrawTex(d: JLatexMathDrawable) {
-    Box(Modifier.fillMaxWidth().fillMaxHeight().drawBehind { drawIntoCanvas { d.draw(it.nativeCanvas) } })
-}
-
-/** 块级公式：画成图；TeX 认不出 ⇒ 照原文等宽排。 */
-@Composable
-private fun TexImage(
-    tex: String,
+private fun MathBlock(
+    p: MdPiece.Math,
     color: Color,
     sizeSp: Float,
 ) {
-    val density = LocalDensity.current
-    val sizePx = with(density) { sizeSp * fontScale * this.density }
-    val argb = color.toArgb()
-    val d = remember(tex, sizePx, argb) { texDrawable(tex, sizePx, argb) }
-    if (d == null) {
-        Text(tex, style = monoBody, color = color)
+    val m = p.m
+    if (m == null) {
+        Text(p.tex, style = monoBody, color = color)
         return
     }
+    val density = LocalDensity.current
+    val sizePx = with(density) { sizeSp * fontScale * this.density }
+    val s = mathSizePx(m, sizePx)
     with(density) {
-        Box(Modifier.size(d.intrinsicWidth.toDp(), d.intrinsicHeight.toDp()).drawBehind { drawIntoCanvas { d.draw(it.nativeCanvas) } })
+        MathCanvas(m, sizePx, color, Modifier.size(s.width.toDp(), s.height.toDp()))
     }
 }
 

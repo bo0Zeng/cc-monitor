@@ -7,6 +7,9 @@ import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
 import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
+import com.ccmonitor.mobile.core.wire.gen.MathBox
+import com.ccmonitor.mobile.core.wire.gen.MathFont
+import com.ccmonitor.mobile.core.wire.gen.MathItem
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
 
@@ -20,6 +23,22 @@ private fun s(text: String): Inl = Inl.Text(text)
 private fun b(text: String): Inl = Inl.InlNode(InlNode.B(listOf(Inl.Text(text))))
 
 private fun c(code: String): Inl = Inl.InlNode(InlNode.C(code))
+
+/** `E=mc^2` 的画单（照 md-core 金样那一份抄来）；另两条不带画单，照原文排那一路。 */
+private val emc2 =
+    MathBox(
+        w = 3840,
+        h = 814,
+        d = 0,
+        items =
+            listOf(
+                MathItem.G(MathFont.MATH_ITALIC, 69, 0, 814, 1000),
+                MathItem.G(MathFont.MAIN_REGULAR, 61, 1074, 814, 1000),
+                MathItem.G(MathFont.MATH_ITALIC, 109, 2129, 814, 1000),
+                MathItem.G(MathFont.MATH_ITALIC, 99, 3007, 814, 1000),
+                MathItem.G(MathFont.MAIN_REGULAR, 50, 3440, 451, 700),
+            ),
+    )
 
 private fun row(
     kind: LineDiffKind,
@@ -141,9 +160,9 @@ fun sampleRenderUnits(): List<RenderUnit> =
             "s10",
             doc(
                 p(s("块公式：")),
-                MdBlock.Math("E = mc^2"),
-                MdBlock.Math("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"),
-                p(s("行内 "), Inl.InlNode(InlNode.M("a^2+b^2")), s(" 与价格 \$5 到 \$10。")),
+                MdBlock.Math("E=mc^2", emc2),
+                MdBlock.Math("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}", null),
+                p(s("行内 "), Inl.InlNode(InlNode.M("E=mc^2", emc2)), s(" · "), Inl.InlNode(InlNode.M("a^2+b^2", null)), s(" 与价格 \$5 到 \$10。")),
             ),
             "",
             "a7",

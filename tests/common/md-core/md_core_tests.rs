@@ -133,7 +133,8 @@ fn money_is_not_math() {
         vec![
             s("质能 "),
             n(InlNode::M {
-                tex: "E=mc^2".into()
+                tex: "E=mc^2".into(),
+                m: math::lay("E=mc^2", false),
             }),
             s(" 式")
         ]
@@ -145,12 +146,20 @@ fn latex_brackets() {
     assert_eq!(
         parse("\\[ \\sum_i x_i \\]").blocks,
         vec![MdBlock::Math {
-            tex: "\\sum_i x_i".into()
+            tex: "\\sum_i x_i".into(),
+            m: math::lay("\\sum_i x_i", true),
         }]
     );
     assert_eq!(
         only_p("和是 \\(a+b\\) 吧"),
-        vec![s("和是 "), n(InlNode::M { tex: "a+b".into() }), s(" 吧")]
+        vec![
+            s("和是 "),
+            n(InlNode::M {
+                tex: "a+b".into(),
+                m: math::lay("a+b", false),
+            }),
+            s(" 吧")
+        ]
     );
 }
 

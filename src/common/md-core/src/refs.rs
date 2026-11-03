@@ -109,7 +109,7 @@ impl Unmark<'_> {
             match b {
                 MdBlock::P { k } | MdBlock::H { k, .. } => self.inls(k),
                 MdBlock::Code { x, .. } => *x = self.plain(x),
-                MdBlock::Math { tex } => *tex = self.plain(tex),
+                MdBlock::Math { tex, m } => self.plain_math(tex, m, true),
                 MdBlock::List { items, .. } => {
                     items.iter_mut().for_each(|i| self.blocks(&mut i.blocks))
                 }
@@ -139,7 +139,7 @@ impl Unmark<'_> {
                         | InlNode::Del { k: inner }
                         | InlNode::A { k: inner, .. } => self.inls(inner),
                         InlNode::C { x } => *x = self.plain(x),
-                        InlNode::M { tex } => *tex = self.plain(tex),
+                        InlNode::M { tex, m } => self.plain_math(tex, m, false),
                         InlNode::Img { alt, .. } => *alt = self.plain(alt),
                         _ => {}
                     }
@@ -185,6 +185,15 @@ impl Unmark<'_> {
     }
 
     /// 没落进字里的记号换回原文。
+    /// 公式原文里落了记号 ⇒ 换回原文、照原文重排（画单是照带记号的那一份排的）。
+    fn plain_math(&self, tex: &mut String, m: &mut Option<MathBox>, display: bool) {
+        let p = self.plain(tex);
+        if p != *tex {
+            *m = crate::math::lay(&p, display);
+            *tex = p;
+        }
+    }
+
     fn plain(&self, s: &str) -> String {
         let mut out = String::new();
         let mut parts = Vec::new();
