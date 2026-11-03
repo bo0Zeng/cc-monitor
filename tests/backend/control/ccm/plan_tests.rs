@@ -6,9 +6,15 @@
 //! 默认 cwd 是恒等对；登记不成要出声对 `D4`；账号库解析不动不说成没有对 `D7`；
 //! 容器收尾先自检对「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
 
-use super::*;
-use crate::ccm_line::argv::Parsed;
+use crate::ccm_line::argv::{flag, Die, Parsed};
+use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
+use crate::common::session_snapshot::TakenNames;
+use crate::control::ccm::plan::test_support::no_library;
+use crate::control::ccm::plan::*;
 use crate::observe::accounts_query::AccountRow;
+use crate::wire::TerminalHost;
+use cmd_wire::accounts::AccountsList;
+use shell_quote_core::posix_quote as sq;
 
 /// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `--` 切分的排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, crate::ccm_line::argv::Die> {
@@ -782,13 +788,6 @@ fn tempdir() -> String {
     ));
     std::fs::create_dir_all(&p).expect("造夹具目录");
     p.to_string_lossy().to_string()
-}
-
-/// 这台没有账号库（成品 `meta.enabled = false`、一行都没有）。
-pub(crate) fn no_library() -> AccountsList {
-    let mut l = crate::observe::accounts_query::test_support::list(Vec::new());
-    l.meta.enabled = false;
-    l
 }
 
 /// 一个号在成品里的样子（夹具一律当已登录的订阅号）：号目录在盘上 ⇒ 选得了；没写号目录 ＝ 账号 0（`bare`，恒不经选号）。

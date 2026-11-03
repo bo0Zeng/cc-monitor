@@ -21,7 +21,7 @@ fn table() -> std::sync::MutexGuard<'static, BTreeMap<String, Entry>> {
 }
 
 /// 进程里那条「某台的成品变了」的通道（流连接订它推 `changed {machine}`）：那台的名字 ＋ 成品。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<(String, MachineState)> {
+pub fn changes() -> &'static tokio::sync::broadcast::Sender<(String, MachineState)> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<(String, MachineState)>> =
         std::sync::OnceLock::new();
     follow_pool();
@@ -132,7 +132,7 @@ pub(crate) fn table_moved_in(hosts: &[(String, bool)], links: &Links) {
 }
 
 /// 机器表里每台此刻的成品（`machine-read`）。
-pub(crate) fn read() -> BTreeMap<String, MachineState> {
+pub fn read() -> BTreeMap<String, MachineState> {
     let (hosts, links) = hosts();
     read_in(&hosts, &links)
 }
@@ -155,7 +155,7 @@ pub(crate) fn read_in(hosts: &[(String, bool)], links: &Links) -> BTreeMap<Strin
 
 /// 此刻各台合一次写好的那几句（[`deploy::machine::fleet`]）：本机那一行（这个后端在答 ⇒ 报完了）＋ 机器表里每台（停用的也在）
 /// 与它这一条连接上报完了没有。
-pub(crate) fn fleet() -> FleetLines {
+pub fn fleet() -> FleetLines {
     let (hosts, links) = hosts();
     let t = table().clone();
     fleet_over(&t, &hosts, &links)
@@ -195,11 +195,11 @@ fn local_row() -> MachineState {
 
 crate::wire::typed::codes! {
     /// `machine-read` 没有别的码。
-    pub(crate) enum MachineReadErr {}
+    pub enum MachineReadErr {}
 }
 
 /// `machine-read`：机器表里每台此刻的成品（主题 `machine` 的重问）。
-pub(crate) struct MachineReadCmd;
+pub struct MachineReadCmd;
 
 impl crate::wire::typed::Command for MachineReadCmd {
     crate::wire::typed::by_call!(MachineReadReq);
@@ -209,17 +209,14 @@ impl crate::wire::typed::Command for MachineReadCmd {
 
 impl crate::wire::typed::Handle for MachineReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: MachineReadReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachineRead, MachineReadErr>> + Send + 'static
-    {
-        async move {
-            Ok(MachineRead {
-                machines: read(),
-                empty: fleet(),
-            })
-        }
+    ) -> Result<MachineRead, MachineReadErr> {
+        Ok(MachineRead {
+            machines: read(),
+            empty: fleet(),
+        })
     }
 }
 

@@ -87,7 +87,7 @@ fn blocks(v: &Value, out: &mut Vec<String>) {
 }
 
 /// ★ 一份回包 ⇒ 给人看的整段字（不带末尾换行）。
-pub(crate) fn ship_text(reply: &Value) -> String {
+pub fn ship_text(reply: &Value) -> String {
     let mut out: Vec<String> = reply
         .get("text")
         .and_then(Value::as_str)

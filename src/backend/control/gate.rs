@@ -210,7 +210,7 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Sa
 }
 
 /// 请求里自报的前端（入参的 `client`，typed 命令已按类型解好）：没给 ⇒ `None`；给了就得是一个合形状的名字（`gate_rules::client_name_ok`）。
-pub(crate) fn requester(client: Option<&str>) -> Result<Option<String>, Said> {
+pub fn requester(client: Option<&str>) -> Result<Option<String>, Said> {
     match client {
         None => Ok(None),
         Some(c) if crate::control::gate_rules::client_name_ok(c) => Ok(Some(c.to_string())),

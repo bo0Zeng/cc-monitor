@@ -4,7 +4,7 @@
 //! （`ccm [交给 agent 的…] -- [ccm 自己的…]`）。键进已有 tmux 会话的也只是这一行（那台后端自己键）。
 //!
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
-//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
+//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_support.rs::cells`，手写期望）。
 
 use crate::ccm_line::argv::flag;
 use crate::control::launch_account::Settled;
@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 
 /// 渲染不出 ccm 调用行时的**理由**。它是一等返回值，不是 `None`。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
+pub(crate) enum Refusal {
     MissingCap(String),
     /// 没说是哪一家 / 说的那一家注册表里没有 ⇒ 不猜（那一句列出认得的几家）。
     UnknownAgent(String),
@@ -43,7 +43,7 @@ pub enum Refusal {
 
 /// [`Refusal::IdentifierRefused`] 是哪一格（各有各的一句话，文案走表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdentifierSlot {
+pub(crate) enum IdentifierSlot {
     /// `--resume <sid>`（`shell_quote_core::session_id_ok`）。
     Sid,
     /// `--ccm-sid=`（身份标记；同一条 sid 规则）。
@@ -58,7 +58,7 @@ pub enum IdentifierSlot {
 
 /// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FreeTextSlot {
+pub(crate) enum FreeTextSlot {
     Cwd,
     AgentArg,
     /// 一个**已有**会话的名字（`--attach <名>` 的目标；`gate_rules::existing_tmux_name_issue`）。
@@ -67,7 +67,7 @@ pub enum FreeTextSlot {
 
 impl Refusal {
     /// 降级理由。那一行的字节表里拒的那几格逐字节比它（表里是手写期望）。
-    pub fn reason(&self) -> String {
+    pub(crate) fn reason(&self) -> String {
         match self {
             Refusal::MissingCap(c) => copy_text(
                 "rsCcmInvocation.refusal.missingCap",
@@ -131,11 +131,11 @@ impl Refusal {
 /// CLI 语法覆盖面 —— **每次调用都无条件要求**的能力（`tests/e2e/ccm-contract-parity.sh` 从本文件抽它去比真
 /// `ccm --ccm-probe` 的 `capabilities=`）。只放与容器、平台无关的那几条；`tmux` / `attach` 只在用到时才要，
 /// 维度触发了才要的由各自维度声明（`account` · `model` · `ccm-sid`）。
-pub const CLI_REQUIRED_CAPS: &[&str] = &["new", "resume", "cwd", "launcher"];
+pub(crate) const CLI_REQUIRED_CAPS: &[&str] = &["new", "resume", "cwd", "launcher"];
 
 /// 动作。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action<'a> {
+pub(crate) enum Action<'a> {
     New,
     Resume { sid: &'a str },
     Attach { name: &'a str },
@@ -154,7 +154,7 @@ pub enum Container<'a> {
 
 /// 渲染 ccm 调用行所需的全部输入。
 #[derive(Debug, Clone)]
-pub struct CliSpec<'a> {
+pub(crate) struct CliSpec<'a> {
     /// 起哪一家（线上的 kind）：resume 怎么写、能不能选号都按它；`--ccm-agent` 恒显式写出。
     pub agent: &'a str,
     pub action: Action<'a>,
@@ -177,7 +177,7 @@ pub struct CliSpec<'a> {
 }
 
 /// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号。
-pub(crate) fn argv(token: &str) -> String {
+pub fn argv(token: &str) -> String {
     let safe = !token.is_empty()
         && token.chars().all(|c| {
             c.is_ascii_alphanumeric()
@@ -280,7 +280,10 @@ const DIMENSION_ORDER: &[Dim] = &[
 ];
 
 /// `spec → ccm 调用行`。`caps` = 这台 ccm 会哪些（渲染就在那台后端里，问的是它自己）。
-pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<String, Refusal> {
+pub(crate) fn render_ccm_invocation(
+    spec: &CliSpec,
+    caps: &BTreeSet<String>,
+) -> Result<String, Refusal> {
     Ok(ccm_argv(spec, caps)?
         .iter()
         .map(|t| argv(t))
@@ -290,7 +293,7 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
 
 /// 同一行给 PowerShell（Windows 本机终端）：`argv[0]` 是入口的绝对路径 ⇒ `& '<路径>' …`
 /// （PowerShell 里带引号的命令名要 `&` 才叫得起来）。
-pub fn render_ccm_invocation_ps(
+pub(crate) fn render_ccm_invocation_ps(
     spec: &CliSpec,
     caps: &BTreeSet<String>,
 ) -> Result<String, Refusal> {
@@ -313,7 +316,7 @@ pub fn render_ccm_invocation_ps(
 }
 
 /// 同一行的 argv 形（不过 shell，`argv[0]` 是 `ccm_path`）：后端自己起这一趟时用它（[`render_ccm_invocation`] 就是把它逐个引号化连起来）。
-pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
+pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
     for c in CLI_REQUIRED_CAPS {
         if !caps.contains(*c) {
             return Err(Refusal::MissingCap((*c).to_string()));
@@ -482,6 +485,11 @@ fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> Vec<String> {
     agent
 }
 
+// 那一行的字节表（本包的渲染判据与拨号那一侧的远端命令判据共用）。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/control/launch_render/ccm_invocation_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/launch_render/ccm_invocation_tests.rs"]
-pub(crate) mod tests;
+mod tests;

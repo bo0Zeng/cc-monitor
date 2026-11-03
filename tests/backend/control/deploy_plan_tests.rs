@@ -543,6 +543,10 @@ fn probe_stat_failed_and_try_exists_cannot_answer_maps_to_unknown() {
 /// 这一格喂**全部六种输入**，钉的是「每一格只由它自己那条规则命中」——
 /// 任何一臂被改到别的状态，下面必有一行不等。
 #[test]
+#[expect(
+    clippy::type_complexity,
+    reason = "表的一行照被测那几格的类型写，另起类型名只为过这条提示"
+)]
 fn probe_no_cell_answers_in_place_of_another() {
     let table: [(Option<Option<u64>>, Option<bool>, TargetBinary, &str); 6] = [
         (Some(Some(9)), None, TargetBinary::Present, "有字节"),

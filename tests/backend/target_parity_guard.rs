@@ -1609,8 +1609,8 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     use crate::ccm_line::argv::{test_support::parse, Parsed};
-    use crate::control::ccm::plan::tests::{library_of, product_row};
     use crate::control::ccm::plan::{build, Env, Plan};
+    use crate::cross_control::ccm_plan_tests::{library_of, product_row};
     use std::collections::BTreeSet;
     let env = Env {
         home: "/home/pi".into(),

@@ -346,11 +346,39 @@ async fn a_call_for_a_machine_without_a_stream_is_not_sent() {
     assert_eq!(fail.code.as_deref(), Some(UNREACHABLE));
 }
 
+/// 替身那台照答的那一条有类型的命令：线上形照 `machine-interrupts` 的那几格（真命令住帧面宿主，控制面这一层够不到；
+/// 这里只验 `call` 那条路怎么带入参 · 收回包）。
+struct MachineInterrupts;
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineInterruptsReq {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    app_exit: Option<bool>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineInterruptsReply {
+    relayed_sessions: Option<u32>,
+    live_streams: u32,
+}
+
+crate::wire::typed::codes! {
+    enum MachineInterruptsErr {}
+}
+
+impl crate::wire::typed::Command for MachineInterrupts {
+    const NAME: &'static str = "machine-interrupts";
+    type Req = MachineInterruptsReq;
+    type Reply = MachineInterruptsReply;
+    type Err = MachineInterruptsErr;
+}
+
 /// 本机后端自己问那台一条有类型的命令（`call`，并好再答的那几条用）：经同一条常驻流，入参照类型带过去、回包照类型收；
 /// 没有那一条 ⇒ 同 `forward` 那个码。
 #[tokio::test]
 async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
-    use crate::faces::read_face::{MachineInterrupts, MachineInterruptsReq};
     let _one = one_at_a_time().await;
     let machine = "feeds-call";
     let fake = Arc::new(Fake::default());
@@ -365,7 +393,6 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
         crate::platform::child::Until::after(crate::platform::child::Deadline::millis(30_000));
     let exit = MachineInterruptsReq {
         app_exit: Some(true),
-        ..Default::default()
     };
     let got = call::<MachineInterrupts>(machine, &exit, within)
         .await

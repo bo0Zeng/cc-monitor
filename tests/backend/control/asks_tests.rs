@@ -1,17 +1,22 @@
 //! 待答登记表：挂上 · 第一个答案落下、其余回「别处已答」那一种结局（`gone` ＋ 那一句）· 连接断了撤掉 · 子 agent 的请求照样挂、带 agent_id · needs 配上 ask。
 //! 登记表是进程里一份，各条用各自的会话 id，并行跑互不相扰。夹具正文都是编的。
 
-use super::*;
+use crate::agents::asks::{product_of, Ask, NoteNeed};
+use crate::agents::AskIn;
 use crate::agents::{AskKind, AskOption, AskQuestion, AskSuggestion};
+use crate::control::asks::*;
 use crate::history::history_annotations::AUTO_MAX_MIN;
+use cmd_wire::needs::{AnswerReq, AutoAnswer, AutoChoice};
+use copy_core::copy_text;
 use serde_json::json;
+use serde_json::Value;
 
 /// 线上那一份入参照分派那一层解（`typed::take`，`deny_unknown_fields`）再交本体；回包投成线上那一份。
 /// 入参形状不对 ⇒ `bad_args`（与本体回的码同一形，判据只比码）。
 fn answer(args: &Value) -> Result<Value, crate::common::said::Said> {
     let req: AnswerReq = crate::wire::typed::take(args)
         .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
-    super::answer(req).map(|a| serde_json::to_value(a).expect("回包总能序列化"))
+    crate::control::asks::answer(req).map(|a| serde_json::to_value(a).expect("回包总能序列化"))
 }
 
 const AGENT: &str = "claude";

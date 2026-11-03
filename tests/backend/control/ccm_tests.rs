@@ -1,13 +1,5 @@
 use super::*;
 
-// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
-fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, crate::common::said::Said> {
-    let req: CcmPrintReq = crate::wire::typed::take(args)
-        .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
-    super::answer_print(&req, crate::faces::launch_account_face::list_at)
-        .map(|r| serde_json::to_value(r).unwrap())
-}
-
 // 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
     let here = on_path::on_path(&on_path::Reach::Ours, "");
@@ -63,77 +55,6 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
 }
 
-/// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋「route 里没有 base ≠ ccm 那一支」。
-/// 分流先看被叫成什么、再看参数：叫 `ccm` / 后端本名 ⇒ 零参数是「起一个 claude」，打头的 `--` 紧跟后端词才进后端；
-/// 被叫成别的名字（`~/.cc-monitor/bin/<名>` 那条链接）⇒ 等同 `ccm @<名> …`，参数一个都不进后端。
-/// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm 本身、参数一个不多一个不少、配置不叠第二遍。
-#[test]
-fn routing_reads_the_name_it_was_called_by_then_the_argv() {
-    let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let route = |a0: &str, args: &[String]| route(a0, args, crate::stream::entry::is_backend_word);
-    for me in [
-        "ccm",
-        "/x/ccm",
-        "C:\\x\\ccm.exe",
-        "/x/cc-monitor-backend",
-        "cc-monitor-backend-4.1.2",
-    ] {
-        assert_eq!(
-            route(me, &[]),
-            Entry::Ccm(vec![]),
-            "零参数不再是流模式（{me}）"
-        );
-        assert_eq!(
-            route(me, &v(&["--stream"])),
-            Entry::Ccm(v(&["--stream"])),
-            "没有打头的 `--` 就交 claude"
-        );
-        assert_eq!(
-            route(me, &v(&["--", "--stream", "--tail-only"])),
-            Entry::Backend(v(&["--stream", "--tail-only"]))
-        );
-        assert_eq!(
-            route(me, &v(&["--", "--ping"])),
-            Entry::Backend(v(&["--ping"]))
-        );
-        assert_eq!(
-            route(me, &v(&["--", "--ccm-tmux"])),
-            Entry::Ccm(v(&["--", "--ccm-tmux"]))
-        );
-    }
-    assert_eq!(
-        route(
-            "/home/u/.cc-monitor/bin/teamcct",
-            &v(&["你好", "--", "--ccm-print"])
-        ),
-        Entry::Ccm(v(&["@teamcct", "你好", "--", "--ccm-print"]))
-    );
-    assert_eq!(
-        route("teamcct", &v(&["--", "--ping"])),
-        Entry::Ccm(v(&["@teamcct", "--", "--ping"])),
-        "被叫成配置名的那一趟不进后端"
-    );
-    let inner = v(&["--tail-only", "--", "--cwd", "/p", "--ccm-agent", "claude"]);
-    for (a0, me) in [
-        ("/x/ccm", "/x/ccm"),
-        ("/x/cc-monitor-backend", "/x/cc-monitor-backend"),
-        ("/x/teamcct", "/x/ccm"),
-        ("teamcct", "ccm"),
-    ] {
-        let mut again = self_invocation(&v(&[a0, "--", "--ccm-tmux=n"]));
-        assert_eq!(again, v(&[me]), "「怎么叫我」（{a0}）");
-        again.extend(inner.iter().cloned());
-        assert_eq!(
-            match route(&again[0], &again[1..]) {
-                Entry::Ccm(v) => Some(v),
-                Entry::Backend(_) => None,
-            },
-            Some(inner.clone()),
-            "从 {a0} 进来的在 pane 里叫不回 ccm"
-        );
-    }
-}
-
 /// 没有 `--` 又没有终端 ⇒ 不起 claude；有 `--` 的、或 stdin / stdout 有一边是终端的照旧。
 /// 容器路在 pane 里把自己再叫一次那一行恒带 `--`（`plan::build` 的 `inner`），所以它不看终端。
 #[test]
@@ -180,9 +101,12 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
         Ok(argv::Parsed::Opts(o)) => o,
         other => panic!("{other:?}"),
     };
-    let Ok(Plan::Container(c)) =
-        plan::build(&o, &Env::for_preview(), &plan::tests::no_library, None)
-    else {
+    let Ok(Plan::Container(c)) = plan::build(
+        &o,
+        &Env::for_preview(),
+        &plan::test_support::no_library,
+        None,
+    ) else {
         panic!("不是容器路")
     };
     assert!(
@@ -331,7 +255,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
-        match plan::build(&o, env, &plan::tests::no_library, None).expect("该算得出计划") {
+        match plan::build(&o, env, &plan::test_support::no_library, None).expect("该算得出计划")
+        {
             Plan::Container(c) => c.payload,
             other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
         }
@@ -507,7 +432,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
-    match plan::build(&o, &e, &plan::tests::no_library, None).expect("该算得出计划") {
+    match plan::build(&o, &e, &plan::test_support::no_library, None).expect("该算得出计划") {
         Plan::Direct(d) => d,
         other => panic!("直路测试却算出 {other:?}"),
     }
@@ -597,146 +522,6 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// 帧命令 `ccm-print`：别名预览
-// 要求：「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
-// 是真验证，不是前端拼串」。
-// ═══════════════════════════════════════════════════════════════════════
-
-/// **C1：预览与 `ccm --print` 是同一个计划函数。**
-///
-/// 源码那一半：`run` 与 [`answer_print`] 都经 [`plan_of`]（`plan::build(` 全文件恰好一处由
-/// `the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it` 钉着），预览那一处交的是预览环境、不继承账号。
-/// 行为那一半（异源）：同一组参数，`answer_print` 的 `line` == 手搭一份「家目录里的新终端」环境、
-/// 直接走 `argv::parse_layered` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
-#[test]
-fn the_alias_preview_is_the_same_plan_as_ccm_print() {
-    let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
-    for pin in [
-        "plan_of(&o, env, true, accounts)",
-        "plan_of(&o, Env::for_preview(), false, accounts)",
-    ] {
-        guard_core::find_pinned(&prod, pin).unwrap_or_else(|e| {
-            panic!("`{pin}` 不是恰好一处（{e}）—— 预览与 `--print` 不再走同一个计划函数")
-        });
-    }
-    let home = std::env::var("HOME").unwrap_or_default();
-    for args in [
-        // 别名的预置参数就是一条 argv（`<交给 claude 的…> -- <ccm 的…>`）。
-        vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
-        vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
-        vec!["--model", "m", "--", "--base", "--cwd", "/q"],
-    ] {
-        let got = answer_print(&serde_json::json!({ "args": args }))
-            .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
-        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let o = match argv::test_support::parse(&a).expect("该解析得动") {
-            Parsed::Opts(o) => o,
-            other => panic!("{other:?}"),
-        };
-        let pick =
-            |k: &str, d: String| std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or(d);
-        let e = Env {
-            home: home.clone(),
-            pwd: home.clone(),
-            accts_manifest: plan::accts_manifest_under(&home),
-            ccm_env: pick("CCM_ENV", argv::Defaults::ENV.to_string()),
-            account_env: crate::agents::account_env_of(&o.agent)
-                .unwrap_or_default()
-                .to_string(),
-            base_url_env: crate::agents::base_url_env_of(&o.agent)
-                .unwrap_or_default()
-                .to_string(),
-            self_argv: vec!["ccm".into()],
-            // 预览答「从这台的一个新终端敲」：落托管（同 `Env::for_preview_in`）。
-            can_host: true,
-            ..Default::default()
-        };
-        // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。
-        let table = || crate::faces::launch_account_face::list_at(&e.home, &o.agent);
-        let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
-        assert_eq!(
-            got["line"].as_str().expect("line"),
-            plan::render(&plan),
-            "{args:?}：预览与同一语境下的 `--print` 不是同一行"
-        );
-    }
-}
-
-/// **C2：预览的语境逐格写死**（「从这台机器家目录里的一个新终端敲这条别名」）。各格一刀：
-/// 叫的是 `ccm` · cwd = home · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 账号目录。
-#[test]
-fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
-    let e = Env::for_preview();
-    assert_eq!(
-        e.self_argv,
-        vec![SUBCOMMAND_WORD.to_string()],
-        "别名叫的是 `ccm`"
-    );
-    assert_eq!(e.pwd, e.home, "不给 --cwd 的别名在家目录里敲");
-    assert!(e.tmux.is_none(), "新终端不在 tmux 里");
-    assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
-    assert!(
-        e.inherited_base_url.is_none(),
-        "常驻后端进程身上的中转地址不是那个终端的"
-    );
-    // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
-    let line = |args: &[&str]| -> String {
-        answer_print(&serde_json::json!({ "args": args })).expect("该答得出")["line"]
-            .as_str()
-            .expect("line")
-            .to_string()
-    };
-    let home = std::env::var("HOME").unwrap_or_default();
-    assert!(
-        line(&["--", "--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
-        "不给 --cwd 却没落在家目录"
-    );
-    let boxed = line(&["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
-    assert!(
-        boxed.contains("'ccm' '--' '--cwd'"),
-        "容器路内层没有叫回 `ccm`：{boxed}"
-    );
-}
-
-/// `ccm-print` 的两种拒：形状不对 ⇒ `bad_args`；ccm 自己拒 / 不起会话的那一形 ⇒ `refused`，原话带回。
-#[test]
-fn the_alias_preview_refuses_in_the_words_of_ccm() {
-    let code = |v: serde_json::Value| match answer_print(&v) {
-        Ok(_) => "ok".to_string(),
-        Err(e) => e.code_or_fallback().to_string(),
-    };
-    assert_eq!(code(serde_json::json!({})), "bad_args");
-    assert_eq!(code(serde_json::json!({ "args": [1] })), "bad_args");
-    assert_eq!(
-        code(serde_json::json!({ "args": vec!["x"; PRINT_MAX_WORDS + 1] })),
-        "bad_args"
-    );
-    assert_eq!(
-        code(serde_json::json!({ "args": ["--", "--ccm-help"] })),
-        "refused"
-    );
-    // 未知旗标交给 claude、不拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
-    let e = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
-        .expect_err("--detach 不带 --tmux 该被拒");
-    assert_eq!(e.code.as_deref(), Some("refused"));
-    let said = e.said;
-    let want = match argv::test_support::parse(&["--".to_string(), "--detach".to_string()]) {
-        Err(argv::Die(m)) => m,
-        other => panic!("{other:?}"),
-    };
-    assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
-    assert_eq!(
-        code(serde_json::json!({ "args": ["--", "--cwd", "/p"] })),
-        "ok"
-    );
-    // 右边认不得 ⇒ ccm 的原话拒（不猜）。
-    assert_eq!(
-        code(serde_json::json!({ "args": ["--", "--model", "m"] })),
-        "refused"
-    );
-}
-
 // ── `--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
 //
 // 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
@@ -808,7 +593,7 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
 fn the_real_probe_asks_this_binarys_own_platform() {
     let me = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
     let body = me
-        .split("pub(crate) fn probe_output(self_path: &str) -> String {")
+        .split("pub fn probe_output(self_path: &str) -> String {")
         .nth(1)
         .and_then(|b| b.split("\n}\n").next())
         .expect("找不到 `probe_output` —— 抽取器坏了");
@@ -961,7 +746,7 @@ fn string_literals(code: &str) -> Vec<String> {
                     continue;
                 }
                 let close: String = std::iter::once('"')
-                    .chain(std::iter::repeat('#').take(hashes))
+                    .chain(std::iter::repeat_n('#', hashes))
                     .collect();
                 let rest: String = b[j + 1..].iter().collect();
                 let end = rest.find(&close).unwrap_or(rest.len());
@@ -1116,7 +901,7 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
         else {
             panic!("不该是 Early")
         };
-        plan::render(&plan::build(&o, &e, &plan::tests::no_library, None).expect("计划"))
+        plan::render(&plan::build(&o, &e, &plan::test_support::no_library, None).expect("计划"))
     };
     assert!(
         line("claude").contains("unset ANTHROPIC_BASE_URL; "),

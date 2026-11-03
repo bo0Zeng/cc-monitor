@@ -25,7 +25,8 @@ const STDIN_CAP: Cap = Cap {
 const REQ_ID: &str = "answer-hook";
 
 /// 这条会话各个活进程此刻的（那一态, 这一态从何时起）：读那一家的 pidfile 目录（`main` 交进来：活会话表那一处，`history::live_table::states_in`）。
-pub type StatesOf = fn(&std::path::Path, &str) -> Vec<(Option<SessionActivity>, Option<u64>)>;
+pub(crate) type StatesOf =
+    fn(&std::path::Path, &str) -> Vec<(Option<SessionActivity>, Option<u64>)>;
 
 /// 入口（`args[0]` ＝ 子命令本身，`args[1]` ＝ 那一家的 kind）。恒退 0：hook 的退出码那一家不当决定看，空手退就是「不答」。
 /// `states` 判「终端那边答了」用（[`StatesOf`]）。
@@ -154,7 +155,7 @@ fn watch_terminal(
 
 /// 判关了没有（纯函数）：有一个进程在「在等」⇒ 没关（记下见过）；都不在「在等」且（见过「在等」或状态更新晚于 `started`）⇒ 关了。
 /// 一个进程都没有（会话退了）且见过「在等」⇒ 关了。
-pub(crate) fn closed_now(
+pub fn closed_now(
     states: &[(Option<SessionActivity>, Option<u64>)],
     started: u64,
     seen_waiting: &mut bool,
@@ -197,7 +198,7 @@ fn in_table(pid: u32, sid: &str) -> bool {
 
 /// 这一发 hook 认不认（纯函数）：自己的环境里那个插件目录变量没带我们的目录 ⇒ 不是经环境来的（`--settings` 那一路不传给子进程），认；
 /// 表里有 ⇒ 认；发问那个进程起来时的环境里没有那一家的嵌套标记 ⇒ 认（ccm 起会话前清掉了它）；带着 ⇒ 子进程；读不出 ⇒ 认不出。
-pub(crate) fn admitted(
+pub fn admitted(
     own_dirs: Option<&str>,
     ours: &str,
     in_table: bool,

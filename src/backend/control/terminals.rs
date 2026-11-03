@@ -22,16 +22,16 @@ use super::terminals_wire::{
 use crate::common::time::now_secs;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Barred, Who};
-pub(crate) use crate::host::tmux::{handle_of, tmux_here, On};
+pub use crate::host::tmux::{handle_of, tmux_here, On};
 use crate::host::tmux::{rows_found_on, rows_on};
 pub(crate) use crate::host::TermRow;
 use crate::platform::child::Deadline;
 use copy_core::copy_text;
 
 /// `terminals-list` 整条命令总期限的上限（窗格 · 客户端两发）。
-pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
+pub const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
 /// `terminal-preview` 与 `terminal-input` 整条命令总期限的上限（名单两发 ＋ 抓屏 ＋ 问尺寸；名单 · 过门 · 比画面 · 送字 · 送不成再探）。
-pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
+pub const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（抓屏那一处的 tmux stderr 进复制详情）。
 use crate::common::said::Said;
@@ -43,7 +43,7 @@ pub(crate) const MAX_SCROLLBACK: u32 = 2000;
 const MAX_TARGET_BYTES: usize = 256;
 
 /// 送键那张有限键表：线上的名字 → tmux 的键名。不收任意转义串。
-pub(crate) const KEYS: &[(&str, &str)] = &[
+pub const KEYS: &[(&str, &str)] = &[
     ("esc", "Escape"),
     ("ctrl-c", "C-c"),
     ("ctrl-d", "C-d"),
@@ -60,11 +60,11 @@ pub(crate) const KEYS: &[(&str, &str)] = &[
 ];
 
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
-pub(crate) use cmd_wire::session::Refused;
+pub use cmd_wire::session::Refused;
 use cmd_wire::session::{HolderWho, InputHolder, SentAct, TermInput};
 
 /// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：输入队投递那一下恢复再送，换模型 / 权限档记下等恢复，同这一判。
-pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
+pub fn terminal_gone(why: Option<Refused>) -> bool {
     matches!(why, Some(Refused::NotKnown | Refused::Ended))
 }
 
@@ -85,7 +85,7 @@ pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> 
 }
 
 /// 原因 ⇒ 给人看的那一句。
-pub(crate) fn no_said(why: Refused) -> String {
+pub fn no_said(why: Refused) -> String {
     match why {
         Refused::NotYours => copy_text("beTerminal.no.notYours", &[]),
         Refused::NotManaged => copy_text("beTerminal.no.notManaged", &[]),
@@ -189,7 +189,7 @@ pub(crate) fn terminal_json(
 }
 
 /// `terminals-list` 的成品构造器（纯）。
-pub(crate) fn list_reply(
+pub fn list_reply(
     rows: &[TermRow],
     clients: &[(String, u64, u64)],
     complete: bool,
@@ -205,7 +205,7 @@ pub(crate) fn list_reply(
 }
 
 /// `terminals-list` 的本体。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
-pub(crate) fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, Said> {
+pub fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, Said> {
     let requester = gate::requester(req.client.as_deref())?;
     let (rows, clients, complete) = crate::host::list(on)?;
     Ok(list_reply(&rows, &clients, complete, requester.as_deref()))
@@ -266,13 +266,13 @@ const GEOMETRY_FMT: &str =
 
 /// 一次预览：那一屏的原文（可能带 SGR）＋ 尺寸与光标。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct View {
-    pub(crate) text: String,
-    pub(crate) cols: u32,
-    pub(crate) rows: u32,
-    pub(crate) cursor_x: u32,
-    pub(crate) cursor_y: u32,
-    pub(crate) cursor_visible: bool,
+pub struct View {
+    pub text: String,
+    pub cols: u32,
+    pub rows: u32,
+    pub cursor_x: u32,
+    pub cursor_y: u32,
+    pub cursor_visible: bool,
 }
 
 /// 抓一次预览（`id` 是名单里那个终端的句柄：窗格的 `#{pane_id}` 或会话的 `#{session_id}`）：先抓屏（`capture_pane` 那一处）、再问尺寸与光标；
@@ -493,7 +493,7 @@ fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Span>) {
 
 /// `terminal-preview` 的成品构造器（纯）：抓回来的原文 ＋ 尺寸光标 ⇒ 回话。
 /// `captured_text` ＝ `captured_at` 在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
-pub(crate) fn preview_reply(
+pub fn preview_reply(
     view: &View,
     color: bool,
     capped: bool,
@@ -541,10 +541,10 @@ fn not_known(why: &str) -> Said {
 }
 
 /// `terminal-preview` 的本体。只读、不过身份门。`tz` ＝ 看的那一台的时区：抓屏时刻 `captured_at_text` 按它写。
-pub(crate) fn preview_on(
+pub fn preview_on(
     on: On<'_>,
     req: &TerminalPreviewReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<Preview, Said> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let color = req.color.unwrap_or(true);
@@ -586,7 +586,7 @@ pub(crate) fn preview_on(
 }
 
 /// 名叫 `session` 的那个 tmux 会话此刻的样子（`session-arrive` 没见到时抓原话）：在 ⇒ 句柄 ＋ 那一屏原文（不带颜色）。
-pub(crate) fn screen_of(session: &str) -> crate::control::session_arrive::Screen {
+pub fn screen_of(session: &str) -> crate::control::session_arrive::Screen {
     screen_on(On::default(), session)
 }
 
@@ -611,13 +611,13 @@ pub(crate) fn screen_on(on: On<'_>, session: &str) -> crate::control::session_ar
 
 /// 终端实时预览要的那一格（`terminal_follow.rs`）：名单里对上的终端 ⇒ 对它下手的 tmux 句柄 ＋ 它所在的 tmux 会话（`$N`）
 /// ＋ 只看哪个窗格的输出（挂着 sid 的窗格；没有 ⇒ 整个会话）。没装 tmux ⇒ `no_tmux`；对不上同 [`preview_on`]。
-pub(crate) struct FollowTarget {
+pub struct FollowTarget {
     pub(crate) target: String,
     pub(crate) session: String,
     pub(crate) pane: Option<String>,
 }
 
-pub(crate) fn follow_target_on(
+pub fn follow_target_on(
     on: On<'_>,
     terminal: Option<&str>,
     sid: Option<&str>,
@@ -646,7 +646,11 @@ pub(crate) fn follow_target_on(
 }
 
 /// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
-pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Preview, Said> {
+pub(crate) fn screen_view_on(
+    on: On<'_>,
+    target: &str,
+    tz: &crate::common::time::Tz,
+) -> Result<Preview, Said> {
     let view = view_on(on, target, true, 0)?;
     let at = now_secs();
     Ok(preview_reply(
@@ -717,7 +721,7 @@ pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, Said> {
 }
 
 /// `terminal-input` 的回话构造器（纯）。被拒的带原因码 `why` 与给人看的 `said`。
-pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Option<&str>) -> Sent {
+pub fn input_reply(result: SentResult, why: Option<Refused>, screen: Option<&str>) -> Sent {
     Sent {
         result,
         why,
@@ -808,7 +812,7 @@ fn admit_on(
 }
 
 /// 切权限档看屏 · 等重画那一份（同 [`follow_target_on`] 的形）：过 [`say_on`] 那同一道门 —— 前台不是 agent 的窗格不看（读不出档，也不该往里按键）。
-pub(crate) fn say_target_on(
+pub fn say_target_on(
     on: On<'_>,
     sid: &str,
     client: Option<&str>,
@@ -914,7 +918,10 @@ pub(crate) fn hosted_sock_of(
 }
 
 /// 托管口 `sock` 那个终端这一刻那一屏（带颜色、不往回要）：与 [`screen_view_on`] 同一份成品。
-pub(crate) fn hosted_screen_at(sock: &std::path::Path, tz: &crate::Tz) -> Result<Preview, Said> {
+pub(crate) fn hosted_screen_at(
+    sock: &std::path::Path,
+    tz: &crate::common::time::Tz,
+) -> Result<Preview, Said> {
     let view = view_of_captured(
         crate::host::managed::client::capture(sock, 0, true).map_err(|e| managed_gone(&e))?,
     )?;

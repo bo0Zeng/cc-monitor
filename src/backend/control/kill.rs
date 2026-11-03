@@ -21,7 +21,7 @@ const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 use crate::common::said::Said;
 
 /// 结束会话被拒成 `code` 时给人看的那一句（批量停那一项也照它说）。`target` 是 tmux 会话名。
-pub(crate) fn said(target: &str, code: &str) -> String {
+pub fn said(target: &str, code: &str) -> String {
     match code {
         "bad_args" => copy_text("tmuxControl.kill.badName", &[("target", target)]),
         "no_tmux" => copy_text("tmuxControl.kill.noTmux", &[("target", target)]),
@@ -149,29 +149,29 @@ pub(crate) fn kill_refused(stderr: &[u8]) -> Said {
 
 /// `terminal-end` 的入参：目标恰给一个（名单里的句柄 · 会话 id），同 `terminal-input`。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TerminalEndReq {
+pub struct TerminalEndReq {
     /// 目标：名单里的不透明句柄（与 `sid` 恰给一个）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) terminal: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub terminal: Option<String>,
     /// 目标：会话 id（与 `terminal` 恰给一个）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) sid: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub sid: Option<String>,
     /// 自报的前端（过「哪个前端的会话」那一维）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
 }
 
-pub(crate) use cmd_wire::session::TerminalEnded;
+pub use cmd_wire::session::TerminalEnded;
 
 crate::wire::typed::codes! {
     /// `terminal-end` 的码：认目标 · 列名单 · 过门 · 结束那一下。
-    pub(crate) enum TerminalEndErr {
+    pub enum TerminalEndErr {
         /// 目标没恰给一个（或不是非空短串）。
         BadTarget = "bad_target",
         /// 名单里此刻没有它。
@@ -194,7 +194,7 @@ crate::wire::typed::codes! {
 }
 
 /// `terminal-end`：结束名单里的一个终端（tmux：三道门、杀句柄；托管：子进程组挂断）。阻塞档。
-pub(crate) struct TerminalEnd;
+pub struct TerminalEnd;
 
 impl crate::wire::typed::Command for TerminalEnd {
     const NAME: &'static str = "terminal-end";
@@ -205,31 +205,28 @@ impl crate::wire::typed::Command for TerminalEnd {
 
 impl crate::wire::typed::Handle for TerminalEnd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalEndReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<TerminalEnded, TerminalEndErr>> + Send + 'static
-    {
-        async move {
-            end_terminal(
-                crate::host::tmux::On::default(),
-                crate::host::managed::installed(),
-                &req,
-            )
-            .map_err(|f| match f.code.as_deref() {
-                // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
-                Some("no_tmux") => {
-                    TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
-                }
-                _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
-            })
-        }
+    ) -> Result<TerminalEnded, TerminalEndErr> {
+        end_terminal(
+            crate::host::tmux::On::default(),
+            crate::host::managed::installed(),
+            &req,
+        )
+        .map_err(|f| match f.code.as_deref() {
+            // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
+            Some("no_tmux") => {
+                TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+            }
+            _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
+        })
     }
 }
 
 /// `terminal-end` 的本体：名单里对上那一行（两种宿主合一份；`managed` ＝ 托管名单的家，生产是装好的那一个）⇒ 按它的宿主结束。
 /// 托管那一行不靠 tmux（这台没装 tmux 也照结束）；tmux 那一行过三道门，过门那一刻 tmux 起不来 ⇒ `kill_failed`（不回 `no_tmux`：名单刚列出它）。
-pub(crate) fn end_terminal(
+pub fn end_terminal(
     on: crate::host::tmux::On<'_>,
     managed: Option<&crate::platform::fs::Own>,
     req: &TerminalEndReq,

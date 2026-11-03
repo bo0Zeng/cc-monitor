@@ -1,7 +1,8 @@
 //! 批量停 · 问样子：每一个的结局与「单个那一条会做的事」相等（替身记下被调了什么；tmux 一个都不起）。
 
-use super::*;
+use crate::common::said::Said;
 use crate::control::launch_account as la;
+use crate::control::session_batch::*;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -15,7 +16,7 @@ fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 fn where_(args: &Value, d: &Deps) -> Result<Value, Said> {
-    wired(args, |r| super::where_(r, d))
+    wired(args, |r| crate::control::session_batch::where_(r, d))
 }
 /// 停（会话脸都说结束得了，称呼是 sid 的头八位）。
 fn stop(args: &Value, d: &Deps) -> Result<Value, Said> {
@@ -28,7 +29,9 @@ fn stop_with(
     can_end: &dyn Fn(&str, &crate::wire::SessionContainer) -> crate::wire::Allow,
     title: &dyn Fn(&str) -> String,
 ) -> Result<Value, Said> {
-    wired(args, |r| super::stop(r, d, &StopFaces { can_end, title }))
+    wired(args, |r| {
+        crate::control::session_batch::stop(r, d, &StopFaces { can_end, title })
+    })
 }
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {

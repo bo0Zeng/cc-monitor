@@ -19,10 +19,10 @@ use std::sync::Mutex;
 
 /// 一行里那条会话这台知道的几样（由调用方从这台的会话事实里取）。
 #[derive(Debug, Clone)]
-pub(crate) struct SessionBits {
-    pub(crate) title: String,
-    pub(crate) account: Option<String>,
-    pub(crate) face: SessionFace,
+pub struct SessionBits {
+    pub title: String,
+    pub account: Option<String>,
+    pub face: SessionFace,
 }
 
 /// 前台程序名是这几个之一 ⇒ 没会话的那个终端算闲着（只剩 shell）。只比 tmux 报的前台程序名，不起 shell。
@@ -161,7 +161,7 @@ fn fallback_face(state: TermState) -> SessionFace {
 }
 
 /// 这台的终端名单写成那几行、排好（`session` ＝ 按 sid 取这台的会话事实；`home` ＝ 这台家目录，目录写成 `~/…`）。
-pub(crate) fn rows_here(
+pub fn rows_here(
     list: &TerminalsList,
     session: &dyn Fn(&str) -> Option<SessionBits>,
     now: u64,
@@ -184,22 +184,27 @@ pub(crate) fn rows_here(
 }
 
 /// 一台问到的结局：答了（那份 ＋ 答的时刻 `HH:MM`）· 没答（那一句）。
-pub(crate) enum Got {
+pub enum Got {
     Answered(BoardHere, String),
     Down(String),
 }
 
 /// 各台上次答的那一份（没答时照它画、标「名单采样」）：进程里一份，只记最后一次。
-pub(crate) struct LastSeen(Mutex<HashMap<String, (BoardHere, String)>>);
+pub struct LastSeen(Mutex<HashMap<String, (BoardHere, String)>>);
+
+impl Default for LastSeen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl LastSeen {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         LastSeen(Mutex::new(HashMap::new()))
     }
 }
 
-pub(crate) static LAST_SEEN: std::sync::LazyLock<LastSeen> =
-    std::sync::LazyLock::new(LastSeen::new);
+pub static LAST_SEEN: std::sync::LazyLock<LastSeen> = std::sync::LazyLock::new(LastSeen::new);
 
 /// 组头那一句。
 fn sub_of(rows: &[BoardRow]) -> Words {
@@ -231,7 +236,7 @@ fn name_of(m: &Machine) -> Words {
 }
 
 /// 各台的结局合成一份（照 `got` 的先后，一台一组）；答了的记进 `last`，没答的照 `last` 里那一份画。
-pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard {
+pub fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard {
     let mut seen = last.0.lock().unwrap_or_else(|e| e.into_inner());
     let mut groups = Vec::new();
     for (machine, g) in got {

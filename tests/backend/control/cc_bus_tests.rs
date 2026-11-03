@@ -19,30 +19,6 @@ fn rows_of(v: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-fn codes_of(op: &str) -> Vec<String> {
-    let mut v: Vec<String> = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == op)
-        .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
-        .codes
-        .iter()
-        .map(|c| c.to_string())
-        .collect();
-    v.sort();
-    v
-}
-
-fn golden_codes(g: &serde_json::Value) -> Vec<String> {
-    let mut v: Vec<String> = g["codes"]
-        .as_array()
-        .expect("金样缺 codes")
-        .iter()
-        .map(|c| c.as_str().expect("码不是字符串").to_string())
-        .collect();
-    v.sort();
-    v
-}
-
 /// 这一块一个子进程都不起：收件箱住后端，读写都在 `store` 那一处，不起 cc-bus 脚本、不认它的输出形。
 #[test]
 fn the_bus_backend_starts_no_cc_bus_script() {
@@ -79,7 +55,7 @@ fn the_bus_backend_starts_no_cc_bus_script() {
 }
 
 /// **跨语言金样**：驾驶舱读收件箱的成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
-/// 异源：输入那几行经**生产**解析器（`parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
+/// 异源：输入那几行经**生产**解析器（`parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == 命令表那一条住 `on_upper_tests.rs`（挂主 crate）。
 #[test]
 fn the_cockpit_read_products_match_the_cross_language_golden() {
     let g: serde_json::Value =
@@ -101,11 +77,6 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
         val(super::inbox_reply(&rows_of(&ib["lines"]))),
         ib["reply"],
         "`bus-inbox` 成品与金样不相等"
-    );
-    assert_eq!(
-        golden_codes(ib),
-        codes_of("bus-inbox"),
-        "金样 `bus-inbox` 的拒绝码与后端登记的不相等"
     );
 }
 
@@ -240,7 +211,7 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
 }
 
 /// ★★**跨语言金样**：界面直接收的 `bus-list` 成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
-/// 成品 == **生产**构造器（名单行由金样里那份收件箱样例经 `roster_agents` 现算）· 码集合 == `inbound::REGISTRY`。
+/// 成品 == **生产**构造器（名单行由金样里那份收件箱样例经 `roster_agents` 现算）；码集合 == 命令表那一条住 `on_upper_tests.rs`（挂主 crate）。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
     use serde_json::Value;
@@ -248,11 +219,6 @@ fn the_bus_products_match_the_cross_language_golden() {
         "../../__fixtures__/cc-bus-control.golden.json"
     ))
     .expect("金样读不出来");
-    assert_eq!(
-        golden_codes(&g["bus-list"]),
-        codes_of("bus-list"),
-        "金样里 `bus-list` 的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
-    );
     let sessions = g["input"]["sessions"]
         .as_array()
         .expect("输入样例缺 `sessions`")
@@ -340,26 +306,4 @@ fn the_peeked_text_is_one_block_per_letter_with_wire_codes_only() {
         "末行说跳过了一条：{text}"
     );
     assert_eq!(render(&[]), (String::new(), 0, 0));
-}
-
-/// 总线的帧命令：名单 · 读收件箱 · 发信 · 两阶段读两跳 · 未读数。界面不发信（人要说话就在会话里说）。
-#[test]
-fn the_bus_commands_are_the_inbox_and_its_ops() {
-    let mut got: Vec<&str> = crate::stream::inbound::REGISTRY
-        .iter()
-        .map(|s| s.name)
-        .filter(|n| n.starts_with("bus-"))
-        .collect();
-    got.sort_unstable();
-    assert_eq!(
-        got,
-        [
-            "bus-commit",
-            "bus-inbox",
-            "bus-list",
-            "bus-peek",
-            "bus-send",
-            "bus-unread"
-        ]
-    );
 }

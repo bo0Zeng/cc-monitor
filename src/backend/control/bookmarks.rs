@@ -69,12 +69,12 @@ fn apply(dirs: &mut Vec<String>, op: BookmarkOp, dir: &str) {
 }
 
 /// `bookmarks-read`：这台此刻的书签，带了 `at` ⇒ 连那几个各是第几条。
-pub(crate) fn answer_read(own: &Own, req: &BookmarksReadReq) -> Result<Bookmarks, Said> {
+pub fn answer_read(own: &Own, req: &BookmarksReadReq) -> Result<Bookmarks, Said> {
     Ok(answered(read_in(own)?, &req.at))
 }
 
 /// `bookmarks-edit`：上锁 → 现读 → 改 → 原子换，回改完的整份（带了 `at` ⇒ 连那几个在改完那一份里各是第几条）。
-pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks, Said> {
+pub fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks, Said> {
     let dir = own.home_dir().map_err(no_home)?;
     own.ensure_dir(&dir).map_err(|e| {
         crate::wire::spec::fail(
@@ -90,7 +90,7 @@ pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks
     })?;
     let held = own
         .lock(&dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     let mut book = read_in(own)?;
     book.here.clear();
     for d in &req.dirs {

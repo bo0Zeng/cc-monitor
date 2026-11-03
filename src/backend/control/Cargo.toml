@@ -12,8 +12,10 @@ path = "mod.rs"
 workspace = true
 
 [features]
-# 只给上层测试用的那几样：上层的 `[dev-dependencies]` 开它。
+# 只给上层测试用的那几样（打标那一口的测试那一份 · 起 `sleep` 的夹具 · 判据要的几样内部件）：上层的 `[dev-dependencies]` 开它。
 test-support = []
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-common/ts", "backend-dial/ts", "backend-agents/ts", "backend-wire/ts", "backend-history/ts", "backend-accounts/ts", "backend-assets/ts"]
 
 [dependencies]
 backend-assets = { path = "../assets" }
@@ -26,7 +28,62 @@ backend-stderr-log = { path = "../stderr_log" }
 backend-wire = { path = "../wire" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 一组一条命令的结局那一句（同文件窗口 · 手机嵌的核心那一份）。
+batch-core = { path = "../../common/batch-core" }
+# 照契约类型写成品字的那一侧。
+face-core = { path = "../../common/face-core" }
+acct-core = { path = "../../common/acct-core" }
+upstream-url-core = { path = "../../common/upstream-url-core" }
+# 这台的数据目录怎么推 · 出生即只给本人（同账号域那一份，开 `harden`）。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# 交给 Win32 的路径（长路径前缀）只从它来。
+win-path-core = { path = "../../common/win-path-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+# 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
+relay-route-core = { path = "../../common/relay-route-core" }
+# 本人通道（常驻后端听的那个 Unix 套接字）。
+own-chan = { path = "../../common/own-chan" }
+# 部署那一族的契约与编排（与 monitor · 手机同一份）。
+deploy-contract = { path = "../../common/deploy-contract" }
+deploy = { path = "../deploy" }
+# 机器表字段的宽松读法（同拨号核心那一份）。
+ssh-dial = { path = "../ssh-dial" }
+# 连远端常驻后端的客户端那一侧（各台的常驻流）。
+resident-client = { path = "../../comms/resident-client" }
+# 通道那一句（离线那一句只由连接层写）。
+comms-inward = { path = "../../comms/inward" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 判据要的那几样：信号 · 进程组（`libc`）· 机器表判据的钥匙（`russh`）· 传输台判据核字节（`sha2`）。
+libc.workspace = true
+russh.workspace = true
+sha2.workspace = true
+# 传输台判据核落点的读面（文件管理那一块）。
+backend-files = { path = "../files", features = ["test-support"] }
+# 量具（金样 · 线程级内存 · 听 `tracing` 说了什么）。
+test-meters = { path = "../test-meters" }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+backend-platform = { path = "../platform", features = ["test-support", "ts"] }
+backend-common = { path = "../common", features = ["test-support", "ts"] }
+backend-agents = { path = "../agents", features = ["test-support", "ts"] }
+backend-wire = { path = "../wire", features = ["test-support"] }
+backend-dial = { path = "../dial", features = ["test-support", "ts"] }
+backend-host = { path = "../host", features = ["test-support"] }
+backend-history = { path = "../history", features = ["test-support", "ts"] }
+backend-accounts = { path = "../accounts", features = ["test-support", "ts"] }
+backend-assets = { path = "../assets", features = ["test-support", "ts"] }
