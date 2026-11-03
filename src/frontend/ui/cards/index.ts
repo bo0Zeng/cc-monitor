@@ -1146,7 +1146,7 @@ function buildUnrecordedThinking(): HTMLElement {
 
 /**
  * 构造 <details><summary>summaryText</summary><body></body></details>。
- * body 用 lazy 函数生成，首次展开时才渲染（renderMarkdown 不便宜）。
+ * body 用 lazy 函数生成，首次展开时才建（照树排一块正文不便宜）。
  */
 function makeCollapsible(
   cls: string,
