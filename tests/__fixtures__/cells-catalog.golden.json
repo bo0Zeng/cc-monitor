@@ -868,6 +868,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "children[].face.can.close.can",
           "type": "string"
         },
@@ -1486,6 +1498,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "startedBy.face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "startedBy.face.can.close.can",
           "type": "string"
         },
@@ -1776,6 +1800,18 @@
     },
     {
       "cells": [
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.from",
+          "type": "enum"
+        },
         {
           "frozen": false,
           "kind": "value",
@@ -2334,6 +2370,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
         },
@@ -2512,12 +2560,6 @@
           "type": "string"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "label_project",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
           "path": "name",
@@ -2546,6 +2588,12 @@
           "kind": "value",
           "path": "sid",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "title",
+          "type": "string"
         }
       ],
       "name": "session_added"
@@ -2557,6 +2605,18 @@
           "kind": "value",
           "path": "face.account",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.from",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2728,12 +2788,6 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "label_project",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
           "path": "path",
           "type": "string"
@@ -2742,6 +2796,12 @@
           "frozen": true,
           "kind": "value",
           "path": "sid",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "title",
           "type": "string"
         },
         {
@@ -2759,6 +2819,24 @@
           "frozen": false,
           "kind": "value",
           "path": "face.account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.attach.why",
           "type": "string"
         },
         {
@@ -3764,6 +3842,24 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "up.*.face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "up.*.face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "up.*.face.can.close.can",
           "type": "string"
         },
@@ -4147,6 +4243,24 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "groups[].members[].face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "groups[].members[].face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "groups[].members[].face.can.close.can",
           "type": "string"
         },
@@ -4412,6 +4526,24 @@
           "frozen": true,
           "kind": "value",
           "path": "machines[].read.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pinned[].face.can.attach.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pinned[].face.can.attach.from",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.attach.why",
           "type": "string"
         },
         {

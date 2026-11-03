@@ -80,6 +80,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -158,6 +162,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },
@@ -244,6 +252,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -327,6 +339,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -405,6 +421,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },
@@ -491,6 +511,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -571,6 +595,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },
@@ -655,6 +683,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -734,6 +766,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },
@@ -859,6 +895,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -940,6 +980,10 @@
         "can": "no",
         "why": "会话已结束"
        },
+       "attach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
        "resume": {
         "can": "yes"
        },
@@ -1018,6 +1062,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },
@@ -1139,6 +1187,10 @@
         "can": "yes"
        },
        "reattach": {
+        "can": "no",
+        "why": "会话已结束"
+       },
+       "attach": {
         "can": "no",
         "why": "会话已结束"
        },

@@ -526,6 +526,7 @@ fn told(kind: &str, sid: &str, life: crate::wire::Life) -> String {
         v["agent_kind"] = serde_json::json!("claude");
         v["pid"] = serde_json::json!(7);
         v["label"] = serde_json::json!(sid);
+        v["title"] = serde_json::json!(sid);
     }
     v.to_string()
 }
