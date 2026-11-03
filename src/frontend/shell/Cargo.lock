@@ -3452,6 +3452,7 @@ version = "5.0.3"
 dependencies = [
  "acct-core",
  "arboard",
+ "chunk-core",
  "cmd-wire",
  "comms-inward",
  "copy-core",

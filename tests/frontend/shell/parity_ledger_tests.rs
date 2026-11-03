@@ -303,6 +303,20 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "通信层面 A：`subscribe` 的续订",
     ),
     (
+        "attach_stage",
+        "chat.attach.stage",
+        Side::Both,
+        Own::Channel,
+        "聊天附件逐块送进那台暂存区：循环是 `chunk_core::stage`，每一问与 `chan_call` 同一条路（`call_via` ＋ 注入的句柄）",
+    ),
+    (
+        "attach_stage_stop",
+        "chat.attach.stage",
+        Side::Both,
+        Own::Channel,
+        "✕ 那一份：撤单只拨 monitor 进程里那一单的旗，下一块不再送",
+    ),
+    (
         "chan_subscribe",
         "comm.face-a.subscribe",
         Side::Both,
@@ -642,7 +656,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // `LEDGER` 里一行进出 `Local` / `Both`（新增、删掉、`Side` 改了），这个数就跟着变；
     //   同一条命令两侧收成一条路（`Remote` 改成 `Both`）也算，命令总数不动、这个数照样变。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 38;
+    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

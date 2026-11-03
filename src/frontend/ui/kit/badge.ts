@@ -6,12 +6,17 @@
  */
 import s from "./badge.module.css";
 
+/** 一个计数写成的字：超过 99 写 `99+`（标签页未读 · 格子监视未读这类自带样式的计数也照它写）。 */
+export function cappedCount(n: number): string {
+  return n > 99 ? "99+" : String(n);
+}
+
 export function countBadge(n: number, tone: "neutral" | "warn" = "neutral"): HTMLSpanElement | null {
   if (n <= 0) return null;
   const b = document.createElement("span");
   b.className = s.badgeCount;
   b.dataset.intent = tone;
-  b.textContent = n > 99 ? "99+" : String(n);
+  b.textContent = cappedCount(n);
   return b;
 }
 

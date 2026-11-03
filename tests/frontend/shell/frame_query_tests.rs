@@ -426,14 +426,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "set-launch",
         "typed：后端照补足逐条走 `session-open` 起、起之前写好组注解，回 `SetLaunched`（连起完那一句）；前端 `set-reads.ts::launchSet` 按类型问，monitor 这一侧零发送点",
     ),
-    // 聊天附件（终端面板输入行那一排）：判收不收 · 落点 · 上限 · 清理都在会话那台后端，字节逐块进那台暂存区；本机远端同一条路。
+    // 聊天附件（终端面板输入行那一排）：判收不收 · 落点 · 上限 · 清理都在会话那台后端，字节逐块进那台暂存区（壳替界面走，见 `SENT_BY_MONITOR_ONLY`）；本机远端同一条路。
     (
         "session-attachment-check",
         "typed：开传前那一问，后端逐份答收不收 ＋ 类别与类别字（`files/commit/session_attachment.rs::check`）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
-    ),
-    (
-        "files-stage-chunk",
-        "typed：附件的字节逐块进会话那台的暂存区（同存盘分块那一条）；前端 `attach-draft.ts::channelIo` 按类型问，monitor 这一侧零发送点",
     ),
     (
         "session-attachment-commit",
@@ -789,12 +785,6 @@ const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
 const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     (
-        "files-stage-chunk",
-        1,
-        "文件窗口存盘与非标准起始目录上传那两条分块路（`cmd_wire::files::FilesStageChunkReq`，经 `chunk_core::stage` 逐块送）：\
-         与界面聊天附件那一路各问各的，块形同一份",
-    ),
-    (
         "exit-policy-read",
         1,
         "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`）：\
@@ -834,12 +824,20 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
 
 /// **只由 monitor 发、界面不发**的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。两向相等：monitor 生产段的字面量 == 登记的处数，
 /// 界面 `chan.call` 的操作名里没有它（界面又长出一处发送点 = 两条路并存）。
-const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[(
-    "terminal-unfollow",
-    1,
-    "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
-     会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
-)];
+const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[
+    (
+        "terminal-unfollow",
+        1,
+        "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
+         会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
+    ),
+    (
+        "files-stage-chunk",
+        1,
+        "分块传那一圈只在 `chunk_core::stage`（`cmd_wire::files::FilesStageChunkReq`）：文件窗口存盘与非标准起始目录上传 · \
+         聊天附件（`attach_stage.rs`，壳替界面走）都经它逐块送；界面只交字节，不说这一条",
+    ),
+];
 
 /// 后端 `stream/inbound/` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {

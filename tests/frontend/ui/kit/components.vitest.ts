@@ -14,7 +14,9 @@ import { chip, setChipOpen } from "../../../../src/frontend/ui/kit/chip";
 import { fold } from "../../../../src/frontend/ui/kit/fold";
 import { banner } from "../../../../src/frontend/ui/kit/banner";
 import { emptyState } from "../../../../src/frontend/ui/kit/empty";
-import { countBadge, tag, kbd } from "../../../../src/frontend/ui/kit/badge";
+import { countBadge, cappedCount, tag, kbd } from "../../../../src/frontend/ui/kit/badge";
+import { productionTsFiles } from "../../../test-support/production-sources.ts";
+import { stripComments } from "../../../test-support/strip-comments.ts";
 import { skeletonRows } from "../../../../src/frontend/ui/kit/skeleton";
 import { spinner } from "../../../../src/frontend/ui/kit/progress";
 import { statusDot, setDot } from "../../../../src/frontend/ui/kit/status-dot";
@@ -201,6 +203,15 @@ describe("转圈 · 徽标 · 键帽 · 骨架 · 状态点", () => {
     expect(countBadge(120)!.textContent).toBe("99+");
     expect(countBadge(2, "warn")!.dataset.intent).toBe("warn");
     expect([tag("远端").textContent, kbd("Ctrl+K").tagName]).toEqual(["远端", "KBD"]);
+  });
+
+  it("计数封顶那一句只住 `kit/badge.ts`：界面生产段里字面 `\"99+\"` 恰一处、就在那里（别处的计数调 `cappedCount`）", () => {
+    expect([cappedCount(7), cappedCount(99), cappedCount(100)]).toEqual(["7", "99", "99+"]);
+    const hits = productionTsFiles("src/frontend/ui").flatMap((s) => {
+      const n = stripComments(s.text, "ts").split('"99+"').length - 1;
+      return n > 0 ? [[s.file, n] as const] : [];
+    });
+    expect(hits).toEqual([["src/frontend/ui/kit/badge.ts", 1]]);
   });
 
   it("骨架：3–5 行、读屏器不念", () => {
