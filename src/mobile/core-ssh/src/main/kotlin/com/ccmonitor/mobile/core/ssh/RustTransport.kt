@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.data.crypto.SshWire
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.wire.Wire
@@ -192,7 +193,7 @@ class RustTransport(
                     val pub =
                         ks.getCertificate(auth.alias)?.publicKey as? ECPublicKey
                             ?: error(copyText("mobSsh.keystore.noCert"))
-                    Core.putKeystore(auth.alias, uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert"))
+                    Core.putKeystore(auth.alias, SshWire.uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert"))
                 }
             } ?: throw IOException(copyText("reason.link.lost"))
         val kept = synchronized(keys) { !closed.get() && keys.add(id) }
@@ -263,17 +264,6 @@ class RustTransport(
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val CAPTURE_MAX = 16 * 1024 * 1024
         const val STDERR_TAIL = 4096
-
-        /** P-256 公钥 ⇒ 未压缩点 `04 ‖ X ‖ Y`（各 32 字节，左补零）。 */
-        fun uncompressedPoint(pub: ECPublicKey): ByteArray {
-            fun fixed(n: java.math.BigInteger): ByteArray {
-                val raw = n.toByteArray().dropWhile { it == 0.toByte() }.toByteArray()
-                return ByteArray(P256_COORD - raw.size) + raw
-            }
-            return byteArrayOf(4) + fixed(pub.w.affineX) + fixed(pub.w.affineY)
-        }
-
-        private const val P256_COORD = 32
     }
 }
 

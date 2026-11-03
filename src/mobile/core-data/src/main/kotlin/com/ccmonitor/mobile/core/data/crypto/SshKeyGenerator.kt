@@ -7,11 +7,11 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.KeyPair
+import com.ccmonitor.mobile.core.wire.gen.SshPublicKey
 import java.security.KeyPairGenerator
 import java.security.ProviderException
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
-import java.util.Base64
 
 /**
  * 在 Android Keystore 生成 ECDSA-P256（secp256r1）不可导出签名密钥。
@@ -28,17 +28,22 @@ object SshKeyGenerator {
         val strongBoxBacked: Boolean,
     )
 
-    /** 生成并存入 Keystore（alias），返回可贴到 authorized_keys 的 OpenSSH 公钥。 */
+    /**
+     * 生成并存入 Keystore（alias），返回可贴到 authorized_keys 的 OpenSSH 公钥。
+     * 公钥那一行与指纹由核心照那个点写（`Core.publicKeyOfPoint`，与导入 · 软件生成的同一份）；核心认不出那个点 ⇒ 照生成失败说。
+     */
     fun generateEcdsaP256InKeystore(
         alias: String,
         comment: String = "",
     ): KeystoreSshKey {
         val (publicKey, strongBox) = generateKeyPair(alias)
-        val blob = SshWire.encodeEcdsaP256(publicKey)
+        val got =
+            Core.publicKeyOfPoint(SshWire.uncompressedPoint(publicKey), comment)?.let { Wire.read<SshPublicKey>(it) }
+                ?: error(copyText("mobIdentity.gen.failed"))
         return KeystoreSshKey(
             alias = alias,
-            publicKeyOpenSsh = SshWire.ecdsaP256ToOpenSsh(publicKey, comment),
-            fingerprintSha256 = SshWire.fingerprintSha256(blob),
+            publicKeyOpenSsh = got.line,
+            fingerprintSha256 = got.fingerprint,
             strongBoxBacked = strongBox,
         )
     }
@@ -55,17 +60,17 @@ object SshKeyGenerator {
 
     /**
      * 软件生成 Ed25519 身份：在手机嵌的 Rust 核心里生成（`Core.generateEd25519`，与连接时解这把钥匙的是同一份）。
-     * 私钥是 OpenSSH PEM（openssh-key-v1，无 passphrase），交上层 CryptoBox 加密落库；指纹由公钥 wire blob 用 SshWire 出。
+     * 私钥是 OpenSSH PEM（openssh-key-v1，无 passphrase），交上层 CryptoBox 加密落库；公钥那一行与指纹也是核心写的。
      * 走软件而非 Keystore：Android Keystore 对 Ed25519 的支持不可靠。
      */
     fun generateEd25519(comment: String = ""): SoftwareSshKey {
-        val line = Core.generateEd25519(comment) ?: error(copyText("mobIdentity.gen.failed"))
-        // 核心交的那一份照线上类型装（`KeyPair`）；装不进 ⇒ 两端契约对不上，照生成失败说。
-        val got = Wire.read<KeyPair>(line) ?: error(copyText("mobIdentity.gen.failed"))
-        val blob = Base64.getDecoder().decode(got.public.split(' ')[1])
+        // 核心交的那一份照线上类型装（`KeyPair`）；生成不了 · 装不进（两端契约对不上）⇒ 都照生成失败说。
+        val got =
+            Core.generateEd25519(comment)?.let { Wire.read<KeyPair>(it) }
+                ?: error(copyText("mobIdentity.gen.failed"))
         return SoftwareSshKey(
-            publicKeyOpenSsh = got.public,
-            fingerprintSha256 = SshWire.fingerprintSha256(blob),
+            publicKeyOpenSsh = got.public.line,
+            fingerprintSha256 = got.public.fingerprint,
             privateKeyOpenSshPem = got.pem.toByteArray(),
         )
     }

@@ -87,13 +87,19 @@ object Core {
         holding: Boolean,
     ): Boolean
 
-    /** 一段私钥 PEM（不带口令）⇒ 它的公钥那一行（`<算法> <base64> [comment]`）；认不出 ⇒ `null`。 */
+    /** 一段私钥 PEM（不带口令）⇒ 它的公钥：JSON `SshPublicKey`（那一行 · 算法名 · 指纹，指纹是拨号核心写的）；认不出 ⇒ `null`。 */
     external fun publicKeyOf(
         pem: ByteArray,
         comment: String,
     ): String?
 
-    /** 现生成一把软件 Ed25519：JSON `{pem, public}`（私钥 openssh-key-v1 无口令 · 公钥那一行）；生成不了 ⇒ `null`。 */
+    /** Keystore 那把（[point] = P-256 公钥的未压缩点 `04 ‖ X ‖ Y`）⇒ 它的公钥：同 [publicKeyOf] 那一形；点坏了 ⇒ `null`。 */
+    external fun publicKeyOfPoint(
+        point: ByteArray,
+        comment: String,
+    ): String?
+
+    /** 现生成一把软件 Ed25519：JSON `KeyPair`（私钥 openssh-key-v1 无口令 · 公钥同 [publicKeyOf] 那一形）；生成不了 ⇒ `null`。 */
     external fun generateEd25519(comment: String): String?
 
     /** 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。 */

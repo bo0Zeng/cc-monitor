@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.chat.newsession
 import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
@@ -87,7 +88,7 @@ class NewSessionPicker(
     private val from: String?,
     private val scope: CoroutineScope,
 ) {
-    private val _state = MutableStateFlow(NewSessionUi(cwd = from ?: HOME))
+    private val _state = MutableStateFlow(NewSessionUi(cwd = from ?: FilesHome.TILDE))
     val state: StateFlow<NewSessionUi> = _state.asStateFlow()
 
     private val loaded = CompletableDeferred<Unit>()
@@ -125,8 +126,9 @@ class NewSessionPicker(
                 agents = facts.agents,
                 agent = agent,
                 recent = facts.recent.map { RecentRow(it.cwd, it.shown, it.lastText) },
-                cwd = from ?: first?.cwd ?: HOME,
-                cwdShown = if (from != null) s.cwdShown else first?.shown ?: HOME,
+                // 那台一条记录都没有 ⇒ 起在家目录（那台按它的家目录读）。
+                cwd = from ?: first?.cwd ?: FilesHome.TILDE,
+                cwdShown = if (from != null) s.cwdShown else first?.shown ?: FilesHome.TILDE,
                 factsFailed = null,
             )
         }
@@ -246,8 +248,6 @@ class NewSessionPicker(
     ): String = (r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())).text
 
     companion object {
-        /** 那台一条记录都没有时起在家目录（那台按它的家目录读）。 */
-        const val HOME = "~"
         private const val READ_MS = 15_000L
         private const val WRITE_MS = 20_000L
     }

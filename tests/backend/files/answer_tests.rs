@@ -1106,6 +1106,43 @@ fn ls_carries_the_shown_form_written_against_this_machines_home() {
     }
 }
 
+/// `files-ls` 收 `~` 开头的路径（`~` · `~/…` · `~\…`）：按这台的家目录展开再读，面包屑最后一段是展开后的绝对路径。手机不自己拼家目录。
+#[cfg(unix)]
+#[test]
+fn ls_expands_a_leading_tilde_against_this_machines_home() {
+    let home = crate::platform::paths::home_dir().expect("测试档的家是沙箱");
+    let rel = format!("ccm-ls-tilde-{}", std::process::id());
+    let d = home.join(&rel);
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::create_dir_all(d.join("a")).unwrap();
+    for asked in [format!("~/{rel}"), format!("~\\{rel}")] {
+        let v = answer(
+            "files.ls",
+            &serde_json::json!({ "path": asked }),
+            &Default::default(),
+        )
+        .unwrap_or_else(|e| panic!("`{asked}` 没按家目录展开：{e:?}"));
+        assert_eq!(ls_rows(&v)[0]["name"], "a", "{asked}：{v}");
+        let crumbs = v["head"]["info"]["crumbs"].as_array().expect("带面包屑");
+        assert_eq!(
+            crumbs.last().unwrap()["path"],
+            d.to_str().unwrap(),
+            "{asked}：面包屑最后一段该是展开后的绝对路径"
+        );
+    }
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": "~" }),
+        &Default::default(),
+    )
+    .expect("`~` 就是家目录");
+    assert!(
+        ls_rows(&v).iter().any(|r| r["name"] == rel.as_str()),
+        "`~` 列出的不是家目录：{v}"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
 /// `files-ls` 的顺序由后端排：目录（含指向目录的链接）在前，再按那一列（名称小写 A 在前 · 大小大的在前 · 时间新的在前，
 /// `reverse` 只反那一列），截断在排好之后；每行带末段名，回包带上一级与根到这一级的每一段（按这台的分隔符切）。
 #[cfg(unix)]

@@ -94,7 +94,7 @@ object SessionOpen {
         agent: String,
         name: String,
         ticket: String,
-    ): Map<String, Any?> = ask(OpenWhat.New(agent = agent, cwd = "~", tmuxName = name), run = true, ticket = ticket)
+    ): Map<String, Any?> = ask(OpenWhat.New(agent = agent, cwd = FilesHome.TILDE, tmuxName = name), run = true, ticket = ticket)
 
     /** 恢复 [sid] 那条（终端没了 ⇒ 那台照记录起回来；已在跑 ⇒ 回它所在的那个）。 */
     fun resume(sid: String): Map<String, Any?> = ask(OpenWhat.Resume(sid), run = true)

@@ -135,7 +135,14 @@ class NewSessionReadsTest {
                         mapOf("path" to mapOf("b16" to "ff"), "shown" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
                         mapOf("path" to "/h/work/notes", "shown" to "~/work/notes", "name" to "notes", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true),
                     ),
-                    mapOf("shown" to "~/work", "up" to "/h", "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 3.0, "unreadable" to 0.0),
+                    mapOf(
+                        "shown" to "~/work",
+                        "up" to "/h",
+                        "crumbs" to listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to "h", "path" to "/h"), mapOf("name" to "work", "path" to "/h/work")),
+                        "truncated" to false,
+                        "total" to 3.0,
+                        "unreadable" to 0.0,
+                    ),
                 ),
             )!!
         assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.dirs.map { it.path })
@@ -143,13 +150,9 @@ class NewSessionReadsTest {
         assertEquals("显示形照那台写好的（手机不拿家目录缩）", listOf("~/work/billing", "~/work/notes"), got.dirs.map { it.shown })
         assertEquals("~/work", got.shown)
         assertEquals("/h", got.up)
+        assertEquals("这一层的绝对路径是面包屑最后一段（问 `~/work` 时那台展开的）", "/h/work", got.at)
+        assertEquals("~/work", FilesLs.dirs("~/work")["path"])
         assertNull(FilesLs.dirsOf(lsWhole(listOf(mapOf("kind" to "dir", "class" to "folder", "type_text" to "文件夹")), mapOf("up" to null, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 1.0))))
-    }
-
-    @Test
-    fun `files-home：那台的家目录`() {
-        assertEquals("/h", FilesHome.text(mapOf("path" to "/h")))
-        assertNull(FilesHome.text(mapOf("path" to mapOf("b16" to "ff"))))
     }
 
     @Test

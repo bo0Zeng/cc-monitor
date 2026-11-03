@@ -4,7 +4,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
+import com.ccmonitor.mobile.core.wire.gen.SshPublicKey
 import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,8 +34,8 @@ class IdentityOpStatusTest {
     private val good = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\nBBBB\nCCCC\n-----END OPENSSH PRIVATE KEY-----\n".toByteArray()
 
     /** 派生公钥的替身：只认整把 [good]（真解析在 Rust 核心里，判据在 core-ssh 的 androidTest `PublicKeyDeriverTest`）。 */
-    private val derive: (ByteArray, String) -> PublicKeyDeriver.Derived? = { pem, _ ->
-        if (pem.contentEquals(good)) PublicKeyDeriver.Derived("ssh-ed25519 AAAA t", "SHA256:fake", "ssh-ed25519") else null
+    private val derive: (ByteArray, String) -> SshPublicKey? = { pem, _ ->
+        if (pem.contentEquals(good)) SshPublicKey(line = "ssh-ed25519 AAAA t", kind = "ssh-ed25519", fingerprint = "SHA256:fake") else null
     }
 
     @Test

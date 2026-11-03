@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.link.problem
@@ -45,15 +44,13 @@ class DirBrowser(
     val state: StateFlow<BrowseUi> = _state.asStateFlow()
     private var reading: Job? = null
 
-    /** 从 [start] 起（`~` 开头的照那台的家目录展开）。 */
-    fun open(start: String) {
-        go { if (start == HOME || start.startsWith("$HOME/")) home()?.let { it + start.removePrefix(HOME) } else start }
-    }
+    /** 从 [start] 起（`~` 开头的原样交那台，由它按自己的家目录展开）。 */
+    fun open(start: String) = go(start)
 
-    fun enter(path: String) = go { path }
+    fun enter(path: String) = go(path)
 
     fun up() {
-        _state.value.up?.let { parent -> go { parent } }
+        _state.value.up?.let { parent -> go(parent) }
     }
 
     /** 长按：选中它；再长按同一个 ⇒ 不选。 */
@@ -69,24 +66,18 @@ class DirBrowser(
             }
         }
 
-    private suspend fun home(): String? {
-        val r = link.call(FilesHome.COMMAND, emptyMap(), READ_MS)
-        return (r as? Reply.Ok)?.let { FilesHome.text(it.data) }.also { if (it == null) fail(r, FilesHome.COMMAND) }
-    }
-
-    private fun go(where: suspend () -> String?) {
+    private fun go(path: String) {
         reading?.cancel()
         _state.update { it.copy(loading = true, failed = null, selected = null) }
         reading =
             scope.launch {
-                val path = where() ?: return@launch
                 val r = link.call(FilesLs.COMMAND, FilesLs.dirs(path), READ_MS)
                 val got = (r as? Reply.Ok)?.let { FilesLs.dirsOf(it.data) }
                 if (got == null) {
                     _state.update { it.copy(path = path, shown = null) }
                     fail(r, FilesLs.COMMAND)
                 } else {
-                    _state.value = BrowseUi(path = path, shown = got.shown, dirs = got.dirs, up = got.up)
+                    _state.value = BrowseUi(path = got.at ?: path, shown = got.shown, dirs = got.dirs, up = got.up)
                 }
             }
     }
@@ -100,7 +91,6 @@ class DirBrowser(
     }
 
     private companion object {
-        const val HOME = "~"
         const val READ_MS = 15_000L
     }
 }

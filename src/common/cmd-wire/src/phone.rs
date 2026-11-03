@@ -287,7 +287,7 @@ pub enum LocalOpened {
     },
 }
 
-/// 现生成的一把钥匙：私钥 PEM（openssh-key-v1，无口令）· 公钥那一行。
+/// 现生成的一把钥匙：私钥 PEM（openssh-key-v1，无口令）· 它的公钥。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -296,7 +296,21 @@ pub enum LocalOpened {
 )]
 pub struct KeyPair {
     pub pem: String,
-    pub public: String,
+    pub public: SshPublicKey,
+}
+
+/// 一把 SSH 公钥：OpenSSH 那一行（`<算法> <base64> [注释]`，可直接贴进 authorized_keys）· 算法名（`ssh-ed25519` · `ecdsa-sha2-nistp256` …）·
+/// SHA256 指纹（`SHA256:<base64 无补齐>`，拨号核心写的那一份，与桌面认主机钥匙同一个算法）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SshPublicKey {
+    pub line: String,
+    pub kind: String,
+    pub fingerprint: String,
 }
 
 /// 手机导入的那一段 `~/.ssh/config` 里一个具体主机（通配那几块滤掉；解析住拨号核心）。

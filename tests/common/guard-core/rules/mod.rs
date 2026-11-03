@@ -36,6 +36,8 @@ mod raw_said_guard;
 mod registry_home;
 #[path = "search_kou_jing_guard.rs"]
 mod search_kou_jing_guard;
+#[path = "ssh_fingerprint_one_home.rs"]
+mod ssh_fingerprint_one_home;
 #[path = "strip_clean.rs"]
 mod strip_clean;
 #[path = "structural_scan.rs"]
