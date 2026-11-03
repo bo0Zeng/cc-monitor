@@ -39,64 +39,64 @@ use crate::wire::SessionFaceExt as _;
 
 /// 这一片里的一组：id · 名字 · 几时建的 · 这个名字几时起的（毫秒）。进组时整份抄进组员那一台。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HereGroup {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) made: i64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) named: i64,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HereGroup {
+    pub id: String,
+    pub name: String,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub made: i64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub named: i64,
 }
 
 /// 复活一个标签要的那几格（重启后那条会话没有活进程，照它造灰标签）：这台照自己那份清单那一行给。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MemberFacts {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MemberFacts {
     /// 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) title: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub title: Words,
     /// 项目目录（清单里没有那一条 ⇒ 缺）。
-    pub(crate) cwd: Option<String>,
+    pub cwd: Option<String>,
     /// 记录文件（resume 照它；清单里没有 ⇒ 缺）。
-    pub(crate) record: Option<String>,
+    pub record: Option<String>,
     /// 上次跑在哪个号下（没记 ⇒ 缺）。
-    pub(crate) account: Option<String>,
+    pub account: Option<String>,
     /// 后台会话。
-    pub(crate) bg: bool,
+    pub bg: bool,
     /// 最后活动（毫秒；清单里没有 ⇒ 缺）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) at: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub at: Option<i64>,
 }
 
 /// 这台一条带组或固定的会话：在哪几组 · 固没固定 · 这台此刻给它画的样子 · 复活那几格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HereMember {
-    pub(crate) sid: String,
-    pub(crate) groups: Vec<String>,
-    pub(crate) pinned: bool,
-    pub(crate) face: SessionFace,
-    pub(crate) facts: MemberFacts,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HereMember {
+    pub sid: String,
+    pub groups: Vec<String>,
+    pub pinned: bool,
+    pub face: SessionFace,
+    pub facts: MemberFacts,
 }
 
 /// `groups-here` 的回包：这台那一片。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupsHere {
-    pub(crate) groups: Vec<HereGroup>,
-    pub(crate) members: Vec<HereMember>,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupsHere {
+    pub groups: Vec<HereGroup>,
+    pub members: Vec<HereMember>,
 }
 
 /// 一条组员此刻的样子 ＋ 复活那几格（这台判的）。
-pub(crate) type Seen = (SessionFace, MemberFacts);
+pub type Seen = (SessionFace, MemberFacts);
 
 /// 这台那一半（注解 · 组本 · 每条的样子与那几格由调用方给）：组照 id 排；会话只带有组或固定的，照 sid 排。
-pub(crate) fn here_of(table: &Table, book: &Book, seen: impl Fn(&str) -> Seen) -> GroupsHere {
+pub fn here_of(table: &Table, book: &Book, seen: impl Fn(&str) -> Seen) -> GroupsHere {
     GroupsHere {
         groups: book
             .iter()
@@ -145,7 +145,7 @@ pub(crate) fn seen_from(
 }
 
 /// 清单里没有的那一条（记录已不在 · 还没落盘）：样子照活会话表，标题照注解（没有 ⇒ 清单那一句「没名字」）。
-pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> Seen {
+pub fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> Seen {
     let label = super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom: entry.and_then(|e| e.custom_title.clone()),
         ..Default::default()
@@ -165,7 +165,7 @@ pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife)
 }
 
 /// 这台的组那一半此刻的记号（不看样子与那几格）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
-pub(crate) fn mark(table: &Table, book: &Book) -> u64 {
+pub fn mark(table: &Table, book: &Book) -> u64 {
     let half = here_of(table, book, |_| {
         unlisted(None, WireLife::Ended { by: None })
     });
@@ -196,14 +196,14 @@ fn here_now() -> Result<GroupsHere, String> {
 
 codes! {
     /// `groups-here` 的码。
-    pub(crate) enum GroupsHereErr {
+    pub enum GroupsHereErr {
         /// 推不出家 · 注解文件读不懂。
         Failed = "failed",
     }
 }
 
 /// `groups-here`：这台那一半（别的后端经 `--resident-call` 问它，本机后端的 `groups-read` 同进程问它）。
-pub(crate) struct GroupsHereCmd;
+pub struct GroupsHereCmd;
 
 impl Command for GroupsHereCmd {
     const NAME: &'static str = "groups-here";
@@ -214,11 +214,11 @@ impl Command for GroupsHereCmd {
 
 impl crate::wire::typed::Handle for GroupsHereCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<GroupsHere, GroupsHereErr>> + Send + 'static {
-        async move { here_now().map_err(GroupsHereErr::Failed) }
+    ) -> Result<GroupsHere, GroupsHereErr> {
+        here_now().map_err(GroupsHereErr::Failed)
     }
 }
 
@@ -226,25 +226,25 @@ impl crate::wire::typed::Handle for GroupsHereCmd {
 
 /// `groups-read` 的入参：问哪几台（本机逐字 `"<local>"`）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct GroupsReadReq {
-    #[cfg_attr(test, ts(as = "Vec<String>"))]
+pub struct GroupsReadReq {
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
     pub(crate) machines: Vec<Machine>,
 }
 
 /// 一组的名字此刻从哪来。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "is", rename_all = "snake_case")]
-pub(crate) enum GroupKnown {
+pub enum GroupKnown {
     /// 名字取自这一问答了的那一片。
     Now,
     /// 名字取自那台上一次答的那一片（那台这一问没答；`at` ＝ 那一份几时读到的，写好的字）。
     Before {
-        #[cfg_attr(test, ts(type = "string"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
         at: Words,
     },
     /// 哪一片都没有这一组的记录（只有组员指着它）：名字缺。
@@ -253,80 +253,80 @@ pub(crate) enum GroupKnown {
 
 /// 组里一条会话：哪台 · 哪条 · 固没固定 · 那张脸（那台这一问没答 ⇒ 看不见的那一张）· 复活那几格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupMember {
-    #[cfg_attr(test, ts(as = "String"))]
-    pub(crate) origin: Machine,
-    pub(crate) sid: String,
-    pub(crate) pinned: bool,
-    pub(crate) face: SessionFace,
-    pub(crate) facts: MemberFacts,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupMember {
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
+    pub origin: Machine,
+    pub sid: String,
+    pub pinned: bool,
+    pub face: SessionFace,
+    pub facts: MemberFacts,
 }
 
 /// 组头那一颗点：几条 ＋ 那颗点的名字（照组员那张脸上的字）。只出有的那几样，序：需手动 · 在跑 · 后台。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupCount {
-    pub(crate) dot: SessionDot,
-    pub(crate) n: u32,
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) word: Words,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupCount {
+    pub dot: SessionDot,
+    pub n: u32,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub word: Words,
     /// 组头那一句（「需手动 2」那样，出口照摆）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) text: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub text: Words,
 }
 
 /// 并好的一组。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupRead {
-    pub(crate) id: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupRead {
+    pub id: String,
     /// 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
-    pub(crate) name: Option<String>,
+    pub name: Option<String>,
     /// 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) title: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub title: Words,
     /// 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) made: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub made: Option<i64>,
     /// 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) named: Option<i64>,
-    pub(crate) known: GroupKnown,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub named: Option<i64>,
+    pub known: GroupKnown,
     /// 组员：照问的台序、再照 sid。
-    pub(crate) members: Vec<GroupMember>,
-    pub(crate) counts: Vec<GroupCount>,
+    pub members: Vec<GroupMember>,
+    pub counts: Vec<GroupCount>,
 }
 
 /// 一台这一问的结局（同历史页那一列那一格：答了 · 上次所知 · 读不到）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupsMachine {
-    #[cfg_attr(test, ts(as = "String"))]
-    pub(crate) origin: Machine,
-    pub(crate) read: Read,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupsMachine {
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
+    pub origin: Machine,
+    pub read: Read,
 }
 
 /// `groups-read` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupsRead {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupsRead {
     /// 各组：照建的先后、再照 id。
-    pub(crate) groups: Vec<GroupRead>,
+    pub groups: Vec<GroupRead>,
     /// 各台固定的会话（不论在不在组里），同组员那一形。
-    pub(crate) pinned: Vec<GroupMember>,
+    pub pinned: Vec<GroupMember>,
     /// 问的每一台这一问的结局（照问的先后）。
-    pub(crate) machines: Vec<GroupsMachine>,
+    pub machines: Vec<GroupsMachine>,
 }
 
 codes! {
     /// `groups-read` 自己没有别的码（哪台没问到只进回包的 `machines`）。
-    pub(crate) enum GroupsReadErr {}
+    pub enum GroupsReadErr {}
 }
 
 /// 各台上一次答的那一半 ＋ 那一刻（毫秒）：缓存，只在本进程。
@@ -342,7 +342,7 @@ impl Kept {
 static KEPT: std::sync::LazyLock<Kept> = std::sync::LazyLock::new(Kept::default);
 
 /// `groups-read`：本机后端问到各台的那一半（本机同进程、别的台经 `--resident-call` 问它的常驻 `groups-here`），并成一份再答。
-pub(crate) struct GroupsReadCmd;
+pub struct GroupsReadCmd;
 
 impl Command for GroupsReadCmd {
     const NAME: &'static str = "groups-read";
@@ -353,35 +353,33 @@ impl Command for GroupsReadCmd {
 
 impl crate::wire::typed::Handle for GroupsReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: GroupsReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<GroupsRead, GroupsReadErr>> + Send + 'static {
-        async move {
-            let local = async {
-                tokio::task::spawn_blocking(here_now)
-                    .await
-                    .map_err(|e| e.to_string())
-                    .and_then(|r| r)
-                    .map_err(Said::from)
-            };
-            read_with(
-                &req.machines,
-                local,
-                &cx.tz,
-                cx.until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-                &KEPT,
-                crate::common::time::now_ms() as i64,
-            )
-            .await
-        }
+    ) -> Result<GroupsRead, GroupsReadErr> {
+        let local = async {
+            tokio::task::spawn_blocking(here_now)
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r)
+                .map_err(Said::from)
+        };
+        read_with(
+            &req.machines,
+            local,
+            &cx.tz,
+            cx.until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+            &KEPT,
+            crate::common::time::now_ms() as i64,
+        )
+        .await
     }
 }
 
 /// 只问这台的 `groups-read`（一次性进程里问不到别的台时用：agent 自问那一条的退路）。
-pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String> {
+pub async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String> {
     let local = async {
         tokio::task::spawn_blocking(here_now)
             .await
@@ -404,14 +402,17 @@ pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead,
 }
 
 /// 一台这一问拿到的那一片：这一问答的 · 上一次答的（带那一份几时读到的，写好的字）· 没有。
-pub(crate) enum Half {
+pub enum Half {
     Now(GroupsHere),
     Before(GroupsHere, Words),
     None,
 }
 
 /// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻由调用方给）。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 期限 · 此刻都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
+)]
 pub(crate) async fn read_with(
     machines: &[Machine],
     local: impl std::future::Future<Output = Result<GroupsHere, Said>> + Send,
@@ -469,7 +470,7 @@ pub(crate) async fn read_with(
 /// 手机核心照 A1-8-4 挪走时整个搬过去，本机后端与手机核心调同一份。
 /// - 名字：各片里同一组 `named` 最新的那份；同一刻 ⇒ 这一问答了的那片优先，再照问的先后。`made` 取最早的。
 /// - 哪一片都没有那一组的记录、只有组员指着它 ⇒ 照出，名字缺。
-pub(crate) fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
+pub fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
     // 组 id ⇒ (取到名字的那一份, 名字从哪来, 各片里最早的建组时刻)
     let mut records: BTreeMap<&str, (&HereGroup, GroupKnown, i64)> = BTreeMap::new();
     for (_, half) in halves {
@@ -604,7 +605,7 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
 
 /// 格目录的样本（`faces/cells_catalog.rs`）：真合（[`merge`]）出来的一份 —— 名字取自这一问答的那片 · 上次那片各一组，
 /// 各组组头都有计数；那台这一问的结局四种各一台。可缺的格都填上、列表都不空。
-pub(crate) fn specimen() -> GroupsRead {
+pub fn specimen() -> GroupsRead {
     let w = |v: &str| Words(v.to_string());
     let rec = |id: &str| HereGroup {
         id: id.to_string(),
@@ -691,51 +692,51 @@ pub(crate) const NAME_MAX: usize = 80;
 /// - `rename` · `dissolve`：收到的那台发给 `machines` 里的每一片（本机逐字 `"<local>"`；转给别的台时只写那台自己），
 ///   没有那一组的片什么都不做；解散在那一片摘掉每条会话身上的那一组。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum GroupsWriteReq {
+pub enum GroupsWriteReq {
     Make {
         name: String,
     },
     Move {
         sid: String,
         #[serde(default)]
-        #[cfg_attr(test, ts(optional = nullable))]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
         join: Option<HereGroup>,
         #[serde(default)]
-        #[cfg_attr(test, ts(optional = nullable))]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
         leave: Option<String>,
     },
     Rename {
         id: String,
         name: String,
-        #[cfg_attr(test, ts(as = "Vec<String>"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
         machines: Vec<Machine>,
     },
     Dissolve {
         id: String,
-        #[cfg_attr(test, ts(as = "Vec<String>"))]
+        #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<String>"))]
         machines: Vec<Machine>,
     },
 }
 
 /// 一台没送到：哪台 · 为什么（那台这一问说的那一句）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupMissed {
-    #[cfg_attr(test, ts(as = "String"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupMissed {
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
     pub(crate) origin: Machine,
     pub(crate) why: String,
 }
 
 /// `groups-write` 的回包：起好的那一组 · 那条会话此刻在哪几组 · 发给各片的结局（没送到的那几台，照问的先后）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "is", rename_all = "snake_case")]
-pub(crate) enum GroupsWritten {
+pub enum GroupsWritten {
     Made(HereGroup),
     Moved {
         sid: String,
@@ -749,7 +750,7 @@ pub(crate) enum GroupsWritten {
 
 codes! {
     /// `groups-write` 的码（同注解那几条：读不懂拒写 · 写不下去 · 推不出家）。
-    pub(crate) enum GroupsWriteErr {
+    pub enum GroupsWriteErr {
         Unreadable = "annotations_unreadable",
         IoFailed = "io_failed",
         NoAnnotations = "no_annotations",
@@ -879,7 +880,7 @@ fn dissolve_here(table: &mut Table, book: &mut Book, id: &str) {
 }
 
 /// 只写这一台的那几样（`make` · `move` · 这一片的 `rename` · `dissolve`）：「现在」由调用方给。
-pub(crate) fn write_at(
+pub fn write_at(
     own: &crate::platform::fs::Own,
     req: GroupsWriteReq,
     now: i64,
@@ -928,7 +929,6 @@ pub(crate) fn write_at(
 
 /// `rename` · `dissolve` 发给各片（本机那一片怎么写 · 可达表 · 对面由调用方给）：先核 id 与名字，再 `ask_each`；
 /// 转给别的台的那一问 `machines` 只写那台自己。没送到的那几台照问的先后列进回包。
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_with(
     req: GroupsWriteReq,
     local: impl FnOnce(GroupsWriteReq) -> Result<GroupsWritten, GroupsWriteErr> + Send,
@@ -990,7 +990,7 @@ pub(crate) async fn send_with(
 }
 
 /// `groups-write`：起组 · 进出组（只写这一台）· 改名 · 解散（发给各片）。
-pub(crate) struct GroupsWriteCmd;
+pub struct GroupsWriteCmd;
 
 impl Command for GroupsWriteCmd {
     const NAME: &'static str = "groups-write";

@@ -2323,10 +2323,12 @@ body.settings-window-mode .settings-panel {
   flex-direction: column;
 }
 
+/* 那一句分行写（`\n`）：照分行画。 */
 .cfg-intro {
   margin: 0 0 var(--space-6);
   color: var(--text-2);
   font-size: var(--font-size-mono);
+  white-space: pre-line;
 }
 
 .cfg-cap {
@@ -3179,8 +3181,10 @@ body.settings-window-mode .settings-panel {
   gap: var(--space-2);
   margin: var(--space-2) 0 var(--space-1) 18px;
 }
+/* 后端写好的那一句可以分行（`\n`）：照分行画。 */
 .chore-why {
   color: var(--text-2);
+  white-space: pre-line;
 }
 .chore-steps {
   margin: 0;

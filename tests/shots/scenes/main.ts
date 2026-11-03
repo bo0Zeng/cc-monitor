@@ -24,9 +24,19 @@ function card(id: string, title: string, desc: string, act: Scene["act"], world:
 /** 把第一个会话里某种卡展开（连同它所在的那一轮「过程」与工具组）、滚到它；截之前核它真的在眼前。 */
 async function openCard(sel: string, nth = 0, block: ScrollLogicalPosition = "start"): Promise<void> {
   await mainReady(ALL_TABS);
-  const el = document.querySelectorAll<HTMLElement>(sel)[nth];
-  if (!el) throw new Error(`没有 ${sel}（第 ${nth} 个）`);
-  await showCard(el, block);
+  await showCard(await builtCard(sel, nth), block);
+}
+
+/**
+ * 找第 `nth` 张 `sel` 卡：折着的过程不建 DOM（`turn-fold.ts`「折着的不建 DOM」），卡不在 ⇒ 先点开此刻这条流里每一条折着的过程行，
+ * 等骨架把它物化出来（兜底上限内没出来 ⇒ 抛，说清找的是哪一张）。
+ */
+async function builtCard(sel: string, nth = 0): Promise<HTMLElement> {
+  const nthOf = (): HTMLElement | undefined => document.querySelectorAll<HTMLElement>(sel)[nth];
+  if (!nthOf()) for (const l of document.querySelectorAll<HTMLElement>('.stream.active .proc-line[aria-expanded="false"]')) l.click();
+  return until(nthOf, 10_000).catch(() => {
+    throw new Error(`没有 ${sel}（第 ${nth} 个；折着的过程都点开了）`);
+  });
 }
 
 /**
@@ -537,12 +547,7 @@ export const MAIN_SCENES: Scene[] = [
     await openCard(".block-tool-use", 2);
   }),
   card("card-agent", "子 agent 卡", "两张子 agent 卡：一张跑完（交回的结果收在卡里、展开）、一张还在跑；卡头点了开它自己的窗口", async () => {
-    await mainReady(ALL_TABS);
-    // 派出卡收在那一轮的「过程」里：先点开那一行。
-    const card0 = document.querySelector<HTMLElement>('[data-role="run-card"]');
-    const proc = [...document.querySelectorAll<HTMLElement>('.proc-line[aria-expanded="false"]')].find((l) => l.parentElement?.contains(card0) ?? false) ?? document.querySelector<HTMLElement>('.proc-line[aria-expanded="false"]');
-    proc?.click();
-    await sleep(400);
+    // 派出卡收在那一轮的「过程」里：`openCard` 先点开过程行。
     await openCard('[data-role="run-card"]', 0);
     const res = document.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]');
     if (res) await expand(res);
@@ -553,6 +558,7 @@ export const MAIN_SCENES: Scene[] = [
   }),
   card("card-test-fail", "失败的命令", "全量测试那条命令失败（is_error）", async () => {
     await mainReady(ALL_TABS);
+    await builtCard(".block-tool-use");
     const all = [...document.querySelectorAll<HTMLDetailsElement>(".block-tool-use")];
     const el = all.find((d) => (d.textContent ?? "").includes("全量测试")) ?? all[all.length - 1];
     await showCard(el, "center");

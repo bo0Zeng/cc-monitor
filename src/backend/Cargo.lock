@@ -208,6 +208,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-history"
+version = "0.0.0"
+dependencies = [
+ "backend-agents",
+ "backend-common",
+ "backend-dial",
+ "backend-host",
+ "backend-platform",
+ "backend-wire",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "creds-core",
+ "face-core",
+ "guard-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "backend-host"
 version = "0.0.0"
 dependencies = [
@@ -500,6 +526,7 @@ dependencies = [
  "backend-common",
  "backend-dial",
  "backend-files",
+ "backend-history",
  "backend-host",
  "backend-platform",
  "backend-plugin",

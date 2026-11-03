@@ -222,7 +222,7 @@ fn launch(
             tracing::warn!("起一组：{sid} 没归进组 {}：{}", g.id, e.into_said().said);
         }
     };
-    let mut group_for = |name: &str| -> Result<GroupRef, String> {
+    let group_for = |name: &str| -> Result<GroupRef, String> {
         if let Some(h) = set::bound(own, name).and_then(|id| group_here(&id)) {
             return Ok(GroupRef {
                 id: h.id,

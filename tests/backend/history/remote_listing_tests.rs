@@ -151,7 +151,7 @@ async fn ask(
     listing_with(
         "devbox",
         fresh,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         crate::platform::child::Deadline::secs(5),
         table,
         peer,
@@ -249,7 +249,7 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
     let e = listing_with(
         "elsewhere",
         false,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         crate::platform::child::Deadline::secs(5),
         &t,
         &peer,
@@ -297,7 +297,7 @@ async fn what_is_held_reads_without_asking_and_remembers_a_failed_sync() {
     let _ = listing_with(
         "devbox",
         true,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         crate::platform::child::Deadline::secs(5),
         &t,
         &peer,

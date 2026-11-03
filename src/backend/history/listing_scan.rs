@@ -8,7 +8,7 @@ use std::path::Path;
 
 /// 扫一份会话记录时逐行累计的那几格（[`analyze_session`] 的口径，逐格说明在它的头注）。清单缓存与搜索索引都存它。
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct SessionScan {
+pub struct SessionScan {
     /// 读到过一行不是合法 UTF-8 ⇒ 那一行和之后的都不算（逐行读到读不动就停，与整份逐行读同一个口径）。
     pub(super) stopped: bool,
     count: u32,
@@ -37,7 +37,7 @@ impl SessionScan {
     }
 
     /// 前面这一段（`self`）接上后面那一段（`later`）：按段序合并与整份顺扫相等。
-    pub(crate) fn joined(&self, later: &Self) -> Self {
+    pub fn joined(&self, later: &Self) -> Self {
         let mut out = self.clone();
         if out.stopped {
             return out;
@@ -82,7 +82,7 @@ impl SessionScan {
     }
 
     /// 吸收已解析好的一条（全文搜索那一路本来就整条解开了）：同 [`SessionScan::absorb`] 那一套。
-    pub(crate) fn absorb_value(&mut self, kind: &str, v: &serde_json::Value) {
+    pub fn absorb_value(&mut self, kind: &str, v: &serde_json::Value) {
         self.count += 1;
         let l = crate::agents::session_line_of(kind, v);
         self.take(kind, l, || Some(Cow::Borrowed(v)));
@@ -117,27 +117,27 @@ impl SessionScan {
     }
 
     /// 首条人说的话（截好的）。
-    pub(crate) fn excerpt(&self) -> &str {
+    pub fn excerpt(&self) -> &str {
         &self.excerpt
     }
 
     /// 最新的标题。
-    pub(crate) fn title(&self) -> Option<&str> {
+    pub fn title(&self) -> Option<&str> {
         self.ai_title.as_deref()
     }
 
     /// 第一条写着的工作目录。
-    pub(crate) fn cwd(&self) -> Option<&str> {
+    pub fn cwd(&self) -> Option<&str> {
         self.cwd.as_deref()
     }
 
     /// 是后台分身会话。
-    pub(crate) fn bg(&self) -> bool {
+    pub fn bg(&self) -> bool {
         self.is_bg
     }
 
     /// 分叉来的：父会话 id。
-    pub(crate) fn forked_from(&self) -> Option<&str> {
+    pub fn forked_from(&self) -> Option<&str> {
         self.forked.as_ref().map(|(s, _)| s.as_str())
     }
 

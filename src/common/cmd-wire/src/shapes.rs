@@ -92,7 +92,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("history-annotate", "9ed141f2"),
     ("history-branch", "d78c8205"),
     ("history-browse", "9eee7681"),
-    ("history-facts", "bbb8962b"),
+    ("history-facts", "65b6b70b"),
     ("history-find", "ffd639f4"),
     ("history-forget", "325e079f"),
     ("history-image", "79ea9f62"),

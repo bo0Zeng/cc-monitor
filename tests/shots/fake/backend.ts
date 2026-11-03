@@ -40,6 +40,8 @@ export const REAL_OPS = new Set([
   "history-image",
   // 拉一段正文的代码高亮（建一段时问）：真后端照交上来的代码算。
   "prose-hl",
+  // 一段 Markdown 交成树（思考展开 · 工具结果的 MD 模式 · 计划格正文）：真后端照交上来的原文解析。
+  "md-doc",
   "history-index",
   "history-user-inputs",
   "history-turns",

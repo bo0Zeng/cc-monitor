@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use super::groups::{GroupRead, GroupsRead};
 use super::live_table::LiveRow;
-use crate::wire::typed::{codes, Command};
+use crate::wire::typed::codes;
 
 /// 往上最多找几层（进程树再深也到不了这么多；挡住读坏的父进程号绕圈）。
 pub(crate) const MAX_HOPS: usize = 64;
@@ -42,7 +42,7 @@ pub(crate) fn first_session(chain: &[u32], rows: &[LiveRow]) -> Option<String> {
 }
 
 /// 从 `start` 往上（真读父进程号）找 `agent_home` 那张活会话表里的会话。
-pub(crate) fn who_at(agent_home: &std::path::Path, start: u32) -> Option<String> {
+pub fn who_at(agent_home: &std::path::Path, start: u32) -> Option<String> {
     let chain = chain_from(start, crate::platform::proc::parent_of);
     first_session(
         &chain,
@@ -64,8 +64,8 @@ pub(crate) fn mine(read: GroupsRead, sid: &str) -> Vec<GroupRead> {
 
 /// 这一问看了哪几台。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Looked {
     /// 常驻答的：问到了各台（哪台没答在各组的 `known` 里）。
@@ -78,9 +78,9 @@ pub(crate) enum Looked {
 
 /// `session-self` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionSelf {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionSelf {
     /// 我是哪条会话（这台的）。
     pub(crate) sid: String,
     /// 我在的那几组（组员整组）。
@@ -88,8 +88,8 @@ pub(crate) struct SessionSelf {
     pub(crate) looked: Looked,
 }
 
-/// [`SessionSelfCmd`] 的后一半：先问常驻（各台），没答成再问这台。
-pub(crate) async fn answer(
+/// `session-self` 的后一半（命令表那一处接上常驻）：先问常驻（各台），没答成再问这台。
+pub async fn answer(
     sid: String,
     via_resident: impl std::future::Future<Output = Result<GroupsRead, String>>,
     here: impl std::future::Future<Output = Result<GroupsRead, String>>,
@@ -116,20 +116,10 @@ pub(crate) async fn answer(
 
 codes! {
     /// `session-self` 的码。
-    pub(crate) enum SessionSelfErr {
+    pub enum SessionSelfErr {
         /// 调用进程往上找不到这台的哪一条会话。
         NotInSession = "not_in_session",
     }
-}
-
-/// `session-self`：调用进程往上找这台的哪一条会话、它在哪几组。
-pub(crate) struct SessionSelfCmd;
-
-impl Command for SessionSelfCmd {
-    const NAME: &'static str = "session-self";
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = SessionSelf;
-    type Err = SessionSelfErr;
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 /// 单份进程状态文件（`sessions/<PID>.json`）读取上限（正常几百字节）：超了跳过那一份、读那一层 `warn!` 点名。
 /// 盯这些文件的那一路（`observe::watcher`）读它们也用这一个。
-pub(crate) const SESSION_FILE_CAP: Cap = Cap {
+pub const SESSION_FILE_CAP: Cap = Cap {
     bytes: 1024 * 1024,
     over: Over::SkipAndSay,
 };
@@ -23,22 +23,22 @@ const MAX_SESSION_FILES: usize = 500;
 
 /// 表里的一行：一个会话进程。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LiveRow {
-    pub(crate) pid: u32,
+pub struct LiveRow {
+    pub pid: u32,
     /// 那份 pidfile 说的（哪一家 · 会话 id · 工作目录 · 在干什么 · 在等什么 · 何时起）。
-    pub(crate) fact: ProcFact,
+    pub fact: ProcFact,
     /// 进程此刻还是写它的那一个（`platform::proc::session_alive`：存在性 ＋ 有启动时刻时对拍）。
-    pub(crate) alive: bool,
+    pub alive: bool,
     /// 启动时刻核过：pidfile 记了 `procStart`、与此刻那个 pid 的启动时刻逐值相等（[`start_matches`]）。
     /// 账号归属只认这一格（错标签比缺标签危害大：缺 `procStart` 的老 pidfile 不认）。
-    pub(crate) start_checked: bool,
+    pub start_checked: bool,
     /// 说在跑、可过了时限没再听见它（watcher 判的心跳那一维）⇒ 不说在跑。现扫的那份恒为假。
     pub(crate) frozen: bool,
 }
 
 impl LiveRow {
     /// 这一行说的会话 id（空串当没有）。
-    pub(crate) fn sid(&self) -> Option<&str> {
+    pub fn sid(&self) -> Option<&str> {
         self.fact.sid.as_deref().filter(|s| !s.is_empty())
     }
 
@@ -54,7 +54,7 @@ impl LiveRow {
 }
 
 /// 说在跑、冻住了 ⇒ 说不清；别的态照原样。
-pub(crate) fn heard(activity: Option<SessionActivity>, frozen: bool) -> Option<SessionActivity> {
+pub fn heard(activity: Option<SessionActivity>, frozen: bool) -> Option<SessionActivity> {
     if frozen && activity == Some(SessionActivity::Working) {
         None
     } else {
@@ -75,7 +75,7 @@ fn rank(a: Option<SessionActivity>) -> u8 {
 
 /// **一条活会话此刻在干什么的唯一判法**：有待答请求挂着 ⇒ 等人（挡着终端的那种框不改 pidfile 的状态）；
 /// 否则各进程交出去的那一态（[`heard`]）取最要紧的。watcher 宣告 · 改态与冷路都经它。
-pub(crate) fn doing_of(
+pub fn doing_of(
     heard: impl IntoIterator<Item = Option<SessionActivity>>,
     asked: bool,
 ) -> Option<SessionActivity> {
@@ -87,7 +87,7 @@ pub(crate) fn doing_of(
 
 /// pidfile 记的启动时刻与此刻那个 pid 的逐值相等（启动时刻的唯一读法；watcher 加会话那一道闸也问它）。
 /// 没记 · 读不到（进程已死）⇒ 假。
-pub(crate) fn start_matches(pid: u32, recorded: Option<u64>) -> bool {
+pub fn start_matches(pid: u32, recorded: Option<u64>) -> bool {
     match (recorded, crate::platform::proc::proc_starttime(pid)) {
         (Some(r), Some(c)) => r == c,
         _ => false,
@@ -96,17 +96,17 @@ pub(crate) fn start_matches(pid: u32, recorded: Option<u64>) -> bool {
 
 /// 那台 pidfile 说「在等」的那一格（[`LiveTable::wait_of`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PidWait {
+pub struct PidWait {
     /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
-    pub(crate) waiting_for: Option<crate::agents::WaitOn>,
-    pub(crate) since_ms: Option<u64>,
+    pub waiting_for: Option<crate::agents::WaitOn>,
+    pub since_ms: Option<u64>,
     /// 读那份 pidfile 的时刻（epoch ms，**同一台的钟**）：「已等多久」＝ 它减 `since_ms`。
-    pub(crate) read_at_ms: u64,
+    pub read_at_ms: u64,
 }
 
 /// 整台的那一张。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct LiveTable {
+pub struct LiveTable {
     /// 造它的那个家（发布的那份只答问同一个家的）。
     pub(crate) home: PathBuf,
     pub(crate) rows: Vec<LiveRow>,
@@ -119,7 +119,7 @@ pub(crate) struct LiveTable {
 impl LiveTable {
     /// **唯一的构造函数**：读 `agent_home` 的 pidfile 目录（有上限、跳过要说清），每份一行、判好活不活与启动时刻；
     /// 挂着的请求与可重连的那几条取此刻交来的那一份。`frozen` 由 watcher 发布前填（[`LiveTable::freeze`]）。
-    pub(crate) fn scan(agent_home: &Path) -> Self {
+    pub fn scan(agent_home: &Path) -> Self {
         LiveTable {
             home: agent_home.to_path_buf(),
             ..Self::scan_dir(&crate::agents::pidfile_dir(agent_home))
@@ -147,14 +147,14 @@ impl LiveTable {
     }
 
     /// watcher 判的冻住那一格（`pid` 冻住的那几个进程）。
-    pub(crate) fn freeze(&mut self, frozen: &BTreeSet<u32>) {
+    pub fn freeze(&mut self, frozen: &BTreeSet<u32>) {
         for r in &mut self.rows {
             r.frozen = frozen.contains(&r.pid);
         }
     }
 
     /// 全部的行（连已死的：账号归属那几行要说它死了）。
-    pub(crate) fn rows(&self) -> &[LiveRow] {
+    pub fn rows(&self) -> &[LiveRow] {
         &self.rows
     }
 
@@ -165,7 +165,7 @@ impl LiveTable {
     }
 
     /// **这台此刻活着的每个会话在干什么**（[`doing_of`]；后台任务也算）。不在里面 ＝ 不活。
-    pub(crate) fn doing(&self) -> BTreeMap<String, Option<SessionActivity>> {
+    pub fn doing(&self) -> BTreeMap<String, Option<SessionActivity>> {
         let mut out: BTreeMap<String, Option<SessionActivity>> = BTreeMap::new();
         for r in self.rows.iter().filter(|r| r.alive) {
             let Some(sid) = r.sid() else { continue };
@@ -181,7 +181,7 @@ impl LiveTable {
     }
 
     /// 这一条此刻在干什么：活着 ⇒ `Some(那一态)`；不活 ⇒ `None`。
-    pub(crate) fn doing_one(&self, sid: &str) -> Option<Option<SessionActivity>> {
+    pub fn doing_one(&self, sid: &str) -> Option<Option<SessionActivity>> {
         let heard: Vec<Option<SessionActivity>> = self.live_rows(sid).map(LiveRow::heard).collect();
         if heard.is_empty() {
             return None;
@@ -191,14 +191,14 @@ impl LiveTable {
 
     /// 这一条此刻那一态从何时起（epoch ms，那台的钟）：几个进程都说了 ⇒ 最晚的那个；不活 · 都没说 ⇒ `None`。
     /// 会话输入队的投递判「送出之后那一轮起来过没有」读它。
-    pub(crate) fn since_of(&self, sid: &str) -> Option<u64> {
+    pub fn since_of(&self, sid: &str) -> Option<u64> {
         self.live_rows(sid)
             .filter_map(|r| r.fact.status_since_ms)
             .max()
     }
 
     /// **这台上需手动的会话**：活着、在等人的（那台说在等 ∪ 有请求挂着），按会话 id 排。
-    pub(crate) fn needs(&self) -> Vec<String> {
+    pub fn needs(&self) -> Vec<String> {
         self.doing()
             .into_iter()
             .filter(|(_, a)| *a == Some(SessionActivity::NeedsYou))
@@ -207,19 +207,19 @@ impl LiveTable {
     }
 
     /// 那台 pidfile 自己说这条会话在等人（后台任务也算；只挂着请求不算）。
-    pub(crate) fn says_waiting(&self, sid: &str) -> bool {
+    pub fn says_waiting(&self, sid: &str) -> bool {
         self.live_rows(sid)
             .any(|r| r.fact.activity == Some(SessionActivity::NeedsYou))
     }
 
     /// 这条会话此刻在不在等人（同 [`LiveTable::needs`] 那一判）。
-    pub(crate) fn waiting(&self, sid: &str) -> bool {
+    pub fn waiting(&self, sid: &str) -> bool {
         self.doing_one(sid) == Some(Some(SessionActivity::NeedsYou))
     }
 
     /// 那台 pidfile 说这条会话此刻在等人的那一格（几个进程都在等 ⇒ 等得最早的那个）；不在等 · 不活 ⇒ `None`。
     /// 只挂着请求、pidfile 没说在等 ⇒ 也是 `None`（等的是什么由请求那一格说）。
-    pub(crate) fn wait_of(&self, sid: &str) -> Option<PidWait> {
+    pub fn wait_of(&self, sid: &str) -> Option<PidWait> {
         let read_at_ms = crate::common::time::now_ms();
         self.live_rows(sid)
             .filter(|r| !r.fact.background)
@@ -233,7 +233,7 @@ impl LiveTable {
     }
 
     /// 那台 pidfile 说这条会话一轮停了、后台命令还在跑 ⇒ `Some(那个进程何时起的；没写 ⇒ None)`（几个进程 ⇒ 起得最早的）。
-    pub(crate) fn background_since(&self, sid: &str) -> Option<Option<u64>> {
+    pub fn background_since(&self, sid: &str) -> Option<Option<u64>> {
         self.live_rows(sid)
             .filter(|r| !r.fact.background)
             .filter(|r| r.fact.activity == Some(SessionActivity::BackgroundWork))
@@ -242,7 +242,7 @@ impl LiveTable {
     }
 
     /// 写这份 pidfile 的那一家（找不到这条会话的记录时认工具用）。
-    pub(crate) fn kind_of(&self, sid: &str) -> Option<&'static str> {
+    pub fn kind_of(&self, sid: &str) -> Option<&'static str> {
         self.rows
             .iter()
             .find(|r| r.sid() == Some(sid))
@@ -250,7 +250,7 @@ impl LiveTable {
     }
 
     /// 这台判的这一条活不活：活着照 [`LiveTable::doing_one`]，否则可重连 · 已结束。
-    pub(crate) fn life_of(&self, sid: &str) -> crate::wire::WireLife {
+    pub fn life_of(&self, sid: &str) -> crate::wire::WireLife {
         use crate::wire::WireLife;
         match self.doing_one(sid) {
             Some(activity) => WireLife::Live { activity },
@@ -260,7 +260,7 @@ impl LiveTable {
     }
 
     /// 此刻持着 `sid` 的活交互进程 pid（后台任务不算），升序。不止一个 ⇒ 几个进程在同时写。
-    pub(crate) fn writers(&self, sid: &str) -> Vec<u32> {
+    pub fn writers(&self, sid: &str) -> Vec<u32> {
         let mut pids: Vec<u32> = self
             .rows
             .iter()
@@ -281,7 +281,7 @@ impl LiveTable {
     }
 
     /// 这台此刻活着的交互会话的工作目录（后台任务不算），去重、排好序。
-    pub(crate) fn cwds(&self) -> Vec<String> {
+    pub fn cwds(&self) -> Vec<String> {
         let mut v: Vec<String> = self
             .rows
             .iter()
@@ -294,7 +294,7 @@ impl LiveTable {
     }
 
     /// 这台此刻活着的分身会话（pidfile 那一家说是后台的）。
-    pub(crate) fn background(&self) -> BTreeSet<String> {
+    pub fn background(&self) -> BTreeSet<String> {
         self.rows
             .iter()
             .filter(|r| r.alive && r.fact.background)
@@ -303,12 +303,12 @@ impl LiveTable {
     }
 
     /// 这台此刻活着的交互会话那几行（后台任务不算）：读 MCP 那一格之类逐会话要再读记录的。
-    pub(crate) fn interactive(&self) -> impl Iterator<Item = &LiveRow> {
+    pub fn interactive(&self) -> impl Iterator<Item = &LiveRow> {
         self.rows.iter().filter(|r| r.interactive())
     }
 
     /// 持着这条会话、启动时刻核过的那个进程（读它的环境认号用）。
-    pub(crate) fn checked_pid(&self, sid: &str) -> Option<u32> {
+    pub fn checked_pid(&self, sid: &str) -> Option<u32> {
         self.rows
             .iter()
             .find(|r| r.fact.sid.as_deref() == Some(sid) && r.start_checked)
@@ -327,7 +327,7 @@ static RECONNECTABLE: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 /// watcher 交来整份（只它写）。可重连照此刻交来的那一份盖上。
 /// 跟上一份（同一个家）比：进出需手动的 · 离开「活」的（计划那一侧的要人看可能多一条）各敲一声需手动的铃（[`super::needs_changed::moved`]）。
-pub(crate) fn publish(mut table: LiveTable) {
+pub fn publish(mut table: LiveTable) {
     table.reconnectable = lock(&RECONNECTABLE).clone();
     let next = Arc::new(table);
     let prev = lock(&PUBLISHED).replace(Arc::clone(&next));
@@ -345,7 +345,7 @@ static LISTENER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
 
 /// 登记「每发布一份叫我一声」（会话输入队的投递线程起来时登记，`faces::session_queue_deliver::start`）。
 /// 已有一个 ⇒ 不换，回 `false`。
-pub(crate) fn on_publish(ring: fn()) -> bool {
+pub fn on_publish(ring: fn()) -> bool {
     LISTENER.set(ring).is_ok()
 }
 
@@ -359,7 +359,7 @@ fn needs_moved(prev: &LiveTable, next: &LiveTable) -> BTreeSet<String> {
 }
 
 /// **问这张表的唯一入口**：发布过、问的是同一个家 ⇒ 那一份（挂着的请求换成此刻的）；否则现扫（[`LiveTable::scan`]）。
-pub(crate) fn now(agent_home: &Path) -> Arc<LiveTable> {
+pub fn now(agent_home: &Path) -> Arc<LiveTable> {
     let published = lock(&PUBLISHED)
         .as_ref()
         .filter(|t| t.home == agent_home)
@@ -377,12 +377,12 @@ pub(crate) fn now(agent_home: &Path) -> Arc<LiveTable> {
 }
 
 /// 这台此刻活着的会话（家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
-pub(crate) fn live_here() -> BTreeSet<String> {
+pub fn live_here() -> BTreeSet<String> {
     now(&super::listing::agent_home()).sids()
 }
 
 /// 点名的 pidfile 目录里持着这条会话的每个活进程此刻的（那一态, 这一态从何时起）：答题 hook 判「终端那边答了」用
-/// （hook 盯的是发问那一家自己的目录；`main` 把它交给 `control::asks::hook::run`）。
+/// （hook 盯的是发问那一家自己的目录；一次性子命令那一处 `stream/oneshot.rs` 把它交给 `control::asks::hook::run`）。
 pub fn states_in(dir: &Path, sid: &str) -> Vec<(Option<SessionActivity>, Option<u64>)> {
     LiveTable::scan_dir(dir)
         .live_rows(sid)
@@ -391,7 +391,7 @@ pub fn states_in(dir: &Path, sid: &str) -> Vec<(Option<SessionActivity>, Option<
 }
 
 /// 会话账本交来此刻可重连的那几条（整份换）；发布过的那份跟着换。
-pub(crate) fn set_reconnectable(now: &BTreeSet<String>) {
+pub fn set_reconnectable(now: &BTreeSet<String>) {
     let mut g = lock(&RECONNECTABLE);
     if *g == *now {
         return;

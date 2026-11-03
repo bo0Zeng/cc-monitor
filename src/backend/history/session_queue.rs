@@ -36,7 +36,7 @@ pub(crate) const TEXT_MAX: relay_route_core::Cap = relay_route_core::Cap {
     over: relay_route_core::Over::Reject,
 };
 /// 队文件所在那一层（相对家目录）。
-pub(crate) const DIR_REL: &str = relay_route_core::SESSION_QUEUE_DIR_REL;
+pub const DIR_REL: &str = relay_route_core::SESSION_QUEUE_DIR_REL;
 
 /// 一条会话的那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 版本 · 读上限照表，上限 ＝ 满队 × 最长一句留余量）。
 const DOC: Doc<Book> = Doc::of(&relay_route_core::SESSION_QUEUE_FILE);
@@ -456,7 +456,7 @@ fn with_book<R>(
     f: impl FnOnce(&mut Book) -> Result<R, Said>,
 ) -> Result<R, Said> {
     let dir = made_dir(own).map_err(io_failed)?;
-    let held = own.lock(&dir).map_err(|e| io_failed(Said::from(e)))?;
+    let held = own.lock(&dir).map_err(io_failed)?;
     let mut book = load(own, sid)?;
     let before = book.clone();
     let out = f(&mut book)?;
@@ -471,19 +471,19 @@ fn with_book<R>(
 static LISTENER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
 
 /// 登记「队目录动了叫我一声」（投递线程起来时登记，`faces::session_queue_deliver::start`）。已有一个 ⇒ 不换，回 `false`。
-pub(crate) fn on_moved(ring: fn()) -> bool {
+pub fn on_moved(ring: fn()) -> bool {
     LISTENER.set(ring).is_ok()
 }
 
 /// 队目录动了（watcher 看见别的进程写了 `session-queue/` 里的一份）：叫一声登记的那一个。
-pub(crate) fn moved() {
+pub fn moved() {
     if let Some(ring) = LISTENER.get() {
         ring();
     }
 }
 
 /// `session-queue-put` 在主人这台的那一半：投一条。
-pub(crate) fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut, Said> {
+pub fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut, Said> {
     with_book(own, req.sid.as_str(), |b| {
         b.put(req, now_ms).map_err(|r| {
             let code = match r {
@@ -496,7 +496,7 @@ pub(crate) fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<Qu
 }
 
 /// `session-queue-cancel` 在主人这台的那一半：撤一条，回撤完的整份名单。
-pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<QueueCancelled, Said> {
+pub fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<QueueCancelled, Said> {
     with_book(own, sid, |b| {
         let cancelled = b.cancel(id, now_ms);
         Ok(QueueCancelled {
@@ -507,7 +507,7 @@ pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<Queu
 }
 
 /// `session-queue-read` 在主人这台的那一半：此刻的名单（先把等够了的排掉）。
-pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
+pub fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(b.view())
@@ -515,7 +515,7 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said>
 }
 
 /// 瘦客户端底行那一句（[`Book::waiting_line`]，先把等够了的排掉）；读不出 ⇒ `None`。
-pub(crate) fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
+pub fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(b.waiting_line())
@@ -525,7 +525,7 @@ pub(crate) fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> 
 }
 
 /// 投递口：送那一下等着的原因（[`Book::mark_half`]）；没变就不写。
-pub(crate) fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Said> {
+pub fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Said> {
     with_book(own, sid, |b| {
         b.mark_half(id, half);
         Ok(())
@@ -547,7 +547,7 @@ pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
 /// 瘦客户端底行「排队 N 条」的耳朵：经 [`crate::platform::watch_file`] 盯 `hosts/<id>/`（打标那一下）与这台的队目录（队动了），
 /// 起来那一下先说一次 [`line_of_host`]，之后那一句变了才说（`tell`）。交回的那一份丢了 ⇒ 不再盯。
 /// 瘦客户端（`host::managed::attach`）只照说来的那一句摆，由 `ccm` 入口把这一个交给它（host 不引 history）。
-pub(crate) fn host_line_ears(
+pub fn host_line_ears(
     own: &Own,
     id: &str,
     tell: Box<dyn Fn(Option<String>) + Send>,
@@ -576,7 +576,7 @@ pub(crate) fn host_line_ears(
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
-pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
+pub fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
     with_book(own, sid, |b| {
         b.end(now_ms);
         Ok(b.view())
@@ -584,7 +584,7 @@ pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> 
 }
 
 /// 投递口：排在最前、还没送的那一条 ＋ 还有收着的话最早那一条等够了是几点（到那一刻要再看一次）。
-pub(crate) fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Said> {
+pub fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Said> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(Due {
@@ -596,18 +596,18 @@ pub(crate) fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Said> {
 
 /// [`due`] 交的那一份。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Due {
-    pub(crate) item: Option<QueueItem>,
-    pub(crate) held_until: Option<i64>,
+pub struct Due {
+    pub item: Option<QueueItem>,
+    pub held_until: Option<i64>,
 }
 
 /// 投递口：那一条送不进去 ⇒ 标未送达，`why` 是投递那一下说的为什么（不在排着 ⇒ `false`）。
-pub(crate) fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Said> {
+pub fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.give_up(id, why)))
 }
 
 /// 投递口：这台此刻有队的那几条会话（`session-queue/` 里每一份 `<sid>.json`，照名排；目录不在 · 读不了 ⇒ 空）。
-pub(crate) fn sids(own: &Own) -> Vec<String> {
+pub fn sids(own: &Own) -> Vec<String> {
     let Ok(dir) = own.at_home(DIR_REL) else {
         return Vec::new();
     };
@@ -629,12 +629,12 @@ fn sid_of_name(name: &str) -> Option<String> {
 }
 
 /// 这台的队目录（家目录解析不出来 ⇒ `None`）：watcher 盯它。
-pub(crate) fn dir_here() -> Option<std::path::PathBuf> {
+pub fn dir_here() -> Option<std::path::PathBuf> {
     crate::platform::paths::home_dir().map(|h| crate::platform::paths::home_join(&h, DIR_REL))
 }
 
 /// 这一批文件事件里动过的那几条会话的队（`dir` 下的 `<sid>.json`；批内去重、照名排）。**纯函数**（判据直接喂路径）。
-pub(crate) fn sids_touched<'a>(
+pub fn sids_touched<'a>(
     paths: impl Iterator<Item = &'a std::path::Path>,
     dir: &std::path::Path,
 ) -> Vec<String> {
@@ -646,7 +646,7 @@ pub(crate) fn sids_touched<'a>(
 }
 
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
-pub(crate) fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Said> {
+pub fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.delivered(id)))
 }
 

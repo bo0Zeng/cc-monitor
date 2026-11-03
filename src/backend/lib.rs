@@ -15,9 +15,12 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
         clippy::disallowed_methods,
         clippy::let_underscore_must_use,
-        clippy::unused_result_ok
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
 mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
@@ -67,14 +70,14 @@ mod cross_files; // 文件管理那一块的判据里引到上层的那几条（
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
+use backend_history as history; // 历史清单那一族：项目 / 会话清单 · 注解 · 历史页那一列 · 组 · 会话输入队 · 判活那张表（独立的包 `backend-history`：只引 agents · dial · host · 帧面零件 · 纯工具 · 平台六层）
+use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引 agents · 帧面零件 · 纯工具 · 平台四层）
 #[cfg(test)]
 use test_meters::golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（住 dev 侧的量具包）
-mod history; // 历史清单与注解（history_list · history_annotations）
-use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引 agents · 帧面零件 · 纯工具 · 平台四层）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
-mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份）
+use backend_history::lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份；住历史清单那个包 `backend-history`）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -160,7 +163,6 @@ pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&
         .collect()
 }
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;
@@ -173,17 +175,14 @@ pub(crate) fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow
     common::time::fill_at(line, tz)
 }
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/main_fourth_face_tests.rs"]
 mod fourth_face_tests;
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/one_clock_guard.rs"]
 mod one_clock_guard;
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;

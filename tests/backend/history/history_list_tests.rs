@@ -26,24 +26,17 @@
 //!
 //! - 🔴 真远端（界面经长连接问那台的那一跳）· 真盘上上万份记录时的耗时。
 
+use super::test_support::MACHINE_TREE;
 use super::*;
 use crate::history::history_annotations::{Entry, Table};
 use serde_json::json;
 use std::path::PathBuf;
 
-/// 这台的记录树（测试档沙箱家里那一棵）：往里写夹具记录的判据与要它一问一问之间不变的判据都先拿这把锁，错开跑。
-/// 不拿 ⇒ 并行时一边写进夹具、另一边第二问就「变了」。
-pub(crate) static MACHINE_TREE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
 
 fn listing_from(
-    tree: Vec<(String, Result<Vec<Value>, String>)>,
-    synth: &[(
-        &'static str,
-        Vec<crate::agents::SynthSession>,
-        fn(&std::path::Path) -> String,
-    )],
+    tree: Tree,
+    synth: &[Synth],
     live: &crate::history::live_table::LiveTable,
     last: &Value,
 ) -> Value {
@@ -57,7 +50,7 @@ fn answer_from(
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Value {
     let views = Views::new(8);
     flat(&patch(&views, listing, origin, ann, ask, None, now_ms, tz))
@@ -73,7 +66,7 @@ fn patch(
     ask: &Ask,
     held: Option<&Value>,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Value {
     let l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
     let held: Option<Held> = held.map(|h| serde_json::from_value(h.clone()).expect("记号"));
@@ -168,6 +161,7 @@ const S3: &str = "0000aaaa-0000-4000-8000-000000000003";
 const S4: &str = "0000aaaa-0000-4000-8000-000000000004";
 const S5: &str = "0000aaaa-0000-4000-8000-000000000005";
 
+#[allow(clippy::too_many_arguments)]
 fn row(
     sid: &str,
     cwd: &str,
@@ -846,7 +840,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         listing_annotations(&raw).as_ref().map_err(Clone::clone),
         &ask(json!({})),
         1_000,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     );
     let via_here = answer_from(
         &raw,
@@ -854,7 +848,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         listing_annotations(&raw).as_ref().map_err(Clone::clone),
         &ask(json!({})),
         1_000,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     );
     assert_eq!(starred(&direct, S1), Some(json!(true)), "直连那台读到星");
     assert_eq!(
@@ -886,7 +880,7 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
             })
             .collect();
     let wire = |v: Value| serde_json::to_string(&v).unwrap();
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let pin = |mut v: Value| {
         v["held"] = json!("h1");
         v
@@ -941,7 +935,7 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
             r.parent = Some(S1.to_string());
         }
         if r.session_id == S5 {
-            r.launch_tab = Some(crate::control::launch_account::LaunchTab {
+            r.launch_tab = Some(cmd_wire::session::LaunchTab {
                 tab: cmd_wire::session::Tab::Hide,
                 alias: Some("cct".into()),
             });
@@ -1020,7 +1014,7 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
 /// 不是分叉来的 ⇒ 缺。按项目看的每一组带最近活动写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
 #[test]
 fn a_forked_row_names_its_parent_and_groups_say_when() {
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let v = answer(json!({"query": "分出来"}));
     assert_eq!(
         find(&v, S5)["forkedFrom"],
@@ -1057,7 +1051,7 @@ fn a_forked_row_names_its_parent_and_groups_say_when() {
 #[test]
 fn asking_again_with_the_mark_answers_only_what_changed() {
     let views = Views::new(8);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let go = |l: &Value, args: Value, held: Option<&Value>| {
         patch(&views, l, None, Ok(&ann()), &ask(args), held, 1_000, &tz)
     };
@@ -1126,7 +1120,7 @@ async fn the_machine_is_named_both_ways() {
         Ok(&ann()),
         &ask(json!({})),
         1_000,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     );
     let rows = v["rows"].as_array().unwrap();
     let groups = v["groups"].as_array().unwrap();

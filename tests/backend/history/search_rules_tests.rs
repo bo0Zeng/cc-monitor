@@ -27,9 +27,8 @@ fn make_snippet_three_parts() {
 }
 
 /// snippet 上下文窗口**就是** `SNIPPET_CTX` —— 期望值从常量取，不写字面量。
-
+///
 /// 改 `SNIPPET_CTX` 一处，这条自动跟上；哪一侧改成自己的数，那一侧就红。
-
 #[test]
 fn snippet_context_window_is_exactly_snippet_ctx() {
     let filler = "x".repeat(SNIPPET_CTX * 4);
@@ -49,9 +48,8 @@ fn snippet_context_window_is_exactly_snippet_ctx() {
 }
 
 /// 合并口径（那张差表，两边各取更对的一半）逐格：
-
+///
 /// 五种包装全剥（含 stderr）· 两句样板整行剥（不分大小写、句号可省、只认整行）· 中断标记只在**整条**恰是它时归零。
-
 #[test]
 fn truncate_helpers() {
     assert_eq!(truncate_plain("hello", 3), "hel");
@@ -340,7 +338,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
         "预算顺序（最近优先）必须恰好一份、住 `face_core::column`"
     );
     assert!(
-        rules.contains("pub(crate) use face_core::column::sort_by_recency;"),
+        rules.contains("pub use face_core::column::sort_by_recency;"),
         "口径的家要转出那一份"
     );
     // ② 搜索那一侧：不许自己再有一份，且必须真的调家里那一份。

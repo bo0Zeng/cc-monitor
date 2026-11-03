@@ -41,14 +41,15 @@ beforeEach(() => {
 });
 
 describe("账号面板", () => {
-  it("★ 中转没见过这个会话 ⇒ 头下一条 未实时显示 ＋ 接入…；底栏 新会话默认 work · 管理账号…", () => {
+  it("★ 中转没见过这个会话 ⇒ 头下一条 未实时显示（只一句、不带按钮）；去那台账号设置只底栏 管理账号… 一个入口", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: null }]]));
     openAccountPanel("s1", "<local>", host);
-    expect(panel().textContent).toContain(copyText("acct.now.noRelay"));
-    btn(copyText("acct.now.connect"))!.click();
-    expect(host.openSettings).toHaveBeenCalledWith("<local>");
+    const bar = panel().querySelector<HTMLElement>("[data-intent=warn]")!;
+    expect(bar.textContent).toBe(copyText("acct.now.noRelay"));
+    expect(bar.querySelector("button")).toBeNull();
     expect(panel().textContent).toContain(copyText("acct.foot.default"));
-    expect(btn(copyText("acct.menu.manage"))).toBeDefined();
+    btn(copyText("acct.menu.manage"))!.click();
+    expect(host.openSettings).toHaveBeenCalledWith("<local>");
   });
 
   it("★ 没有当前会话 ⇒ 同一个面板，只有底栏（新会话默认 · 管理账号…），不画轮换、不问会话", () => {
@@ -61,14 +62,13 @@ describe("账号面板", () => {
     toggleAccountPanel(null, "<local>", host);
   });
 
-  it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过、不出接入…，也不画轮换那几块", () => {
+  it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过，也不画轮换那几块", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: null }]]));
     const own = { account: "work", name: "work", when: "now" as const, from: null, accountLine: "自设那一句", fromLine: null, usage: null, stale: false, hover: [], sampled: null, differs: false, badge: null, queryable: true, ownUpstream: "自设那一句" };
     appStore.sessionAccount.set(new Map([["s1", { origin: "<local>", read: own }]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().textContent).toContain("自设那一句");
     expect(panel().textContent).not.toContain(copyText("acct.now.noRelay"));
-    expect(btn(copyText("acct.now.connect"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
     // 轮换那一格后来到了（中转账本里有它）也不画：上游是自设的，换号不适用 ⇒ 面板里只有那一条与底栏。
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));

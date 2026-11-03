@@ -26,7 +26,7 @@ use std::time::UNIX_EPOCH;
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
 ///
 /// 历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
+pub fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
     let live = matches!(life, WireLife::Live { .. });
     Can {
         resume: if live {
@@ -50,7 +50,7 @@ pub(crate) fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
 ///
 /// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
 /// 怎么说由调用方定：资产目录当零个项目。
-pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
+pub fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let Some(root) = records_root(agent_home) else {
         return Ok(false);
     };
@@ -117,7 +117,7 @@ fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
 const HIDDEN_DIR: &str = crate::common::own_dir::HIDDEN_WORK_DIR;
 
 /// 工作目录是 [`HIDDEN_DIR`] 的会话不出。**判据只在这一处**（项目清单按它摘组、观测侧按 pidfile 的目录不宣告）。
-pub(crate) fn hidden_cwd(cwd: &str) -> bool {
+pub fn hidden_cwd(cwd: &str) -> bool {
     crate::platform::paths::data_home().is_some_and(|home| hidden_cwd_in(&home, cwd))
 }
 
@@ -519,7 +519,7 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
 }
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
-pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
+pub fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
     label_facts_among(crate::agents::REGISTRY, p)
 }
 
@@ -551,7 +551,7 @@ pub(crate) fn label_facts_among(
 }
 
 /// 一份会话记录叫什么（同历史清单那一格，[`super::search_rules::session_label`]）：`custom` ＝ 这台注解里给它改的名。
-pub(crate) fn session_title_of(p: &Path, custom: Option<String>) -> String {
+pub fn session_title_of(p: &Path, custom: Option<String>) -> String {
     super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom,
         ..label_facts_of(p)
@@ -639,7 +639,7 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
 // `common/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
 
 /// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
-pub(crate) fn fence_under_projects(
+pub fn fence_under_projects(
     agent_home: &Path,
     candidate: &Path,
 ) -> Result<std::path::PathBuf, String> {
@@ -647,17 +647,17 @@ pub(crate) fn fence_under_projects(
 }
 
 /// 这台记录树的根（记录树那一家的布局，注册表 `RecordFace.tree`）。没有记录树那一家 ⇒ `None`。
-pub(crate) fn records_root(agent_home: &Path) -> Option<PathBuf> {
+pub fn records_root(agent_home: &Path) -> Option<PathBuf> {
     crate::agents::records_root(agent_home)
 }
 
 /// 注册表里没有记录树那一家时，按路径读的那几条拒的那一句。
-pub(crate) const NO_TREE: &str = "no agent here keeps a record tree";
+pub const NO_TREE: &str = "no agent here keeps a record tree";
 
 /// 帧面那几条要的「这台的 agent 家目录」—— 与 `stream/entry.rs` 的 `resolve_agent_home` **同一个出处**。
 ///
 /// 问注册表里后端盯着的那一家（`agents::home_at`），照进程环境解。
-pub(crate) fn agent_home() -> std::path::PathBuf {
+pub fn agent_home() -> std::path::PathBuf {
     crate::agents::home_at(None, true)
 }
 

@@ -18596,7 +18596,7 @@
     "rsDataPaths.backend.launchNotes": {
       "kind": "body",
       "role": "说明",
-      "zh": "起会话便条 · 启动时记下的账号 · 进程退出即清",
+      "zh": "起会话便条 · 启动时记下的账号 · 进程退出后清",
       "args": []
     },
     "rsDataPaths.backend.answerPlugin": {
@@ -18954,12 +18954,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "未实时显示 · 无用量 · 不自动轮换",
-      "args": []
-    },
-    "acct.now.connect": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "接入…",
       "args": []
     },
     "rsFilewinFind.action.searchMachine": {
