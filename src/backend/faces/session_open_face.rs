@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// `session-open`：起新的 · 恢复某条 · 接回，一个请求。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
-pub(crate) struct SessionOpen;
+pub struct SessionOpen;
 
 impl crate::wire::typed::Command for SessionOpen {
     crate::wire::typed::by_call!(open::SessionOpenReq);
@@ -105,7 +105,7 @@ pub(crate) fn with_launch_ctx_here<T>(
 }
 
 /// 起新会话要的那几下（写分支记录 · 先定 sid · 写 / 撤轮换）＋ 这台的家目录，交给 `f`。
-pub(crate) fn with_launch_ctx<T>(
+pub fn with_launch_ctx<T>(
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
     f: impl FnOnce(ForkWrite, &PreRotation, Option<&std::path::Path>) -> T,
@@ -137,12 +137,12 @@ pub(crate) fn with_launch_ctx<T>(
 
 /// 恢复那一条要从记录里读的：记录按 sid 在这台各家自己的记录根里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 任一找不到 ⇒ `None`（不恢复）。`session-say` 恢复那一支同一份。
-pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
+pub fn resume_of(sid: &str) -> Option<ResumeOf> {
     resume_in(&crate::history::listing::agent_home(), sid)
 }
 
 /// [`resume_of`] 在记录树 `home` 里找。
-pub(crate) fn resume_in(home: &std::path::Path, sid: &str) -> Option<ResumeOf> {
+pub fn resume_in(home: &std::path::Path, sid: &str) -> Option<ResumeOf> {
     use crate::observe::query::locate as hq;
     let home = home.to_path_buf();
     // 记录在不在交这台的会话账本（同 `history-record`：说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
@@ -198,7 +198,7 @@ fn hosted(launch: &cmd_wire::session::ForkLaunch) -> Option<bool> {
 }
 
 /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时那一条（[`open::default_run`]）。
-pub(crate) fn facts_run(fork_tmux: Option<bool>, tmux: bool, managed: bool) -> open::Launch {
+pub fn facts_run(fork_tmux: Option<bool>, tmux: bool, managed: bool) -> open::Launch {
     open::default_run(open::Intent::New { fork_tmux }, false, tmux, managed)
 }
 
@@ -218,7 +218,7 @@ pub(crate) fn facts_hosts(tmux: bool, managed: bool) -> Vec<open::Launch> {
 pub(crate) const RECENT_MAX: usize = 8;
 
 /// `session-open-dir`：起新会话前核一个目录（在不在 · 这台此刻会给它铸的终端名）。阻塞档：起一次 `tmux` 列会话、铸名。
-pub(crate) struct SessionOpenDir;
+pub struct SessionOpenDir;
 
 impl crate::wire::typed::Command for SessionOpenDir {
     const NAME: &'static str = "session-open-dir";
@@ -229,22 +229,17 @@ impl crate::wire::typed::Command for SessionOpenDir {
 
 impl crate::wire::typed::Handle for SessionOpenDir {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: crate::control::session_open::new::OpenDirReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<
-            crate::control::session_open::new::DirChecked,
-            crate::control::session_open::new::OpenDirErr,
-        >,
-    > + Send
-           + 'static {
-        async move {
-            let user_home = crate::platform::paths::home_dir();
-            super::session_batch_face::with_deps_as(None, "", None, |d| {
-                crate::control::session_open::new::dir_answer(&req, d, user_home.as_deref())
-            })
-        }
+    ) -> Result<
+        crate::control::session_open::new::DirChecked,
+        crate::control::session_open::new::OpenDirErr,
+    > {
+        let user_home = crate::platform::paths::home_dir();
+        super::session_batch_face::with_deps_as(None, "", None, |d| {
+            crate::control::session_open::new::dir_answer(&req, d, user_home.as_deref())
+        })
     }
 }
 
@@ -376,14 +371,14 @@ pub(crate) use cmd_wire::open::OpenFactsReq;
 
 crate::wire::typed::codes! {
     /// `session-open-facts` 的码。
-    pub(crate) enum OpenFactsErr {
+    pub enum OpenFactsErr {
         /// 分叉源会话的记录找不着 / 记录树读不出。
         ForkFailed = "fork_failed",
     }
 }
 
 /// `session-open-facts`：起新会话那个框要的事实（只读，不写分支记录）。阻塞档：扫各家记录目录 · 问一次 tmux。
-pub(crate) struct SessionOpenFacts;
+pub struct SessionOpenFacts;
 
 impl crate::wire::typed::Command for SessionOpenFacts {
     crate::wire::typed::by_call!(OpenFactsReq);
@@ -415,7 +410,7 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
 /// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
 pub(crate) fn facts(
     req: &OpenFactsReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<OpenFacts, crate::common::said::Said> {
     let fork_of = match req.fork_of.as_deref() {
         None => None,

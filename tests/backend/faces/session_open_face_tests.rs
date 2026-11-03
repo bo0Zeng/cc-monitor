@@ -13,7 +13,7 @@ fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
         ("/hidden".into(), 100),
     ];
     // 此刻 ＝ 1970-01-01 00:01（UTC）：40 ms、30 ms 都在当天 ⇒ 时刻字只写 `HH:MM`。
-    let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
+    let clock = crate::common::time::TextClock::new(60, &crate::common::time::Tz::default());
     // 那台家目录 `/home/x` ⇒ 显示形由这里写好（`~/a`），两端照抄。
     let home = Some(std::path::Path::new("/home/x"));
     let got = recent_dirs(&items, &|c| c == "/hidden", &clock, home);
@@ -199,7 +199,7 @@ fn the_new_session_facts_wire_names_its_cells() {
         v["models"][0],
         serde_json::json!({"value": "sonnet", "text": copy_core::copy_text("beSessionNew.model.sonnet", &[])})
     );
-    let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
+    let clock = crate::common::time::TextClock::new(60, &crate::common::time::Tz::default());
     let home = Some(std::path::Path::new("/home/x"));
     let r =
         serde_json::to_value(&recent_dirs(&[("/home/x/a".into(), 1)], &|_| false, &clock, home)[0])

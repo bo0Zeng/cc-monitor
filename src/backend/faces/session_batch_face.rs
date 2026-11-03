@@ -26,7 +26,7 @@ type Listing = fn() -> Result<Listed, crate::common::said::Said>;
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）；名单只认 tmux（起会话 · 就地键入只对 tmux 下手）。
 /// `files` ＝ 起之前预标信任经它写；`None` ＝ 这一趟不起会话（问样子 · 停 · 核目录）。
-pub(crate) fn with_deps_as<T>(
+pub fn with_deps_as<T>(
     client: Option<&str>,
     agent: &str,
     files: Option<Files>,
@@ -141,7 +141,7 @@ fn both_hosts_rows() -> Result<Listed, crate::common::said::Said> {
 
 typed::codes! {
     /// `sessions-where` · `sessions-stop` 的码（两条同一份：都先列一次这台的 tmux 名单）。
-    pub(crate) enum BatchErr {
+    pub enum BatchErr {
         /// 列不出这台的 tmux 名单。
         Unobservable = "unobservable",
         /// 列名单那一次 `tmux` 过了期限。
@@ -164,7 +164,7 @@ impl From<crate::common::said::Said> for BatchErr {
 }
 
 /// `sessions-where`：一批会话各在这台哪个终端里（菜单就绪时问）。
-pub(crate) struct SessionsWhere;
+pub struct SessionsWhere;
 
 impl Command for SessionsWhere {
     const NAME: &'static str = "sessions-where";
@@ -175,17 +175,16 @@ impl Command for SessionsWhere {
 
 impl crate::wire::typed::Handle for SessionsWhere {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: batch::SidsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<batch::Whereabouts, BatchErr>> + Send + 'static
-    {
-        async move { with_deps(req.client.as_deref(), |d| batch::where_(&req, d)) }
+    ) -> Result<batch::Whereabouts, BatchErr> {
+        with_deps(req.client.as_deref(), |d| batch::where_(&req, d))
     }
 }
 
 /// `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个）。
-pub(crate) struct SessionsStop;
+pub struct SessionsStop;
 
 impl Command for SessionsStop {
     const NAME: &'static str = "sessions-stop";
@@ -196,15 +195,13 @@ impl Command for SessionsStop {
 
 impl crate::wire::typed::Handle for SessionsStop {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: batch::SidsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
-        async move {
-            with_deps(req.client.as_deref(), |d| {
-                with_stop_faces(|faces| batch::stop(&req, d, faces))
-            })
-        }
+    ) -> Result<batch::Batched, BatchErr> {
+        with_deps(req.client.as_deref(), |d| {
+            with_stop_faces(|faces| batch::stop(&req, d, faces))
+        })
     }
 }
 

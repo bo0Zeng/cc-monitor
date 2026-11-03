@@ -107,7 +107,7 @@ fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judg
 
 crate::wire::typed::codes! {
     /// `rotation-temp` 自己的码。
-    pub(crate) enum RotationTempErr {
+    pub enum RotationTempErr {
         NoSession = "no_session",
         /// 那个号不在这台的账号里。
         NotListed = "not_listed",
@@ -118,7 +118,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-temp`：用户拖出来的顺序（到策略说该换的那一刻先用它）· 先不用的号（一判当用不了）。
-pub(crate) struct RotationTemp;
+pub struct RotationTemp;
 
 impl Command for RotationTemp {
     crate::wire::typed::by_call!(RotationTempReq);
@@ -230,7 +230,7 @@ pub(crate) fn temp_with(
 
 crate::wire::typed::codes! {
     /// `rotation-use-now` 自己的码。
-    pub(crate) enum RotationUseNowErr {
+    pub enum RotationUseNowErr {
         NoSession = "no_session",
         NotListed = "not_listed",
         /// 那个号事实上发不出去（被拒 · 没登录 · 没 key · 用满）。策略的上限不拦它。
@@ -240,7 +240,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-use-now`：当场换到这个号、放进拖出来的顺序最前（用户的手动操作，只拿事实拦）。
-pub(crate) struct RotationUseNow;
+pub struct RotationUseNow;
 
 impl Command for RotationUseNow {
     crate::wire::typed::by_call!(RotationUseNowReq);
@@ -307,7 +307,7 @@ pub(crate) fn use_now_with(
                     &req.account,
                     &row,
                     now,
-                    &crate::Tz::default(),
+                    &crate::common::time::Tz::default(),
                 )
                 .blocked
                 .map(|b| b.why);

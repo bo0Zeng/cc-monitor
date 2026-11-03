@@ -10,7 +10,7 @@ pub(crate) use cmd_wire::search::{HistorySearchReq, SearchScope};
 
 codes! {
     /// `history-search` 自己的码。
-    pub(crate) enum HistorySearchErr {
+    pub enum HistorySearchErr {
         /// 扫的那一趟失败（围栏 · 读目录）。
         Failed = "failed",
         /// 整份回包过了上限（不截断：截断的清单会被当成完整的用）。
@@ -19,7 +19,7 @@ codes! {
 }
 
 /// `history-search`：在这台的记录树里全文搜索。
-pub(crate) struct HistorySearch;
+pub struct HistorySearch;
 
 impl Command for HistorySearch {
     crate::wire::typed::by_call!(HistorySearchReq);
@@ -28,12 +28,11 @@ impl Command for HistorySearch {
 
 impl crate::wire::typed::Handle for HistorySearch {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistorySearchReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<HistorySearchReply, HistorySearchErr>> + Send + 'static
-    {
-        async move { search_here(req, cx.tz).await }
+    ) -> Result<HistorySearchReply, HistorySearchErr> {
+        search_here(req, cx.tz).await
     }
 }
 
@@ -145,17 +144,17 @@ pub(crate) fn search_at(
 
 /// `history-search-merge` 的入参：问哪几台（本机逐字 `"<local>"`）· 每台怎么搜（同 `history-search`）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistorySearchMergeReq {
+pub struct HistorySearchMergeReq {
     pub(crate) machines: Vec<cmd_wire::Machine>,
     pub(crate) search: HistorySearchReq,
 }
 
 codes! {
     /// `history-search-merge` 的码：本机那一台是必答的那一台，它没答上 ⇒ 整次照它的码失败；别的台没答上只进 `down`。
-    pub(crate) enum HistorySearchMergeErr {
+    pub enum HistorySearchMergeErr {
         /// 本机扫的那一趟失败（围栏 · 读目录）。
         Failed = "failed",
         /// 本机那一份回包过了上限。
@@ -165,7 +164,7 @@ codes! {
 
 /// `history-search-merge`：本机后端自己问到各台（本机同进程搜、别的台经 `--resident-call` 问它的常驻 `history-search`），
 /// 几台的结果合成一份再答（`face_core::search::merge`）。没答上的那几台照实进 `down`，别台照常。
-pub(crate) struct HistorySearchMerge;
+pub struct HistorySearchMerge;
 
 impl Command for HistorySearchMerge {
     const NAME: &'static str = "history-search-merge";
@@ -176,23 +175,20 @@ impl Command for HistorySearchMerge {
 
 impl crate::wire::typed::Handle for HistorySearchMerge {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistorySearchMergeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Merged, HistorySearchMergeErr>> + Send + 'static
-    {
-        async move {
-            let local = search_here(req.search.clone(), cx.tz.clone());
-            merge_with(
-                req,
-                local,
-                &cx.tz,
-                cx.until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-            )
-            .await
-        }
+    ) -> Result<Merged, HistorySearchMergeErr> {
+        let local = search_here(req.search.clone(), cx.tz.clone());
+        merge_with(
+            req,
+            local,
+            &cx.tz,
+            cx.until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+        )
+        .await
     }
 }
 

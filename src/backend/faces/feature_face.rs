@@ -16,12 +16,12 @@ use serde_json::Value;
 
 /// `tasks-list` 的入参。
 #[derive(Debug, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TasksListReq {
+pub struct TasksListReq {
     /// 会话 id（围栏在本体里：走出任务根 ⇒ `bad_args`）。
-    pub(crate) sid: String,
+    pub sid: String,
 }
 
 /// `tasks-list` 的回包（成品；线上形住 cmd-wire，`changed {tasks}` 带的也是这一份）。
@@ -29,7 +29,7 @@ pub(crate) use cmd_wire::tasks::TasksList;
 
 codes! {
     /// `tasks-list` 的码。
-    pub(crate) enum TasksListErr {
+    pub enum TasksListErr {
         /// 任务目录读不动。
         Failed = "failed",
         /// 整份过 [`crate::faces::read_face::LINES_CAP_BYTES`]（不截断）。
@@ -38,7 +38,7 @@ codes! {
 }
 
 /// `tasks-list`：一个会话的任务列表。
-pub(crate) struct TasksListCmd;
+pub struct TasksListCmd;
 
 impl Command for TasksListCmd {
     const NAME: &'static str = "tasks-list";
@@ -49,11 +49,11 @@ impl Command for TasksListCmd {
 
 impl crate::wire::typed::Handle for TasksListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TasksListReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<TasksList, TasksListErr>> + Send + 'static {
-        async move { tasks_at(&crate::history::listing::agent_home(), req) }
+    ) -> Result<TasksList, TasksListErr> {
+        tasks_at(&crate::history::listing::agent_home(), req)
     }
 }
 
@@ -77,14 +77,14 @@ pub(crate) fn tasks_at(
 
 codes! {
     /// `hooks-diag` 的码（只有整份过上限那一种；读不到 / 坏 JSON 是回包里的 `note`）。
-    pub(crate) enum HooksDiagErr {
+    pub enum HooksDiagErr {
         /// 整份超过上限（不截断）。
         TooLarge = "too_large",
     }
 }
 
 /// `hooks-diag`：cc-bus 钩子诊断（这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段）。
-pub(crate) struct HooksDiagCmd;
+pub struct HooksDiagCmd;
 
 impl Command for HooksDiagCmd {
     const NAME: &'static str = "hooks-diag";
@@ -96,39 +96,36 @@ impl Command for HooksDiagCmd {
 
 impl crate::wire::typed::Handle for HooksDiagCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr>,
-    > + Send
-           + 'static {
-        async move { capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge) }
+    ) -> Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr> {
+        capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
     }
 }
 
 /// `mcp-read` 的入参。
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct McpReadReq {
+pub struct McpReadReq {
     /// 项目目录（绝对路径；缺 · `null` ⇒ 不看项目那一段）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) project_dir: Option<String>,
 }
 
 codes! {
     /// `mcp-read` 的码。
-    pub(crate) enum McpReadErr {
+    pub enum McpReadErr {
         /// 整份超过上限（不截断）。
         TooLarge = "too_large",
     }
 }
 
 /// `mcp-read`：这台机器的 MCP 列表成品。
-pub(crate) struct McpReadCmd;
+pub struct McpReadCmd;
 
 impl Command for McpReadCmd {
     const NAME: &'static str = "mcp-read";
@@ -154,7 +151,10 @@ impl crate::wire::typed::Handle for McpReadCmd {
 
 /// [`McpReadCmd`] 的本体：读法住适配层那一格（`agents::mcp_read`，唯一声明了 MCP 读面的那一家），这里只换壳。
 /// `tz` ＝ 看的那一台的时区：成品里的时刻字按它写。`ext-list` 带本机那一格 `mcp` 也读它（`ext_list_face::with_mcp`）。
-pub(crate) fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpReadErr> {
+pub(crate) fn mcp_read_here(
+    req: &McpReadReq,
+    tz: &crate::common::time::Tz,
+) -> Result<McpReadReply, McpReadErr> {
     let dir = match req.project_dir.as_deref() {
         None => None,
         Some(d) => {
@@ -216,19 +216,19 @@ fn too_large(size: usize) -> String {
 
 /// [`mcp_reply`] 写字要的：这台活会话里说断开的那几个 · 此刻（unix 秒）与看的那一台的时区 · 读的是哪一家 · 哪个项目目录（项目级 · 本地级那几条的登录要它）。
 #[derive(Default)]
-pub(crate) struct McpSay<'a> {
+pub struct McpSay<'a> {
     pub failed: &'a [crate::observe::accounts_query::LiveMcpFailed],
     pub now_s: i64,
-    pub tz: crate::Tz,
+    pub tz: crate::common::time::Tz,
     pub kind: &'a str,
     pub project: Option<&'a str>,
 }
 
 /// `mcp-read` 的回包。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpReadReply {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpReadReply {
     pub entries: Vec<McpReadEntry>,
     /// agent 用户级配置里那张项目表的键（排序）：用过的项目目录。
     pub dirs: Vec<String>,
@@ -238,26 +238,32 @@ pub(crate) struct McpReadReply {
 
 /// `mcp-read` 的一条（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 钉）。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct McpReadEntry {
+pub struct McpReadEntry {
     /// 闭集 `user` · `local` · `project`（适配层那一格写的）。
-    #[cfg_attr(test, ts(type = "\"user\" | \"local\" | \"project\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"user\" | \"local\" | \"project\"")
+    )]
     pub scope: &'static str,
     pub name: String,
     /// 那一条配置原样（未知字段不丢）。
-    #[cfg_attr(test, ts(type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub server: Value,
     /// 读自哪一份文件。
     pub source_path: String,
     /// 配置层只说三种：`needsLogin` · `disabled` · `unknown`（不说连上了）。
-    #[cfg_attr(test, ts(type = "\"needsLogin\" | \"disabled\" | \"unknown\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"needsLogin\" | \"disabled\" | \"unknown\"")
+    )]
     pub status: crate::agents::McpStatus,
     /// `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
     pub login_in: Vec<String>,
     /// `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub seen_at: Option<u64>,
     /// 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
     pub mark: Option<McpMark>,
@@ -267,19 +273,19 @@ pub(crate) struct McpReadEntry {
 
 /// 小标那一种（闭集）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum McpMark {
+pub enum McpMark {
     NeedsLogin,
     Failed,
 }
 
 /// 需登录时写好的字：抽屉那一句 · 悬停那一截 · 每个要登的号怎么解（没设账号的那一份 ⇒ 一项、`account: null`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpLoginMark {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpLoginMark {
     pub said: String,
     pub tip: String,
     pub fix: Vec<crate::faces::login_face::McpLoginFix>,
@@ -287,9 +293,9 @@ pub(crate) struct McpLoginMark {
 
 /// 断开时写好的字：抽屉那一句 · 悬停那一截 · 那一家的原话（没写 ⇒ `null`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpFailedMark {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpFailedMark {
     pub said: String,
     pub tip: String,
     pub detail: Option<String>,
@@ -298,7 +304,7 @@ pub(crate) struct McpFailedMark {
 /// `mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
 /// 每条带写好的字（界面照抄）：`login`（需登录那一句 · 悬停那一截 · 复制的命令）· `failed`（断开那一句 · 悬停那一截 · 原话）·
 /// `mark`（小标画哪一种：断开压过需登录；停用的不连 ⇒ 不标断开）。
-pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadReply {
+pub fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadReply {
     use crate::agents::McpStatus;
     let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, &say.tz);
     let entries = r
@@ -387,11 +393,11 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
 mod tests;
 
 /// `session-terminals`：此刻是哪个终端在显示这个会话（↗ 点那一刻问一次）。阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。
-pub(crate) struct SessionTerminals;
+pub struct SessionTerminals;
 
 crate::wire::typed::codes! {
     /// `session-terminals` 自己的码。
-    pub(crate) enum SessionTerminalsErr {
+    pub enum SessionTerminalsErr {
         /// 这台没有在跑的这个会话。
         NoSuchSession = "no_such_session",
         /// 问 tmux 那一发没成（起不来 / 报错）。
@@ -410,18 +416,11 @@ impl crate::wire::typed::Command for SessionTerminals {
 
 impl crate::wire::typed::Handle for SessionTerminals {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: crate::observe::session_terminals::SidReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::session_terminals::Showing, SessionTerminalsErr>,
-    > + Send
-           + 'static {
-        async move {
-            crate::observe::session_terminals::answer_at(
-                &crate::history::listing::agent_home(),
-                &req,
-            )
+    ) -> Result<crate::observe::session_terminals::Showing, SessionTerminalsErr> {
+        crate::observe::session_terminals::answer_at(&crate::history::listing::agent_home(), &req)
             .map_err(|s| match s.code.as_deref() {
                 Some("bad_args") => SessionTerminalsErr::BadArgs(s.said),
                 Some("no_such_session") => SessionTerminalsErr::NoSuchSession(s.said),
@@ -430,6 +429,5 @@ impl crate::wire::typed::Handle for SessionTerminals {
                 }
                 _ => SessionTerminalsErr::Failed(s.said),
             })
-        }
     }
 }

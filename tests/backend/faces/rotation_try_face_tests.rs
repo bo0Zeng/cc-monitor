@@ -25,10 +25,10 @@ fn source() -> String {
 }
 
 fn settings() -> serde_json::Value {
-    (serde_json::json!({
+    serde_json::json!({
         "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]},
         "accounts": [{"id": "work"}, {"id": "team"}, {"id": "lab"}]
-    }))
+    })
 }
 
 /// ★ 在用的 work 2 分钟后到上限 ⇒ 这一判留着，推演里约 2 分钟后换到 team；每个号一行；没写盘。
@@ -44,7 +44,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
         a("team", 10.0, None),
         a("lab", 95.0, None),
     ];
-    let got = try_with(&req, &facts, NOW, &crate::Tz::default()).expect("ok");
+    let got = try_with(&req, &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
     assert_eq!(got.decision.pick.as_deref(), Some("work"));
     assert_eq!(
         got.decision.order,
@@ -107,12 +107,24 @@ fn use_now_switches_or_says_when() {
         use_now: Some(who.into()),
         ..Default::default()
     };
-    let got = try_with(&req("team"), &facts, NOW, &crate::Tz::default()).expect("ok");
+    let got = try_with(
+        &req("team"),
+        &facts,
+        NOW,
+        &crate::common::time::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(
         (got.decision.pick.as_deref(), got.decision.temp.clone()),
         (Some("team"), vec!["team".to_string()])
     );
-    let got = try_with(&req("lab"), &facts, NOW, &crate::Tz::default()).expect("ok");
+    let got = try_with(
+        &req("lab"),
+        &facts,
+        NOW,
+        &crate::common::time::Tz::default(),
+    )
+    .expect("ok");
     assert_eq!(
         got.decision.pick.as_deref(),
         Some("work"),
@@ -130,10 +142,12 @@ fn the_clock_words_follow_the_viewing_machine() {
         ..Default::default()
     };
     let facts = [a("work", 89.0, Some(0.5)), a("team", 10.0, None)];
-    let tz = crate::Tz::iana("Asia/Shanghai").expect("tz");
+    let tz = crate::common::time::Tz::iana("Asia/Shanghai").expect("tz");
     let face = |t: u64| crate::common::time::hm(tz.local(i64::try_from(t).expect("i64")));
     let utc = |t: u64| {
-        crate::common::time::hm(crate::Tz::default().local(i64::try_from(t).expect("i64")))
+        crate::common::time::hm(
+            crate::common::time::Tz::default().local(i64::try_from(t).expect("i64")),
+        )
     };
     let got = try_with(&req, &facts, NOW, &tz).expect("ok");
     let sw = got.timeline.switches.first().expect("换号");
@@ -166,7 +180,7 @@ fn each_use_carries_the_words_it_shows() {
         ..Default::default()
     };
     let facts = [a("work", 89.0, Some(0.5)), a("team", 10.0, None)];
-    let got = try_with(&req, &facts, NOW, &crate::Tz::default()).expect("ok");
+    let got = try_with(&req, &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
     assert!(!got.timeline.uses.is_empty());
     for u in &got.timeline.uses {
         let want = match &u.account {
@@ -175,7 +189,13 @@ fn each_use_carries_the_words_it_shows() {
         };
         assert_eq!(u.text, want, "{u:?}");
     }
-    let held = try_with(&req, &[a("work", 100.0, None)], NOW, &crate::Tz::default()).expect("ok");
+    let held = try_with(
+        &req,
+        &[a("work", 100.0, None)],
+        NOW,
+        &crate::common::time::Tz::default(),
+    )
+    .expect("ok");
     let first = held.timeline.uses.first().expect("一段");
     assert_eq!(
         (first.account.as_deref(), first.text.as_str()),
@@ -191,20 +211,15 @@ fn an_unreadable_source_is_refused_with_its_line() {
         source: "/*--- rotation\n{".into(),
         ..Default::default()
     };
-    match try_with(&req, &[], NOW, &crate::Tz::default()) {
+    match try_with(&req, &[], NOW, &crate::common::time::Tz::default()) {
         Err(RotationTryErr::BadStrategy(s)) => assert!(s.contains("line"), "{s}"),
         other => panic!("{other:?}"),
     }
 }
 
-/// ★ 登记成 typed：码表 `bad_args` · `bad_strategy`；入参多一格 ⇒ 解不出。
+/// ★ 入参多一格 ⇒ 解不出。登记表里的码表（`bad_args` · `bad_strategy`）读命令表 ⇒ `on_upper_tests`。
 #[test]
-fn it_is_registered_typed() {
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "rotation-try")
-        .expect("登记了");
-    assert_eq!(spec.codes, ["bad_args", "bad_strategy"]);
+fn it_refuses_fields_it_does_not_use() {
     assert!(serde_json::from_value::<RotationTryReq>(
         serde_json::json!({"source": "", "sid": "x"})
     )

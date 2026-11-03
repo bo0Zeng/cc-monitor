@@ -292,6 +292,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-faces"
+version = "0.0.0"
+dependencies = [
+ "acct-core",
+ "backend-accounts",
+ "backend-agents",
+ "backend-assets",
+ "backend-common",
+ "backend-control",
+ "backend-dial",
+ "backend-footprint",
+ "backend-history",
+ "backend-host",
+ "backend-observe",
+ "backend-plan",
+ "backend-platform",
+ "backend-relay",
+ "backend-wire",
+ "batch-core",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "creds-core",
+ "face-core",
+ "guard-core",
+ "md-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "backend-files"
 version = "0.0.0"
 dependencies = [
@@ -721,6 +760,7 @@ dependencies = [
  "backend-common",
  "backend-control",
  "backend-dial",
+ "backend-faces",
  "backend-files",
  "backend-footprint",
  "backend-history",

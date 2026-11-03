@@ -35,7 +35,7 @@ fn ask(home: &Path, v: serde_json::Value) -> Result<serde_json::Value, HistoryFa
         home,
         req(v).expect("入参该读得进"),
         &limits,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     )
     .map(|r| serde_json::to_value(r).unwrap())
 }

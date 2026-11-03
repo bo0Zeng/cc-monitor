@@ -2,124 +2,11 @@
 //!
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
+use super::test_support::{answer_at, FAMILY};
 use super::*;
 use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-
-/// 本族的应答：`data` 或失败（码 ＋ 那一句）（判据这一层按登记表那一层的做法走一遍之后的样子）。
-type Answer = Result<Value, crate::common::said::Said>;
-
-/// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
-///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
-fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -> Answer {
-    use crate::faces::history_face as h;
-    use crate::wire::typed::{take, Codes, Command};
-    fn via<C: Command>(
-        args: &serde_json::Value,
-        f: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
-    ) -> Answer {
-        let code = |c: &str| -> &'static str {
-            <C::Err as Codes>::ALL
-                .iter()
-                .find(|k| **k == c)
-                .copied()
-                .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
-        };
-        let req = take::<C::Req>(args)
-            .map_err(|e| crate::common::said::Said::new(code(e.code_or_fallback()), e.said))?;
-        let got = f(req).map_err(|e| {
-            let fail = e.into_said();
-            crate::common::said::Said::new(code(fail.code_or_fallback()), fail.said)
-        })?;
-        Ok(serde_json::to_value(got).unwrap())
-    }
-    match cmd {
-        "history-read" => via::<h::HistoryReadCmd>(args, |r| h::read_at(home, r, tz)),
-        "history-page" => via::<h::HistoryPageCmd>(args, |r| h::page_at(home, r, tz)),
-        "history-lines" => via::<h::HistoryLinesCmd>(args, |r| h::lines_at(home, r, tz)),
-        "history-image" => via::<h::HistoryImageCmd>(args, |r| h::image_at(home, r)),
-        "history-run" => via::<h::HistoryRunCmd>(args, |r| h::run_at(home, r, tz)),
-        "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
-        "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r, tz)),
-        "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
-        "sessions-needs" => {
-            via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home, &[], Ok(Vec::new()))))
-        }
-        "history-index" => via::<h::HistoryIndexCmd>(args, |r| h::index_at(home, r)),
-        "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
-        "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
-        "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
-        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| {
-            // 上限表住这台的偏好：夹具家目录里那份 `prefs.json`（没有 ⇒ 空表）。
-            let limits =
-                crate::common::machine_prefs::read_at(&crate::common::machine_prefs::path_in(home))
-                    .prefs()
-                    .limits();
-            h::facts_at(home, r, &limits, tz)
-        }),
-        "backend-log" => via::<super::BackendLog>(args, |r| {
-            crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(
-                r,
-                crate::wire::typed::Cx {
-                    tz: tz.clone(),
-                    until: None,
-                    needs: (),
-                },
-            ))
-        }),
-        "machine-interrupts" => {
-            via::<super::MachineInterrupts>(args, |r| Ok(super::interrupts_at(home, &r)))
-        }
-        "accounts-list" => via::<super::AccountsListCmd>(args, |r| {
-            crate::wire::spec::finish(<super::AccountsListCmd as crate::wire::typed::Handle>::run(
-                r,
-                crate::wire::typed::Cx {
-                    tz: tz.clone(),
-                    until: None,
-                    needs: (),
-                },
-            ))
-        }),
-        other => Err(crate::common::said::Said::new(
-            "bad_args",
-            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
-        )),
-    }
-}
-
-/// 本族的八条帧命令 —— **要求点名的那八条**，
-/// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
-/// `read_face::answer`」，两边必须相等。
-/// +2：`history-index` / `history-user-inputs`（要求「`--list-user-inputs` 与骨架
-/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是手抄的要求，不是 `stream/inbound/`）。
-const FAMILY: &[&str] = &[
-    "accounts-list",
-    "machine-interrupts",
-    "history-index",
-    "history-user-inputs",
-    // 按行号取回（异源是手抄的要求「后端给『从第 N 行起 k 行』的读口」，不是 `stream/inbound/`）。
-    "history-lines",
-    // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。
-    "history-image",
-    // 会话内查找。
-    "history-find",
-    // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
-    "history-facts",
-    // 这台上需手动的会话清单（异源是手机端的要求「一次问一台，不是一条一问」，不是 `stream/inbound/`）。
-    "sessions-needs",
-    // 主线外清单的冷读（共用扫描图）。
-    "history-branch",
-    "history-turns",
-    "history-read",
-    // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
-    "history-record",
-    // 按字节分页出记录行（异源是手抄的要求，不是 `stream/inbound/`）。
-    // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `stream/inbound/`）。
-    "history-run",
-    "history-page",
-    "history-tail",
-];
 
 fn scratch(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("c1-read-face-{tag}-{}", std::process::id()));
@@ -206,13 +93,7 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
         got, want,
         "交给 `read_face::answer` 的帧命令与要求点名的那几条不相等"
     );
-    // 那八条也都真在 `hello.commands` 里（`command_names`，从注册表派生）。
-    for n in FAMILY {
-        assert!(
-            crate::stream::inbound::command_names().contains(n),
-            "`{n}` 不在 `inbound::command_names()` —— hello 不会宣告它，monitor 的 `accepts` 会拒"
-        );
-    }
+    // 那八条也都真在 `hello.commands` 里：读命令表 ⇒ 挂主 crate（`on_upper_tests`）。
 }
 
 /// ★ 本宿主对八条**每一条**都有自己的臂（不是落进兜底那句「本族不认识」）；兜底对别的名字成立（正控）。
@@ -1419,102 +1300,12 @@ fn find_hits_carry_their_time_text() {
     let ms = crate::common::time::parse_iso8601_ms(ts).unwrap();
     assert_eq!(
         v["hits"][0]["tsText"],
-        crate::common::time::hit_text(ms, &crate::Tz::default()).as_str()
+        crate::common::time::hit_text(ms, &crate::common::time::Tz::default()).as_str()
     );
     assert!(v["hits"][0]["tsText"]
         .as_str()
         .is_some_and(|t| t.contains(':')));
     assert_eq!(v["hits"][1]["tsText"], "", "读不出时刻 ⇒ 空串");
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// ★ **「记录正文按需」那份声明真的作用在三条读记录命令上，而且两头都断。**
-///
-/// 挑格去格的本体（`faces/project.rs`）由 `project_tests` 逐格钉着；本条钉的是**这几条命令登记的成品住处**
-/// （`stream/inbound/views.rs::PLACES`）对得上它们真出的应答：照那一处投影之后，工具入参与工具结果正文一个不剩、
-/// 正文与推理一格不少、条数与 `next` / `eof` 一类的格不变。住处登记错了（`lines[].record` 写成 `rows[].record`），
-/// 投影就落空、应答原样 —— 前一头会红。
-///
-/// 两头都断：不带声明 ⇒ 去掉的那几样**必须**在（夹具打到了）；带了 ⇒ 一个不剩，且只少了它们。
-#[test]
-fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
-    let home = scratch("body-on-demand");
-    let dir = home.join("projects").join("-p");
-    std::fs::create_dir_all(&dir).unwrap();
-    let p = dir.join("s.jsonl");
-    // 结构占位：`ZQBODY-*` 只住工具入参与工具结果，`ZQKEEP-*` 住正文 · 推理 · 人说的话 —— 不采任何真会话正文。
-    let body = [
-        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-asked"}]}}"#,
-        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQKEEP-think"},{"type":"text","text":"ZQKEEP-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}]}}"#,
-        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQKEEP-preview\nZQBODY-result"}]}}"#,
-    ]
-    .iter()
-    .map(|r| format!("{r}\n"))
-    .collect::<String>();
-    std::fs::write(&p, &body).unwrap();
-    let path = p.to_string_lossy().to_string();
-    const GONE: &[&str] = &["ZQBODY-input", "ZQBODY-result"];
-    // 结果的首行预览（`results.*.preview`）是核心另出的一格：省掉结果正文之后它照样在。
-    const KEPT: &[&str] = &[
-        "ZQKEEP-asked",
-        "ZQKEEP-think",
-        "ZQKEEP-said",
-        "ZQKEEP-preview",
-    ];
-    let view = serde_json::json!({"omit": {"record": [
-        "blocks[type=tool_use].input",
-        "blocks[type=tool_result].content",
-        "results.*.patch",
-    ]}});
-
-    // 三条各自的入参与装成品的那一格。
-    let cases: [(&str, serde_json::Value, &str); 3] = [
-        ("history-read", serde_json::json!({"path": path}), "rows"),
-        ("history-page", serde_json::json!({"path": path}), "lines"),
-        (
-            "history-lines",
-            serde_json::json!({"path": path, "from": 0}),
-            "lines",
-        ),
-    ];
-    for (cmd, args, key) in cases {
-        let full = answer_at(&home, cmd, &args, &Default::default())
-            .unwrap_or_else(|e| panic!("`{cmd}` 答错了（{:?}）：{}", e.code, e.said));
-        let plan = crate::stream::inbound::views::plan_for(cmd, &view)
-            .unwrap_or_else(|f| panic!("`{cmd}` 不收这份声明：{f:?}"));
-        let fold = plan.apply(Some(full.clone())).unwrap();
-        let text = |v: &serde_json::Value| serde_json::to_string(&v[key]).unwrap();
-        let count = |v: &serde_json::Value| v[key].as_array().map_or(0, Vec::len);
-
-        // ── 不带声明：去掉的那几样**必须**在 ──
-        let t = text(&full);
-        for m in GONE.iter().chain(KEPT) {
-            assert!(
-                t.contains(m),
-                "`{cmd}` 全量里没有 `{m}` —— 夹具没打到（下面那一半会恒绿）"
-            );
-        }
-        // ── 带了：工具那几格一个不剩，正文一格不少，条数一条不少 ──
-        let t = text(&fold);
-        for m in GONE {
-            assert!(!t.contains(m), "`{cmd}` 照声明去过之后还在给 `{m}`：{t}");
-        }
-        for m in KEPT {
-            assert!(t.contains(m), "`{cmd}` 把正文 `{m}` 也去掉了");
-        }
-        assert_eq!(count(&fold), count(&full), "`{cmd}` 去的该是格，不是行");
-        assert_eq!(count(&fold), 3, "`{cmd}` 的夹具三行都该出成品");
-        let strip = |v: &serde_json::Value| {
-            let mut o = v.as_object().unwrap().clone();
-            o.remove(key);
-            o
-        };
-        assert_eq!(
-            strip(&fold),
-            strip(&full),
-            "`{cmd}` 的 `{key}` 之外的格也变了"
-        );
-    }
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -1679,46 +1470,6 @@ fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
         "needs.rank 不是先答序那一处算的"
     );
     (ms, rest)
-}
-
-/// ★ 事实回包照声明投影、没有例外：去掉 `touchedFiles` ⇒ 其余与不带声明那一份逐字相同；点名回包里没有的 `end` · `rev` ⇒ `bad_args`。
-#[test]
-fn a_projected_facts_reply_is_the_whole_one_minus_what_it_omits() {
-    let home = scratch("facts-view");
-    let dir = home.join("projects").join("-p");
-    std::fs::create_dir_all(&dir).unwrap();
-    let p = dir.join("s.jsonl");
-    std::fs::write(
-        &p,
-        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"tool_use","id":"t-a1","name":"Edit","input":{"file_path":"/w/one.txt","old_string":"a","new_string":"b"}}],"usage":{"input_tokens":3,"output_tokens":4}}}"#.to_string() + "\n",
-    )
-    .unwrap();
-    let ask = || {
-        answer_at(
-            &home,
-            "history-facts",
-            &serde_json::json!({ "path": p.to_string_lossy() }),
-            &Default::default(),
-        )
-        .unwrap()
-    };
-    let whole = ask();
-    assert_eq!(
-        whole["touchedFiles"],
-        serde_json::json!(["/w/one.txt"]),
-        "夹具没打到（下面那一半会恒绿）"
-    );
-    let view = serde_json::json!({"omit": {"facts": ["touchedFiles"]}});
-    let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
-    let mut want = whole.clone();
-    want.as_object_mut().unwrap().remove("touchedFiles");
-    assert_eq!(plan.apply(Some(ask())).unwrap(), want);
-    for gone in ["end", "rev"] {
-        let view = serde_json::json!({"omit": {"facts": [gone]}});
-        let e = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap_err();
-        assert_eq!(e.code.as_deref(), Some("bad_args"), "{gone}");
-    }
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 帧面骨架索引按列装回的逐行（判据用：与夹具逐行比）。

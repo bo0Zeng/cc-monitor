@@ -8,7 +8,7 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// `session-commands` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::session::SessionCommandsReq;
+pub use cmd_wire::session::SessionCommandsReq;
 
 /// `session-commands` 的回包与它引到的几样：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::{
@@ -17,14 +17,14 @@ pub(crate) use cmd_wire::session::{
 
 typed::codes! {
     /// `session-commands` 的码。
-    pub(crate) enum SessionCommandsErr {
+    pub enum SessionCommandsErr {
         /// 这台找不到这条会话的记录。
         NoSuchSession = "no_such_session",
     }
 }
 
 /// `session-commands`：一条会话能用的命令与 Skill。阻塞档（读记录开头 · 扫几个目录）。
-pub(crate) struct SessionCommandsCmd;
+pub struct SessionCommandsCmd;
 
 impl Command for SessionCommandsCmd {
     typed::by_call!(SessionCommandsReq);
@@ -33,12 +33,11 @@ impl Command for SessionCommandsCmd {
 
 impl crate::wire::typed::Handle for SessionCommandsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: SessionCommandsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionCommands, SessionCommandsErr>> + Send + 'static
-    {
-        async move { answer(&req).map_err(|f| typed::of_fail(f, SessionCommandsErr::NoSuchSession)) }
+    ) -> Result<SessionCommands, SessionCommandsErr> {
+        answer(&req).map_err(|f| typed::of_fail(f, SessionCommandsErr::NoSuchSession))
     }
 }
 

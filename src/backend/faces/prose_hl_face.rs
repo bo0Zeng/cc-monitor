@@ -23,14 +23,14 @@ static HIGHLIGHTER: LazyLock<Mutex<md_core::Highlighter>> =
 
 typed::codes! {
     /// `prose-hl` 的码。
-    pub(crate) enum ProseHlErr {
+    pub enum ProseHlErr {
         /// 那一段的代码原文超过 [`PROSE_HL_REQ_CAP`]。
         TooLarge = "too_large",
     }
 }
 
 /// `prose-hl`：一段的代码块 ⇒ 各自的高亮。
-pub(crate) struct ProseHlCmd;
+pub struct ProseHlCmd;
 
 impl Command for ProseHlCmd {
     const NAME: &'static str = "prose-hl";
@@ -41,15 +41,10 @@ impl Command for ProseHlCmd {
 
 impl typed::Handle for ProseHlCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
-        req: ProseHlReq,
-        _cx: typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SegHl, ProseHlErr>> + Send + 'static {
-        async move {
-            // 锁坏了（别处算到一半 panic）照样接着用：缓存里只有算完的条目。
-            let mut hl = HIGHLIGHTER.lock().unwrap_or_else(|e| e.into_inner());
-            seg_hl(&mut hl, req)
-        }
+    async fn run(req: ProseHlReq, _cx: typed::Cx<Self::Needs>) -> Result<SegHl, ProseHlErr> {
+        // 锁坏了（别处算到一半 panic）照样接着用：缓存里只有算完的条目。
+        let mut hl = HIGHLIGHTER.lock().unwrap_or_else(|e| e.into_inner());
+        seg_hl(&mut hl, req)
     }
 }
 

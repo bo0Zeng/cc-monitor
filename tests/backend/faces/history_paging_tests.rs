@@ -92,7 +92,7 @@ const CAP: usize = 4 << 10;
 fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
     let home = scratch("whole");
     let path = fixture(&home, "s-whole", 120, 300);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
 
     // 骨架索引：从 0 起（扫描图）· 照 next 接着问（图留着 ⇒ 切）；拼起来的逐行 == 一页装下的那一份。
     let whole = index_page(
@@ -262,7 +262,7 @@ fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
 fn pages_from_the_middle_after_the_record_grew_still_add_up() {
     let home = scratch("file");
     let path = fixture(&home, "s-file", 80, 200);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let first = index_page(
         &home,
         HistoryIndexReq {
@@ -344,7 +344,7 @@ fn a_page_from_the_middle_is_the_same_whether_the_scan_map_is_held_or_not() {
     let home = scratch("held");
     let held = fixture(&home, "s-held", 40, 50);
     let cold = fixture(&home, "s-cold", 40, 50);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let inputs = |path: &str, from: Option<u64>| {
         user_inputs_page(
             &home,
@@ -440,7 +440,7 @@ fn limit_caps_the_rows_of_one_page() {
 fn an_item_bigger_than_the_cap_goes_alone_on_its_page() {
     let home = scratch("alone");
     let path = fixture(&home, "s-alone", 6, 10);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let cap = ENVELOPE_BYTES + 64; // 比任何一轮都小
     let mut at = None;
     let mut n = 0;
@@ -472,7 +472,7 @@ fn an_item_bigger_than_the_cap_goes_alone_on_its_page() {
 fn cover_starts_at_the_turn_holding_it_and_to_stops_before_it() {
     let home = scratch("cover");
     let path = fixture(&home, "s-cover", 12, 20);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let ask = |req: HistoryTurnsReq| turns_page(&home, req, &tz, usize::MAX).unwrap();
     let whole = ask(HistoryTurnsReq {
         path: path.clone(),

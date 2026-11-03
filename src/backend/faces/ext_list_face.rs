@@ -9,7 +9,7 @@ use crate::wire::typed::{self, codes, Command};
 /// `ext-list`：这台现扫一次、记下（资产目录的写口从这里递进去），各台目录合成「条目 × 机器」；表里有 MCP 行 ⇒
 /// 各台那一格 `mcp` 由这台问到再交（[`with_mcp`]：本机就地读，别的台经常驻流问 `mcp-read`），界面只问这一条。
 /// 异步档：扫目录与本机那一份 `mcp-read` 进阻塞池，问各台在异步那一侧等。
-pub(crate) struct ExtListCmd;
+pub struct ExtListCmd;
 
 impl Command for ExtListCmd {
     const NAME: &'static str = "ext-list";
@@ -108,7 +108,7 @@ where
 
 codes! {
     /// `ext-uninstall-preview` 的码。
-    pub(crate) enum UninstallPreviewErr {
+    pub enum UninstallPreviewErr {
         /// 那份配置文件读不懂。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径 · 名字带分隔符。
@@ -125,7 +125,7 @@ codes! {
 }
 
 /// `ext-uninstall-preview`：从这台卸一个扩展之前那张卡。
-pub(crate) struct ExtUninstallPreviewCmd;
+pub struct ExtUninstallPreviewCmd;
 
 impl Command for ExtUninstallPreviewCmd {
     const NAME: &'static str = "ext-uninstall-preview";
@@ -154,7 +154,7 @@ impl crate::wire::typed::Handle for ExtUninstallPreviewCmd {
 
 codes! {
     /// `ext-uninstall-apply` 的码。
-    pub(crate) enum UninstallApplyErr {
+    pub enum UninstallApplyErr {
         /// 那份配置文件读不懂。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径 · 名字带分隔符。
@@ -175,7 +175,7 @@ codes! {
 }
 
 /// `ext-uninstall-apply`：从这台卸一个扩展。
-pub(crate) struct ExtUninstallApplyCmd;
+pub struct ExtUninstallApplyCmd;
 
 impl Command for ExtUninstallApplyCmd {
     const NAME: &'static str = "ext-uninstall-apply";

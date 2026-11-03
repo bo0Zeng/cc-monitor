@@ -202,7 +202,7 @@ fn a_line_with_attachments_types_what_the_agent_adapter_wrote() {
         .join(".ccm-attach/1023-1529-a3f2/a.png")
         .display()
         .to_string();
-    assert_eq!(typed.pastes, [abs.clone()]);
+    assert_eq!(typed.pastes, std::slice::from_ref(&abs));
     assert_eq!(
         typed.text,
         "截图在这\n@.ccm-attach/1023-1529-7c01/login.css"

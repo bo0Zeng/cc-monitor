@@ -27,15 +27,15 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 /// 这台 key 表的几口，由门递进来（生产：`stream/inbound/` 递 `file_face` 那几个；判据给落在临时目录上的那一份）。
-pub(crate) struct KeyDoor<'a> {
+pub struct KeyDoor<'a> {
     /// 写一个号的 key（同 `apikey-key-set`）。
-    pub(crate) set: &'a dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Said>,
+    pub set: &'a dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Said>,
     /// 摘掉一个号那一行（`{configDir}`）。
-    pub(crate) drop: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    pub drop: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
     /// 从备份那一份放回一个号那一行（`{configDir, from}`）。
-    pub(crate) restore: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    pub restore: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
     /// 那份表在哪。
-    pub(crate) path: &'a dyn Fn() -> Result<PathBuf, String>,
+    pub path: &'a dyn Fn() -> Result<PathBuf, String>,
 }
 
 /// 改账号库那几条的本体（入参已由 typed 那一处收好）。key 表那几口由门递进来（[`KeyDoor`]）；
@@ -134,7 +134,7 @@ pub(crate) fn change(
 
 crate::wire::typed::codes! {
     /// `apikey-key-set` 的码。
-    pub(crate) enum KeySetErr {
+    pub enum KeySetErr {
         /// 现有文件解析不了：拒绝、不覆盖。
         BadFile = "bad_file",
         /// 读写盘没成 · 推不出那份文件在哪。
@@ -143,7 +143,7 @@ crate::wire::typed::codes! {
 }
 
 /// `apikey-key-set`：给一个账号写 key，写完读回（本体 `accounts/upstream_select/file_face.rs`；同步文件 I/O ⇒ 阻塞档；写经分派那一层递的写句柄）。
-pub(crate) struct ApikeyKeySet;
+pub struct ApikeyKeySet;
 
 impl crate::wire::typed::Command for ApikeyKeySet {
     const NAME: &'static str = "apikey-key-set";
@@ -154,15 +154,12 @@ impl crate::wire::typed::Command for ApikeyKeySet {
 
 impl crate::wire::typed::Handle for ApikeyKeySet {
     type Needs = crate::wire::typed::needs::Own;
-    fn run(
+    async fn run(
         req: file_face::KeySetReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<file_face::KeySet, KeySetErr>> + Send + 'static
-    {
-        async move {
-            file_face::answer_set(&req, &cx.needs)
-                .map_err(|f| crate::wire::typed::of_fail(f, KeySetErr::IoFailed))
-        }
+    ) -> Result<file_face::KeySet, KeySetErr> {
+        file_face::answer_set(&req, &cx.needs)
+            .map_err(|f| crate::wire::typed::of_fail(f, KeySetErr::IoFailed))
     }
 }
 
@@ -182,7 +179,7 @@ fn with_account_keys<R>(own: &crate::platform::Own, f: impl FnOnce(&KeyDoor<'_>)
 
 typed::codes! {
     /// 改账号库那几条（init · add · remove · set-default · repair · rollback）可能回的码。
-    pub(crate) enum ChangeErr {
+    pub enum ChangeErr {
         /// 读写盘没成（原话里是系统那一句）。
         IoFailed = "io_failed",
         /// 这台还没建账号库。
@@ -196,7 +193,7 @@ typed::codes! {
 
 typed::codes! {
     /// `accounts-verify` 可能回的码。
-    pub(crate) enum VerifyErr {
+    pub enum VerifyErr {
         IoFailed = "io_failed",
         Unsupported = "unsupported",
     }
@@ -204,7 +201,7 @@ typed::codes! {
 
 typed::codes! {
     /// `accounts-login-cmd` 可能回的码。
-    pub(crate) enum LoginCmdErr {
+    pub enum LoginCmdErr {
         IoFailed = "io_failed",
         /// 不认识这个号。
         Refused = "refused",
@@ -214,7 +211,7 @@ typed::codes! {
 
 typed::codes! {
     /// `accounts-mcp-read` · `accounts-mcp-sync` 可能回的码。
-    pub(crate) enum McpErr {
+    pub enum McpErr {
         IoFailed = "io_failed",
         /// 停着同步时不许挑 · 这台没有账号库 …
         Refused = "refused",
@@ -223,7 +220,7 @@ typed::codes! {
 
 typed::codes! {
     /// `accounts-mcp-remove` · `accounts-mcp-pick` 可能回的码。
-    pub(crate) enum McpEditErr {
+    pub enum McpEditErr {
         IoFailed = "io_failed",
         /// 共享集合里与哪个号里都没有这一条。
         NotFound = "not_found",
@@ -243,7 +240,7 @@ fn change_with(
 }
 
 /// `accounts-init`：建账号库，把这台现在登录的那个身份收成默认号。
-pub(crate) struct AccountsInit;
+pub struct AccountsInit;
 
 impl Command for AccountsInit {
     const NAME: &'static str = "accounts-init";
@@ -268,7 +265,7 @@ impl crate::wire::typed::Handle for AccountsInit {
 }
 
 /// `accounts-add`：新建一个号（订阅号可导入凭据；API 号的 key 写进这台的 key 表）。
-pub(crate) struct AccountsAdd;
+pub struct AccountsAdd;
 
 impl Command for AccountsAdd {
     const NAME: &'static str = "accounts-add";
@@ -293,7 +290,7 @@ impl crate::wire::typed::Handle for AccountsAdd {
 }
 
 /// `accounts-remove`：删一个号。
-pub(crate) struct AccountsRemove;
+pub struct AccountsRemove;
 
 impl Command for AccountsRemove {
     const NAME: &'static str = "accounts-remove";
@@ -318,7 +315,7 @@ impl crate::wire::typed::Handle for AccountsRemove {
 }
 
 /// `accounts-set-default`：设默认号。
-pub(crate) struct AccountsSetDefault;
+pub struct AccountsSetDefault;
 
 impl Command for AccountsSetDefault {
     const NAME: &'static str = "accounts-set-default";
@@ -343,7 +340,7 @@ impl crate::wire::typed::Handle for AccountsSetDefault {
 }
 
 /// `accounts-repair`：修复账号库（幂等）。
-pub(crate) struct AccountsRepair;
+pub struct AccountsRepair;
 
 impl Command for AccountsRepair {
     const NAME: &'static str = "accounts-repair";
@@ -368,7 +365,7 @@ impl crate::wire::typed::Handle for AccountsRepair {
 }
 
 /// `accounts-rollback`：按一份备份还原。
-pub(crate) struct AccountsRollback;
+pub struct AccountsRollback;
 
 impl Command for AccountsRollback {
     const NAME: &'static str = "accounts-rollback";
@@ -393,7 +390,7 @@ impl crate::wire::typed::Handle for AccountsRollback {
 }
 
 /// `accounts-verify`：先对齐账号库（缺的共享链接补上），再把链接 · 权限 · 邮箱逐项核一遍。
-pub(crate) struct AccountsVerify;
+pub struct AccountsVerify;
 
 impl Command for AccountsVerify {
     const NAME: &'static str = "accounts-verify";
@@ -419,7 +416,7 @@ impl crate::wire::typed::Handle for AccountsVerify {
 }
 
 /// `accounts-login-cmd`：在终端里登录一个号的那一行（「⋯」里的逃生口用）。
-pub(crate) struct AccountsLoginCmd;
+pub struct AccountsLoginCmd;
 
 impl Command for AccountsLoginCmd {
     const NAME: &'static str = "accounts-login-cmd";
@@ -445,7 +442,7 @@ impl crate::wire::typed::Handle for AccountsLoginCmd {
 }
 
 /// `accounts-mcp-read`：这台各号共用的用户级 MCP 此刻的样子（只读）。
-pub(crate) struct AccountsMcpRead;
+pub struct AccountsMcpRead;
 
 impl Command for AccountsMcpRead {
     const NAME: &'static str = "accounts-mcp-read";
@@ -471,7 +468,7 @@ impl crate::wire::typed::Handle for AccountsMcpRead {
 }
 
 /// `accounts-mcp-remove`：从各号共用的用户级 MCP 里删一条（所有号一起撤）。
-pub(crate) struct AccountsMcpRemove;
+pub struct AccountsMcpRemove;
 
 impl Command for AccountsMcpRemove {
     const NAME: &'static str = "accounts-mcp-remove";
@@ -498,7 +495,7 @@ impl crate::wire::typed::Handle for AccountsMcpRemove {
 }
 
 /// `accounts-mcp-pick`：两边都改了的那一条用哪一版。
-pub(crate) struct AccountsMcpPick;
+pub struct AccountsMcpPick;
 
 impl Command for AccountsMcpPick {
     const NAME: &'static str = "accounts-mcp-pick";
@@ -525,7 +522,7 @@ impl crate::wire::typed::Handle for AccountsMcpPick {
 }
 
 /// `accounts-mcp-sync`：停 / 开各号之间同步用户级 MCP。
-pub(crate) struct AccountsMcpSync;
+pub struct AccountsMcpSync;
 
 impl Command for AccountsMcpSync {
     const NAME: &'static str = "accounts-mcp-sync";
@@ -673,6 +670,12 @@ fn aliases_path_hint(d: &dyn Door) -> String {
         .map(|h| aliases::profile::path_in(&h))
         .unwrap_or_default()
 }
+
+// 按名字跑一条：本宿主的判据与主 crate 里别族的判据（MCP 共用 · 信任共用 · 登录 MCP）借它搭夹具。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/faces/accounts_face_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/accounts_face_tests.rs"]
-pub(crate) mod tests;
+mod tests;

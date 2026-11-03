@@ -18,11 +18,11 @@ use std::future::Future;
 
 codes! {
     /// `terminals-end` 自己没有别的码（哪台没成只进那一组的逐条结局）。
-    pub(crate) enum TerminalsEndErr {}
+    pub enum TerminalsEndErr {}
 }
 
 /// `terminals-end`：一批终端跨几台（本机同进程结束，别的台经常驻问它自己那一组），合成一份再答。
-pub(crate) struct TerminalsEndCmd;
+pub struct TerminalsEndCmd;
 
 impl Command for TerminalsEndCmd {
     const NAME: &'static str = "terminals-end";
@@ -33,23 +33,21 @@ impl Command for TerminalsEndCmd {
 
 impl crate::wire::typed::Handle for TerminalsEndCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalsEndReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl Future<Output = Result<TerminalsEndReply, TerminalsEndErr>> + Send + 'static {
-        async move {
-            let until = cx.until;
-            across(
-                req,
-                |r| here(r, until),
-                &cx.tz,
-                until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-            )
-            .await
-            .map_err(TerminalsEndErr::BadArgs)
-        }
+    ) -> Result<TerminalsEndReply, TerminalsEndErr> {
+        let until = cx.until;
+        across(
+            req,
+            |r| here(r, until),
+            &cx.tz,
+            until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+        )
+        .await
+        .map_err(TerminalsEndErr::BadArgs)
     }
 }
 
@@ -154,7 +152,7 @@ pub(crate) fn reply_of(results: Vec<TerminalOutcome>) -> TerminalsEndReply {
 pub(crate) async fn across<'a, L, F>(
     req: TerminalsEndReq,
     local: L,
-    tz: &'a crate::Tz,
+    tz: &'a crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &'a Table,
     remote: &'a dyn Remote,

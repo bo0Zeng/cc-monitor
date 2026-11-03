@@ -29,11 +29,11 @@ impl Host for Prod {
 
 crate::wire::typed::codes! {
     /// `session-arrive` 的码：只有形状那一种（认的那一格不像样）。
-    pub(crate) enum ArriveErr {}
+    pub enum ArriveErr {}
 }
 
 /// `session-arrive`：等起好的会话报到，期限 ＝ 请求信封的期限。
-pub(crate) struct SessionArrive;
+pub struct SessionArrive;
 
 impl crate::wire::typed::Command for SessionArrive {
     const NAME: &'static str = "session-arrive";

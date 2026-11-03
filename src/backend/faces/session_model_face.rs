@@ -17,14 +17,14 @@ use copy_core::copy_text;
 const READBACK_MS: u64 = 15_000;
 
 /// `session-model` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::session::SessionModelReq;
+pub use cmd_wire::session::SessionModelReq;
 
 /// `session-model` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::ModelSwitched;
 
 typed::codes! {
     /// `session-model` 的码：认会话 · 装读回的耳朵 · 列名单 · 过门 · 送（同 `terminal-input`）。在等人 · 认不出 · 不归我们不是错（`result`）。
-    pub(crate) enum SessionModelErr {
+    pub enum SessionModelErr {
         /// 那一家会话开着时换不了模型。
         Unsupported = "unsupported",
         /// 这台找不到这条会话的记录。
@@ -77,7 +77,7 @@ pub(crate) fn after_send(
 }
 
 /// 读回（期限内没读到 ⇒ `None`）⇒ 结局。`shared` ＝ 换模型顺带写的那份设置各号共用（那一句照它说「各号」·「此号」）。
-pub(crate) fn settled(got: Option<ModelSaid>, shared: bool) -> ModelSwitched {
+pub fn settled(got: Option<ModelSaid>, shared: bool) -> ModelSwitched {
     let Some(s) = got else {
         return reply(
             SwitchResult::Unsure,
@@ -179,7 +179,7 @@ impl ConfirmIo for LiveBox<'_> {
                 color: Some(false),
                 ..Default::default()
             },
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
         )?;
         Ok(shot.lines.into_iter().map(|l| l.text).collect())
     }
@@ -207,7 +207,7 @@ fn box_watch(sid: &str, client: Option<&str>) -> Option<crate::control::terminal
 }
 
 /// `session-model`：换模型（终端没了 ⇒ 记下、恢复照它起）。异步档：送那一行在阻塞线程池里做，等读回是一次有界等待（文件事件叫醒）。
-pub(crate) struct SessionModel;
+pub struct SessionModel;
 
 impl Command for SessionModel {
     typed::by_call!(SessionModelReq);

@@ -43,7 +43,7 @@ macro_rules! page_codes {
     ($(#[$m:meta])* $name:ident) => {
         codes! {
             $(#[$m])*
-            pub(crate) enum $name {
+            pub enum $name {
                 /// 读不动（打不开 · 没有一家认得这份记录）。
                 Failed = "failed",
                 /// 一行比续读上限还长（不截断）。
@@ -63,7 +63,7 @@ page_codes!(
 );
 
 /// `history-read`：按字节分页读一份会话，出行摘要。
-pub(crate) struct HistoryReadCmd;
+pub struct HistoryReadCmd;
 
 impl Command for HistoryReadCmd {
     typed::by_call!(HistoryReadReq);
@@ -90,7 +90,7 @@ impl crate::wire::typed::Handle for HistoryReadCmd {
 pub(crate) fn read_at(
     home: &Path,
     req: HistoryReadReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryRead, HistoryReadErr> {
     let lower = of_fail_with(HistoryReadErr::Failed);
     let fixed = jlen(&HistoryRead::<serde_json::Value> {
@@ -121,7 +121,7 @@ fn read_rows(
     path: &str,
     offset: u64,
     until: Option<u64>,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     fixed: usize,
 ) -> Result<(Vec<ReadRow>, u64, bool), crate::common::said::Said> {
     let (target, face) = record_face(home, path)?;
@@ -183,39 +183,39 @@ fn read_rows(
 
 /// `history-page` 的入参：同 `history-read`，另带 `offset` 那一行的行号。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryPageReq {
+pub struct HistoryPageReq {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
     /// 从这个字节起（缺 ⇒ 0）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) offset: Option<u64>,
     /// 可选右端（半开区间）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) until: Option<u64>,
     /// `offset` 那一行的行号（缺 ⇒ 0）；续页交上一页的 `nextSeq`。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) seq: Option<u64>,
 }
 
 /// `history-page` 的回包。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HistoryPage {
+pub struct HistoryPage {
     /// 只装进界面的记录行（第 k 个可计行 ＝ `seq + k`）。
     pub(crate) lines: Vec<RecordLine>,
     /// 同 `history-read`。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) next: u64,
     /// 下一页第一行的行号。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) next_seq: u64,
     /// 同 `history-read`。
     pub(crate) eof: bool,
@@ -227,7 +227,7 @@ page_codes!(
 );
 
 /// `history-page`：按字节分页读，出记录行。
-pub(crate) struct HistoryPageCmd;
+pub struct HistoryPageCmd;
 
 impl Command for HistoryPageCmd {
     const NAME: &'static str = "history-page";
@@ -256,7 +256,7 @@ impl crate::wire::typed::Handle for HistoryPageCmd {
 pub(crate) fn page_at(
     home: &Path,
     req: HistoryPageReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryPage, HistoryPageErr> {
     let lower = of_fail_with(HistoryPageErr::Failed);
     let offset = req.offset.unwrap_or(0);
@@ -296,7 +296,7 @@ page_codes!(
 );
 
 /// `history-lines`：按行号取回一段。
-pub(crate) struct HistoryLinesCmd;
+pub struct HistoryLinesCmd;
 
 impl Command for HistoryLinesCmd {
     crate::wire::typed::by_call!(HistoryLinesReq);
@@ -323,7 +323,7 @@ impl crate::wire::typed::Handle for HistoryLinesCmd {
 pub(crate) fn lines_at(
     home: &Path,
     req: HistoryLinesReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryLines, HistoryLinesErr> {
     let lower = of_fail_with(HistoryLinesErr::Failed);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
@@ -359,14 +359,14 @@ pub(crate) fn lines_at(
 
 /// `history-image` 的入参：记录行里那一张图的引用（[`cmd_wire::record::Block::Image`] 的 `at` · `n`）＋ 那一条的身份。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryImageReq {
+pub struct HistoryImageReq {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
     /// 那一行的起点字节（引用里的 `at`）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) at: u64,
     /// 这一行里第几张（引用里的 `n`）。
     pub(crate) n: u32,
@@ -376,7 +376,7 @@ pub(crate) struct HistoryImageReq {
 
 codes! {
     /// `history-image` 的码。
-    pub(crate) enum HistoryImageErr {
+    pub enum HistoryImageErr {
         /// 读不动（打不开 · 没有一家认得这份记录）。
         Failed = "failed",
         /// 那一行比续读上限还长。
@@ -389,7 +389,7 @@ codes! {
 }
 
 /// `history-image`：按引用取回一张图（界面 · 手机画到它那一格时才问）。
-pub(crate) struct HistoryImageCmd;
+pub struct HistoryImageCmd;
 
 impl Command for HistoryImageCmd {
     const NAME: &'static str = "history-image";
@@ -400,12 +400,11 @@ impl Command for HistoryImageCmd {
 
 impl crate::wire::typed::Handle for HistoryImageCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryImageReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<HistoryImage, HistoryImageErr>> + Send + 'static
-    {
-        async move { image_at(&home(), req) }
+    ) -> Result<HistoryImage, HistoryImageErr> {
+        image_at(&home(), req)
     }
 }
 
@@ -455,39 +454,39 @@ pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage
 
 /// `history-run` 的入参：父记录 ＋（子运行 ‖ 派出它的那次工具调用），从 `from` 起一页。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryRunReq {
+pub struct HistoryRunReq {
     /// 父会话的记录路径（围栏照旧；越界 ⇒ `path_refused`）。
     pub(crate) parent: String,
     /// 子运行标识（运行表里那一格）；与 `tool` 至少给一个，都给以它为准。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) run: Option<String>,
     /// 派出它的那次工具调用的 id。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) tool: Option<String>,
     /// 从这个字节起读（缺 ⇒ 0）；续读拿上一次的 `end`。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) from: Option<u64>,
     /// 从尾巴读（在跑的那一个从底部读起）：回记录里最后一页；与 `from` 都给以它为准。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "boolean | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "boolean | null"))]
     pub(crate) tail: Option<bool>,
     /// 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) before: Option<u64>,
 }
 
 /// `history-run` 的回包。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryRun {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryRun {
     /// 读的是哪个子运行。
     pub(crate) run: String,
     /// 那份子运行记录（不透明，给查看器整份打开用）。
@@ -495,10 +494,10 @@ pub(crate) struct HistoryRun {
     /// 这一页里每一条进界面的记录。
     pub(crate) rows: Vec<RunRow>,
     /// 这一页从哪个字节起（行头）：往前再读一页拿它当 `before`；0 ⇒ 前面没有了。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) from: u64,
     /// 读到哪了（最后一个整行之后）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) end: u64,
     /// 这一页没读到头（再从 `end` 读）。
     pub(crate) more: bool,
@@ -506,7 +505,7 @@ pub(crate) struct HistoryRun {
 
 codes! {
     /// `history-run` 的码。
-    pub(crate) enum HistoryRunErr {
+    pub enum HistoryRunErr {
         /// 读不动。
         Failed = "failed",
         /// 还没对上是哪一个子运行（前台子运行跑完才写明）。
@@ -521,7 +520,7 @@ codes! {
 }
 
 /// `history-run`：一个子运行的记录（按运行读，不认任何一家的目录 / 字段）。
-pub(crate) struct HistoryRunCmd;
+pub struct HistoryRunCmd;
 
 impl Command for HistoryRunCmd {
     const NAME: &'static str = "history-run";
@@ -549,7 +548,7 @@ impl crate::wire::typed::Handle for HistoryRunCmd {
 pub(crate) fn run_at(
     home: &Path,
     req: HistoryRunReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryRun, HistoryRunErr> {
     let lower = of_fail_with(HistoryRunErr::Failed);
     let from = req.from.unwrap_or(0);
@@ -603,14 +602,14 @@ pub(crate) fn run_at(
 
 codes! {
     /// `history-branch` 的码。
-    pub(crate) enum HistoryBranchErr {
+    pub enum HistoryBranchErr {
         /// 读不动（含围栏外）。
         Failed = "failed",
     }
 }
 
 /// `history-branch`：主线外清单（冷读一次；实时那一路是帧 `session_branch`）。
-pub(crate) struct HistoryBranchCmd;
+pub struct HistoryBranchCmd;
 
 impl Command for HistoryBranchCmd {
     const NAME: &'static str = "history-branch";
@@ -621,11 +620,11 @@ impl Command for HistoryBranchCmd {
 
 impl crate::wire::typed::Handle for HistoryBranchCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: BranchReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Branch, HistoryBranchErr>> + Send + 'static {
-        async move { branch_at(&home(), req) }
+    ) -> Result<Branch, HistoryBranchErr> {
+        branch_at(&home(), req)
     }
 }
 
@@ -638,14 +637,14 @@ pub(crate) fn branch_at(home: &Path, req: BranchReq) -> Result<Branch, HistoryBr
 
 codes! {
     /// `history-tail` 的码。
-    pub(crate) enum HistoryTailErr {
+    pub enum HistoryTailErr {
         /// 读不动（含围栏外 · 一行比续读上限还长）。
         Failed = "failed",
     }
 }
 
 /// `history-tail`：一份会话的尾段在哪、手上那一份续不续得上，连同那一段的第一页正文一问交回（再往后走 `history-read` 分页）。
-pub(crate) struct HistoryTailCmd;
+pub struct HistoryTailCmd;
 
 impl Command for HistoryTailCmd {
     typed::by_call!(HistoryTailReq);
@@ -694,7 +693,7 @@ pub(crate) fn how_of(
 pub(crate) fn tail_at(
     home: &Path,
     req: HistoryTailReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryTail, HistoryTailErr> {
     let failed = HistoryTailErr::Failed;
     let path = req.path;
@@ -743,25 +742,25 @@ pub(crate) fn tail_at(
 
 /// `history-record` 的入参（resume 之前问；只收 sid）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct HistoryRecordReq {
+pub struct HistoryRecordReq {
     /// 会话 id。
     pub(crate) sid: String,
     /// 这次 resume 要用的账号配置目录（缺 / `null` ⇒ 这台的家目录）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) config_dir: Option<String>,
 }
 
 codes! {
     /// `history-record` 自己没有别的码（sid 形状不对 · 账号根不认 ⇒ `bad_args`）。
-    pub(crate) enum HistoryRecordErr {}
+    pub enum HistoryRecordErr {}
 }
 
 /// `history-record`：这条会话的记录还在不在。
-pub(crate) struct HistoryRecordCmd;
+pub struct HistoryRecordCmd;
 
 impl Command for HistoryRecordCmd {
     const NAME: &'static str = "history-record";
@@ -772,12 +771,11 @@ impl Command for HistoryRecordCmd {
 
 impl crate::wire::typed::Handle for HistoryRecordCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryRecordReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<RecordProbe, HistoryRecordErr>> + Send + 'static
-    {
-        async move { record_at(&home(), req) }
+    ) -> Result<RecordProbe, HistoryRecordErr> {
+        record_at(&home(), req)
     }
 }
 
@@ -793,11 +791,11 @@ pub(crate) fn record_at(
 
 codes! {
     /// `sessions-needs` 自己没有别的码。
-    pub(crate) enum SessionsNeedsErr {}
+    pub enum SessionsNeedsErr {}
 }
 
 /// `sessions-needs`：这台上需手动的整份（在等的会话 · 计划格 · 会话外的，一次问一台）。
-pub(crate) struct SessionsNeedsCmd;
+pub struct SessionsNeedsCmd;
 
 impl Command for SessionsNeedsCmd {
     crate::wire::typed::by_call!(SessionsNeedsReq);
@@ -807,18 +805,15 @@ impl Command for SessionsNeedsCmd {
 
 impl crate::wire::typed::Handle for SessionsNeedsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: SessionsNeedsReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<NeedsList, SessionsNeedsErr>> + Send + 'static
-    {
-        async move {
-            Ok(needs_at(
-                &home(),
-                &crate::faces::plan_face::need_slices(&cx.tz),
-                crate::faces::login_face::manual_here(),
-            ))
-        }
+    ) -> Result<NeedsList, SessionsNeedsErr> {
+        Ok(needs_at(
+            &home(),
+            &crate::faces::plan_face::need_slices(&cx.tz),
+            crate::faces::login_face::manual_here(),
+        ))
     }
 }
 
@@ -884,21 +879,21 @@ pub(crate) fn needs_with(
 
 /// `sessions-needs-merge` 的入参：问哪几台（本机逐字 `"<local>"`）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NeedsMergeReq {
+pub struct NeedsMergeReq {
     pub(crate) machines: Vec<cmd_wire::Machine>,
 }
 
 codes! {
     /// `sessions-needs-merge` 自己没有别的码（哪台没问到只进回包的 `down`）。
-    pub(crate) enum NeedsMergeErr {}
+    pub enum NeedsMergeErr {}
 }
 
 /// `sessions-needs-merge`：本机后端自己问到各台的需手动整份（本机同进程答、别的台经 `--resident-call` 问它的常驻 `sessions-needs`），
 /// 合成一份 ＋ 总数再答（桌面入口 · 浮层 · `Ctrl+J` · 窗口标题走它）。没问到的那几台照实进 `down`、不计，别台照常。
-pub(crate) struct NeedsMergeCmd;
+pub struct NeedsMergeCmd;
 
 impl Command for NeedsMergeCmd {
     const NAME: &'static str = "sessions-needs-merge";
@@ -909,36 +904,31 @@ impl Command for NeedsMergeCmd {
 
 impl crate::wire::typed::Handle for NeedsMergeCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: NeedsMergeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr>,
-    > + Send
-           + 'static {
-        async move {
-            let tz = cx.tz.clone();
-            let local = async move {
-                tokio::task::spawn_blocking(move || {
-                    needs_at(
-                        &home(),
-                        &crate::faces::plan_face::need_slices(&tz),
-                        crate::faces::login_face::manual_here(),
-                    )
-                })
-                .await
-                .map_err(|e| crate::common::said::Said::from(e.to_string()))
-            };
-            needs_merge_with(
-                &req.machines,
-                local,
-                &cx.tz,
-                cx.until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-            )
+    ) -> Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr> {
+        let tz = cx.tz.clone();
+        let local = async move {
+            tokio::task::spawn_blocking(move || {
+                needs_at(
+                    &home(),
+                    &crate::faces::plan_face::need_slices(&tz),
+                    crate::faces::login_face::manual_here(),
+                )
+            })
             .await
-        }
+            .map_err(|e| crate::common::said::Said::from(e.to_string()))
+        };
+        needs_merge_with(
+            &req.machines,
+            local,
+            &cx.tz,
+            cx.until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+        )
+        .await
     }
 }
 
@@ -1023,7 +1013,7 @@ macro_rules! scan_codes {
     ($(#[$m:meta])* $name:ident) => {
         codes! {
             $(#[$m])*
-            pub(crate) enum $name {
+            pub enum $name {
                 /// 读不动（路径在围栏外 · 打不开 · 续点越过文件尾 / 不在行边界）。
                 Failed = "failed",
                 /// 整份装不下一帧（不截断）。
@@ -1049,7 +1039,7 @@ scan_codes!(
 );
 
 /// `history-index`：会话骨架索引。
-pub(crate) struct HistoryIndexCmd;
+pub struct HistoryIndexCmd;
 
 impl Command for HistoryIndexCmd {
     const NAME: &'static str = "history-index";
@@ -1060,12 +1050,11 @@ impl Command for HistoryIndexCmd {
 
 impl crate::wire::typed::Handle for HistoryIndexCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryIndexReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<HistoryIndex, HistoryIndexErr>> + Send + 'static
-    {
-        async move { index_at(&home(), req) }
+    ) -> Result<HistoryIndex, HistoryIndexErr> {
+        index_at(&home(), req)
     }
 }
 
@@ -1082,7 +1071,7 @@ scan_codes!(
 );
 
 /// `history-user-inputs`：「人说过的话」清单。
-pub(crate) struct UserInputsCmd;
+pub struct UserInputsCmd;
 
 impl Command for UserInputsCmd {
     const NAME: &'static str = "history-user-inputs";
@@ -1093,11 +1082,11 @@ impl Command for UserInputsCmd {
 
 impl crate::wire::typed::Handle for UserInputsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: UserInputsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<UserInputs, UserInputsErr>> + Send + 'static {
-        async move { user_inputs_at(&home(), req) }
+    ) -> Result<UserInputs, UserInputsErr> {
+        user_inputs_at(&home(), req)
     }
 }
 
@@ -1114,7 +1103,7 @@ scan_codes!(
 );
 
 /// `history-turns`：每轮的摘要。
-pub(crate) struct HistoryTurnsCmd;
+pub struct HistoryTurnsCmd;
 
 impl Command for HistoryTurnsCmd {
     const NAME: &'static str = "history-turns";
@@ -1143,7 +1132,7 @@ impl crate::wire::typed::Handle for HistoryTurnsCmd {
 pub(crate) fn turns_at(
     home: &Path,
     req: HistoryTurnsReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
     turns_page(home, req, tz, REPLY_PAGE_BYTES.as_len())
 }
@@ -1153,7 +1142,7 @@ pub(crate) fn turns_at(
 pub(crate) fn turns_page(
     home: &Path,
     req: HistoryTurnsReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     cap: usize,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
     let path = req.path.clone();
@@ -1191,39 +1180,39 @@ fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize
 
 /// `history-find` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryFindReq {
+pub struct HistoryFindReq {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
     /// 查询串（原样；以 `--` 起头也照样是查询，不是选项）。
     pub(crate) query: String,
     /// 工具结果也搜（缺 ⇒ 不搜）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) include_tools: Option<bool>,
     /// 只留谁说的，同 `history-search` 同名同义（`user` 时工具内容不搜）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) scope: Option<super::search_face::SearchScope>,
     /// 最多列几条（缺 ⇒ 500，封顶 2000）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) limit: Option<u64>,
     /// 跳过前几条（续下一页；缺 ⇒ 0）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
     pub(crate) skip: Option<u64>,
 }
 
 /// `history-find` 的回包。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryFind {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryFind {
     /// 全量命中数（≥ 条数；大于 ⇒ 被上限砍过）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) total: u64,
     /// 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
     pub(crate) hits: Vec<crate::observe::search_query::FindHit>,
@@ -1235,7 +1224,7 @@ scan_codes!(
 );
 
 /// `history-find`：会话内查找。
-pub(crate) struct HistoryFindCmd;
+pub struct HistoryFindCmd;
 
 impl Command for HistoryFindCmd {
     const NAME: &'static str = "history-find";
@@ -1261,10 +1250,10 @@ impl crate::wire::typed::Handle for HistoryFindCmd {
 }
 
 /// [`HistoryFindCmd`] 的本体，家目录是参数。先走常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
-pub(crate) fn find_at(
+pub fn find_at(
     home: &Path,
     req: HistoryFindReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<HistoryFind, HistoryFindErr> {
     use crate::observe::search_query::{self, FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
     let limit = req.limit.map_or(FIND_DEFAULT_LIMIT, |n| {
@@ -1309,42 +1298,42 @@ pub(crate) fn find_at(
 /// `history-facts` 的入参：认哪一份记录，二选一 —— 交记录路径（手上有路径的那一端），或交会话 id（那台在自己的家目录里找那份记录）。
 /// 接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(untagged)]
-pub(crate) enum HistoryFactsReq {
+pub enum HistoryFactsReq {
     Path(FactsByPath),
     Sid(FactsBySid),
 }
 
 /// [`HistoryFactsReq`] 交路径的那一形。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FactsByPath {
+pub struct FactsByPath {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
 }
 
 /// [`HistoryFactsReq`] 交会话 id 的那一形。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FactsBySid {
+pub struct FactsBySid {
     /// 会话 id（那台按它在自己的记录树里找，同 `session-commands`）。
     pub(crate) sid: String,
 }
 
 /// `history-facts` 的回包：会话事实 ＋ 按 sid 问时找到的那份记录（那一端拿它接着读正文；按路径问的不带：就是交来的那一份）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct FactsReply {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct FactsReply {
     /// 按 sid 找到的那份记录（全路径）；按路径问的 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) path: Option<String>,
     #[serde(flatten)]
     pub(crate) facts: crate::observe::recognize::facts::SessionFacts,
@@ -1352,7 +1341,7 @@ pub(crate) struct FactsReply {
 
 codes! {
     /// `history-facts` 的码。
-    pub(crate) enum HistoryFactsErr {
+    pub enum HistoryFactsErr {
         /// 读不动（围栏外 · 打不开）。
         Failed = "failed",
         /// 整份回包过上限（不截断）。
@@ -1363,7 +1352,7 @@ codes! {
 }
 
 /// `history-facts`：会话事实（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
-pub(crate) struct HistoryFactsCmd;
+pub struct HistoryFactsCmd;
 
 impl Command for HistoryFactsCmd {
     const NAME: &'static str = "history-facts";

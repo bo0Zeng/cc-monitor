@@ -24,11 +24,11 @@ use serde_json::Value;
 
 crate::wire::typed::codes! {
     /// `rotation-strategies` 自己的码（只有入参不对那一种）。
-    pub(crate) enum RotationStrategiesErr {}
+    pub enum RotationStrategiesErr {}
 }
 
 /// `rotation-strategies`：读策略目录与 `rotation.json` ⇒ 阻塞档。
-pub(crate) struct RotationStrategies;
+pub struct RotationStrategies;
 
 impl Command for RotationStrategies {
     crate::wire::typed::by_call!(RotationStrategiesReq);
@@ -37,17 +37,13 @@ impl Command for RotationStrategies {
 
 impl crate::wire::typed::Handle for RotationStrategies {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: RotationStrategiesReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<RotationStrategiesReply, RotationStrategiesErr>>
-           + Send
-           + 'static {
-        async move {
-            let ctx = Ctx::here();
-            let live = (ctx.hop.live)();
-            Ok(strategies_with(&ctx, &req, &|sid| live.contains(sid)))
-        }
+    ) -> Result<RotationStrategiesReply, RotationStrategiesErr> {
+        let ctx = Ctx::here();
+        let live = (ctx.hop.live)();
+        Ok(strategies_with(&ctx, &req, &|sid| live.contains(sid)))
     }
 }
 
@@ -252,7 +248,7 @@ fn title_of(target: &RotTarget) -> Option<String> {
 
 crate::wire::typed::codes! {
     /// `rotation-view` 自己的码。
-    pub(crate) enum RotationViewErr {
+    pub enum RotationViewErr {
         /// 中转没见过这个会话。
         NoSession = "no_session",
         /// 策略目录里没有那一份。
@@ -280,7 +276,7 @@ pub(crate) fn checked(file: Option<&script::File>, settings: &Value) -> Result<(
 }
 
 /// `rotation-view`：读额度账 · 账号库 · 策略目录、在沙箱里跑策略 ⇒ 阻塞档。
-pub(crate) struct RotationView;
+pub struct RotationView;
 
 impl Command for RotationView {
     crate::wire::typed::by_call!(RotationViewReq);
@@ -319,7 +315,7 @@ impl crate::wire::typed::Handle for RotationView {
 }
 
 /// 一刻的钟面（`HH:MM`，看的那一台的时区）。
-fn face(t: u64, tz: &crate::Tz) -> String {
+fn face(t: u64, tz: &crate::common::time::Tz) -> String {
     crate::common::time::hm(tz.local(i64::try_from(t).unwrap_or(i64::MAX)))
 }
 
@@ -403,7 +399,7 @@ pub(crate) fn view_with(
     ctx: &Ctx,
     req: &RotationViewReq,
     now: u64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     live: &dyn Fn(&str) -> bool,
 ) -> Result<RotationViewReply, RotationViewErr> {
     let base = ctx.hop.store.now();

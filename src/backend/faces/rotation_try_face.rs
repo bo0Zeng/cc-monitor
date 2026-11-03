@@ -13,14 +13,14 @@ pub(crate) use cmd_wire::rotation::{
 
 crate::wire::typed::codes! {
     /// `rotation-try` 自己的码。
-    pub(crate) enum RotationTryErr {
+    pub enum RotationTryErr {
         /// 那份原文读不懂（头的形状 · 编不过 · 没有 `score`）。
         BadStrategy = "bad_strategy",
     }
 }
 
 /// `rotation-try`：读额度账与账号库、在沙箱里跑策略 ⇒ 阻塞档。
-pub(crate) struct RotationTry;
+pub struct RotationTry;
 
 impl Command for RotationTry {
     crate::wire::typed::by_call!(RotationTryReq);
@@ -64,7 +64,7 @@ pub(crate) fn try_with(
     req: &RotationTryReq,
     facts: &[Acct],
     now: u64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<RotationTryReply, RotationTryErr> {
     let file = script::parse(&req.source).map_err(|f| {
         let at = f.line.map(|l| format!("line {l}: ")).unwrap_or_default();
@@ -161,7 +161,7 @@ pub(crate) fn timeline_of(
     tl: &simulate::Timeline,
     now: u64,
     end: u64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> RotTryTimeline {
     let face = |t: u64| crate::common::time::hm(tz.local(i64::try_from(t).unwrap_or(i64::MAX)));
     RotTryTimeline {
@@ -250,7 +250,7 @@ fn seg_text(sendable: bool, reset: bool, at: &str, left: Option<f64>) -> String 
 }
 
 /// 刻度落在哪几刻：`from` 之后、`end` 以内，看的那一台的整点；推 12 小时以内（`short`）每 2 小时，更长每 4 小时。
-fn ticks_of(from: u64, end: u64, short: bool, tz: &crate::Tz) -> Vec<u64> {
+fn ticks_of(from: u64, end: u64, short: bool, tz: &crate::common::time::Tz) -> Vec<u64> {
     let step: i64 = if short { 2 } else { 4 };
     let mut out = Vec::new();
     let Ok(mut t) = i64::try_from(from) else {

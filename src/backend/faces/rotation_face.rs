@@ -24,7 +24,7 @@ pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> S
 }
 
 /// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
-pub(crate) fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
+pub fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
     std::sync::Arc::new(|home| {
         crate::accounts::manage::scan::book_at(home)
             .map(|b| {
@@ -101,12 +101,12 @@ pub(crate) const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENT
 
 crate::wire::typed::codes! {
     /// `quota-read` 没有别的码：读不出来是一个状态（`state: "unreadable"` ＋ `reason`），不是一次失败。
-    pub(crate) enum QuotaReadErr {}
+    pub enum QuotaReadErr {}
 }
 
 /// `quota-read`：这台的额度账，每条带上显示态；另给账号库里从没出过数的号、此刻发得出去的号、最早回来的那个。
 /// 出口那一下给每个时刻添好显示的字、每号添好几行与开窗那一判（读一份文件 ＋ 账号库 ⇒ 阻塞档）。
-pub(crate) struct QuotaReadCmd;
+pub struct QuotaReadCmd;
 
 impl crate::wire::typed::Command for QuotaReadCmd {
     crate::wire::typed::by_call!(cmd_wire::quota::QuotaReadReq);
@@ -116,24 +116,22 @@ impl crate::wire::typed::Command for QuotaReadCmd {
 
 impl crate::wire::typed::Handle for QuotaReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: cmd_wire::quota::QuotaReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<QuotaRead, QuotaReadErr>> + Send + 'static {
-        async move {
-            Ok(quota_read_with(
-                &Ctx::here(),
-                crate::common::time::now_secs(),
-                &cx.tz,
-            ))
-        }
+    ) -> Result<QuotaRead, QuotaReadErr> {
+        Ok(quota_read_with(
+            &Ctx::here(),
+            crate::common::time::now_secs(),
+            &cx.tz,
+        ))
     }
 }
 
 pub(crate) use crate::faces::quota_read::QuotaRead;
 
 /// 读这台的额度账、给每个号判显示态，交出口写成成品。
-pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead {
+pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz) -> QuotaRead {
     use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;

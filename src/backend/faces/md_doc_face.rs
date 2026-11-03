@@ -6,8 +6,8 @@ use cmd_wire::md::Doc;
 
 /// 这段原文按哪一种读。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MdAs {
     /// 照原文解析（思考）。
@@ -18,10 +18,10 @@ pub(crate) enum MdAs {
 
 /// `md-doc` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct MdDocReq {
+pub struct MdDocReq {
     pub(crate) text: String,
     #[serde(rename = "as")]
     pub(crate) of: MdAs,
@@ -51,11 +51,11 @@ pub(crate) fn doc_of(req: &MdDocReq) -> Doc {
 
 codes! {
     /// `md-doc` 自己的码（只有入参不对那一种）。
-    pub(crate) enum MdDocErr {}
+    pub enum MdDocErr {}
 }
 
 /// `md-doc`：一段原文解析成块树。
-pub(crate) struct MdDocCmd;
+pub struct MdDocCmd;
 
 impl Command for MdDocCmd {
     const NAME: &'static str = "md-doc";
@@ -66,11 +66,8 @@ impl Command for MdDocCmd {
 
 impl Handle for MdDocCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: MdDocReq,
-        _cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Doc, MdDocErr>> + Send + 'static {
-        async move { Ok(doc_of(&req)) }
+    async fn run(req: MdDocReq, _cx: Cx<Self::Needs>) -> Result<Doc, MdDocErr> {
+        Ok(doc_of(&req))
     }
 }
 

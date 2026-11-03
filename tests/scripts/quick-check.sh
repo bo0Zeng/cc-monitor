@@ -43,7 +43,8 @@ esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 #   每个后端成员一行（路径照它的目录）；主 crate 那一行排除拆出去的那几个包的目录。
 # shellcheck disable=SC2034  # 两张包表都经 clippy_step 的 nameref 读
-clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/common/ :(exclude)src/backend/plugin/ :(exclude)src/backend/test-meters/ :(exclude)src/backend/agents/ :(exclude)src/backend/relay/ :(exclude)src/backend/stderr_log/ :(exclude)src/backend/wire/ :(exclude)src/backend/dial/ :(exclude)src/backend/host/ :(exclude)src/backend/history/ :(exclude)src/backend/accounts/ :(exclude)src/backend/assets/ :(exclude)src/backend/control/ :(exclude)src/backend/observe/ :(exclude)src/backend/footprint/ :(exclude)src/backend/plan/"
+clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/common/ :(exclude)src/backend/plugin/ :(exclude)src/backend/test-meters/ :(exclude)src/backend/agents/ :(exclude)src/backend/relay/ :(exclude)src/backend/stderr_log/ :(exclude)src/backend/wire/ :(exclude)src/backend/dial/ :(exclude)src/backend/host/ :(exclude)src/backend/history/ :(exclude)src/backend/accounts/ :(exclude)src/backend/assets/ :(exclude)src/backend/control/ :(exclude)src/backend/observe/ :(exclude)src/backend/footprint/ :(exclude)src/backend/plan/ :(exclude)src/backend/faces/"
+  "backend-faces:src/backend/faces/ tests/backend/faces/"
   "backend-plan:src/backend/plan/ tests/backend/plan/"
   "backend-footprint:src/backend/footprint/ tests/backend/footprint/"
   "backend-observe:src/backend/observe/ tests/backend/observe/"
