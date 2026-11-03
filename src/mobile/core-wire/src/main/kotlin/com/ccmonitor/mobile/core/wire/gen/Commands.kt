@@ -2469,6 +2469,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.SshImportMember::class.java to com.ccmonitor.mobile.core.wire.gen.SshImportMember.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SshImportReq::class.java to com.ccmonitor.mobile.core.wire.gen.SshImportReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SshImported::class.java to com.ccmonitor.mobile.core.wire.gen.SshImported.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.SshPublicKey::class.java to com.ccmonitor.mobile.core.wire.gen.SshPublicKey.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Stage::class.java to com.ccmonitor.mobile.core.wire.gen.Stage.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.StageRow::class.java to com.ccmonitor.mobile.core.wire.gen.StageRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Staged::class.java to com.ccmonitor.mobile.core.wire.gen.Staged.ADAPTER,

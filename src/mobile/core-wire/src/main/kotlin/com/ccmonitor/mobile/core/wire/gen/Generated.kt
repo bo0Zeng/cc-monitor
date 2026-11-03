@@ -10961,7 +10961,7 @@ data class KeyAdded(
 @Suppress("UNCHECKED_CAST")
 data class KeyPair(
     val pem: String,
-    val public: String,
+    val public: SshPublicKey,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10969,9 +10969,9 @@ data class KeyPair(
         val ADAPTER: JsonAdapter<KeyPair> = obj(
             listOf(
             Field("pem", { Str }, optional = false, nullable = false),
-            Field("public", { Str }, optional = false, nullable = false),
+            Field("public", { SshPublicKey.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> KeyPair(a[0] as String, a[1] as String) },
+            { a -> KeyPair(a[0] as String, a[1] as SshPublicKey) },
             { v -> arrayOf(v.pem, v.public) },
         )
     }
@@ -25107,6 +25107,27 @@ data class SshImported(
             ),
             { a -> SshImported(a[0] as List<SshImportGroup>, a[1] as Boolean) },
             { v -> arrayOf(v.groups, v.partial) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SshPublicKey(
+    val line: String,
+    val kind: String,
+    val fingerprint: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SshPublicKey> = obj(
+            listOf(
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("kind", { Str }, optional = false, nullable = false),
+            Field("fingerprint", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SshPublicKey(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.line, v.kind, v.fingerprint) },
         )
     }
 }
