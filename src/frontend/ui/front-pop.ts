@@ -1,9 +1,10 @@
 /**
- * ↗ 的三样回执：在飞超过 300ms 在 ↗ 旁出「查找终端…」· 切过去了 ↗ 换成对勾 1 秒 · 其余结局一个浮层锚在 ↗ 下面
+ * ↗ 的几样回执：在飞超过 300ms 在 ↗ 旁出「查找终端…」· 切过去了 ↗ 换成对勾 1 秒 · 连那一张都没问到 ⇒ 失败提示 · 其余结局一个浮层锚在 ↗ 下面
  * （不自动消失；Esc / 点外面 / × 关；按钮做完就关；同一个会话再失败一次 ⇒ 原地换内容，不另弹）。
  */
 import { button } from "./kit/button";
 import { copyDetailButton } from "./kit/detail";
+import { failToast } from "./kit/toast";
 import { icon } from "./kit/icon";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
 import { placeBeside } from "./kit/place";
@@ -117,4 +118,12 @@ export function showFrontResult(anchor: HTMLElement, sid: string, view: FrontVie
 /** 这个会话切过去了：它开着的结局浮层收起。 */
 export function closeFrontResult(sid: string): void {
   if (shownFor?.sid === sid) closePopover();
+}
+
+/**
+ * 连那一张都没问到（壳那一问失败，`bringTerminalToFront` 拒了）：浮层的字只有核心写，拿不到就不出空浮层，
+ * 照壳交来的那一句进全产品那条失败提示（详情可复制）。↗ 的两个入口（主窗口 · 记录窗口）都经这里。
+ */
+export function frontAskFailed(e: unknown): void {
+  failToast(copyText("terminal.head.front"), e);
 }

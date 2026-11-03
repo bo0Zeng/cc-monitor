@@ -39,7 +39,8 @@ import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
 import { bringTerminalToFront } from "./tab-session-actions";
 import { frontView } from "./front-result";
-import { flashFrontDone, showFrontResult } from "./front-pop";
+import { flashFrontDone, frontAskFailed, showFrontResult } from "./front-pop";
+import type { FrontTold } from "./generated/FrontTold";
 import { onMachineState } from "./machine-feed";
 import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
@@ -201,9 +202,18 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   return out;
 }
 
-/** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。 */
+/**
+ * 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。
+ * 连那一张都没问到（壳那一问失败）⇒ 不出空浮层，照壳交来的那一句进失败提示（详情可复制）。
+ */
 async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Machine): Promise<void> {
-  const res = await bringTerminalToFront(origin, r.sessionId);
+  let res: FrontTold;
+  try {
+    res = await bringTerminalToFront(origin, r.sessionId);
+  } catch (e) {
+    frontAskFailed(e);
+    return;
+  }
   const view = frontView(res);
   if (view === null) {
     flashFrontDone(b);
