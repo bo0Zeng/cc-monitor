@@ -71,11 +71,11 @@ import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.InlNode
+import com.ccmonitor.mobile.core.wire.gen.MathBox
 import com.ccmonitor.mobile.core.wire.gen.MdAlign
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
 import com.ccmonitor.mobile.core.wire.gen.SegHl
-import com.ccmonitor.mobile.core.wire.gen.MathBox
 import kotlinx.coroutines.CompletableDeferred
 
 // 正文排版器：后端解析好的块树（`cmd_wire::md::Doc`）→ Compose。只照树排，不解析 Markdown、不判高亮类别。
