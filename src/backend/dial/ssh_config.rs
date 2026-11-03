@@ -35,8 +35,8 @@ pub(crate) struct ResolvedHost {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "SshImportMember"
+        rename = "SshImportMember",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -54,8 +54,8 @@ pub(crate) struct ImportMember {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "SshImportGroup"
+        rename = "SshImportGroup",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -81,8 +81,8 @@ pub(crate) struct ImportGroup {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "KnownHost"
+        rename = "KnownHost",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
