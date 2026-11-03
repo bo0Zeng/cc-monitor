@@ -836,8 +836,8 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
   /**
    * ⑥d **行为**：上面三条只证明「代码长成了量的样子」，这一条证明「量出来的数真的进了估高」。
    * jsdom 没有布局 ⇒ 把 `getBoundingClientRect` 换成「`.stream-content` 宽 400」，重新求值模块，
-   * 再对一张正文卡估高：必须按 400 折行，而不是 780。
-   * 反空真：同一段文字按 400 与按 780 算出来的高度必须不同，否则本条对宽度不敏感、判不出任何东西。
+   * 再对一条正文记录做第一级粗估（不给列宽 ⇒ 用起始列宽）：必须按 400 折行，而不是 780。
+   * 反空真：同一条料按 400 与按 780 算出来的高度必须不同，否则本条对宽度不敏感、判不出任何东西。
    */
   it("⑥d 行为：列被压到 400px 时，估高按 400 折行（探针量完就撤）", async () => {
     const host = document.createElement("div");
@@ -851,15 +851,12 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
     try {
       vi.resetModules();
       const m = await import("../../../src/frontend/ui/height-estimate.ts");
-      const text = "字".repeat(60) + "x".repeat(400);
-      const card = document.createElement("div");
-      card.className = "card card-assistant";
-      card.innerHTML = `<div class="card-header">h</div><div class="card-body"><div class="block-text"><p>${text}</p></div></div>`;
-      const LH = 15 * 1.65;
-      const at400 = 22 + m.fallbackTextHeight(text, 15, LH, 400) + 10;
-      const at780 = 22 + m.fallbackTextHeight(text, 15, LH, 780) + 10;
-      expect(at400, "这段文字按 400 与 780 折行一样高 —— 本条对宽度不敏感").not.toBe(at780);
-      expect(m.estimateStreamNodeHeight(card), "估高没用上量出来的列宽").toBeCloseTo(at400);
+      const facts = { o: 0, n: 1, t: "reply", dr: "card", ch: 460, cj: 60, pl: 1 } as const;
+      const at400 = m.estimateFromFacts(facts, 400);
+      const at780 = m.estimateFromFacts(facts, 780);
+      expect(at400, "这条料按 400 与 780 折行一样高 —— 本条对宽度不敏感").not.toBe(at780);
+      expect(m.initialColumnWidth(), "起始列宽不是量出来的那个").toBe(400);
+      expect(m.estimateFromFacts(facts), "估高没用上量出来的列宽").toBeCloseTo(at400);
       expect(host.children.length, "探针没撤掉 —— 消息流里多了一个空的 .stream").toBe(0);
       denom("⑥", 400, "px 的假列宽被估高用上了（对照 780 高度不同）");
     } finally {

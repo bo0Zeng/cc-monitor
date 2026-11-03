@@ -1,13 +1,10 @@
 /**
- * 虚拟化高度模型：建卡时给顶层卡片估 `contain-intrinsic-size` 初值，配合 `content-visibility: auto` 让视口外的卡不排版不绘制。
+ * 骨架的高度模型：不建卡、不看 DOM，按记录估一条在骨架里占多高（骨架账本 `skeleton-view.ts` 与尾部窗口 `live-window.ts` 用）。
  *
- * 估值只是初值：`auto <h>px` 渲染过一次后浏览器记住真高，估值只影响没渲染过的卡对滚动条的贡献 ⇒ 求够准、绝不抛错，不求像素真值。
- *
- * 文本估高用 pretext（精确钉版 1.0.0；换版前后同一份语料逐条量高对拍，判据在 `height-estimate.vitest.ts` 末尾）：
- * prepare() 一次分词 ＋ canvas 测宽，layout() 纯算术出高度，不触 DOM。pretext 不可用（没有 canvas、字体未就绪、
- * 字体串 canvas 不收 ⇒ 1.0 起 prepare 抛 RangeError）时退回字符宽度算术。主线程与 Worker 排高只走 `pretextHeight` 这一句。
- * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）。
- * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准）。
+ * 两级：第一级（`estimateFromFacts`）只看后端索引给的宽度无关料 × 列宽；第二级（`refineItemOf` ＋ `refinedHeight`）把正文那一段
+ * 交估高 Worker 用 pretext 排（精确钉版 1.x；同一份语料逐条量高对拍，判据在 `height-estimate.vitest.ts`）。Worker 排高只走 `pretextHeight` 这一句。
+ * 估值只是占位：建了卡就是真高 ⇒ 求够准、绝不抛错，不求像素真值。
+ * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）；外框常数由 `skel-outer.vitest.ts` 对拍真浏览器的金样。
  */
 import type { LineRecord } from "./generated/LineRecord";
 import type { Draw } from "./generated/Draw";
@@ -28,7 +25,6 @@ const LH_MONO = 13 * 1.55;
 // 量出 min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉；量不到（jsdom / 没有消息流的窗口）才退回 780
 // （与 tokens.css 的 `--stream-max-width` 由 `css-ledger.vitest.ts` 格 ⑥ 对拍）。
 // 这是起始值：之后列宽变了由宿主现量、交账本 `relayout`（`tab-stream-view.ts::relayoutOnColumnChange`）。
-// `USER_BODY_W` 与建卡时的估高只用起始值 —— 那只是渲染前一瞬的占位，渲染过一次就用真高。
 const COL_W: number = ((fallback: number): number => {
   const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
   if (!host) return fallback;
@@ -47,7 +43,6 @@ const COL_W: number = ((fallback: number): number => {
 export function initialColumnWidth(): number {
   return COL_W;
 }
-const USER_BODY_W = COL_W * 0.8 - 34; // 气泡 max-width 80% - padding 16×2 - border 2
 const SUMMARY_H = 38; // 折叠 <details> 只剩 summary 行
 const STEPS_GAP = 4; // .card-steps 的 gap
 const CODE_BAR_H = 30; // .code-bar(copy 按钮撑高)+ border
@@ -57,39 +52,14 @@ const CARD_HEADER_H = 22; // .card-header 一行 + 间距
 const BLOCK_GAP = 10; // 块间 margin 均摊
 const P_GAP = 12; // 段落/列表项之间的 margin 均摊(浏览器默认 p margin 1em 折叠后 ~15px,取偏保守)
 
-// 下面几条细条卡常数：没有它们这几个 class 会落到 CSS 的 `contain-intrinsic-size: auto 120px`（虚高几倍）。
-const BASH_OUTPUT_HEADER_H = 19; // .bash-output-header 单行 flex:12px × 1.55 ≈ 18.6
-const BASH_OUTPUT_BODY_MARGIN = 6; // .bash-output-body margin: 6px 0 0
-/** `buildOutputPre` 超 30 行只展示头 20 行(cards/bash.ts OUTPUT_HEAD_LINES) */
-const BASH_OUTPUT_MAX_LINES = 20;
-const BASH_STDERR_LABEL_H = 23; // .bash-stderr-label margin-top 6 + 11px × 1.55
-const BASH_EMPTY_H = 23; // .bash-output-empty margin-top 4 + 12px × 1.55
-const SHOW_FULL_BTN_H = 43; // .block-body-show-full margin 6+10 + padding 4×2 + border 2 + 11px × 1.55
-
 /** 超长文本只测前缀、按长度比例外推 —— 防 pretext prepare 开销失控（大批量偏慢） */
 const MEASURE_PREFIX_CHARS = 2400;
 
-// pretext 懒加载:失败(无 canvas 的测试环境等)记住并永久走算术降级
 type PretextModule = typeof import("@chenglou/pretext");
-let pretextMod: PretextModule | null = null;
-let pretextBroken = false;
-let pretextFailures = 0; // 三振出局:偶发单条病态输入不应永久禁用整个会话的精确估高
-const PRETEXT_MAX_FAILURES = 3;
-
-async function loadPretext(): Promise<void> {
-  if (pretextMod || pretextBroken) return;
-  try {
-    pretextMod = await import("@chenglou/pretext");
-  } catch {
-    pretextBroken = true;
-  }
-}
-// 模块加载即开始拉(不阻塞);拉完前建的卡走算术降级,同样是合法初值
-void loadPretext();
 
 /**
- * pretext 排一段正文的高：主线程（`textHeight`）与估高 Worker（`height-worker.ts`）共用这一句。
- * pre-wrap：保留 \n 硬断行（默认 normal 会折叠成空格，与 fallback 语义相反），顺带由库归一 CRLF。
+ * pretext 排一段正文的高：估高 Worker（`height-worker.ts`）排第二级那一件走这一句。
+ * pre-wrap：保留 \n 硬断行（默认 normal 会折叠成空格），顺带由库归一 CRLF。
  * 每次现 prepare、不留 handle（1.0 不认 0.0.9 造的 handle，这里本来就不留）。
  */
 export function pretextHeight(
@@ -100,270 +70,6 @@ export function pretextHeight(
   lineHeightPx: number,
 ): number {
   return p.layout(p.prepare(text, font, { whiteSpace: "pre-wrap" }), widthPx, lineHeightPx).height;
-}
-
-/**
- * 算术降级:CJK 全宽、其余按 0.52em 均宽,逐硬行折行计数。
- * 导出仅为单测(拍住估算不漂移)。
- */
-export function fallbackTextHeight(
-  text: string,
-  fontSizePx: number,
-  lineHeightPx: number,
-  widthPx: number,
-): number {
-  if (!text) return 0;
-  let lines = 0;
-  for (const hard of text.replace(/\r/g, "").split("\n")) {
-    let w = 0;
-    for (const ch of hard) {
-      w += ch.charCodeAt(0) > 0x2e80 ? fontSizePx : fontSizePx * 0.52;
-    }
-    lines += Math.max(1, Math.ceil(w / widthPx));
-  }
-  return lines * lineHeightPx;
-}
-
-function textHeight(
-  text: string,
-  font: string,
-  fontSizePx: number,
-  lineHeightPx: number,
-  widthPx: number,
-): number {
-  if (!text.trim()) return 0;
-  const overflow = text.length > MEASURE_PREFIX_CHARS;
-  const sample = overflow ? text.slice(0, MEASURE_PREFIX_CHARS) : text;
-  let h: number | null = null;
-  if (pretextMod) {
-    try {
-      h = pretextHeight(pretextMod, sample, font, widthPx, lineHeightPx);
-    } catch (e) {
-      pretextFailures++;
-      if (pretextFailures >= PRETEXT_MAX_FAILURES) {
-        console.warn("[height-estimate] pretext 连续失败,永久转算术降级:", e);
-        pretextBroken = true;
-        pretextMod = null;
-      }
-    }
-  }
-  if (h === null) h = fallbackTextHeight(sample, fontSizePx, lineHeightPx, widthPx);
-  // 前缀外推:按字符比例放大(粗,但只影响超长卡的初值)
-  if (overflow) h = (h * text.length) / MEASURE_PREFIX_CHARS;
-  return h;
-}
-
-// textContent 会吞掉 <br> 与 <p>/<li> 边界（40 行日志被当一长串估，8 倍低估）⇒ 块感知提取：块级边界与 <br> 插 \n；
-// 跳过 .code-block（单独按行数估）与 .katex-mathml（KaTeX 的 aria 重复文本，计入会双算）。
-const BLOCK_TAGS = new Set([
-  "P",
-  "LI",
-  "PRE",
-  "BLOCKQUOTE",
-  "TR",
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H5",
-  "H6",
-]);
-
-/**
- * 只有块边界与 `<br>` 算硬断行，其余空白按 `white-space: normal` 折成一个空格；真正 `pre` / `pre-wrap` 的容器（`preservesWhitespace`）才原样保留。
- * `marked` 产出的 HTML 里标签之间满是源码排版换行（表格尤甚），全当断行会让正文卡约 2 倍虚高；全吞掉又是 8 倍低估。
- */
-function preservesWhitespace(e: Element): boolean {
-  // styles.css `.block-collapsible .block-body { white-space: pre-wrap }`,
-  // 被 `.block-body-md { white-space: normal }` 覆盖回正常折叠(markdown 正文)。
-  return (
-    e.tagName === "PRE" ||
-    (e.classList.contains("block-body") && !e.classList.contains("block-body-md"))
-  );
-}
-
-/** 导出仅为单测。返回带 \n 的文本 + 块数(段间 margin 按块数均摊)。 */
-export function extractProseText(root: Element): { text: string; blockCount: number } {
-  let out = "";
-  let blockCount = 0;
-  /** 硬断行(块边界 / <br>):插之前吃掉排版留下的行尾空格 */
-  const pushBreak = (): void => {
-    if (!out || out.endsWith("\n")) return;
-    out = out.replace(/ +$/, "") + "\n";
-  };
-  const walk = (node: Node, preserve: boolean): void => {
-    for (const child of Array.from(node.childNodes)) {
-      if (child.nodeType === 3) {
-        const raw = child.nodeValue ?? "";
-        if (preserve) {
-          out += raw.replace(/\r\n?/g, "\n");
-          continue;
-        }
-        // 折叠:连续空白(含源码换行/缩进)→ 一个空格;行首的那个空格没有宽度,丢掉
-        const s = raw.replace(/\s+/g, " ");
-        out += !out || out.endsWith("\n") ? s.replace(/^ /, "") : s;
-        continue;
-      }
-      if (child.nodeType !== 1) continue;
-      const e = child as Element;
-      if (e.tagName === "BR") {
-        out += "\n"; // <br> 是**无条件**断行:连着两个 <br> 就是两行,不能被 pushBreak 去重
-        continue;
-      }
-      if (e.classList.contains("code-block") || e.classList.contains("katex-mathml")) continue;
-      const isBlock = BLOCK_TAGS.has(e.tagName);
-      // 块**前后**都断:源码换行归一成空格之后,块边界是唯一还认得出断行的依据
-      if (isBlock) {
-        blockCount++;
-        pushBreak();
-      }
-      walk(e, preserve || preservesWhitespace(e));
-      if (isBlock) pushBreak();
-    }
-  };
-  walk(root, preservesWhitespace(root));
-  return { text: out.trim(), blockCount };
-}
-
-/** 代码块:等宽字体纯算术——行数 × 行高 + bar/padding 常数,不需要 pretext */
-export function codeBlockHeight(codeText: string): number {
-  const lines = codeText ? codeText.split("\n").length : 1;
-  return lines * LH_MONO + CODE_BAR_H + CODE_PAD_V;
-}
-
-/** assistant 正文里单个块的估高 */
-function blockHeight(el: Element): number {
-  // 折叠 <details>(thinking / tool_use / 大输出)只剩 summary
-  if (el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open) return SUMMARY_H;
-  // 文本块（.block-text 等）：.code-block 嵌在它里面而不是 card-body 的直接子元素 ⇒ 下钻：代码块逐个按行数估，其余走 prose 估
-  const { text, blockCount } = extractProseText(el);
-  let h = textHeight(text, FONT_PROSE, 15, LH_PROSE, COL_W) + BLOCK_GAP;
-  h += Math.max(0, blockCount - 1) * P_GAP;
-  for (const pre of Array.from(el.querySelectorAll(".code-block pre"))) {
-    h += codeBlockHeight(pre.textContent ?? "") + CODE_MARGIN;
-  }
-  return h;
-}
-
-/**
- * 修法②:card-bash-output = header + Σ min(行数, 20) × mono 行高 + 几个细条行。
- * 行数数的是 DOM 里**已经被 `buildOutputPre` 截过**的 pre,所以不需要知道原始输出多长;
- * `.bash-output-body` 另有 `max-height: 480px` 硬顶(≈23 个 mono 行),20 这个上限落在它之内。
- */
-function bashOutputHeight(el: Element): number {
-  let h = BASH_OUTPUT_HEADER_H;
-  for (const pre of Array.from(el.querySelectorAll("pre.bash-output-body"))) {
-    const t = pre.textContent ?? "";
-    const lines = t ? t.split("\n").length : 1;
-    h += Math.min(lines, BASH_OUTPUT_MAX_LINES) * LH_MONO + BASH_OUTPUT_BODY_MARGIN;
-  }
-  if (el.querySelector(".bash-stderr-label")) h += BASH_STDERR_LABEL_H;
-  if (el.querySelector(".bash-output-empty")) h += BASH_EMPTY_H;
-  h += el.querySelectorAll(".block-body-show-full").length * SHOW_FULL_BTN_H;
-  return h;
-}
-
-/**
- * 认不出的 class 在 DEV 下每个只喊一次(修法③)。
- * 为什么要喊:不喊的话,下次加新卡型又会静默落回 CSS 的 120px 兜底,
- * 而 120px 兜底与真高的偏差**今天没有任何读数**(§5.3),没人会发现。
- * 模块级 Set:同一 class 刷屏一次就够;生产构建整支被 vite 消除。
- */
-const unknownCardClassesSeen = new Set<string>();
-
-function warnUnknownCard(el: HTMLElement): void {
-  if (!import.meta.env.DEV) return;
-  // 取第一个 `card-*` 类名当身份;没有就用 tagName,保证一定报得出个东西
-  const key =
-    Array.from(el.classList).find((c) => c.startsWith("card-")) ?? `<${el.tagName.toLowerCase()}>`;
-  if (unknownCardClassesSeen.has(key)) return;
-  unknownCardClassesSeen.add(key);
-  console.warn(
-    `[height-estimate] 估不出高的卡型:${key} —— 落 CSS 兜底 contain-intrinsic-size: auto 120px。` +
-      "若它是细条卡,120px 会虚高数倍并污染「够不够一屏」的判据。",
-  );
-}
-
-/** 导出仅为单测(要能在一个用例里从干净状态起算「每 class 只喊一次」)。 */
-export function __resetUnknownCardWarnings(): void {
-  unknownCardClassesSeen.clear();
-}
-
-/**
- * 顶层卡片估高。认不出的形态返回 null(CSS 兜底 120px + 渲染后 auto 记忆)。
- */
-export function estimateStreamNodeHeight(el: HTMLElement): number | null {
-  // 折叠态顶层 <details>(compact 卡):summary 一行
-  if (el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open) return SUMMARY_H;
-
-  if (el.classList.contains("card-user")) {
-    const body = el.querySelector(".card-body");
-    // renderPlainText 把 \n 换成 <br> ⇒ 走提取器还原硬断行。
-    // 不加 padding / border：contain-intrinsic-size 是 content-box，盒模型另加。
-    const text = body ? extractProseText(body).text : "";
-    return textHeight(text, `14px ${FONT_BASE}`, 14, LH_BASE, USER_BODY_W);
-  }
-
-  // 高频细条卡：120px 兜底偏大 3 倍，用常数（渲染后 auto 记住真高）。
-  // 这几条是 content-box 值（`contain-intrinsic-size` 吃 content-box，padding 由盒模型另加）：
-  //   card-api-retry  17 ← 11px（--font-size-xs）× 1.55
-  //   card-bash-input 19 ← 12px（--font-size-small）× 1.55
-  //   card-slash      19 ← 同一套紧凑系 token
-  // 报错卡（§5.2.5）：抬头 · 下一步 · 「原文」三行。
-  if (el.classList.contains("card-api-error")) return 60;
-  // 事件条：抬头一行 28；展开着（交回 · 另一会话）加正文的一段粗估。中断标记 · 后台通知一行细线。
-  if (el.classList.contains("card-speaker")) return (el as HTMLDetailsElement).open ? 28 + 60 : 28;
-  if (el.classList.contains("card-event-line") || el.classList.contains("card-notice")) return 19;
-  if (el.classList.contains("card-slash")) return 19;
-  // 系统注入的细条：收着一行（开关关着 display:none，不占高）。
-  if (el.classList.contains("card-injected")) return 22;
-  // 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
-  if (el.classList.contains("card-api-retry")) return 17;
-  // 认不出的那一行：同重试细条那一套（收着一行；展开之后渲染真高接管）。
-  if (el.classList.contains("card-unread")) return 17;
-  if (el.classList.contains("card-bash-input")) return 19;
-  // 修法②:card-bash-output 按 header + min(行数, 20) 算。
-  // 行数直接数 DOM 里**已经截过的** pre(cards/bash.ts 超 30 行只留头 20 行),
-  // 所以这里不需要知道原始输出多长。stderr 标签/展开按钮/空态各算一个细条行。
-  if (el.classList.contains("card-bash-output")) return bashOutputHeight(el);
-
-  // 过程里的几步：每步一行（收着的 <details> 只剩 summary；派出子 agent 那一步是一行抬头），展开着的那一步按内容算；
-  // 步间 `gap: 4px`；卡本身上下不留内边距。
-  if (el.classList.contains("card-steps")) {
-    const steps = Array.from(el.children);
-    let h = Math.max(0, steps.length - 1) * STEPS_GAP;
-    for (const s of steps) h += s.tagName === "DETAILS" && (s as HTMLDetailsElement).open ? blockHeight(s) : SUMMARY_H;
-    return h;
-  }
-
-  if (el.classList.contains("card-assistant")) {
-    let h = CARD_HEADER_H;
-    const body = el.querySelector(".card-body");
-    if (!body) return h + 20; // 无 body 的空卡:header + 余量
-    for (const child of Array.from(body.children)) h += blockHeight(child);
-    return h;
-  }
-
-  warnUnknownCard(el);
-  return null;
-}
-
-/**
- * 估值 → 真正写进 `contain-intrinsic-size` 的那个数（全仓只有这一处；秤按它算误差，所以导出）。
- *
- * 不加全局地板（如 `Math.max(24, …)`）：正确值逐 class 不同，一个地板让细条卡成片虚高；
- * 估值荒谬地小该由判据出声（`scale2-height-truth.vitest.ts` 的 F1：每个 class 的估值最小值 ≥ 登记的常数），不该静默夹掉。
- */
-export function appliedIntrinsicPx(h: number): number {
-  return Math.round(h);
-}
-
-/** 建卡处统一入口：算出估值写 `contain-intrinsic-size: auto <h>px`。查看器的窗口化也用这一份，不另写第二套。 */
-export function applyIntrinsicSize(el: HTMLElement): void {
-  const h = estimateStreamNodeHeight(el);
-  if (h !== null) {
-    el.style.setProperty("contain-intrinsic-size", `auto ${appliedIntrinsicPx(h)}px`);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -402,11 +108,11 @@ export interface SkeletonFacts {
 /**
  * 卡片外框（padding ＋ border ＋ 卡间 margin）的常数。
  * 金标准 `tests/evidence/skel-golden.json`（真 Chromium 里每张卡占的位置 − 头 − 体），
- * 门禁在 `scale2-height-truth.vitest.ts`「骨架外框」那一组：每一格 == 中位数向上取整（粗估宁可偏高）。
+ * 门禁在 `skel-outer.vitest.ts`：每一格 == 中位数向上取整（粗估宁可偏高）。
  */
 const SKEL_USER_CHROME = 50;
 const SKEL_CARD_CHROME = 19;
-/** 「几步」卡的外距（每步一行另按 `SUMMARY_H`、步间按 `STEPS_GAP` 算；与 `estimateStreamNodeHeight` 的 card-steps 那一支同形）。 */
+/** 「几步」卡的外距（每步一行另按 `SUMMARY_H`、步间按 `STEPS_GAP` 算）。 */
 const SKEL_STEPS_CHROME = 4; // 上下各 4px 外距，与邻卡的外距折叠后只剩一份（RENDER2 金样：位置 − 那几行 = 4）
 const SKEL_SYSTEM_H = 28;
 /** 系统注入的细条（「显示系统注入」开着时）：一行 summary ＋ 上下外距。关着 ⇒ 0。 */
@@ -426,7 +132,7 @@ export const SKEL_OUTER = {
   system: SKEL_SYSTEM_H,
 } as const;
 
-/** 字宽算术（口径 = `fallbackTextHeight`：CJK 全宽、其余 0.52em），折成行数的**上界**。 */
+/** 字宽算术（码点 > 0x2E80 的 CJK / 全宽按一个字号宽、其余 0.52em），折成行数的**上界**。 */
 function factLines(f: SkeletonFacts, fontSizePx: number, widthPx: number): number {
   const ch = f.ch ?? 0;
   const cj = Math.min(f.cj ?? 0, ch);
@@ -447,7 +153,7 @@ function factCode(f: SkeletonFacts): number {
  *
  * 买到：骨架落地那一瞬间就有总高（滚动条大致对、跳转可用）。
  * **买不到**：精度。它不知道 slash/compact 细条、ESC 折叠、`stripInternalNoise` 剥空这些渲染期决定；
- * 第二级（建卡时 `applyIntrinsicSize` ＋ `contain-intrinsic-size: auto` 记住真值）接管已渲染的那部分。
+ * 第二级（`refineItemOf`，Worker 排正文）换掉正文那一段；建了卡的那几条用真高。
  */
 export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): number {
   // 画成哪一形是后端那一格（`dr`）：
@@ -611,7 +317,7 @@ export interface RefineItem {
   widthPx: number;
   /** 正文以外那几段（外框 · 头 · 代码 · 折叠单元 · 段距），与第一级 `estimateFromFacts` 同一套常数。 */
   fixed: number;
-  /** 超长正文只交前缀（`MEASURE_PREFIX_CHARS`，同 `textHeight`）：排出来的高 × `scale` 外推回全长（不超长 ⇒ 1）。 */
+  /** 超长正文只交前缀（`MEASURE_PREFIX_CHARS`）：排出来的高 × `scale` 外推回全长（不超长 ⇒ 1）。 */
   scale: number;
 }
 

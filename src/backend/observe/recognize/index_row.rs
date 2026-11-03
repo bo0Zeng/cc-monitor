@@ -39,7 +39,7 @@ pub(crate) struct IndexRow {
     /// 正文字符数（**代码块之外**；Unicode 标量计，不含换行）。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) ch: u32,
-    /// 其中 CJK/全宽字符数（口径 = `height-estimate.ts::fallbackTextHeight` 的 `> 0x2E80`）。
+    /// 其中 CJK/全宽字符数（口径 = `height-estimate.ts::factLines` 的码点 `> 0x2E80`）。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) cj: u32,
     /// 正文**非空**硬行数（代码块之外）。
