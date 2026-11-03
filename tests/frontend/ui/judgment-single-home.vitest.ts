@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43" | "J44" | "J45" | "J46" | "J47" | "J48";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -328,12 +328,20 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
     // 翻 `zero`：界面只问本机后端 `history-search-merge`，它自己问到各台（各台常驻索引保热）、合并排序再答
-    //   （`face_core::search::merge` → `cmd_wire::search::sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
+    //   （`face_core::search::merge` → `face_core::column::sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
     // 通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）；
-    //   排序那一个住线上形那一份（`cmd-wire/src/search.rs`，不写字），合并写结果头那一句住 `face-core/src/search.rs`。
-    homes: ["cmd-wire::sort_by_recency", "face-core::merge", "src/backend/history/search_rules.rs::clamp_limit"],
+    //   最近优先那一条排法与几台并一列住 `face-core/src/column.rs`（`merge_by` 是拼起来照 `sort_by_recency` 排；历史页 · 手机会话屏同一份），
+    //   合并写结果头那一句住 `face-core/src/search.rs`；线上形那一份（`cmd-wire/src/search.rs`）只留类型。
+    homes: [
+      "face-core::sort_by_recency",
+      "face-core::merge_by",
+      "face-core::merge",
+      "src/backend/history/search_rules.rs::clamp_limit",
+    ],
     status: "zero",
+    // 多机合并排序只许一份：线上形那一份（只留类型）不许再长出排序。
+    rustGone: ["src/common/cmd-wire/src/search.rs::sort_by_recency"],
     defs: ["mergeSearchResults"],
     needles: [
       { text: "limit: 300", count: 0, file: "src/frontend/ui/views/history.ts" },
@@ -745,6 +753,60 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/frontend/shell/src/platform/spawn.rs", text: "0x0800_0000", count: 0 },
     ],
   },
+  J44: {
+    what: "会话叫什么 · 整行标题怎么拼（项目 · ↳ · ⚙ · 名字；记录没读到 ⇒ 会话号头 8 位）",
+    // 唯一的家是 `search_rules`：名字 `session_label`、整行 `session_line`（帧上 `NameFace.title`），界面照抄。
+    homes: ["src/backend/history/search_rules.rs::session_line", "src/backend/history/search_rules.rs::session_label"],
+    status: "zero",
+    defs: [],
+    gone: ["computeTitleFor", "titleParts", "fullTitle"],
+    needles: [
+      { text: "labelProject", count: 0 },
+      { text: "↳ ", count: 0 },
+    ],
+    rustNeedles: [
+      { file: "src/backend/history/search_rules.rs", text: "chars().take(8)", count: 1 },
+      { file: "src/backend/history/session_hidden.rs", text: "chars().take(8)", count: 0 },
+      { file: "src/backend/history/history_list.rs", text: "chars().take(8)", count: 0 },
+      { file: "src/backend/faces/sessions_batch_face.rs", text: "chars().take(8)", count: 0 },
+    ],
+  },
+  J45: {
+    what: "「在终端里打开」点不点得了",
+    // 唯一的家是后端造脸那一处（`SessionCan.attach`：接不接得进 · 在哪台看才给），界面只读 `face-can.ts::canAttach`。
+    homes: ["src/backend/wire/mod.rs::attach_yes"],
+    status: "zero",
+    defs: [],
+    gone: ["isAttachable", "resolveRemoteTmuxItems", "resolveLocalTmuxItems"],
+    needles: [{ text: 'dot === "exited"', count: 0 }],
+  },
+  J46: {
+    what: "分块传那一圈：一块多大 · 逐块送进那台暂存区 · 整份摘要 · 现造暂存键",
+    // 唯一的家是 `chunk-core`：文件窗口 · 手机嵌的核心 · 壳替界面的 `attach_stage.rs` 共用；界面只交 Blob 与进度回调（`attach-draft.ts`）。
+    homes: ["chunk-core::stage", "chunk-core::CHUNK", "chunk-core::key_of"],
+    status: "zero",
+    defs: ["CHUNK"],
+    needles: [{ text: '"files-stage-chunk"', count: 0 }],
+  },
+  J47: {
+    what: "base64（RFC 4648 标准字母表、带补位）编 · 解",
+    // 唯一的家是 `cmd_wire::b64`：后端 CLI 入参（`wire::b64` 只把解不开的那几种写成契约错那一句）· 出网口代理鉴权 · 壳的 PowerShell 编码命令都调它。
+    //   字母表字面只此一处由 `b64-one-home.vitest.ts` 钉。
+    homes: ["cmd-wire::b64_encode", "cmd-wire::b64_decode"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustGone: ["src/backend/egress/tunnel.rs::base64", "src/frontend/shell/src/platform/terminal.rs::base64_encode"],
+  },
+  J48: {
+    what: "xterm 键码：一下 ⇒ 送进终端的字节，与反过来",
+    // 唯一的家是 `cmd_wire::keys` 那一张表：后端托管终端送键（`key_bytes` 只认 tmux 键名）· 手机经 JNI（`TermKeys`）都从它出。
+    //   Kotlin 零键码表由 `xterm-keys-one-home.vitest.ts` 钉。
+    homes: ["cmd-wire::presses_bytes", "cmd-wire::presses_of"],
+    status: "zero",
+    defs: [],
+    needles: [],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -789,15 +851,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
-  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心共用；界面不分块传，没有孪生。
+  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口 · 手机嵌的核心 · 壳替界面（`attach_stage.rs`）共用，界面零实现（J46）。
   "chunk-core": {
-    CHUNK: NONE,
-    key_of: NONE,
+    CHUNK: "J46",
+    key_of: "J46",
     new: NONE,
     sent: NONE,
     finish: NONE,
     put: NONE,
-    stage: NONE,
+    stage: "J46",
     pull: NONE,
   },
   // 一组一条命令的全过程与它的字：后端 · 文件窗口 · 手机嵌的核心照它；界面（TS）不做文件的一组，没有孪生。
@@ -891,8 +953,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     text: NONE,
     prose: NONE,
     tool_result: NONE,
-    // 最近优先那一个排序（合几台结果的 `face_core::search::merge` 调它）：界面只照抄合好的那一份，TS 侧没有孪生。
-    sort_by_recency: "J15",
     // `history-search` 入参 `scope` 的那个词（`SearchScope::word`，后端口径那一层读）：界面按生成的 TS 类型发，TS 侧没有孪生。
     word: NONE,
     // 造一台 · 本机那一个 · 远端名 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
@@ -913,6 +973,17 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     to_hex: NONE,
     from_hex: NONE,
     bytes: NONE,
+    // base64 编 · 解（`b64.rs`）：界面不编不解，TS 侧没有孪生。
+    b64_encode: "J47",
+    b64_decode: "J47",
+    // xterm 键码那一张表（`keys.rs`）：编码 · 解码两个口 ＋ 键的线上名 · 一下的记号（JNI 两侧与金样同一形）。界面不送键码，TS 侧没有孪生。
+    presses_bytes: "J48",
+    presses_of: "J48",
+    ALL: NONE,
+    wire: NONE,
+    from_wire: NONE,
+    token: NONE,
+    from_token: NONE,
     // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
     key: NONE,
     // `calls!` 表里每条的名字 · 哪几条回包的哪一列带记录（形状，判认不认得的是 `face_core::record`）。
@@ -981,6 +1052,36 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     mend_records: NONE,
     // 几台的搜索结果合一份、写结果头那一句（`face-core/src/search.rs`；本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份。
     merge: "J15",
+    // 最近优先那一条排法 · 几台并一列（`face-core/src/column.rs`；后端每台花片段预算 · 合搜索结果 · 历史页 · 手机会话屏同一份）：
+    //   界面只照抄排好并好的那一份，TS 侧没有孪生。
+    sort_by_recency: "J15",
+    merge_by: "J15",
+    // 分叉挂父 · 手机会话屏切段（`face-core/src/column.rs`）：历史页那一列由本机后端摊好、手机照核心交的画，TS 侧没有孪生。
+    nest: NONE,
+    column: NONE,
+    // 一台的会话簿（`face-core/src/book.rs`：帧折成整份 · 那台看不见时那一张脸）：壳与手机核心折、界面照画，TS 侧没有孪生。
+    unseen: NONE,
+    fold: NONE,
+    seat: NONE,
+    seats: NONE,
+    unseen_now: NONE,
+    forget: NONE,
+    // 一台的活卡板（`face-core/src/live.rs`：活卡帧折成整份 · 卡头那一行）：壳与手机核心折、界面照画（`live-card.ts` 不认 `op`），TS 侧没有孪生。
+    apply: NONE,
+    at: NONE,
+    cards_of: NONE,
+    drop_session: NONE,
+    clear: NONE,
+    len: NONE,
+    is_empty: NONE,
+    // 远端清单副本表（`face-core/src/listing_copy.rs`：照答换 · 落盘那一形 · 一台的文件名）：本机后端与手机核心同一份，界面不碰。
+    VERSION: NONE,
+    on: NONE,
+    kept: NONE,
+    to_ask: NONE,
+    took: NONE,
+    missed: NONE,
+    file_stem: NONE,
   },
   "md-core": {
     // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
