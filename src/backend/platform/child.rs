@@ -753,11 +753,9 @@ mod os {
         ) -> i32;
         fn AssignProcessToJobObject(job: RawHandle, process: RawHandle) -> i32;
         fn TerminateJobObject(job: RawHandle, exit_code: u32) -> i32;
-        fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
     }
-    use crate::platform::win_proc::CloseHandle;
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    use crate::platform::win_proc::{CloseHandle, TerminateProcess};
+    use platform_core::proc::CREATE_NO_WINDOW;
     /// `SetInformationJobObject` 的信息类 `JobObjectExtendedLimitInformation`。
     const EXTENDED_INFO_CLASS: i32 = 9;
     /// 标志位 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个 Job 句柄关掉 ⇒ 系统终止 Job 里的每一个进程。

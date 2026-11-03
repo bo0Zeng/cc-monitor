@@ -111,8 +111,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/frontend/shell/config_tests.rs",
         "src/backend/platform/lock.rs",
         "`config.json` 的跨进程锁（monitor `platform::fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
-         是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
-         unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
+         是同一把（都只调 `platform_core::dir::hold`）——「同一把」只能同时读两份源码对拍：\
+         两边各恰好一处调它、自己不再拿锁；只读一侧就成了自己跟自己比",
     ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_core::addr::backend_registry_sources`），不再是编译期边。

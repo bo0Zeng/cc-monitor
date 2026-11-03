@@ -57,7 +57,7 @@ internal class ChatChips(
                 r is Reply.Ok ->
                     SessionModel.of(r.data)?.let { Switched(it.result, it.model, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
-                r == Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
+                r is Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
                 else -> Switched.failed(r.problem(machine, SessionModel.COMMAND, link.offline.value)?.text)
             }.orUnsure(copyText("session.model.unsure"))
         }
@@ -87,7 +87,7 @@ internal class ChatChips(
                 r is Reply.Ok ->
                     SessionPermission.of(r.data)?.let { Switched(it.result, it.modeText, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionPermission.COMMAND, r.data.toString()).text)
-                r == Reply.TimedOut -> Switched.failed(copyText("session.permission.unsure"))
+                r is Reply.TimedOut -> Switched.failed(copyText("session.permission.unsure"))
                 else -> Switched.failed(r.problem(machine, SessionPermission.COMMAND, link.offline.value)?.text)
             }.orUnsure(copyText("session.permission.unsure"))
         }

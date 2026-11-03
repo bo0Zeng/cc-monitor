@@ -29,7 +29,7 @@
  *
  * # 买不到
  *
- * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高（`applyIntrinsicSize` ＋ `contain-intrinsic-size: auto`）；
+ * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高；
  * 视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
  *   更远的一直是第一级。
  * - **正文从哪来归宿主**：主窗口 tab 先从 `TailWindow.pending` 拿（重放推过来的），没有的按偏移取；

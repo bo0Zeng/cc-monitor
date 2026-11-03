@@ -25,6 +25,8 @@ copy-core = { path = "../../common/copy-core" }
 creds-core = { path = "../../common/creds-core", features = ["harden"] }
 own-chan = { path = "../../common/own-chan" }
 pidwatch-core = { path = "../../common/pidwatch-core" }
+# 目录锁 · 只给本人的目录 · 原子写 · /proc stat · 进程表 · CREATE_NO_WINDOW：monitor 那一侧链同一份，这一层只拿它造那一句。
+platform-core = { path = "../../common/platform-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }

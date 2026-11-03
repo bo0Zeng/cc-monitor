@@ -401,7 +401,14 @@ class ResidentFeedTest {
             val said = (failed.await() as Reply.Failed).failure
             assertEquals(listOf("differs", "box 后端版本不同", "d"), listOf(said.code, said.said, said.detail))
             assertEquals(mapOf("want" to "5.1"), said.data?.value)
-            for ((line, want) in listOf("""{"call":3,"end":"timeout"}""" to Reply.TimedOut, """{"call":4,"end":"down"}""" to Reply.LinkDown)) {
+            // 期限到 · 撤了：核心写好的那一句与详情原样带上（手机不另取字）。
+            val ends =
+                listOf(
+                    """{"call":3,"end":"timeout","said":"t-said","detail":"t-detail"}""" to Reply.TimedOut("t-said", "t-detail"),
+                    """{"call":4,"end":"down"}""" to Reply.LinkDown,
+                    """{"call":5,"end":"cancelled","said":"c-said","detail":"c-detail"}""" to Reply.Cancelled("c-said", "c-detail"),
+                )
+            for ((line, want) in ends) {
                 val r = async { f.call("ping") }
                 core.emit("reply", line)
                 assertEquals(want, r.await())

@@ -23,6 +23,8 @@ members = [
     "../../common/own-chan",
     # 等一个进程退出（Linux pidfd · Windows 进程句柄，内核叫醒、零轮询）：后端 · monitor 同一份。
     "../../common/pidwatch-core",
+    # 平台原语（目录锁 · 只给本人的目录 · /proc stat · 进程表 · 自家状态的原子写）：后端 · monitor 同一份。
+    "../../common/platform-core",
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # `agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
@@ -173,6 +175,8 @@ relay-route-core = { path = "../../common/relay-route-core" }
 own-chan = { path = "../../common/own-chan" }
 # 等一个进程退出（`bind.rs`：登记着窗口的 shell 一退就删那条登记）；后端那一侧链同一份。
 pidwatch-core = { path = "../../common/pidwatch-core" }
+# 平台原语（目录锁 · 只给本人的目录 · /proc stat · 进程表 · CREATE_NO_WINDOW · 自家状态的原子写）：后端那一侧链同一份。
+platform-core = { path = "../../common/platform-core" }
 # 部署那一族的契约（契约类）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
 # 通信层面 A（crate 住 `src/comms/inward/`；壳里 `chan/` 再导出，模块路径不变）。

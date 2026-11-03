@@ -4,4 +4,4 @@
  * `reply` 那一件：一问一答的结局（`call` ＝ 问的时候领的那个号）。成了的 `data` 是那台回包原样（Kotlin 照那条命令的回包类型解那一次；
  * 记录那一格核心先判过认不认得，`face_core::record::mend_records`）。
  */
-export type CallEnd = { "end": "ok", call: number, data: unknown, } | { "end": "failed", call: number, code: string, said: string, detail: string, data: unknown, } | { "end": "timeout", call: number, } | { "end": "cancelled", call: number, } | { "end": "down", call: number, } | { "end": "unreadable", call: number, detail: string, };
+export type CallEnd = { "end": "ok", call: number, data: unknown, } | { "end": "failed", call: number, code: string, said: string, detail: string, data: unknown, } | { "end": "timeout", call: number, said: string, detail: string, } | { "end": "cancelled", call: number, said: string, detail: string, } | { "end": "down", call: number, } | { "end": "unreadable", call: number, detail: string, };

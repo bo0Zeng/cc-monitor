@@ -6,7 +6,7 @@
 //! 规则：认得准才切，认不准照实说、给办法，永远不挑一个窗口切。
 
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::front::{FrontAct, FrontFace, FrontTold};
+use cmd_wire::front::{FrontAct, FrontFace, FrontMiss, FrontTold};
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -92,6 +92,23 @@ pub enum Unplaced {
     PeerTimedOut,
     /// 那台没问到：`said` 是连接层写的那一句（照摆）。
     Unreached { said: String },
+    /// 出口那一跳别的出错：`detail` 是原话（可复制）。
+    Broken { detail: String },
+    /// 出口收到的认不出（链空又没带那一张）：`detail` 是认不出的那一处（可复制）。
+    BadShape { detail: String },
+}
+
+/// 出口那一跳没成（界面挑的种类）⇒ 同一张表里的那一种：本机后端不认 · 期限到 · 没问到与问那台没问成同一张，另两种带原话。
+impl From<FrontMiss> for Unplaced {
+    fn from(m: FrontMiss) -> Self {
+        match m {
+            FrontMiss::Old => Unplaced::PeerOld,
+            FrontMiss::TimedOut => Unplaced::PeerTimedOut,
+            FrontMiss::Unreached { said } => Unplaced::Unreached { said },
+            FrontMiss::Broken { detail } => Unplaced::Broken { detail },
+            FrontMiss::BadShape { detail } => Unplaced::BadShape { detail },
+        }
+    }
 }
 
 /// 排一张：标题 · 正文（空 ⇒ 不出）· 灰字 · 语气 · 按钮（字都已从文案表取好；键在各调用处写成字面量，文案表的静态读认得出）。
@@ -320,6 +337,24 @@ impl Unplaced {
                 None,
                 Tone::Fail,
                 vec![FrontAct::Reconnect],
+            ),
+            U::Broken { detail } => lay(
+                copy_text("front.title.failed", &[]),
+                copy_text("reason.io.unknown", &[]),
+                None,
+                Tone::Fail,
+                vec![FrontAct::Copy {
+                    detail: detail.clone(),
+                }],
+            ),
+            U::BadShape { detail } => lay(
+                copy_text("front.title.badShape", &[]),
+                String::new(),
+                None,
+                Tone::Fail,
+                vec![FrontAct::Copy {
+                    detail: detail.clone(),
+                }],
             ),
         }
     }
