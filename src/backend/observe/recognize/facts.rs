@@ -43,7 +43,7 @@
 
 use crate::agents::beat::{contains, one_line, Act, Beat, Side, StopWhy, Watch};
 use crate::common::cells::Words;
-pub(crate) use cmd_wire::needs::{Needs, NeedsKind};
+pub use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -71,103 +71,103 @@ pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 /// 一份会话的事实（**帧面成品的形状，键名一字不差**；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionFacts {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionFacts {
     /// 源会话 sid；不是分叉来的 ⇒ `null`。
-    pub(crate) forked_from: Option<String>,
+    pub forked_from: Option<String>,
     /// 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
-    pub(crate) touched_files: Vec<String>,
+    pub touched_files: Vec<String>,
     /// 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
-    pub(crate) usage: Option<UsageFact>,
+    pub usage: Option<UsageFact>,
     /// `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
     /// （界面照抄，不自己拼）。每次现给，不累加。
-    pub(crate) model_text: Option<Words>,
+    pub model_text: Option<Words>,
     /// 此刻是换模型清单里哪一项（原值，抽屉勾它）：终端没了时记下的那一项；否则那一家把 `usage.model` 认成清单里唯一对得上的那一项
     /// （`agents::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
-    pub(crate) model_pick: Option<String>,
+    pub model_pick: Option<String>,
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
-    pub(crate) project_dir: Option<String>,
+    pub project_dir: Option<String>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
-    pub(crate) agent: Option<crate::agents::AgentKind>,
+    pub agent: Option<crate::agents::AgentKind>,
     /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
-    pub(crate) writers: Vec<u32>,
+    pub writers: Vec<u32>,
     /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
-    pub(crate) pending: Vec<PendingCall>,
+    pub pending: Vec<PendingCall>,
     /// 最后一段正文的头一行（悬停卡「它最后一句」）。
-    pub(crate) last_say: Option<LastSay>,
+    pub last_say: Option<LastSay>,
     /// **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
-    pub(crate) needs: Option<Needs>,
+    pub needs: Option<Needs>,
     /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
-    pub(crate) handed_back: Vec<String>,
+    pub handed_back: Vec<String>,
     /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
-    pub(crate) retries: Vec<RetryRun>,
+    pub retries: Vec<RetryRun>,
     /// 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
-    pub(crate) notices: Vec<NoticeRun>,
+    pub notices: Vec<NoticeRun>,
     /// 通知组的累加（[`note_notice`]）：不上线，骨架落它（[`skel`]）。
     #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
-    pub(crate) notice_log: NoticeLog,
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub notice_log: NoticeLog,
     /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
-    pub(crate) permission_mode: Option<String>,
+    pub permission_mode: Option<String>,
     /// 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
     /// 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
-    pub(crate) permission_mode_text: Option<Words>,
+    pub permission_mode_text: Option<Words>,
     /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
-    pub(crate) tokens: Option<TokenUse>,
+    pub tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
-    pub(crate) cost: Option<Cost>,
+    pub cost: Option<Cost>,
     /// 还没收场的后台命令（文件序）：累加的那一份账。
-    pub(crate) bg_tasks: Vec<BgTask>,
+    pub bg_tasks: Vec<BgTask>,
     /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
-    pub(crate) background: Option<Background>,
+    pub background: Option<Background>,
     /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
     /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
-    pub(crate) answer_off: Option<Words>,
+    pub answer_off: Option<Words>,
     /// **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
-    pub(crate) auto_answer: Option<u32>,
+    pub auto_answer: Option<u32>,
     /// 那一格可选的几档（档位与字一起，`control::asks::auto_choices` 写；此刻那一格不在几档里 ⇒ 多列一项）。菜单照列，勾在 `min == autoAnswer` 那一项。
     /// 不累加，每次现给。
     #[serde(default)]
-    pub(crate) auto_answer_choices: Vec<cmd_wire::needs::AutoChoice>,
+    pub auto_answer_choices: Vec<cmd_wire::needs::AutoChoice>,
     /// 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟无人答 · 已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
-    pub(crate) auto_answered: Option<Words>,
+    pub auto_answered: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
-    pub(crate) mcp: Vec<McpTrouble>,
+    pub mcp: Vec<McpTrouble>,
     /// 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
     #[serde(default)]
-    pub(crate) started_by: Option<Kin>,
+    pub started_by: Option<Kin>,
     /// 它起的子会话（按起的先后）；不累加，每次现查。
     #[serde(default)]
-    pub(crate) children: Vec<Kin>,
+    pub children: Vec<Kin>,
     /// **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
     /// 不活 ⇒ `null`。不累加，每次现查。
     #[serde(default)]
-    pub(crate) line: Option<FactsLine>,
+    pub line: Option<FactsLine>,
     /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
-    pub(crate) quiet_unread: Option<QuietUnread>,
+    pub quiet_unread: Option<QuietUnread>,
 }
 
 /// 状态一句（[`SessionFacts::line`]）：写它时 pidfile 说的那一态（`for`）· 此刻的字 · 会走的那一句（`{dur}` 由出口填）· 悬停卡那一句。
 /// 界面只在 `for` 与会话帧上那一态相同时用它（两份是同一刻的），否则用会话帧上那一句。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct FactsLine {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct FactsLine {
     #[serde(rename = "for")]
-    pub(crate) of: crate::agents::SessionActivity,
-    pub(crate) text: Words,
-    pub(crate) clock: Option<Clock>,
-    pub(crate) peek: Option<Words>,
+    pub of: crate::agents::SessionActivity,
+    pub text: Words,
+    pub clock: Option<Clock>,
+    pub peek: Option<Words>,
 }
 
 /// **状态一句会走的那一截的唯一一处**：`activity` ＝ pidfile 此刻说的那一态（不活 ⇒ `None` ⇒ 没有这一句）。
 /// 在等 ⇒ 等的种类 · 已等多久（悬停卡：等的那一句）；在跑 ⇒ 调用的那一步 · 跑了多久（那一步）；闲着 ⇒ 完成多久前（最后一句）；
 /// 后台 ⇒ 后台那一句（最后一句）。拿不到时刻 ⇒ 不带钟。
-pub(crate) fn line_of(
+pub fn line_of(
     activity: Option<crate::agents::SessionActivity>,
     f: &SessionFacts,
     now_ms: u64,
@@ -256,90 +256,90 @@ pub(crate) fn line_of(
 /// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `history/session_hidden.rs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Kin {
-    pub(crate) sid: String,
-    pub(crate) title: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Kin {
+    pub sid: String,
+    pub title: String,
     /// 此刻这条会话的整份脸。
-    pub(crate) face: crate::wire::SessionFace,
+    pub face: crate::wire::SessionFace,
     /// 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
-    pub(crate) hidden: Option<cmd_wire::session::Hidden>,
+    pub hidden: Option<cmd_wire::session::Hidden>,
 }
 
 /// 认不出、又不成卡的那几行（会话事实 `quietUnread`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct QuietUnread {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct QuietUnread {
     /// 「无法识别 N 行（类型：a · b）」。
-    pub(crate) text: Words,
+    pub text: Words,
     /// 几行。
-    pub(crate) count: u32,
+    pub count: u32,
     /// 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
-    pub(crate) kinds: Vec<String>,
+    pub kinds: Vec<String>,
 }
 
 /// 一条还没收场的后台命令。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct BgTask {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct BgTask {
     /// 起它的那次工具调用 id。
-    pub(crate) call: String,
+    pub call: String,
     /// 它当场拿到的任务号；还没回 ⇒ `null`。
-    pub(crate) task: Option<String>,
+    pub task: Option<String>,
     /// 那条命令原样（适配层给的）；没有 ⇒ `null`。
-    pub(crate) cmd: Option<String>,
+    pub cmd: Option<String>,
     /// 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
-    pub(crate) at: Option<String>,
+    pub at: Option<String>,
 }
 
 /// 后台任务运行中那一态的成品：写好的一句（发出那一刻的钟）· 会走的那一句（`{dur}` 由桌面那一个读口填）·
 /// 命令那一格（监控板徽标用）· 几条 · 语气。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     test,
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
         rename = "FactsBackground"
     )
 )]
-pub(crate) struct Background {
+pub struct Background {
     /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
-    pub(crate) text: Words,
+    pub text: Words,
     /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`duration-format.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
     /// 命令或起始时刻拿不到 ⇒ `null`。
-    pub(crate) clock: Option<Clock>,
+    pub clock: Option<Clock>,
     /// 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
-    pub(crate) what: Option<Words>,
+    pub what: Option<Words>,
     /// 还在跑的后台命令几条（这一次进程起来之后起的；记录里一条都对不上 ⇒ 0）。
-    pub(crate) count: u32,
+    pub count: u32,
     /// 语气（恒 `busy`）。
-    pub(crate) tone: crate::common::cells::Tone,
+    pub tone: crate::common::cells::Tone,
 }
 
 /// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     test,
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
         rename = "FactsClock"
     )
 )]
-pub(crate) struct Clock {
-    pub(crate) text: Words,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
+pub struct Clock {
+    pub text: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
 }
 
 /// 时长那一截的占位（桌面那一个读口填）。
@@ -348,7 +348,7 @@ const DUR_SLOT: &str = "{dur}";
 /// **后台任务运行中那一句的唯一一处**：`tasks` ＝ 记录里还没收场的后台命令；`born_ms` ＝ 那台持着这条会话、说这一态的进程何时起的
 /// （后台命令活不过它的进程：更早起的那几条是上一个进程留下的、早被掐了，不算）；`now_ms` ＝ 这台此刻。
 /// 命令取最早起的那条（主参数一行，同悬停卡 peek 的截法）；不止一条 ⇒ 「{cmd} 等 {n} 条」；时长 ＝ 它起了多久。
-pub(crate) fn background_of(tasks: &[BgTask], born_ms: Option<u64>, now_ms: u64) -> Background {
+pub fn background_of(tasks: &[BgTask], born_ms: Option<u64>, now_ms: u64) -> Background {
     let at = |t: &BgTask| {
         t.at.as_deref()
             .and_then(crate::common::time::parse_iso8601_ms)
@@ -442,52 +442,52 @@ fn note_background(f: &mut SessionFacts, kind: &str, v: &Value, at: Option<&Stri
 /// 会话里一个有毛病的 MCP 服务器。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpTrouble {
-    pub(crate) name: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpTrouble {
+    pub name: String,
     /// `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
-    pub(crate) status: crate::agents::McpStatus,
+    pub status: crate::agents::McpStatus,
     /// 断开时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
-    pub(crate) detail: Option<String>,
+    pub detail: Option<String>,
     /// 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
-    pub(crate) at: Option<String>,
+    pub at: Option<String>,
 }
 
 /// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
 /// `text` 是写好的成品串（随数一起更新）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TokenUse {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) input: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) output: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) cache_read: u64,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct TokenUse {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub input: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub output: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub cache_read: u64,
     #[serde(rename = "cacheWrite5m")]
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) cache_write5m: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub cache_write5m: u64,
     #[serde(rename = "cacheWrite1h")]
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) cache_write1h: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub cache_write1h: u64,
     /// 算进来的请求数。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) requests: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
-    pub(crate) text: Words,
+    pub text: Words,
     /// 上一次请求（接着算时同一次请求的后一条要替掉它）：键 · 那一次的五个数。不上线，骨架落它（[`skel`]）。
     #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
-    pub(crate) last: Option<LastRequest>,
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub last: Option<LastRequest>,
 }
 
 /// [`TokenUse::last`]。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LastRequest {
+pub struct LastRequest {
     pub(crate) id: String,
     pub(crate) tokens: [u64; 5],
 }
@@ -495,55 +495,55 @@ pub(crate) struct LastRequest {
 /// 全会话花费：记录里那一家自己记的数（微美元）· 它说有没有定不了价的型号 · 写好的串（币种、精度、「约」都在里面）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     test,
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
         rename = "FactsCost"
     )
 )]
-pub(crate) struct Cost {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) micros: u64,
-    pub(crate) partial: bool,
-    pub(crate) text: Words,
+pub struct Cost {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub micros: u64,
+    pub partial: bool,
+    pub text: Words,
 }
 
 /// 一串相邻的 API 重试。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RetryRun {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RetryRun {
     /// 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
-    pub(crate) id: String,
-    pub(crate) outcome: RetryOutcome,
+    pub id: String,
+    pub outcome: RetryOutcome,
 }
 
 /// 一组相邻的收场通知（[`SessionFacts::notices`]）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NoticeRun {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NoticeRun {
     /// 这一组首条那条记录的 id（界面那一张就挂在它上面）。
-    pub(crate) id: String,
+    pub id: String,
     /// 这一组的几条（记录 id，文件序，含首条）。
-    pub(crate) members: Vec<String>,
+    pub members: Vec<String>,
     /// 其中不露的那几条：同一个子运行已经交回了（以交回为准）。
-    pub(crate) hidden: Vec<String>,
+    pub hidden: Vec<String>,
     /// 露着不止一条 ⇒ 写好的组头（几条 · 时段 · 失败几条）；只露一条 · 一条都不露 ⇒ `null`（露着的那一条照它自己那一行）。
-    pub(crate) head: Option<Words>,
+    pub head: Option<Words>,
     /// 露着的那几条里有失败的。
-    pub(crate) failed: bool,
+    pub failed: bool,
 }
 
 /// 通知组的累加（[`SessionFacts::notice_log`]）：一组一组记下的那几条 · 上一条记录之后组还接不接得上。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NoticeLog {
+pub struct NoticeLog {
     pub(crate) runs: Vec<Vec<NoticeSeen>>,
     /// 最后一条画出来的记录是收场通知（之后只来了画成旁注细条 · 不画的）⇒ 下一条通知并进最后一组。
     pub(crate) open: bool,
@@ -562,9 +562,9 @@ pub(crate) struct NoticeSeen {
 /// 一串重试的结局：还没下文 · 后面来了正常回复（接上了）· 来了报错那条（重试耗尽 / 不可重试）· 人发了一句或打断。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum RetryOutcome {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum RetryOutcome {
     Retrying,
     Recovered,
     Failed,
@@ -574,36 +574,36 @@ pub(crate) enum RetryOutcome {
 /// 一个还没有结果的工具调用。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct PendingCall {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PendingCall {
     /// 工具调用 id（等它的 `tool_result` 来摘）。
-    pub(crate) id: String,
+    pub id: String,
     /// 工具名原样。
-    pub(crate) name: String,
+    pub name: String,
     /// 主参数一行（那一家的「工具 → 主参数」表；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
-    pub(crate) what: Option<String>,
+    pub what: Option<String>,
     /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
-    pub(crate) at: Option<String>,
+    pub at: Option<String>,
     /// `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) at_ms: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub at_ms: Option<i64>,
     /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加）。
-    pub(crate) state: StepWait,
+    pub state: StepWait,
     /// `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
-    pub(crate) why: Option<UnclearWhy>,
+    pub why: Option<UnclearWhy>,
     /// 过程那一行右侧那一句（状态不明 ⇒「状态不明」；在跑 · 在等你 ⇒ `null`，在等你那一格出口写已等多久）。
-    pub(crate) text: Option<Words>,
+    pub text: Option<Words>,
     /// 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
-    pub(crate) why_text: Option<Words>,
+    pub why_text: Option<Words>,
 }
 
 /// 一步状态不明的原因：没有活进程持着这条会话 · 判不了活（这一家没声明怎么判，或这台认不出写者）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum UnclearWhy {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum UnclearWhy {
     NoWriter,
     Untracked,
 }
@@ -612,9 +612,9 @@ pub(crate) enum UnclearWhy {
 /// 或判不了活）。有了结果之后是完成 / 失败（那条结果的成品 `toolResults` 说），不在这里。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum StepWait {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum StepWait {
     Running,
     Awaiting,
     #[default]
@@ -623,7 +623,7 @@ pub(crate) enum StepWait {
 
 /// **一步还没结果时的样子的唯一判定**：那台说在等的正是它 ⇒ 在等你；否则有活进程持着这条会话 ⇒ 在跑；否则状态不明
 /// （`tracked` ＝ 判得了活（`session_holders` 回了 `Some`）；判不了 ⇒ 原因 `untracked`，判得了 ⇒ `noWriter`）。要在 `writers` 与 `needs` 现查之后调。
-pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
+pub fn settle_pending(f: &mut SessionFacts, tracked: bool) {
     let waiting_on = f.needs.as_ref().and_then(|n| n.call.clone());
     let live = !f.writers.is_empty();
     for p in &mut f.pending {
@@ -650,19 +650,19 @@ pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
 /// 最后一段正文。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LastSay {
-    pub(crate) text: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LastSay {
+    pub text: String,
     /// 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
-    pub(crate) at: Option<String>,
+    pub at: Option<String>,
     /// `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) at_ms: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub at_ms: Option<i64>,
 }
 
 /// 那台 pidfile 说「在等」（活会话表那一格，`history::live_table::LiveTable::wait_of`）。
-pub(crate) use crate::history::live_table::PidWait;
+pub use crate::history::live_table::PidWait;
 
 /// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
 /// - 批准框（或没说是哪种框）：那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
@@ -670,11 +670,7 @@ pub(crate) use crate::history::live_table::PidWait;
 /// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
 /// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
 ///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
-pub(crate) fn needs_of(
-    agent: &str,
-    pending: &[PendingCall],
-    wait: Option<&PidWait>,
-) -> Option<Needs> {
+pub fn needs_of(agent: &str, pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
     use crate::agents::beat::CallAsk;
     use crate::agents::WaitOn as W;
     let wait = wait?;
@@ -721,7 +717,7 @@ pub(crate) fn needs_of(
 
 /// 会话的 `needs` 配上挂着的待答请求 `ask`（最早挂上的那一条；登记表住常驻进程，`control::asks`，由顶层壳查好交进来）：
 /// 有 ⇒ `needs.ask` 是它（pidfile 没说在等 —— 挡着终端的那种 —— 就照它补出一份）；pidfile 说在等却没有 ⇒ `ask: null`、`manualText` 写好「只能在终端里答」。
-pub(crate) fn dress_ask_with(
+pub fn dress_ask_with(
     needs: Option<Needs>,
     ask: Option<crate::agents::asks::Ask>,
     now_ms: u64,
@@ -784,7 +780,7 @@ pub(crate) fn needs_words(kind: NeedsKind) -> Words {
 }
 
 /// 钉条第一行（[`Needs::head`] 的唯一一处）：种类 ＋ 工具名。批准判不出工具名 ⇒ 短的那一格（[`needs_words`]）。
-pub(crate) fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
+pub fn needs_head(kind: NeedsKind, tool: Option<&str>) -> Words {
     Words(match kind {
         NeedsKind::Approve => match tool {
             Some(t) => copy_core::copy_text("needs.bar.approve", &[("tool", t)]),
@@ -818,11 +814,11 @@ const NEEDS_TIER_SPAN: u64 = 1 << 40;
 
 /// **几条「需手动」先答哪个**（[`Needs::rank`] 的唯一一处，小的先答；`sessions-needs` 与 [`merge_needs`] 都只按它排）：危险度那一档（[`NEEDS_BY_DANGER`]）在高位；
 /// 同一档里等得越久越小（已等多久在那台算）；不知道等了多久的排这一档最后。
-pub(crate) fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
+pub fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
     let tier = NEEDS_BY_DANGER
         .iter()
         .position(|k| *k == kind)
-        .map_or(NEEDS_BY_DANGER.len(), |i| i) as u64;
+        .unwrap_or(NEEDS_BY_DANGER.len()) as u64;
     let last = NEEDS_TIER_SPAN - 1;
     tier * NEEDS_TIER_SPAN + waited_ms.map_or(last, |w| last - 1 - w.min(last - 1))
 }
@@ -834,16 +830,16 @@ const MANUAL_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 2) * NEEDS_TIER_SPAN;
 
 /// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（计划那一侧 `plan::needs::need_items` 算好交进来；没有格可落 ⇒ `None`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NeedAt {
-    pub(crate) workspace: String,
-    pub(crate) slice: String,
-    pub(crate) cell: Option<cmd_wire::needs::NeedsCell>,
+pub struct NeedAt {
+    pub workspace: String,
+    pub slice: String,
+    pub cell: Option<cmd_wire::needs::NeedsCell>,
 }
 
 /// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里要人看的每一条
 /// （`plan` ＝ [`NeedAt`] 那几条）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
 /// 排好：照 `rank`，并列照交进来的先后。纯计算。
-pub(crate) fn needs_list(
+pub fn needs_list(
     sessions: Vec<cmd_wire::needs::NeedsRow>,
     plan: &[NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
@@ -911,28 +907,28 @@ pub(crate) fn rank_of(item: &cmd_wire::needs::NeedsItem) -> u64 {
 /// `sessions-needs-merge` 的回包：各台需手动的每一项，先答的在前；`total` 是各台加起来几项（入口 · 窗口标题照它写）；
 /// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；没问到的那几台（不计，各带那一句）。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsMerged {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsMerged {
     pub(crate) items: Vec<NeedsAt>,
-    pub(crate) total: u32,
+    pub total: u32,
     pub(crate) unreadable: Vec<NeedsUnreadable>,
     pub(crate) down: Vec<NeedsDown>,
 }
 
 /// 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsDown {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) said: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsDown {
+    pub origin: cmd_wire::Machine,
+    pub said: String,
 }
 
 /// 合好的一项：哪台 · 那一项原样。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct NeedsAt {
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) item: cmd_wire::needs::NeedsItem,
@@ -940,8 +936,8 @@ pub(crate) struct NeedsAt {
 
 /// 会话外那一截读不出的一台：哪台 · 那台写的那一句。
 #[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct NeedsUnreadable {
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) said: Words,
@@ -950,7 +946,7 @@ pub(crate) struct NeedsUnreadable {
 /// **各台的「需手动」合成一份**（`sessions-needs-merge`；`answered` ＝ 每台 `(名字, 它答回来的 sessions-needs)`，`down` ＝ 没问到的那几台原样带上）：
 /// 照各项的 `rank`（[`needs_rank`] · 计划 · 会外两档）排；并列 ⇒ 本机在前、再照给的台序、台内原来的先后。
 /// 各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
-pub(crate) fn merge_needs(
+pub fn merge_needs(
     mut answered: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsList)>,
     down: Vec<NeedsDown>,
 ) -> NeedsMerged {
@@ -985,18 +981,18 @@ pub(crate) fn merge_needs(
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct UsageFact {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct UsageFact {
     /// `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) prompt_tokens: u64,
-    pub(crate) model: Option<String>,
+    pub model: Option<String>,
     /// 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) peak_prompt_tokens: u64,
     /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) limit: u64,
     pub(crate) limit_from: LimitFrom,
     /// 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
@@ -1018,7 +1014,7 @@ pub(crate) const CONTEXT_WARN_AT: u8 = 80;
 
 impl UsageFact {
     /// 一份用量：上限与来源已定 ⇒ 字与语气随之写好（唯一一处）。
-    pub(crate) fn new(
+    pub fn new(
         prompt_tokens: u64,
         model: Option<String>,
         peak_prompt_tokens: u64,
@@ -1077,9 +1073,9 @@ impl UsageFact {
 /// 上限从哪来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum LimitFrom {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum LimitFrom {
     /// 中转看见了这个会话的请求：带了扩展上下文那一项 ⇒ 1M，没带过 ⇒ 这个模型的默认（`observe::relay_marks`）。
     Relay,
     /// 设置里的上限表（按模型名子串）。
@@ -1098,7 +1094,7 @@ pub(crate) const CONTEXT_STANDARD: u64 = 200_000;
 pub(crate) const CONTEXT_EXTENDED: u64 = 1_000_000;
 
 /// 设置里的上限表：模型名子串（小写）→ 上限。住这台的偏好（`common/machine_prefs.rs` 的 `contextLimits`），`history-facts` 现读。
-pub(crate) type ContextLimits = Vec<(String, u64)>;
+pub type ContextLimits = Vec<(String, u64)>;
 
 /// **上下文上限的唯一判定**：中转看见过这个会话的请求（`relay`）⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k；
 /// 中转没看见过 ⇒ 设置里的上限表（最长匹配的子串胜）> 模型名带 `[1m]` > 见过超过 200k 的一轮 > 判不出（占位 1M，`Assumed`）。
@@ -1233,7 +1229,7 @@ pub(crate) fn drop_off_notices(f: &mut SessionFacts, off: &std::collections::Has
 }
 
 /// 出口那一下照累加的通知组与此刻的 `handed_back` 写 [`SessionFacts::notices`]（组头的钟面照看的那一台的时区写）。
-pub(crate) fn settle_notices(f: &mut SessionFacts, tz: &crate::common::time::Tz) {
+pub fn settle_notices(f: &mut SessionFacts, tz: &crate::common::time::Tz) {
     use cmd_wire::record::TaskEnd;
     let back = &f.handed_back;
     f.notices = f

@@ -5,7 +5,7 @@ use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
-pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<Tail, String> {
+pub fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<Tail, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     if let Some(map) = super::super::record_scan::global().peek(&target) {
         return Ok(map.tail(n));
@@ -16,7 +16,7 @@ pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<
 
 /// 记号（`history-tail` 的 `held.mark`）：`[start, end)` 那一段原始字节的位置与摘要。
 /// 文件不到 `end` ⇒ `None`；那一段比一行的上限还长 ⇒ 空串（不记，下一次不核）。核的时候按同一个函数重算、比相等。
-pub(crate) fn mark_at(
+pub fn mark_at(
     agent_home: &Path,
     jsonl_path: &str,
     start: u64,
@@ -45,7 +45,7 @@ pub(crate) fn mark_at(
 }
 
 /// 记号里的那一段 `[start, end)`；认不出 ⇒ `None`。
-pub(crate) fn mark_span(mark: &str) -> Option<(u64, u64)> {
+pub fn mark_span(mark: &str) -> Option<(u64, u64)> {
     let mut it = mark.splitn(3, '-');
     let start = it.next()?.parse().ok()?;
     let end = it.next()?.parse().ok()?;
@@ -54,7 +54,7 @@ pub(crate) fn mark_span(mark: &str) -> Option<(u64, u64)> {
 }
 
 /// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包里那一块）。
-pub(crate) use cmd_wire::session::TailPlan;
+pub use cmd_wire::session::TailPlan;
 
 /// 尾段那张图 ＋ 最后一个可计行的起点：住读行那一层（扫描图也出它，扫描图在查询之下）。
 pub(crate) use super::super::lines::Tail;

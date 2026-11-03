@@ -12,7 +12,7 @@ pub(crate) fn install(f: Seen) {
 }
 
 /// 交；没装 ⇒ 不做。
-pub(crate) fn seen(sid: &str, present: bool) {
+pub fn seen(sid: &str, present: bool) {
     if let Some(f) = HOOK.get() {
         f(sid, present);
     }

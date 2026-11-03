@@ -22,7 +22,7 @@ use crate::common::said::Said;
 use crate::observe::recognize::step_clock::StepClock;
 use crate::platform::fs::Ro;
 /// 行摘要 · 记录行的线上形住 `cmd-wire`（手机按同一份解）；记录那一格后端照原样的一团写（缺省 `Value`）。
-pub(crate) use cmd_wire::record::{ReadRow, RecordLine};
+pub use cmd_wire::record::{ReadRow, RecordLine};
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 ///
 /// 选它而不选 `DefaultHasher`：摘要要**跨进程**比（快照那一刻的后端与续传那一刻的后端可以是两个进程、两个版本），
 /// 而 `DefaultHasher` 不承诺跨 Rust 版本稳定。不是安全用途（只防「断线期间文件被改写」那种非恶意的变化）。
-pub(crate) fn line_hash(body: &[u8]) -> u64 {
+pub fn line_hash(body: &[u8]) -> u64 {
     cmd_wire::fnv::fnv1a64(body)
 }
 
@@ -64,7 +64,7 @@ fn split_lines_full(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64, Option<u64>)>
 /// （[`StepClock`]），再序列化；同一个读法接着读的几块共用一份表。页里还有配不上的结果、又给了往回读的那一份文件
 /// （[`Reader::back`]）⇒ 从这个读法头一页的起点往前读**一页的额度**，先按字节筛含那几个调用 id 的行，只解筛中的喂 `note`。
 /// 再往前不读：读不到 ⇒ 那一格照没有用时的那一形（读不到就不写，不猜）。
-pub(crate) struct Reader<'a> {
+pub struct Reader<'a> {
     face: &'a RecordFace,
     /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
     tz: crate::common::time::Tz,
@@ -87,7 +87,7 @@ struct Back {
 type Interpreted = Option<(Value, Option<String>)>;
 
 impl<'a> Reader<'a> {
-    pub(crate) fn new(face: &'a RecordFace, tz: crate::common::time::Tz) -> Self {
+    pub fn new(face: &'a RecordFace, tz: crate::common::time::Tz) -> Self {
         Self {
             face,
             tz,
@@ -98,7 +98,7 @@ impl<'a> Reader<'a> {
     }
 
     /// 配不上的结果往回读 `file`（已过围栏的真路径）里、这个读法头一页起点之前的 `page` 字节（一页的额度）。
-    pub(crate) fn back(mut self, file: &Path, page: usize) -> Self {
+    pub fn back(mut self, file: &Path, page: usize) -> Self {
         self.back = Some(Back {
             file: file.to_path_buf(),
             page,
@@ -232,7 +232,7 @@ fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
 
 /// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
 /// 相邻的认不出那几条并进前一条（[`fold_unread`]）：被并掉的那一行照占号、不再带记录。
-pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
+pub fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
     let mut out: Vec<ReadRow> = Vec::new();
     let mut last: Option<usize> = None;
     let lines: Vec<_> = split_lines_full(offset, bytes)
@@ -265,7 +265,7 @@ pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec
 /// **相邻的认不出那几条并成一条**（适配层每行给一条 `unread`，并是出成品这一遍的事）：`into` 与 `next` 都是 `unread`、
 /// 原因与类型都一样 ⇒ `count` 加上、`text` 照新的数重写（[`face_core::record::unread_text`]），回 `true`；否则不动、回 `false`。
 /// 只看通用记录的格，不认哪一家。
-pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
+pub fn fold_unread(into: &mut Value, next: &Value) -> bool {
     use crate::agents::record::Body;
     use face_core::record::unread_text;
     use serde::Deserialize as _;
@@ -295,20 +295,20 @@ pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
 
 /// 子运行那一页的一条（`history-run.rows[]`）。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RunRow {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RunRow {
     /// 通用记录（同 [`RecordLine::record`]）。
-    #[cfg_attr(test, ts(as = "crate::agents::record::Record"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "crate::agents::record::Record"))]
     pub(crate) record: Value,
     /// 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) rid: Option<String>,
 }
 
 /// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些；相邻的认不出那几条并进前一条（[`fold_unread`]，行号是前一条的）。`lines` 每条带它的起点字节偏移。回 `(成品, 下一个行号)`。
-pub(crate) fn record_lines<'b>(
+pub fn record_lines<'b>(
     reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
@@ -347,7 +347,7 @@ pub(crate) fn record_lines<'b>(
 }
 
 /// [`record_lines`] 喂一页原始字节（`history-page`；`offset` 是这一页在文件里的起点）。
-pub(crate) fn record_lines_of_page(
+pub fn record_lines_of_page(
     reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
@@ -359,7 +359,7 @@ pub(crate) fn record_lines_of_page(
 
 /// 一页子运行记录（`history-run`，`offset` 是这一页在文件里的起点）：出了记录的每一条给 `{record, rid?}`；
 /// `rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出 / 不进界面的行跳过；相邻的认不出那几条并成一条（[`fold_unread`]）。
-pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<RunRow> {
+pub fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<RunRow> {
     let faces = crate::agents::RunFaces::of(reader.face);
     let mut out: Vec<RunRow> = Vec::new();
     let lines = split_starts(offset, bytes);
@@ -397,7 +397,7 @@ pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Ve
 ///
 /// 错误是 `(code, message)`：`refused`（围栏拒）· `failed`（读失败）· `oversized_line`
 /// （不叫 `line_too_long`：那是入方向信封的**协议级** code，命令级不许撞名）。
-pub(crate) fn read_page(
+pub fn read_page(
     agent_home: &Path,
     jsonl_path: &str,
     offset: u64,
@@ -482,7 +482,7 @@ pub(crate) fn read_page(
 /// 从尾巴往前读**一页**（在跑的子运行从底部读起、往上翻再取上一页）：`[from, end)`，`end` ＝ `before`（缺 ⇒ 文件里最后一个整行之后，
 /// 没写完的残尾不交）；`from` 切在行头、不超过 `page` 字节往前 —— 一页里连一个行头都没有（一行比 `page` 还长）⇒ 往前续读到那一行的行头，
 /// 但那一行不超过 `line_cap`（超了回 `oversized_line`，同 [`read_page`]）。往前再读一页拿 `from` 当 `before`；`from` ＝ 0 ⇒ 到头了。
-pub(crate) fn read_back(
+pub fn read_back(
     agent_home: &Path,
     jsonl_path: &str,
     before: Option<u64>,
@@ -577,7 +577,7 @@ pub(crate) fn read_back(
 
 /// [`read_back`] 的一页。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct BackPage {
+pub struct BackPage {
     /// 原始字节（整行）。
     pub bytes: Vec<u8>,
     /// 这一页从这里起（行头）；往前再读一页拿它当 `before`，0 ⇒ 到头了。
@@ -590,7 +590,7 @@ pub(crate) struct BackPage {
 
 /// [`read_page`] 的一页。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ReadPage {
+pub struct ReadPage {
     /// 原始字节（调用方负责解码 —— 帧面那层用 `from_utf8_lossy`）。
     pub bytes: Vec<u8>,
     /// 下一页从这里起。
@@ -626,7 +626,7 @@ pub(crate) struct ReadPage {
 /// 真撞上「弱设备上超大会话翻得卡」的读数时再加锚，不先加。
 ///
 /// 错误同 [`read_page`]：`refused` · `failed` · `oversized_line`。
-pub(crate) fn read_lines(
+pub fn read_lines(
     agent_home: &Path,
     jsonl_path: &str,
     from: u64,
@@ -641,7 +641,7 @@ pub(crate) fn read_lines(
 }
 
 /// [`read_lines`] 的内核：读 `r`（从文件头起）。**纯 I/O 泛型**，单测直接喂字节。
-pub(crate) fn read_lines_from<R: std::io::BufRead>(
+pub fn read_lines_from<R: std::io::BufRead>(
     r: R,
     from: u64,
     until: Option<u64>,
@@ -707,7 +707,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
 
 /// [`read_lines`] 的一段。不变量：`next == from + lines.len()`。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct LinesPage {
+pub struct LinesPage {
     /// 第一条的行号（＝ 请求里的 `from`）。
     pub from: u64,
     /// 可计行的原文（不含行尾 `\n`；`\r` 与 BOM 原样留着，调用方剥）。
@@ -723,6 +723,11 @@ pub(crate) struct LinesPage {
     /// 读到了最后一个完整行之后（后面没有了）。
     pub eof: bool,
 }
+
+// 判据夹具（照记录树那一家读一页、成品摊成 JSON）：本包的判据与上层判据经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/observe/query/body_support.rs"]
+pub mod test_support;
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/observe/query/body_tests.rs"]

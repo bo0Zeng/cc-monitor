@@ -26,7 +26,7 @@ use std::sync::OnceLock;
 pub(crate) const VERSION: u32 = DOC.version();
 
 /// 见证多长：游标前这么多字节（续读核「游标之前没被改写」的那一段，watcher 的续读指纹也是这个数）。
-pub const WITNESS: u64 = 64;
+pub(crate) const WITNESS: u64 = 64;
 
 /// 多大的记录才落骨架（小记录整份读一遍比读骨架还快）。
 pub(crate) const MIN_LEN: u64 = 1 << 20;
@@ -91,7 +91,7 @@ struct File<T> {
 
 /// 骨架的家（数据目录底下 `cache/skeleton/`）＋ 多大才落。克隆便宜。
 #[derive(Clone, Debug)]
-pub(crate) struct Skeletons {
+pub struct Skeletons {
     own: Own,
     min_len: u64,
 }
@@ -133,7 +133,7 @@ impl Skeletons {
     }
 
     /// 判据用：门槛另给（夹具的记录小）。
-    pub(crate) fn at(own: Own, min_len: u64) -> Self {
+    pub fn at(own: Own, min_len: u64) -> Self {
         Skeletons { own, min_len }
     }
 
@@ -168,7 +168,7 @@ impl Skeletons {
     }
 
     /// 落 `path` 那一份（整份原子写）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
-    pub(crate) fn store<T: Serialize>(&self, path: &Path, body: &T) {
+    pub fn store<T: Serialize>(&self, path: &Path, body: &T) {
         if let Err(e) = self.try_store(path, body) {
             tracing::debug!("skeleton for {} not stored: {e}", path.display());
         }

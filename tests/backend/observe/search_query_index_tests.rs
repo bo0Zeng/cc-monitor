@@ -36,11 +36,11 @@ fn line(uuid: &str, text: &str) -> String {
     .to_string()
 }
 
-/// 在一个索引上把 [`cases`] 全问一遍：每问 `(名字, 读不动数, 输出行)`；另回这一遍里追加读了几次。
-fn ask_all(
-    index: &mut SearchIndex,
-    home: &Path,
-) -> (Vec<(&'static str, usize, Vec<String>)>, usize) {
+/// 一问的答：`(名字, 读不动数, 输出行)`。
+type Answer = (&'static str, usize, Vec<String>);
+
+/// 在一个索引上把 [`cases`] 全问一遍：每问一份 [`Answer`]；另回这一遍里追加读了几次。
+fn ask_all(index: &mut SearchIndex, home: &Path) -> (Vec<Answer>, usize) {
     let fence = Fence::at(&projects_root(home)).expect("围栏");
     let mut appended = 0;
     let rows = cases()
