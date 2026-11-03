@@ -56,7 +56,10 @@ class ThinkingTextTest {
             val pieces = layoutSeg(doc!!, 0, null, style)
             val p = pieces[0] as MdPiece.Text
             assertEquals("粗 一下", p.text.text)
-            val bold = p.text.spanStyles.filter { it.item == SpanStyle(fontWeight = FontWeight.Bold) }.map { it.start until it.end }
+            val bold =
+                p.text.spanStyles
+                    .filter { it.item == SpanStyle(fontWeight = FontWeight.Bold) }
+                    .map { it.start until it.end }
             assertEquals(listOf(0 until 1), bold)
             assertTrue("列表成列表块", pieces[1] is MdPiece.Bullets)
         }
