@@ -1,6 +1,6 @@
 //! 托管进程从哪个程序跑（A3-3-23）：按版本的副本 —— 没有就复制一份、有了不再复制、别的版本顺手删、正被用着的删不掉就留着。
 
-use super::super::run::tests::sandbox_own;
+use super::super::run::test_support::sandbox_own;
 use super::*;
 
 fn fake_me(dir: &std::path::Path, body: &[u8]) -> std::path::PathBuf {

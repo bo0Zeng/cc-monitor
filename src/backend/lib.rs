@@ -46,13 +46,19 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 #[cfg(test)]
 #[path = "../../tests/backend/cap_over_guard.rs"]
 mod cap_over_guard; // 读上限的 `over` 与调用处对得上（硬报错不被吞 · 丢弃＋带身份报告的每一臂都说话）
-mod ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
 use backend_common as common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断；独立的包 `backend-common`）
+use backend_host::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它（住宿主口那个包 `backend-host`）
 #[cfg(test)]
 #[path = "../../tests/backend/common/cross_tests.rs"]
 mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-mod dial; // SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/dial.rs"]
+mod cross_dial; // 拨号那一侧判据里引到上层的那几条（那一层是独立的包、够不到上层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/host.rs"]
+mod cross_host; // 宿主口与 ccm 行判据里引到上层的那几条（那一层是独立的包、够不到上层）
+use backend_dial as dial; // SSH 拨号的后端那一侧 —— 钥匙 · known_hosts · 转发的账 · 问远端后端 · 开终端（独立的包 `backend-dial`：只引帧面零件 · 纯工具 · 平台三层）
 mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
 use backend_files as files; // 文件管理那一块：只读族（常驻文件名索引 ＋ 列 · 读 · 找 · grep）＋ 写面（独立的包 `backend-files`：只引纯工具与平台两层）
 #[cfg(test)]
@@ -64,7 +70,7 @@ mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-repo
 #[cfg(test)]
 use test_meters::golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（住 dev 侧的量具包）
 mod history; // 历史清单与注解（history_list · history_annotations）
-mod host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`；control · observe 都引它，它不引那两层
+use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`（独立的包 `backend-host`：只引 agents · 帧面零件 · 纯工具 · 平台四层）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）

@@ -51,10 +51,10 @@ fn launch_from(
     vars: &[(&str, &str)],
 ) -> (plan::Direct, Option<Taken>) {
     let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
-    let crate::ccm_line::argv::Parsed::Opts(o) =
-        crate::ccm_line::argv::tests::parse(&crate::ccm_line::argv::tests::mixed_to_split(&a))
-            .expect("解析得动")
-    else {
+    let crate::ccm_line::argv::Parsed::Opts(o) = crate::ccm_line::argv::test_support::parse(
+        &crate::ccm_line::argv::test_support::mixed_to_split(&a),
+    )
+    .expect("解析得动") else {
         panic!()
     };
     let mut e = env(relay);

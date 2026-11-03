@@ -34,7 +34,7 @@ use serde_json::{json, Value};
 
 /// 拉回来那一份（远端 stdout）的上限：与资产目录文件的读上限同一个数（目录本身就这么大封顶；那份文件的名字与上限只住声明表）；
 /// 超了整份不收、回错。
-pub const PULL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const PULL_MAX_BYTES: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 16 * 1024 * 1024,
     over: relay_route_core::Over::Reject,
 };
@@ -74,14 +74,14 @@ pub struct Table {
 }
 
 /// 本进程那一张（现读这一端的机器表）。
-pub(crate) static REACH: Table = Table {
+pub static REACH: Table = Table {
     fixed: Mutex::new(None),
     peers: Mutex::new(BTreeMap::new()),
 };
 
 impl Table {
     /// 此刻的机器表。
-    pub(crate) fn hosts(&self) -> Vec<super::Host> {
+    pub fn hosts(&self) -> Vec<super::Host> {
         match &*self.fixed.lock().unwrap_or_else(|e| e.into_inner()) {
             Some(h) => h.clone(),
             None => super::machines_now(),
@@ -89,12 +89,12 @@ impl Table {
     }
 
     /// 机器表里有没有叫这个名字的那一台。
-    pub(crate) fn has(&self, machine: &str) -> bool {
+    pub fn has(&self, machine: &str) -> bool {
         self.hosts().iter().any(|h| h.name() == machine)
     }
 
     /// 机器表里「连这台」的那几台的名字（照表里的先后）：「每一台都做一趟」（`assets-sync`）· 可达那一列说的就是它们。
-    pub(crate) fn connected(&self) -> Vec<String> {
+    pub fn connected(&self) -> Vec<String> {
         self.hosts()
             .iter()
             .filter(|h| h.connect)
@@ -104,7 +104,7 @@ impl Table {
 
     /// 那台够不够得到：表里有 ⇒ 一份组好的拨号请求（用法 `capture`，[`DialRemote`] 拿去改成那一趟要的）；
     /// 没有这一台 ⇒ 码 `unreachable`；表里那几格组不成请求（跳板成环 · 找不到 · 缺地址）⇒ 那一码那一句。
-    pub(crate) fn dial(&self, machine: &str) -> Result<Value, Said> {
+    pub fn dial(&self, machine: &str) -> Result<Value, Said> {
         let hosts = self.hosts();
         if !hosts.iter().any(|h| h.name() == machine) {
             return Err(Said::new("unreachable", unreachable_message(machine)));
@@ -113,7 +113,7 @@ impl Table {
     }
 
     /// 对面的资产目录 id（没拉过 ⇒ `None`）。
-    pub(crate) fn peer(&self, machine: &str) -> Option<String> {
+    pub fn peer(&self, machine: &str) -> Option<String> {
         self.peers
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -122,7 +122,7 @@ impl Table {
     }
 
     /// 记下对面的资产目录 id。
-    pub(crate) fn set_peer(&self, machine: &str, id: &str) {
+    pub fn set_peer(&self, machine: &str, id: &str) {
         self.peers
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -131,7 +131,7 @@ impl Table {
 }
 
 /// 「连这台」的那几台此刻：`[{origin, machine}]`（线上那一行住 cmd-wire，`assets-sync` 的回包带它）。
-pub(crate) fn reach_rows(table: &Table) -> Vec<cmd_wire::assets::ReachRow> {
+pub fn reach_rows(table: &Table) -> Vec<cmd_wire::assets::ReachRow> {
     table
         .connected()
         .into_iter()
@@ -155,10 +155,10 @@ pub fn command_line(argv: &[&str]) -> String {
 }
 
 /// 够不到那台时给的那句话（不猜、不回落）。
-pub(crate) fn unreachable_message(machine: &str) -> String {
+pub fn unreachable_message(machine: &str) -> String {
     copy_text(
         "beRemoteAsk.unreachableMessage.say",
-        &[("machine", &machine.to_string())],
+        &[("machine", machine)],
     )
 }
 
@@ -166,10 +166,10 @@ pub(crate) fn unreachable_message(machine: &str) -> String {
 /// 入参类型序列化的那一份一行写进它的 stdin，它 stdout 那一行按回包类型解。两台之间那几件的枢纽（`assets/hub.rs`）· 公钥推送 · 偏好迁移用它；
 /// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
 /// `tz` ＝ 看的人那一台的时区（引起这一趟的请求信封里那一格）：经 [`crate::wire::cli_words::TZ_FLAG`] 转给那台，它回的「几点」照它写。
-pub(crate) async fn ask_json<C: crate::wire::typed::Command>(
+pub async fn ask_json<C: crate::wire::typed::Command>(
     machine: &str,
     req: &C::Req,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<C::Reply, Said>
@@ -186,14 +186,14 @@ where
 pub async fn ask_dialed<C: cmd_wire::Call>(
     dial: &Value,
     req: &C,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     remote: &dyn Remote,
 ) -> Result<C::Reply, Said> {
     ask_via(dial, &copy_core::peer_machine(), C::NAME, req, tz, remote).await
 }
 
 /// 那台的回包按回包类型解；解不出 ⇒ 码 `backend_differs`、说那台后端版本不同，解码器那一句进原话。
-pub(crate) fn reply_of<R: serde::de::DeserializeOwned>(
+pub fn reply_of<R: serde::de::DeserializeOwned>(
     machine: &str,
     cmd: &str,
     v: Value,
@@ -214,7 +214,7 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
     machine: &str,
     cmd: &str,
     req: &Req,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     remote: &dyn Remote,
 ) -> Result<Reply, Said> {
     let args = serde_json::to_value(req).map_err(|e| Said::from(e.to_string()))?;
@@ -240,10 +240,10 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
 /// 问那一台的**常驻**跑一条帧命令（`--resident-call --stdin-line`，命令名与入参一行进 stdin）：问到的是那台热着的那一个
 /// （它的缓存 · 备忘都在），不在那台起一个冷进程；那台常驻没在跑 ⇒ `resident_absent`（那一句说那台的名字）。
 /// `total` ＝ 发起方这一问愿意等多久（[`crate::platform::child::Deadline::within`] 算好的），经期限口交给那台、本机也只等这么久。
-pub(crate) async fn ask_resident<C: crate::wire::typed::Command>(
+pub async fn ask_resident<C: crate::wire::typed::Command>(
     machine: &str,
     req: &C::Req,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     total: crate::platform::child::Deadline,
     table: &Table,
     remote: &dyn Remote,
@@ -293,11 +293,11 @@ const HOP_CAP: crate::platform::child::Deadline = crate::platform::child::Deadli
 /// `here` ＝ 同一份入参、`machine` 已换成那台眼里的本机；`ours` ＝ 这一条码表里的码：那台答了其中一个（那台说「不行」）⇒ 原样交回；
 /// 别的（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）⇒ `offline`、那一句照连接层写的，本机一个字节不写、不攒着回头再发。
 /// `machine` 没有名字（本机）⇒ `bad_args`：本机的调用方就地做，不走这里。
-pub(crate) async fn hop<C: crate::wire::typed::Command>(
+pub async fn hop<C: crate::wire::typed::Command>(
     machine: &cmd_wire::Machine,
     here: &C::Req,
     ours: &[&str],
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &Table,
     remote: &dyn Remote,
@@ -331,11 +331,11 @@ where
 pub(crate) type Asked<R> = (cmd_wire::Machine, Result<R, Said>);
 
 /// **一问问几台**（跨台合并那几条：本机后端自己扇出、并好再答，界面不当信差）：几台问同一份入参，经 [`ask_apiece`]。
-pub(crate) async fn ask_each<'a, C, F>(
+pub async fn ask_each<'a, C, F>(
     machines: &[cmd_wire::Machine],
     req: &'a C::Req,
     local: F,
-    tz: &'a crate::Tz,
+    tz: &'a crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &'a Table,
     remote: &'a dyn Remote,
@@ -354,10 +354,10 @@ where
 /// 别的每台经 [`ask_resident`] 拿它那一份问它的常驻（几台同时问）。结局照 `asks` 的先后、一台一格（重名的只问头一份）：
 /// 那台够不着 · 常驻不在 · 答了失败 ⇒ 那一格是那台的码与那一句，别台照常。
 /// 等多久只归发起方：`until` ＝ 发起方给的截止时刻，每台都只等到那一刻；问到别的台而它缺 ⇒ `Err`（`bad_args` 那一句），这里不自己定一个。
-pub(crate) async fn ask_apiece<'a, C, Q, L, F>(
+pub async fn ask_apiece<'a, C, Q, L, F>(
     asks: Vec<(cmd_wire::Machine, Q)>,
     local: L,
-    tz: &'a crate::Tz,
+    tz: &'a crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &'a Table,
     remote: &'a dyn Remote,
@@ -388,8 +388,7 @@ where
     };
     let mut local = Some(local);
     let mut machines = Vec::with_capacity(seen.len());
-    let mut asks: Vec<Pin<Box<dyn Future<Output = Result<C::Reply, Said>> + Send + 'a>>> =
-        Vec::new();
+    let mut asks: Vec<Asking<'a, C::Reply>> = Vec::new();
     for (m, q) in seen {
         if m.is_local() {
             match local.take() {
@@ -408,6 +407,9 @@ where
     let got = all(asks).await;
     Ok(machines.into_iter().zip(got).collect())
 }
+
+/// 问一台的那一趟（本机那一问 · 别台的常驻那一问同一形，交给 [`all`] 同时等）。
+type Asking<'a, R> = Pin<Box<dyn Future<Output = Result<R, Said>> + Send + 'a>>;
 
 /// 几个问法同时等、都回来才交（照交进来的先后）。
 async fn all<'a, T>(mut asks: Vec<Pin<Box<dyn Future<Output = T> + Send + 'a>>>) -> Vec<T> {
@@ -535,10 +537,7 @@ fn unreachable(f: &ssh_dial::DialFail) -> String {
 
 /// **原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
 /// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`for_capture`]。
-pub(crate) async fn capture_full(
-    dial: &Value,
-    command: String,
-) -> Result<crate::dial::Captured, String> {
+pub async fn capture_full(dial: &Value, command: String) -> Result<crate::dial::Captured, String> {
     let req = for_capture(dial, command, None)?;
     ssh_dial::uses::capture(&req)
         .await
@@ -595,7 +594,7 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
 #[path = "../../../tests/backend/stream/remote_ask_tests.rs"]
 mod tests;
 
-// 判据用的「那几台」（替身）：跨台合并那几条的判据共用。
-#[cfg(test)]
+// 判据用的「那几台」（替身）：跨台合并那几条的判据共用（上层的判据经 `test-support` 够到）。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/stream/remote_ask_peers.rs"]
-pub(crate) mod test_peers;
+pub mod test_peers;

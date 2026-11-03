@@ -114,7 +114,7 @@ tests/backend/faces/plan_ask_face_tests.rs	15
 tests/backend/faces/plan_return_face_tests.rs	12
 tests/backend/footprint/chores_tests.rs	4
 tests/backend/history/session_queue_deliver_tests.rs	1
-tests/backend/host/attach_tests.rs	4
+tests/backend/host/attach_tests.rs	3
 tests/backend/host/bin_tests.rs	2
 tests/backend/host/keys_tests.rs	2
 tests/backend/host/life_tests.rs	1
@@ -187,7 +187,6 @@ tests/frontend/ui/events-stream-closed.vitest.ts	1
 tests/frontend/ui/exit-said-acts.vitest.ts	1
 tests/frontend/ui/file-window.vitest.ts	2
 tests/frontend/ui/front-exit.vitest.ts	1
-tests/frontend/ui/height-estimate.vitest.ts	2
 tests/frontend/ui/judgment-single-home.vitest.ts	2
 tests/frontend/ui/keybindings/actions.vitest.ts	1
 tests/frontend/ui/launcher-diagnostics.vitest.ts	1
@@ -204,7 +203,6 @@ tests/frontend/ui/palette-names.vitest.ts	1
 tests/frontend/ui/plan-refs.vitest.ts	13
 tests/frontend/ui/reconcile-shell.vitest.ts	1
 tests/frontend/ui/record-timeline.vitest.ts	1
-tests/frontend/ui/scale3-one-screen-gate.vitest.ts	1
 tests/frontend/ui/settings/add-machine-prefill.vitest.ts	1
 tests/frontend/ui/settings/backend-section.vitest.ts	1
 tests/frontend/ui/settings/panel-block-isolation.vitest.ts	3

@@ -35,7 +35,7 @@ fn table() -> MutexGuard<'static, Table> {
 }
 
 /// 持有输入的是哪一端：托管口报的种类 ＋ 后端替哪个前端（`mobile` ⇒ 手机，别的 ⇒ 桌面）。
-pub(crate) fn who_of(kind: WhoKind, front: Option<&str>) -> HolderWho {
+pub fn who_of(kind: WhoKind, front: Option<&str>) -> HolderWho {
     match (kind, front) {
         (WhoKind::Terminal, _) => HolderWho::TerminalWindow,
         (WhoKind::Backend, Some("mobile")) => HolderWho::Mobile,
@@ -44,7 +44,7 @@ pub(crate) fn who_of(kind: WhoKind, front: Option<&str>) -> HolderWho {
 }
 
 /// 「谁持有」那一句，只这一处写（A3-3-32-5）：名单 · 实时流 · 瘦客户端底行都调它。`mine` ＝ 看的这一端就是持有者。
-pub(crate) fn said_of(who: HolderWho, mine: bool) -> String {
+pub fn said_of(who: HolderWho, mine: bool) -> String {
     match (who, mine) {
         (HolderWho::None, _) => copy_text("beTerminal.holder.none", &[]),
         (_, true) => copy_text("beTerminal.holder.here", &[]),
@@ -65,7 +65,7 @@ pub(crate) fn word_of(who: HolderWho) -> String {
 }
 
 /// 此刻后端替哪个前端持有它（没有 ⇒ `None`）。
-pub(crate) fn holder(id: &str) -> Option<String> {
+pub fn holder(id: &str) -> Option<String> {
     table().held.get(id).map(|h| h.front.clone())
 }
 
@@ -131,7 +131,7 @@ fn watch(id: &str, conn: &own_chan::BlockingStream, turn: u64, mut buf: Vec<u8>)
 }
 
 /// 交还：`release` ＋ `bye`，摘掉（没持有 ⇒ 什么都不做）。
-pub(crate) fn release(id: &str) {
+pub fn release(id: &str) {
     let Some(h) = table().held.remove(id) else {
         return;
     };
@@ -142,7 +142,7 @@ pub(crate) fn release(id: &str) {
 }
 
 /// 经后端持有的那一条送字节；此刻没持有 ⇒ `Ok(false)`。
-pub(crate) fn send(id: &str, bytes: &[u8]) -> std::io::Result<bool> {
+pub fn send(id: &str, bytes: &[u8]) -> std::io::Result<bool> {
     let Some(conn) = table().held.get(id).map(|h| Arc::clone(&h.conn)) else {
         return Ok(false);
     };

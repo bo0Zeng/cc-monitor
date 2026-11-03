@@ -29,9 +29,9 @@ const MAX_BYTES: Cap = Cap {
 
 /// 一份记录：开那一行的那个 shell 的窗口标签 · 会话在哪台。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Opened {
-    pub(crate) label: WindowLabel,
-    pub(crate) machine: String,
+pub struct Opened {
+    pub label: WindowLabel,
+    pub machine: String,
 }
 
 /// 一份记录的内容 ⇒ 记录（第一行是标签、第二行不空）。
@@ -134,7 +134,7 @@ pub(crate) fn sweep(
 }
 
 /// 读 · 删记录（判据喂替身）。
-pub(crate) trait Records: Send + 'static {
+pub trait Records: Send + 'static {
     /// `sid` 那一份；没有 · 认不出 ⇒ `None`。
     fn get(&self, sid: &str) -> Option<Opened>;
     /// 那个 shell 没了：删 `sid` 那一份。
@@ -142,7 +142,7 @@ pub(crate) trait Records: Send + 'static {
 }
 
 /// 生产那一份：数据目录底下的 [`DIR`]。
-pub(crate) struct OnDisk(pub(crate) Own);
+pub struct OnDisk(pub Own);
 
 impl OnDisk {
     fn file(&self, sid: &str) -> Option<crate::platform::fs::OwnPath> {

@@ -249,7 +249,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
 #[test]
 fn the_command_line_form_and_the_file_form_say_the_same_thing() {
     let by_file = resolved(BOOK, "teamcct", &["你好"]);
-    let by_cli = crate::ccm_line::argv::tests::parse(&v(&[
+    let by_cli = crate::ccm_line::argv::test_support::parse(&v(&[
         "你好",
         "--",
         "--cwd-if",

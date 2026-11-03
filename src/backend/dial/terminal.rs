@@ -106,7 +106,7 @@ fn jump_arg(chain: &[&super::JumpHop]) -> Result<String, Said> {
 
 /// ` -F '<cc-monitor 那份 ssh 配置>'`：目标与 `-J` 起的每台跳板都认 cc-monitor 那份主机钥匙库（`-J` 起的子 ssh 只继承 `-F`、不吃 `-o`），
 /// 不再问一遍、也不写用户的 `~/.ssh/known_hosts`；用户与系统的 ssh 配置照读（那份配置里 `Include` 着）。说不出那份 ⇒ 不带。
-pub(crate) fn config_arg(path: Option<&std::path::Path>, powershell: bool) -> String {
+pub fn config_arg(path: Option<&std::path::Path>, powershell: bool) -> String {
     match path {
         Some(p) => format!(" -F {}", literal(powershell, &p.to_string_lossy())),
         None => String::new(),
@@ -230,7 +230,7 @@ pub(crate) use cmd_wire::terminal::{SshCommand, TerminalSshReq};
 
 crate::wire::typed::codes! {
     /// `terminal-ssh` 的码：跳板查无 / 成环 · 哪一格过不了白名单 · 这台没装 ssh 客户端 · 查的时候出了错（判不了）。
-    pub(crate) enum TerminalSshErr {
+    pub enum TerminalSshErr {
         BadJump = "bad_jump",
         Refused = "refused",
         NoSshClient = "no_ssh_client",
@@ -239,7 +239,7 @@ crate::wire::typed::codes! {
 }
 
 /// `terminal-ssh`：给一台远端开终端要跑的那一串。查几个文件找 ssh 客户端 ⇒ 阻塞档；不拨号、不起进程。
-pub(crate) struct TerminalSsh;
+pub struct TerminalSsh;
 
 impl crate::wire::typed::Command for TerminalSsh {
     crate::wire::typed::by_call!(TerminalSshReq);
@@ -248,39 +248,25 @@ impl crate::wire::typed::Command for TerminalSsh {
 
 impl crate::wire::typed::Handle for TerminalSsh {
     type Needs = crate::wire::typed::needs::Own;
-    fn run(
+    async fn run(
         req: TerminalSshReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SshCommand, TerminalSshErr>> + Send + 'static
-    {
-        async move {
-            // 带了 sid ⇒ 记录那一层目录先建好（前奏只写文件）。
-            let opened = req
-                .sid
-                .as_ref()
-                .and_then(|_| super::opened_windows::dir(&cx.needs));
-            answer_with(
-                &req,
-                &super::machines_now(),
-                &super::ssh_config::list_aliases(),
-                crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
-                &crate::platform::ssh_client::locate(),
-                opened.as_deref(),
-            )
-            .map_err(crate::wire::typed::of_fail_with(TerminalSshErr::Refused))
-        }
+    ) -> Result<SshCommand, TerminalSshErr> {
+        // 带了 sid ⇒ 记录那一层目录先建好（前奏只写文件）。
+        let opened = req
+            .sid
+            .as_ref()
+            .and_then(|_| super::opened_windows::dir(&cx.needs));
+        answer_with(
+            &req,
+            &super::machines_now(),
+            &super::ssh_config::list_aliases(),
+            crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+            &crate::platform::ssh_client::locate(),
+            opened.as_deref(),
+        )
+        .map_err(crate::wire::typed::of_fail_with(TerminalSshErr::Refused))
     }
-}
-
-/// [`answer_with`] 不给别名、不记窗口标签那一形（只剩 `dial_terminal_tests` 一处在读，那份改调 [`answer_with`] 之后删）。
-#[cfg(test)]
-pub(crate) fn answer_in(
-    req: &TerminalSshReq,
-    hosts: &[Host],
-    powershell: bool,
-    ssh: &SshClient,
-) -> Result<SshCommand, Said> {
-    answer_with(req, hosts, &[], powershell, ssh, None)
 }
 
 /// 按给定的机器表 · 本机终端方言 · 找 ssh 客户端的结果 · 这台 `~/.ssh/config` 里非通配的别名渲。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
@@ -288,7 +274,7 @@ pub(crate) fn answer_in(
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
 /// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 开窗那一串另带前奏与收尾（`opened_windows::window`：开的那个 shell
 /// 记下窗口标签，那条 ssh 一退就删）；`line` 本身不带它们（开不了窗时复制出去的只有那一行）。
-pub(crate) fn answer_with(
+pub fn answer_with(
     req: &TerminalSshReq,
     hosts: &[Host],
     aliases: &[String],
@@ -355,7 +341,7 @@ fn login_shell(
     }
     let name = req.machine.to_string();
     if !hosts.iter().any(|h| h.name() == name)
-        && aliases.iter().any(|a| *a == name)
+        && aliases.contains(&name)
         && super::ssh_config::is_safe_alias(&name)
         && !name.starts_with('-')
     {
@@ -400,7 +386,7 @@ pub(crate) fn local_login_shell(powershell: bool) -> Result<String, Said> {
 }
 
 /// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。
-pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, Said> {
+pub fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, Said> {
     match ssh {
         SshClient::At(p) => Ok(p),
         SshClient::Missing => {

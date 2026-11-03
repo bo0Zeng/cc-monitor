@@ -14,15 +14,15 @@ use ssh_dial::pool::{LinkFacts, Way};
 use super::Host;
 
 /// 机器名 → 到那台怎么连过去的（成品那两格）。
-pub(crate) type Links = BTreeMap<String, Way>;
+pub type Links = BTreeMap<String, Way>;
 
 /// 此刻那张：机器表 ＋ 本进程那个池。
-pub(crate) fn now(hosts: &[Host]) -> Links {
+pub fn now(hosts: &[Host]) -> Links {
     by_machine(hosts, &ssh_dial::pool::ssh().links())
 }
 
 /// 等本进程那个池的「成员动了」（放进一条 · 断了 · 没人用了）。
-pub(crate) fn moved() -> tokio::sync::watch::Receiver<u64> {
+pub fn moved() -> tokio::sync::watch::Receiver<u64> {
     ssh_dial::pool::ssh().moved()
 }
 

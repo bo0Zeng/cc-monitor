@@ -15,7 +15,7 @@ use crate::common::said::Said;
 
 /// 起 `tmux` 的唯一构造：`socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；
 /// `Some(p)` = 显式 `-S <p>`（判据在隔离 socket 上起真 tmux）。
-pub(crate) fn child(socket: Option<&str>) -> Child {
+pub fn child(socket: Option<&str>) -> Child {
     let c = Child::new("tmux");
     match socket {
         Some(s) => c.args(["-S", s]),
@@ -42,19 +42,19 @@ const CLIENTS_FMT: &str =
 
 /// 问哪台 tmux：生产恒是默认 socket（`socket: None`）；判据在隔离 socket 上起真 tmux。
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct On<'a> {
-    pub(crate) socket: Option<&'a str>,
+pub struct On<'a> {
+    pub socket: Option<&'a str>,
 }
 
 impl On<'_> {
     /// 只读一发（名单 · 问尺寸 · 问版本）。
-    pub(crate) fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
+    pub fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
         child(self.socket).args(args).run(READ_TMUX_WITHIN)
     }
 }
 
 /// 终端句柄：tmux 会话 ID（`$N`）＋ 挂着 sid 的窗格（`%M`；没有 ⇒ 只指会话）。名单发的、容器那一格报的都由它算（一个家）。
-pub(crate) fn handle_of(session_id: &str, pane: Option<&str>) -> String {
+pub fn handle_of(session_id: &str, pane: Option<&str>) -> String {
     let id = session_id.trim_start_matches('$');
     match pane {
         Some(p) => format!("{HANDLE_PREFIX}{id}-{}", p.trim_start_matches('%')),
@@ -75,7 +75,7 @@ struct PaneLine<'a> {
 /// `list-panes -a` 的原文 ⇒ 行（纯函数）。回 `(行, 有没有读不懂的行)`。
 ///
 /// 每个 tmux 会话：挂着 sid 的窗格各一行（同一个 sid 挂在几个窗格上 ⇒ 当前窗格那个，否则第一个）；一个都没挂 ⇒ 当前窗格那一行代表整个会话。
-pub(crate) fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
+pub fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
     let mut odd = false;
     let mut panes: Vec<PaneLine> = Vec::new();
     for line in text.lines().filter(|l| !l.is_empty()) {
@@ -143,7 +143,7 @@ pub(crate) fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
 }
 
 /// `list-clients` 的原文 ⇒ `[(会话 ID, 接上时刻, 最后活动)]`（纯函数；读不懂的行丢掉）。
-pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
+pub fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
     text.lines()
         .filter_map(|l| {
             let f: Vec<&str> = l.split('\t').collect();
@@ -158,15 +158,15 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 }
 
 /// 名单 ＋ 各会话的客户端 `[(会话 ID, 接上时刻, 最后活动)]` ＋ 报全了没有。
-pub(crate) type Listed = (Vec<TermRow>, Vec<(String, u64, u64)>, bool);
+pub type Listed = (Vec<TermRow>, Vec<(String, u64, u64)>, bool);
 
 /// 这台 tmux 的名单（读两次 tmux：窗格 · 客户端）。没装 tmux / 没起 server ⇒ 空名单（不是错）。
-pub(crate) fn rows_on(on: On<'_>) -> Result<Listed, Said> {
+pub fn rows_on(on: On<'_>) -> Result<Listed, Said> {
     Ok(rows_found_on(on)?.unwrap_or((vec![], vec![], true)))
 }
 
 /// 同 [`rows_on`]，但没装 tmux ⇒ `None`（与「装了、没起 server」分开）。
-pub(crate) fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, Said> {
+pub fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, Said> {
     let out = match on.read(&[UTF8_CLIENT_FLAG, "list-panes", "-F", PANES_FMT, "-a"]) {
         Ok(o) => o,
         Err(ChildFail::NotFound(_)) => return Ok(None),
@@ -193,7 +193,7 @@ pub(crate) fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, Said> {
 }
 
 /// 这台有没有 tmux（查不动 ⇒ `None`）：「文件与数据」那一份 · 别名页表单 · 起新会话框同一个判法（[`rows_here`]）。
-pub(crate) fn tmux_here() -> Option<bool> {
+pub fn tmux_here() -> Option<bool> {
     match rows_here() {
         Ok(Some(_)) => Some(true),
         Ok(None) => Some(false),
@@ -209,7 +209,7 @@ pub(crate) fn rows_here() -> Result<Option<Vec<TermRow>>, Said> {
 /// stderr 里「这台机上一个 tmux server 都没有」的形状。
 ///
 /// `(针, 为什么它算这一档)` —— 加一条要连理由一起加。
-pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
+pub const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
     (
         "error connecting to",
         "🔴 **真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\
@@ -230,7 +230,7 @@ pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
 
 /// 「tmux 这个程序起不来」那一档的唯一造句处。这一档要与「会话不存在」分得开，而沙箱门禁里摘不掉 tmux ⇒
 /// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
-pub(crate) fn tmux_unavailable(e: ChildFail) -> Said {
+pub fn tmux_unavailable(e: ChildFail) -> Said {
     let (code, said) = e.into_cmd_said("no_tmux", |why| {
         copy_text("reason.tmux.startFailed", &[("why", why)])
     });
@@ -266,7 +266,7 @@ pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
 
 /// 观测那一跳 `tmux ls` 的 `sh -c` 脚本：`command -v` 门控解析 PATH；**`exec` 让 tmux 的 rc 原样成为 sh 的 rc**。
 /// 找不到 tmux ⇒ `exit <no_tmux_rc>`。`fmt` 是观测侧的格式串。
-pub(crate) fn ls_script(fmt: &str, no_tmux_rc: i32) -> String {
+pub fn ls_script(fmt: &str, no_tmux_rc: i32) -> String {
     // `command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
     use crate::platform::shell::posix;
     posix::if_command(
@@ -277,7 +277,7 @@ pub(crate) fn ls_script(fmt: &str, no_tmux_rc: i32) -> String {
 }
 
 /// 观测那一跳 `display-message` 的 `sh -c` 脚本：一行两列（server 的 pid · socket 路径）；没有 tmux ⇒ `exit 97`。
-pub(crate) fn server_script() -> String {
+pub fn server_script() -> String {
     // 写法住 `platform::shell::posix`（产出逐字节不变）。
     crate::platform::shell::posix::if_command(
         "tmux",
@@ -290,7 +290,7 @@ pub(crate) fn server_script() -> String {
 
 /// 经 POSIX shell 跑观测那两条脚本之一（[`ls_script`] · [`server_script`]），带期限、挂 UTF-8 那个 env。
 /// 本平台没有 POSIX shell ⇒ `None`（观测侧判成观测无效）。
-pub(crate) fn via_shell(
+pub fn via_shell(
     script: &str,
     within: Deadline,
 ) -> Option<Result<std::process::Output, ChildFail>> {

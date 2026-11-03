@@ -1608,7 +1608,7 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 /// 🔴 ccm 面：真靠 tmux 的能力（真解析器 ＋ 真计划现推）∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
-    use crate::ccm_line::argv::{tests::parse, Parsed};
+    use crate::ccm_line::argv::{test_support::parse, Parsed};
     use crate::control::ccm::plan::tests::{library_of, product_row};
     use crate::control::ccm::plan::{build, Env, Plan};
     use std::collections::BTreeSet;
@@ -1632,7 +1632,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         // 探针把 ccm 选项写在前 ⇒ 喂解析器前换成 `--` 切分的排列。
-        match parse(&crate::ccm_line::argv::tests::mixed_to_split(&a)) {
+        match parse(&crate::ccm_line::argv::test_support::mixed_to_split(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
             Err(d) => Err(d.0),

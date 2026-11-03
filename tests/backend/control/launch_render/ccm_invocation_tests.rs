@@ -635,7 +635,7 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
             "「{}」不是一行 ccm：{line}",
             c.0
         );
-        let parsed = crate::ccm_line::argv::tests::parse(&words[1..]);
+        let parsed = crate::ccm_line::argv::test_support::parse(&words[1..]);
         assert!(
             parsed.is_ok(),
             "渲染器吐的「{}」那一行 `ccm` 自己不认：{line}（{:?}）",

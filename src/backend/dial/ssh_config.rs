@@ -30,13 +30,13 @@ pub(crate) struct ResolvedHost {
 
 /// 预览组里的一个来源别名（界面「拆分」时据此还原成独立机器）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "SshImportMember"
+        rename = "SshImportMember",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -49,13 +49,13 @@ pub(crate) struct ImportMember {
 
 /// 批量导入预览的一组：聚合后的一台建议机器（含多地址与来源成员）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "SshImportGroup"
+        rename = "SshImportGroup",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "camelCase")]
@@ -76,13 +76,13 @@ pub(crate) struct ImportGroup {
 
 /// 机器列表里已有的一台（只认地址 ＋ 用户 ＋ 端口）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "KnownHost"
+        rename = "KnownHost",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
@@ -136,7 +136,7 @@ pub(crate) fn parse_host_aliases(content: &str) -> Vec<String> {
 }
 
 /// 别名 allowlist（`^[A-Za-z0-9._@:-]+$`）：挡住 ssh 选项 / 参数注入。`-` 开头另挡（[`resolve`]）。
-pub(crate) fn is_safe_alias(alias: &str) -> bool {
+pub fn is_safe_alias(alias: &str) -> bool {
     !alias.is_empty()
         && alias
             .chars()
@@ -250,7 +250,7 @@ const SSH_CONFIG_CAP: Cap = Cap {
 };
 
 /// 读 `~/.ssh/config` 列别名。文件不在 / 读不了 / 超上限 ⇒ 空（没有 config 是正常的）。
-pub(crate) fn list_aliases() -> Vec<String> {
+pub fn list_aliases() -> Vec<String> {
     let Some(path) = crate::platform::paths::home_dir().map(|h| h.join(".ssh").join("config"))
     else {
         return Vec::new();
@@ -332,22 +332,22 @@ pub(crate) fn import_from(
 }
 
 /// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
-pub(crate) const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
+pub const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
 
 /// `ssh-config-import` 的入参：机器列表里已有的那几台。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SshImportReq {
+pub struct SshImportReq {
     pub(crate) known: Vec<Known>,
 }
 
 /// `ssh-config-import` 的应答：聚合成的预览组（每组带上「已在列表里」）。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SshImported {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SshImported {
     pub(crate) groups: Vec<ImportGroup>,
     /// 有别名在期限内没读完（整批的期限用完 · 那一发卡住）：`groups` 只是读到的那一部分。
     pub(crate) partial: bool,
@@ -355,11 +355,11 @@ pub(crate) struct SshImported {
 
 crate::wire::typed::codes! {
     /// `ssh-config-import` 只有 `bad_args`（解析失败的别名照跳过，不整条回错）。
-    pub(crate) enum ImportErr {}
+    pub enum ImportErr {}
 }
 
 /// `ssh-config-import`：批量导入预览。阻塞档：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出。
-pub(crate) struct SshConfigImport;
+pub struct SshConfigImport;
 
 impl crate::wire::typed::Command for SshConfigImport {
     const NAME: &'static str = "ssh-config-import";
@@ -370,15 +370,13 @@ impl crate::wire::typed::Command for SshConfigImport {
 
 impl crate::wire::typed::Handle for SshConfigImport {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: SshImportReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SshImported, ImportErr>> + Send + 'static {
-        async move {
-            let (mut groups, partial) = import();
-            mark_in_list(&mut groups, &req.known);
-            Ok(SshImported { groups, partial })
-        }
+    ) -> Result<SshImported, ImportErr> {
+        let (mut groups, partial) = import();
+        mark_in_list(&mut groups, &req.known);
+        Ok(SshImported { groups, partial })
     }
 }
 

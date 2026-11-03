@@ -159,6 +159,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-dial"
+version = "0.0.0"
+dependencies = [
+ "backend-common",
+ "backend-platform",
+ "backend-wire",
+ "cmd-wire",
+ "comms-inward",
+ "copy-core",
+ "guard-core",
+ "relay-route-core",
+ "resident-client",
+ "russh",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "tokio",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "backend-files"
 version = "0.0.0"
 dependencies = [
@@ -184,6 +208,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-host"
+version = "0.0.0"
+dependencies = [
+ "acct-core",
+ "backend-agents",
+ "backend-common",
+ "backend-platform",
+ "backend-wire",
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "own-chan",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "test-home",
+ "tokio",
+ "tracing",
+ "vt100",
+]
+
+[[package]]
 name = "backend-platform"
 version = "0.0.0"
 dependencies = [
@@ -197,6 +244,7 @@ dependencies = [
  "notify",
  "own-chan",
  "pidwatch-core",
+ "platform-core",
  "portable-pty",
  "relay-route-core",
  "russh",
@@ -449,7 +497,9 @@ dependencies = [
  "acct-core",
  "backend-agents",
  "backend-common",
+ "backend-dial",
  "backend-files",
+ "backend-host",
  "backend-platform",
  "backend-plugin",
  "backend-relay",
@@ -474,6 +524,7 @@ dependencies = [
  "notify",
  "own-chan",
  "pidwatch-core",
+ "platform-core",
  "portable-pty",
  "relay-route-core",
  "resident-client",
@@ -2204,6 +2255,16 @@ dependencies = [
  "pkcs5",
  "rand_core",
  "spki",
+]
+
+[[package]]
+name = "platform-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "libc",
+ "win-path-core",
 ]
 
 [[package]]

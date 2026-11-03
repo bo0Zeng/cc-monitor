@@ -138,7 +138,7 @@ subscribe(origin, kind)    → 流
 模块地图（`src/backend/`，逐文件清单见它的 README，每个目录的 `mod.rs` 头注是那一块的说明）：
 
 - `platform/`：平台原语与平台 cfg 的唯一住处（独立 crate `backend-platform`，不引后端里任何别的层；路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
-- `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`control/` 与 `observe/` 都引它，它不引那两层（`layering_guard` 判）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
+- `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）与 ccm 这一行的词（独立 crate `backend-host`，只引 `agents/` · `wire/` · `common/` · `platform/`）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`host/ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。`control/` 与 `observe/` 都引它，它引不到那两层（包的依赖管着）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · 划段 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
 - `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
 - `files/`：文件管理的读面（常驻文件名索引 · 列 · 读 · 按内容搜）。
@@ -151,7 +151,6 @@ subscribe(origin, kind)    → 流
 - `deploy/`：装 / 升级远端后端的判定与编排（独立 crate，桌面后端答 `deploy-plan` 与手机 `mobcore` 同一份）：那台要哪一格 · 落点那一份是谁 · 只升不降 · 残件 · 常驻那一份旧不旧。
 - `egress/`：出网口（独立 crate）：这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理（HTTP CONNECT · SOCKS5）；中转与拨号核心链同一份。
 - `test-meters/`：测试档的量具（独立 crate，只在各包的 dev 侧）：线程级内存量具 · 金样比对 · 听 `tracing` 说了什么；体住 `tests/backend/`。
-- `ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
@@ -435,9 +434,9 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 **为什么**：每次 emit 都有序列化与派发开销，逐条交付几千行时主线程累计阻塞明显，启动可见卡顿。
 
-### 视口外不渲染：content-visibility ＋ 估高 ＋ 骨架
+### 视口外不渲染：骨架 ＋ 估高
 
-- 顶层卡片带 `content-visibility: auto`，视口外与隐藏 tab 的卡片跳过布局与绘制；`contain-intrinsic-size` 初值由 `height-estimate.ts` 按块类型估（正文用 pretext 测宽、代码块按行数），估值只是初值。估高路径绝不许抛，失败就降级。
+- 收起的 tab 整条流带 `content-visibility: hidden`（跳过样式 · 布局 · 绘制）；流里的行不挂 `content-visibility`。没建卡的行由骨架占位顶住，占位高由 `height-estimate.ts` 估（第一级按后端索引的料 × 列宽，第二级正文交 Worker 用 pretext 排），估值只是占位、建了卡就是真高。估高路径绝不许抛，失败就降级。
 - 拿得到会话索引的 tab 与历史查看器接上 `SkeletonView`（`skeleton-view.ts`）：没物化的 seq 区间由占位顶住，一接上滚动条就是全会话的；每次滚动只物化与视口相交的那一段，正文按偏移向那台后端取回，取回途中占位留着高度；离视口超过几屏的已建卡按轮与回答的开头切段交回占位（真高先量进账本，总高不变），tab 收起时只留视口那一截。
 - 没接骨架的 tab 由 `TailWindow`（`live-window.ts`）收纳：只物化尾部，更老的记录只进账本不建卡，滚到顶部附近再按批补。
 

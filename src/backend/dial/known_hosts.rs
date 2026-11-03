@@ -19,17 +19,17 @@ pub(crate) fn path() -> Option<PathBuf> {
 /// 那些路大多只读 ⇒ 不顺着它们递写句柄（递了就把写能力交给了只读的那几条），而是启动入口装一次（[`install`]），
 /// 拨号那一层只取得到这只只会改这份库的手（[`installed`]）。
 #[derive(Clone)]
-pub(crate) struct Writer(crate::platform::fs::Own);
+pub struct Writer(crate::platform::fs::Own);
 
 static INSTALLED: std::sync::OnceLock<Writer> = std::sync::OnceLock::new();
 
-/// 启动入口（`main.rs`）装一次：此后记 · 忘都经这份句柄。再装 ⇒ 不动（第一份为准）。
+/// 进程入口（`stream/entry.rs`）装一次：此后记 · 忘都经这份句柄。再装 ⇒ 不动（第一份为准）。
 pub fn install(own: &crate::platform::fs::Own) {
     INSTALLED.get_or_init(|| Writer(own.clone()));
 }
 
 /// 指着某个写句柄的家的那一只（帧命令递来的写句柄 · 判据；不装）。
-pub(crate) fn writer_at(own: &crate::platform::fs::Own) -> Writer {
+pub fn writer_at(own: &crate::platform::fs::Own) -> Writer {
     Writer(own.clone())
 }
 
@@ -40,7 +40,7 @@ pub(crate) fn installed() -> Option<Writer> {
 
 impl Writer {
     /// 在那个目录的跨进程锁里现读 → `edit` → 有变化就写（两个后端同时记钥匙时，后写的不盖掉先写的那一台）。**本模块唯一的写口**。
-    pub(crate) fn rewrite(
+    pub fn rewrite(
         &self,
         edit: &mut dyn FnMut(&str) -> Option<String>,
     ) -> Result<(), crate::common::said::Said> {
@@ -48,7 +48,7 @@ impl Writer {
         let file = own.at_home(KNOWN_HOSTS.rel)?;
         let dir = own.home_dir()?;
         own.ensure_dir(&dir).map_err(|e| e.to_string())?;
-        let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
+        let held = own.lock(&dir)?;
         let existing = read_at(file.as_path())?;
         let Some(body) = edit(&existing) else {
             return Ok(());
@@ -58,7 +58,7 @@ impl Writer {
 }
 
 /// 读那份文件（没有 ⇒ 空串）。读不出来的那份不当空的（当空的写回会把别的几台记下的钥匙一起抹掉）。
-pub(crate) fn read_at(file: &std::path::Path) -> Result<String, crate::common::said::Said> {
+pub fn read_at(file: &std::path::Path) -> Result<String, crate::common::said::Said> {
     use crate::common::own_state::Read;
     match KNOWN_HOSTS.read_with(file, utf8) {
         Read::Absent => Ok(String::new()),
@@ -93,7 +93,7 @@ impl ssh_dial::env::HostKeys for KnownHostsFile {
 
 /// 开终端那一行 `ssh -F` 用的那份配置（[`relay_route_core::SSH_CONFIG_REL`]）的路径，经装了的那只手写好（[`Writer::terminal_config`]）。
 /// 没装写句柄 / 写不成 ⇒ `None`（终端那一行照 ssh 自己的默认；写不成记一行日志）。
-pub(crate) fn terminal_config() -> Option<PathBuf> {
+pub fn terminal_config() -> Option<PathBuf> {
     match installed()?.terminal_config() {
         Ok(p) => Some(p),
         Err(e) => {
@@ -109,7 +109,7 @@ pub(crate) fn terminal_config() -> Option<PathBuf> {
 
 impl Writer {
     /// 那份配置内容不对就在锁里写成对的（内容没变不写盘），回它的路径。
-    pub(crate) fn terminal_config(&self) -> Result<PathBuf, crate::common::said::Said> {
+    pub fn terminal_config(&self) -> Result<PathBuf, crate::common::said::Said> {
         let own = &self.0;
         let known = own.at_home(KNOWN_HOSTS.rel)?;
         let file = own.at_home(SSH_CONFIG.rel)?;
@@ -120,7 +120,7 @@ impl Writer {
         );
         let dir = own.home_dir()?;
         own.ensure_dir(&dir).map_err(|e| e.to_string())?;
-        let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
+        let held = own.lock(&dir)?;
         let now = match SSH_CONFIG.read_with(file.as_path(), utf8) {
             crate::common::own_state::Read::Present(s) => Some(s),
             _ => None,
@@ -155,7 +155,7 @@ fn config_word(v: &str) -> String {
 }
 
 /// 主机钥匙库：状态、OpenSSH 的格式（读不懂不覆盖）。照声明表取。
-pub(crate) const KNOWN_HOSTS: crate::common::own_state::Doc<String> =
+pub const KNOWN_HOSTS: crate::common::own_state::Doc<String> =
     crate::common::own_state::Doc::of(&relay_route_core::KNOWN_HOSTS_FILE);
 
 /// 开终端那一行用的配置：缓存、`ssh -F` 的格式（照钥匙库的路径现写，读不懂 ⇒ 当没有、重写）。照声明表取。

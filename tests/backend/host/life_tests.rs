@@ -4,7 +4,7 @@
 //! 「后端重启」＝ 丢掉手上所有连接、只凭盘重扫：后端对托管终端不留进程内状态，名单 · 打标都是问的那一刻现做。
 
 use super::home;
-use super::run::tests::{hello, read_until_out, sandbox_own, spec_any, spec_ready, start};
+use super::run::test_support::{hello, read_until_out, sandbox_own, spec_any, spec_ready, start};
 use super::wire::{read_frame, write_frame, Ctl, Frame, Want};
 use super::*;
 
