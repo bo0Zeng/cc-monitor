@@ -665,19 +665,11 @@ pub fn reply_json(
         },
         Err(e @ CallError::Timeout { .. }) => {
             let (said, detail) = cut(machine, &e);
-            CallEnd::Timeout {
-                call,
-                said,
-                detail,
-            }
+            CallEnd::Timeout { call, said, detail }
         }
         Err(e @ CallError::Cancelled) => {
             let (said, detail) = cut(machine, &e);
-            CallEnd::Cancelled {
-                call,
-                said,
-                detail,
-            }
+            CallEnd::Cancelled { call, said, detail }
         }
         Err(CallError::Disconnected) => CallEnd::Down { call },
         Err(e) => {
