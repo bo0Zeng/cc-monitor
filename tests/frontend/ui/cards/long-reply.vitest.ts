@@ -13,7 +13,6 @@ import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecor
 import type { Doc } from "../../../../src/frontend/ui/generated/Doc";
 import type { MdBlock } from "../../../../src/frontend/ui/generated/MdBlock";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { __mathSettledForTests } from "../../../../src/frontend/ui/render";
 
 interface Case {
   name: string;
@@ -71,7 +70,7 @@ const MIXED: Doc = {
 };
 
 describe("正文卡读树", () => {
-  it("★ 链接 · 代码块 · 表格 · 任务框 · 公式占位各在其位；尖括号词照字出现、不成元素", () => {
+  it("★ 链接 · 代码块 · 表格 · 任务框 · 公式各在其位；尖括号词照字出现、不成元素", () => {
     const el = cardOf(reply(MIXED), true);
     const body = el.querySelector(".block-text")!;
     expect(body, "正文块").not.toBeNull();
@@ -83,16 +82,15 @@ describe("正文卡读树", () => {
     expect([...body.querySelectorAll<HTMLElement>("table th")].map((t) => t.dataset.align)).toEqual(["left", "right"]);
     expect(body.querySelector("table td code")?.textContent).toBe("a | b");
     expect([...body.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].map((c) => c.checked)).toEqual([false, true]);
-    expect(body.querySelectorAll("[data-math-pending]").length, "惰路：公式留占位").toBeGreaterThan(0);
+    expect(body.querySelectorAll("[data-math=inline] svg").length, "惰路：公式也当场画（画单是后端排好的）").toBe(2);
     expect(body.textContent).toContain("<Composer>");
     expect(body.querySelector("composer")).toBeNull();
   });
 
-  it("急路（实时）：公式当场排好（KaTeX 头一回要载，等它落地），不留占位", async () => {
-    const el = cardOf(reply(MIXED), false);
-    await __mathSettledForTests();
-    expect(el.querySelectorAll("[data-math-pending]").length).toBe(0);
-    expect(el.querySelector(".katex")).not.toBeNull();
+  it("急路（实时）与惰路排出来的公式同一份", () => {
+    const eager = cardOf(reply(MIXED), false).querySelector(".block-text")!;
+    const lazy = cardOf(reply(MIXED), true).querySelector(".block-text")!;
+    expect([...eager.querySelectorAll("[data-math]")].map((e) => e.outerHTML)).toEqual([...lazy.querySelectorAll("[data-math]")].map((e) => e.outerHTML));
   });
 
   it("空树的正文块不摆", () => {

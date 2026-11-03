@@ -16,9 +16,9 @@
     许可读 `tests/scripts/third-party-maven.tsv`（坐标 · 许可 · 出处）；锁里有、表里没有 ⇒ 生成失败，表里多出来的也失败。
     依赖变了：先在 `src/mobile` 重写锁（`./gradlew :app:dependencies --configuration releaseRuntimeClasspath --write-locks`），
     再照新坐标自带的 POM 补表。
-  · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体，不经 cargo / npm 解析）：登记在 `VENDORED_FILES`，
-    许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`src/mobile` 下被跟踪的二进制（aar · jar · so · 字体）
-    每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
+  · 仓里原样放进来的第三方文件（手机端 `src/mobile` 的预编库与字体 · 两端共用的 `src/shared` 里的字体，不经 cargo / npm 解析）：
+    登记在 `VENDORED_FILES`，许可全文跟着放在仓里；每个发版附的整仓源码包里有它们。`VENDORED_ROOTS` 下被跟踪的二进制
+    （aar · jar · so · 字体）每一份都得落在某一行的位置里，漏登记 ⇒ 生成失败。
 
 用法（仓根下）：
     python3 tests/scripts/third-party-notices.py           # 重新生成两份
@@ -59,7 +59,12 @@ VENDORED_FILES = [
      "src/mobile/libs/LICENSES/Phosphor-MIT.txt", "Phosphor regular 图标字体的子集（只留手机用到的码位，src/mobile/scripts/phosphor-subset.py 从 egui-phosphor 0.14.0 自带的那份做）"),
     ("Gradle Wrapper", "8.14.3", "Apache-2.0", "src/mobile/gradle/wrapper/gradle-wrapper.jar",
      "src/mobile/libs/LICENSES/Apache-2.0.txt", "手机端构建用的 Gradle 启动器，不进 app"),
+    ("KaTeX fonts", "ratex-katex-fonts 0.1.15", "OFL-1.1", "src/shared/fonts/katex/",
+     "src/shared/fonts/katex/OFL.txt",
+     "画公式用的 19 份 KaTeX TTF（未改动，取自 crates.io 的 ratex-katex-fonts 0.1.15，它取自 KaTeX）；桌面打进前端产物、手机构建时铺进 assets"),
 ]
+#: 原样放第三方文件的目录：这几处下被跟踪的二进制都得在 `VENDORED_FILES` 里登记。
+VENDORED_ROOTS = ["src/mobile", "src/shared"]
 VENDORED_BINARY = re.compile(r"\.(aar|jar|so|ttf|otf|woff2?)$", re.I)
 #: 手机 `:app` 进发布包的那一档 Maven 依赖：坐标只认 Gradle 锁文件（`releaseRuntimeClasspath`，测试 · 基准 · 构建插件不在里面），
 #: 许可只认 `MAVEN_TABLE`（每个坐标一行：许可 · 出处，出处是它自带的 POM 或包里的许可文件）。两份都在仓里，不跑 Gradle、不联网。
@@ -182,7 +187,7 @@ def npm_entries():
 
 
 def vendored_entries():
-    tracked = subprocess.run(["git", "ls-files", "-z", "--", "src/mobile"], capture_output=True, text=True,
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", *VENDORED_ROOTS], capture_output=True, text=True,
                              check=True).stdout.split("\0")
     out = []
     for name, ver, spdx, where, text_file, note in VENDORED_FILES:
@@ -196,7 +201,7 @@ def vendored_entries():
     stray = sorted(t for t in tracked if VENDORED_BINARY.search(t)
                    and not any(t == w or (w.endswith("/") and t.startswith(w)) for _, _, _, w, _, _ in VENDORED_FILES))
     if stray:
-        die("src/mobile 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % stray)
+        die("%s 下这几份第三方二进制没登记许可：%s —— 在 VENDORED_FILES 里加一行" % (" · ".join(VENDORED_ROOTS), stray))
     return out
 
 
@@ -283,7 +288,7 @@ def render():
         else:
             lines += ["", "License text not bundled in the repo; source:"] + ["    %s: %s" % (c, src) for c, src in users]
             lines += [""]
-    lines += ["", "=================== files vendored in the repo (mobile app, src/mobile) ==================="]
+    lines += ["", "=================== files vendored in the repo (src/mobile · src/shared) ==================="]
     for name, ver, spdx, where, note, text in vendored_entries():
         lines += ["", "-------- %s %s (%s) --------" % (name, ver, spdx), "    vendored: %s %s — %s" % (name, ver, where),
                   "    %s" % note, "", text, ""]

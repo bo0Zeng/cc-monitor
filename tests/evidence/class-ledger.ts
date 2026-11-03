@@ -13,19 +13,18 @@
  * - **② 代码 → CSS**：代码往 DOM 上挂的类名，CSS 里有没有对应规则。
  *   没有 ＝ 挂了个不存在的钩子（多半是改名只改了一边）。
  *
- * ## 🔴 ① 那一边有四种**假阳性**，本量具必须认得出来，否则它就是一把坏尺子
+ * ## 🔴 ① 那一边有三种**假阳性**，本量具必须认得出来，否则它就是一把坏尺子
  *
- * 上一轮现打的教训：普查给出的 13 个"死规则"
- * 里 **3 个是活的**。三个各属一族，本量具对每一族都有一条明确的识别路径：
+ * 普查给出的"死规则"里有活的，各属一族，本量具对每一族都有一条明确的识别路径
+ * （本仓不引第三方样式表，没有「第三方库自产」那一族）：
  *
  * | 族 | 现打的例子 | 本量具怎么认 |
  * |---|---|---|
  * | ① **常量拼接** | `` `${FIRST_RUN_HINT_CLASS}-open` `` ⇒ `.status-first-run-open` | 先收 `const X = "字面量"`，把 `${X}` 这种洞**填回去**再扫一遍（`constConcat`） |
- * | ② **第三方库自产** | `.katex-display` 由 `katex/dist/katex.min.css` 产出 | 从 `src/**\/*.ts` 里**现读** `import "<包>/….css"`，把那几份 CSS 的类名收成 `vendorClasses` |
- * | ③ **模板拼接** | `` `agent-${r.state}` `` ⇒ `.agent-running` | 词法器给出模板的**静态段 ＋ 洞**，紧挨着洞的那个尾 token 记成 `prefixes` |
- * | ④ **HTML 片段里的 class 属性** | `` `<div class="code-bar">` `` | token 切分按「类名能用的字符」切，不按空白切 ⇒ `class="code-bar"` 里切得出 `code-bar` |
+ * | ② **模板拼接** | `` `agent-${r.state}` `` ⇒ `.agent-running` | 词法器给出模板的**静态段 ＋ 洞**，紧挨着洞的那个尾 token 记成 `prefixes` |
+ * | ③ **HTML 片段里的 class 属性** | `` `<div class="code-bar">` `` | token 切分按「类名能用的字符」切，不按空白切 ⇒ `class="code-bar"` 里切得出 `code-bar` |
  *
- * ⚠ ③ 那条**只产出候选**。哪些前缀准拿来解释一个类名，由判据那边的登记表说了算 ——
+ * ⚠ ② 那条**只产出候选**。哪些前缀准拿来解释一个类名，由判据那边的登记表说了算 ——
  * 自动派生的前缀里有垃圾（现打 `` `c${Date.now()…}` `` 会派生出一个 1 字符前缀 `c`，
  * 它能"解释"掉 `code-bar` / `ccm-alias-gen` 等 7 个类，**而那 7 个其实各有真住址**）。
  * ⇒ **能解释的前缀必须逐条登记并写下理由**，这条纪律的落点在判据文件里。
@@ -497,16 +496,12 @@ export interface Ledger {
   cssFiles: string[];
   /** `src/**\/*.ts` ＋ `index.html` —— 仓相对路径。 */
   codeFiles: string[];
-  /** 从 `src` 的 TS 里现读到的第三方 CSS 规格串（如 `katex/dist/katex.min.css`）。 */
-  vendorSpecs: string[];
   /** **全局**样式文件（非 `.module.css`）选择器里的类名 → 住址。 */
   cssClasses: SiteMap;
   /** `*.module.css` → 它的类名 → 住址（构建时哈希、只经 TS 导入对象用，不进全局命名空间）。 */
   moduleClasses: Map<string, SiteMap>;
   /** `src/**\/*.d.<扩展名>.ts`（`allowArbitraryExtensions` 形的声明文件；今天只有 CSS Modules 的 `.d.css.ts`）。 */
   arbitraryDecls: string[];
-  /** 第三方 CSS 自己产出的类名 → 是哪份第三方 CSS。 */
-  vendorClasses: Map<string, string>;
   /** 代码里**直接**出现的类名形 token → 住址。 */
   literals: SiteMap;
   /** 把 `${常量}` 填回去之后**才**出现的 token → 住址（＝ 常量拼接那一族）。 */
@@ -551,25 +546,6 @@ export function buildLedger(root: string): Ledger {
   const codePaths = [...tsPaths, join(root, "index.html")];
   const sources = codePaths.map((p) => ({ rel: rel(p), text: readFileSync(p, "utf8") }));
 
-  // 第三方 CSS：住址从 `import "<包>/….css"` 现读，**本文件不写死任何包名**。
-  const vendorSpecs = new Set<string>();
-  for (const s of sources) {
-    for (const m of s.text.matchAll(/import\s+["']([^"'\n]+\.css)["']/g)) {
-      if (!m[1].startsWith(".") && !m[1].startsWith("/")) vendorSpecs.add(m[1]);
-    }
-  }
-  const vendorClasses = new Map<string, string>();
-  for (const spec of vendorSpecs) {
-    const p = join(root, "node_modules", spec);
-    let text: string;
-    try {
-      text = readFileSync(p, "utf8");
-    } catch {
-      continue; // 装没装由判据那边的自检去管，量具不在这儿抛
-    }
-    for (const [name] of cssClassesOf(text, spec)) if (!vendorClasses.has(name)) vendorClasses.set(name, spec);
-  }
-
   const constants = collectConstants(sources);
 
   const literals: SiteMap = new Map();
@@ -592,11 +568,9 @@ export function buildLedger(root: string): Ledger {
     root,
     cssFiles: cssPaths.map(rel),
     codeFiles: codePaths.map(rel),
-    vendorSpecs: [...vendorSpecs],
     cssClasses,
     moduleClasses,
     arbitraryDecls: arbitraryDecls.map(rel),
-    vendorClasses,
     literals,
     constConcat,
     prefixCandidates,
@@ -610,14 +584,13 @@ export function buildLedger(root: string): Ledger {
 export type Verdict =
   | { kind: "literal"; via: string }
   | { kind: "const-concat"; via: string }
-  | { kind: "vendor"; via: string }
   | { kind: "prefix"; prefix: string; via: string }
   | { kind: "unexplained" };
 
 /**
  * 判一个 CSS 类名活着还是死着。
  *
- * ⚠ 顺序是**刻意**的：字面量 → 常量拼接 → 第三方 → 前缀。前缀排最后，
+ * ⚠ 顺序是**刻意**的：字面量 → 常量拼接 → 前缀。前缀排最后，
  * 这样"只能靠前缀解释"的那批会被单独显出来（它们正是需要人写理由的那批）。
  * `allowedPrefixes` 由判据那边传进来 —— **量具自己不决定哪个前缀算数**。
  */
@@ -626,8 +599,6 @@ export function explain(led: Ledger, name: string, allowedPrefixes: readonly str
   if (lit) return { kind: "literal", via: lit[0] };
   const cc = led.constConcat.get(name);
   if (cc) return { kind: "const-concat", via: cc[0] };
-  const ven = led.vendorClasses.get(name);
-  if (ven) return { kind: "vendor", via: ven };
   const hit = allowedPrefixes
     .filter((p) => name.startsWith(p) && name.length > p.length)
     .sort((a, b) => b.length - a.length)[0];

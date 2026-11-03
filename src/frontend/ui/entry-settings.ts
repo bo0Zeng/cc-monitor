@@ -1,7 +1,7 @@
 /**
  * **设置窗**的入口（`settings.html` 加载它）。：只含设置面板 ＋ 主题 ＋ 键位。
  *
- * 🔴 本窗的模块图里**根本没有**语法高亮（highlight.js）/ 数学排版（katex）/ markdown（marked）/
+ * 🔴 本窗的模块图里**根本没有**正文排版（`md-view.ts`，连同公式的画法与字体）/
  * tab 管理（`tabs.ts`）/ 渲染栈（`render.ts`）。这不是「看起来拆开了」—— 判据是
  * `tests/frontend/ui/entry-graphs.vitest.ts`：真跑一遍 `vite build`，对设置窗入口 chunk 的传递闭包做零命中断言。
  * 往这里（或 `settings/**` 的依赖链上）加一个会带进渲染栈的 import，那条当场红。

@@ -912,10 +912,13 @@
   line-height: 1.55;
 }
 
-.card-body .katex-display {
+/* 块级公式（`md-view.ts` 画的 SVG）：居中，宽过正文就横向滚 */
+.card-body [data-math="display"] {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+  margin: 0.5em 0;
+  text-align: center;
 }
 
 .card-body p:first-child {

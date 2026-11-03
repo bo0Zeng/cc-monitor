@@ -213,7 +213,7 @@ describe("agent 窗口", () => {
     expect(pill.hidden).toBe(true);
   });
 
-  it("公式推迟到滚进视口（与主窗口 / 查看窗同一套）：几百轮的子运行开窗不当场把每一条公式都排一遍", async () => {
+  it("公式是后端排好的画单，开窗当场画、不交给 IO 等滚进视口（几百轮的子运行，每张卡挂着都要逐帧算交叉）", async () => {
     const seen: Array<{ root: Element | null; els: Element[] }> = [];
     class FakeIO {
       private readonly mine: { root: Element | null; els: Element[] };
@@ -229,14 +229,12 @@ describe("agent 窗口", () => {
     }
     vi.stubGlobal("IntersectionObserver", FakeIO);
     try {
-      h.pages = [{ rows: [brief("查一下"), say("c1", { blocks: [{ t: "p", k: ["改好了："] }, { t: "math", tex: "a^2" }], segs: [] })] }, { rows: [] }];
+      const m = { w: 900, h: 800, d: 0, items: [{ t: "g" as const, f: "math_italic" as const, u: 0x61, x: 0, y: 800, s: 1000 }] };
+      h.pages = [{ rows: [brief("查一下"), say("c1", { blocks: [{ t: "p", k: ["改好了："] }, { t: "math", tex: "a^2", m }], segs: [] })] }, { rows: [] }];
       const { root } = await open();
-      const scroll = root.querySelector<HTMLElement>(".session-viewer-stream")!;
-      const block = root.querySelector<HTMLElement>("[data-math-pending]");
-      expect(block, "还没滚进视口：公式先只留占位").not.toBeNull();
-      const io = seen.find((x) => x.root === scroll);
-      expect(io, "看的是这扇窗自己的滚动容器").toBeDefined();
-      expect(io!.els.some((el) => el.contains(block)), "那张卡交给它等着滚进视口").toBe(true);
+      const block = root.querySelector<HTMLElement>("[data-math=display]");
+      expect(block?.querySelector("svg text")?.textContent, "开窗就画好了").toBe("a");
+      expect(seen.flatMap((x) => x.els).some((el) => el.contains(block)), "那张卡不该交给 IO 等着").toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

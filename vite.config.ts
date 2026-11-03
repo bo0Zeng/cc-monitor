@@ -15,67 +15,8 @@ const host = process.env.TAURI_DEV_HOST;
 const port = Number(process.env.VITE_PORT) || 24174;
 const hmrPort = port + 1;
 
-/**
- * 〔层真包进去〕把**第三方**样式表（`node_modules` 里的 `.css`，今天只有 KaTeX 那一份）整份包进 `@layer vendor`。
- *
- * 为什么必须包：`@layer` 的规则是「**无层的样式赢过所有有层的**」。我们自己的样式全部进了层之后，
- * 第三方那一份如果还是无层，就会**反过来压住我们所有的覆盖**。包进 `vendor`（排在 `reset` 之后、我们所有层之前）
- * ⇒ 我们的规则一律压过第三方。
- *
- * 为什么在构建配置里包、而不是改成在 CSS 里 `@import … layer(vendor)`：这一份是 `src/frontend/ui/render.ts`
- * 用 `import "katex/dist/katex.min.css"` 引进来的 —— `tests/evidence/class-ledger.ts` 的「第三方类名」一族
- * 正是从这一形现读的，改走 CSS `@import` 会让那本账看不见 `.katex-*` 而误判死规则。
- *
- * `@font-face` / `@charset` / `@import` 留在层外（字体声明不参与层叠；后两者按语法必须在最前）。
- * 判据：`tests/frontend/ui/entry-graphs.vitest.ts`「构建产物里一条无层规则都没有」—— 这个插件没生效，那条当场红。
- */
-const vendorLayer = {
-  postcssPlugin: "cc-monitor-vendor-layer",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Once(root: any, helpers: any) {
-    const file: string = root.source?.input?.file ?? "";
-    if (!/[\\/]node_modules[\\/]/.test(file)) return;
-    const keepOut = new Set(["font-face", "charset", "import", "layer"]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inner = root.nodes.filter((n: any) => !(n.type === "atrule" && keepOut.has(n.name)));
-    if (inner.length === 0) return;
-    const layer = new helpers.AtRule({ name: "layer", params: "vendor" });
-    for (const n of inner) layer.append(n.remove());
-    root.append(layer);
-  },
-};
-
-/**
- * KaTeX 的 `@font-face` 只留 woff2：它原样把每个字体的 woff2 · woff · ttf 三种都写进 `src`，vite 就把三种都打进产物（约多 0.6 MB）。
- * 两个 WebView（WebView2 · WebKitGTK）都认 woff2，后两种永远不会被取。
- * 判据：`tests/frontend/ui/entry-graphs.vitest.ts`「字体：KaTeX 只打 woff2」。
- */
-const katexWoff2Only = {
-  postcssPlugin: "cc-monitor-katex-woff2-only",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Once(root: any) {
-    const file: string = root.source?.input?.file ?? "";
-    if (!/[\\/]node_modules[\\/]katex[\\/]/.test(file)) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    root.walkAtRules("font-face", (rule: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rule.walkDecls("src", (decl: any) => {
-        const woff2 = String(decl.value)
-          .split(",")
-          .filter((part: string) => /format\(\s*["']woff2["']\s*\)/.test(part));
-        if (woff2.length === 0) throw new Error(`KaTeX 的 @font-face 里没有 woff2：${decl.value}`);
-        decl.value = woff2.join(",");
-      });
-    });
-  },
-};
-
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  css: {
-    postcss: { plugins: [katexWoff2Only, vendorLayer] },
-  },
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
