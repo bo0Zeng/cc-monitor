@@ -4,12 +4,15 @@
 #   read-big.sh <后端二进制> <工作目录> <标签>
 # 工作目录建议在仓里 `.build/` 下；读数写 <工作目录>/<标签>-<阶段>.jsonl，应答写 <工作目录>/<标签>-<阶段>/replies/。
 # 两个后端比应答：node read-big.mjs --compare <工作目录>/<甲>-cold <工作目录>/<乙>-cold（grown 同理）。
+# ask（warm 起，开着的进程里再问：切回 tab · 查找 · 搜索 · 追一行的延迟 · 常驻）跟在 grown 后面。
+# 造记录的参数经环境变量 READ_BIG_MAKE 交给 make-big.mjs（例：READ_BIG_MAKE="--mb 600 --turns 14000"），缺省照它的缺省。
 set -euo pipefail
 bin=$(realpath "$1"); work=$2; tag=$3
 here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$work"; work=$(realpath "$work")
 if [ ! -d "$work/pristine" ]; then
-  node "$here/make-big.mjs" "$work/box/home" > "$work/made.json"
+  # shellcheck disable=SC2086  # READ_BIG_MAKE 是几个参数，要按空白拆开
+  node "$here/make-big.mjs" "$work/box/home" ${READ_BIG_MAKE:-} > "$work/made.json"
   cp -r "$work/box/home/.claude/projects" "$work/pristine"
 fi
 restore() { rm -rf "$work/box/home/.claude/projects"; cp -r "$work/pristine" "$work/box/home/.claude/projects"; }
@@ -18,10 +21,11 @@ restore
 run cold --phase cold
 run warm --phase warm
 run grown --phase grown
+run ask --phase warm --ask
 run live --phase warm --live 3000
 # 字节那一组（经 strace，墙钟不看）：每个文件读了多少
 restore
 run cold-bytes --phase cold --strace
 run warm-bytes --phase warm --strace
 run grown-bytes --phase grown --strace
-for ph in cold warm grown live cold-bytes warm-bytes grown-bytes; do echo "== $tag $ph"; cut -c1-220 "$work/$tag-$ph.jsonl"; done
+for ph in cold warm grown ask live cold-bytes warm-bytes grown-bytes; do echo "== $tag $ph"; cut -c1-220 "$work/$tag-$ph.jsonl"; done
