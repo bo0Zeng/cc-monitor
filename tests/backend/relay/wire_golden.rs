@@ -351,24 +351,22 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let (tick, rx) = mpsc::channel();
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     // ⚠ 走的是**生产段那条真实的装表路** `RoutingTable::build`，不是另造一个同构的表。
-    let table = RoutingTable::build(
-        [
-            (
-                GOLDEN_AGENT.to_string(),
-                ACCT_WITH_KEY.to_string(),
-                base.clone(),
-                Some(SecretKey::new(ROW_KEY)),
-                AuthStyle::DEFAULT,
-            ),
-            (
-                GOLDEN_AGENT.to_string(),
-                ACCT_NO_KEY.to_string(),
-                base.clone(),
-                None,
-                AuthStyle::DEFAULT,
-            ),
-        ],
-    );
+    let table = RoutingTable::build([
+        (
+            GOLDEN_AGENT.to_string(),
+            ACCT_WITH_KEY.to_string(),
+            base.clone(),
+            Some(SecretKey::new(ROW_KEY)),
+            AuthStyle::DEFAULT,
+        ),
+        (
+            GOLDEN_AGENT.to_string(),
+            ACCT_NO_KEY.to_string(),
+            base.clone(),
+            None,
+            AuthStyle::DEFAULT,
+        ),
+    ]);
     // ⚠ 走的是**生产段那条真实的上游选择**（`Accounts`），不是判据自己造的一个假 `Destinations`。
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(

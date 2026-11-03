@@ -20,8 +20,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub const FILE_NAME: &str =
-    relay_route_core::file_name_of(relay_route_core::QUOTA_LEDGER_REL);
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::QUOTA_LEDGER_REL);
 
 /// 显示没变时，盘上那份「看到的时刻」至多落后这么多秒。
 pub(crate) const PERSIST_EVERY: u64 = 60;

@@ -55,7 +55,9 @@ impl Home {
         let library: crate::accounts::upstream_select::rotate::BookAt = Arc::new(move |_| {
             Some(acct_core::AccountBook {
                 accounts: std::iter::once(
-                    crate::accounts::upstream_select::rotate::test_support::book_row("0", None, false),
+                    crate::accounts::upstream_select::rotate::test_support::book_row(
+                        "0", None, false,
+                    ),
                 )
                 .chain(["b", "c", "bad", "api"].iter().map(|id| {
                     crate::accounts::upstream_select::rotate::test_support::book_row(

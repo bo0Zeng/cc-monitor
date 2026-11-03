@@ -121,12 +121,13 @@ fn use_now_refuses_the_bare_account() {
     let inner = std::sync::Arc::clone(&ctx.hop.library);
     ctx.hop.library = std::sync::Arc::new(move |h: &std::path::Path| {
         let mut lib = inner(h)?;
-        lib.accounts
-            .push(crate::accounts::upstream_select::rotate::test_support::book_row(
+        lib.accounts.push(
+            crate::accounts::upstream_select::rotate::test_support::book_row(
                 acct_core::BARE_ACCOUNT,
                 None,
                 false,
-            ));
+            ),
+        );
         Some(lib)
     });
     home.saw(&ctx, S1);

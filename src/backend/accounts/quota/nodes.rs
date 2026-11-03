@@ -142,11 +142,7 @@ fn logins_arm(
 
 impl LoginWatch {
     /// 盯 `home` 下的账号库，节点发到 `tx`；`library` 是宿主交进来的每号配置目录（[`AccountDirs`]）。
-    pub fn start(
-        home: &std::path::Path,
-        tx: &Nodes,
-        library: AccountDirs,
-    ) -> Result<Self, String> {
+    pub fn start(home: &std::path::Path, tx: &Nodes, library: AccountDirs) -> Result<Self, String> {
         let held = std::sync::Arc::new(std::sync::Mutex::new(None));
         logins_arm(home.to_path_buf(), tx.clone(), held.clone(), library)?;
         Ok(Self { held })

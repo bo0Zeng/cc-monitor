@@ -430,12 +430,7 @@ pub fn turn(
 
 /// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 · 这个会话先不用它 ⇒ 不改，回几点恢复。
 /// 策略的上限不拦它。
-pub fn use_now(
-    sigma: &Sigma,
-    facts: &[Acct],
-    t: u64,
-    a: &str,
-) -> Result<Sigma, Option<u64>> {
+pub fn use_now(sigma: &Sigma, facts: &[Acct], t: u64, a: &str) -> Result<Sigma, Option<u64>> {
     let x = fact(facts, a).ok_or(None)?;
     if sigma.off.iter().any(|b| b == a) {
         return Err(None);

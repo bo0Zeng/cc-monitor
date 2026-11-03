@@ -344,11 +344,7 @@ type Clock = std::sync::Arc<dyn Fn() -> u64 + Send + Sync>;
 
 impl Accounts {
     /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层上游选择。
-    pub fn new(
-        table: RoutingTable,
-        upstreams: Upstreams,
-        own: crate::platform::fs::Own,
-    ) -> Self {
+    pub fn new(table: RoutingTable, upstreams: Upstreams, own: crate::platform::fs::Own) -> Self {
         Self {
             table: std::sync::RwLock::new(std::sync::Arc::new(table)),
             upstreams,
@@ -368,15 +364,13 @@ impl Accounts {
     }
 
     /// 装上会话血缘（每一发换号之前先认「谁起的谁」）。
-    pub fn tracing_lineage(
-        mut self,
-        store: std::sync::Arc<crate::lineage::LineageStore>,
-    ) -> Self {
+    pub fn tracing_lineage(mut self, store: std::sync::Arc<crate::lineage::LineageStore>) -> Self {
         self.lineage = Some(store);
         self
     }
 
     /// 判据换钟的那一口（产品不走：恒是真钟）。读者只有中转整趟的判据（`observe_retry_tests.rs`，测试档）。
+    #[cfg(any(test, feature = "test-support"))]
     pub fn clocked(mut self, clock: Clock) -> Self {
         self.clock = clock;
         self

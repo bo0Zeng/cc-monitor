@@ -489,8 +489,11 @@ impl Tmp {
         self.creds(acct)["mcpOAuth"][MCP_KEY].clone()
     }
     fn logins(&self) -> crate::accounts::manage::mcp_logins_exec::Synced {
-        crate::accounts::manage::mcp_logins_exec::sync(&self.door(), &crate::platform::fs::Own::for_tests())
-            .unwrap()
+        crate::accounts::manage::mcp_logins_exec::sync(
+            &self.door(),
+            &crate::platform::fs::Own::for_tests(),
+        )
+        .unwrap()
     }
 }
 

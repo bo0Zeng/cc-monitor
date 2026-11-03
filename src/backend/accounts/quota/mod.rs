@@ -23,7 +23,9 @@ pub(crate) fn reset_since_seen(resets_at: Option<u64>, now: u64) -> bool {
 
 /// 基础层要的「会话用哪份策略问谁」：跟着那份 `rotation.json` 的配置编辑层（两层的接线只在这里与 `faces/rotation_face.rs`）。
 pub fn adoptions_at() -> rules::AdoptionsAt {
-    std::sync::Arc::new(|store| std::sync::Arc::new(setup::uses::Setup::of(std::sync::Arc::clone(store))))
+    std::sync::Arc::new(|store| {
+        std::sync::Arc::new(setup::uses::Setup::of(std::sync::Arc::clone(store)))
+    })
 }
 
 #[cfg(test)]

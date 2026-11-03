@@ -185,7 +185,7 @@ pub fn all(dir: Option<&Path>) -> Arc<Vec<Arc<Shelved>>> {
 }
 
 /// 按 id 找一份。
-pub fn find(all:&[Arc<Shelved>], id: &str) -> Option<Arc<Shelved>> {
+pub fn find(all: &[Arc<Shelved>], id: &str) -> Option<Arc<Shelved>> {
     all.iter().find(|s| s.id == id).cloned()
 }
 

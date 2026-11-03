@@ -82,10 +82,10 @@ fn a_login_file_or_the_manifest_changing_sends_a_logins_node() {
 // ── 额度显示态（`quota::show`）读成帧面那一行（`faces::quota_read`）─────────────────────────────
 
 mod show_rows {
+    use crate::accounts::quota::facts::Kind;
     use crate::accounts::quota::ledger::{Observed, PerPct};
     use crate::accounts::quota::show::*;
     use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
-    use crate::accounts::quota::facts::Kind;
     use crate::common::cells::{Tone, Words};
 
     const NOW: u64 = 1_800_000_000;
@@ -166,8 +166,7 @@ mod show_rows {
             .windows
             .push(win("seven_day_sonnet", 0.5, EARLIER));
         let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
-        let clock =
-            crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
+        let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
         let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
         sh.windows = windows_of(&o, &key, NOW);
         let a = crate::faces::quota_read::account_of(

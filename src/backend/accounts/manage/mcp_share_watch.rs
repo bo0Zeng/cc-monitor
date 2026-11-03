@@ -74,10 +74,7 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
                 tracing::warn!("账号之间同步 MCP：{} 两边都改了，等你在账号页里挑", c.name);
             }
         }
-        Err(f) => tracing::warn!(
-            "账号之间同步 MCP：这一趟没做成：{}",
-            f.logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步 MCP：这一趟没做成：{}", f.logged()),
     }
     match super::mcp_logins_exec::sync(d, own) {
         Ok(v) => {
@@ -88,20 +85,14 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
                 tracing::warn!("账号之间同步 MCP 登录：{n}");
             }
         }
-        Err(f) => tracing::warn!(
-            "账号之间同步 MCP 登录：这一趟没做成：{}",
-            f.logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步 MCP 登录：这一趟没做成：{}", f.logged()),
     }
     match super::trust_share_exec::sync(d) {
         Ok(changed) if !changed.is_empty() => {
             tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
         }
         Ok(_) => {}
-        Err(f) => tracing::warn!(
-            "账号之间同步信任：这一趟没做成：{}",
-            f.logged()
-        ),
+        Err(f) => tracing::warn!("账号之间同步信任：这一趟没做成：{}", f.logged()),
     }
 }
 

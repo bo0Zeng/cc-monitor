@@ -31,12 +31,7 @@ const SLOTS: [&str; 2] = ["5h", "7d"];
 
 /// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
 /// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
-pub fn slot_words(
-    state: QuotaState,
-    here: bool,
-    pct: Option<u32>,
-    full: bool,
-) -> (Words, Tone) {
+pub fn slot_words(state: QuotaState, here: bool, pct: Option<u32>, full: bool) -> (Words, Tone) {
     if here && state == QuotaState::OverageInUse {
         return (
             Words(copy_core::copy_text("acct.row.over", &[])),

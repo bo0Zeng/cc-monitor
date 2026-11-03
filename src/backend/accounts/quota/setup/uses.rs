@@ -52,12 +52,7 @@ impl Setup {
     }
 
     /// 给这几个会话载入 `copy`（换了一份 ⇒ memo 与叫醒清掉：那是上一份记的；临时动作照留）。回载入了几个。
-    pub fn load(
-        &self,
-        own: &Own,
-        sids: &[String],
-        copy: Option<&Copy>,
-    ) -> Result<usize, Said> {
+    pub fn load(&self, own: &Own, sids: &[String], copy: Option<&Copy>) -> Result<usize, Said> {
         let shared = copy.cloned().map(Arc::new);
         rotation::face_change(&self.book, own, |b| {
             let mut n = 0;
