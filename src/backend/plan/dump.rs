@@ -121,12 +121,7 @@ pub fn run_node(entry: &Path, ws: &Path, repo: &str, id: &str) -> Result<String,
 
 /// 在工作区根 `ws` 里跑 `<entry> dump --refs <仓库> <工作区>`，`text` 从标准输入进去：pb 认出的那几处与各自的标题（pb 那一份原样）。
 /// 起不来 · 超时 · 退出码不是 0 · 形状不认得 ⇒ `None`（那一批回空，正文原样）；pb 说那个仓库读不成（`error`）照样交回，调用方判。
-pub fn run_refs(
-    entry: &Path,
-    ws: &Path,
-    repo: &str,
-    text: &str,
-) -> Option<serde_json::Value> {
+pub fn run_refs(entry: &Path, ws: &Path, repo: &str, text: &str) -> Option<serde_json::Value> {
     let ws_s = ws.to_string_lossy().to_string();
     match ran_of(super::pb_fed(
         entry,

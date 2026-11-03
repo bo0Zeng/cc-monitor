@@ -104,7 +104,10 @@ fn no_refs() -> Value {
 }
 
 /// 一个节点（没写的键给空）。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "一个节点的几格照 pb dump 的键逐个给，判据读起来一行一格"
+)]
 fn node(
     id: &str,
     title: &str,
@@ -573,7 +576,9 @@ pub fn pb_id_env() -> std::sync::MutexGuard<'static, ()> {
 /// 一次性目录。
 pub fn scratch(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("plan-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    if d.exists() {
+        std::fs::remove_dir_all(&d).unwrap();
+    }
     std::fs::create_dir_all(&d).unwrap();
     d
 }
