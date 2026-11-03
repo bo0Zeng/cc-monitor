@@ -44,6 +44,7 @@ pub(crate) fn session_added(sid: &str, extra: serde_json::Value) -> cmd_wire::fr
         "sid": sid,
         "agent_kind": "claude",
         "label": "L",
+        "title": "L",
         "face": face("running", "T"),
         "pid": 1,
     });
