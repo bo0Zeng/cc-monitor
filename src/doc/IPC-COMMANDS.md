@@ -10923,7 +10923,7 @@ path: string,
 /**
  * 原文；不是文本 / 太大 / 读不出来 ⇒ `null`（这一个装不过去），原因在 `why`。
  */
-text: string | null, bytes: bigint, exec: boolean, why: string | null, };
+text: string | null, bytes: number, exec: boolean, why: string | null, };
 type SkillReadReq = { 
 /**
  * skill 的目录名（一段：不许分隔符 / `..` / 点开头）。

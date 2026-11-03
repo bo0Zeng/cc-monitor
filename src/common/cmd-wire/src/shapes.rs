@@ -209,7 +209,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("set-plan", "cb401cc9"),
     ("skill-install-apply", "bd42387a"),
     ("skill-install-plan", "5b6796bc"),
-    ("skill-read", "36896e60"),
+    ("skill-read", "ce066c62"),
     ("ssh-config-import", "ab0d5420"),
     ("stream-watch", "c6dd2d4e"),
     ("tasks-list", "4e93dd2a"),
