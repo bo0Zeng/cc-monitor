@@ -39,8 +39,6 @@ export function e2eLog(line: string): void {
 export interface TabSessionHost {
   /** 按 sid 取 tab（`TabManager` 那张表；没有 ⇒ `undefined`）。 */
   tab(sid: string): Tab | undefined;
-  /** attach / 「杀死空 tmux」对这个会话有没有意义。 */
-  isAttachable(sid: string): boolean;
 }
 
 export class TabSessionActions {

@@ -532,10 +532,10 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
         vi.advanceTimersByTime(499);
         expect(tips()).toHaveLength(0);
         vi.advanceTimersByTime(1);
-        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent)).toEqual(["s0"]);
+        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent)).toEqual(["标题-s0"]);
         btn(r, "s0").dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: btn(r, "s1") }));
         btn(r, "s1").dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: btn(r, "s0") }));
-        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent), "同组立刻换").toEqual(["s1"]);
+        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent), "同组立刻换").toEqual(["标题-s1"]);
         expect(btn(r, "s0").hasAttribute("title")).toBe(false);
         for (const t of tips()) t.remove();
       } finally {

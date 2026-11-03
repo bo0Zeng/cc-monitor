@@ -97,7 +97,6 @@ describe("〔RESYNC〕手动对齐", () => {
     const unpinned: string[] = [];
     const actions = new TabSessionActions({
       tab: () => undefined,
-      isAttachable: () => false,
     });
     const tab = (sid: string) => ({ sessionId: sid, origin: "devbox", title: sid, pinned: true }) as unknown as Tab;
     await actions.flagPinsWithoutRecord("devbox", [tab("s-gone"), tab("s-here"), tab("s-dunno")], (sid) => unpinned.push(sid));

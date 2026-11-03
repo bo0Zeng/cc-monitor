@@ -531,11 +531,9 @@ pub(crate) fn label_facts_among(
     // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
     if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
         return super::search_rules::LabelFacts {
-            custom: None,
-            bg_name: None,
-            title: None,
             first: excerpt(p),
             project_dir: crate::agents::project_dir_among(registry, p),
+            ..Default::default()
         };
     }
     let row = <super::listing_scan::SessionRow as serde::Deserialize>::deserialize(
@@ -543,11 +541,12 @@ pub(crate) fn label_facts_among(
     )
     .unwrap_or_default();
     super::search_rules::LabelFacts {
-        custom: None,
-        bg_name: None,
         title: row.ai_title,
         first: row.first_user_excerpt,
         project_dir: row.cwd,
+        forked: row.forked_from_session_id.is_some(),
+        background: row.is_bg,
+        ..Default::default()
     }
 }
 

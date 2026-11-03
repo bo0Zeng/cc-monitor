@@ -9,7 +9,7 @@
  * 点下去真正做事的住 `tab-session-actions.ts`。
  */
 import type { Tab } from "./tab-model";
-import { canResume, closesFromMenu, frontWhy, hasTerminal, isLive } from "./face-can";
+import { canAttach, canResume, closesFromMenu, frontWhy, hasTerminal, isLive } from "./face-can";
 import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
 import type { TabGroup } from "./tab-bar-prefs";
@@ -19,12 +19,11 @@ import { openSession } from "./session-open";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
-import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
-import { inTmux, standingOf, type Standing } from "./sessions-where";
+import { isLocalOrigin, isRemoteOrigin, type Machine } from "./ipc/origin";
+import { standingOf, type Standing } from "./sessions-where";
 import type { Launch } from "./generated/Launch";
 import {
   menuGeneration,
-  removeMenuItem,
   openMenu,
   updateMenuItem,
   type MenuItem,
@@ -33,7 +32,6 @@ import type { TabSessionActions } from "./tab-session-actions";
 import { machineName, unavailableSaid } from "./control-said";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
-import { fullTitle } from "./session-face";
 import { renameTab } from "./tab-rename";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
@@ -113,7 +111,6 @@ export function groupSubmenu(o: {
 /** 菜单要宿主给的读数 / 回调。全是**现读**：菜单项的 `onClick` 在点下去那一刻才调它们。 */
 export interface TabMenuHost {
   tab(sid: string): Tab | undefined;
-  isAttachable(sid: string): boolean;
   /** 这个实例拉过集合没有（撕离出来的 viewer 窗口从不拉 ⇒ 不给集合入口）。 */
   collectionsLoaded(): boolean;
   collections(): TabGroup[];
@@ -171,14 +168,13 @@ export class TabMenu {
   }
 
   /** 这个标签页的菜单项（右键与会话头「⋯」同一份；要问那台的几格先画成转圈）。 */
-  private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; remote: string | null; local: boolean } {
+  private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; attach: boolean } {
     const t = this.host.tab(sid);
     const unseen = t !== undefined && t.face?.dot === "unknown";
     // 为什么灰：脸上那一句（后端照那台离线那一句写好，`SessionFace::unseen`）。
     const unseenWhy = t && unseen ? (t.face?.line ?? "") : undefined;
     const grey = (it: MenuItem): MenuItem => (unseenWhy !== undefined ? { ...it, enabled: false, pending: false, why: unseenWhy, onClick: () => {} } : it);
-    const remote = t !== undefined && isRemoteOrigin(t.origin) && t.projectDir ? t.origin : null;
-    const local = t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.face);
+    const attach = t !== undefined && canAttach(t.face, isRemoteOrigin(t.origin));
     const items: MenuItem[] = [];
 
     // ① 看它
@@ -225,8 +221,8 @@ export class TabMenu {
       // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
       items.push({ id: "resume", icon: "history", label: copyText("history.row.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
-    // 在终端里打开：远端两种宿主都出；本机只对托管终端那一行出（tmux 那一行有 ccm 开的那个窗口 ·［切到终端］）—— 问到了再定。
-    if (remote !== null || local) items.push(grey({ id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), pending: true }));
+    // 在终端里打开：出不出照脸上的 `can.attach`（`canAttach`）；命中几个那一句问到了再写。
+    if (attach) items.push(grey({ id: "attach", icon: "terminal", label: copyText("sessionHead.act.openTerm"), pending: true }));
     const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
     if (t && openPanel) items.push(grey({ id: "account", icon: "account", label: copyText("acct.menu.open"), onClick: () => openPanel(sid) }));
 
@@ -255,11 +251,11 @@ export class TabMenu {
         danger: true,
         enabled: end.can === "yes",
         why: end.can === "no" ? end.why : undefined,
-        onClick: () => this.actions.endSession(t.origin, sid, fullTitle(t)),
+        onClick: () => this.actions.endSession(t.origin, sid, t.title),
       });
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
-    return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, remote, local };
+    return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, attach };
   }
 
   /**
@@ -267,7 +263,7 @@ export class TabMenu {
    * 会话头「⋯」多交两组：`top` ＝ 会话头放不下收进来的（排最上面）；`bottom` ＝ 流的开关 ＋「调整会话头按钮…」（排最后）。
    */
   open(e: MouseEvent | HTMLElement, sid: string, extra: { top?: readonly MenuItem[]; bottom?: readonly MenuItem[] } = {}): void {
-    const { items: base, t, unseen, remote, local } = this.build(sid);
+    const { items: base, t, unseen, attach } = this.build(sid);
     const items = [...(extra.top ?? []), ...base];
     // 会话头「⋯」多出来的那几个开关（流的开关，不归那台机器能不能做）。
     if (extra.bottom && extra.bottom.length > 0) items.push({ label: "", divider: true }, ...extra.bottom);
@@ -277,8 +273,7 @@ export class TabMenu {
     // 这一代菜单问那台一次 `sessions-where`：几格 tmux 项与「恢复 ▸」的勾共用这一答。
     let asked: Promise<Standing | undefined> | null = null;
     const where = (): Promise<Standing | undefined> => (asked ??= standingOf(t.origin, sid));
-    if (remote !== null) void this.resolveRemoteTmuxItems(remote, sid, where);
-    if (local) void this.resolveLocalTmuxItems(sid, where);
+    if (attach) void this.resolveAttach(t.origin, sid, where);
     // 已结束的会话：那台的号与默认放在哪到了再把「恢复 ▸」换上。
     if (t.face !== null) void this.appendAccountMenuItems(t.origin, sid, t.face, where);
   }
@@ -318,10 +313,10 @@ export class TabMenu {
 
 
 
-  /** 会话头 / 钉条 / 右键的［在终端里打开］（远端）：交那台接回（接哪个 · 命中几个都是那台判、那台说）。 */
-  async attachRemote(sid: string): Promise<void> {
+  /** 会话头 / 钉条 / 报错卡 / ↗ 浮层的［在终端里打开］：交那台接回（接哪个 · 命中几个都是那台判、那台说；出不出照 `canAttach`）。 */
+  async attachTo(sid: string): Promise<void> {
     const t = this.host.tab(sid);
-    if (!t || !isRemoteOrigin(t.origin)) return;
+    if (!t) return;
     await this.attach(t.origin, sid);
   }
 
@@ -330,26 +325,16 @@ export class TabMenu {
     await openSession(origin, { what: { kind: "look", sid }, local: isLocalOrigin(origin) });
   }
 
-  /** 远端：那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）。 */
-  private async resolveRemoteTmuxItems(origin: string, sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
+  /**
+   * 那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）：出不出已照脸定了，这一问只补「命中几个」那一句。
+   * 接回走 `session-open look`，那台两种宿主都认。
+   */
+  private async resolveAttach(origin: Machine, sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
     const gen = menuGeneration();
     const s = await where();
     if (gen !== menuGeneration()) return;
     if (s === undefined) return this.unresolved();
-    if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) return removeMenuItem("attach");
-    // 接回走 `session-open look`，那台两种宿主都认。
     updateMenuItem("attach", this.attachItem(origin, sid, s));
-  }
-
-  /** 本机：那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）。恢复只在「恢复 ▸」里。 */
-  private async resolveLocalTmuxItems(sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
-    const gen = menuGeneration();
-    const s = await where();
-    if (gen !== menuGeneration()) return;
-    if (s === undefined) return this.unresolved();
-    // 不在哪个终端里 · 本机 tmux 那一行（ccm 开的那个窗口 ·［切到终端］）⇒ 不出；只对托管终端那一行出。
-    if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid)) || inTmux(s)) return removeMenuItem("attach");
-    updateMenuItem("attach", this.attachItem(LOCAL, sid, s));
   }
 
   /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */

@@ -170,7 +170,7 @@ fn nothing_asked_means_no_groups_and_an_empty_summary() {
 fn added(sid: &str, face: &SessionFace) -> String {
     serde_json::json!({
         "kind": "session_added", "sid": sid, "agent_kind": "claude",
-        "face": face, "label": sid, "pid": 1,
+        "face": face, "label": sid, "title": sid, "pid": 1,
     })
     .to_string()
 }

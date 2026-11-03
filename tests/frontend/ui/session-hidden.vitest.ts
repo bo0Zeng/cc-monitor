@@ -69,7 +69,6 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     background: false,
     bgName: null,
     label: `名-${sid}`,
-    labelProject: null,
     projectDir: `/w/${sid}`,
     face: liveFace("working"), line: null,
     pinned: false,
@@ -318,7 +317,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     r.host.send.mockRejectedValueOnce(new Error("gone"));
     r.h.hide(["b"]);
     await flushAll();
-    expect(r.host.failed.mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.hide.failed", { title: "名-b" })]);
+    expect(r.host.failed.mock.calls.map((c) => c[0]), "点名那一条用它的整行标题").toEqual([copyText("tabBar.hide.failed", { title: "b" })]);
   });
 
   it("★ 宿主只收回包：界面不数结局（tab-hide.ts 里没有 EndRow · batchHead）", () => {

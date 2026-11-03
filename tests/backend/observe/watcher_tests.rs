@@ -214,10 +214,10 @@ fn frames_fanned_out_fold_into_the_book_read_by_faces_here() {
     let frame = |v: serde_json::Value| cmd_wire::frame::decode(&v.to_string()).expect("一帧");
     sink.send(frame(serde_json::json!({
         "kind": "session_added", "sid": SID, "agent_kind": "claude",
-        "face": idle, "label": SID, "pid": 1,
+        "face": idle, "label": SID, "title": SID, "pid": 1,
     })));
     sink.send(frame(serde_json::json!({
-        "kind": "session_status", "sid": SID, "face": needs, "label": SID,
+        "kind": "session_status", "sid": SID, "face": needs, "label": SID, "title": SID,
     })));
     let book = faces_here().expect("起过发帧口 ⇒ 有那一本");
     let order = book
@@ -237,7 +237,7 @@ fn added_frame(sid: &str) -> Frame {
     cmd_wire::frame::decode(
         &serde_json::json!({
             "kind": "session_added", "sid": sid, "agent_kind": "claude",
-            "face": face, "label": sid, "pid": 1,
+            "face": face, "label": sid, "title": sid, "pid": 1,
         })
         .to_string(),
     )
@@ -1713,8 +1713,8 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
     assert_eq!(
         names(&mut rx),
         vec![
-            serde_json::json!({"label": "修一下登录", "label_project": "proj"}),
-            serde_json::json!({"label": "登录修复", "label_project": "proj"}),
+            serde_json::json!({"label": "修一下登录", "title": "proj 修一下登录"}),
+            serde_json::json!({"label": "登录修复", "title": "proj 登录修复"}),
         ]
     );
     std::fs::remove_dir_all(&dir).ok();
@@ -2009,7 +2009,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded(crate::wire::SessionAdded { name_face, .. })) => assert_eq!(
             serde_json::to_value(&name_face).unwrap(),
-            serde_json::json!({"label": "甲", "label_project": "proj"})
+            serde_json::json!({"label": "甲", "title": "proj 甲"})
         ),
         other => panic!("expected SessionAdded, got {other:?}"),
     }

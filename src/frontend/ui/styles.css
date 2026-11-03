@@ -283,12 +283,6 @@
   color: var(--text-2);
 }
 
-.tab-gear {
-  margin-right: 3px;
-  color: var(--text-2);
-  vertical-align: -2px;
-}
-
 /* 空闲、跑完你还没看：标题 600（点开即恢复）。 */
 .tab.unseen-done .tab-label {
   font-weight: var(--font-weight-strong);

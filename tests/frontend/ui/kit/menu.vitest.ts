@@ -15,7 +15,6 @@ import {
   menuGeneration,
   menuOpen,
   openMenu,
-  removeMenuItem,
   updateMenuItem,
 } from "../../../../src/frontend/ui/kit/menu";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
@@ -257,7 +256,7 @@ describe("弹出菜单", () => {
     ]);
   });
 
-  it("开着时按 id 换项（展开态带过去）· 摘掉；代次：开 / 关都换一代，关了之后改不到", () => {
+  it("开着时按 id 换项（展开态带过去）；代次：开 / 关都换一代，关了之后改不到", () => {
     const g0 = menuGeneration();
     openMenu({ x: 1, y: 1 }, [
       { id: "attach", label: "检测中", enabled: false },
@@ -266,9 +265,9 @@ describe("弹出菜单", () => {
     const g1 = menuGeneration();
     expect(g1, "开一次换一代").toBe(g0 + 1);
     updateMenuItem("attach", { id: "attach", label: "接回 orders" });
-    removeMenuItem("x");
     expect(items().map((b) => [b.textContent, b.disabled])).toEqual([
       ["接回 orders", false],
+      ["x", false],
     ]);
     closeMenu();
     expect(menuGeneration(), "关一次换一代").toBe(g1 + 1);

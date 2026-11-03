@@ -81,7 +81,7 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     invokeMock.mockResolvedValue(1);
     plainToast.mockReset();
     const t = { sessionId: "r1", origin: "gpu-01", projectDir: "/srv/proj" } as unknown as Tab;
-    await new TabSessionActions({ tab: () => t, isAttachable: () => false }).openTabCwd("r1");
+    await new TabSessionActions({ tab: () => t }).openTabCwd("r1");
     expect(invokeMock.mock.calls).toEqual([["open_file_window", { origin: "gpu-01", path: "/srv/proj", revealFile: null, theme: fileWindowTheme() }]]);
     expect(plainToast).not.toHaveBeenCalled();
   });

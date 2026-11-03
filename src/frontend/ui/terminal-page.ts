@@ -25,7 +25,7 @@ import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
 import { canResume, hasTerminal } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
-import { dotOf, fullTitle, stateWord } from "./session-face";
+import { dotOf, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import {
@@ -91,7 +91,7 @@ function keyOf(w: Watched): string {
   return w.kind === "tab" ? w.tab.sessionId : `\u0000${w.origin}\u0000${w.terminal}`;
 }
 const originOf = (w: Watched): Machine => (w.kind === "tab" ? w.tab.origin : w.origin);
-const labelOf = (w: Watched): string => (w.kind === "tab" ? fullTitle(w.tab) : w.title);
+const labelOf = (w: Watched): string => (w.kind === "tab" ? w.tab.title : w.title);
 const machineWord = (w: Watched): string => machineName(originOf(w));
 
 export interface TerminalPageHost {

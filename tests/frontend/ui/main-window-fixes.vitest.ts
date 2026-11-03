@@ -76,7 +76,6 @@ import { announced, goldenFace } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
-import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { RunTimeline } from "../../../src/frontend/ui/run-timeline";
 import { buildAgentCard, markRunCard } from "../../../src/frontend/ui/cards/subagent";
@@ -359,7 +358,7 @@ describe("tab 的悬停卡第一行是标题全名", () => {
     tm.switchTo("a");
     const bar = (tm as unknown as { bar: { hoverCard(sid: string): HTMLElement | null } }).bar;
     const cards = ["a", "b"].map((sid) => bar.hoverCard(sid)!);
-    expect(cards.map((c) => c.firstElementChild?.textContent)).toEqual(["a", "b"].map((sid) => fullTitle(st.tabs.get(sid) as Tab)));
+    expect(cards.map((c) => c.firstElementChild?.textContent)).toEqual(["a", "b"].map((sid) => (st.tabs.get(sid) as Tab).title));
     expect(cards[1].querySelector(".tab-hover-state")?.textContent).toBe(copyText("sessionState.ended.tooltip"));
     // tab 不在了 ⇒ 不出卡。
     expect(bar.hoverCard("gone")).toBeNull();

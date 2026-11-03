@@ -17,7 +17,6 @@ import { machineName, offlineSaid, settleTyped } from "./control-said";
 import { canResume, canStop, hasTerminal, isLive } from "./face-can";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { sentOf, type TerminalSent } from "./terminal-reads";
-import { fullTitle } from "./session-face";
 import { terminalFrontAvailable } from "./terminal-front";
 import type { Tab } from "./tab-model";
 import type { Machine } from "./ipc/origin";
@@ -142,7 +141,7 @@ export class Composer {
       draft: () => this.attachDraft(),
       target: () => {
         const t = this.host.active();
-        return { title: t ? fullTitle(t) : "", machine: t ? machineName(t.origin) : "" };
+        return { title: t ? t.title : "", machine: t ? machineName(t.origin) : "" };
       },
       offline: () => this.offlineLine(),
       blocked: () => this.sayNo(),

@@ -32,7 +32,7 @@ const state = (name: string, over: Partial<MachineState> = {}): MachineState => 
 const ses = (id: string, origin: string): Command => ({
   id,
   title: id,
-  session: { dot: "running", dotLabel: "", machine: origin, project: null, title: id, waiting: null, origin },
+  session: { dot: "running", dotLabel: "", machine: origin, title: id, waiting: null, origin },
   run: vi.fn(),
 });
 

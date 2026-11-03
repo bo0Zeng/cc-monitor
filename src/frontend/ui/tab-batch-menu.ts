@@ -16,7 +16,6 @@ import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { groupSubmenu } from "./tab-menu";
 import { askEnd, sayReply } from "./end-confirm";
 import { machineName } from "./control-said";
-import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { askSessions, itemOf, startMany, stopMany } from "./tab-batch-run";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
@@ -78,7 +77,7 @@ const whyOf = (c: { can: string; why?: string } | undefined): string => c?.why ?
 
 /** 一行里怎么称呼一个 tab：远端的机器写在括号里（那一行的原因由那台写，不带机器）。 */
 function lineTitle(t: Tab): string {
-  return isRemoteOrigin(t.origin) ? copyText("tabBatch.line.remote", { title: fullTitle(t), machine: machineName(t.origin) }) : fullTitle(t);
+  return isRemoteOrigin(t.origin) ? copyText("tabBatch.line.remote", { title: t.title, machine: machineName(t.origin) }) : t.title;
 }
 
 /** 右键一个选中的 tab（多选 ≥ 2；键盘菜单键 ⇒ 锚在焦点那一行）⇒ 开批量菜单。`sids` 按条上的顺序。`done` = 做完一项之后（宿主清多选）。 */

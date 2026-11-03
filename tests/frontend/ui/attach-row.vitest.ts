@@ -15,7 +15,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { AttachItem } from "../../../src/frontend/ui/generated/AttachItem";
 import type { SessionAttachmentCommitReq } from "../../../src/frontend/ui/generated/SessionAttachmentCommitReq";
 
-const TAB = { origin: "devbox", sessionId: "s-1", face: liveFace("idle", true), label: "web-console", labelProject: null, background: false, forkedFromSessionId: null } as unknown as Tab;
+const TAB = { origin: "devbox", sessionId: "s-1", face: liveFace("idle", true), label: "web-console", title: "web-console", background: false, forkedFromSessionId: null } as unknown as Tab;
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));

@@ -24,10 +24,10 @@ import type { BehaviorConfig } from "./behavior";
 import { failToast, noteMessage, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
-import { fullTitle, needsOf } from "./session-face";
+import { needsOf } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+import type { Tab, TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
 import { activityOf, closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
@@ -237,7 +237,7 @@ export class TabManager {
     const t = this.store.tabs.get(sid);
     const wasPinned = t?.pinned === true;
     void this.prefs.togglePin(sid).then((ok) => {
-      if (ok && t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => void this.prefs.togglePin(sid), () => {});
+      if (ok && t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: t.title }), () => void this.prefs.togglePin(sid), () => {});
     });
   }
 
@@ -375,14 +375,12 @@ export class TabManager {
   /** 会话动作（`tab-session-actions.ts`，IPC 经 `ipc/commands.ts`）。 */
   private readonly actions = new TabSessionActions({
     tab: (sid) => this.store.tabs.get(sid),
-    isAttachable: (sid) => this.isAttachable(sid),
   });
 
   /** 右键菜单里放哪几项住 `tab-menu.ts`；点下去做事直接交给上面那份 `actions`。 */
   private readonly menu = new TabMenu(
     {
       tab: (sid) => this.store.tabs.get(sid),
-      isAttachable: (sid) => this.isAttachable(sid),
       openAccountPanel: (sid) => {
         const t = this.store.tabs.get(sid);
         if (t && this.onOpenAccountPanel) this.onOpenAccountPanel(sid, t.origin);
@@ -548,24 +546,12 @@ export class TabManager {
     projectDir: string | null,
     origin: Machine,
     background: boolean | null = null,
-    // `null` ＝ 没说 ＝ 视为可以；只有显式 `false` 才记账。
-    attachable: boolean | null = null,
     // 会话宣告带的隐藏那一格（`undefined` ＝ 不是宣告来的，如固定复活 ⇒ 不动）。
     hidden?: SessionHidden | null,
   ): void {
-    if (attachable === false) this.store.notAttachableSids.add(sessionId);
-    else this.store.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, projectDir, "", origin, background);
     if (hidden !== undefined) this.hider.land(sessionId, hidden);
     this.slots.tabAppeared(sessionId);
-  }
-
-  /**
-   * attach / 「杀死空 tmux」对这个会话有没有意义。默认 true：只认后端明说的 `attachable:false`（契约 `src/doc/IPC-PROTOCOL.md` §9.3）。
-   * ↗ 不看它：点的那一刻现查（本机后端 `session-window`）。
-   */
-  isAttachable(sid: string): boolean {
-    return !this.store.notAttachableSids.has(sid);
   }
 
   /** 启动时选当前 tab 用（上次那个有没有 tab）。 */
@@ -686,15 +672,13 @@ export class TabManager {
       // 机器以后端宣告 / 行为准：tab 可能是按盘上存的旧标签建的（固定的 tab 复活），不改过来活卡永远对不上。
       if (origin !== tab.origin) {
         tab.origin = origin;
-        tab.title = this.computeTitle(tab);
         this.refreshTabBar();
         if (sessionId === this.store.activeId) this.publishActive();
       }
       // 同一 sid 可能有多份 pidfile（备用进程复用父会话的 sid 写 kind=bg），宣告到达顺序不定：
-      // interactive 恒压过 bg —— 后到的 interactive 在此升格纠正标题，反向绝不降格。升格不动位置。
+      // interactive 恒压过 bg —— 后到的 interactive 在此升格，反向绝不降格（标题里的 ⚙ 由那台随名字一起改）。升格不动位置。
       if (background === false && tab.background) {
         tab.background = false;
-        tab.title = this.computeTitle(tab);
         this.refreshTabBar();
         if (sessionId === this.store.activeId) this.publishActive();
       }
@@ -704,21 +688,15 @@ export class TabManager {
       }
       if (projectDir && projectDir !== tab.projectDir) {
         tab.projectDir = projectDir;
-        tab.title = this.computeTitle(tab);
         this.refreshTabBar();
         if (sessionId === this.store.activeId) this.publishActive();
       }
       return tab;
     }
 
+    // 标题是那台写好的整行（`updateName`）；名字先于建 Tab 到 ⇒ 落实，没到 ⇒ 空着等它（宣告那一帧紧跟着带来）。
     const pendingName = this.store.pendingName.get(sessionId) ?? null;
-    const title = computeTitleFor(
-      sessionId,
-      pendingName?.label ?? null,
-      pendingName?.labelProject ?? null,
-      isRemoteOrigin(origin) ? origin : null,
-      background ?? false,
-    );
+    const title = pendingName?.title ?? "";
 
     // 渲染那一半（流 · 时间线 · 折叠层 · 窗口账本 · 骨架 · 大纲 · 按轮折叠 · 刻度）整份由流视图建，这里只接过来（`TabStreamDom`）。
     const render = this.view.mountTabDom(sessionId);
@@ -737,7 +715,6 @@ export class TabManager {
       title,
       projectDir,
       label: pendingName?.label ?? null,
-      labelProject: pendingName?.labelProject ?? null,
       forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writers: [], // 同上
@@ -807,31 +784,18 @@ export class TabManager {
     return tab;
   }
 
-  /** 核心报来叫这条会话什么（会话流 `activity` 格上的 `label` · `label_project`；不在看的会话改了名也来）⇒ 重排标题。Tab 还没建 ⇒ 暂存。 */
-  updateName(sessionId: string, label: string, labelProject: string | null): void {
+  /** 核心报来叫这条会话什么（会话帧上的名字 `label` 与写好的整行 `title`；不在看的会话改了名也来）⇒ 照抄。Tab 还没建 ⇒ 暂存。 */
+  updateName(sessionId: string, label: string, title: string): void {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      this.store.pendingName.set(sessionId, { label, labelProject });
+      this.store.pendingName.set(sessionId, { label, title });
       return;
     }
-    if (tab.label === label && tab.labelProject === labelProject) return;
+    if (tab.label === label && tab.title === title) return;
     tab.label = label;
-    tab.labelProject = labelProject;
-    tab.title = this.computeTitle(tab);
+    tab.title = title;
     this.refreshTabBar();
     if (sessionId === this.store.activeId) this.publishActive();
-  }
-
-  /** 按核心给的名字与项目那一格排出展示标题（远端 Tab 加 `[origin]` 前缀） */
-  private computeTitle(tab: Tab): string {
-    return computeTitleFor(
-      tab.sessionId,
-      tab.label,
-      tab.labelProject,
-      isRemoteOrigin(tab.origin) ? tab.origin : null,
-      tab.background,
-      tab.forkedFromSessionId,
-    );
   }
 
   /**
@@ -1158,9 +1122,9 @@ export class TabManager {
     this.menu.openResumeMenu(anchor, sid);
   }
 
-  /** 会话头 / 钉条的［在终端里打开］（远端、在 tmux 里）。 */
+  /** 会话头 / 钉条 / 报错卡的［在终端里打开］（出不出照脸上的 `can.attach`）。 */
   attachInTerminal(sid: string): void {
-    void this.menu.attachRemote(sid);
+    void this.menu.attachTo(sid);
   }
 
   /** 会话头 · 钉条 · 命令面板的 ↗ 与行尾那颗同一条路（结果锚在会话头的 ↗）。 */
@@ -1279,7 +1243,7 @@ export class TabManager {
   }
 
   /**
-   * 后端的一份会话事实到了 ⇒ 落到 tab 上（`applyFacts`），只刷变了的：分叉 ⇒ 标题 `↳` · 在写它的进程 ⇒ 悬停提示 · usage ⇒ HUD（只当前 tab）。
+   * 后端的一份会话事实到了 ⇒ 落到 tab 上（`applyFacts`），只刷变了的：分叉 ⇒ 悬停卡那一行 · 在写它的进程 ⇒ 悬停提示 · usage ⇒ HUD（只当前 tab）。
    */
   private onSessionFacts(sid: string, f: SessionFacts): void {
     const tab = this.store.tabs.get(sid);
@@ -1287,10 +1251,7 @@ export class TabManager {
     const ch = applyFacts(tab, f);
     // 消息流里跟着事实补画的那几样（交回 · 重试 · 卡头名字 · 等批准那几行 · 刻度 · 过程行）是流视图的事。
     this.view.factsLanded(tab, f, ch);
-    if (ch.forkedFrom || ch.projectDir) {
-      tab.title = this.computeTitle(tab);
-      this.refreshTabBar();
-    } else if (ch.writers || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
+    if (ch.forkedFrom || ch.projectDir || ch.writers || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
     if ((ch.usage || ch.projectDir || ch.forkedFrom || ch.switchable) && sid === this.store.activeId) this.publishActive();
   }
 
@@ -1321,8 +1282,8 @@ export class TabManager {
     const current = this.store.tabs.get(sid);
     if (!current || !closesQuietly(current.face)) return;
     const headline = current.pinned
-      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(current) })
-      : copyText("tabBar.close.done", { title: fullTitle(current) });
+      ? copyText("tabBar.close.doneUnpinned", { title: current.title })
+      : copyText("tabBar.close.done", { title: current.title });
     this.closeUndoable([sid], headline, true);
   }
 
@@ -1553,7 +1514,7 @@ export class TabManager {
         this.onConnectTerminal?.();
         return;
       case "open-in-terminal":
-        await this.menu.attachRemote(sid);
+        await this.menu.attachTo(sid);
         return;
       case "open-here":
         closeFrontResult(sid);

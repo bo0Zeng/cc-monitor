@@ -28,7 +28,7 @@ import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
 import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
-import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord } from "../../../src/frontend/ui/session-face";
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
 import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
@@ -54,7 +54,6 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     background: false,
     bgName: null,
     label: null,
-    labelProject: null,
     projectDir: `/w/${sid}`,
     face: liveFace("working", true),
     line: null,
@@ -168,11 +167,8 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     typed.fake = null;
   });
 
-  it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {
+  it("窄窗两个字母取项目目录名里的字母", () => {
     expect([abbrOf(tab("x", { projectDir: "/w/orders" })), abbrOf(tab("x", { projectDir: "/w/web-console" })), abbrOf(tab("x", { projectDir: "/w/数据集" }))]).toEqual(["or", "we", "数据"]);
-    expect(titleParts(tab("x", { projectDir: "/w/orders", label: "加重试", labelProject: "orders" }))).toEqual({ proj: "orders", title: "加重试", bg: false, forked: false });
-    expect(titleParts(tab("x", { projectDir: "/w/orders", label: "orders" }))).toEqual({ proj: null, title: "orders", bg: false, forked: false });
-    expect(titleParts(tab("0123456789", { projectDir: "/w/orders" })).title).toBe("01234567");
   });
 
   it("时长一种写法：45s · 6m · 1h50m · 2h · 3d", () => {
@@ -350,7 +346,7 @@ describe("会话头", () => {
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
   it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 切到终端（这台认不出终端窗口 ⇒ 灰着）· 看它的终端 · 显示 · 查找 · 更多", () => {
-    const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", ...waiting, needs: approve() }));
+    const { h, host } = head(tab("a", { label: "加重试", title: "orders 加重试", projectDir: "/w/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(LOCAL_NAME);
     expect(h.el.textContent).toContain("/w/orders");
@@ -715,7 +711,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const by = box(r.page).getAttribute("aria-labelledby") ?? "";
     const named = by.split(/\s+/).map((id) => r.page.el.querySelector(`[id="${id}"]`)?.textContent ?? "").join(" ").trim();
-    expect(named).toBe(copyText("terminal.input.to", { title: fullTitle(tab("a", { origin: "devbox" })), machine: "devbox" }));
+    expect(named).toBe(copyText("terminal.input.to", { title: tab("a", { origin: "devbox" }).title, machine: "devbox" }));
     expect(named).not.toBe(box(r.page).placeholder);
   });
 

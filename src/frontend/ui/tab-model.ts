@@ -27,9 +27,12 @@ import type { SessionHidden, SessionLineage } from "./session-hidden";
 
 export interface Tab {
   sessionId: string;
-  /** 后台会话（后端判好的 `background`）⇒ ⚙ 标题。 */
+  /** 后台会话（后端判好的 `background`；监控板那一格照它换样子）。 */
   background: boolean;
-  /** Tab 标题（[`computeTitleFor`] 排出来的：核心给的名字 ＋ 项目那一格 ＋ 机器 / ⚙ / ↳ 那几样记号）。 */
+  /**
+   * Tab 标题：那台核心写好的整行（帧上 `title`：项目 · 分叉 · 后台那几个记号 · 名字），界面照抄、不拼。
+   * 那台机器不在这一行里：要说哪台的地方另画那台的标签。
+   */
   title: string;
   /**
    * 会话的项目目录（会话起在哪个目录）：只来自后端（会话宣告那一帧的 `project_dir` · 会话事实的 `projectDir`，或固定 tab 存下来的那一份）。
@@ -47,17 +50,15 @@ export interface Tab {
    * `null` ＝ 核心还没报过（没宣告过的会话，如从历史里打开的已结束会话）。
    */
   label: string | null;
-  /** 名字旁边的项目那一格（核心给的；名字是起出来的才有）。 */
-  labelProject: string | null;
   /**
    * 本会话是从哪个会话 fork 来的（判定住后端 `history::listing::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
-   * 给 tab 标题加 `↳` 血缘徽标 ＋ 悬停 —— 不然 fork 出来的会话与原会话是同名的两个 tab、分不清。
+   * 悬停卡那一行说源会话（标题里的 `↳` 是核心写进整行的）。
    */
   forkedFromSessionId: string | null;
   /** 此刻持着这条会话的活进程 pid（后端会话事实的 `writers`，到了才有）。不止一个 ⇒ 几个进程在同时写这条会话。 */
   writers: number[];
   /**
-   * 数据来源：本机 = `LOCAL`（标题无前缀）；远端 = 那台的名字（标题加 `[origin]` 前缀）。
+   * 数据来源：本机 = `LOCAL`；远端 = 那台的键（标签页 · 会话头另画那台的标签）。
    * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。
    */
   origin: Machine;
@@ -214,26 +215,4 @@ export function projectNameFromCwd(dir: string): string | null {
   const normalized = dir.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last ?? null;
-}
-
-/**
- * 标题怎么排（只排版，名字与项目那一格都是核心给的）：
- *   有项目那一格 → `[项目] 名字`；没有 → `名字`；核心还没报过名字 → `<sid 前 8 位>`
- *   后台会话 → `⚙ 名字`（叫什么由后端定：后台的 pidfile 名也在核心那条顺序里）
- * 远端 Tab 再加 `[那台远端] ` 前缀（如 `[raspberrypi.local] [proj] 名字`）；本机不加。fork 来的再加 `↳ `。
- * 第四个参数是**前缀里写的那台远端名**（本机 ⇒ `null`，没有前缀），不是 origin：
- * 「是不是本机」由调用方经 `ipc/origin.ts` 判完再传进来 —— 本文件只有类型，零运行期依赖（`tabs-split-graph` 钉着）。
- */
-export function computeTitleFor(
-  sessionId: string,
-  label: string | null,
-  labelProject: string | null,
-  remoteLabel: string | null = null,
-  background = false,
-  forkedFromSessionId: string | null = null,
-): string {
-  const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
-  const name = label ?? sessionId.slice(0, 8);
-  const base = background ? `⚙ ${name}` : labelProject ? `[${labelProject}] ${name}` : name;
-  return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
 }

@@ -170,7 +170,6 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     const r = bar([tab("a")]);
     const host = {
       tab: (s: string) => r.store.tabs.get(s),
-      isAttachable: () => true,
       collectionsLoaded: () => false,
       collections: () => [],
       groupAt: () => null,

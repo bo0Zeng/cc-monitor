@@ -30,7 +30,7 @@ import type { TabBarPrefs } from "./tab-bar-prefs";
 import { copyText } from "./copy-table";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { statusDot } from "./kit/status-dot";
-import { dotOf, stateWord, titleParts } from "./session-face";
+import { dotOf, stateWord } from "./session-face";
 import s from "./tab-group.module.css";
 
 /** 拖拽要宿主做的三件事。 */
@@ -373,7 +373,7 @@ export class TabBarDrag {
       return copyText("tabDrop.ghost.group", { name: col?.name ?? "", n: d.sids.length });
     }
     const tab = this.store.tabs.get(d.sid);
-    const title = tab ? titleParts(tab).title : "";
+    const title = tab ? tab.title : "";
     return d.sids.length > 1 ? copyText("tabDrop.ghost.many", { title, n: d.sids.length - 1 }) : title;
   }
 

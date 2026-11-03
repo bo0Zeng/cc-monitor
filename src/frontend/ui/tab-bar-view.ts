@@ -20,7 +20,7 @@ import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
 import { machineName } from "./ipc/chan-caller";
-import { closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
+import { canReattach, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -40,7 +40,7 @@ import type { ManualItem } from "./login-reads";
 import type { Machine } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
-import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "./session-face";
+import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord } from "./session-face";
 import type { MachineState } from "./generated/MachineState";
 import type { MachineFix } from "./generated/MachineFix";
 import type { LocalBackend } from "./generated/LocalBackend";
@@ -55,11 +55,7 @@ export interface TabButtonRefs {
   abbr: HTMLSpanElement;
   /** 远端的机器徽标（本机藏着）。 */
   machine: HTMLSpanElement;
-  /** 标题前的项目名（`--text-2`）。 */
-  proj: HTMLSpanElement;
-  /** 后台会话（分身）的齿轮。 */
-  bg: HTMLSpanElement;
-  /** 标题正文那一格。 */
+  /** 标题那一行（核心写好的整行，照抄）。 */
   label: HTMLSpanElement;
   /** 行尾「等批准 / 等回答 / 需手动」（琥珀字，换掉未读数）。 */
   needs: HTMLSpanElement;
@@ -358,7 +354,7 @@ export class TabBarView {
       return {
         sid: session.sid,
         origin,
-        title: t ? fullTitle(t) : session.label,
+        title: t ? t.title : session.label,
         state: waitingNow(b, now),
         what: session.needs.what,
         by: session.needs.ask?.run?.text ?? null,
@@ -937,7 +933,7 @@ export class TabBarView {
       const t = this.store.tabs.get(sid)!;
       return {
         id: sid,
-        label: fullTitle(t),
+        label: t.title,
         avatar: statusDot(dotOf(t), stateWord(t), "compact"),
         detail: stateLine(t, now).text,
         detailTone: needsOf(t) ? "warn" : undefined,
@@ -1134,13 +1130,8 @@ export class TabBarView {
     machine.classList.add("tab-machine");
     machine.style.display = "none";
     const titleEl = span("tab-title one-line");
-    const proj = span("tab-proj");
-    const bg = span("tab-gear");
-    bg.appendChild(icon("background", "compact"));
-    bg.title = copyText("settings.machine.bgTab");
-    bg.style.display = "none";
     const label = span("tab-label");
-    titleEl.append(proj, bg, label);
+    titleEl.append(label);
 
     const trail = span("tab-trail");
     const needs = span("tab-needs-word");
@@ -1178,7 +1169,7 @@ export class TabBarView {
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, holdBadge, cwdBtn, frontBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, label, needs, badge, acctBadge, holdBadge, cwdBtn, frontBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   /**
@@ -1199,7 +1190,7 @@ export class TabBarView {
     };
     // 窄栏看不见组名 ⇒ 组员的悬停卡首行带上（I8：收起后看不见的信息进提示）。
     const col = folded() && tab.group !== null ? this.prefs.collections.find((c) => c.id === tab.group) : undefined;
-    card.appendChild(line("tab-hover-title", col ? copyText("tabBar.group.memberHint", { group: col.name, title: fullTitle(tab) }) : fullTitle(tab)));
+    card.appendChild(line("tab-hover-title", col ? copyText("tabBar.group.memberHint", { group: col.name, title: tab.title }) : tab.title));
     const where = line("tab-hover-row", machineName(tab.origin));
     card.appendChild(where);
     if (tab.projectDir) card.appendChild(line("tab-hover-row tab-hover-mono", tab.projectDir));
@@ -1240,23 +1231,22 @@ export class TabBarView {
     const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
     const lightClass = lightOf(dot);
-    const reconnectable = dot === "exited";
+    const reconnectable = canReattach(tab.face);
     const n = needsOf(tab);
     const needsText = n ? n.text : "";
-    const parts = titleParts(tab);
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
     const unreadText = unread && !n ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
     // 空闲、跑完你还没看 ⇒ 标题 600 字重（点开即恢复）。
     const unseenDone = unread && dot === "idle";
-    const titleText = `${parts.forked ? "↳ " : ""}${parts.title}`;
+    const titleText = tab.title;
     const abbr = abbrOf(tab);
 
-    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
+    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null]
       .map((b) => (b ? "1" : "0"))
       .join("");
     const held = holdOf(appStore.sessionRotation.get().get(sid)?.read) !== null;
-    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, held ? "1" : "", abbr, remote ? tab.origin : ""].join("\u0000");
+    const drawn = [flags, lightClass, dot, titleText, unreadText, needsText, held ? "1" : "", abbr, remote ? tab.origin : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -1278,9 +1268,6 @@ export class TabBarView {
       const dotName = stateWord(tab);
       paintDot(refs.dot, dot, dotName);
       if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
-      setText(refs.proj, parts.proj ?? "");
-      setShown(refs.proj, parts.proj !== null);
-      setShown(refs.bg, parts.bg);
       setText(refs.abbr, abbr);
       setShown(refs.machine, remote);
       if (remote) setText(refs.machine, tab.origin);
