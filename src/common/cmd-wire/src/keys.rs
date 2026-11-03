@@ -77,7 +77,8 @@ const KEYS: [(Key, &str, Form); 25] = [
 ];
 
 /// 解码才认的 `~` 号别名（老终端的 Home · End）。
-const TILDE_ALIASES: [(u8, Key); 4] = [(1, Key::Home), (4, Key::End), (7, Key::Home), (8, Key::End)];
+const TILDE_ALIASES: [(u8, Key); 4] =
+    [(1, Key::Home), (4, Key::End), (7, Key::Home), (8, Key::End)];
 
 const ESC: u8 = 0x1b;
 
@@ -105,7 +106,9 @@ impl Key {
 }
 
 fn row(key: Key) -> &'static (Key, &'static str, Form) {
-    KEYS.iter().find(|r| r.0 == key).expect("每颗键在表里恰一行")
+    KEYS.iter()
+        .find(|r| r.0 == key)
+        .expect("每颗键在表里恰一行")
 }
 
 fn form(key: Key) -> Form {
@@ -287,7 +290,9 @@ pub fn presses_bytes(presses: &[Press]) -> Vec<u8> {
 
 /// 控制字节 ⇒ 一下：Tab · 回车（`\n` 与 `\r`）· 退格；别的 ⇒ Ctrl-字（[`ctrl_code`] 的逆，字母取小写）。
 fn control_press(b: u8) -> Option<Press> {
-    let single = KEYS.iter().find(|r| r.2 == Form::Byte(b) && r.0 != Key::Esc);
+    let single = KEYS
+        .iter()
+        .find(|r| r.2 == Form::Byte(b) && r.0 != Key::Esc);
     if let Some(r) = single {
         return Some(Press::Special(r.0, Mods::default()));
     }
@@ -307,7 +312,11 @@ fn control_press(b: u8) -> Option<Press> {
 
 /// `ESC [` 之后（`from` 指参数头）的一段 ⇒ 一下与下一个位置；认不出 ⇒ `None`。
 fn csi(bytes: &[u8], from: usize) -> Option<(Press, usize)> {
-    let end = from + bytes[from..].iter().take_while(|b| b.is_ascii_digit() || **b == b';').count();
+    let end = from
+        + bytes[from..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit() || **b == b';')
+            .count();
     let fin = *bytes.get(end)?;
     let params: Vec<u32> = std::str::from_utf8(&bytes[from..end])
         .ok()?
@@ -352,7 +361,10 @@ fn esc_press(bytes: &[u8], i: usize) -> Option<(Press, usize)> {
     let ss3 = (n == Some(b'O'))
         .then(|| bytes.get(i + 2))
         .flatten()
-        .and_then(|c| KEYS.iter().find(|r| r.2 == Form::Ss3(*c) || r.2 == Form::Letter(*c)))
+        .and_then(|c| {
+            KEYS.iter()
+                .find(|r| r.2 == Form::Ss3(*c) || r.2 == Form::Letter(*c))
+        })
         .map(|r| r.0);
     match (n, ss3) {
         (Some(b'['), _) => csi(bytes, i + 2),
@@ -383,8 +395,14 @@ pub fn presses_of(bytes: &[u8]) -> Option<Vec<Press>> {
         } else if b < 0x20 || b == 0x7f {
             (control_press(b)?, i + 1)
         } else {
-            let end = i + bytes[i..].iter().take_while(|c| **c >= 0x20 && **c != 0x7f).count();
-            (Press::Text(std::str::from_utf8(&bytes[i..end]).ok()?.to_string()), end)
+            let end = i + bytes[i..]
+                .iter()
+                .take_while(|c| **c >= 0x20 && **c != 0x7f)
+                .count();
+            (
+                Press::Text(std::str::from_utf8(&bytes[i..end]).ok()?.to_string()),
+                end,
+            )
         };
         match (out.last_mut(), press) {
             (Some(Press::Text(last)), Press::Text(more)) => last.push_str(&more),
