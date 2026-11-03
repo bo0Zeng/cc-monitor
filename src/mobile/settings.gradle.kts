@@ -43,3 +43,4 @@ include(":core-wire") // 线上契约（cmd-wire）的 Kotlin 那一头：生成
 include(":core-copy")
 include(":core-rs") // 手机嵌的 Rust 核心（libmobcore.so：拨号核心 ssh-dial 的 FFI 外壳）
 include(":detekt-rules") // 本仓自己的 detekt 规则（出口扫描判据的 Kotlin 那一半），只在 detekt 跑时装进去
+include(":baselineprofile") // Baseline Profile 生成器 ＋ 冷启量测（Macrobenchmark，要模拟器或真机，不进门禁）

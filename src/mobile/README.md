@@ -19,6 +19,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 |
 | `core-copy` | 取文口 `copyText` 与大小 · 时长格式（纯 JVM，上屏有字的模块依赖它，`core-claude` 不上屏、不依赖；写法都经 JNI 调手机那份核心里的 `copy-core`，JVM 单测加载它的宿主版）。手机生产源码不写死界面中文，判据 `app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt` |
+| `baselineprofile` | Baseline Profile 的生成器与量测（Macrobenchmark，`com.android.test` 模块，驱动 `app`）：录「冷启到主屏」「打开长会话往上滑」两条路，见下文「Baseline Profile」 |
 
 ## 技术栈
 
@@ -55,6 +56,21 @@ bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（�
 - **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease` ＋ `:app:assembleDebug`（两趟各编 Rust 核心那一个 ABI、各核一次包里的 ABI；CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
 - **要设备的 instrumentation 测（androidTest）进全量门禁、不进 CI**：门禁的 `android-device` 那一格起一台封了内存的模拟器跑它（CI 的 runner 上没有 KVM 模拟器）；手跑时接好模拟器或真机后跑 `bash scripts/android-test.sh`（先装 app、`pm clear` 清数据，清不掉就停）。其中 `:core-ssh` 的 `RustTransportTest` 要一台私起的 sshd（冒烟台架 `tests/mobile-smoke/rig.sh`），不给 `sshHost` · `sshKey` 就整份跳过（入口脚本就是这样跑的）；连台架的跑法见它的头注。
 - **Android Lint**（`:app:lintDebug`）在上面那条里：error 一条就红，warning 不拦。
+
+## Baseline Profile
+
+`app/src/main/generated/baselineProfiles/baseline-prof.txt` 进仓，正式包带上（侧装的包由 `androidx.profileinstaller` 首启后台装）：冷启与第一次打开长会话那一屏少走解释执行。
+它由 `:baselineprofile` 的生成器在模拟器或真机上录两条路得来：冷启到主屏 · 抽屉 → 会话 → 点开一条长会话往上滑几屏。
+数是造的：插件派生的量测那两族构建类型（`nonMinified*` · `benchmark*`）里多一个 `BenchSeedActivity`，写一台不可达的机器（TEST-NET 地址、不带钥匙）与一条 120 条记录的会话进本地库，点开照缓存画；不连机器、不登账号。正式包 · 调试包 · 冒烟包都不带它。
+只用 `minified` 派生的那一支（x86_64，本机模拟器装得上）；`release` 派生的两支 ABI 是 arm64-v8a。
+
+```sh
+CCM_SMOKE_ADB_PORT=… CCM_SMOKE_EMU_PORT=… bash scripts/baseline-profile.sh gen     # 重录（界面大改之后）
+CCM_SMOKE_ADB_PORT=… CCM_SMOKE_EMU_PORT=… bash scripts/baseline-profile.sh bench   # 冷启 · 往上滑，不预编译与照 profile 各 5 趟
+```
+
+脚本经 `tests/mobile-smoke/emu.sh` 起无头模拟器（私有 adb 口），收场关掉；`CCM_BP_DEVICE=1` 改用 adb 连着的真机。CI 不跑（runner 上没有 KVM）。
+JVM 单测 `BaselineProfileTest` 核进仓那一份还盖着两条路的类、app 带着 profileinstaller；界面改名改到那几个类就红，照上面重录。
 
 ## License
 

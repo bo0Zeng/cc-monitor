@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    // Baseline Profile：给每个不可调试的构建类型派生 `nonMinified<类型>`（录 profile）· `benchmark<类型>`（量冷启），见 `:baselineprofile`。
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // 发布签名：从 gitignored 的 keystore.properties 读凭据；没有这个文件就产出未签名的 release，照样能构建。
@@ -130,6 +132,70 @@ androidComponents {
     onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(stageBackends, StageBackends::outDir) }
 }
 
+// ── Baseline Profile ──
+// 录出来的规则并进 `src/main/generated/baselineProfiles/`（进仓；正式包带上，侧装的由 profileinstaller 首启后台装）。
+// 只在 `minified` 派生的那一支上录与量：ABI 照 `ccm.abi.minified`（本机模拟器是 x86_64）；`release` 派生的两支 ABI 照 release，本机装不上原生的。
+// 设备用 adb 连着的那一台（`scripts/baseline-profile.sh` 起的私有模拟器），不用 Gradle 托管设备；构建时不自动重录。
+baselineProfile {
+    variants {
+        create("minified") {
+            mergeIntoMain = true
+            // 造数那一份只在量测那两族里有，不进规则。
+            filter { exclude("com.ccmonitor.mobile.bench.**") }
+        }
+    }
+}
+
+/** 量测那两族构建类型（插件派生的 `nonMinified<类型>` · `benchmark<类型>`）⇒ 它派生自哪个构建类型；别的 ⇒ 原样。 */
+fun baseBuildType(buildType: String): String =
+    listOf("nonMinified", "benchmark")
+        .firstOrNull { buildType.startsWith(it) && buildType.length > it.length }
+        ?.let { buildType.removePrefix(it).replaceFirstChar(Char::lowercase) }
+        ?: buildType
+
+// 量测用的造数（一台不可达的机器 ＋ 一条长会话，`BenchSeedActivity`）只进那两族：源码 · 清单在 `src/benchSeed/`，
+// 会话清单照后端那份金样（构建时拷进 assets 的 `bench/`）。正式包 · 调试包 · 冒烟包都不带。
+abstract class StageBenchSeed : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val golden: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val dest = outDir.get().asFile.resolve("bench")
+        outDir.get().asFile.deleteRecursively()
+        golden.get().asFile.copyTo(dest.resolve(golden.get().asFile.name), overwrite = true)
+    }
+}
+
+val stageBenchSeed =
+    tasks.register<StageBenchSeed>("stageBenchSeed") {
+        golden.set(rootProject.file("../../tests/__fixtures__/history-list.golden.json"))
+    }
+
+androidComponents {
+    // 派生支照抄了它那一支的回退（`minified` ⇒ 回退 release），插件再把那一支本身排在后面 ⇒ 别的模块里有同名构建类型的（`:core-rs` 的 minified）
+    // 也被配成 release 那一份（ABI 不对，包里少了 Rust 核心）。改成先找它派生自的那一支、再照那一支的回退。
+    finalizeDsl { ext ->
+        ext.buildTypes.forEach { bt ->
+            val base = baseBuildType(bt.name).takeIf { it != bt.name } ?: return@forEach
+            val chain = listOf(base) + ext.buildTypes.getByName(base).matchingFallbacks
+            bt.matchingFallbacks.clear()
+            bt.matchingFallbacks += chain
+        }
+    }
+    onVariants { variant ->
+        if (baseBuildType(variant.buildType.orEmpty()) == variant.buildType) return@onVariants
+        // 经 java 那一格接：Kotlin 编译收 java 源目录里的 .kt；`sources.kotlin` 那一格这一版的 Kotlin 插件不收。
+        variant.sources.java?.addStaticSourceDirectory("src/benchSeed/kotlin")
+        variant.sources.manifests.addStaticManifestFile("src/benchSeed/AndroidManifest.xml")
+        variant.sources.assets?.addGeneratedSourceDirectory(stageBenchSeed, StageBenchSeed::outDir)
+    }
+}
+
 dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-data"))
@@ -159,6 +225,10 @@ dependencies {
 
     // 正文公式：块树里的 TeX 经 JLaTeXMath 画成图（正文排版本身是 Compose，照后端的块树排）。
     implementation(libs.jlatexmath.android)
+
+    // 侧装的包（不经商店）首启后台把 Baseline Profile 装上；Macrobenchmark 也经它装。
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
 
     debugImplementation(libs.androidx.ui.tooling)
 
@@ -217,7 +287,8 @@ androidComponents {
         val verify =
             tasks.register<VerifyApkAbis>("verify${cap}Abis") {
                 apkDir.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK))
-                expected.set(providers.gradleProperty("ccm.abi.${variant.buildType}"))
+                // 量测那两族照它派生自的那个构建类型（同一份 abiFilters）。
+                expected.set(providers.gradleProperty("ccm.abi.${baseBuildType(variant.buildType.orEmpty())}"))
             }
         tasks.configureEach { if (name == "assemble$cap") finalizedBy(verify) }
     }
