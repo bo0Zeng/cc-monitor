@@ -57,4 +57,4 @@ container?: SessionContainer,
 /**
  * 那个 claude 进程的 **pid**（恒在）。不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
  */
-pid: number, label: Words, label_project?: Words, };
+pid: number, label: Words, title: Words, };
