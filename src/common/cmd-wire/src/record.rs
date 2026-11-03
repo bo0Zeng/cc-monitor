@@ -301,7 +301,9 @@ impl Block {
     /// 这一块多少字节（纯文正文 · 工具结果 · 图有；别的 0）。
     fn bytes(&self) -> u64 {
         match self {
-            Block::Text { bytes, .. } | Block::ToolResult { bytes, .. } | Block::Image { bytes, .. } => *bytes,
+            Block::Text { bytes, .. }
+            | Block::ToolResult { bytes, .. }
+            | Block::Image { bytes, .. } => *bytes,
             Block::Prose { .. } | Block::Thinking { .. } | Block::ToolUse { .. } => 0,
         }
     }

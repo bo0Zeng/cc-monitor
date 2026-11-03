@@ -33,7 +33,10 @@ pub fn prose(text: &str) -> Block {
     let size = copy_core::size_text(text.len() as u64);
     Block::prose(
         md_core::parse(text),
-        cmd_wire::cells::Words(copy_core::copy_text("cards.text.showAll", &[("size", &size)])),
+        cmd_wire::cells::Words(copy_core::copy_text(
+            "cards.text.showAll",
+            &[("size", &size)],
+        )),
     )
 }
 

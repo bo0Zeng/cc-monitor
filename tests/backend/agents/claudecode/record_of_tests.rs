@@ -786,7 +786,10 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
     let Body::Reply { blocks, .. } = &r.body else {
         panic!("{r:?}")
     };
-    let want = copy_core::copy_text("cards.text.showAll", &[("size", &copy_core::size_text(3000))]);
+    let want = copy_core::copy_text(
+        "cards.text.showAll",
+        &[("size", &copy_core::size_text(3000))],
+    );
     assert!(
         matches!(&blocks[0], Block::Prose { more, .. } if more.0 == want),
         "{:?}",
