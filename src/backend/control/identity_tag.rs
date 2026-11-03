@@ -163,7 +163,7 @@ enum PaneRead {
 /// tmux 注给 pane 的那个变量名（键名是常量、不是参数：本文件不回传整份环境）。
 const TMUX_PANE_ENV: &str = "TMUX_PANE";
 
-/// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `main.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
+/// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `stream/entry.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
 /// 被证过之后调它。打不上的那两形说出来，回（容器，这次真写了没有）。**[`tag`] 在生产里的唯一调用点。**
 pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
     let outcome = tag(pid, sid);
@@ -207,10 +207,14 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
 
 /// 打标路上起 tmux 的唯一口（探测与写都经 `door::tmux`）。
 ///
-/// 测试构建里整个口换成 `tests/` 那一份：只交本线程注入的假 tmux，没注入就炸（`INVARIANTS §48.3`）——
-/// 进程内测试用自己的 pid 造 pidfile 时，`TMUX_PANE` 是跑测试那个终端的，不隔离就会往用户真 tmux 上打标。
-#[cfg_attr(test, path = "../../../tests/backend/control/identity_tag_door.rs")]
-pub(crate) mod door;
+/// 测试构建（本包的测试档，或上层测试开的 `test-support`）里整个口换成 `tests/` 那一份：只交本线程注入的假 tmux，
+/// 没注入就炸（`INVARIANTS §48.3`）—— 进程内测试用自己的 pid 造 pidfile 时，`TMUX_PANE` 是跑测试那个终端的，
+/// 不隔离就会往用户真 tmux 上打标。观测面 watcher 的判据经 `test-support` 拿到的也是这一份。
+#[cfg_attr(
+    any(test, feature = "test-support"),
+    path = "../../../tests/backend/control/identity_tag_door.rs"
+)]
+pub mod door;
 
 /// 打标那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const SET_SID_WITHIN: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(5);
@@ -240,6 +244,7 @@ fn set_sid(
     }
 }
 
+// 起 `sleep` 的夹具住平台层（`platform::proc::test_support::spawn_settled_sleep`），观测面 watcher 的判据也用那一份。
 #[cfg(test)]
 #[path = "../../../tests/backend/control/identity_tag_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：起 `sleep` 的夹具（`tests::spawn_settled_sleep`）给 watcher 的单测共用
+mod tests;

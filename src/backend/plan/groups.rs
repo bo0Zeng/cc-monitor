@@ -3,7 +3,7 @@
 //!
 //! 组会变而计划没变 ⇒ 不进本子、不进 `rev`：帧面每次答 `plan-read` 之前现标一次。
 
-use crate::history::groups::GroupsRead;
+use cmd_wire::groups::GroupsRead;
 use cmd_wire::plan::{PlanBlock, PlanBlockGroups, PlanGroup, PlanRead};
 
 /// 问组模块的口：生产是这台那一半并好的那一份（[`here_ties`]），判据喂一份合成的。
@@ -52,10 +52,11 @@ fn of_groups(groups: Vec<PlanGroup>) -> PlanBlockGroups {
     }
 }
 
-/// 生产的口：这台那份注解文件里的组与组员关系（不读清单、不画样子）照组模块的 [`merge`](crate::history::groups::merge) 并一次。
+/// 生产的口：这台那份注解文件里的组与组员关系（不读清单、不画样子）照组那一份合法 [`merge`](face_core::groups::merge) 并一次。
 /// 推不出家 · 读不懂 ⇒ 那一句。
 pub(crate) fn here_ties() -> Result<GroupsRead, String> {
-    use crate::history::groups::{here_of, merge, unlisted, Half};
+    use crate::history::groups::{here_of, unlisted};
+    use face_core::groups::{merge, Half};
     let (table, book) = crate::history::history_annotations::load_all().unwrap_or_else(|| {
         Err(copy_core::copy_text(
             "beHistoryAnnotations.needPath.unknown",

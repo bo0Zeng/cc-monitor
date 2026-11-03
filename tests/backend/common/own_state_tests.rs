@@ -91,9 +91,12 @@ const fn skip(bytes: u64) -> relay_route_core::Cap {
 }
 
 // 读三态那几条不看版本：用不带版本的两行。
-const STATE: Doc<serde_json::Value> = Doc::of(
-    &relay_route_core::Decl::<relay_route_core::State>::foreign(".cc-monitor/x.json", reject(16)),
-);
+const STATE: Doc<serde_json::Value> =
+    Doc::of(&relay_route_core::Decl::<relay_route_core::State>::foreign(
+        ".cc-monitor/x.json",
+        relay_route_core::Owner::Machine,
+        reject(16),
+    ));
 const CACHE: Doc<serde_json::Value> = Doc::of(
     &relay_route_core::Decl::<relay_route_core::Cache>::foreign(".cc-monitor/x.json", skip(16)),
 );
@@ -176,6 +179,7 @@ fn s7_streamed_read_reads_and_absent_is_absent() {
 const V_STATE: relay_route_core::Decl<relay_route_core::State> =
     relay_route_core::Decl::<relay_route_core::State>::json(
         ".cc-monitor/v.json",
+        relay_route_core::Owner::Machine,
         2,
         2,
         reject(1024),
@@ -185,6 +189,7 @@ const V_CACHE: relay_route_core::Decl<relay_route_core::Cache> =
 const V_UP: relay_route_core::Decl<relay_route_core::State> =
     relay_route_core::Decl::<relay_route_core::State>::json(
         ".cc-monitor/v.json",
+        relay_route_core::Owner::Machine,
         3,
         1,
         reject(1024),
@@ -255,6 +260,7 @@ fn v2_a_missing_version_is_one_and_the_version_cell_is_not_handed_to_the_shape()
     let p = base.join("v.json");
     let one: Doc<Shape> = Doc::of(&relay_route_core::Decl::<relay_route_core::State>::json(
         "x",
+        relay_route_core::Owner::Machine,
         1,
         1,
         reject(1024),
@@ -359,6 +365,7 @@ fn v6_an_unreadable_state_on_disk_refuses_the_write_with_the_read_sentence() {
     const SMALL_STATE: relay_route_core::Decl<relay_route_core::State> =
         relay_route_core::Decl::<relay_route_core::State>::json(
             ".cc-monitor/v.json",
+            relay_route_core::Owner::Machine,
             1,
             1,
             reject(64),

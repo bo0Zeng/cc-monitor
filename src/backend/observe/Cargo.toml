@@ -1,0 +1,72 @@
+# 观测面：读，不改变世界（读行 · 认行 · 扫描图 · 查询 · 跟读）。只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层；不引控制面。
+[package]
+name = "backend-observe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（清单成品的夹具 · 运行簿直接记一笔 · 搜索选项与缓冲 · 从原文起的骨架索引行 · 发帧口的夹具）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts", "backend-agents/ts", "backend-common/ts"]
+
+[dependencies]
+backend-assets = { path = "../assets" }
+backend-accounts = { path = "../accounts" }
+backend-agents = { path = "../agents" }
+backend-history = { path = "../history" }
+backend-host = { path = "../host" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+# 号的线上形与判定（清单成品那一段）。
+acct-core = { path = "../../common/acct-core" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 会话簿那几张（几台并一列 · 叫会话什么）：桌面与手机核心同一份。
+face-core = { path = "../../common/face-core" }
+# 等一个进程退出的那一口（pidfd）。
+pidwatch-core = { path = "../../common/pidwatch-core" }
+# 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+# 记录树的文件事件（跟读靠它醒来）。
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+walkdir.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 量具（线程级内存 · 金样）：只在 dev 侧的包。
+test-meters = { path = "../test-meters" }
+acct-core = { path = "../../common/acct-core", features = ["fixtures"] }
+# 夹具里那份数据目录怎么推。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# 判据里直接问进程与信号。
+libc.workspace = true
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+backend-platform = { path = "../platform", features = ["test-support", "ts"] }
+backend-common = { path = "../common", features = ["test-support", "ts"] }
+backend-agents = { path = "../agents", features = ["test-support", "ts"] }
+backend-wire = { path = "../wire", features = ["test-support"] }
+backend-accounts = { path = "../accounts", features = ["test-support", "ts"] }
+backend-history = { path = "../history", features = ["test-support", "ts"] }
+backend-host = { path = "../host", features = ["test-support"] }
+backend-assets = { path = "../assets", features = ["test-support", "ts"] }

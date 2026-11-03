@@ -6,7 +6,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **别名预览**（「生成器旁边显示这条别名实际会执行什么，是真验证，
     //   不是前端拼串」）：与 `ccm --print` 同一个计划函数，环境是「这台机器家目录里的一个新终端」。
     //   只读（不起进程、不写盘），阻塞档（读账号库 manifest ＋ 问会话快照）。
-    super::typed::blocking::<crate::control::ccm::CcmPrint>("一条别名实际会执行什么"),
+    super::typed::blocking::<crate::faces::profiles_face::CcmPrint>("一条别名实际会执行什么"),
     // **这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪**：`ccm` 就是这台后端本身；那一格起一次登录 shell 问 `PATH`
     //   （在 `spawn_blocking` 里等，异步档 ⇒ 撤得动：撤了不等它，那个 shell 到期限自己收）。
     super::typed::asynchronous::<crate::control::ccm::CcmProbe>(

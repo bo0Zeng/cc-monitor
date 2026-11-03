@@ -6,54 +6,54 @@ use std::path::Path;
 
 /// `history-turns` 的入参。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryTurnsReq {
+pub struct HistoryTurnsReq {
     /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
+    pub path: String,
     /// 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) from: Option<u64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub from: Option<u64>,
     /// 任一字节：从包着它的那一轮起（只拉了记录后半截的一端拿已拉到的最上面那一行问）；与 `from` 都给以它为准。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) cover: Option<u64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub cover: Option<u64>,
     /// 只出开头在这个字节之前的轮（缺 ⇒ 到文件尾）；截在这里 ⇒ 没有下一页、`end` ＝ 它。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) to: Option<u64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub to: Option<u64>,
     /// 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) limit: Option<u64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub limit: Option<u64>,
 }
 
 /// `history-turns` 的回包。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryTurns {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryTurns {
     /// 起点字节（＝ 请求的 `from`；问的是 `cover` ⇒ 包着它的那一轮的 `at`）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
     /// 这一页管到哪个字节（有下一页 ⇒ ＝ `next`；最后一页 ⇒ 最后一个完整行的末字节，残尾不计）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub end: u64,
     /// 下一页从哪个字节起（＝ 下一页第一轮的 `at`）；没有下一页 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) next: Option<u64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub next: Option<u64>,
     /// 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
-    pub(crate) turns: Vec<crate::observe::recognize::turns::TurnRow>,
+    pub turns: Vec<crate::observe::recognize::turns::TurnRow>,
 }
 
 /// `history-turns` 的一页，上限是参数。来源同 [`super::index::index_page`]。每一轮先按看的那一台的钟写好再算字节；
 /// 还没收尾的最后一轮只在最后一页、交 `dress` 补字（补完超了这一页 ⇒ 挪到下一页）。
-pub(crate) fn turns_page(
+pub fn turns_page(
     home: &Path,
     req: HistoryTurnsReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     cap: usize,
     dress: &dyn Fn(&mut crate::observe::recognize::turns::TurnRow),
 ) -> Result<HistoryTurns, String> {
@@ -98,7 +98,6 @@ pub(crate) fn turns_page(
         }
     }
     let end = to.map_or(map.end, |to| to.min(map.end));
-    drop(take);
     // 还没收尾的最后一轮（只会在最后一页）：「现在在做哪一步 / 在等什么」由 `dress` 按这台此刻的会话事实拼进过程行；拼完超了这一页 ⇒ 挪到下一页。
     if next.is_none() {
         if let Some(last) = turns.last_mut().filter(|t| !t.done) {

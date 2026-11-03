@@ -9,7 +9,7 @@
 use super::session_batch::{carriers, Standing, TermEntry};
 
 /// 起分叉会话要的三格的线上形：住 `cmd-wire::session`（号那一格在线上是「名字 · 账号 0 ⇒ `null`」）。
-pub(crate) use cmd_wire::session::{
+pub use cmd_wire::session::{
     ForkLaunch as Launch, ForkSlot as Slot, ForkTerminal as TerminalFact, ForkWhence as Whence,
     ForkWhy as Why,
 };
@@ -33,7 +33,7 @@ impl From<AccountFact> for Option<String> {
 
 /// 源会话的事实（收齐之后）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Source {
+pub struct Source {
     /// 源会话此刻还活着（进程在跑）。
     pub(crate) live: bool,
     /// 记录里的工作目录（任何会话都有，含已退出的）。
@@ -45,7 +45,7 @@ pub(crate) struct Source {
 }
 
 /// 逐格推断。纯函数。
-pub(crate) fn infer(s: &Source) -> Launch {
+pub fn infer(s: &Source) -> Launch {
     let cwd = match s.cwd.as_deref().filter(|c| !c.trim().is_empty()) {
         Some(c) => Slot::Known {
             value: c.to_string(),
@@ -86,13 +86,13 @@ pub(crate) fn infer(s: &Source) -> Launch {
 
 /// 进程名单里的一行（账号归属那一行里推断要的几格；入口 `faces/fork_face.rs` 从结构体照搬，不经 JSON）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProcessRow {
-    pub(crate) sid: String,
-    pub(crate) alive: bool,
-    pub(crate) config_dir: Option<String>,
-    pub(crate) account: Option<String>,
+pub struct ProcessRow {
+    pub sid: String,
+    pub alive: bool,
+    pub config_dir: Option<String>,
+    pub account: Option<String>,
     /// 活着、环境读得到、没设配置目录 ＝ 账号 0。
-    pub(crate) bare: bool,
+    pub bare: bool,
 }
 
 /// 那个进程用的号：没设配置目录（且环境读得到）⇒ 账号 0；设了且账号库认得那个目录 ⇒ 那个号；别的 ⇒ 说不出。
@@ -106,7 +106,7 @@ fn account_of(r: &ProcessRow) -> Option<AccountFact> {
 
 /// 两份名单 ⇒ 源会话的事实。`terminals` ＝ 这台的终端名单（`None` ＝ 没有 / 看不见：都当不在任何终端里）。
 /// 活着 ＝ 进程名单说它活着，或终端名单里有挂着它、前台是 agent 的（命中多个取第一个）；只剩 shell 的不算。
-pub(crate) fn source_of(
+pub fn source_of(
     processes: &[ProcessRow],
     terminals: Option<&[TermEntry]>,
     sid: &str,

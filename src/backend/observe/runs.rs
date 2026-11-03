@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 /// 每个会话最多记几个运行（超了先丢最久没动静的已收场的，再丢最久没动静的）。
-pub(crate) const RUNS_KEEP: usize = 64;
+pub const RUNS_KEEP: usize = 64;
 /// 每个会话最多记住几个被挤出运行表的已收场运行（先进先出）：挤出只是不再列，「它已经收场了」不许跟着忘。
 pub(crate) const ENDED_KEEP: usize = 4096;
 /// 每个会话记住几个「这次工具调用派出了子运行、标签是什么」（先进先出）。
@@ -33,11 +33,11 @@ pub(crate) const RIDS_KEEP: usize = 512;
     clippy::disallowed_methods,
     reason = "子运行「久未再写 ⇒ 状态不明」的阈值（`observe::runs::STALE_AFTER`）"
 )]
-pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
+pub const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
 /// 失败收场的报错原话至多留几个字（运行表一变就整份重发）。
 pub(crate) const ERROR_CHARS: usize = 2000;
 /// 列表里「最近结束」那一组至多几个（在跑的不限：同一时刻在跑的本来就有限）。
-pub(crate) const RECENT_ENDED: usize = 5;
+pub const RECENT_ENDED: usize = 5;
 /// 监控板 peek 至多列几个子运行（余下的只给个数那一截）。
 pub(crate) const PEEK_SHOWN: usize = 8;
 
@@ -473,7 +473,7 @@ pub struct RunBook {
 
 /// 运行簿往外说的两件事（活卡听）：一条带对账键的记录过了（主或子运行）· 一个会话走了。
 /// 在运行簿的锁外调（听的一方会回头问运行簿）。
-pub(crate) trait BookWatch: Send + Sync {
+pub trait BookWatch: Send + Sync {
     /// `owner`：这个对账键归哪个运行（`Some(None)` ＝ 主运行；`None` ＝ 说不出）。
     fn rid(&self, sid: &str, rid: &str, owner: Option<Option<String>>);
     fn gone(&self, sid: &str);
@@ -485,7 +485,7 @@ impl RunBook {
     }
 
     /// 一条记录（`child` 有 ⇒ 它来自子运行的记录文件，值是那份文件的写入时刻）。回：这个会话的运行表变没变。
-    pub(crate) fn record(
+    pub fn record(
         &self,
         faces: &RunFaces,
         sid: &str,
@@ -580,7 +580,7 @@ impl RunBook {
     }
 
     /// 这个会话此刻有几个在跑的子运行。
-    pub(crate) fn running(&self, sid: &str) -> usize {
+    pub fn running(&self, sid: &str) -> usize {
         self.with(|m| {
             m.get(sid).map_or(0, |s| {
                 s.runs
@@ -592,12 +592,12 @@ impl RunBook {
     }
 
     /// 这个对账键归哪个运行：没学到 ⇒ `None`；主运行 ⇒ `Some(None)`。
-    pub(crate) fn owner_of(&self, sid: &str, rid: &str) -> Option<Option<String>> {
+    pub fn owner_of(&self, sid: &str, rid: &str) -> Option<Option<String>> {
         self.with(|m| m.get(sid).and_then(|s| s.rids.get(rid).cloned()))
     }
 
     /// 这个会话的运行表那一帧（出帧前先按 `now` 判一次久未动静）。
-    pub(crate) fn frame_at(&self, sid: &str, now: SystemTime) -> Frame {
+    pub fn frame_at(&self, sid: &str, now: SystemTime) -> Frame {
         let (runs, ended, total) = self.with(|m| match m.get_mut(sid) {
             Some(s) => {
                 s.settle(now);
@@ -618,7 +618,7 @@ impl RunBook {
 
     /// 这个会话此刻挂着的待答请求（挂上的先后）⇒ 配到发它的那个运行上（一个运行只配最早那一条；主会话的不配）。
     /// 没有运行表的会话不记。回：配的变没变。
-    pub(crate) fn dress_needs(&self, sid: &str, asks: Vec<crate::agents::asks::Ask>) -> bool {
+    pub fn dress_needs(&self, sid: &str, asks: Vec<crate::agents::asks::Ask>) -> bool {
         let mut by_run: HashMap<String, crate::agents::asks::Ask> = HashMap::new();
         for a in asks {
             if let Some(run) = a.run.as_ref().map(|r| r.id.clone()) {
@@ -656,12 +656,12 @@ impl RunBook {
     }
 
     /// 全部会话里最早那个在跑的运行到「久未动静」的时刻（没有在跑的 ⇒ `None`）。
-    pub(crate) fn next_due(&self) -> Option<SystemTime> {
+    pub fn next_due(&self) -> Option<SystemTime> {
         self.with(|m| m.values().filter_map(Sess::due).min())
     }
 
     /// 这个会话的运行表（最早动过的在前）。
-    pub(crate) fn runs(&self, sid: &str) -> Vec<RunInfo> {
+    pub fn runs(&self, sid: &str) -> Vec<RunInfo> {
         let now = crate::common::time::now();
         self.with(|m| m.get(sid).map(|s| s.table(now)).unwrap_or_default())
     }
@@ -691,7 +691,7 @@ impl RunBook {
     }
 
     /// 会话退休：还算在跑的子运行改成状态不明，表变了就回最后那一帧（交出去之后各家的跟踪再 `RunTrack::forget`）。
-    pub(crate) fn retire(&self, sid: &str) -> Option<Frame> {
+    pub fn retire(&self, sid: &str) -> Option<Frame> {
         let f = self.orphan(sid).then(|| self.frame(sid));
         if let Some(w) = self.watch.get() {
             w.gone(sid);
@@ -705,12 +705,12 @@ impl RunBook {
     }
 
     /// 这个会话此刻的运行表那一帧（出帧前按此刻判一次久未动静）。
-    pub(crate) fn frame(&self, sid: &str) -> Frame {
+    pub fn frame(&self, sid: &str) -> Frame {
         self.frame_at(sid, crate::common::time::now())
     }
 
     /// 全部会话按 `now` 判一次久未动静：表变了的那几个各一帧。
-    pub(crate) fn due_frames(&self, now: SystemTime) -> Vec<Frame> {
+    pub fn due_frames(&self, now: SystemTime) -> Vec<Frame> {
         self.settle_all(now)
             .into_iter()
             .map(|sid| self.frame_at(&sid, now))
@@ -718,7 +718,7 @@ impl RunBook {
     }
 
     /// 装听的一方（只一次；再装忽略）。
-    pub(crate) fn watch_with(&self, w: Arc<dyn BookWatch>) {
+    pub fn watch_with(&self, w: Arc<dyn BookWatch>) {
         if self.watch.set(w).is_err() {
             tracing::warn!("运行簿的听者装了第二次 —— 忽略（一本运行簿只交给一份活卡）");
         }
@@ -727,11 +727,11 @@ impl RunBook {
 
 /// [`RunTrack::main_record`] 的答。
 #[derive(Debug, Default)]
-pub(crate) struct MainRecord {
-    pub(crate) rid: Option<String>,
+pub struct MainRecord {
+    pub rid: Option<String>,
     /// 这条记录属于某个子运行（不是主运行一轮的收尾，也不该算主运行的事）。
-    pub(crate) in_run: bool,
-    pub(crate) changed: bool,
+    pub in_run: bool,
+    pub changed: bool,
 }
 
 /// 一份子运行记录读到哪了 · 派出那一刻落盘的对上（`ChildFace::spawned`）收到了没有。
@@ -745,9 +745,9 @@ struct ChildCursor {
 
 /// watcher 那一侧的运行跟踪：运行面 ＋ 运行簿 ＋ 各会话的主记录路径 ＋ 子运行记录的游标。
 /// 两张表都按 [`path_key`] 认路径（与 watcher 的游标同一种规范化）：主记录有时以折过的键交进来、文件事件总是原样，两边得对得上。
-pub(crate) struct RunTrack {
+pub struct RunTrack {
     pub(crate) faces: RunFaces,
-    pub(crate) book: Arc<RunBook>,
+    pub book: Arc<RunBook>,
     parents: HashMap<String, Vec<PathBuf>>,
     children: HashMap<PathBuf, ChildCursor>,
     /// 到此刻从子运行记录读了多少字节（判据数它；收下会话那一趟照它判要不要把放掉的内存还回去）。
@@ -755,7 +755,7 @@ pub(crate) struct RunTrack {
 }
 
 impl RunTrack {
-    pub(crate) fn new(faces: RunFaces, book: Arc<RunBook>) -> Self {
+    pub fn new(faces: RunFaces, book: Arc<RunBook>) -> Self {
         Self {
             faces,
             book,
@@ -776,7 +776,7 @@ impl RunTrack {
     }
 
     /// 一行主记录交出去之前：归属与派出链接记进簿里。回：（对账键, 它其实属于某个子运行, 运行表变没变）。
-    pub(crate) fn main_record(&self, sid: &str, line: &crate::agents::Line<'_>) -> MainRecord {
+    pub fn main_record(&self, sid: &str, line: &crate::agents::Line<'_>) -> MainRecord {
         let none = MainRecord::default();
         if self.faces.response_id.is_none()
             && self.faces.child_link.is_none()
@@ -797,7 +797,7 @@ impl RunTrack {
     /// 只读尾巴的流接上一个会话：它的主记录已有的那一截（`chunk`，从头起）里说到子运行的几行补进簿里 ——
     /// 接上之前派出 / 收场的那些，否则只剩子记录自己的那一半（标签没有、收场看不见）。只挑预筛命中的行解析（[`said_of`]）。
     /// 回：运行表变没变。
-    pub(crate) fn prime(&self, sid: &str, chunk: &[u8]) -> bool {
+    pub fn prime(&self, sid: &str, chunk: &[u8]) -> bool {
         if !self.has_children() {
             return false;
         }
@@ -820,7 +820,7 @@ impl RunTrack {
     /// 簿里已经收场（父侧那一截在这之前补进来了，[`Self::prime`]）、记录又 [`STALE_AFTER`] 之内没再写的，只留游标、不读正文 ——
     /// 没读的那几格（工具调用次数 · 最近一件事）只有它自己的记录说得出；它再被写 ⇒ 文件事件照旧从 0 读起。其余从头读一遍。
     /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。读得多 ⇒ 读完把放掉的内存还给系统。回：运行表变没变。
-    pub(crate) fn adopt(&mut self, sid: &str, parent: &Path) -> bool {
+    pub fn adopt(&mut self, sid: &str, parent: &Path) -> bool {
         if !self.has_children() {
             return false;
         }
@@ -874,7 +874,7 @@ impl RunTrack {
 
     /// 一个文件事件：是（或刚成为）某个会话的子运行记录 ⇒ 读新行、记进簿里，回那个会话（运行表变没变）。
     /// 不是 ⇒ `None`（调用方照旧当主记录 / 别的东西处理）。
-    pub(crate) fn on_path(&mut self, p: &Path) -> Option<(String, bool)> {
+    pub fn on_path(&mut self, p: &Path) -> Option<(String, bool)> {
         if !self.has_children() {
             return None;
         }
@@ -1088,7 +1088,7 @@ pub(crate) mod skel {
     clippy::disallowed_methods,
     reason = "子运行「久未动静 ⇒ 状态不明」要到点就判：会话空闲时不会再有它的文件事件，只靠事件判的话面板上的「在跑」永远冻住"
 )]
-pub(crate) fn next_event<T>(
+pub fn next_event<T>(
     rx: &std::sync::mpsc::Receiver<T>,
     due: Option<SystemTime>,
     now: SystemTime,
@@ -1106,7 +1106,7 @@ pub(crate) fn next_event<T>(
 }
 
 /// 状态写好的字（运行表 · 被挤出的那几项同一处）。
-pub(crate) fn status_text(s: RunState) -> Words {
+pub fn status_text(s: RunState) -> Words {
     Words(match s {
         RunState::Running => copy_text("runs.state.running", &[]),
         RunState::Done => copy_text("runs.state.done", &[]),
@@ -1351,10 +1351,14 @@ fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
     i
 }
 
-/// 判据用：往一本运行簿里直接记一个在跑的子运行（不走记录那一条管线）。
-#[cfg(test)]
+/// 判据用：往一本运行簿里直接记一个在跑的子运行（不走记录那一条管线）。本包与上层判据（主 crate 的 `runs_guard`）经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/runs_testing.rs"]
-pub(crate) mod testing;
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档的夹具：只在测试档与上层测试档（`test-support`）编；记下那个子运行的时刻直接问系统钟，同各包测试段放开的那一样"
+)]
+pub mod testing;
 
 /// 收下会话时只为没收场、或最近还在写的子运行从头读。
 #[cfg(test)]

@@ -146,7 +146,7 @@ mod codex_record {
         let sample =
             std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
         let face = crate::agents::codex::RECORDS;
-        let tz = crate::Tz::named("UTC").unwrap();
+        let tz = crate::common::time::Tz::named("UTC").unwrap();
         let mut reader = crate::observe::query::body::Reader::new(&face, tz);
         let rows = crate::observe::query::body::rows_of(&mut reader, 0, &sample);
         let mut got = String::new();
@@ -182,7 +182,7 @@ mod codex_record {
                         .map(|a| !a.is_empty())
                 }) == Some(true)
             });
-            let row = crate::observe::recognize::index_row::tests::index_row(
+            let row = crate::observe::recognize::index_row::test_support::index_row(
                 crate::agents::codex::AGENT_KIND,
                 raw.as_bytes(),
                 offset,

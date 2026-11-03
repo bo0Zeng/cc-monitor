@@ -1384,6 +1384,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CHORES_FILE: NONE,
     // monitor 的设置那一行（monitor `config.rs` 读写都取它的落点与读上限）；TS 侧没有孪生。
     CONFIG_FILE: NONE,
+    GROUPS_OWED_FILE: NONE,
     HISTORY_ANNOTATIONS_FILE: NONE,
     HOST_FACTS_FILE: NONE,
     HOST_PROGRAM_FILE: NONE,
@@ -1413,6 +1414,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     json: NONE,
     kept: NONE,
     upgradable: NONE,
+    // 声明表一行由主人类推出「状态还是缓存」· 那一行住哪一端；TS 侧没有孪生。
+    kind: NONE,
+    written_by: NONE,
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
     ALL: NONE,
     ASSET_CATALOG_REL: NONE,

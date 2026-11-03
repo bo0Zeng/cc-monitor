@@ -436,10 +436,7 @@ struct Finished {
 pub(crate) fn member_facts(
     raw: RawRow,
     ann: Option<&Table>,
-) -> (
-    crate::wire::SessionFace,
-    crate::history::groups::MemberFacts,
-) {
+) -> (crate::wire::SessionFace, cmd_wire::groups::MemberFacts) {
     let f = finish_row(raw, ann);
     // 记录文件的路径照清单那一格原样交（解构取，同 [`row_of`]）。
     let RawRow {
@@ -450,7 +447,7 @@ pub(crate) fn member_facts(
         updated_at,
         ..
     } = f.raw;
-    let facts = crate::history::groups::MemberFacts {
+    let facts = cmd_wire::groups::MemberFacts {
         title: Words(f.label),
         cwd: (!project_path.is_empty()).then_some(project_path),
         record: (!record.is_empty()).then_some(record),

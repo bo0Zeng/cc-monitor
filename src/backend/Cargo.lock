@@ -224,6 +224,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-control"
+version = "0.0.0"
+dependencies = [
+ "backend-accounts",
+ "backend-agents",
+ "backend-assets",
+ "backend-common",
+ "backend-dial",
+ "backend-history",
+ "backend-host",
+ "backend-platform",
+ "backend-stderr-log",
+ "backend-wire",
+ "test-home",
+]
+
+[[package]]
 name = "backend-dial"
 version = "0.0.0"
 dependencies = [
@@ -319,6 +336,21 @@ dependencies = [
  "tokio",
  "tracing",
  "vt100",
+]
+
+[[package]]
+name = "backend-observe"
+version = "0.0.0"
+dependencies = [
+ "backend-accounts",
+ "backend-agents",
+ "backend-assets",
+ "backend-common",
+ "backend-history",
+ "backend-host",
+ "backend-platform",
+ "backend-wire",
+ "test-home",
 ]
 
 [[package]]
@@ -591,10 +623,12 @@ dependencies = [
  "backend-agents",
  "backend-assets",
  "backend-common",
+ "backend-control",
  "backend-dial",
  "backend-files",
  "backend-history",
  "backend-host",
+ "backend-observe",
  "backend-platform",
  "backend-plugin",
  "backend-relay",

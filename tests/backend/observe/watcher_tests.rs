@@ -1,12 +1,3 @@
-/// 判据不等地取一帧（取走就把它的字节还回去，同 `recv`）：生产只 `recv`，这一个只给本层判据。
-impl FrameRx {
-    pub(crate) fn try_recv(&mut self) -> Result<Frame, tokio::sync::mpsc::error::TryRecvError> {
-        let (frame, n) = self.rx.try_recv()?;
-        self.held.fetch_sub(n, std::sync::atomic::Ordering::AcqRel);
-        Ok(frame)
-    }
-}
-
 /// ★ **事件分派不许有兜底臂**。
 ///
 /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
@@ -63,6 +54,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
              ⇒ 要新增变体就在这里显式处理它；确实无事可做也请写成具名臂加一句注释。"
     );
 }
+use super::test_support::{claude_in_pane, kind_of, pidfile_of};
 use super::*;
 use crate::wire::SessionFaceExt as _;
 use std::time::Duration;
@@ -114,28 +106,8 @@ fn file_events_wake_the_reader_once_until_it_takes_the_pending_paths() {
     assert_eq!(pending.take(), vec![PathBuf::from("/r/a.jsonl")]);
 }
 
-/// 一帧的帧种（线上 `kind` 那一格）。
-fn kind_of(f: &Frame) -> String {
-    serde_json::to_value(f).unwrap()["kind"]
-        .as_str()
-        .unwrap()
-        .to_string()
-}
-
-/// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
 impl FrameSink {
-    pub(in crate::observe::watcher) fn new(tx: FrameTx) -> Self {
-        FrameSink {
-            subs: vec![Sub::new(0, tx, crate::Tz::default())],
-            ledger: None,
-            priming: HashSet::new(),
-            arrivals: crate::observe::arrivals::Arrivals::default(),
-            list: std::sync::Arc::default(),
-            faces: std::sync::Arc::default(),
-        }
-    }
-
-    /// 同 [`Self::new`]，那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
+    /// 同夹具那一份发帧口（`FrameSink::new`），那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
     pub(in crate::observe::watcher) fn wanting_branches(tx: FrameTx, sids: &[&str]) -> Self {
         let mut s = Self::new(tx);
         s.subs[0]
@@ -1560,7 +1532,6 @@ fn the_socket_dir_watch_survives_an_inode_swap() {
 #[cfg(target_os = "linux")]
 #[test]
 fn sid_change_in_place_retires_old_sid() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-sidchange-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -1612,7 +1583,6 @@ fn sid_change_in_place_retires_old_sid() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_pidfile_in_the_hidden_dir_is_not_announced() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let hidden = crate::platform::paths::data_home()
         .expect("测试环境有家目录")
         .join("autostart");
@@ -1725,7 +1695,6 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
 #[cfg(target_os = "linux")]
 #[test]
 fn same_sid_two_pidfiles_refcount() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-refcount-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -1785,7 +1754,6 @@ fn same_sid_two_pidfiles_refcount() {
 #[cfg(target_os = "linux")]
 #[test]
 fn plain_lifecycle_regression() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-plainlife-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -1821,7 +1789,6 @@ fn plain_lifecycle_regression() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_announcement_says_which_account_the_session_runs_under() {
-    let _iso = crate::control::identity_tag::door::isolate(); // 打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-acctannounce-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let cfg = dir.join("acct-b");
@@ -1890,7 +1857,6 @@ fn the_announcement_says_which_account_the_session_runs_under() {
 #[test]
 fn status_diff_emits_session_status_frame() {
     use crate::agents::SessionActivity;
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-status-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("projects")).unwrap();
     let pid = std::process::id();
@@ -1979,7 +1945,6 @@ fn status_diff_emits_session_status_frame() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_custom_title_in_the_annotations_renames_a_live_session() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-rename-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("projects")).unwrap();
     let pid = std::process::id();
@@ -2050,7 +2015,6 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
 #[cfg(target_os = "linux")]
 #[test]
 fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-tailonly-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-x");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2116,7 +2080,6 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
 #[cfg(target_os = "linux")]
 #[test]
 fn with_bg_and_tail_only_combined() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-combo-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-c");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2159,7 +2122,6 @@ fn with_bg_and_tail_only_combined() {
 #[cfg(target_os = "linux")]
 #[test]
 fn with_bg_announces_bg_with_metadata() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-withbg-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -2222,7 +2184,6 @@ fn with_bg_announces_bg_with_metadata() {
 #[cfg(target_os = "linux")]
 #[test]
 fn session_added_carries_the_project_dir_from_the_record_head() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-projdir-added-{}", std::process::id()));
     let proj = dir.join("projects").join("-a-proj");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2269,7 +2230,6 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announcement() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-path-later-{}", std::process::id()));
     let proj = dir.join("projects").join("-a-proj");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2802,27 +2762,12 @@ fn session_alive_decision_table_linux() {
     );
 }
 
-/// 真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（打标那一步要读）。
+/// 真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（宣告那一步认号要读）。
 #[cfg(target_os = "linux")]
 fn vis2_sleeper() -> std::process::Child {
-    crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+    crate::platform::proc::test_support::spawn_settled_sleep(|c| {
         c.env_remove("TMUX_PANE").env_remove("TMUX");
     })
-}
-
-/// 写一份活进程的 pidfile（形状同上面令牌那条的夹具：真 pid ＋ 真 procStart）。
-#[cfg(target_os = "linux")]
-fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
-    let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
-    let at = sessions.join(format!("{pid}.json"));
-    std::fs::write(
-        &at,
-        format!(
-            r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
-        ),
-    )
-    .unwrap();
-    at
 }
 
 /// ★★ 〔「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 notify 耳朵 ＋ `HomeEars`：
@@ -2830,7 +2775,6 @@ fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
 #[cfg(target_os = "linux")]
 #[test]
 fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let root = std::env::temp_dir().join(format!("ccm-vis2-s3-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -2855,9 +2799,9 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     let mut state = ReaderState::new(projects.clone());
 
     // ② 先无后建，建完立刻写 pidfile。
-    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    let mut kids = [vis2_sleeper(), vis2_sleeper()];
     std::fs::create_dir_all(&sessions).unwrap();
-    vis2_pidfile(&sessions, kids[0].id(), "vis2-s3-first");
+    pidfile_of(&sessions, kids[0].id(), "vis2-s3-first");
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut added: Vec<String> = Vec::new();
     while added.is_empty() && std::time::Instant::now() < deadline {
@@ -2875,7 +2819,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     let upgraded = (ears.home_watched, ears.sessions_watched);
 
     // ③ 第二份 pidfile 的事件真的来（`sessions/` 那道 watch 挂在新目录上）。
-    let second = vis2_pidfile(&sessions, kids[1].id(), "vis2-s3-second");
+    let second = pidfile_of(&sessions, kids[1].id(), "vis2-s3-second");
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut heard_second = false;
     while !heard_second && std::time::Instant::now() < deadline {
@@ -3047,93 +2991,18 @@ fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
     );
 }
 
-/// 一个 tmux 会话里两个窗格各跑一个 claude：各自的标签打在各自的窗格上，对账一轮就稳 —— 之后每一轮一次都不写。
-/// 标签若还是会话级单值，两个 claude 每一轮都把对方改回来，而每次「真写了」都会再起一次探测（探测 ↔ 打标死循环）。
-///
-/// 假 tmux 照真 tmux 的取值规则：窗格上有自己的值就取它，没有就往上取会话那一级的。
-#[cfg(target_os = "linux")]
-#[test]
-fn two_claudes_in_one_tmux_session_settle_after_one_retag_round() {
-    let root = std::env::temp_dir().join(format!("ccm-w5-two-in-one-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let opts = root.join("opts");
-    let sessions = root.join("sessions");
-    std::fs::create_dir_all(&opts).unwrap();
-    std::fs::create_dir_all(&sessions).unwrap();
-    let script = root.join("tmux");
-    std::fs::write(
-        &script,
-        format!(
-            r#"#!/bin/sh
-D='{}'
-if [ "$2" = display-message ]; then
-  v=$(cat "$D/p$5" 2>/dev/null || cat "$D/s" 2>/dev/null)
-  printf '%s\n' "$6" | sed -e 's/#{{session_id}}/$0/g' -e "s/#{{@ccm_sid}}/$v/g" -e 's/#{{session_windows}}/1/g' -e 's/#{{@[a-z_]*}}//g'
-  exit 0
-fi
-if [ "$1" = set-option ]; then
-  if [ "$2" = -p ]; then printf '%s' "$6" > "$D/p$4"; else printf '%s' "$5" > "$D/s"; fi
-  exit 0
-fi
-exit 1
-"#,
-            opts.display()
-        ),
-    )
-    .unwrap();
-    let _iso = crate::control::identity_tag::door::isolate_with(&script);
-    let mut kids: Vec<std::process::Child> = ["%1", "%2"]
-        .iter()
-        .map(|pane| {
-            crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
-                c.env("TMUX_PANE", pane).env_remove("TMUX");
-            })
-        })
-        .collect();
-    let files: Vec<PathBuf> = kids
-        .iter()
-        .zip(["two-a", "two-b"])
-        .map(|(k, sid)| vis2_pidfile(&sessions, k.id(), sid))
-        .collect();
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
-    let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(root.join("projects"));
-    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
-    let first: Vec<bool> = files
-        .iter()
-        .map(|f| process_session_added(f, &mut state, &mut sink))
-        .collect();
-    let rounds = [retag_tracked(&state, None), retag_tracked(&state, None)];
-    for k in kids.iter_mut() {
-        let _ = k.kill();
-        let _ = k.wait();
-    }
-    std::fs::remove_dir_all(&root).ok();
-    assert_eq!(
-        first,
-        vec![true, true],
-        "两个窗格起初都没挂标签 ⇒ 各写一次（夹具自检）"
-    );
-    assert_eq!(
-        rounds,
-        [0, 0],
-        "同一个 tmux 会话里的两个 claude 在互相改写标签 —— 每一轮对账都「真写了」⇒ 每份快照之后再探一次，不收敛"
-    );
-}
-
 /// 同一个 sid 两份 pidfile（resume 时原进程还活着）：「会话出现」只报一次；先退的那一份不摘这个会话。
 #[cfg(target_os = "linux")]
 #[test]
 fn one_sid_in_two_pidfiles_is_announced_once() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-w5-dup-sid-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
-    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    let mut kids = [vis2_sleeper(), vis2_sleeper()];
     let files: Vec<PathBuf> = kids
         .iter()
-        .map(|k| vis2_pidfile(&sessions, k.id(), "dup-sid"))
+        .map(|k| pidfile_of(&sessions, k.id(), "dup-sid"))
         .collect();
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
@@ -3162,16 +3031,15 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-arrive-again-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(sessions.join("dup")).unwrap();
-    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    let mut kids = [vis2_sleeper(), vis2_sleeper()];
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
-    let old = vis2_pidfile(&sessions, kids[0].id(), "again-sid");
+    let old = pidfile_of(&sessions, kids[0].id(), "again-sid");
     process_session_added(&old, &mut state, &mut sink);
     let since = crate::common::arrival_seq::mark();
     let (tell, mut heard) = tokio::sync::oneshot::channel::<String>();
@@ -3184,10 +3052,10 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
     );
     let stale = heard.try_recv().is_err();
     // 同一个旧进程的第二份 pidfile：不是新进程。
-    let twin = vis2_pidfile(&sessions.join("dup"), kids[0].id(), "again-sid");
+    let twin = pidfile_of(&sessions.join("dup"), kids[0].id(), "again-sid");
     process_session_added(&twin, &mut state, &mut sink);
     let twin_quiet = heard.try_recv().is_err();
-    let new = vis2_pidfile(&sessions, kids[1].id(), "again-sid");
+    let new = pidfile_of(&sessions, kids[1].id(), "again-sid");
     process_session_added(&new, &mut state, &mut sink);
     let got = heard.try_recv().ok();
     while rx.try_recv().is_ok() {}
@@ -3205,6 +3073,12 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
     );
 }
 
+/// 打标那一手的替身：照控制面在「环境读得到、`TMUX_PANE` 没设」时的结局答（容器 `{host: none}`，没写）。
+/// 真打标住控制面（本包够不到），接真打标的那几条挂主 crate（`watcher_on_upper_tests.rs`）。
+pub(super) fn not_in_tmux(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+    (Some(crate::wire::SessionContainer::None), false)
+}
+
 /// **「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。
 ///
 /// 两趟：
@@ -3212,12 +3086,11 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
 ///   ⇒ 帧 kind 序列 == `[session_added, session_added, sessions_replayed]`；
 /// - `sessions/` 压根不在 ⇒ 序列 == `[sessions_replayed]`（空清单也是说完了）。
 ///
-/// 期望是手写的序列（不从实现生成）。子进程摘掉 `TMUX_PANE`：打标那一步不会去碰真机 tmux。
+/// 期望是手写的序列（不从实现生成）。打标那一手是 [`not_in_tmux`]（真打标在控制面，本包够不到）。
 #[test]
 fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     fn sleeper() -> std::process::Child {
-        crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+        crate::platform::proc::test_support::spawn_settled_sleep(|c| {
             c.env_remove("TMUX_PANE").env_remove("TMUX");
         })
     }
@@ -3233,7 +3106,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let dir = std::env::temp_dir().join(format!("ccm-u4b-replayed-{}", std::process::id()));
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
-    let mut kids = vec![sleeper(), sleeper()];
+    let mut kids = [sleeper(), sleeper()];
     for (i, kid) in kids.iter().enumerate() {
         let pid = kid.id();
         let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
@@ -3248,14 +3121,14 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
-    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
+    state.tag = not_in_tmux;
     initial_session_scan(&sessions, &mut state, &mut sink);
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
         frames.push(f);
     }
-    // 顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
-    //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
+    // 顺带钉容器那一格的**生产接线**：打标那一手答「不在 tmux 里」
+    //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表在控制面另有一条逐格判；这一格判的是
     //   `process_session_added` 真把打标的结局接到了帧上。
     let containers: Vec<Option<crate::wire::SessionContainer>> = frames
         .iter()
@@ -3269,7 +3142,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     assert_eq!(
         containers,
         vec![Some(crate::wire::SessionContainer::None); 2],
-        "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
+        "打标那一手说不在 tmux 里的会话，帧上要说 `none`"
     );
     let got: Vec<String> = frames.iter().map(kind_of).collect();
     for k in kids.iter_mut() {
@@ -3304,11 +3177,10 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
 /// 它的「删掉了」不冒出一条从没 added 过的 离开那一帧（`session_left`）。
 #[test]
 fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-arm-then-scan-{}", std::process::id()));
     let sessions = dir.join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
-    let mut kid = crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+    let mut kid = crate::platform::proc::test_support::spawn_settled_sleep(|c| {
         c.env_remove("TMUX_PANE").env_remove("TMUX");
     });
     let pid = kid.id();
@@ -3379,7 +3251,6 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
 #[cfg(target_os = "linux")]
 #[test]
 fn loc1b_the_pid_rides_the_session_added_frame() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     fn probe(label: &str) -> (u32, u32) {
         let dir =
             std::env::temp_dir().join(format!("ccm-loc1b-pid-{}-{label}", std::process::id()));
@@ -3607,7 +3478,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     ear.arm(&mut fs_watch);
     let armed = (ear.watched, ear.parent_watched);
     // 建目录 ⇒ 等到它自己那一格事件；再写 manifest ⇒ 等到 manifest 那一格。回 (目录事件到没到, manifest 事件到没到)。
-    let mut round = |ear: &mut AccountsEar, fs_watch: &mut _| {
+    let round = |ear: &mut AccountsEar, fs_watch: &mut _| {
         std::fs::create_dir_all(&dir).unwrap();
         let (mut dir_seen, mut manifest_seen) = (false, false);
         let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
@@ -3721,190 +3592,7 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     assert!(later, "起步之后才建的号目录里出现凭据文件，没听见");
 }
 
-// ═══ 身份标签对账 ═══════════════════════════════════════════════
-//
-// 夹具：一个有状态的假 tmux（一个会话 `$7`，`@ccm_sid` 存在一份文件里；`display-message` 读它、`set-option` 写它）＋
-// 一个带 `TMUX_PANE` 的 `sleep` 当 claude（pidfile 带它的真 procStart）。真 tmux 一次都不碰（§48.3）。
-
-/// 回（假 tmux 脚本，标签文件）。
-fn fake_tmux_world(dir: &Path) -> (PathBuf, PathBuf) {
-    std::fs::create_dir_all(dir).unwrap();
-    let label = dir.join("label");
-    let script = dir.join("tmux");
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\nst='{}'\ncase \"$*\" in\n  *display-message*) printf '$7\\t%s\\t1\\t\\n' \"$(cat \"$st\" 2>/dev/null)\";;\n  *set-option*) eval \"v=\\${{$#}}\"; printf '%s' \"$v\" > \"$st\";;\nesac\n",
-            label.display()
-        ),
-    )
-    .unwrap();
-    (script, label)
-}
-
-/// 起一个住在 `pane` 里的「claude」，并在 `sessions` 下写它的 pidfile（`sid` · `status`）。
-fn claude_in_pane(sessions: &Path, pane: &str, sid: &str, status: &str) -> std::process::Child {
-    let kid = crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
-        c.env("TMUX_PANE", pane);
-    });
-    write_pidfile(sessions, kid.id(), sid, status);
-    kid
-}
-
-fn write_pidfile(sessions: &Path, pid: u32, sid: &str, status: &str) -> PathBuf {
-    std::fs::create_dir_all(sessions).unwrap();
-    let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到");
-    let p = sessions.join(format!("{pid}.json"));
-    std::fs::write(
-        &p,
-        format!(
-            r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/x","kind":"interactive","procStart":"{ticks}","status":"{status}"}}"#
-        ),
-    )
-    .unwrap();
-    p
-}
-
-/// **标签被外部改掉之后会被纠正**：pidfile 重写（sid 没变）那一支 ＋ 对在跟会话的整批对账（tmux 探测到达时调的那一个）。
-/// 要求：「tmux 探测结果到达、pidfile 重写（sid 没变那一支）时顺手比一次标签」。
-#[test]
-fn an_externally_changed_identity_tag_is_put_back() {
-    let dir = std::env::temp_dir().join(format!("ccm-resync-retag-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let (script, label) = fake_tmux_world(&dir.join("tmux"));
-    let _iso = crate::control::identity_tag::door::isolate_with(&script);
-    let sessions = dir.join("sessions");
-    let mut kid = claude_in_pane(&sessions, "%5", "resync-a", "busy");
-    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
-    let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.join("projects"));
-    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
-    let pidfile = sessions.join(format!("{}.json", kid.id()));
-    process_session_added(&pidfile, &mut state, &mut sink);
-    let read = || std::fs::read_to_string(&label).unwrap_or_default();
-    assert_eq!(read(), "resync-a", "首次宣告就该打上");
-
-    // ① 外部改掉 ⇒ pidfile 重写（sid 没变，只换了状态）⇒ 纠正。
-    std::fs::write(&label, "bg-sid").unwrap();
-    write_pidfile(&sessions, kid.id(), "resync-a", "idle");
-    process_session_added(&pidfile, &mut state, &mut sink);
-    let after_rewrite = read();
-
-    // ② 再改掉 ⇒ 整批对账纠正、回写了 1 个；再对一次 ⇒ 0 个（值一样不动）。
-    std::fs::write(&label, "bg-sid").unwrap();
-    let wrote = retag_tracked(&state, None);
-    let after_batch = read();
-    let wrote_again = retag_tracked(&state, None);
-    let _ = kid.kill();
-    let _ = kid.wait();
-    let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(
-        after_rewrite, "resync-a",
-        "pidfile 重写没有纠正被改掉的标签"
-    );
-    assert_eq!(
-        (after_batch.as_str(), wrote, wrote_again),
-        ("resync-a", 1, 0)
-    );
-}
-
-/// **对齐 = 拿盘上现实对后端的表，只对差异发帧**（与起步初扫同一个 `reconcile_sessions`）。
-/// 表里：A（pidfile 删了）· B（进程死了、pidfile 还在）· C（活着、标签被外部改掉）；盘上多一个没跟的 D。
-/// 整机一趟 ⇒ 移除 A、B · 宣告 D · 重打 C；只对 C 的一趟 ⇒ 只碰 C。期望全是手写的。
-/// 要求：「pidfile 目录逐个重验（多的补 `session_added`，少的补移除）· 每个在跟的 pid 重判活 · …… · 只对差异发帧」。
-#[test]
-fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() {
-    let dir = std::env::temp_dir().join(format!("ccm-resync-recon-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let (script, label) = fake_tmux_world(&dir.join("tmux"));
-    let _iso = crate::control::identity_tag::door::isolate_with(&script);
-    let sessions = dir.join("sessions");
-    let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
-    let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
-    let mut c = claude_in_pane(&sessions, "%5", "sid-c", "idle");
-    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
-    let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.join("projects"));
-    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
-    for k in [&a, &b, &c] {
-        process_session_added(
-            &sessions.join(format!("{}.json", k.id())),
-            &mut state,
-            &mut sink,
-        );
-    }
-    while rx.try_recv().is_ok() {}
-    std::fs::remove_file(sessions.join(format!("{}.json", a.id()))).unwrap();
-    let _ = b.kill();
-    let _ = b.wait();
-    std::fs::write(&label, "bg-sid").unwrap();
-    let mut d = claude_in_pane(&sessions, "%9", "sid-d", "idle");
-    let frames = |rx: &mut FrameRx| {
-        let mut v: Vec<String> = Vec::new();
-        while let Ok(f) = rx.try_recv() {
-            v.push(match f {
-                Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => {
-                    format!("added {sid}")
-                }
-                Frame::SessionLeft(crate::wire::SessionLeft { sid, .. }) => {
-                    format!("removed {sid}")
-                }
-                other => kind_of(&other),
-            });
-        }
-        v.sort();
-        v
-    };
-
-    // 只对 C：D 不宣告、A/B 不移除，只重打 C。
-    std::fs::write(&label, "bg-sid").unwrap();
-    let one = reconcile_sessions(&sessions, &mut state, &mut sink, Some("sid-c"));
-    let one_frames = frames(&mut rx);
-    let one_label = std::fs::read_to_string(&label).unwrap_or_default();
-
-    // 整机：再改一次标签。
-    std::fs::write(&label, "bg-sid").unwrap();
-    let all = reconcile_sessions(&sessions, &mut state, &mut sink, None);
-    let all_frames = frames(&mut rx);
-    for k in [&mut a, &mut c, &mut d] {
-        let _ = k.kill();
-        let _ = k.wait();
-    }
-    let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(
-        (one, one_frames, one_label.as_str()),
-        (
-            Reconciled {
-                added: 0,
-                removed: 0,
-                retagged: 1,
-                caught_up: 0
-            },
-            Vec::<String>::new(),
-            "sid-c"
-        ),
-        "只对一个会话的那一趟碰了别的会话"
-    );
-    // D 的首次宣告也写一次标签（它住 %9，同一个假会话）⇒ 写入 2 处：C 的纠正 ＋ D 的首打。
-    assert_eq!(
-        (all, all_frames),
-        (
-            Reconciled {
-                added: 1,
-                removed: 2,
-                retagged: 2,
-                caught_up: 0
-            },
-            vec![
-                "added sid-d".to_string(),
-                "removed sid-a".to_string(),
-                "removed sid-b".to_string(),
-                "session_primed".to_string()
-            ]
-        ),
-        "整机对齐的差异不对"
-    );
-}
+// 身份标签对账（真打标那一手在控制面）那几条挂主 crate：`watcher_on_upper_tests.rs`。
 
 /// `resync` 等**每一份**在跑的 watcher 做完；中途退掉的那份（丢了应答端）不会把它挂住。
 #[test]
@@ -3947,95 +3635,6 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
     );
 }
 
-/// 恢复问过记录（`session-open` · `session-say` 恢复那一支同一处）⇒ 在不在交到每一份在跑的 watcher（会话账本据此翻已结束 ⇄ 记录已不在）：
-/// 记录不在 ⇒ 交「不在」、不恢复（回记录已不在）；记录在 ⇒ 交「在」、照记录起（哪一家 · 目录）。
-#[test]
-fn resuming_hands_whether_the_record_is_there_to_the_session_ledger() {
-    crate::observe::record_hook::install(record_seen);
-    let home = std::env::temp_dir().join(format!("ccm-resume-seen-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    let proj = home.join("projects").join("-w");
-    std::fs::create_dir_all(&proj).unwrap();
-    let sid = "7e1f0c2a-9b3d-4e5f-8a6b-0c1d2e3f4a5b";
-    let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
-    let me = live_enter(tx);
-    let ours = |rx: &std::sync::mpsc::Receiver<WatchEvent>| {
-        rx.try_iter()
-            .filter_map(|ev| match ev {
-                WatchEvent::RecordSeen { sid: s, present } if s == sid => Some(present),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-    };
-    let open = crate::faces::session_open_face::resume_in;
-
-    assert!(open(&home, sid).is_none(), "记录不在 ⇒ 不恢复");
-    assert_eq!(ours(&rx), [false]);
-
-    std::fs::write(
-        proj.join(format!("{sid}.jsonl")),
-        format!("{{\"type\":\"user\",\"cwd\":\"/w\",\"sessionId\":\"{sid}\"}}\n"),
-    )
-    .unwrap();
-    let r = open(&home, sid).expect("记录在 ⇒ 照起");
-    assert_eq!(r.cwd, "/w");
-    assert_eq!(ours(&rx), [true]);
-    live_leave(me);
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
-/// 界面那一侧 `tests/frontend/ui/resync.vitest.ts` 按同一份金样解。
-#[test]
-fn resync_face_reply_matches_the_cross_language_golden() {
-    /// 照分派那一层解入参（`typed::take`）再跑；回包投成线上那一份，失败只留码。
-    fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        use crate::wire::typed::{Codes as _, Handle as _};
-        let req = crate::wire::typed::take(args).map_err(|f| f.code_or_fallback().to_string())?;
-        let cx = crate::wire::typed::Cx {
-            tz: Default::default(),
-            until: None,
-            needs: (),
-        };
-        let got = crate::wire::spec::finish(crate::stream::resync_face::ResyncCmd::run(req, cx))
-            .map_err(|e| e.into_said().code_or_fallback().to_string())?;
-        Ok(serde_json::to_value(got).expect("回包总能序列化"))
-    }
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/resync.golden.json")).unwrap();
-    let got = answer(&golden["request"]).expect("金样那份请求该答得出");
-    let keys = |v: &serde_json::Value| -> Vec<String> {
-        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
-        k.sort();
-        k
-    };
-    assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
-    // 五格计数 ＋ 那一格能力事实（与 hello 同形：`[{command, code}]`）。
-    for k in ["added", "removed", "retagged", "caught_up", "watchers"] {
-        assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
-    }
-    let facts = got["unavailable"]
-        .as_array()
-        .expect("`unavailable` 不是数组");
-    assert!(
-        facts
-            .iter()
-            .all(|e| e["command"].is_string() && e["code"].is_string()),
-        "`unavailable` 的项不是 {{command, code}}：{got}"
-    );
-    for bad in [
-        serde_json::json!({"sid": 5}),
-        serde_json::json!({"sid": ""}),
-        serde_json::json!({"sid": "s", "x": 1}),
-    ] {
-        assert_eq!(
-            answer(&bad).map(|_| ()),
-            Err("bad_args".to_string()),
-            "{bad}"
-        );
-    }
-}
-
 /// 〔「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
 /// `resync{sid}` 那一趟从游标把漏的那一行补出来，别的会话不碰。
 /// 应答的 `caught_up` == 这一趟补读出的行数：单 sid 那趟 1；随后整机那趟 a 又漏 1 行、b 漏 2 行 ⇒ 3（各会话相加）。
@@ -4043,8 +3642,6 @@ fn resync_face_reply_matches_the_cross_language_golden() {
 fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     let dir = std::env::temp_dir().join(format!("ccm-resync-catchup-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let (script, _label) = fake_tmux_world(&dir.join("tmux"));
-    let _iso = crate::control::identity_tag::door::isolate_with(&script);
     let sessions = dir.join("sessions");
     let proj = dir.join("projects").join("p");
     std::fs::create_dir_all(&proj).unwrap();
@@ -4371,7 +3968,7 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
     // 「不算」那一格是个没发生：事后再写一份收尾记号（`settle`），等记号那条事件到了就停（排在它前面的都过完了），
     //   不拿「等满期限还没听见」当答案（那样绿的时候每次都要等满兜底的那个数）。
     let settle = dir.join("zz-settle");
-    let mut heard =
+    let heard =
         |ear: &mut ProfilesEar, fs_watch: &mut _, act: &dyn Fn(), settle: Option<&Path>| -> bool {
             act();
             if let Some(s) = settle {
@@ -4427,7 +4024,6 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
 #[cfg(target_os = "linux")]
 #[test]
 fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-branch-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-b");
     std::fs::create_dir_all(&proj).unwrap();
@@ -4596,7 +4192,6 @@ fn branch_lists(frames: &[Frame]) -> Vec<Vec<String>> {
 #[cfg(target_os = "linux")]
 #[test]
 fn announcing_a_record_full_of_forks_and_queued_lines_walks_the_chain_once() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-hot1-prime-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let n = 3_000;
@@ -4622,7 +4217,6 @@ fn announcing_a_record_full_of_forks_and_queued_lines_walks_the_chain_once() {
 #[cfg(target_os = "linux")]
 #[test]
 fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-hot1-batch-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let n = 3_000;
@@ -4657,7 +4251,6 @@ fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
 #[cfg(target_os = "linux")]
 #[test]
 fn queued_lines_without_forks_do_not_walk_the_chain() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-hot1-queue-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let n = 3_000;
@@ -4724,7 +4317,6 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
 #[test]
 fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     use crate::wire::{BranchHeld, WatchAsk};
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-read8c-held-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let body = long_branchy_record(600, 30, usize::MAX);
@@ -4755,7 +4347,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     // 接上来那一份此刻的样子：不带清单。
     let (tx1, mut rx1) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     join(
-        Sub::new(1, tx1, crate::Tz::default()),
+        Sub::new(1, tx1, crate::common::time::Tz::default()),
         None,
         &mut state,
         &mut sink,
@@ -4840,7 +4432,6 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_live_line_is_parsed_from_text_once() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-read8c-once-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let (_, mut state) = announce_record(&dir, "once-sid", "");
@@ -4876,7 +4467,6 @@ fn a_live_line_is_parsed_from_text_once() {
 /// `changed {session_hidden, key: sid, body: {hidden}}`、记着的那一帧跟着换（之后接上来的连接拿新的）；没变 ⇒ 不推。
 #[test]
 fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
-    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-hidden-push-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -5027,7 +4617,6 @@ fn face_of(f: &Frame) -> Option<&crate::wire::SessionFace> {
 #[test]
 fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
     use crate::observe::runs::STALE_AFTER;
-    let _iso = crate::control::identity_tag::door::isolate();
     let minute = std::time::Duration::from_secs(60);
     let (dir, pidfile, mut state) = frozen_fixture("old", "hb-old", "busy", STALE_AFTER + minute);
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
@@ -5048,7 +4637,6 @@ fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
 fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() {
     use crate::agents::SessionActivity;
     use crate::observe::runs::STALE_AFTER;
-    let _iso = crate::control::identity_tag::door::isolate();
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("live", "hb-live", "busy", second);
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
@@ -5098,7 +4686,7 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     assert!(
         back.iter()
             .filter_map(face_of)
-            .last()
+            .next_back()
             .map(|f| f.life.clone())
             == Some(crate::wire::WireLife::Live {
                 activity: Some(SessionActivity::Working)
@@ -5118,7 +4706,6 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
 fn waiting_sessions_and_ones_with_running_children_are_not_judged_frozen() {
     use crate::agents::SessionActivity;
     use crate::observe::runs::STALE_AFTER;
-    let _iso = crate::control::identity_tag::door::isolate();
     let hour = std::time::Duration::from_secs(3600);
     let (dir, pidfile, mut state) = frozen_fixture("wait", "hb-wait", "waiting", hour);
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
@@ -5170,7 +4757,6 @@ fn heard_within_truth_table() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_with_a_pending_ask_is_announced_as_needing_you_even_if_its_pidfile_says_busy() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("asked", "hb-asked", "busy", second);
     state.asked.insert("hb-asked".to_string());
@@ -5190,7 +4776,6 @@ fn a_session_with_a_pending_ask_is_announced_as_needing_you_even_if_its_pidfile_
 #[cfg(target_os = "linux")]
 #[test]
 fn an_ask_coming_and_going_flips_the_announced_dot() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let second = std::time::Duration::from_secs(1);
     let (dir, pidfile, mut state) = frozen_fixture("ask-flip", "hb-flip", "busy", second);
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());

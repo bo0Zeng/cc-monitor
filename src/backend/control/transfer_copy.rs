@@ -60,7 +60,7 @@ pub(crate) trait Ends: Send + Sync {
 
 codes! {
     /// `transfer-copy` 的码（一项没成不是整组没成：那一项的码在它的结局里）。
-    pub(crate) enum CopyErr {
+    pub enum CopyErr {
         /// 落点那台有同名的、还没答怎么办（一项都没做）：`data` 是同名清单。
         Exists = "exists" => Conflicts,
         /// 源或落点连接失败 · 问不到落点后端的家目录。
@@ -71,7 +71,7 @@ codes! {
 }
 
 /// `transfer-copy` 那一条（typed，帧面硬臂那一档：进度要走本连接的应答通道）。
-pub(crate) struct TransferCopy;
+pub struct TransferCopy;
 
 impl typed::Command for TransferCopy {
     typed::by_call!(TransferCopyReq);
@@ -377,7 +377,7 @@ pub(crate) struct Wired {
     from: crate::dial::sftp::Session,
     to: crate::dial::sftp::Session,
     to_dial: serde_json::Value,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     /// 问落点那台后端经它（生产 [`crate::dial::remote_ask::DialRemote`]）。
     remote: Box<dyn crate::dial::remote_ask::Remote>,
     /// 本机暂存区（`$HOME/.cc-monitor/staging`）。
@@ -402,11 +402,11 @@ async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Said>
 
 impl Wired {
     /// 按名字连上两台、问落点那台后端的家目录（与它的 SFTP 起始目录比）、备好本机暂存区。
-    pub(crate) async fn open(
+    pub async fn open(
         face: crate::platform::fs::Face,
         from: &cmd_wire::Machine,
         to: &cmd_wire::Machine,
-        tz: crate::Tz,
+        tz: crate::common::time::Tz,
     ) -> Result<Wired, CopyErr> {
         use crate::dial::sftp::open_for_transfer;
         // 两台都只按名字：怎么拨照这一端的机器表组（表里没有 · 组不成 ⇒ `bad_args`）。
@@ -429,7 +429,7 @@ impl Wired {
         from: crate::dial::sftp::Session,
         to: crate::dial::sftp::Session,
         to_dial: serde_json::Value,
-        tz: crate::Tz,
+        tz: crate::common::time::Tz,
         home: &Path,
         remote: Box<dyn crate::dial::remote_ask::Remote>,
     ) -> Result<Wired, CopyErr> {
@@ -469,6 +469,10 @@ async fn listed(s: &crate::dial::sftp::Session, path: &str) -> Option<Vec<(Strin
 }
 
 impl Ends for Wired {
+    #[expect(
+        clippy::type_complexity,
+        reason = "走树那一摞只在这一处，另起类型名只为过这条提示"
+    )]
     fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Said>> {
         Box::pin(async move {
             let Some(top) = listed(&self.from, path).await else {
@@ -614,7 +618,7 @@ impl Ends for Wired {
 }
 
 /// 帧面硬臂那一发的本体（阻塞线程上，经 `typed::answer_blocking`）：连上两台 → 做一组 → 回包。
-pub(crate) fn run(
+pub fn run(
     face: crate::platform::fs::Face,
     req: <TransferCopy as typed::Command>::Req,
     cx: typed::Cx,

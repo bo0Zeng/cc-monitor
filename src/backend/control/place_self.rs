@@ -87,8 +87,7 @@ fn staged_self<'a>(own: &Own, exe: &'a Path) -> Result<(OwnPath, &'a str), Said>
             copy_text(
                 "bePlaceSelf.place.outsideStaging",
                 &[("path", &exe.display().to_string())],
-            )
-            .into(),
+            ),
         )),
     }
 }
@@ -144,8 +143,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Said> {
             copy_text(
                 "bePlaceSelf.place.notSelf",
                 &[("path", &shown), ("mine", mine)],
-            )
-            .into(),
+            ),
         ));
     }
     keep_old(own)?;
@@ -192,7 +190,7 @@ fn drop_kept(own: &Own, name: &str) {
 /// 留存区收拾：过了 [`KEPT_MAX_AGE_SECS`] 的删，余下按留下的先后只剩最新的 [`KEPT_MAX`] 份。
 fn prune_kept(own: &Own, now: std::time::SystemTime) {
     let mut all = own.kept_backends();
-    all.sort_by(|a, b| b.1.cmp(&a.1));
+    all.sort_by_key(|b| std::cmp::Reverse(b.1));
     for (i, (name, when)) in all.iter().enumerate() {
         // 比年纪，不是等待：秒数直接比，不造会让谁醒来的期限。
         let expired = now

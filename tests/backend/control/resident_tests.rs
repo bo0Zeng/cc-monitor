@@ -519,7 +519,7 @@ async fn a_resident_call_asks_the_one_that_listens() {
         ]
     })
     .await;
-    let tz = crate::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let tz = crate::common::time::Tz::of(&serde_json::json!("Asia/Shanghai"));
     let got = call_at(
         &dh,
         &asked("history-listing"),
@@ -546,7 +546,7 @@ async fn a_resident_call_carries_the_askers_deadline_and_zone() {
         )]
     })
     .await;
-    let tz = crate::Tz::of(&serde_json::json!("Asia/Shanghai"));
+    let tz = crate::common::time::Tz::of(&serde_json::json!("Asia/Shanghai"));
     let got = call_at(
         &dh,
         &asked("history-listing"),
@@ -568,7 +568,7 @@ async fn a_resident_call_carries_the_askers_deadline_and_zone() {
 #[tokio::test]
 #[cfg(unix)]
 async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let dh = scratch("call-fail");
     let peer = one_resident(&dh, |req| {
         assert_eq!(req["cmd"], "history-listing");

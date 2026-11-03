@@ -493,7 +493,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "本机后端读启动文件与账号库清单判三步（`src/backend/footprint/readiness.rs`）；前端 `src/frontend/ui/settings/readiness-reads.ts::readReadiness` 问\
          （设置窗机器页「开始用」· 主窗口状态栏那一枚），monitor 这一侧零发送点",
     ),
-    // 离线那台的上次值：本机后端读写它自己的 `~/.cc-monitor/last-seen.json`。
+    // 离线那台的上次值：本机后端读写它自己的 `~/.cc-monitor/cache/last-seen.json`。
     (
         "last-seen-read",
         "本机后端读自己那份小文件（`src/backend/footprint/last_seen.rs`）；前端 `src/frontend/ui/last-seen.ts::recallSeen` 问（那台问不到时画上次的），\

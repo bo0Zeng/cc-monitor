@@ -31,31 +31,31 @@ use std::sync::Mutex;
 
 /// `needs-ask` 的应答：人的答案写成那一家要的那一整份（hook 原样打出去）；`null` ＝ 不给决定。
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AskReply {
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) decision: Option<Value>,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AskReply {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
+    pub decision: Option<Value>,
 }
 
 /// `needs-ask` 的入参：哪一家（线上的 kind）＋ 那一家的 hook 交来的那一份原样。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AskReq {
-    pub(crate) agent: crate::agents::AgentKind,
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) hook: Value,
+pub struct AskReq {
+    pub agent: crate::agents::AgentKind,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
+    pub hook: Value,
 }
 
 crate::wire::typed::codes! {
     /// `needs-ask` 没有别的码（不是要人答的那一种 ⇒ `{decision: null}`，不是失败）。
-    pub(crate) enum AskErr {}
+    pub enum AskErr {}
 }
 
 /// `needs-ask`（帧面硬臂：挂的那条跟着本连接走；本体真异步，`cancel` 打断 ＝ 不给决定）。
-pub(crate) struct NeedsAsk;
+pub struct NeedsAsk;
 
 impl crate::wire::typed::Command for NeedsAsk {
     const NAME: &'static str = "needs-ask";
@@ -121,12 +121,18 @@ fn book() -> std::sync::MutexGuard<'static, Book> {
 }
 
 /// 一条连接（hook 那一头）挂的请求跟着它走：它一丢 ⇒ 它挂的全撤掉（入方向读循环每条连接一份）。
-pub(crate) struct Desk {
+pub struct Desk {
     conn: u64,
 }
 
+impl Default for Desk {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Desk {
-    pub(crate) fn new() -> Desk {
+    pub fn new() -> Desk {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Desk {
             conn: NEXT.fetch_add(1, Ordering::Relaxed),
@@ -134,7 +140,7 @@ impl Desk {
     }
 
     /// 这条连接的号（交给 `needs-ask` 的处理器：处理器不拿着 [`Desk`] 本身，否则它丢不掉）。
-    pub(crate) fn conn(&self) -> u64 {
+    pub fn conn(&self) -> u64 {
         self.conn
     }
 }
@@ -148,7 +154,7 @@ impl Drop for Desk {
 /// `needs-ask` 的本体：`{agent, hook}` ⇒ 挂上、等人答 ⇒ `{decision}`（`null` ＝ 不给决定，hook 空手退）。
 /// 那一家没有答题口 · hook 输入不是要人答的那一种 ⇒ 立刻 `{decision: null}`（不挂）。
 /// `setting` ＝ 这条会话「没人答时自动答」那一格（注解里那一份，调用方现读交进来）。
-pub(crate) async fn ask(
+pub async fn ask(
     conn: u64,
     req: AskReq,
     setting: impl FnOnce(&str) -> Option<AutoAnswer>,
@@ -193,7 +199,7 @@ fn label_of(asked: &AskIn) -> Option<String> {
 }
 
 /// 挂上一条（`conn` ＝ 它那条连接）：回它的号与等答的那一头。
-fn open_id(
+pub fn open_id(
     agent: &str,
     asked: AskIn,
     conn: u64,
@@ -227,7 +233,7 @@ fn open_id(
 }
 
 /// 替人答的那一句的缺省（交给那一家的话）。
-pub(crate) fn auto_say() -> String {
+pub fn auto_say() -> String {
     copy_text("beAsk.auto.say", &[])
 }
 
@@ -235,7 +241,7 @@ pub(crate) fn auto_say() -> String {
 const AUTO_CHOICES: [u32; 4] = [0, 5, 15, 30];
 
 /// 自动答可选的那几档 —— **唯一一处**：几档 ＋ 此刻那一格（`now`；关 ⇒ `None`）不在几档里 ⇒ 多列一项，按分钟排好；字都写好。
-pub(crate) fn auto_choices(now: Option<u32>) -> Vec<AutoChoice> {
+pub fn auto_choices(now: Option<u32>) -> Vec<AutoChoice> {
     let mut mins = AUTO_CHOICES.to_vec();
     if let Some(m) = now.filter(|m| !mins.contains(m)) {
         mins.push(m);
@@ -311,12 +317,12 @@ fn answer_for_nobody(id: &str, auto: &AutoAnswer) -> Option<Value> {
 }
 
 /// 这条会话最近一次替人答的那一句（下一次挂上提问前一直在）。
-pub(crate) fn answered(sid: &str) -> Option<Words> {
+pub fn answered(sid: &str) -> Option<Words> {
     book().answered.get(sid).cloned()
 }
 
 /// 替人答过的那几条（`sessions-needs.answered`），按会话 id 排。
-pub(crate) fn answered_rows() -> Vec<cmd_wire::needs::AnsweredRow> {
+pub fn answered_rows() -> Vec<cmd_wire::needs::AnsweredRow> {
     book()
         .answered
         .iter()
@@ -352,7 +358,7 @@ pub(crate) fn withdraw_conn(conn: u64) {
 }
 
 /// 某条会话此刻挂着的请求（挂上的先后）。
-pub(crate) fn pending(sid: &str) -> Vec<Ask> {
+pub fn pending(sid: &str) -> Vec<Ask> {
     let mut v: Vec<Ask> = book()
         .open
         .values()
@@ -468,7 +474,7 @@ fn answers_of(
 
 crate::wire::typed::codes! {
     /// `needs-answer` 的码。
-    pub(crate) enum AnswerErr {
+    pub enum AnswerErr {
         /// 没这一条（或不是这个会话的）。
         NotFound = "not_found",
         /// 选项不在这一条的选项里 / 那一家写不出这个决定。
@@ -479,7 +485,7 @@ crate::wire::typed::codes! {
 }
 
 /// `needs-answer`：答一条挂着的待答请求，第一个答案落下。锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 异步档。
-pub(crate) struct NeedsAnswerCmd;
+pub struct NeedsAnswerCmd;
 
 impl crate::wire::typed::Command for NeedsAnswerCmd {
     crate::wire::typed::by_call!(AnswerReq);
@@ -508,7 +514,7 @@ fn gone(said: String) -> Answered {
 
 /// `needs-answer` 的本体 ⇒ `{result: "answered"}`；别处先答了（别的出口 · 替人答过）· hook 那头已经走了（终端那边答了 · 被打断）
 /// ⇒ `{result: "gone", said}`（不是错：这一下没答进去，也不用再答）；没这一条 ⇒ `not_found`。
-pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Said> {
+pub fn answer(req: AnswerReq) -> Result<Answered, Said> {
     let (sid, id, choice) = (req.sid.as_str(), req.ask.as_str(), req.choice.as_str());
     let mut b = book();
     let Some(o) = b.open.get(id).filter(|o| o.ask.sid == sid) else {
@@ -566,7 +572,3 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Said> {
         gone(copy_text("askBlock.gone.elsewhere", &[]))
     })
 }
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/asks_tests.rs"]
-mod tests;

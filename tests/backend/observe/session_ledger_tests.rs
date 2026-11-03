@@ -29,6 +29,10 @@ fn went(f: &crate::wire::SessionLeft) -> Went {
 }
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
+#[expect(
+    clippy::large_enum_variant,
+    reason = "判据的输入序列，几十格；装箱只为过这条，读着更绕"
+)]
 enum Ev {
     F(Frame),
     T(String, Option<&'static str>),
@@ -307,7 +311,7 @@ fn an_unobservable_snapshot_reaps_nothing_and_releases_the_held_list() {
         unobservable(),
         unobservable(),
     ]);
-    assert_eq!(passed[1], false, "清单在第一份快照之前压住");
+    assert!(!passed[1], "清单在第一份快照之前压住");
     assert_eq!(
         out,
         vec![("*".to_string(), None)],
@@ -373,7 +377,7 @@ fn a_session_that_comes_back_leaves_reconnectable_and_the_list_passes_once_tmux_
     evs.push(removed("a", Cause::Gone));
     evs.extend(fresh(&[]));
     let (passed, out) = run(evs);
-    assert_eq!(passed[2], true, "快照已经到过 ⇒ 清单不压");
+    assert!(passed[2], "快照已经到过 ⇒ 清单不压");
     // 起初 `a` 不活 ⇒ 推导为可重连；又活了 ⇒ 摘掉；离开 ⇒ 可重连；又活了；离开时 tmux 已关 ⇒ 已结束。
     assert_eq!(out, fates(&[("a", R), ("a", R), ("a", E)]));
 }

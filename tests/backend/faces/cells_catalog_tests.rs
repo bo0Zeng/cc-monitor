@@ -495,12 +495,12 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
             .iter()
             .map(|l| {
-                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(crate::agents::claudecode::AGENT_KIND, l.as_bytes(), 0, l.len() as u64)).unwrap()
+                serde_json::to_value(crate::observe::recognize::index_row::test_support::index_row(crate::agents::claudecode::AGENT_KIND, l.as_bytes(), 0, l.len() as u64)).unwrap()
             })
             .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
-                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(
+                serde_json::to_value(crate::observe::recognize::index_row::test_support::index_row(
                     crate::agents::claudecode::AGENT_KIND,
                     line,
                     0,
@@ -586,12 +586,11 @@ fn corpus(name: &str) -> Vec<Value> {
 }
 
 /// 照本机后端 `groups-read` 那一步真合的一份（[`corpus`] 用）：各台那一片照线上那一形造，机器名 · 标题是结构夹具。
-fn real_groups_read() -> crate::history::groups::GroupsRead {
-    use crate::history::groups::{
-        merge, GroupsHere, GroupsMachine, Half, HereGroup, HereMember, MemberFacts,
-    };
-    use crate::history::history_browse::Read;
+fn real_groups_read() -> cmd_wire::groups::GroupsRead {
     use crate::wire::SessionFaceExt as _;
+    use cmd_wire::groups::{GroupsHere, GroupsMachine, HereGroup, HereMember, MemberFacts};
+    use cmd_wire::listing::HistoryMachineRead as Read;
+    use face_core::groups::{merge, Half};
     let m = cmd_wire::Machine::named;
     let member = |sid: &str, groups: &[&str], pinned: bool, life: crate::wire::Life| HereMember {
         sid: sid.into(),
@@ -642,7 +641,14 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
     merge(
         &[
             (m("c"), Half::Now(here)),
-            (m("e"), Half::Before(before, w("1h"))),
+            (
+                m("e"),
+                Half::Before {
+                    here: before,
+                    at: w("1h"),
+                    offline: w(&comms_inward::chan::said::offline("e")),
+                },
+            ),
             (m("f"), Half::None),
         ],
         vec![

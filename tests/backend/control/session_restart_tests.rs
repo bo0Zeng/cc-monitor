@@ -1,7 +1,9 @@
 //! 换号重启：停失败一定不起 · 压缩等摘要（真记录文件、真 inotify）· 等压缩时撤单不停不起 · 回复与各码（替身记下被调了什么；tmux 一个都不起）。
 
-use super::*;
-use crate::control::session_batch::{Listed, TermEntry};
+use crate::common::said::Said;
+use crate::control::launch_account as la;
+use crate::control::session_batch::{self as batch, Deps, Listed, TermEntry};
+use crate::control::session_restart::*;
 use crate::wire::SessionFaceExt as _;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -114,10 +116,11 @@ impl Rig {
         self.calls().iter().filter(|c| c.starts_with(what)).count()
     }
     fn deps<T>(&self, f: impl FnOnce(&Deps<'_>) -> T) -> T {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let caps: BTreeSet<String> =
+            crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
         let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(Some(self.rows.clone()), vec![]))

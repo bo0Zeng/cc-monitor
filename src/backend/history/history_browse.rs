@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use cmd_wire::cells::Words;
-use cmd_wire::listing::{HistoryGroup, HistoryHead, HistoryRow};
+use cmd_wire::listing::{HistoryGroup, HistoryHead, HistoryMachineRead as Read, HistoryRow};
 use cmd_wire::sync::{Patch, Range};
 use cmd_wire::Machine;
 // 几台并一列 · 分叉挂父：手机会话屏同一份（共享核心）。
@@ -142,33 +142,6 @@ pub struct HistoryBrowseReq {
     pub(crate) forks: Vec<RowId>,
     /// 要哪一窗（`limit` 1–2000）。总数在回包的头里。
     pub(crate) range: Range,
-}
-
-/// 一台此刻读没读到。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        rename = "HistoryMachineRead",
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(tag = "is", rename_all = "snake_case")]
-pub enum Read {
-    /// 读到了；注解没并上 ⇒ 那一句。
-    Ok { notice: Option<String> },
-    /// 读不到、手上有上一次的副本：行照副本出，`at` ＝ 那份是几时读到的（写好的字），不冒充读到。
-    Stale {
-        why: String,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-        at: Words,
-    },
-    /// 读不到、从没读到过：那一句（没有行）。
-    Failed { why: String },
-    /// 远端那台还没同步过、这一问也没带它的 `fresh`。
-    Unread,
 }
 
 /// 一台那一格。

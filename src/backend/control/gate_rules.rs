@@ -83,7 +83,7 @@ pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
 pub(crate) const CLIENT_TERMINAL: &str = "ccm";
 
 /// `@ccm_client` 与请求里 `client` 的形状：1–32 个 `[a-z0-9-]`，不以 `-` 开头（会被写进 tmux 会话选项）。
-pub(crate) fn client_name_ok(n: &str) -> bool {
+pub fn client_name_ok(n: &str) -> bool {
     (1..=32).contains(&n.len())
         && !n.starts_with('-')
         && n.chars()

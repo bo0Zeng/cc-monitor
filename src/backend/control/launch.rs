@@ -62,7 +62,7 @@ const MAX_FIELD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[cfg_attr(test, serde(rename_all = "kebab-case"))]
-pub(crate) enum Mode {
+pub enum Mode {
     /// 幂等：会话不在就建 + 键入载荷；已在就**什么都不做**（不重复 resume）。
     CreateOrAttach,
     /// 往一个**已存在**的会话键入载荷。不存在 ⇒ 报错，**绝不新建**。
@@ -74,36 +74,36 @@ pub(crate) enum Mode {
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[cfg_attr(test, serde(deny_unknown_fields))]
-pub(crate) struct LaunchReq {
+pub struct LaunchReq {
     /// `create-or-attach`（建或接）· `send-into`（往已在的会话里键入）。
-    pub(crate) mode: Mode,
+    pub mode: Mode,
     /// tmux 会话名。
-    pub(crate) name: String,
+    pub name: String,
     /// 要键入的那一行（`create-or-attach` 放行换行 · 制表）。
-    pub(crate) payload: String,
+    pub payload: String,
     /// 可选，仅 create-or-attach。
     #[cfg_attr(test, serde(default))]
-    pub(crate) cwd: Option<String>,
+    pub cwd: Option<String>,
     /// 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
     #[cfg_attr(test, serde(default))]
-    pub(crate) ccm_sid: Option<cmd_wire::Sid>,
+    pub ccm_sid: Option<cmd_wire::Sid>,
     /// 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
     #[cfg_attr(test, serde(default))]
-    pub(crate) agent: Option<String>,
+    pub agent: Option<String>,
     /// 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给。
     #[cfg_attr(test, serde(default))]
-    pub(crate) width: Option<String>,
+    pub width: Option<String>,
     /// 同 `width`。
     #[cfg_attr(test, serde(default))]
-    pub(crate) height: Option<String>,
+    pub height: Option<String>,
     /// 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）。
     #[cfg_attr(test, serde(default))]
-    pub(crate) client: Option<String>,
+    pub client: Option<String>,
 }
 
 /// 一次 `launch` 请求（已过形状校验）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LaunchRequest {
+pub struct LaunchRequest {
     pub(crate) mode: Mode,
     pub(crate) name: String,
     pub(crate) payload: String,
@@ -138,7 +138,7 @@ pub(crate) struct LaunchRequest {
 
 /// 一次 `launch` 的结局。三个字段就是「没起成 / 起了但没确认 / 起成了」的载体。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LaunchOutcome {
+pub struct LaunchOutcome {
     /// 本次是否**新建**了会话（幂等短路时为 false）。
     pub(crate) created: bool,
     /// `send-keys` **退出码为 0**（幂等短路时为 false —— 会话已在，不重复 resume）。
@@ -169,7 +169,7 @@ pub(crate) fn exact_target(name: &str) -> String {
 
 /// 已按类型解好的入参 ⇒ **形状校验**（值域）。见模块头注：这不是安全边界。
 /// 帧面（typed 分派解入参）与 `ccm --tmux` 那条路（[`super::ccm`] 直接造 [`LaunchReq`]）都过这一道。
-pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
+pub fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
     let LaunchReq {
         mode,
         name,
@@ -415,6 +415,10 @@ pub(crate) const LAUNCH_CAP: Deadline = Deadline::secs(8);
 
 /// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "三样都是往 tmux 上打的标，名字照它们各自那一格"
+)]
 pub(crate) enum Secondary {
     /// agent 标（`@ccm_agent`）。
     AgentTag,
@@ -456,7 +460,7 @@ pub(crate) fn secondary_note(
     let why = match r {
         Ok(Ran { ok: true, .. }) => return None,
         Ok(Ran { ok: false, stderr }) => stderr.clone(),
-        Err(f) => crate::common::said::Said::from(f.clone()).logged(),
+        Err(f) => f.clone().logged(),
     };
     Some(format!(
         "会话 {session:?} 建好了，但{}没做成：{why} —— {}",
@@ -502,7 +506,11 @@ pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
     })
 }
 
-pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchErr> {
+#[expect(
+    clippy::result_large_err,
+    reason = "起会话那一族的错带着要回给界面的整份诊断，一趟一次，不值得装箱"
+)]
+pub fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchErr> {
     run_with(req, &tmux)
 }
 
@@ -516,8 +524,8 @@ pub(crate) enum Delivery {
 /// [`run`] 的失败：线上那一份 [`Said`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
 /// 线上只看 `fail`（两种同码 `typed_unconfirmed`）；`untyped` 给命令行那一处决定接进去还是收掉（`ccm::execute`）。
 #[derive(Debug, PartialEq)]
-pub(crate) struct LaunchErr {
-    pub(crate) fail: Said,
+pub struct LaunchErr {
+    pub fail: Said,
     /// `Some((哪一种, 本趟建的那个会话的令牌))`：只在送键那一发上有。
     pub(crate) untyped: Option<(Delivery, Option<JustMade>)>,
 }
@@ -596,11 +604,7 @@ fn create(
 }
 
 /// 开一个空 shell 的 tmux 会话（不起 agent、不键入）：不在 ⇒ 建在 `cwd` 里、记下是哪个前端建的；已在 ⇒ 不动它。回「这一趟建的」。
-pub(crate) fn open_shell(
-    name: &str,
-    cwd: Option<&str>,
-    client: Option<&str>,
-) -> Result<bool, Said> {
+pub fn open_shell(name: &str, cwd: Option<&str>, client: Option<&str>) -> Result<bool, Said> {
     open_shell_with(name, cwd, client, &tmux)
 }
 
@@ -626,6 +630,10 @@ pub(crate) fn open_shell_with(
 
 /// [`run`] 的本体：起 tmux 的那一下由调用方交进来（生产 = [`tmux`]；判据交一个不起进程的替身，
 /// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 那一臂的门（`gate::admit`）照旧起真 tmux。
+#[expect(
+    clippy::result_large_err,
+    reason = "起会话那一族的错带着要回给界面的整份诊断，一趟一次，不值得装箱"
+)]
 fn run_with(
     req: &LaunchRequest,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
@@ -744,6 +752,10 @@ enum TypeAt<'a> {
 /// 空 shell 那一形（`send-into` 往里敲的就是它）跟着没了。
 /// 送键那一发过了期限 ⇒ 也归 `typed_unconfirmed`（会话在，送没送到不知道），期限那句进复制详情。
 /// `name`：说给人听的那个 tmux 会话名。本趟新建的那一形失败时把令牌带回去，命令行那一处据此决定收不收。
+#[expect(
+    clippy::result_large_err,
+    reason = "起会话那一族的错带着要回给界面的整份诊断，一趟一次，不值得装箱"
+)]
 fn type_payload(
     at: TypeAt<'_>,
     name: &str,

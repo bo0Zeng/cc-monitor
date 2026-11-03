@@ -468,6 +468,16 @@ val MIGRATION_23_24 =
         }
     }
 
+// 24 → 25：缓存那四张表搬去缓存库（`CacheDatabase`，不迁移）：状态库里那几张整张删掉，不搬行（缓存，照那台重取）。别的表一字不动。
+val MIGRATION_24_25 =
+    object : Migration(24, 25) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            for (t in listOf("sessions", "list_holds", "record_pages", "sync_anchors")) {
+                db.execSQL("DROP TABLE IF EXISTS `$t`")
+            }
+        }
+    }
+
 /** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
 fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
@@ -494,4 +504,5 @@ fun allMigrations(crypto: CryptoBox): Array<Migration> =
         Migration21To22(crypto),
         MIGRATION_22_23,
         MIGRATION_23_24,
+        MIGRATION_24_25,
     )

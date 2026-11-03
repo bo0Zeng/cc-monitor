@@ -254,7 +254,7 @@ fn tail_brace() -> String {
     format!("\n{}\n", '\u{7d}')
 }
 fn enum_mode_head() -> String {
-    format!("pub(crate) enum Mode {}", '\u{7b}')
+    format!("pub enum Mode {}", '\u{7b}')
 }
 
 fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
@@ -372,6 +372,10 @@ fn send_into_never_creates_a_session() {
 /// ⚠ 本条是**源码层**（读自己这份源码的函数体）：挡得住「悄悄加/减一道检查」，
 /// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，数与超了怎么办写在那个 `Cap` 上，不归本条。
 #[test]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "数括号那一段要下标定函数体的终点"
+)]
 fn the_payload_is_still_only_shape_checked() {
     let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
     let at = src
@@ -662,7 +666,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
     // 契约那一句住结局 `LaunchOutcome` 的 `typed` 那一格的文档注释（`session-open` · 换号重启读它判送没送到）。
     let src = include_str!("../../../src/backend/control/launch.rs");
     let at = src
-        .find("pub(crate) struct LaunchOutcome {")
+        .find("pub struct LaunchOutcome {")
         .expect("找不到 `LaunchOutcome` —— 改名了就把本条一起改");
     let rest = &src[at..];
     let doc = rest
@@ -722,6 +726,10 @@ fn no_doc_claims_the_payload_really_landed() {
 // **正确形状就在隔壁文件。**」· `§4.7 S5` 逐字「**处置不是别吞，是吞了要留一行日志**」。
 
 /// 不起进程的 tmux 替身：按子命令分派结局，并记下每一次被调的 argv（顺序即调用顺序）。
+#[expect(
+    clippy::type_complexity,
+    reason = "替身的结局那只手只在这一处，另起类型名只为过这条提示"
+)]
 struct FakeTmux {
     calls: std::cell::RefCell<Vec<Vec<String>>>,
     answer: Box<dyn Fn(&str) -> Result<Ran, Said>>,

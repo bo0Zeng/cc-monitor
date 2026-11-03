@@ -6,8 +6,8 @@
 //!   这台那一片没读成（两边都没答 · 这台那一格读不到）⇒ `no_roster`，不退回成全放行。
 //! - 整组投递不做（A76）。
 
-use crate::history::groups::GroupsRead;
-use crate::history::history_browse::Read;
+use cmd_wire::groups::GroupsRead;
+use cmd_wire::listing::HistoryMachineRead as Read;
 
 use crate::common::said::Said;
 
@@ -64,9 +64,7 @@ pub(crate) async fn groups_now(tz: crate::common::time::Tz) -> Result<GroupsRead
 
 /// 转给这台的常驻：`groups-read {这台 ＋ 机器表里的每一台}`（等 20 秒：它问到各台 ＋ 回程）。
 /// `session-self` 那一问也走这一处（命令表 `registry/history.rs` 里那一份同样的换成调这里）。
-pub(crate) async fn groups_via_resident(
-    tz: &crate::common::time::Tz,
-) -> Result<GroupsRead, String> {
+pub async fn groups_via_resident(tz: &crate::common::time::Tz) -> Result<GroupsRead, String> {
     let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
     let machines: Vec<cmd_wire::Machine> =
         std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))

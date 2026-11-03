@@ -6,7 +6,7 @@
 use super::*;
 
 fn sleeper() -> std::process::Child {
-    crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+    crate::platform::proc::test_support::spawn_settled_sleep(|c| {
         c.env_remove("TMUX_PANE").env_remove("TMUX");
     })
 }
@@ -142,7 +142,6 @@ fn next_primed(ev: &std::sync::mpsc::Receiver<WatchEvent>) -> PrimeDone {
 /// 「清单报完了」照样出（第一份 tmux 观测一到就放）。卡住那一条读完之前它的读完那一帧不出。
 #[test]
 fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("stuck");
     let stuck = rig.session("p-stuck");
     let w = stuck_record(&stuck, b"{\"cwd\":\"/w\"}\n");
@@ -153,7 +152,8 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
     state.pool = Some(PrimePool::start(ev_tx));
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::hub();
-    sink.subs.push(Sub::new(0, tx, crate::Tz::default()));
+    sink.subs
+        .push(Sub::new(0, tx, crate::common::time::Tz::default()));
 
     // 初扫回来了（卡住的那一趟在池子里，不挡本线程）⇒ watch_loop 接着起第一份 tmux 观测。
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
@@ -188,7 +188,6 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
 /// 之后第一帧 `line` 的 `seq` ＝ 那一帧的 `lines`，往后连续。
 #[test]
 fn nothing_streams_before_the_prime_lands_and_then_it_streams_on_from_its_count() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("order");
     let rec = rig.session("p-order");
     std::fs::write(&rec, lines(0..5)).unwrap();
@@ -227,7 +226,6 @@ fn nothing_streams_before_the_prime_lands_and_then_it_streams_on_from_its_count(
 /// ③ 同时在预读的份数不超过池子的线程数（数在跑的任务）：比线程数多两份卡住的记录，在跑的恰好到上限、多出来的排着。
 #[test]
 fn no_more_primes_run_at_once_than_the_pool_has_threads() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("cap");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let pool = PrimePool::start(ev_tx);
@@ -273,7 +271,6 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
 /// 每条连接拿到的是同一个续点（宣告 ＋ 读完那一帧，`lines` ＝ 此刻已计完的行数）。
 #[test]
 fn three_connections_on_one_record_prime_it_once() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("once");
     let rec = rig.session("p-once");
     let body = lines(0..40);
@@ -286,7 +283,7 @@ fn three_connections_on_one_record_prime_it_once() {
     for id in 1..=3 {
         let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
         join(
-            Sub::new(id, tx, crate::Tz::default()),
+            Sub::new(id, tx, crate::common::time::Tz::default()),
             None,
             &mut state,
             &mut sink,
@@ -317,7 +314,6 @@ fn three_connections_on_one_record_prime_it_once() {
 /// 池子先被卡住的几份占满，A、B 依宣告次序排在后面；报名单 [B] 之后空出一位 ⇒ 交出去的是 B，不是先排的 A。已在读的不撤。
 #[test]
 fn the_watched_session_is_primed_first() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("watched");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let pool = PrimePool::start(ev_tx);
@@ -430,7 +426,6 @@ fn prime_once(
 /// 改写过（同长）⇒ 整份；之后追加 k 字节 ⇒ 读 k ＋ 见证。
 #[test]
 fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
-    let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("skel");
     let rec = rig.session("p-skel");
     let body = chained(0..40);

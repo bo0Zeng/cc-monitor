@@ -1,5 +1,6 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份（账号清单 · 「文件与数据」那一份），断开时界面照它画「上次的」，跨重启还在。
-//! 住 `~/.cc-monitor/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），后端自己的状态；能重建（再连上一次就有），按缓存记。
+//! 住 `~/.cc-monitor/cache/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），别台那几份的副本，按缓存记（再连上一次就有）。
+//! 缓存目录之前它住 `~/.cc-monitor/last-seen.json`（[`OLD_LAST_SEEN_REL`]）：写的那一下删掉，不搬内容。
 //! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! 每一样按它那条命令的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`Seen`]）。
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
@@ -246,25 +247,30 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     }
     let shape = cmd_wire::shapes::shape_of(kind.cmd());
     let (dir, file) = place(own)?;
-    own.ensure_dir(&dir).map_err(|e| {
-        Said::new(
-            "io_failed",
-            crate::common::said::IntoNote::into_note(Said::with_raw(
-                copy_text(
-                    "beChore.marks.mkdirFailed",
-                    &[
-                        ("dir", &dir.as_path().display().to_string()),
-                        ("why", &copy_core::io_reason(e.kind())),
-                    ],
-                ),
-                e,
-            )),
-        )
-    })?;
+    // 先 `~/.cc-monitor` 再它底下的缓存目录（建目录只建一层）。
+    let home = own.home_dir().ok();
+    for d in home.iter().chain(std::iter::once(&dir)) {
+        own.ensure_dir(d).map_err(|e| {
+            Said::new(
+                "io_failed",
+                crate::common::said::IntoNote::into_note(Said::with_raw(
+                    copy_text(
+                        "beChore.marks.mkdirFailed",
+                        &[
+                            ("dir", &d.as_path().display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    e,
+                )),
+            )
+        })?;
+    }
     locked_edit(own, &dir, &file, |all| {
         record(all, origin, kind.key(), &value, shape, now_ms);
         true
     })?;
+    drop_old_last_seen(own);
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
@@ -284,14 +290,30 @@ fn locked_edit(
     Ok(())
 }
 
-/// 那份文件所在的那一层（`~/.cc-monitor`）与它本身。没有家目录 ⇒ `io_failed`。
+/// 缓存目录之前的落点（缓存：写的那一下删掉，不搬；这一步挂到期那一版，见 retired-names）。
+pub(crate) const OLD_LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
+
+/// 那份文件所在的那一层（`~/.cc-monitor/cache`）与它本身。没有家目录 ⇒ `io_failed`。
 fn place(own: &Own) -> Result<(OwnPath, OwnPath), Said> {
     let no_home =
         |_| crate::wire::spec::fail("io_failed", copy_text("beLastSeen.store.noHome", &[]));
+    let dir = DOC.rel.rsplit_once('/').map_or(DOC.rel, |(d, _)| d);
     Ok((
-        own.home_dir().map_err(no_home)?,
+        own.at_home(dir).map_err(no_home)?,
         own.at_home(DOC.rel).map_err(no_home)?,
     ))
+}
+
+/// 旧位置那一份还在 ⇒ 删掉（删不掉只留一行日志：它只是缓存）。
+fn drop_old_last_seen(own: &Own) {
+    let Ok(old) = own.at_home(OLD_LAST_SEEN_REL) else {
+        return;
+    };
+    if old.as_path().is_file() {
+        if let Err(e) = own.delete_file(&old) {
+            tracing::warn!(target: "last_seen", path = %old.as_path().display(), error = %e, "old last-seen not removed");
+        }
+    }
 }
 
 /// 记下一份；台数超了先丢最久没更新的那台。

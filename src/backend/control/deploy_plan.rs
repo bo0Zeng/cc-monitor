@@ -128,7 +128,7 @@ pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, S
 }
 
 /// 装完的那份计划 → 应答。
-pub(crate) fn installed_of(p: &Plan) -> Installed {
+pub fn installed_of(p: &Plan) -> Installed {
     let build = match &p.action {
         DeployAction::Keep { theirs, .. } => theirs.clone(),
         DeployAction::Skip | DeployAction::Deploy(_) => p.expected.clone(),
@@ -159,7 +159,7 @@ fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
 }
 
 /// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。
-pub async fn install(
+pub(crate) async fn install(
     req: &DeployInstallReq,
     host: &dyn deploy::Place,
     on: &(dyn Fn(deploy::Step) + Send + Sync),
@@ -174,7 +174,7 @@ pub async fn install(
 crate::wire::typed::codes! {
     /// `deploy-install` 的码：读写那台没成 · 那一格这一版不承诺 / 没带 · 够不到那台 · 那台那一份说不清自己是谁 ·
     /// 推不上去（围栏拒）· 那一份没换进落点。
-    pub(crate) enum DeployInstallErr {
+    pub enum DeployInstallErr {
         IoFailed = "io_failed",
         Refused = "refused",
         Unreachable = "unreachable",
@@ -186,7 +186,7 @@ crate::wire::typed::codes! {
 }
 
 /// `deploy-install`：给那台装 / 升级后端。真异步（拨号 / 等远端）。
-pub(crate) struct DeployInstall;
+pub struct DeployInstall;
 
 impl crate::wire::typed::Command for DeployInstall {
     crate::wire::typed::by_call!(DeployInstallReq);
@@ -248,7 +248,7 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
 // SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参那两格同 `deploy-install`。
 
 /// `deploy-uninstall` 的本体（对面由调用方给）。
-pub async fn uninstall(
+pub(crate) async fn uninstall(
     req: &DeployUninstallReq,
     host: &dyn deploy::Place,
 ) -> Result<Uninstalled, Said> {
@@ -263,7 +263,7 @@ pub async fn uninstall(
 
 crate::wire::typed::codes! {
     /// `deploy-uninstall` 的码：读写那台没成 · 那一格这一版不承诺 / 没带 · 够不到那台 · 推不上去（围栏拒）· 那一份没删成。
-    pub(crate) enum DeployUninstallErr {
+    pub enum DeployUninstallErr {
         IoFailed = "io_failed",
         Refused = "refused",
         Unreachable = "unreachable",
@@ -274,7 +274,7 @@ crate::wire::typed::codes! {
 }
 
 /// `deploy-uninstall`：删那台的后端（真异步：拨号 / 等远端）。
-pub(crate) struct DeployUninstall;
+pub struct DeployUninstall;
 
 impl crate::wire::typed::Command for DeployUninstall {
     crate::wire::typed::by_call!(DeployUninstallReq);
@@ -283,17 +283,14 @@ impl crate::wire::typed::Command for DeployUninstall {
 
 impl crate::wire::typed::Handle for DeployUninstall {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: DeployUninstallReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Uninstalled, DeployUninstallErr>> + Send + 'static
-    {
-        async move {
-            let facing = facing_of(&req.machine).map_err(DeployUninstallErr::BadArgs)?;
-            uninstall(&req, &facing)
-                .await
-                .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))
-        }
+    ) -> Result<Uninstalled, DeployUninstallErr> {
+        let facing = facing_of(&req.machine).map_err(DeployUninstallErr::BadArgs)?;
+        uninstall(&req, &facing)
+            .await
+            .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))
     }
 }
 
@@ -306,7 +303,7 @@ impl crate::wire::typed::Handle for DeployUninstall {
 
 /// 本机那一份的去向。
 #[derive(Debug, PartialEq, Eq)]
-pub enum Placed {
+pub(crate) enum Placed {
     /// 放（换）上去；`why` = 人读原因。
     Place(String),
     /// 不动、用盘上那一份（它不比这一份旧）；`why` 点名两边各是哪一版。
@@ -316,7 +313,7 @@ pub enum Placed {
 /// **纯函数**：`me` = 这份字节自己的键（就是这台）· `disk` = 落点那个文件（`Ok(None)` = 不在 · `Err` = 读不了）· `mine` = 自己的 `BUILD_ID`。
 /// 只在「盘上与手上逐字节不同」时被问（相同那一形 monitor 直接用、不问）⇒ 同一版那一格也是放（开发树重编：同 id、不同字节）。
 /// 拒：`refused`（表 A / 表 B，那句话是 `Refusal::say`）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 读不了）。
-pub fn place_verdict(
+pub(crate) fn place_verdict(
     me: Result<Key, Refusal>,
     disk: Result<Option<Vec<u8>>, String>,
     mine: &str,
@@ -340,10 +337,10 @@ pub fn place_verdict(
 
 /// `place-verdict` 的入参：落点的绝对路径 · 对人说话时这台叫什么（monitor 交「本机」，不是机器名）。
 #[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlaceReq {
+pub struct PlaceReq {
     /// 不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装。
     pub(crate) dest: String,
     pub(crate) machine: String,
@@ -351,11 +348,11 @@ pub(crate) struct PlaceReq {
 
 /// `place-verdict` 的应答。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct PlaceAnswer {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlaceAnswer {
     /// `place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它）。
-    #[cfg_attr(test, ts(type = "\"place\" | \"keep\""))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"place\" | \"keep\""))]
     pub(crate) action: &'static str,
     /// 人读原因（`keep` 时点名两边各是哪一版）。
     pub(crate) why: String,
@@ -363,7 +360,7 @@ pub(crate) struct PlaceAnswer {
 
 /// `place-verdict` 的本体：`dest` 不是绝对路径 · `machine` 空 ⇒ `bad_args`。
 /// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::common::id::BUILD_ID`）。
-pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
+pub(crate) fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
     let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     if !std::path::Path::new(&req.dest).is_absolute() {
         return Err(bad("missing `dest` (absolute path)"));
@@ -400,14 +397,14 @@ pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
 
 crate::wire::typed::codes! {
     /// `place-verdict` 的码：这一格不承诺 · 落点那一份说不清自己是谁 / 读不了。
-    pub(crate) enum PlaceErr {
+    pub enum PlaceErr {
         Refused = "refused",
         Undecidable = "undecidable",
     }
 }
 
 /// `place-verdict`：本机那一份放不放（只读落点那一个文件 ⇒ 阻塞档）。
-pub(crate) struct PlaceVerdict;
+pub struct PlaceVerdict;
 
 impl crate::wire::typed::Command for PlaceVerdict {
     const NAME: &'static str = "place-verdict";
@@ -418,13 +415,11 @@ impl crate::wire::typed::Command for PlaceVerdict {
 
 impl crate::wire::typed::Handle for PlaceVerdict {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PlaceReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<PlaceAnswer, PlaceErr>> + Send + 'static {
-        async move {
-            answer_place(&req).map_err(|f| crate::wire::typed::of_fail(f, PlaceErr::Undecidable))
-        }
+    ) -> Result<PlaceAnswer, PlaceErr> {
+        answer_place(&req).map_err(|f| crate::wire::typed::of_fail(f, PlaceErr::Undecidable))
     }
 }
 

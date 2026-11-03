@@ -61,8 +61,9 @@ pub(crate) const START_LINE: &str = "-S";
 /// 这一处只许发的 argv：要不要颜色、往回几行。顺序有两条硬约束：
 /// - [`UTF8_CLIENT_FLAG`] 必须排在子命令之前（放后面是 `rc=1 + unknown flag -u`，会被下面的判法读成「抓不到」）；
 /// - [`PRINT_TO_STDOUT`] 不许换成落 buffer 的写法 —— 那就不再是只读。
+///
 /// 逐元素由 `readonly_guard::capture_is_read_only` 钉死。
-pub(crate) fn capture_argv_with(target: &str, color: bool, back: u32) -> Vec<String> {
+pub fn capture_argv_with(target: &str, color: bool, back: u32) -> Vec<String> {
     let mut v: Vec<String> = vec![
         UTF8_CLIENT_FLAG.into(),
         CAPTURE_SUBCOMMAND.into(),

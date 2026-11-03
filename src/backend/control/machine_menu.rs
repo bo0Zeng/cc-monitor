@@ -13,8 +13,8 @@ use crate::platform::ssh_client::SshClient;
 
 /// 打中的那台从哪来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MachineFrom {
     /// 本机。
@@ -27,8 +27,8 @@ pub(crate) enum MachineFrom {
 
 /// 打中的那一台。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct MachineHit {
     /// 那台的名字（本机 ⇒ `<local>`；机器表里的写法）。
     pub(crate) machine: cmd_wire::Machine,
@@ -95,8 +95,8 @@ pub(crate) fn find_in(query: &str, table: &[String], aliases: &[String]) -> Opti
 
 /// 面板那一块里的一样动作是什么（标题是界面的骨架字）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MenuAct {
     OpenTerminal,
@@ -108,8 +108,8 @@ pub(crate) enum MenuAct {
 
 /// 一样动作：副文（标题后那一段灰字）· 灰着时那一句（有 ⇒ 不可用）· 照做时的提醒（第二行）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct MenuAction {
     pub(crate) act: MenuAct,
     pub(crate) sub: Option<String>,
@@ -119,9 +119,9 @@ pub(crate) struct MenuAction {
 
 /// `machine-menu` 的回包。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachineMenu {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MachineMenu {
     pub(crate) from: MachineFrom,
     /// 那台的机器状态成品（同设置 › 机器卡那一份）；只在 ssh 配置里的那一种没有。
     pub(crate) head: Option<MachineState>,
@@ -231,24 +231,24 @@ pub(crate) fn menu_in(
 
 /// `machine-find` 的入参：框里此刻的字。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct MachineFindReq {
+pub struct MachineFindReq {
     pub(crate) query: String,
 }
 
 /// `machine-find` 的回包：打中的那台；没打中 ⇒ 空。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachineFind {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct MachineFind {
     pub(crate) hit: Option<MachineHit>,
 }
 
 crate::wire::typed::codes! {
     /// `machine-find` 没有别的码（没打中是空，不是错）。
-    pub(crate) enum MachineFindErr {}
+    pub enum MachineFindErr {}
 }
 
 /// 机器表此刻那几台的名字。
@@ -260,7 +260,7 @@ fn table_names() -> Vec<String> {
 }
 
 /// `machine-find`：读机器表 ＋ `~/.ssh/config` ⇒ 阻塞档。
-pub(crate) struct MachineFindCmd;
+pub struct MachineFindCmd;
 
 impl crate::wire::typed::Command for MachineFindCmd {
     const NAME: &'static str = "machine-find";
@@ -271,41 +271,38 @@ impl crate::wire::typed::Command for MachineFindCmd {
 
 impl crate::wire::typed::Handle for MachineFindCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: MachineFindReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachineFind, MachineFindErr>> + Send + 'static
-    {
-        async move {
-            Ok(MachineFind {
-                hit: find_in(
-                    &req.query,
-                    &table_names(),
-                    &crate::dial::ssh_config::list_aliases(),
-                ),
-            })
-        }
+    ) -> Result<MachineFind, MachineFindErr> {
+        Ok(MachineFind {
+            hit: find_in(
+                &req.query,
+                &table_names(),
+                &crate::dial::ssh_config::list_aliases(),
+            ),
+        })
     }
 }
 
 /// `machine-menu` 的入参：那台的名字（`machine-find` 交回的那一份）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct MachineMenuReq {
+pub struct MachineMenuReq {
     pub(crate) machine: cmd_wire::Machine,
 }
 
 crate::wire::typed::codes! {
     /// `machine-menu` 的码：机器表与 `~/.ssh/config` 里都没有那台。
-    pub(crate) enum MachineMenuErr {
+    pub enum MachineMenuErr {
         NoSuchMachine = "no_such_machine",
     }
 }
 
 /// `machine-menu`：读机器表 · 机器状态表 · `~/.ssh/config` · 找 ssh 客户端 ⇒ 阻塞档。
-pub(crate) struct MachineMenuCmd;
+pub struct MachineMenuCmd;
 
 impl crate::wire::typed::Command for MachineMenuCmd {
     const NAME: &'static str = "machine-menu";
@@ -316,39 +313,36 @@ impl crate::wire::typed::Command for MachineMenuCmd {
 
 impl crate::wire::typed::Handle for MachineMenuCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: MachineMenuReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachineMenu, MachineMenuErr>> + Send + 'static
-    {
-        async move {
-            let name = req.machine.to_string();
-            let from = if req.machine.is_local() {
-                MachineFrom::Local
-            } else if table_names().iter().any(|n| *n == name) {
-                MachineFrom::Table
-            } else if crate::dial::ssh_config::list_aliases()
-                .iter()
-                .any(|a| *a == name && !wildcard(a))
-            {
-                MachineFrom::SshConfig
-            } else {
-                return Err(MachineMenuErr::NoSuchMachine(copy_text(
-                    "beMachineMenu.menu.noSuch",
-                    &[("machine", &name)],
-                )));
-            };
-            let head = (from != MachineFrom::SshConfig)
-                .then(|| crate::control::machine_state::read().remove(&name))
-                .flatten();
-            Ok(menu_in(
-                &name,
-                from,
-                head,
-                &crate::platform::ssh_client::locate(),
-                crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
-            ))
-        }
+    ) -> Result<MachineMenu, MachineMenuErr> {
+        let name = req.machine.to_string();
+        let from = if req.machine.is_local() {
+            MachineFrom::Local
+        } else if table_names().contains(&name) {
+            MachineFrom::Table
+        } else if crate::dial::ssh_config::list_aliases()
+            .iter()
+            .any(|a| *a == name && !wildcard(a))
+        {
+            MachineFrom::SshConfig
+        } else {
+            return Err(MachineMenuErr::NoSuchMachine(copy_text(
+                "beMachineMenu.menu.noSuch",
+                &[("machine", &name)],
+            )));
+        };
+        let head = (from != MachineFrom::SshConfig)
+            .then(|| crate::control::machine_state::read().remove(&name))
+            .flatten();
+        Ok(menu_in(
+            &name,
+            from,
+            head,
+            &crate::platform::ssh_client::locate(),
+            crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+        ))
     }
 }
 

@@ -63,18 +63,18 @@ use cmd_wire::transfer::{
 };
 
 /// 开单：下载。
-pub const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
+pub(crate) const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
 /// 起跑。
-pub const TRANSFER_START: &str = <TransferStart as typed::Command>::NAME;
+pub(crate) const TRANSFER_START: &str = <TransferStart as typed::Command>::NAME;
 /// 撤。
-pub const TRANSFER_STOP: &str = <TransferStop as typed::Command>::NAME;
+pub(crate) const TRANSFER_STOP: &str = <TransferStop as typed::Command>::NAME;
 /// 开单（上传）那一条（typed，帧面硬臂那一档：要碰本连接的票表）。
-pub(crate) struct TransferUpload;
+pub struct TransferUpload;
 
 codes! {
     /// `transfer-upload` 会回的码（一项没开成不是整组没开成：读不到本机那一份 `io_failed` · 同一份已有一张票 `busy` ·
     /// 票满了 `too_many_transfers` 都在那一项上）。
-    pub(crate) enum UploadErr {
+    pub enum UploadErr {
         /// 远端落点有同名的、还没答怎么办（一单都没开）：`data` 是同名清单。
         Exists = "exists" => Conflicts,
     }
@@ -87,7 +87,7 @@ impl typed::Command for TransferUpload {
 
 codes! {
     /// `transfer-start` 会回的码。
-    pub(crate) enum StartErr {
+    pub enum StartErr {
         /// 这条连接上没有这张票。
         NoSuchTransfer = "no_such_transfer",
         /// 这张票已经起跑过。
@@ -97,11 +97,11 @@ codes! {
 
 codes! {
     /// `transfer-stop` 没有别的码（撤不在册的也回 `ok`）。
-    pub(crate) enum StopErr {}
+    pub enum StopErr {}
 }
 
 /// 起跑那一条（帧面硬臂：之后进度与终局走 `transfer` 帧）。
-pub(crate) struct TransferStart;
+pub struct TransferStart;
 
 impl typed::Command for TransferStart {
     typed::by_call!(TransferStartReq);
@@ -109,7 +109,7 @@ impl typed::Command for TransferStart {
 }
 
 /// 撤那一条（帧面硬臂，幂等）。
-pub(crate) struct TransferStop;
+pub struct TransferStop;
 
 impl typed::Command for TransferStop {
     typed::by_call!(TransferStopReq);
@@ -117,11 +117,11 @@ impl typed::Command for TransferStop {
 }
 
 /// 开单（下载）那一条（同 [`TransferUpload`]）。
-pub(crate) struct TransferDownload;
+pub struct TransferDownload;
 
 codes! {
     /// `transfer-download` 会回的码。
-    pub(crate) enum DownloadErr {
+    pub enum DownloadErr {
         /// 本机落点目录过不了路径解析。
         Refused = "refused",
         /// 本机落点有同名的、还没答怎么办（一单都没开）：`data` 是同名清单。
@@ -141,14 +141,14 @@ const CHUNK: usize = 32 * 1024;
 const PROGRESS_EVERY: u64 = 256 * 1024;
 
 /// 一条流连接上同时在册的票数上限（有界资源：每张票起跑后两个任务）。
-pub const MAX_TICKETS_PER_CONNECTION: usize = 64;
+pub(crate) const MAX_TICKETS_PER_CONNECTION: usize = 64;
 
 // ═══ 暂存件的键 ════════════════════════════════════════════════════════════════════════
 
 /// 由（本机路径 · 大小 · 修改时间）派生暂存件的键：同一份文件重拖一次落到同一个暂存件上 ⇒ 续传的尾块对拍照旧生效。
 /// 暂存区、键长、键派生与提交那一侧（`files::commit`）一致，提交那一侧住文件管理那一块。标准库默认散列跨 Rust 版本不保证稳定 ——
 /// 只意味着升级之后第一次重拖从 0 来；尾块对拍另有一道兜底，不会接错。
-pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
+pub(crate) fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
     use std::hash::{DefaultHasher, Hash, Hasher};
     let half = |salt: &str| {
         let mut h = DefaultHasher::new();
@@ -164,7 +164,7 @@ pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
 }
 
 /// 一个键的暂存件（home 相对）。
-pub fn staging_part(key: &str) -> String {
+pub(crate) fn staging_part(key: &str) -> String {
     format!("{}/{key}{PART_SUFFIX}", sftp::STAGING_ROOT)
 }
 
@@ -192,7 +192,7 @@ fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), Said> 
 }
 
 /// 开单时的那一判（不动盘）：落点与它的半成品都过得了路径解析。
-pub fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
+pub(crate) fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
     // 只拆路径、只过路径解析：没有下层原话。
     let (root, name, part) = land_parts(local_path.as_ref()).map_err(|s| s.said)?;
     walk_in_root(Last::Link, &root, &name)?;
@@ -757,7 +757,7 @@ enum Job {
     },
 }
 
-struct Ticket {
+pub struct Ticket {
     dial: Dial,
     /// 还没起跑的那件事（`transfer-start` 取走）。
     job: Option<Job>,
@@ -838,7 +838,7 @@ impl Desk {
         cmd: &str,
         id: &str,
         args: &serde_json::Value,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> Frame {
         match cmd {
             TRANSFER_DOWNLOAD => {
@@ -868,7 +868,7 @@ impl Desk {
     fn download(
         &self,
         req: TransferDownloadReq,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> Result<TransferOpened, DownloadErr> {
         let (_, dial) =
             dial_by_name(&(self.machines)(), &req.machine).map_err(DownloadErr::BadArgs)?;
@@ -913,8 +913,8 @@ impl Desk {
                             size_text: None,
                             mtime_text: None,
                             there,
-                            there_size: m.is_file().then(|| m.len()),
-                            there_size_text: (m.is_file().then(|| m.len()))
+                            there_size: m.is_file().then_some(m.len()),
+                            there_size_text: (m.is_file().then_some(m.len()))
                                 .map(copy_core::size_text),
                             there_mtime_text: crate::common::batch_book::moment_text(
                                 crate::common::batch_book::mtime_secs(m.modified()),
@@ -1079,7 +1079,7 @@ fn register(tickets: &Tickets, t: Ticket) -> Result<String, crate::common::said:
 
 /// 远端落点那台上一格的样子：是什么 · 多大（文件）· 修改时刻（unix 秒）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Seen {
+pub struct Seen {
     pub(crate) kind: cwf::FileKind,
     pub(crate) size: Option<u64>,
     pub(crate) mtime: Option<i64>,
@@ -1094,7 +1094,7 @@ pub(crate) trait Landing: Send + Sync {
 /// 生产那一份：经照机器表组好的那台的拨号请求问它后端的 `files-stat`（路径按字节，目录名不是 UTF-8 也问得到）。
 struct Dialed {
     dial: serde_json::Value,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
 }
 
 impl Landing for Dialed {
@@ -1144,7 +1144,7 @@ fn under(dir: &[u8], name: &[u8]) -> Vec<u8> {
 async fn upload_fates(
     land: &dyn Landing,
     req: &TransferUploadReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<Vec<Fate>, UploadErr> {
     use crate::common::batch_book::{choice_of, key_of, moment_text, mtime_secs};
     let on_exists = req.on_exists.unwrap_or_default();
@@ -1282,7 +1282,7 @@ pub(crate) async fn upload_with(
     tickets: &Tickets,
     land: &dyn Landing,
     req: TransferUploadReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     dial: Dial,
 ) -> Result<TransferOpened, UploadErr> {
     if req.remote_dir.bytes().is_empty() {
@@ -1309,7 +1309,7 @@ pub(crate) async fn upload_with(
                     Ok((id, staged)) => OpenedItem {
                         id: Some(id),
                         staged: Some(staged),
-                        new_name: minted.then(|| cwf::WirePath(name)),
+                        new_name: minted.then_some(cwf::WirePath(name)),
                         overwrite,
                         ..opened(key, OpenState::Opened)
                     },
@@ -1326,7 +1326,7 @@ pub(crate) async fn upload_with(
 
 impl Desk {
     /// `transfer-upload` 那一发（帧面硬臂；探同名要等远端那台 ⇒ 交出一个异步处理器）：入参按类型收 → 探 → 照答开单 → 回包。
-    pub(crate) fn upload_wire_for(&self) -> crate::wire::spec::DataHandler {
+    pub fn upload_wire_for(&self) -> crate::wire::spec::DataHandler {
         let tickets = Arc::clone(&self.tickets);
         let machines = Arc::clone(&self.machines);
         typed::answer_async::<TransferUpload, _, _>(move |req, cx| async move {
@@ -1447,11 +1447,11 @@ async fn run(
 }
 
 /// 上传收场码：SFTP 起始目录不是那台后端的 home。
-pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
+pub(crate) const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
 /// SFTP 起始目录与后端 `$HOME` 不一致 ⇒ 那一句话；一致（去掉尾 `/` 逐字节相等）⇒ `None`。
 /// ⚠ 认下的：home 经符号链接指过去（`/home` → `/usr/home`）时两串不等 ⇒ 判成不一致、走慢路（仍做得成，只是慢）。
-pub fn start_dir_mismatch(sftp_start: &str, backend_home: &str) -> Option<String> {
+pub(crate) fn start_dir_mismatch(sftp_start: &str, backend_home: &str) -> Option<String> {
     let norm = |s: &str| {
         let t = s.trim_end_matches('/');
         if t.is_empty() {

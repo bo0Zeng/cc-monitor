@@ -125,7 +125,7 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             crate::config::config_path_in(monitor_data_dir),
             relay_route_core::file_name_of(relay_route_core::CONFIG_FILE.row.rel),
             &copy_text("rsDataPaths.monitor.config", &[]),
-            class_of(relay_route_core::CONFIG_FILE.row.kind),
+            class_of(relay_route_core::CONFIG_FILE.row.kind()),
         ),
         probe_file(
             monitor_data_dir.join("auto-launch.json"),

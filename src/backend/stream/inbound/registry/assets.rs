@@ -18,7 +18,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "首次运行「开始用」三步各自打没打勾",
     ),
     // 离线那台的上次值（`footprint/last_seen.rs`）：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份，
-    //   断开时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
+    //   断开时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/cache/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
     super::typed::blocking::<crate::faces::footprint_face::LastSeenReadCmd>("读离线那台的上次值"),
     super::typed::blocking::<crate::faces::footprint_face::LastSeenWriteCmd>(
         "记下一台这一次读成的那一份（或清掉那台）",

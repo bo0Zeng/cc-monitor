@@ -7,7 +7,7 @@
 //!
 //! # 同一份实现两种模式
 //!
-//! - **常驻**：`cc-monitor-backend` 起来接流，别人连它（`main.rs` 的流模式）。
+//! - **常驻**：`cc-monitor-backend` 起来接流，别人连它（`stream/entry.rs` 的流模式）。
 //! - **一次性**：在用户终端里认 argv，做完就走 —— **就是本模块**。
 //!
 //! # 怎么进到这里
@@ -34,9 +34,9 @@
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
 mod egress;
-pub(crate) mod on_path;
-pub(crate) mod plan;
-pub(crate) mod user_path;
+pub mod on_path;
+pub mod plan;
+pub mod user_path;
 
 use crate::ccm_line::{argv, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
@@ -79,7 +79,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 「实现与申报不一致，而守它的东西看不见那个字段」（那道挡板随起会话只交一行 `ccm …` 删了）。
 /// 本 token 补的就是**申报**那一半；驱动它的判据是
 /// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。
-pub(crate) const CAPABILITIES: &[&str] = &[
+pub const CAPABILITIES: &[&str] = &[
     "new",
     "resume",
     "attach",
@@ -101,10 +101,10 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 
 /// 上面那张 [`CAPABILITIES`] 里，**载体是 tmux** 的那几条 —— 一条一条的依据：
 ///
-/// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`crate::ccm_launcher_with`]）。
+/// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`ccm_launcher_with`]）。
 /// 与「真靠 tmux 的那几条」两向相等，由 `target_parity_guard.rs` 的
 /// `every_ccm_capability_that_rides_tmux_is_declared_tmux_carried` 用真解析器 ＋ 真计划现推钉着。
-pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
+pub const CCM_TMUX_CARRIED: &[&str] = &[
     "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
     "ccm-sid",              // 写的是 tmux 会话上的意图标（`@ccm_sid_expect`）；直路上没有可写的地方
@@ -113,6 +113,17 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "tmux-base",            // tmux 的 `base-index`
     "tmux-size",            // tmux 窗格尺寸
 ];
+
+/// `ccm --ccm-probe` 自报的能力：没有 tmux 的平台档上摘掉载体是 tmux 的那几条（[`CCM_TMUX_CARRIED`]）。
+/// 平台档是入参，本机是 Linux 也能算出「Windows 那一份会吐什么」。
+pub fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&'static str> {
+    let no_tmux = crate::platform::tmux::tmux_present(p, None) == Some(false);
+    CAPABILITIES
+        .iter()
+        .copied()
+        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .collect()
+}
 
 /// 撞名时那句话的**唯一格式串**。
 /// ⚠ 结尾那两个字符是**反斜杠 + n**，不是一个真换行 —— 它是一条 **`printf` 格式串**：
@@ -141,21 +152,11 @@ pub(crate) static USAGE: std::sync::LazyLock<String> =
 // （`agents::LaunchFace`），`plan::build_among` 一处问完；本模块不认识任何一家的名字。
 
 /// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
-pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
+pub(crate) type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
 
 /// 入口注入的「这台的账号清单成品」（`accounts-list` 那一份，入参 = 家目录 · 起哪一家）：起会话用哪个号只经 `launch_account::pick` 判，
 /// 它要的「能不能用」在观测层算（control 不引用 observe）。只在真要判号的时候读。
-pub type AccountsScan = fn(&str, &str) -> AccountsList;
-
-/// 本文件自己的源码，给别的护栏对账用。
-///
-/// ⚠ 刻意由本模块**自己**提供，而不是让调用方写 `include_str!("control/ccm/mod.rs")`：
-/// 那种多段相对路径 `cross_half_edge_registry` 的抽取器解析不动，
-/// 而它**跳过的时候是静默的** —— 一条跨界边就这么从扫描面里消失。
-#[cfg(test)]
-pub(crate) fn own_source() -> &'static str {
-    include_str!("mod.rs")
-}
+pub(crate) type AccountsScan = fn(&str, &str) -> AccountsList;
 
 /// 被叫成的那个名字若是一段配置的名字 ⇒ 那个名字（`argv[0]` 取最后一段；Windows 上去掉 `.exe`）。
 /// 是 ccm 自己、或根本当不了配置名（形状不对）⇒ `None`，照 ccm 本身走。
@@ -170,7 +171,7 @@ pub(crate) fn profile_called(argv0: &str) -> Option<String> {
         .then(|| base.to_string())
 }
 
-/// 这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
+/// 这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（入口 `stream/entry.rs` 只认它）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
     /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[@<名>] [交给 claude 的…] -- [ccm 自己的…]`）。
@@ -180,7 +181,7 @@ pub enum Entry {
 }
 
 /// ccm 那一串是不是托管进程那一跳：`-- --host-run …`（只许紧跟打头的 `--`）。交回 `--host-run` 之后那一串。
-pub(crate) fn host_run_args(args: &[String]) -> Option<&[String]> {
+pub fn host_run_args(args: &[String]) -> Option<&[String]> {
     (args.first().map(String::as_str) == Some(argv::flag::END)
         && args.get(1).map(String::as_str) == Some(argv::flag::HOST_RUN))
     .then(|| &args[2..])
@@ -230,7 +231,7 @@ pub fn route(argv0: &str, args: &[String], is_backend_word: impl Fn(&str) -> boo
 }
 /// 「我是被怎么叫进 `ccm` 模式的」—— 容器路要在 pane 里**把自己再叫一次**，叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
 /// 恒是 `[argv0]`；被叫成一段配置的名字时换成同一目录下的 `ccm`（内层参数已经是合并好的完整选项，再叫一次那个名字会把配置叠两遍）。
-pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
+pub fn self_invocation(argv: &[String]) -> Vec<String> {
     argv.first()
         .map(|a0| match profile_called(a0) {
             Some(name) => format!("{}{SUBCOMMAND_WORD}", &a0[..a0.len() - name.len()]),
@@ -264,7 +265,7 @@ pub(crate) fn parse_entry(
 }
 
 /// 没有终端可交互、又没有 `--` ⇒ 不起 claude 时的退出码（与下面 [`run`] 那四档分开）。
-pub const EXIT_NO_TERMINAL: i32 = 5;
+pub(crate) const EXIT_NO_TERMINAL: i32 = 5;
 
 /// [`route`] 落进「起一个 claude」那一支之后的第一道判断（纯函数）：没有 `--`（整行要交给 claude）、
 /// stdin 与 stdout 都不是终端 ⇒ 不起。被别的程序经管道驱动的裸调用多半是要叫后端却漏了 `--`，
@@ -277,7 +278,7 @@ pub(crate) fn refuses_without_terminal(args: &[String], stdin_tty: bool, stdout_
 ///
 /// 退出码的五档（前四档与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来 · `5` 没有终端又没有 `--`（[`EXIT_NO_TERMINAL`]）。
-/// `process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
+/// `process_argv` ＝ 这个进程的整条 argv，由调用方（`stream/entry.rs`，argv 只在那里取一次）交；
 /// 本模块不自己读 `std::env::args`。
 pub fn run(
     args: &[String],
@@ -361,6 +362,10 @@ pub fn run(
 
 /// 账号载体与找上游的那两个变量名只有**知道是哪一家**才问得出来 ⇒ 解析完 argv 再补这四格（名字问注册表那一家的格）。
 /// `inherit` ＝ 读继承值的那只手（`None` ＝ 不继承：别名预览）；没有这一维的家 ⇒ 名字空串、继承值不读。
+#[expect(
+    clippy::type_complexity,
+    reason = "读继承值的那只手只在这一处收，另起类型名只为过这条提示"
+)]
 fn agent_env(agent: &str, env: &mut Env, inherit: Option<&dyn Fn(&str) -> Option<String>>) {
     env.account_env = crate::agents::account_env_of(agent)
         .unwrap_or_default()
@@ -444,7 +449,7 @@ struct Planned {
 }
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
-const PRINT_MAX_WORDS: usize = 64;
+pub const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 4096,
     over: relay_route_core::Over::Reject,
@@ -452,9 +457,9 @@ const PRINT_MAX_WORD_BYTES: relay_route_core::Cap = relay_route_core::Cap {
 
 /// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct CcmCard {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct CcmCard {
     /// CLI 契约版本（`CCM_VERSION`）。
     pub(crate) version: &'static str,
     /// 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
@@ -476,7 +481,7 @@ pub(crate) fn answer_probe_for(
 ) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
-        capabilities: crate::ccm_launcher_with(platform),
+        capabilities: ccm_launcher_with(platform),
         agents: agents(),
         build: crate::common::id::BUILD_ID,
         on_path,
@@ -485,11 +490,11 @@ pub(crate) fn answer_probe_for(
 
 crate::wire::typed::codes! {
     /// `ccm-probe` 没有别的码。
-    pub(crate) enum ProbeErr {}
+    pub enum ProbeErr {}
 }
 
 /// `ccm-probe`：这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪（起一次登录 shell 问 `PATH`，在 `spawn_blocking` 里等）。
-pub(crate) struct CcmProbe;
+pub struct CcmProbe;
 
 impl crate::wire::typed::Command for CcmProbe {
     const NAME: &'static str = "ccm-probe";
@@ -501,52 +506,40 @@ impl crate::wire::typed::Command for CcmProbe {
 
 impl crate::wire::typed::Handle for CcmProbe {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
-        async move {
-            let here = tokio::task::spawn_blocking(on_path::here)
-                .await
-                .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
-            Ok(answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here))
-        }
+    ) -> Result<CcmCard, ProbeErr> {
+        let here = tokio::task::spawn_blocking(on_path::here)
+            .await
+            .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
+        Ok(answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here))
     }
 }
 
 /// `ccm-print` 的入参：一条别名的预置参数（原样 ccm argv，`<交给 agent 的…> -- <ccm 的…>` 那一形）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CcmPrintReq {
+pub struct CcmPrintReq {
     /// 最多 64 个、每个最长 4096 字节。
     pub(crate) args: Vec<String>,
 }
 
 /// `ccm-print` 的应答：`ccm --ccm-print` 那一行。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct CcmLine {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct CcmLine {
     pub(crate) line: String,
 }
 
 crate::wire::typed::codes! {
     /// `ccm-print` 的码：ccm 自己拒了这组参数（原话带回）· 给的是 `--help` 这类不起会话的那一形。
-    pub(crate) enum PrintErr {
+    pub enum PrintErr {
         Refused = "refused",
     }
-}
-
-/// `ccm-print`：一条别名实际会执行什么。只读（读账号清单成品 ＋ 问会话快照）⇒ 阻塞档。处理器住 `faces/launch_account_face.rs`（要这台的账号清单成品，control 不读观测层）。
-pub(crate) struct CcmPrint;
-
-impl crate::wire::typed::Command for CcmPrint {
-    const NAME: &'static str = "ccm-print";
-    type Req = CcmPrintReq;
-    type Reply = CcmLine;
-    type Err = PrintErr;
 }
 
 /// 帧命令 `ccm-print`：**一条别名实际会执行什么**（
@@ -560,7 +553,7 @@ impl crate::wire::typed::Command for CcmPrint {
 /// 错误码：`bad_args`（入参形状不对 / 超上界）· `refused`（ccm 自己拒了这组参数 —— 原话带回；
 /// 或给的是 `--help` 这类不起会话的那一形）。只读：不起进程、不写盘。
 /// `accounts` ＝ 这台的账号清单成品（宿主交：处理器住 `faces/launch_account_face.rs`）。
-pub(crate) fn answer_print(
+pub fn answer_print(
     req: &CcmPrintReq,
     accounts: AccountsScan,
 ) -> Result<CcmLine, crate::common::said::Said> {
@@ -612,7 +605,7 @@ pub(crate) fn answer_print(
 
 /// 设置窗合并预览的「等于」那一行：合好的意图 ＋「假设在这个目录敲」（`at`：`~` 打头按这台家目录展开；空 ⇒ 家目录）。
 /// 与 [`answer_print`] 同一个 [`plan_of`] ＋ `plan::render_for`，环境同 [`Env::for_preview`]，只换了敲的那个目录。
-pub(crate) fn preview_resolved(
+pub fn preview_resolved(
     p: Parsed,
     home: &str,
     at: Option<&str>,
@@ -638,7 +631,7 @@ pub(crate) fn preview_resolved(
 /// 与 `ccm` 起会话、`--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ `session-open` 铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
 /// 铸名的内核（快照是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
-pub(crate) fn terminal_name_mint_with(
+pub fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
 ) -> Result<String, crate::common::said::Said> {
@@ -669,9 +662,9 @@ pub(crate) fn terminal_name_mint_with(
 ///
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
-/// 吐本二进制那一档平台上的那一份：[`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)`
+/// 吐本二进制那一档平台上的那一份：[`ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)`
 /// —— 没有 tmux 的平台上摘掉 [`CCM_TMUX_CARRIED`] 那几条，不在这里另写名单。
-pub(crate) fn probe_output(self_path: &str) -> String {
+pub fn probe_output(self_path: &str) -> String {
     probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)
 }
 
@@ -682,7 +675,7 @@ pub(crate) fn probe_output_for(
 ) -> String {
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
-        crate::ccm_launcher_with(platform).join(","),
+        ccm_launcher_with(platform).join(","),
         agents().join(","),
         crate::common::id::BUILD_ID
     )
@@ -769,7 +762,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                 }
                 Err(mut f) => {
                     // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
-                    let msg = crate::common::said::Said::from(f.fail.clone()).logged();
+                    let msg = f.fail.clone().logged();
                     let shape = f.untyped.as_ref().map(|(d, m)| (*d, m.is_some()));
                     let after = after_launch_fail(shape, c.detach);
                     // 明确没送进 ⇒ 先收掉本趟建的那个只剩 shell 的会话，再报（不留空会话）。
@@ -1420,8 +1413,3 @@ fn exec_or_spawn(
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm_tests.rs"]
 mod tests;
-
-// 经 ccm 用某个号起一次 ⇒ 那个号记到那条会话名下（假启动器是 POSIX shell 脚本、ccm 在那一形上 exec 掉子进程）。
-#[cfg(all(test, unix))]
-#[path = "../../../../tests/backend/control/ccm/launch_note_e2e_tests.rs"]
-mod launch_note_e2e;

@@ -10,16 +10,16 @@ use crate::control::launch_account::Settled;
 
 /// 这台的平台与目录在不在（本机那一形要的事实；判据喂确定的值）。生产那一份是 [`Host::PRODUCTION`]。
 #[derive(Clone, Copy)]
-pub(crate) struct Host {
+pub struct Host {
     /// 本地终端是 PowerShell（Windows）还是 POSIX shell。Windows 上没有 tmux ⇒ 一律直路。
-    pub(crate) windows: bool,
-    pub(crate) is_dir: fn(&str) -> bool,
+    pub windows: bool,
+    pub is_dir: fn(&str) -> bool,
     /// 这台 `ccm` 的入口（绝对路径）：那一行直接叫它，不靠终端 `PATH`。说不出 ⇒ `None`（拒）。
-    pub(crate) entry: fn() -> Option<String>,
+    pub entry: fn() -> Option<String>,
 }
 
 impl Host {
-    pub(crate) const PRODUCTION: Host = Host {
+    pub const PRODUCTION: Host = Host {
         windows: crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
         is_dir: |p| std::path::Path::new(p).is_dir(),
         entry: crate::platform::paths::installed_ccm_entry,
@@ -28,28 +28,28 @@ impl Host {
 
 /// 起会话那一行要说的「起什么」：经 [`spec_with`] 一处变成渲染器那份 spec。
 #[derive(Debug, Clone)]
-pub(crate) struct Launch {
+pub struct Launch {
     /// 哪一家（线上的 kind）。
-    pub(crate) agent: String,
-    pub(crate) act: Act,
+    pub agent: String,
+    pub act: Act,
     /// 建进哪个 tmux 会话（接回 ⇒ 接进哪个）；`None` ＝ 直路。
-    pub(crate) tmux: Option<String>,
-    pub(crate) cwd: Option<String>,
+    pub tmux: Option<String>,
+    pub cwd: Option<String>,
     /// 身份标记（打在建出来的 tmux 会话上；Windows 上没有 tmux ⇒ 不打）。
-    pub(crate) ccm_sid: Option<String>,
+    pub ccm_sid: Option<String>,
     /// 显式指定的模型（压过号带来的那一个）。
-    pub(crate) model: Option<String>,
-    pub(crate) launcher: String,
-    pub(crate) default_launcher: String,
+    pub model: Option<String>,
+    pub launcher: String,
+    pub default_launcher: String,
     /// 垫在交给那一家的那一串里的参数（先定的 sid · 权限档 · 第一句）。
-    pub(crate) preset_args: Vec<String>,
+    pub preset_args: Vec<String>,
     /// 经哪条别名起（`ccm @别名`）；`None` ⇒ 不经别名。
-    pub(crate) alias: Option<String>,
+    pub alias: Option<String>,
 }
 
 /// 起什么：新起 · resume 某条 · 接回一个已有的 tmux 会话（不起 agent）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Act {
+pub enum Act {
     New,
     Resume(String),
     Attach(String),
@@ -57,7 +57,7 @@ pub(crate) enum Act {
 
 /// 那一行在哪台的终端里跑：本机（Windows 上是 PowerShell、没有 tmux）· 远端（ssh 过去的 POSIX shell）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Here {
+pub enum Here {
     Local { windows: bool },
     Remote,
 }
@@ -66,10 +66,7 @@ impl Launch {
     /// 那一家的启动命令与默认启动器：启动命令照这台的偏好，默认启动器问适配层（认不出那一家 ⇒ 空，渲的时候照拒）。
     ///
     /// 〔继承表〕启动命令那一格（照这台，不随主会话）。
-    pub(crate) fn launchers(
-        agent: &str,
-        prefs: &crate::common::machine_prefs::Prefs,
-    ) -> (String, String) {
+    pub fn launchers(agent: &str, prefs: &crate::common::machine_prefs::Prefs) -> (String, String) {
         let default = crate::agents::launch_face_among(crate::agents::REGISTRY, agent)
             .map_or("", |f| f.default_launcher)
             .to_string();
@@ -92,7 +89,7 @@ pub(crate) fn line_of(
 }
 
 /// 同一行的 argv 形；`detach` ⇒ 建进 tmux 之后不接进去（这台后端替人在 tmux 里起会话时用）。
-pub(crate) fn argv_of(
+pub fn argv_of(
     l: &Launch,
     account: &Settled,
     here: Here,
@@ -193,8 +190,3 @@ fn checked_launcher(launcher: &str) -> Result<&str, String> {
         _ => Ok(l),
     }
 }
-
-// 假启动器是 POSIX shell 脚本、`ccm` 在那一形上 exec 掉子进程 ⇒ 只在 POSIX 上跑。
-#[cfg(all(test, unix))]
-#[path = "../../../../tests/backend/control/launch_render/history_resume_e2e_tests.rs"]
-mod history_resume_e2e;

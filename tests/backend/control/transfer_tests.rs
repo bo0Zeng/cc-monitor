@@ -678,7 +678,7 @@ impl Landing for Here {
                 } else {
                     cwf::FileKind::File
                 },
-                size: m.is_file().then(|| m.len()),
+                size: m.is_file().then_some(m.len()),
                 mtime: crate::common::batch_book::mtime_secs(m.modified()),
             })
         })
@@ -692,7 +692,7 @@ impl Desk {
         id: &str,
         args: &serde_json::Value,
         land: &dyn Landing,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> Frame {
         typed::answer::<TransferUpload>(id, args, |req| {
             let (_, dial) =
@@ -704,9 +704,19 @@ impl Desk {
     /// 一项的开单问法经答口问（同 [`batched`]）；上传那一条的落点上什么都没有。
     fn ask1(&self, cmd: &str, id: &str, a: &serde_json::Value) -> Frame {
         if cmd == UPLOAD {
-            return self.upload_frame(id, &batched(cmd, a), &Bare, &crate::Tz::default());
+            return self.upload_frame(
+                id,
+                &batched(cmd, a),
+                &Bare,
+                &crate::common::time::Tz::default(),
+            );
         }
-        self.answer_wire(cmd, id, &batched(cmd, a), &crate::Tz::default())
+        self.answer_wire(
+            cmd,
+            id,
+            &batched(cmd, a),
+            &crate::common::time::Tz::default(),
+        )
     }
 }
 
@@ -765,7 +775,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         TRANSFER_START,
         "r6",
         &serde_json::json!({"id": "xfer-nope"}),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     ));
     assert_eq!(code.as_deref(), Some("no_such_transfer"));
     // 撤：没起跑的票当场摘；再撤一次幂等。
@@ -775,7 +785,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
             TRANSFER_STOP,
             "r7",
             &serde_json::json!({"id": tid}),
-            &crate::Tz::default()
+            &crate::common::time::Tz::default()
         ))
         .0
     );
@@ -785,7 +795,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
             TRANSFER_STOP,
             "r8",
             &serde_json::json!({"id": tid}),
-            &crate::Tz::default()
+            &crate::common::time::Tz::default()
         ))
         .0
     );
@@ -820,7 +830,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
             TRANSFER_START,
             "r2",
             &serde_json::json!({"id": tid}),
-            &crate::Tz::default()
+            &crate::common::time::Tz::default()
         ))
         .0
     );
@@ -828,7 +838,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
         TRANSFER_START,
         "r3",
         &serde_json::json!({"id": tid}),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     ));
     assert_eq!(code.as_deref(), Some("already_started"));
     let mut frames = Vec::new();
@@ -1279,7 +1289,12 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
         serde_json::json!({"machine": "h", "local_dir": dir, "on_exists": on,
             "items": [{"remote_path": "/r/a.txt"}, {"remote_path": "/r/b.txt"}]})
     };
-    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"), &crate::Tz::default());
+    let f = desk.answer_wire(
+        TRANSFER_DOWNLOAD,
+        "g1",
+        &ask("ask"),
+        &crate::common::time::Tz::default(),
+    );
     let Frame::Reply(crate::wire::Reply { ok, code, .. }) = &f else {
         panic!("{f:?}")
     };
@@ -1289,7 +1304,7 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
         TRANSFER_DOWNLOAD,
         "g2",
         &ask("keep_both"),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     );
     let Frame::Reply(crate::wire::Reply { data: Some(d), .. }) = &f else {
         panic!("{f:?}")
@@ -1319,7 +1334,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
         .unwrap()
         .set_modified(old)
         .unwrap();
-    let tz = crate::Tz::named("Asia/Tokyo").unwrap();
+    let tz = crate::common::time::Tz::named("Asia/Tokyo").unwrap();
     let dir = there.0.to_string_lossy().into_owned();
     let ask = |decide: serde_json::Value| {
         let mut v = serde_json::json!({"machine": "h", "remote_dir": dir,
@@ -1430,7 +1445,7 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
         &desk.tickets,
         &Here,
         req(None),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         test_dial(),
     )) else {
         panic!("目录同名也要问")
@@ -1447,7 +1462,7 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
         &desk.tickets,
         &Here,
         req(Some(serde_json::json!({"0": "overwrite"}))),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         test_dial(),
     ))
     .unwrap();

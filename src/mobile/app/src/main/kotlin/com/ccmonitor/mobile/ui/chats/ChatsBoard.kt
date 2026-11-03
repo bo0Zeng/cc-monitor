@@ -3,6 +3,8 @@ package com.ccmonitor.mobile.ui.chats
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.ColumnFace
+import com.ccmonitor.mobile.core.claude.link.Groups
+import com.ccmonitor.mobile.core.claude.link.GroupsFace
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
@@ -14,6 +16,7 @@ import com.ccmonitor.mobile.core.wire.gen.ColumnHost
 import com.ccmonitor.mobile.core.wire.gen.ColumnLine
 import com.ccmonitor.mobile.core.wire.gen.ColumnRow
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
+import com.ccmonitor.mobile.core.wire.gen.GroupMember
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.MergedRow
@@ -85,19 +88,18 @@ data class ChatGroup(
 }
 
 /**
- * 一组一段（`groups-read` 那一组，一台一段）：段头是那台写好的组名 [title] 与计数那几句 [heads]，段里是组员（清单里有的照清单那一行）。
- * [machineTag] 同行上的机器小标签。
+ * 一组一段（几台那几片由核心照组 id 合成的那一组）：段头是核心写好的组名 [title] 与计数那几句 [heads]，
+ * 段里是组员（照台接，行上带那台的机器小标签；清单里有的照清单那一行）。[machineTag]：组员全在同一台 ⇒ 那台的机器小标签。
  */
 data class GroupBand(
-    val hostId: String,
     val groupId: String,
     val title: String,
     val heads: List<String>,
     val rows: List<ChatRow>,
     val machineTag: String? = null,
 ) {
-    /** 屏上用的键（同一组在两台是两段）。 */
-    val id: String get() = "$hostId\n$groupId"
+    /** 屏上用的键（组 id 全局不重）。 */
+    val id: String get() = groupId
 }
 
 /** 按天连着的一段：段头（那台写的）＋ 那几行。 */
@@ -353,7 +355,7 @@ internal fun chatsView(
 ): ChatsUi {
     val multi = parts.size > 1
     val tag = { p: HostPart -> p.machine.takeIf { multi && p.hostId != current } }
-    val (pinned, bands) = if (filters.banded(query)) bandsOf(parts, tag) else emptyList<ChatRow>() to emptyList()
+    val (pinned, bands, groupLines) = bandsOf(parts, tag, filters.banded(query))
     val placed = (pinned + bands.flatMap { it.rows }).map { it.hostId to it.sessionId }.toSet()
     val none = parts.all { it.rows.isEmpty() } && placed.isEmpty()
     // 并 · 切段 · 分叉挂父 · 组的先后都在核心；交回第几台第几项与它在分叉树里的样子，这里照它摆那台那一行。
@@ -382,7 +384,7 @@ internal fun chatsView(
         bands = bands,
         bars = parts.mapNotNull { it.bar },
         deploying = parts.filter { it.bar == null && it.deploying != null },
-        notices = parts.flatMap { listOfNotNull(it.notice) + it.groupLines }.distinct(),
+        notices = (parts.flatMap { listOfNotNull(it.notice) + it.groupLines } + groupLines).distinct(),
         truncated = parts.any { it.truncated },
         skeleton = none && empty == Empty.NONE,
         empty = empty,
@@ -406,10 +408,35 @@ private fun emptyOf(
         else -> Empty.NO_SESSIONS
     }
 
-/** 固定那一段与各组那几段（各台照机器表先后接）：段与行带上那台的机器小标签。 */
+/** 固定那一段 · 各组那几段 · 合好的那一份里没读全的那几句。 */
+private data class Banded(
+    val pinned: List<ChatRow>,
+    val bands: List<GroupBand>,
+    val lines: List<String>,
+)
+
+/**
+ * 各台那一片（照机器表先后）交核心照组 id 合一次（[GroupsFace]，本机后端 `groups-read` 那一份合法）：一组一段，
+ * 组员照台接、行带那台的机器小标签；固定的各台照先后接。[banded] 为假 ⇒ 只要没读全的那几句。
+ */
 private fun bandsOf(
     parts: List<HostPart>,
     tag: (HostPart) -> String?,
-): Pair<List<ChatRow>, List<GroupBand>> =
-    parts.flatMap { p -> p.pinned.map { it.copy(machineTag = tag(p)) } } to
-        parts.flatMap { p -> p.bands.map { b -> b.copy(machineTag = tag(p), rows = b.rows.map { it.copy(machineTag = tag(p)) }) } }
+    banded: Boolean,
+): Banded {
+    val answered = parts.mapNotNull { p -> p.slice?.let { p.hostId to it.raw } }
+    if (answered.isEmpty()) return Banded(emptyList(), emptyList(), emptyList())
+    val merged = GroupsFace.of(answered)
+    val lines = Groups.unread(merged)
+    if (!banded) return Banded(emptyList(), emptyList(), lines)
+    val byId = parts.associateBy { it.hostId }
+    val row = { m: GroupMember ->
+        byId[m.origin]?.let { p -> p.slice?.row(p.hostId, m)?.copy(machineTag = tag(p)) }
+    }
+    val bands =
+        merged.groups.map { g ->
+            val hosts = g.members.map { it.origin }.distinct()
+            GroupBand(g.id, g.title, g.counts.map { it.text }, g.members.mapNotNull(row), hosts.singleOrNull()?.let { byId[it] }?.let(tag))
+        }
+    return Banded(merged.pinned.mapNotNull(row), bands, lines)
+}

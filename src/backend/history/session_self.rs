@@ -9,9 +9,9 @@
 
 use serde::Serialize;
 
-use super::groups::{GroupRead, GroupsRead};
 use super::live_table::LiveRow;
 use crate::wire::typed::codes;
+use cmd_wire::groups::{GroupRead, GroupsRead};
 
 /// 往上最多找几层（进程树再深也到不了这么多；挡住读坏的父进程号绕圈）。
 pub(crate) const MAX_HOPS: usize = 64;

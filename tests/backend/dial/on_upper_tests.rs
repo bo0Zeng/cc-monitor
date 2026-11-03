@@ -54,7 +54,7 @@ fn run(m: Value, cmd: &str) -> Result<String, Said> {
 /// 流进 `terminal-ssh` 的远端命令的全部来路（起会话只有那一行 `ccm …`，就地 resume 那一格外层包一层 tmux）×
 /// 那一行的字节表的每一格 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（拒）不在里面。
 fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
-    use crate::control::launch_render::ccm_invocation::tests as table;
+    use crate::control::launch_render::ccm_invocation::test_support as table;
     let mut out = Vec::new();
     for c in table::cells() {
         for cwd in std::iter::once(c.1.cwd.clone()).chain(cwds.iter().map(|d| Some(d.to_string())))

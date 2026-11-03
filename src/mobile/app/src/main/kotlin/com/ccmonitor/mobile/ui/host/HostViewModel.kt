@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.host
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.data.db.CacheDao
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostRemovalDao
 import com.ccmonitor.mobile.core.data.db.HostRows
@@ -40,6 +41,7 @@ class HostViewModel(
     identityRepo: IdentityRepository,
     backends: HostBackends,
     private val removal: HostRemovalDao,
+    private val cache: CacheDao,
 ) : ViewModel() {
     /** 每台核心交的那一行（起着常驻流的那几台）⇒ 行首那颗点与尾字（[hostRowLook]）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,13 +72,14 @@ class HostViewModel(
     fun hostPassword(host: Host): String? = hostRepo.password(host)
 
     /**
-     * 删一台：它在这一端每张表里的行一个事务删光（[HostRemovalDao.remove]），再从核心那份库里忘掉只有它用着的主机钥匙。
-     * 回撤销要的那一份（这一台已经不在 ⇒ `null`）。
+     * 删一台：它在状态库每张表里的行一个事务删光（[HostRemovalDao.remove]）、缓存库里它那几行另清一次（[CacheDao.forgetHost]），
+     * 再从核心那份库里忘掉只有它用着的主机钥匙。回撤销要的那一份（这一台已经不在 ⇒ `null`）。
      */
     fun deleteHost(host: Host): Deferred<HostRows?> =
         viewModelScope.async(Dispatchers.IO) {
             val table = hostRepo.observeAll().first()
             val gone = removal.remove(host.id) ?: return@async null
+            cache.forgetHost(host.id)
             keysOnlyItUsed(table, host.id, ::dialEndpoints).forEach { forgetHostKey(it.host, it.port) }
             gone
         }

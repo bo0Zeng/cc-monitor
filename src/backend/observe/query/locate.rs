@@ -13,7 +13,7 @@ use std::path::Path;
 ///
 /// 给的是工具调用 id ⇒ 先问子运行记录那一侧派出那一刻落盘的对上（`ChildFace::spawned`，前台派出的在跑时只有它），
 /// 再在父记录里找那次调用的派出链接（只解析含这个 id 的行）；都对不上 ⇒ `not_found`。
-pub(crate) fn run_source(
+pub fn run_source(
     agent_home: &Path,
     parent: &str,
     run: Option<&str>,
@@ -127,7 +127,7 @@ fn validate_session_path_among(
 }
 
 /// 冷开那几问共用的扫描图（过读会话那同一道围栏；没变就是留着的那张，见 [`super::super::record_scan`]）。
-pub(crate) fn cold_scan(
+pub fn cold_scan(
     agent_home: &Path,
     jsonl_path: &str,
 ) -> Result<std::sync::Arc<super::super::record_scan::ScanMap>, String> {
@@ -138,7 +138,7 @@ pub(crate) fn cold_scan(
 }
 
 /// 会话事实（同一道围栏）：图在 ⇒ 照图；图被挤掉 ⇒ 接着它留下的事实尾巴读；都没有 ⇒ 现扫（见 [`super::super::record_scan::RecordScans::facts`]）。
-pub(crate) fn facts(
+pub fn facts(
     agent_home: &Path,
     jsonl_path: &str,
     limits: &super::super::recognize::facts::ContextLimits,
@@ -192,34 +192,31 @@ pub(crate) fn index_rows(
 }
 
 /// `history-facts` 的项目目录那一格：过读会话那同一道围栏，再问记录归属的那一家（只读开头）。
-pub(crate) fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<String> {
+pub fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<String> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     crate::agents::project_dir_of(&target)
 }
 
 /// `history-facts` 的 `agent`：这份记录是哪一家的（适配层按记录认）。
-pub(crate) fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String> {
+pub fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     crate::agents::record_kind_of(&target).map(str::to_string)
 }
 
 /// 这条会话此刻谁持着它（[`super::super::accounts_query::session_holders`]，先过同一道围栏）；过不了围栏 / 判不了 ⇒ `None`。
-pub(crate) fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
+pub fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     super::super::accounts_query::session_holders(agent_home, &target)
 }
 
 /// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
-pub(crate) fn session_path_at(
-    agent_home: &Path,
-    jsonl_path: &str,
-) -> Result<std::path::PathBuf, String> {
+pub fn session_path_at(agent_home: &Path, jsonl_path: &str) -> Result<std::path::PathBuf, String> {
     validate_session_path(agent_home, jsonl_path)
 }
 
 /// 过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找共用这一处
 /// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
-pub(crate) fn open_session_at(
+pub fn open_session_at(
     agent_home: &Path,
     jsonl_path: &str,
     offset: u64,
@@ -262,7 +259,7 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
 }
 
 /// 这台那条会话的记录文件（同 [`record_in`] 那一找，哪一家的都算）。
-pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
+pub fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
     crate::agents::find_session(agent_home, sid).map(|at| at.file)
 }
 
@@ -274,9 +271,10 @@ pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::
 /// - `None` ⇒ 这台的家目录（与改之前逐字同一问）；
 /// - `Some(d)` ⇒ 先过账号库那一个形状关（`accounts_query::is_safe_config_dir`：绝对 · 不上跳 · 无 shell 元字符与
 ///   欺骗字符），不过 ⇒ `Err`，**一次 IO 都不做**；过了 ⇒ 查 `<d>/projects`。
+///
 /// 只答在不在、查的是哪棵树 —— 不回内容，不收别的路径。答了的「在 / 不在」交这台的会话账本（[`super::super::record_hook::seen`]：
 /// 说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
-pub(crate) fn record_for(
+pub fn record_for(
     agent_home: &Path,
     config_dir: Option<&str>,
     sid: &str,
@@ -300,9 +298,9 @@ pub(crate) fn record_for(
 
 /// [`record_in`] 的答案。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RecordProbe {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RecordProbe {
     /// 那条会话的记录在这台找得到（哪一家的都算）。
     pub present: bool,
     /// 找到 ⇒ 那份所在的记录根；找不到 ⇒ 查的那棵记录树的根。

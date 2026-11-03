@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 const CHILD_MARK: &str = "LNE_CHILD";
-const CHILD_TEST_NAME: &str = "control::ccm::launch_note_e2e::launch_note_child_entry_point";
+const CHILD_TEST_NAME: &str = "cross_control::launch_note_e2e::launch_note_child_entry_point";
 const SID: &str = "0000a11c-0000-4000-8000-000000000003";
 
 fn sandbox(tag: &str) -> PathBuf {
@@ -165,7 +165,7 @@ fn launch_note_child_entry_point() {
         preset_args: Vec::new(),
         alias: None,
     };
-    let caps = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+    let caps = crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();
