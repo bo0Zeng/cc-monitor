@@ -9,10 +9,10 @@
 //! | G5 | 这台那一片没读成（别的台读到了也不算）⇒ 名单算没读成 |
 
 use super::*;
-use crate::history::groups::{
+use cmd_wire::groups::{
     GroupKnown, GroupMember, GroupRead, GroupsMachine, GroupsRead, MemberFacts,
 };
-use crate::history::history_browse::Read;
+use cmd_wire::listing::HistoryMachineRead as Read;
 use cmd_wire::Machine;
 
 fn member(origin: &str, sid: &str) -> GroupMember {

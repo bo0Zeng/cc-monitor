@@ -18,6 +18,7 @@
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
 use crate::wire::WireLife;
+use cmd_wire::groups::GroupKnown;
 use cmd_wire::Machine;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -101,7 +102,7 @@ async fn read_at(
     .expect("合得出")
 }
 
-fn machine<'a>(r: &'a GroupsRead, name: &str) -> &'a super::super::history_browse::Read {
+fn machine<'a>(r: &'a GroupsRead, name: &str) -> &'a Read {
     &r.machines
         .iter()
         .find(|x| x.origin.to_string() == name)
@@ -155,10 +156,7 @@ async fn g1_a_sees_the_group_through_the_one_slice_it_can_reach() {
         copy_core::copy_text("beGroups.count.running", &[("n", "1")]),
         "组头那一句写好了（出口照摆）"
     );
-    assert!(matches!(
-        machine(&got, "D"),
-        super::super::history_browse::Read::Failed { .. }
-    ));
+    assert!(matches!(machine(&got, "D"), Read::Failed { .. }));
     let asked: Vec<String> = peers.asked().into_iter().map(|(c, _)| c).collect();
     assert_eq!(asked.len(), 2, "只问 C · D 各一问：{asked:?}");
 }
@@ -227,10 +225,7 @@ async fn g3_a_slice_that_answered_before_is_shown_as_last_known() {
         "标上次所知：{:?}",
         g.known
     );
-    assert!(matches!(
-        machine(&got, "devbox"),
-        super::super::history_browse::Read::Stale { .. }
-    ));
+    assert!(matches!(machine(&got, "devbox"), Read::Stale { .. }));
     let sb = g
         .members
         .iter()

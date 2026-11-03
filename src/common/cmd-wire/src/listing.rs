@@ -7,6 +7,26 @@ use crate::Machine;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// 一台此刻读没读到（历史页那一列的台头 · 组那一问各台的结局同这一格）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub enum HistoryMachineRead {
+    /// 读到了；注解没并上 ⇒ 那一句。
+    Ok { notice: Option<String> },
+    /// 读不到、手上有上一次的副本：行照副本出，`at` ＝ 那份是几时读到的（写好的字），不冒充读到。
+    Stale {
+        why: String,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+        at: Words,
+    },
+    /// 读不到、从没读到过：那一句（没有行）。
+    Failed { why: String },
+    /// 远端那台还没同步过、这一问也没带它的 `fresh`。
+    Unread,
+}
+
 /// `history-list` 成品的头（行之外的那几格；总数在 `cmd_wire::sync::Head`）：按项目看时的分组 · 注解没并上的那一句。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

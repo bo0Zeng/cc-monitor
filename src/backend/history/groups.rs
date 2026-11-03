@@ -8,7 +8,7 @@
 //! 组员关系 · 固定                   住会话那一台：那条会话注解上的 `groups` · `pinned` 两格（一条会话可在几组）
 //!
 //! groups-here（每台）   ⇒ 这台那一片 ＋ 这台带组或固定的会话（各带此刻活不活，问 live_table）
-//! groups-read {machines}（发问那台）⇒ remote_ask::ask_each 问各台 groups-here、在这里合一次（[`merge`]）：
+//! groups-read {machines}（发问那台）⇒ remote_ask::ask_each 问各台 groups-here、在这里合一次（`face_core::groups::merge`，手机核心调同一份）：
 //!     名字取 named 最新的那一片 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
 //!     从没答过 ⇒ 那台读不到；哪一片都没有那一组的记录、只有组员指着它 ⇒ 名字不知道（组照出、组员不漏）
 //! groups-write ⇒ make 只起 id；move 只写组员那一台（进组抄记录 · 最后一位出组删记录）；
@@ -24,73 +24,20 @@ use std::sync::Mutex;
 
 use crate::wire::WireLife;
 use cmd_wire::cells::Words;
-use cmd_wire::frame::{SessionDot, SessionFace};
+use cmd_wire::frame::SessionFace;
+use cmd_wire::groups::{GroupsHere, GroupsMachine, GroupsRead, HereGroup, HereMember, MemberFacts};
+use cmd_wire::listing::HistoryMachineRead as Read;
 use cmd_wire::Machine;
+use face_core::groups::{merge, Half};
 use serde::{Deserialize, Serialize};
 
 use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Named, Table};
-use super::history_browse::Read;
 use crate::common::said::Said;
 use crate::dial::remote_ask::Remote;
 use crate::wire::typed::{codes, Command};
 use crate::wire::SessionFaceExt as _;
 
 // ───────────────────────── 这台那一半：groups-here ─────────────────────────
-
-/// 这一片里的一组：id · 名字 · 几时建的 · 这个名字几时起的（毫秒）。进组时整份抄进组员那一台。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct HereGroup {
-    pub id: String,
-    pub name: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub made: i64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub named: i64,
-}
-
-/// 复活一个标签要的那几格（重启后那条会话没有活进程，照它造灰标签）：这台照自己那份清单那一行给。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct MemberFacts {
-    /// 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub title: Words,
-    /// 项目目录（清单里没有那一条 ⇒ 缺）。
-    pub cwd: Option<String>,
-    /// 记录文件（resume 照它；清单里没有 ⇒ 缺）。
-    pub record: Option<String>,
-    /// 上次跑在哪个号下（没记 ⇒ 缺）。
-    pub account: Option<String>,
-    /// 后台会话。
-    pub bg: bool,
-    /// 最后活动（毫秒；清单里没有 ⇒ 缺）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
-    pub at: Option<i64>,
-}
-
-/// 这台一条带组或固定的会话：在哪几组 · 固没固定 · 这台此刻给它画的样子 · 复活那几格。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct HereMember {
-    pub sid: String,
-    pub groups: Vec<String>,
-    pub pinned: bool,
-    pub face: SessionFace,
-    pub facts: MemberFacts,
-}
-
-/// `groups-here` 的回包：这台那一片。
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupsHere {
-    pub groups: Vec<HereGroup>,
-    pub members: Vec<HereMember>,
-}
 
 /// 一条组员此刻的样子 ＋ 复活那几格（这台判的）。
 pub type Seen = (SessionFace, MemberFacts);
@@ -234,96 +181,6 @@ pub struct GroupsReadReq {
     pub(crate) machines: Vec<Machine>,
 }
 
-/// 一组的名字此刻从哪来。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "is", rename_all = "snake_case")]
-pub enum GroupKnown {
-    /// 名字取自这一问答了的那一片。
-    Now,
-    /// 名字取自那台上一次答的那一片（那台这一问没答；`at` ＝ 那一份几时读到的，写好的字）。
-    Before {
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-        at: Words,
-    },
-    /// 哪一片都没有这一组的记录（只有组员指着它）：名字缺。
-    Unknown,
-}
-
-/// 组里一条会话：哪台 · 哪条 · 固没固定 · 那张脸（那台这一问没答 ⇒ 看不见的那一张）· 复活那几格。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupMember {
-    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
-    pub origin: Machine,
-    pub sid: String,
-    pub pinned: bool,
-    pub face: SessionFace,
-    pub facts: MemberFacts,
-}
-
-/// 组头那一颗点：几条 ＋ 那颗点的名字（照组员那张脸上的字）。只出有的那几样，序：需手动 · 在跑 · 后台。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupCount {
-    pub dot: SessionDot,
-    pub n: u32,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub word: Words,
-    /// 组头那一句（「需手动 2」那样，出口照摆）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub text: Words,
-}
-
-/// 并好的一组。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupRead {
-    pub id: String,
-    /// 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
-    pub name: Option<String>,
-    /// 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub title: Words,
-    /// 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
-    pub made: Option<i64>,
-    /// 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
-    pub named: Option<i64>,
-    pub known: GroupKnown,
-    /// 组员：照问的台序、再照 sid。
-    pub members: Vec<GroupMember>,
-    pub counts: Vec<GroupCount>,
-}
-
-/// 一台这一问的结局（同历史页那一列那一格：答了 · 上次所知 · 读不到）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupsMachine {
-    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
-    pub origin: Machine,
-    pub read: Read,
-}
-
-/// `groups-read` 的回包。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct GroupsRead {
-    /// 各组：照建的先后、再照 id。
-    pub groups: Vec<GroupRead>,
-    /// 各台固定的会话（不论在不在组里），同组员那一形。
-    pub pinned: Vec<GroupMember>,
-    /// 问的每一台这一问的结局（照问的先后）。
-    pub machines: Vec<GroupsMachine>,
-}
-
 codes! {
     /// `groups-read` 自己没有别的码（哪台没问到只进回包的 `machines`）。
     pub enum GroupsReadErr {}
@@ -401,13 +258,6 @@ pub async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String
     .map_err(|e| format!("{e:?}"))
 }
 
-/// 一台这一问拿到的那一片：这一问答的 · 上一次答的（带那一份几时读到的，写好的字）· 没有。
-pub enum Half {
-    Now(GroupsHere),
-    Before(GroupsHere, Words),
-    None,
-}
-
 /// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻由调用方给）。
 #[expect(
     clippy::too_many_arguments,
@@ -448,8 +298,13 @@ pub(crate) async fn read_with(
                 Err(s) => match k.get(&key) {
                     Some((h, at_ms)) => {
                         let at = crate::common::time::history_at_text(*at_ms, now_ms, tz);
+                        let offline = Words(comms_inward::chan::said::offline(&origin.to_string()));
                         (
-                            Half::Before(h.clone(), at.clone()),
+                            Half::Before {
+                                here: h.clone(),
+                                at: at.clone(),
+                                offline,
+                            },
                             Read::Stale { why: s.said, at },
                         )
                     }
@@ -464,143 +319,6 @@ pub(crate) async fn read_with(
         }
     }
     Ok(merge(&halves, heads))
-}
-
-/// 合：各台那一片（照问的先后）＋ 这一问各台的结局 ⇒ 并好的一份。判定 · 计数只在这里；纯函数（不碰盘、不问网），
-/// 手机核心照 A1-8-4 挪走时整个搬过去，本机后端与手机核心调同一份。
-/// - 名字：各片里同一组 `named` 最新的那份；同一刻 ⇒ 这一问答了的那片优先，再照问的先后。`made` 取最早的。
-/// - 哪一片都没有那一组的记录、只有组员指着它 ⇒ 照出，名字缺。
-pub fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
-    // 组 id ⇒ (取到名字的那一份, 名字从哪来, 各片里最早的建组时刻)
-    let mut records: BTreeMap<&str, (&HereGroup, GroupKnown, i64)> = BTreeMap::new();
-    for (_, half) in halves {
-        let (here, known) = match half {
-            Half::Now(h) => (h, GroupKnown::Now),
-            Half::Before(h, at) => (h, GroupKnown::Before { at: at.clone() }),
-            Half::None => continue,
-        };
-        for g in &here.groups {
-            let fresh = known == GroupKnown::Now;
-            match records.get_mut(g.id.as_str()) {
-                None => {
-                    records.insert(g.id.as_str(), (g, known.clone(), g.made));
-                }
-                Some((best, k, made)) => {
-                    *made = (*made).min(g.made);
-                    let best_fresh = *k == GroupKnown::Now;
-                    if (g.named, fresh) > (best.named, best_fresh) {
-                        *best = g;
-                        *k = known.clone();
-                    }
-                }
-            }
-        }
-    }
-    let mut members: BTreeMap<&str, Vec<GroupMember>> = BTreeMap::new();
-    let mut pinned = Vec::new();
-    for (origin, half) in halves {
-        let (here, seen) = match half {
-            Half::Now(h) => (h, true),
-            Half::Before(h, _) => (h, false),
-            Half::None => continue,
-        };
-        for m in &here.members {
-            // 这一问答了 ⇒ 那台画的样子；上次所知 ⇒ 看不见的那一张（不冒充在跑）。
-            let face = if seen {
-                m.face.clone()
-            } else {
-                face_core::book::unseen(Words(comms_inward::chan::said::offline(
-                    &origin.to_string(),
-                )))
-            };
-            let row = GroupMember {
-                origin: origin.clone(),
-                sid: m.sid.clone(),
-                pinned: m.pinned,
-                face,
-                facts: m.facts.clone(),
-            };
-            if m.pinned {
-                pinned.push(row.clone());
-            }
-            for g in &m.groups {
-                members.entry(g.as_str()).or_default().push(row.clone());
-            }
-        }
-    }
-    let mut ids: Vec<&str> = records.keys().copied().collect();
-    ids.extend(
-        members
-            .keys()
-            .copied()
-            .filter(|id| !records.contains_key(id)),
-    );
-    let mut groups: Vec<GroupRead> = ids
-        .into_iter()
-        .map(|id| {
-            let rows = members.remove(id).unwrap_or_default();
-            let counts = counts_of(&rows);
-            match records.get(id) {
-                Some((g, known, made)) => GroupRead {
-                    id: id.to_string(),
-                    name: Some(g.name.clone()),
-                    title: Words(g.name.clone()),
-                    made: Some(*made),
-                    named: Some(g.named),
-                    known: known.clone(),
-                    members: rows,
-                    counts,
-                },
-                None => GroupRead {
-                    id: id.to_string(),
-                    name: None,
-                    title: Words(copy_core::copy_text("beGroups.name.unknown", &[])),
-                    made: None,
-                    named: None,
-                    known: GroupKnown::Unknown,
-                    members: rows,
-                    counts,
-                },
-            }
-        })
-        .collect();
-    groups.sort_by(|a, b| {
-        (a.made.unwrap_or(i64::MAX), &a.id).cmp(&(b.made.unwrap_or(i64::MAX), &b.id))
-    });
-    GroupsRead {
-        groups,
-        pinned,
-        machines,
-    }
-}
-
-/// 组头那几颗点：需手动 · 在跑 · 后台各几条，名字照第一条那张脸上的字。
-fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
-    [
-        SessionDot::NeedsYou,
-        SessionDot::Running,
-        SessionDot::Background,
-    ]
-    .into_iter()
-    .filter_map(|dot| {
-        let mut hit = rows.iter().filter(|r| r.face.dot == dot);
-        let first = hit.next()?;
-        let n = u32::try_from(1 + hit.count()).unwrap_or(u32::MAX);
-        let n_text = n.to_string();
-        let n_text = n_text.as_str();
-        let text = match dot {
-            SessionDot::NeedsYou => copy_core::copy_text("beGroups.count.needs", &[("n", n_text)]),
-            SessionDot::Running => copy_core::copy_text("beGroups.count.running", &[("n", n_text)]),
-            _ => copy_core::copy_text("beGroups.count.background", &[("n", n_text)]),
-        };
-        Some(GroupCount {
-            dot,
-            n,
-            word: first.face.name.clone(),
-            text: Words(text),
-        })
-    })
-    .collect()
 }
 
 /// 格目录的样本（`faces/cells_catalog.rs`）：真合（[`merge`]）出来的一份 —— 名字取自这一问答的那片 · 上次那片各一组，
@@ -653,7 +371,14 @@ pub fn specimen() -> GroupsRead {
     merge(
         &[
             (Machine::named("a"), Half::Now(now)),
-            (Machine::named("b"), Half::Before(before, w("t"))),
+            (
+                Machine::named("b"),
+                Half::Before {
+                    here: before,
+                    at: w("t"),
+                    offline: w("o"),
+                },
+            ),
         ],
         vec![
             GroupsMachine {

@@ -6,8 +6,8 @@
 //!   这台那一片没读成（两边都没答 · 这台那一格读不到）⇒ `no_roster`，不退回成全放行。
 //! - 整组投递不做（A76）。
 
-use crate::history::groups::GroupsRead;
-use crate::history::history_browse::Read;
+use cmd_wire::groups::GroupsRead;
+use cmd_wire::listing::HistoryMachineRead as Read;
 
 use crate::common::said::Said;
 

@@ -462,7 +462,7 @@ fn refused(s: Said) -> BusSendErr {
 pub(crate) fn send_here(
     own: &crate::platform::Own,
     req: &BusEnvelopeReq,
-    roster: Result<&crate::history::groups::GroupsRead, &str>,
+    roster: Result<&cmd_wire::groups::GroupsRead, &str>,
     now_ms: i64,
 ) -> Result<BusSent, Said> {
     let env = cc_bus_envelope::envelope_now(req)?;
@@ -490,7 +490,7 @@ pub(crate) async fn send<R, F>(
 ) -> Result<BusSent, BusSendErr>
 where
     R: FnOnce() -> F,
-    F: std::future::Future<Output = Result<crate::history::groups::GroupsRead, String>>,
+    F: std::future::Future<Output = Result<cmd_wire::groups::GroupsRead, String>>,
 {
     if req.machine.is_local() {
         let r = roster().await;
