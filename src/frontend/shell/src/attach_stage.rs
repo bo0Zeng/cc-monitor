@@ -13,6 +13,13 @@
 //! - 提交（`session-attachment-commit`）由界面问：这里只送进暂存区（同手机：核心送块，提交由 Kotlin 问）。
 //! - ✕ 那一下 [`attach_stage_stop`]：下一块不再送（已送的块交那台的孤儿扫）。撤单按（窗口 · 单号）记，先于开传到也撤得住。
 
+// 收 `Request<'_>`（引用）的异步命令：tauri 的命令宏在它旁边生成一道「必须回 `Result`」的编译期检查（`let _: &dyn …`），
+// 那一句落在本模块里、不在任何函数里 ⇒ 放行只能写在模块这一层；本文件自己的代码不写 `let _`。
+#![expect(
+    clippy::let_underscore_must_use,
+    reason = "tauri 命令宏给收引用的异步命令生成的「必须回 Result」检查"
+)]
+
 use crate::chan::host::InboundBackends;
 use crate::chan::router::Backends;
 use crate::chan::webview::{call_via, fail, Fail};
@@ -157,16 +164,19 @@ pub async fn attach_stage(
     let stop = TICKETS.open(&label, ticket);
     let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
     let got = stage_via(&InboundBackends, &origin, key, bytes, &stop, |done| {
-        let _ = moved.send(done);
+        // 进度交不回去（那一扇窗没了）：块照送，结局由这一问交回。
+        if let Err(e) = moved.send(done) {
+            tracing::debug!("附件进度交不回窗口：{e}");
+        }
     })
     .await;
     TICKETS.close(&label, ticket);
     got
 }
 
-/// ✕ 那一份：那一单下一块不再送。
+/// ✕ 那一份：那一单下一块不再送（只拨旗；照全仓默认走异步，不占主线程）。
 #[tauri::command]
-pub fn attach_stage_stop(webview: tauri::Webview, ticket: u64) {
+pub async fn attach_stage_stop(webview: tauri::Webview, ticket: u64) {
     TICKETS.stop(webview.label(), ticket);
 }
 

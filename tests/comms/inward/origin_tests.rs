@@ -507,7 +507,9 @@ fn every_origin_taking_command_splits_local_through_route() {
                 takes_origin.insert(name.clone());
             }
             // 收原样字节的命令（`tauri::ipc::Request`）实参只能走头：那台从头里造成 `Origin`，同样算吃 `Origin`。
-            if flat.contains("tauri::ipc::Request") && body.contains("Origin::named(") {
+            if guard_core::contains_word(&flat, "tauri::ipc::Request")
+                && guard_core::contains_word(&body, "Origin::named(")
+            {
                 takes_origin.insert(name.clone());
             }
             if body.contains(".route(") {

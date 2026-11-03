@@ -49,7 +49,8 @@ function isFailed(v: unknown): v is Failed {
 
 async function callShell<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
   try {
-    return await tauriInvoke<T>(cmd, args, options);
+    // 没有头的那几条照两个实参交（判据按实参逐个比，多一个 `undefined` 就对不上）。
+    return await (options === undefined ? tauriInvoke<T>(cmd, args) : tauriInvoke<T>(cmd, args, options));
   } catch (e) {
     throw isFailed(e) ? new SaidError(e) : e;
   }

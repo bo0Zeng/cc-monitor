@@ -100,7 +100,10 @@ async fn the_bytes_go_up_in_chunks_under_one_key_and_come_back_staged() {
         .map(|(_, r)| r["seq"].as_u64().unwrap())
         .collect();
     assert_eq!(seqs, vec![0, 1, 2], "块号从 0 连着来");
-    assert!(seen.iter().all(|(_, r)| r["key"] == KEY), "每一块同一个暂存键");
+    assert!(
+        seen.iter().all(|(_, r)| r["key"] == KEY),
+        "每一块同一个暂存键"
+    );
     let rebuilt: Vec<u8> = seen
         .iter()
         .flat_map(|(_, r)| {
