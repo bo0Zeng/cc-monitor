@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.BookmarkShelf
+import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
@@ -248,7 +249,8 @@ private fun entryActions(
             startCopy = { es ->
                 scope.launch {
                     val b = vm.browser()
-                    b.open(vm.cwd.value?.text ?: HOME)
+                    // 当前目录读不成字 ⇒ 从那台的家开。
+                    b.open(vm.cwd.value?.text ?: FilesHome.TILDE)
                     onDialog(FilesDialog.CopyTo(es, b, vm.machine()))
                 }
             },
@@ -816,9 +818,6 @@ private fun nameOf(
             if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(c::getString) else null
         }
     }.getOrNull()
-
-/** 复制到… 那一屏从哪开（当前目录读不成字时）：那台的家。 */
-private const val HOME = "~"
 
 /** 面包屑至多排几段（含「…」那一段）。 */
 private const val CRUMBS_SHOWN = 4

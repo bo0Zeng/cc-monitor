@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
+import com.ccmonitor.mobile.core.wire.gen.SshPublicKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +37,7 @@ class IdentityViewModel(
     private val repo: IdentityRepository,
     private val io: CoroutineDispatcher = Dispatchers.IO, // 可注入，便于 JVM 测试
     // 导入时派生公钥：生产是 Rust 核心那一份（要 .so）；JVM 单测注入替身（解析本身的判据在 core-ssh 的 androidTest）。
-    private val derive: (ByteArray, String) -> PublicKeyDeriver.Derived? = PublicKeyDeriver::fromPrivatePem,
+    private val derive: (ByteArray, String) -> SshPublicKey? = PublicKeyDeriver::fromPrivatePem,
 ) : ViewModel() {
     val identities: StateFlow<List<Identity>> =
         repo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -119,8 +120,8 @@ class IdentityViewModel(
                 label = label.ifBlank { "imported" },
                 keyType = "imported",
                 privateKeyEnc = ByteArray(0),
-                publicKeyOpenSsh = derived.openSsh,
-                fingerprintSha256 = derived.fingerprintSha256,
+                publicKeyOpenSsh = derived.line,
+                fingerprintSha256 = derived.fingerprint,
                 createdAt = System.currentTimeMillis(),
             ),
             plainPrivateKey = pem,

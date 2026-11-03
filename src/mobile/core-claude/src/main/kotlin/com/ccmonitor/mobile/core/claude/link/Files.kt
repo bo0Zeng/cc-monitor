@@ -116,8 +116,8 @@ object FilesHome {
 
     fun of(data: Any?): RemotePath? = Commands.FilesHome.reply(data)?.let { RemotePath.of(it.path) }
 
-    /** 新建会话的目录 chip 要的那一串：家目录读不成字 ⇒ `null`。 */
-    fun text(data: Any?): String? = of(data)?.text
+    /** 那台的家目录写成的那一串：原样交那台（`files-ls` · 新会话的 `cwd`），由那台按它的家目录展开，手机不拼。 */
+    const val TILDE: String = "~"
 }
 
 /** `files-ls`：一个目录的直接子项（那台读目录的顺序；排序是屏上的事）。 */
@@ -216,7 +216,7 @@ object FilesLs {
         return Entry(path, rel, e.`class` == FileClass.FOLDER, e.size, e.sizeText, e.mtimeText, preview, edit)
     }
 
-    /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
+    /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径，或 `~` 开头的（那台展开）。 */
     fun dirs(path: String): Map<String, Any?> = Commands.FilesLs.args(LsReq(path = WirePath.Text(path), dirsOnly = true))
 
     data class Dir(
@@ -226,11 +226,15 @@ object FilesLs {
         val shown: String,
     )
 
-    /** [dirs] 那一问的一层：那台排好的文件夹 ＋ 上一级（到顶 ⇒ `null`）＋ 这一层屏上那一串（那台写好的）。 */
+    /**
+     * [dirs] 那一问的一层：那台排好的文件夹 ＋ 上一级（到顶 ⇒ `null`）＋ 这一层屏上那一串（那台写好的）＋
+     * 这一层的绝对路径（面包屑最后一段；问的是 `~/…` 时就是那台展开的那一条；没有或读不成字 ⇒ `null`）。
+     */
     data class Dirs(
         val dirs: List<Dir>,
         val up: String?,
         val shown: String,
+        val at: String?,
     )
 
     /** [dirs] 那一问的回包；路径或名字读不成字（那台用 `b16` 交的）的那一行不列。形状对不上 ⇒ `null`。 */
@@ -242,7 +246,12 @@ object FilesLs {
                 val n = (e.name as? WirePath.Text)?.value ?: return@mapNotNull null
                 Dir(p, n, RemotePath.of(e.shown)?.shown ?: return@mapNotNull null)
             }
-        return Dirs(dirs, (head.up as? WirePath.Text)?.value, RemotePath.of(head.shown)?.shown ?: return null)
+        return Dirs(
+            dirs,
+            (head.up as? WirePath.Text)?.value,
+            RemotePath.of(head.shown)?.shown ?: return null,
+            (head.crumbs.lastOrNull()?.path as? WirePath.Text)?.value,
+        )
     }
 }
 

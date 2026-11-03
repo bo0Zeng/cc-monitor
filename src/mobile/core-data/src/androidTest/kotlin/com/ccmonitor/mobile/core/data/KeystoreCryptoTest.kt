@@ -20,6 +20,7 @@ import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
+import java.util.Base64
 
 @RunWith(AndroidJUnit4::class)
 class KeystoreCryptoTest {
@@ -61,11 +62,14 @@ class KeystoreCryptoTest {
         // emulator 无 StrongBox → 必回退软件
         assertFalse(key.strongBoxBacked)
 
-        // wire blob 末尾 65 字节为未压缩点 0x04||X||Y
+        // 核心写的那一行里 wire blob 末尾 65 字节就是交给它的那个未压缩点 0x04||X||Y
         val ks = KeyStore.getInstance(SshKeyGenerator.ANDROID_KEYSTORE).apply { load(null) }
         val pub = ks.getCertificate(alias).publicKey as ECPublicKey
-        val blob = SshWire.encodeEcdsaP256(pub)
-        assertEquals(0x04.toByte(), blob[blob.size - 65])
+        val point = SshWire.uncompressedPoint(pub)
+        assertEquals(65, point.size)
+        assertEquals(0x04.toByte(), point[0])
+        val blob = Base64.getDecoder().decode(key.publicKeyOpenSsh.split(' ')[1])
+        assertArrayEquals(point, blob.copyOfRange(blob.size - 65, blob.size))
     }
 
     @Test

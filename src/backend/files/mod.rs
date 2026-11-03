@@ -190,11 +190,20 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
 }
 
 /// 此刻那一份：排好、截好的每一行（键 ＝ 末段名）＋ 头。`dirs_only` ⇒ 只列文件夹（含指向目录的链接），截断与计数都只数文件夹。
+/// 路径 `~` 开头的按这台的家目录展开（[`crate::platform::paths::expand_tilde_from`]），面包屑最后一段就是展开后的绝对路径。
 fn ls_now(
     req: wire::LsReq,
     tz: &crate::common::time::Tz,
 ) -> Answer<(wire::LsHead, Vec<(String, wire::LsEntry)>)> {
+    let home = crate::platform::paths::home_dir();
     let dir = path_of(&req.path, "path")?;
+    let dir = match dir.to_str() {
+        Some(s) if s.starts_with('~') => PathBuf::from(crate::platform::paths::expand_tilde_from(
+            s,
+            home.as_deref(),
+        )),
+        _ => dir,
+    };
     let limit = limit_of(req.limit);
     let dirs_only = req.dirs_only.unwrap_or(false);
     // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
@@ -253,7 +262,6 @@ fn ls_now(
     let total = picked.len() as u64;
     picked.sort_by_cached_key(|p| ls_order(p, sort));
     picked.truncate(limit);
-    let home = crate::platform::paths::home_dir();
     let entries = picked
         .into_iter()
         .map(|p| ls_row(p, tz, home.as_deref()))

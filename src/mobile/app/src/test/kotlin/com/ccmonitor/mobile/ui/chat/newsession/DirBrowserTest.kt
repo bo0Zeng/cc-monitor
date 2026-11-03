@@ -16,14 +16,15 @@ class DirBrowserTest {
     /** 那台写的显示形（替身按那台的家目录 `/h` 写成 `~/…`、写成一个手机推不出的样子：手机只照抄）。 */
     private fun shown(p: String) = if (p == "/h") "家" else p.replaceFirst(Regex("^/h/"), "家/")
 
-    /** 那台答的 [at] 那一层（整份，带键集合那一形）：`up` 是它给的上一级（替身照路径切，手机不切）。 */
+    /** 那台答的 [at] 那一层（整份，带键集合那一形）：`up` 是它给的上一级、面包屑最后一段是这一层的绝对路径（替身照路径切，手机不切）。 */
     private fun dirs(
         at: String,
         up: String?,
         vararg p: String,
     ): Map<String, Any?> {
         val keys = p.map { it.substringAfterLast('/') }
-        val info = mapOf("shown" to shown(at), "up" to up, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
+        val crumbs = listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to at.substringAfterLast('/'), "path" to at))
+        val info = mapOf("shown" to shown(at), "up" to up, "crumbs" to crumbs, "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
         return mapOf(
             "held" to "h1",
             "whole" to true,
@@ -38,10 +39,10 @@ class DirBrowserTest {
         FakeCoreLink().also { l ->
             l.answer = { cmd, args ->
                 when (cmd) {
-                    "files-home" -> Reply.Ok(mapOf("path" to "/h"))
                     "files-ls" ->
                         when (args?.get("path")) {
-                            "/h/work" -> Reply.Ok(dirs("/h/work", "/h", "/h/work/orders", "/h/work/billing"))
+                            // 那台按它的家目录展开 `~`（手机原样交）。
+                            "/h/work", "~/work" -> Reply.Ok(dirs("/h/work", "/h", "/h/work/orders", "/h/work/billing"))
                             "/h/work/billing" -> Reply.Ok(dirs("/h/work/billing", "/h/work"))
                             "/h" -> Reply.Ok(dirs("/h", "/", "/h/work"))
                             else -> Reply.Failed(Failed("not_found", "路径不存在", "d"))
@@ -52,13 +53,15 @@ class DirBrowserTest {
         }
 
     @Test
-    fun `从选中的目录起（~ 照那台的家目录展开）；进去 · 上一级 · 选这个`() =
+    fun `从选中的目录起（~ 原样交那台展开）；进去 · 上一级 · 选这个`() =
         runTest {
             val l = link()
             val b = DirBrowser(l, "smokebox", backgroundScope)
             b.open("~/work")
             runCurrent()
-            assertEquals(mapOf("path" to "/h/work", "dirs_only" to true), l.calls("files-ls").last())
+            assertEquals(mapOf("path" to "~/work", "dirs_only" to true), l.calls("files-ls").last())
+            assertEquals("手机不问家目录、不自己拼", emptyList<Any?>(), l.calls("files-home"))
+            assertEquals("此刻那一层是那台回的绝对路径", "/h/work", b.state.value.path)
             assertEquals(
                 "照那台排好的先后，不另排",
                 listOf("orders", "billing"),

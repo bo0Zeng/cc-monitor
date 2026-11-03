@@ -294,16 +294,33 @@ fn install_env(known_hosts: std::path::PathBuf) {
 
 // ═══ 钥匙本身（导入时派生公钥）═══════════════════════════════════════════════════════
 
-/// 一段私钥 PEM（OpenSSH / PKCS#8 / …，不带口令）⇒ 它的公钥那一行（`<算法> <base64> [注释]`）。认不出 ⇒ `None`。
-pub fn public_line_of(pem: &str, comment: &str) -> Option<String> {
-    let key = russh::keys::decode_secret_key(pem, None).ok()?;
-    let mut public = key.public_key().clone();
-    public.set_comment(comment);
-    public.to_openssh().ok()
+/// 一把公钥（带上 [comment]）⇒ 交 Kotlin 的那一形：那一行 · 算法名 · 指纹（拨号核心那一份 `known_hosts::fingerprint`，桌面同一个）。
+fn ssh_public(
+    mut key: russh::keys::PublicKey,
+    comment: &str,
+) -> Option<cmd_wire::phone::SshPublicKey> {
+    key.set_comment(comment);
+    Some(cmd_wire::phone::SshPublicKey {
+        line: key.to_openssh().ok()?,
+        kind: key.algorithm().as_str().to_string(),
+        fingerprint: ssh_dial::known_hosts::fingerprint(&key),
+    })
 }
 
-/// 现生成一把软件 Ed25519（系统随机数做种子）：回 `(私钥 PEM（openssh-key-v1，无口令）, 公钥那一行)`。
-pub fn generate_ed25519(comment: &str) -> Option<(String, String)> {
+/// 一段私钥 PEM（OpenSSH / PKCS#8 / …，不带口令）⇒ 它的公钥（[`ssh_public`]）。认不出 ⇒ `None`。
+pub fn public_key_of(pem: &str, comment: &str) -> Option<cmd_wire::phone::SshPublicKey> {
+    let key = russh::keys::decode_secret_key(pem, None).ok()?;
+    ssh_public(key.public_key().clone(), comment)
+}
+
+/// 一个 P-256 未压缩点（`04 ‖ X ‖ Y`，Keystore 里那把的公钥）⇒ 它的公钥（[`ssh_public`]）。点坏了 ⇒ `None`。
+pub fn public_key_of_point(point: &[u8], comment: &str) -> Option<cmd_wire::phone::SshPublicKey> {
+    let ec = russh::keys::ssh_key::public::EcdsaPublicKey::from_sec1_bytes(point).ok()?;
+    ssh_public(russh::keys::PublicKey::from(ec), comment)
+}
+
+/// 现生成一把软件 Ed25519（系统随机数做种子）：私钥 PEM（openssh-key-v1，无口令）· 它的公钥。
+pub fn generate_ed25519(comment: &str) -> Option<cmd_wire::phone::KeyPair> {
     use ring::rand::SecureRandom as _;
     let mut seed = [0u8; 32];
     ring::rand::SystemRandom::new().fill(&mut seed).ok()?;
@@ -312,8 +329,10 @@ pub fn generate_ed25519(comment: &str) -> Option<(String, String)> {
     );
     key.set_comment(comment);
     let pem = key.to_openssh(russh::keys::ssh_key::LineEnding::LF).ok()?;
-    let public = key.public_key().to_openssh().ok()?;
-    Some((pem.to_string(), public))
+    Some(cmd_wire::phone::KeyPair {
+        pem: pem.to_string(),
+        public: ssh_public(key.public_key().clone(), comment)?,
+    })
 }
 
 /// 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（解析住拨号核心 `config_text`）。
@@ -725,7 +744,15 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_holdKey<'l>(
     })
 }
 
-/// `Core.publicKeyOf(pem, comment)`：导入一把私钥时派生它的公钥那一行；认不出 ⇒ `null`。
+/// 一把公钥 ⇒ 它的 JSON（[`cmd_wire::phone::SshPublicKey`]）；没有 ⇒ `null`。
+fn public_or_null(env: &JNIEnv, key: Option<cmd_wire::phone::SshPublicKey>) -> jstring {
+    match key.and_then(|k| serde_json::to_string(&k).ok()) {
+        Some(json) => new_jstring(env, json),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// `Core.publicKeyOf(pem, comment)`：导入一把私钥时派生它的公钥（JSON [`cmd_wire::phone::SshPublicKey`]）；认不出 ⇒ `null`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOf<'l>(
     mut env: JNIEnv<'l>,
@@ -739,14 +766,26 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOf<'l>(
             .ok()
             .and_then(|b| String::from_utf8(b).ok());
         let comment = string(&mut env, &comment).unwrap_or_default();
-        match pem.and_then(|p| public_line_of(&p, &comment)) {
-            Some(line) => new_jstring(&env, line),
-            None => std::ptr::null_mut(),
-        }
+        public_or_null(&env, pem.and_then(|p| public_key_of(&p, &comment)))
     })
 }
 
-/// `Core.generateEd25519(comment)`：回 JSON `{pem, public}`；生成不了 ⇒ `null`。
+/// `Core.publicKeyOfPoint(point, comment)`：Keystore 里那把（P-256 未压缩点）的公钥（JSON [`cmd_wire::phone::SshPublicKey`]）；点坏了 ⇒ `null`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOfPoint<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    point: JByteArray<'l>,
+    comment: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let pt = env.convert_byte_array(&point).ok();
+        let comment = string(&mut env, &comment).unwrap_or_default();
+        public_or_null(&env, pt.and_then(|p| public_key_of_point(&p, &comment)))
+    })
+}
+
+/// `Core.generateEd25519(comment)`：回 JSON [`cmd_wire::phone::KeyPair`]；生成不了 ⇒ `null`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_generateEd25519<'l>(
     mut env: JNIEnv<'l>,
@@ -755,12 +794,8 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_generateEd25519<'l
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
         let comment = string(&mut env, &comment).unwrap_or_default();
-        match generate_ed25519(&comment) {
-            Some((pem, public)) => new_jstring(
-                &env,
-                serde_json::to_string(&cmd_wire::phone::KeyPair { pem, public })
-                    .unwrap_or_default(),
-            ),
+        match generate_ed25519(&comment).and_then(|k| serde_json::to_string(&k).ok()) {
+            Some(json) => new_jstring(&env, json),
             None => std::ptr::null_mut(),
         }
     })
@@ -1514,9 +1549,20 @@ mod tests {
         }
     }
 
-    /// 导入时派生公钥：一把 OpenSSH 格式的私钥 ⇒ 与它自己的公钥那一行逐字相同；乱码 ⇒ `None`。
+    /// 交 Kotlin 的那一形对得上那把钥匙：那一行逐字是它的 OpenSSH 形、算法名是它的、指纹是拨号核心那一份（桌面同一个）。
+    fn assert_is(got: &cmd_wire::phone::SshPublicKey, key: &russh::keys::PublicKey, kind: &str) {
+        assert_eq!(got.line, key.to_openssh().unwrap());
+        assert_eq!(got.kind, kind);
+        assert_eq!(got.fingerprint, ssh_dial::known_hosts::fingerprint(key));
+        assert!(
+            got.fingerprint.starts_with("SHA256:") && got.fingerprint.len() == 50,
+            "{got:?}"
+        );
+    }
+
+    /// 导入时派生公钥：一把 OpenSSH 格式的私钥 ⇒ 它自己的公钥（那一行 · 算法 · 指纹）；乱码 ⇒ `None`。
     #[test]
-    fn the_public_line_of_a_private_key_is_its_own_public_key() {
+    fn the_public_key_of_a_private_key_is_its_own_public_key() {
         let key = russh::keys::PrivateKey::from(
             russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7u8; 32]),
         );
@@ -1525,29 +1571,48 @@ mod tests {
             .unwrap();
         let mut want = key.public_key().clone();
         want.set_comment("phone");
-        assert_eq!(
-            super::public_line_of(&pem, "phone"),
-            Some(want.to_openssh().unwrap())
-        );
-        assert_eq!(super::public_line_of("not a key", ""), None);
+        let got = super::public_key_of(&pem, "phone").expect("认不出");
+        assert_is(&got, &want, "ssh-ed25519");
+        assert_eq!(super::public_key_of("not a key", ""), None);
     }
 
-    /// 现生成的那一把：私钥解得回来、公钥就是它的公钥、两把不一样（真随机）。
+    /// Keystore 那把：P-256 未压缩点 ⇒ 它的公钥（`ecdsa-sha2-nistp256` · 指纹同一份）；点坏了 ⇒ `None`。
+    #[test]
+    fn the_public_key_of_a_p256_point_is_that_key() {
+        let rng = ring::rand::SystemRandom::new();
+        let alg = &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
+        let pkcs8 = ring::signature::EcdsaKeyPair::generate_pkcs8(alg, &rng).unwrap();
+        let pair = ring::signature::EcdsaKeyPair::from_pkcs8(alg, pkcs8.as_ref(), &rng).unwrap();
+        use ring::signature::KeyPair as _;
+        let point = pair.public_key().as_ref().to_vec();
+        let got = super::public_key_of_point(&point, "phone@ks").expect("认不出那个点");
+        let mut want = russh::keys::PublicKey::from(
+            russh::keys::ssh_key::public::EcdsaPublicKey::from_sec1_bytes(&point).unwrap(),
+        );
+        want.set_comment("phone@ks");
+        assert_is(&got, &want, "ecdsa-sha2-nistp256");
+        assert!(got.line.ends_with(" phone@ks"), "{got:?}");
+        assert_eq!(super::public_key_of_point(&[4u8; 10], ""), None);
+    }
+
+    /// 现生成的那一把：私钥解得回来、公钥就是它的公钥（同一形）、两把不一样（真随机）。
     #[test]
     fn a_generated_key_round_trips_and_is_fresh() {
-        let (pem, public) = super::generate_ed25519("phone").expect("生成不了");
-        assert!(pem.starts_with("-----BEGIN OPENSSH PRIVATE KEY-----"));
+        let pair = super::generate_ed25519("phone").expect("生成不了");
+        assert!(pair.pem.starts_with("-----BEGIN OPENSSH PRIVATE KEY-----"));
         assert_eq!(
-            super::public_line_of(&pem, "phone").as_deref(),
-            Some(public.as_str())
+            super::public_key_of(&pair.pem, "phone").as_ref(),
+            Some(&pair.public)
         );
+        assert_eq!(pair.public.kind, "ssh-ed25519");
         assert!(
-            public.starts_with("ssh-ed25519 ") && public.ends_with(" phone"),
-            "{public}"
+            pair.public.line.starts_with("ssh-ed25519 ") && pair.public.line.ends_with(" phone"),
+            "{:?}",
+            pair.public
         );
         assert_ne!(
-            super::generate_ed25519("").unwrap().1,
-            super::generate_ed25519("").unwrap().1
+            super::generate_ed25519("").unwrap().public,
+            super::generate_ed25519("").unwrap().public
         );
         let hosts: serde_json::Value =
             serde_json::from_str(&super::ssh_config_json("Host a\n Port 2200")).unwrap();
