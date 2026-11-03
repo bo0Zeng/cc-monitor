@@ -77,7 +77,7 @@ import { machineName } from "./control-said";
 import type { MachineFix } from "./generated/MachineFix";
 import { openSettingsWindow } from "./open-settings";
 import { machinePageOf } from "./settings-dest";
-import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
+import { closeFrontResult, flashFrontDone, frontAskFailed, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
 import type { ActionId } from "./keybindings/actions";
@@ -1485,16 +1485,23 @@ export class TabManager {
   /**
    * ↗ 的每个入口都经这里：在飞时不重发；慢了按钮进「进行中」、旁边出「查找终端…」；
    * 切过去了 ↗ 换对勾 1 秒；其余结局一个浮层锚在 ↗ 下面（`front-result.ts` 排版）。
+   * 连那一张都没问到（壳那一问失败）⇒ 不出空浮层，照壳交来的那一句进失败提示（详情可复制）。
    */
   private async frontFrom(sid: string, from: "row" | "head"): Promise<void> {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const origin = tab.origin;
     const run = (): Promise<FrontTold> => bringTerminalToFront(origin, sid);
-    const r = await frontOnce(sid, run, (on) => {
-      this.bar.setFrontPending(sid, on);
-      setFrontBusy(this.frontAnchor(sid, from), on);
-    });
+    let r: FrontTold | undefined;
+    try {
+      r = await frontOnce(sid, run, (on) => {
+        this.bar.setFrontPending(sid, on);
+        setFrontBusy(this.frontAnchor(sid, from), on);
+      });
+    } catch (e) {
+      frontAskFailed(e);
+      return;
+    }
     if (r === undefined) return;
     const anchor = this.frontAnchor(sid, from);
     const view = frontView(r);

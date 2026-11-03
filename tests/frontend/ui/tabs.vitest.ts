@@ -2215,6 +2215,21 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     expect(popButtons()).toEqual([copyText("detail.act.copy")]);
   });
 
+  it("★ 问壳要那一张也没成 ⇒ 不出空浮层、接住：照壳交来的那一句进失败提示（详情可复制）", async () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("r8", "/p", "devbox", false);
+    const refused = Object.assign(new Error("壳拒的那一句"), { detail: "壳的详情" });
+    mockInvoke.mockImplementation((cmd: string, args: unknown) => {
+      if (isChanCall(cmd, args, "session-window")) return Promise.resolve(chanReply({ labels: [], chain: [], tmux: false }));
+      if (cmd === "front_missed") return Promise.reject(refused);
+      return Promise.resolve([]);
+    });
+    vi.mocked(failToast).mockClear();
+    await clickFront(tm, "r8");
+    expect(vi.mocked(failToast).mock.calls).toEqual([[copyText("terminal.head.front"), refused]]);
+    expect(pop(), "拿不到那一张就不出浮层").toBeNull();
+  });
+
   it("★ 壳那一张带［在 cc-monitor 里打开］（Wayland 桌面上切不了）⇒ 点了收起浮层、交 main 开这个会话的终端页", async () => {
     answer(PLACED, () => Promise.resolve(said(face("切不了", "Wayland", "plain", [{ kind: "open-here" }]))));
     const tm = makeTM();
@@ -2522,6 +2537,8 @@ describe("LF1 · A2-17-12-1：↗ 在哪都画；做不了只灰着写原因", (
   });
 
   it("★ 对照：windows / linux 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
+    // 壳那条命令回的是那一张（`FrontFace`）：夹具照形回，别的命令照旧空着。
+    mockInvoke.mockImplementation((cmd: string) => Promise.resolve(cmd === "front_missed" ? { title: "t", body: "", tone: "fail", acts: [] } : undefined));
     for (const os of ["windows", "linux"] as const) {
       mockInvoke.mockClear();
       __setHostFactsForTests(factsOn(os));
