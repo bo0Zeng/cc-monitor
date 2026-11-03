@@ -190,7 +190,7 @@
       "effect_label": "整个文件归 cc-monitor · 部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "起会话便条 · 启动时记下的账号 · 进程退出即清",
+      "note": "起会话便条 · 启动时记下的账号 · 进程退出后清",
       "path_declared": "~/.cc-monitor/launch-pending",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/launch-pending",
       "source_label": "由 cc-monitor 现场生成的文本",
