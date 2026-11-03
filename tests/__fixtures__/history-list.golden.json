@@ -222,7 +222,7 @@
           },
           "say": {
             "can": "yes",
-            "hint": "会话已结束 · 发一句会先恢复它"
+            "hint": "会话已结束 · 发送时先恢复"
           },
           "stop": {
             "can": "no",
@@ -249,7 +249,7 @@
       "hidden": null,
       "isBg": false,
       "jsonlPath": "/h/.claude/projects/-w/0000aaaa-0000-4000-8000-000000000003.jsonl",
-      "label": "没有说过话的会话",
+      "label": "无消息的会话",
       "lastAccount": "home",
       "messageCountApprox": 3,
       "origin": "dev",
@@ -262,7 +262,7 @@
       "spanText": "00:00–00:00",
       "starred": false,
       "startedAt": 300,
-      "title": "没有说过话的会话",
+      "title": "无消息的会话",
       "untitled": true,
       "updatedAt": 700
     },
@@ -309,7 +309,7 @@
           },
           "say": {
             "can": "yes",
-            "hint": "会话已结束 · 发一句会先恢复它"
+            "hint": "会话已结束 · 发送时先恢复"
           },
           "stop": {
             "can": "no",
@@ -397,7 +397,7 @@
           },
           "say": {
             "can": "yes",
-            "hint": "会话已结束 · 发一句会先恢复它"
+            "hint": "会话已结束 · 发送时先恢复"
           },
           "stop": {
             "can": "no",
