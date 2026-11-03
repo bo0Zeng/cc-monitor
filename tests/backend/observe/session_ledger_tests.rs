@@ -587,3 +587,48 @@ fn a_session_in_a_hosted_terminal_leaves_in_exactly_one_frame_that_says_ended() 
         .all(|f| !matches!(f, Frame::SessionLeft(_))));
     assert!(!l.reconnectable().contains("a"));
 }
+
+/// 宣告时 pidfile 说接进去没有意义（`attachable: false`）⇒ 程序退了、tmux 会话还在那一张脸照旧不给「在终端里打开」；
+/// 没说的那一条照给（只在别的机器上看才给）。
+#[test]
+fn a_reconnectable_announced_as_unattachable_cannot_be_attached() {
+    let mut l = SessionLedger::new();
+    for (sid, attachable) in [("a", Some(false)), ("b", None)] {
+        let Ev::F(Frame::SessionAdded(mut f)) = added(sid) else {
+            unreachable!()
+        };
+        f.attachable = attachable;
+        l.on_frame(&Frame::SessionAdded(f));
+    }
+    let both = [row("$1", "ta", &["a"]), row("$2", "tb", &["b"])].concat();
+    l.on_tmux(&both, None);
+    for sid in ["a", "b"] {
+        let Ev::F(gone) = removed(sid, Cause::Gone) else {
+            unreachable!()
+        };
+        l.on_frame(&gone);
+    }
+    l.observing();
+    let mut attach = std::collections::BTreeMap::new();
+    for f in l.on_tmux(&both, None) {
+        if let Frame::SessionLeft(s) = f {
+            assert_eq!(s.face.life, WireLife::Reconnectable, "{}", s.sid);
+            attach.insert(s.sid.clone(), s.face.can.attach.clone());
+        }
+    }
+    assert_eq!(
+        attach.get("a"),
+        Some(&crate::wire::CanAttach::No {
+            why: crate::common::cells::Words(copy_core::copy_text(
+                "sessionState.unattachable.why",
+                &[]
+            ))
+        })
+    );
+    assert_eq!(
+        attach.get("b"),
+        Some(&crate::wire::CanAttach::Yes {
+            from: crate::wire::AttachFrom::Elsewhere
+        })
+    );
+}

@@ -13,8 +13,9 @@
  * ② 有载荷但 TS 不读字段 ⇒ `unknown`（或不透明 JSON）并在那一行注明；③ TS 真消费字段 ⇒ 生成物类型。
  * 条目按落地顺序追加，不按字母序。
  */
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { Channel, invoke as tauriInvoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import type { Failed } from "../generated/Failed";
+import type { Staged } from "../generated/Staged";
 
 /**
  * 壳命令失败（交出去那一形 `Failed`：码 · 一句 · 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
@@ -46,16 +47,20 @@ function isFailed(v: unknown): v is Failed {
   );
 }
 
-async function callShell<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function callShell<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
   try {
-    return await tauriInvoke<T>(cmd, args);
+    // 没有头的那几条照两个实参交（判据按实参逐个比，多一个 `undefined` 就对不上）。
+    return await (options === undefined ? tauriInvoke<T>(cmd, args) : tauriInvoke<T>(cmd, args, options));
   } catch (e) {
     throw isFailed(e) ? new SaidError(e) : e;
   }
 }
 
-/** 本文件里每一条命令都经这一口：失败是 [`Failed`] ⇒ 换成 [`SaidError`]。 */
-const invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> = callShell;
+/** 本文件里每一条命令都经这一口：失败是 [`Failed`] ⇒ 换成 [`SaidError`]。`args` 是原样字节的那几条，别的实参走 `options.headers`。 */
+const invoke: <T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions) => Promise<T> = callShell;
+
+/** 头只收可见 ASCII ⇒ 名字照 UTF-8 写成十六进制（壳那一侧 `cmd_wire::files::from_hex` 解）。 */
+const utf8Hex = (s: string): string => Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, "0")).join("");
 
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 // 合并后的命令一律收 `origin`，类型用生成物 `Machine`（`string`，不手写）：给 origin 参数传 `null` 是编译错。
@@ -321,6 +326,19 @@ export const commands = {
       ops: string[];
       unavailable: [string, string, string][];
     } | null>("chan_offer", args),
+
+  /**
+   * 聊天附件那一份交给壳逐块送进那台暂存区（`attach_stage.rs`：块多大 · 摘要 · 暂存键都是 `chunk_core`）。
+   * 请求体是原样字节；那台（名字 UTF-8 的十六进制）· 撤单号 · 进度通道走头。`moved` 逐块收已送字节。
+   * ⚠ 调用方经 `attach-draft.ts::channelIo`：失败是通道那一形（`chan/webview.rs::Fail`），由它照 `chan.ts::decodeFail` 解回三层。**桶③**。
+   */
+  attach_stage: (origin: Machine, ticket: number, bytes: Uint8Array, moved: (done: number) => void) =>
+    invoke<Staged>("attach_stage", bytes, {
+      headers: { "ccm-origin": utf8Hex(origin), "ccm-ticket": String(ticket), "ccm-moved": new Channel<number>(moved).toJSON() },
+    }),
+
+  /** ✕ 那一份：那一单下一块不再送（`attach_stage.rs::attach_stage_stop`）。**桶①**。 */
+  attach_stage_stop: (args: { ticket: number }) => invoke<void>("attach_stage_stop", args),
 
   /**
    * **通道 `subscribe` 在 Tauri IPC 这一跳上的三条命令**（`chan/webview.rs`）。

@@ -936,7 +936,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 开着编辑框的那条会话忙闲一变 ⇒ 它再问一次退法（只交脸上那一格，在不在干活归那台判）。
       saidEdit.activity(sessionId, activityOf(face));
     },
-    onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
+    onSessionName: (sessionId, label, title) => tabs.updateName(sessionId, label, title),
     // 某台机器的活会话清单报完了。
     onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
@@ -960,7 +960,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
       // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告紧跟着到）。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL, meta.background, null, meta.hidden);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL, meta.background, meta.hidden);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
     },
@@ -1027,7 +1027,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         meta.projectDir || null,
         origin,
         meta.background,
-        meta.attachable,
         meta.hidden,
       );
       // 上次所在 tab 是远端会话时在此补切（应用一次即清）。

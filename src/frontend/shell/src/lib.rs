@@ -64,6 +64,7 @@ mod bind;
 mod ui_contract;
 // 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
+mod attach_stage; // 聊天附件的分块传：壳替界面走 `chunk_core::stage`（界面只交字节与进度通道）
 mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
@@ -693,6 +694,9 @@ pub fn run() {
             chan::webview::chan_subscribe,
             chan::webview::chan_want,
             chan::webview::chan_stop,
+            // 聊天附件的分块传（逐块 · 摘要 · 暂存键都是 `chunk_core`）：界面只交字节与进度通道。
+            attach_stage::attach_stage,
+            attach_stage::attach_stage_stop,
             // issue #6: 历史全文搜索那三条命令（本机索引）删了：本机远端都经通道说 `history-search`。
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,

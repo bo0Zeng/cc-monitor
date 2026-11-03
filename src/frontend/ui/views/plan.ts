@@ -34,7 +34,6 @@ import { saidOf } from "../kit/detail";
 import { LOCAL, isRemoteOrigin, type Machine } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
-import { titleParts } from "../session-face";
 import { ackNeed, adoptRepo, fetchPlanList, fetchPlanNew, fetchPlanRead, planCommand, registerRepo, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
@@ -169,7 +168,7 @@ export class PlanView {
       who: (w) => this.whoChip(w),
       sessionName: (w) => {
         const tab = w?.sid ? this.tabOf(w.sid) : null;
-        return tab ? titleParts(tab).title : w ? shortId(w.id) : "";
+        return tab ? tab.title : w ? shortId(w.id) : "";
       },
       switchTo: (sid) => this.goSession(sid),
       resume: (anchor, sid) => this.resume(anchor, sid),
@@ -1166,7 +1165,7 @@ export class PlanView {
     const tab = this.tabOf(w.sid);
     const face = tab ? tab.face : w.face;
     b.appendChild(statusDot(face?.dot ?? null, face?.name ?? null, "compact"));
-    const name = tab ? titleParts(tab).title : shortId(w.sid);
+    const name = tab ? tab.title : shortId(w.sid);
     // 子 agent ⇒ 后端写好的「{父会话} 的 agent」照画；会话本身 ⇒ 标签页的名字。
     txt.textContent = w.label ?? name;
     b.appendChild(txt);

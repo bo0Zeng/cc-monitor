@@ -33,7 +33,8 @@ fn every_golden_press_encodes_to_its_bytes() {
         if dir == "<" {
             continue;
         }
-        let p = Press::from_token(token).unwrap_or_else(|| panic!("第 {n} 行记号读不出：{token:?}"));
+        let p =
+            Press::from_token(token).unwrap_or_else(|| panic!("第 {n} 行记号读不出：{token:?}"));
         assert_eq!(presses_bytes(&[p]), bytes, "第 {n} 行 {token:?}");
         seen += 1;
     }
@@ -60,7 +61,10 @@ fn every_golden_byte_run_decodes_to_its_press() {
 #[test]
 fn escape_sequences_round_trip_for_every_key_and_modifier() {
     let mut n = 0;
-    for key in Key::ALL.into_iter().filter(|k| !matches!(form(*k), Form::Byte(_))) {
+    for key in Key::ALL
+        .into_iter()
+        .filter(|k| !matches!(form(*k), Form::Byte(_)))
+    {
         for bits in 0..8u8 {
             let mods = Mods {
                 shift: bits & 1 != 0,
@@ -69,7 +73,11 @@ fn escape_sequences_round_trip_for_every_key_and_modifier() {
             };
             let p = Press::Special(key, mods);
             let bytes = presses_bytes(std::slice::from_ref(&p));
-            assert_eq!(presses_of(&bytes), Some(vec![p.clone()]), "{p:?} ⇒ {bytes:02x?}");
+            assert_eq!(
+                presses_of(&bytes),
+                Some(vec![p.clone()]),
+                "{p:?} ⇒ {bytes:02x?}"
+            );
             n += 1;
         }
     }
@@ -94,7 +102,14 @@ fn a_run_of_bytes_splits_into_presses() {
     let tokens = |b: &[u8]| presses_of(b).map(|v| v.iter().map(Press::token).collect::<Vec<_>>());
     assert_eq!(
         tokens(b"ls\r\x1b[A\x1bxy\x1b"),
-        Some(vec!["tls".into(), "s:enter".into(), "s:up".into(), "calt:x".into(), "ty".into(), "s:esc".into()])
+        Some(vec![
+            "tls".into(),
+            "s:enter".into(),
+            "s:up".into(),
+            "calt:x".into(),
+            "ty".into(),
+            "s:esc".into()
+        ])
     );
     assert_eq!(tokens(b"a\x1b[?1049h"), None, "认不出的 CSI");
     assert_eq!(tokens(b"\x1b[1;9A"), None, "修饰参数出界");

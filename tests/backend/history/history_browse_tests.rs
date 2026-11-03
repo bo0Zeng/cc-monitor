@@ -12,7 +12,7 @@
 //! 3. **各台那一格**：读到了 ⇒ 几行 ＋ 注解那一句；读不到、手上有旧副本 ⇒ 行照副本出、头里标旧（为什么 ＋ 副本落下那一刻）；
 //!    从没读到过 ⇒ 为什么、没有行；远端没同步过、也没带它的 `fresh` ⇒ 没读过（不去问）。
 //! 4. **帧面**：`fresh` 只认 `remotes` 里的、要带期限；同步没成的那台下一问照样说读不到（不拿旧副本充数）；窗口 1–2000。
-//! 5. **手机那一列同一份**：端核心并的段 · 行 · 分叉挂父 · 孤儿 · 组的先后与这里摊出的逐条相同（分叉树只住 `resident_client::column::nest`）。
+//! 5. **手机那一列同一份**：共享核心并的段 · 行 · 分叉挂父 · 孤儿 · 组的先后与这里摊出的逐条相同（分叉树只住 `face_core::column::nest`）。
 //! 6. **手机那一列的分叉树**：父收着 ⇒ 子不出；展开 ⇒ 子紧跟父；父不在这一列（含摆进别处）⇒ 孤儿。
 //!
 //! # 买不到
@@ -282,8 +282,8 @@ fn phone_ask(
     a: &[Answered],
     shape: &Shape,
     placed: &dyn Fn(&HistoryRow) -> bool,
-) -> resident_client::column::ChatsColumnAsk {
-    use resident_client::column::{ChatsColumnAsk, ColumnFork, ColumnHost, ColumnRow};
+) -> face_core::column::ChatsColumnAsk {
+    use face_core::column::{ChatsColumnAsk, ColumnFork, ColumnHost, ColumnRow};
     let host_of = |o: &cmd_wire::Machine| {
         a.iter()
             .position(|m| m.rows.first().is_some_and(|r| &r.origin == o))
@@ -321,7 +321,7 @@ fn phone_ask(
 }
 
 /// 端核心交回的那一列照 [`tokens`] 那一形写成一条一条（段头 ＋ 行；孤儿那一句照按时间那一形）。
-fn phone_tokens(a: &[Answered], c: &resident_client::column::ChatsColumn) -> Vec<String> {
+fn phone_tokens(a: &[Answered], c: &face_core::column::ChatsColumn) -> Vec<String> {
     let o = |m: &cmd_wire::Machine| m.to_string();
     c.sections
         .iter()
@@ -353,7 +353,7 @@ fn phone_tokens(a: &[Answered], c: &resident_client::column::ChatsColumn) -> Vec
 /// 段与行的先后、分叉挂父（`child · forks · forksOpen · orphan`）、组的先后与这里摊出的逐条相同；按时间那几形各一遍。
 #[test]
 fn the_phone_column_merges_like_the_backend() {
-    use resident_client::column::column;
+    use face_core::column::column;
     let g = golden();
     let a = answered(&g);
     let o = |m: &cmd_wire::Machine| m.to_string();
@@ -391,7 +391,7 @@ fn the_phone_column_merges_like_the_backend() {
 /// 父不在这一列（没读到 · 摆进固定或组那几段）⇒ 子自成一行、记孤儿。摆进别处的那几行等于不在这一列：与后端去掉它们摊出的相同。
 #[test]
 fn the_phone_column_nests_forks_under_their_parent() {
-    use resident_client::column::column;
+    use face_core::column::column;
     let g = golden();
     let a = answered(&g);
     let shape_with = |forks: &[&str]| Shape {

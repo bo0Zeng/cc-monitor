@@ -187,6 +187,8 @@ resident-client = { path = "../../comms/resident-client" }
 host-core = { path = "../../common/host-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
+# 聊天附件的分块传（`attach_stage.rs`）：逐块 · 整份摘要 · 暂存键是文件窗口与手机嵌的核心共用的那一份。
+chunk-core = { path = "../../common/chunk-core" }
 # `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
 notify = "8"

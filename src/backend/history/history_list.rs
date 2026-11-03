@@ -167,10 +167,10 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
 fn label_of(custom: Option<&str>, title: Option<&str>, first: &str, project: &str) -> String {
     let facts = crate::history::search_rules::LabelFacts {
         custom: custom.map(str::to_string),
-        bg_name: None,
         title: title.map(str::to_string),
         first: first.to_string(),
         project_dir: (!project.is_empty()).then(|| project.to_string()),
+        ..Default::default()
     };
     crate::history::search_rules::session_label(&facts).0
 }
@@ -583,17 +583,20 @@ pub(crate) fn answer_from(
         .cloned()
         .map(|r| finish_row(r, t))
         .collect();
-    // 隐藏：那一台的事实（注解 · 起会话时的 `--tab` · 分身 · 主会话）＋ 那一台的偏好，主会话叫什么照这份清单里它那一行（不在 ⇒ 编号头八位）。
+    // 隐藏：那一台的事实（注解 · 起会话时的 `--tab` · 分身 · 主会话）＋ 那一台的偏好，主会话叫什么照这份清单里它那一行
+    // （不在 ⇒ 「记录没读到」那一档，[`crate::history::search_rules::session_label`]）。
     let labels: BTreeMap<String, String> = all
         .iter()
         .map(|f| (f.raw.session_id.clone(), f.label.clone()))
         .collect();
     for f in &mut all {
         let parent = f.raw.parent.as_deref().map(|p| {
-            labels
-                .get(p)
-                .cloned()
-                .unwrap_or_else(|| p.chars().take(8).collect())
+            labels.get(p).cloned().unwrap_or_else(|| {
+                crate::history::search_rules::session_label(
+                    &crate::history::search_rules::LabelFacts::unread(p, None),
+                )
+                .0
+            })
         });
         f.hidden = crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
             hide: f.hide,

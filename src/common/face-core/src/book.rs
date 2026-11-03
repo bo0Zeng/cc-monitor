@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot};
+use cmd_wire::frame::{Allow, CanAttach, CanClose, CanSay, CanTerm, SessionCan, SessionDot};
 use cmd_wire::frame::{Frame, Life, SessionAdded, SessionFace, SessionLeft, SessionRuns};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,7 @@ pub fn unseen(offline: Words) -> SessionFace {
             },
             term: CanTerm::No { why: tip.clone() },
             reattach: no(&tip),
+            attach: CanAttach::No { why: tip.clone() },
             model: no(&tip),
             permission: no(&tip),
             stop: no(&tip),
@@ -185,5 +186,5 @@ impl SessionBook {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/comms/resident-client/book_tests.rs"]
+#[path = "../../../../tests/common/face-core/book_tests.rs"]
 mod tests;

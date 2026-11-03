@@ -10,7 +10,7 @@ use cmd_wire::board::{MonitorBoard, MonitorGroup, MonitorHere, MonitorHereRow};
 use cmd_wire::frame::Life;
 use cmd_wire::Machine;
 use copy_core::copy_text;
-use resident_client::book::SessionBook;
+use face_core::book::SessionBook;
 use std::collections::BTreeMap;
 
 /// 问到的那几条里这台认得的写成行（照请求先后）：序与活不活照这台发出去的那张脸，`running` 照这台运行簿。

@@ -64,7 +64,7 @@ interface CoreLink {
     /** 那台离线那一句（那台状态成品里连接层写好的，出口照摆）；成品还没到 ⇒ `null`（未知不当离线）。 */
     val offline: StateFlow<String?>
 
-    /** 这台的会话簿：核心折好的整份（`resident_client::book`，桌面同一份折法）。 */
+    /** 这台的会话簿：核心折好的整份（`face_core::book`，桌面同一份折法）。 */
     val table: StateFlow<SessionBook>
     val lines: SharedFlow<RecordLine>
 

@@ -1,5 +1,6 @@
-//! **几台的会话清单并成一列**：各台各自排好（最近优先、组按那台的先后），这里只并 —— 同一刻照台的先后（稳定），不另判。
-//! 本机后端并历史页那一列（`history_browse::lay`）与手机会话屏（`mobcore::chats_column_json`）都调 [`merge_by`]；
+//! **最近优先 · 几台并成一列**：一列怎么排只有 [`sort_by_recency`] 一条（倒序、稳定）；几台并一列只有 [`merge_by`] 一条
+//! （各台的先后不打散，每一步取排头里最近的，同一刻照台的先后），不另判。本机后端每台花片段预算的先后（`search_rules`）· 几台的全文搜索结果合一份（[`crate::search::merge`]）·
+//! 本机后端并历史页那一列（`history_browse::lay`）· 手机会话屏（`mobcore::chats_column_json`）都调这两个；
 //! 分叉挂在父会话下那一步（[`nest`]）也只住这里：历史页那一列与手机会话屏都照它摊。
 //! 手机那一屏的段也在这里切（[`column`]）：段头是那台写好的字，换了字就起新的一段；挂在父下的分叉跟着父，不另起段。
 
@@ -7,7 +8,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-/// 各台各自按 `key` 倒序排好的几列 ⇒ 并成一列；同值照台的先后（稳定）。只并、不另判。
+/// **最近优先**（全仓唯一的排法）：按 `key` 倒序，同值照原先后（稳定）。
+pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
+    items.sort_by_key(|a| std::cmp::Reverse(key(a)));
+}
+
+/// 几台各一列（各台自己排好的先后，不重排）⇒ 并成一列：每一步取各台排头里 `key` 最大的那一个，同值照台的先后。只并、不另判。
+/// 各台的一列都照 [`sort_by_recency`] 排好时，出来的就是整列照它排的样子；台里另有先后（历史页那几种排法）时照那台的先后，不打散。
 pub fn merge_by<'a, T>(lists: &[&'a [T]], key: impl Fn(&T) -> i64) -> Vec<&'a T> {
     let mut at = vec![0usize; lists.len()];
     let mut out = Vec::with_capacity(lists.iter().map(|l| l.len()).sum());
@@ -269,3 +276,7 @@ pub fn column(ask: &ChatsColumnAsk) -> ChatsColumn {
             .collect(),
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/face-core/column_tests.rs"]
+mod tests;

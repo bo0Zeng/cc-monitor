@@ -26,11 +26,6 @@ export interface Standing {
   run: Launch;
 }
 
-/** 带着它的第一个终端是不是 tmux 会话（就地恢复只往 tmux 会话里键入；本机［在终端里打开］只给托管终端那一行）。 */
-export function inTmux(s: Standing): boolean {
-  return s.terminals[0]?.host === "tmux";
-}
-
 /** 期限：那台问一次 tmux 名单就答。 */
 const STANDING_BUDGET_MS = 10_000;
 

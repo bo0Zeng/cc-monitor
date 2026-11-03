@@ -1991,7 +1991,13 @@ mod g6_dependency_signoff {
             "resident-client",
             DEV_DEPS,
             MEASURED_CLEAN,
-            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍客户端那一侧（会话簿「那台看不见」那一张），多出来的 0 处写面",
+            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍客户端那一侧（握手行的读法），多出来的 0 处写面",
+        ),
+        (
+            "face-core",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍会话簿「那台看不见」那一张（桌面与手机核心同一处），多出来的 0 处写面",
         ),
         (
             "comms-inward",

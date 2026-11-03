@@ -71,7 +71,7 @@ const cmd = (id: string, title: string, keywords?: string, group: Command["group
 const ses = (id: string, title: string, waiting: string | null = null): Command => ({
   id,
   title,
-  session: { dot: waiting ? "needs-you" : "running", dotLabel: "", machine: null, project: null, title, waiting },
+  session: { dot: waiting ? "needs-you" : "running", dotLabel: "", machine: null, title, waiting },
   run: vi.fn(),
 });
 const ITEM = "[data-role=command-item]";
@@ -270,7 +270,7 @@ describe("命令面板 · 机器", () => {
   const nasSes = (id: string, title: string): Command => ({
     id,
     title,
-    session: { dot: "running", dotLabel: "", machine: "nas", project: null, title, waiting: null, origin: "nas" },
+    session: { dot: "running", dotLabel: "", machine: "nas", title, waiting: null, origin: "nas" },
     alt: vi.fn(),
     run: vi.fn(),
   });

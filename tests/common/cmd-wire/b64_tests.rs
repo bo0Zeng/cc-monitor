@@ -14,7 +14,11 @@ fn rfc_4648_vectors() {
     ];
     for (plain, enc) in vectors {
         assert_eq!(b64_encode(plain.as_bytes()), enc, "编 {plain:?}");
-        assert_eq!(b64_decode(enc).as_deref(), Ok(plain.as_bytes()), "解 {enc:?}");
+        assert_eq!(
+            b64_decode(enc).as_deref(),
+            Ok(plain.as_bytes()),
+            "解 {enc:?}"
+        );
     }
 }
 
@@ -36,5 +40,9 @@ fn malformed_text_says_which_way_it_is_bad() {
     assert_eq!(b64_decode("===="), Err(B64Error::Padding));
     assert_eq!(b64_decode("Zg==Zg=="), Err(B64Error::Padding));
     assert_eq!(b64_decode("Zm9v!A=="), Err(B64Error::Char('!')));
-    assert_eq!(b64_decode("Zm9-"), Err(B64Error::Char('-')), "URL 安全那一版的字母不认");
+    assert_eq!(
+        b64_decode("Zm9-"),
+        Err(B64Error::Char('-')),
+        "URL 安全那一版的字母不认"
+    );
 }

@@ -47,12 +47,6 @@ pub fn pid_alive(pid: u32) -> bool {
     }
 }
 
-/// `/proc/<pid>/stat` 一行里的起始时刻（第 22 栏）。切法只在 `platform_core::proc::parse_stat`（monitor 同一份）；
-/// 这一个只剩 `observe/watcher_tests.rs` 那四条在叫，那四条挪进 `tests/common/platform-core/lib_tests.rs` 之后删。
-pub fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
-    platform_core::proc::parse_stat(stat).map(|s| s.start)
-}
-
 /// 读一次 `/proc/<pid>/environ` 抠某个键的三态结果。
 ///
 /// 一个 `Option` 装不下这里的事实：

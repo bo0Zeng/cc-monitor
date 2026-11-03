@@ -912,15 +912,13 @@ fn session_row(
     }
 }
 
-/// 一个会话的显示标题（标题 / 首条 user 摘要 / sid 前 8 位之一）。全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
+/// 一个会话的显示标题（标题 / 首条 user 摘要 / 「没有说过话」之一）。全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
 fn label_of(entry: &FileEntry) -> String {
     let s = entry.session();
     search_rules::session_label(&search_rules::LabelFacts {
-        custom: None,
-        bg_name: None,
         title: s.title().map(str::to_string),
         first: s.excerpt().to_string(),
-        project_dir: None,
+        ..Default::default()
     })
     .0
 }

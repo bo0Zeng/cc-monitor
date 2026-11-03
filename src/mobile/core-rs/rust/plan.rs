@@ -273,7 +273,7 @@ mod tests {
     /// 一份完整的会话脸（形状照契约；值是中性夹具）。
     fn face_of(name: &str) -> Value {
         json!({ "dot": "idle", "life": { "is": "gone" }, "settled": true, "name": name, "tip": "", "line": "", "tone": "plain", "order": 0,
-                "can": { "close": { "can": "quiet" }, "resume": no(), "term": no(), "reattach": no(), "model": no(),
+                "can": { "close": { "can": "quiet" }, "resume": no(), "term": no(), "reattach": no(), "attach": no(), "model": no(),
                          "permission": no(), "stop": no(), "say": no(), "end": no() } })
     }
 

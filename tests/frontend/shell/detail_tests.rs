@@ -214,13 +214,16 @@ fn error_type(sig: &str) -> Option<String> {
     None
 }
 
-/// 壳命令的失败只一形：签名回 `Result` 的，错型只许交出去那一形 `cmd_wire::failed::Failed`（`chan_call` 一条回通道那一形 `Fail`）。不合的那几条。
+/// 回通道那一形 `Fail` 的壳命令（失败照 `chan.ts::decodeFail` 解回三层）：`chan_call` · 聊天附件逐块送进那台暂存区那一条（每一问就是 `call_via`）。
+const FAILING_AS_CHANNEL: [&str; 2] = ["chan_call", "attach_stage"];
+
+/// 壳命令的失败只一形：签名回 `Result` 的，错型只许交出去那一形 `cmd_wire::failed::Failed`（[`FAILING_AS_CHANNEL`] 那两条回通道那一形 `Fail`）。不合的那几条。
 fn commands_failing_otherwise(prod: &str) -> Vec<String> {
     shell_commands(prod)
         .into_iter()
         .filter_map(|(name, sig, _)| {
             let e = error_type(&sig)?;
-            let ok = if name == "chan_call" {
+            let ok = if FAILING_AS_CHANNEL.contains(&name.as_str()) {
                 e == "Fail"
             } else {
                 is_failed(&e, prod)
@@ -231,7 +234,7 @@ fn commands_failing_otherwise(prod: &str) -> Vec<String> {
 }
 
 /// 每条回失败的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）；
-/// 回 `Result` 的壳命令错型只许 `cmd_wire::failed::Failed`（`chan_call` 许 `Fail`）。人群：生产源码里全部 `#[tauri::command]`。
+/// 回 `Result` 的壳命令错型只许 `cmd_wire::failed::Failed`（[`FAILING_AS_CHANNEL`] 许 `Fail`）。人群：生产源码里全部 `#[tauri::command]`。
 #[test]
 fn every_shell_command_fails_as_said_and_names_itself() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

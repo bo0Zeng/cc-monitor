@@ -421,12 +421,48 @@ export class FakeBackend {
       case "chan_stop":
         if (this.shellSubs.delete(Number(args.id))) return this.tell("stop", { id: Number(args.id) }).then(() => null);
         return null;
+      case "attach_stage_stop":
+        this.stoppedTickets.add(Number(args.ticket));
+        return null;
     }
     const own = this.world.commands[cmd];
     if (own) return own(args, this.world);
     if (cmd.startsWith("plugin:")) return pluginDefault(cmd, args);
     this.miss(`命令 ${cmd}`);
     return Promise.reject(`shots: 没有这条命令 ${cmd}`);
+  }
+
+  /** ✕ 过的那几单（`attach_stage_stop`）。 */
+  private readonly stoppedTickets = new Set<number>();
+
+  /**
+   * 壳的 `attach_stage`（附件逐块送进那台暂存区，产品里是壳里的 `chunk_core`）：照块问场景里的 `files-stage-chunk`（走 [`chanCall`]，
+   * 那台断开 · 那台说不行照场景演），进度经头里那条通道报。实参在头里（`install.ts` 把 `mockIPC` 丢掉的 options 补交过来）。
+   */
+  attachStage(bytes: Uint8Array, headers: Record<string, string>): Promise<unknown> {
+    const hex = headers["ccm-origin"] ?? "";
+    const origin = dec.decode(Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16)));
+    const ticket = Number(headers["ccm-ticket"]);
+    const channel = Number((headers["ccm-moved"] ?? "").replace("__CHANNEL__:", ""));
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { runCallback(id: number, data: unknown): void } }).__TAURI_INTERNALS__;
+    let index = 0;
+    const moved = (done: number): void => internals.runCallback(channel, { index: index++, message: done });
+    const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    /** 一块多少字节（台架里的替身，同产品 `chunk_core::CHUNK`）。 */
+    const chunk = 256 * 1024;
+    const run = async (): Promise<unknown> => {
+      moved(0);
+      let seq = 0;
+      for (let at = 0; at < bytes.length; at += chunk) {
+        if (this.stoppedTickets.has(ticket)) return Promise.reject({ err: { Ours: "Cancelled" }, body: [] });
+        const part = bytes.subarray(at, Math.min(bytes.length, at + chunk));
+        const req = { key, seq: seq++, content: { b16: Array.from(part, (b) => b.toString(16).padStart(2, "0")).join("") } };
+        await this.chanCall({ origin, op: "files-stage-chunk", payload: Array.from(enc.encode(JSON.stringify(req))), view: null });
+        moved(at + part.length);
+      }
+      return { key, chunks: seq, bytes: bytes.length, sha256: "0".repeat(64) };
+    };
+    return run();
   }
 
   private chanCall(args: Record<string, unknown>): unknown {

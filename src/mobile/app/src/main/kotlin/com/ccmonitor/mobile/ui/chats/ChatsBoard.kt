@@ -360,14 +360,14 @@ internal fun chatsView(
     val ask =
         ChatsColumnAsk(
             parts.map { p -> ColumnHost(p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed, it.sessionId, it.parent) }, p.groups.map { it.order }) },
-            parts.flatMapIndexed { i, p -> open.filter { it.first == p.hostId }.map { ColumnFork(i.toLong(), it.second) } },
+            parts.flatMapIndexed { i, p -> open.filter { it.first == p.hostId }.map { ColumnFork(i, it.second) } },
         )
     val column = ColumnFace.of(ask)
     val row = { l: ColumnLine ->
-        parts[l.host.toInt()].let { p -> p.rows[l.at.toInt()].copy(machineTag = tag(p), nest = Nest(l.child, l.forks.toInt(), l.forksOpen, l.orphan)) }
+        parts[l.host].let { p -> p.rows[l.at].copy(machineTag = tag(p), nest = Nest(l.child, l.forks, l.forksOpen, l.orphan)) }
     }
     val sections = column.sections.map { s -> ChatSection(s.title, s.rows.map(row)) }
-    val groups = column.groups.map { a -> parts[a.host.toInt()].let { p -> ChatGroup(p.hostId, p.groups[a.at.toInt()], tag(p)) } }
+    val groups = column.groups.map { a -> parts[a.host].let { p -> ChatGroup(p.hostId, p.groups[a.at], tag(p)) } }
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
     val loading = parts.any { it.loading } || (parts.isEmpty() && !filters.active)

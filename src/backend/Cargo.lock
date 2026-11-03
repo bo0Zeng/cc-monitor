@@ -314,6 +314,7 @@ dependencies = [
  "copy-core",
  "creds-core",
  "deploy-contract",
+ "face-core",
  "flate2",
  "guard-core",
  "relay-route-core",

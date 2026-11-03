@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
  * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy`）：
- * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是端核心 `resident-client` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
+ * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是共享核心 `face-core` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
  */
 interface ResidentCore {
     fun open(

@@ -2125,6 +2125,30 @@
       "zh": "暂不恢复",
       "args": []
     },
+    "sessionState.unattachable.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话不供接入终端",
+      "args": []
+    },
+    "sessionTitle.mark.forked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "↳",
+      "args": [],
+      "waive": {
+        "C-W1": "整行标题里分叉来的那个记号：只占一格，标签页窄时也放得下"
+      }
+    },
+    "sessionTitle.mark.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "⚙",
+      "args": [],
+      "waive": {
+        "C-W1": "整行标题里后台会话那个记号：与原先齿轮图标同义，只占一格"
+      }
+    },
     "sessionState.recordFile.gone": {
       "kind": "body",
       "role": "说明",

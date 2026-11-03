@@ -1,6 +1,6 @@
 //! 全文搜索那一族的线上形（`history-search` 一台的回包 · `history-search-merge` 几台合好的那一份）。
-//! 「几台合一份」那一步连结果头那几句住 `face_core::search::merge`（本机后端与手机嵌的 Rust 核心调同一份）；
-//! 这里留着两侧都排的那一种先后（[`sort_by_recency`]）。
+//! 「几台合一份」那一步连结果头那几句住 `face_core::search::merge`（本机后端与手机嵌的 Rust 核心调同一份），
+//! 最近优先那一种先后住 `face_core::column::sort_by_recency`；这里只留类型。
 
 use crate::cells::Words;
 use crate::listing::{Can, ForkedFrom};
@@ -157,11 +157,6 @@ pub struct MergedRow {
 pub struct SearchDown {
     pub origin: Machine,
     pub said: String,
-}
-
-/// 照「最近优先」排（`updatedAt` 大的在前，稳定）：每台花 snippet 预算的顺序与几台合一份的顺序都是它。
-pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
-    items.sort_by(|a, b| key(b).cmp(&key(a)));
 }
 
 /// `history-search` 的入参。

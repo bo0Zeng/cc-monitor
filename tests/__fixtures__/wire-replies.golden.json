@@ -712,7 +712,7 @@
       }
     },
     "history-list": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
       "sample": {
         "head": {
           "info": {
@@ -761,6 +761,10 @@
             "face": {
               "account": "account-x",
               "can": {
+                "attach": {
+                  "can": "yes",
+                  "from": "elsewhere"
+                },
                 "close": {
                   "can": "quiet"
                 },
@@ -944,7 +948,7 @@
       }
     },
     "history-search": {
-      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"tsMs\":7,\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"forkedFrom\":{\"label\":\"label-x\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
+      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"tsMs\":7,\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"forkedFrom\":{\"label\":\"label-x\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
       "sample": {
         "sessions": [
           {
@@ -959,6 +963,10 @@
             "face": {
               "account": "account-x",
               "can": {
+                "attach": {
+                  "can": "yes",
+                  "from": "elsewhere"
+                },
                 "close": {
                   "can": "quiet"
                 },
@@ -2180,7 +2188,7 @@
       }
     },
     "sessions-needs": {
-      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"answered\":[{\"sid\":\"sid-x\",\"said\":\"said-x\"}],\"manualUnreadable\":\"manualUnreadable-x\"}",
+      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"answered\":[{\"sid\":\"sid-x\",\"said\":\"said-x\"}],\"manualUnreadable\":\"manualUnreadable-x\"}",
       "sample": {
         "answered": [
           {
@@ -2196,6 +2204,10 @@
               "face": {
                 "account": "account-x",
                 "can": {
+                  "attach": {
+                    "can": "yes",
+                    "from": "elsewhere"
+                  },
                   "close": {
                     "can": "quiet"
                   },

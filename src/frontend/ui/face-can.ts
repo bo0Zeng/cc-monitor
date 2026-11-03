@@ -37,6 +37,13 @@ export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
 export const canStop = (f: Face): boolean => f?.can.stop.can === "yes";
 /** 能恢复（Resume / 在 tmux 里起）。 */
 export const canResume = (f: Face): boolean => f?.can.resume.can === "yes";
+/**
+ * 「在终端里打开」点得了（会话头 · 报错卡 · 右键菜单同一道）：那台说接得进（`can.attach`），且在这里看给得了 ——
+ * `everywhere` 哪台看都给（托管终端）· `elsewhere` 只在别的机器上看才给（`elsewhere` 参数 ＝ 这个会话住在别的机器上；本机那个 tmux 会话走 ↗）。
+ */
+export const canAttach = (f: Face, elsewhere: boolean): boolean => f?.can.attach.can === "yes" && (elsewhere || f.can.attach.from === "everywhere");
+/** 程序退了、tmux 会话还在（标签页的可重连钩子）。 */
+export const canReattach = (f: Face): boolean => f?.can.reattach.can === "yes";
 /** × · 中键 · W · 批量都关得掉。 */
 export const closesQuietly = (f: Face): boolean => f?.can.close.can === "quiet";
 /** 右键菜单里关得掉（含只在菜单里关的那一形）。还没收到脸 ⇒ 关得掉（只在菜单里）：一个标签页总能关。 */

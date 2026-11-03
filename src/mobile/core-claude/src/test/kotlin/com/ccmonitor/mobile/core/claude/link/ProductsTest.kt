@@ -25,14 +25,14 @@ class ProductsTest {
     /** 整份脸金样里的一形。 */
     private fun face(key: String): SessionFace = Wire.bind<SessionFace>(Fixtures.json("session-face.golden.json")[key])!!
 
-    /** 核心折好交来的那一本（折法与它对着的 golden 在 Rust 那边，端核心 `resident-client` 的判据管）：这里只摆成品、钉读法。 */
+    /** 核心折好交来的那一本（折法与它对着的 golden 在 Rust 那边，共享核心 `face-core` 的判据管）：这里只摆成品、钉读法。 */
     private val book: SessionBook =
         EMPTY_BOOK.copy(
             live =
                 mapOf(
-                    "a" to SessionAdded(sid = "a", agentKind = "claude", path = "/p/a.jsonl", face = face("live-needs-you-tmux"), pid = 1, label = "甲"),
-                    "w" to SessionAdded(sid = "w", agentKind = "claude", face = face("live-working-plain"), pid = 2, label = "乙"),
-                    "d" to SessionAdded(sid = "d", agentKind = "claude", face = face("live-unclear"), pid = 3, label = "丁"),
+                    "a" to SessionAdded(sid = "a", agentKind = "claude", path = "/p/a.jsonl", face = face("live-needs-you-tmux"), pid = 1, label = "甲", title = "甲"),
+                    "w" to SessionAdded(sid = "w", agentKind = "claude", face = face("live-working-plain"), pid = 2, label = "乙", title = "乙"),
+                    "d" to SessionAdded(sid = "d", agentKind = "claude", face = face("live-unclear"), pid = 3, label = "丁", title = "丁"),
                 ),
             left = mapOf("c" to SessionLeft("c", face("ended"))),
             rereads = mapOf("a" to 1L),

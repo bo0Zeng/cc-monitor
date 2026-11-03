@@ -1030,7 +1030,7 @@ fn session_frames_say_whether_the_session_can_be_ended() {
         no(copy_core::copy_text("runs.state.unknown", &[]))
     );
     assert_eq!(
-        end(resident_client::book::unseen(crate::common::cells::Words(
+        end(face_core::book::unseen(crate::common::cells::Words(
             "gpu-01 离线".into()
         ))),
         no("gpu-01 离线".into())
@@ -1103,7 +1103,7 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         .collect();
     produced.insert(
         "unseen".into(),
-        serde_json::to_value(resident_client::book::unseen(crate::common::cells::Words(
+        serde_json::to_value(face_core::book::unseen(crate::common::cells::Words(
             comms_inward::chan::said::offline("gpu-01"),
         )))
         .unwrap(),
@@ -1174,14 +1174,14 @@ fn the_written_faces_are_built_in_one_place_only() {
         "src/backend/wire/mod.rs · live_face · SessionFace",
         "src/backend/wire/mod.rs · of_parts · NameFace",
         // 那台看不见时那一张住会话簿那一层（桌面后端与手机核心同一处）。
-        "src/comms/resident-client/book.rs · unseen · SessionFace",
+        "src/common/face-core/src/book.rs · unseen · SessionFace",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
     assert_eq!(
         seen, want,
-        "会话那几格写好的字只许经构造口造（`SessionFace::of` · `NameFace::of_parts` · `resident_client::book::unseen`）"
+        "会话那几格写好的字只许经构造口造（`SessionFace::of` · `NameFace::of_parts` · `face_core::book::unseen`）"
     );
 }
 
@@ -1283,7 +1283,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
     use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionDot};
     let said = comms_inward::chan::said::offline("gpu-01");
-    let f = resident_client::book::unseen(crate::common::cells::Words(said.clone()));
+    let f = face_core::book::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
     assert_eq!(f.life, crate::wire::WireLife::Unclear);
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");

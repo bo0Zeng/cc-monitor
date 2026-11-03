@@ -76,14 +76,9 @@
     min-width: 0;
   }
 
-  .cbTitle,
-  .cbProject {
+  .cbTitle {
     composes: one-line from global;
     color: var(--text);
-  }
-
-  .cbProject {
-    flex: none;
   }
 
   .cbSub {

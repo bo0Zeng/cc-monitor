@@ -239,7 +239,7 @@ class ChatsViewTest {
     fun `★ 断着：只照会话簿那一张看不见的脸（名状态不明 · 点说不清，同桌面）；看不见时照旧作数的（已结束 · 记录已不在）照画`() {
         val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")), row("4", "昨天"))
         val unseen = Faces.of("unseen")
-        // 核心折好的：断的那一刻活的那一条落成看不见那一张、簿上记着它（`resident_client::book::unseen_now`）。
+        // 核心折好的：断的那一刻活的那一条落成看不见那一张、簿上记着它（`face_core::book::unseen_now`）。
         val down = EMPTY_BOOK.copy(left = mapOf("1" to SessionLeft("1", unseen)), unseen = unseen)
         val by = hostPart(snap(linkDown("m 离线", "boom"), down, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
         assertEquals(Toned(unseen.name, unseen.tone) to SessionDot.UNKNOWN, by.getValue("1").status to by.getValue("1").dot)

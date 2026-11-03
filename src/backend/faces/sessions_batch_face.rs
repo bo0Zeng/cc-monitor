@@ -465,7 +465,7 @@ pub(crate) fn notes() -> cmd_wire::listing::Table {
     }
 }
 
-/// 这台写的称呼：这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。一批会话各样都照它。
+/// 这台写的称呼：这条会话的整行标题（`search_rules::session_line`，与标签页同一行）。一批会话各样都照它。
 pub(crate) fn title_here(
     home: &std::path::Path,
     notes: &cmd_wire::listing::Table,
@@ -478,18 +478,9 @@ pub(crate) fn title_here(
             custom,
             ..crate::history::listing::label_facts_of(&at.file)
         },
-        // 记录找不到、也没改过名 ⇒ 会话号的头八位（同标签页还没报过名字时那一形）。
-        Err(_) if custom.is_none() => return sid.chars().take(8).collect(),
-        Err(_) => LabelFacts {
-            custom,
-            ..Default::default()
-        },
+        Err(_) => LabelFacts::unread(sid, custom),
     };
-    let name = crate::history::search_rules::name_face(&facts);
-    match name.label_project {
-        Some(p) => format!("{} {}", p.0, name.label.0),
-        None => name.label.0,
-    }
+    crate::history::search_rules::session_line(&facts)
 }
 
 /// 合各台：校验 → 按台分组（照第一次出现的先后）→ 每台各问自己那一组（转给别的台的起那一组标 `relayed`）→
@@ -622,7 +613,10 @@ fn outcome_of(
             why: Some(f.code),
             said: Some(f.said),
             copy_detail: f.detail,
-            title: it.sid.as_str().chars().take(8).collect(),
+            // 那台没答出这一项：记录没读到那一档（[`crate::history::search_rules::session_line`]）。
+            title: crate::history::search_rules::session_line(
+                &crate::history::search_rules::LabelFacts::unread(it.sid.as_str(), None),
+            ),
             session: None,
         }
     });

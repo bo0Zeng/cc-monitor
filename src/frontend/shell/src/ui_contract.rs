@@ -248,15 +248,15 @@ pub enum BatchEdge {
     End,
 }
 
-/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（壳照端核心的活卡板折好，
-/// `resident_client::live`；界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
+/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（壳照共享核心的活卡板折好，
+/// `face_core::live`；界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionLiveCardsPayload {
     pub origin: crate::origin::Origin,
     #[cfg_attr(test, ts(type = "import(\"./LiveChange\").LiveChange"))]
-    pub live: resident_client::live::LiveChange,
+    pub live: face_core::live::LiveChange,
 }
 
 /// `listed` 格 的 payload：哪台机器的清单报完了。

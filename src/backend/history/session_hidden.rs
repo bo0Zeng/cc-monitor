@@ -153,18 +153,17 @@ pub(crate) fn hidden_here(
 }
 
 /// 叫这条会话什么（这台的）：改过的名 ＞ 记录里的标题 · 第一句（与历史清单 · 标签页同一条规则，[`super::search_rules::session_label`]）；
-/// 记录找不到、也没改过名 ⇒ 会话号的头八位。
+/// 记录找不到 ⇒ 那条规则里「记录没读到」那一档。
 pub(crate) fn title_here(sid: &str, annotations: &Table) -> String {
     let custom = annotations.get(sid).and_then(|e| e.custom_title.clone());
     match crate::agents::find_session(&super::listing::agent_home(), sid) {
         Ok(at) => super::listing::session_title_of(&at.file, custom),
-        Err(_) => match super::search_rules::session_label(&super::search_rules::LabelFacts {
-            custom,
-            ..Default::default()
-        }) {
-            (named, true) => named,
-            (_, false) => sid.chars().take(8).collect(),
-        },
+        Err(_) => {
+            super::search_rules::session_label(&super::search_rules::LabelFacts::unread(
+                sid, custom,
+            ))
+            .0
+        }
     }
 }
 

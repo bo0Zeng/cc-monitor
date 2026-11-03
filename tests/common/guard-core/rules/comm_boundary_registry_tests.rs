@@ -19,11 +19,11 @@ fn repo_root() -> PathBuf {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  一、成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）
+//  一、成员 ＝ 通信层那三个 crate（`cargo metadata` 现取）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 通信层那两个 crate 的包名（面 A `comms-inward` · 面 B `comms-outward`）。
-const COMMS_CRATES: &[&str] = &["comms-inward", "comms-outward"];
+/// 通信层那三个 crate 的包名（面 A `comms-inward` · 面 B `comms-outward` · 连常驻后端的客户端那一侧 `resident-client`）。
+const COMMS_CRATES: &[&str] = &["comms-inward", "comms-outward", "resident-client"];
 
 /// 每个通信层 crate 的普通依赖**只许**这些（传递进来的第一方 crate 也必须在表里）。
 /// 第一方业务 crate（后端 · 壳 · 文件窗口 · `acct-core` · `creds-core` · `host-core` · `filewin-contract` …）出现即红。
@@ -63,6 +63,25 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "tracing",
         ],
     ),
+    (
+        "resident-client",
+        &[
+            // 能力事实 · 撤单的词 · 问后端失败了的那一套：通信层面 A 那一份。
+            "comms-inward",
+            "copy-core",
+            // 契约 crate：帧的线上形与两张形状表（hello 与应答按类型解、帧门按帧种比）；不是业务。
+            "cmd-wire",
+            // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来。
+            "shell-quote-core",
+            // 契约 crate：远端落点在 shell 里的写法（`BACKEND_LANDING_SHELL`）。
+            "relay-route-core",
+            "serde",
+            "serde_json",
+            "tokio",
+            "tracing",
+            "flate2",
+        ],
+    ),
 ];
 
 /// `cargo metadata` 里的一个工作区成员：包名 · 包目录 · crate 根 · 普通依赖 `(名, 第一方的话它的包目录)`。
@@ -73,7 +92,7 @@ struct Package {
     normal_deps: Vec<(String, Option<PathBuf>)>,
 }
 
-/// 壳那个 workspace 的成员（通信层两个 crate 都在里面），`cargo metadata --no-deps` 现取。
+/// 壳那个 workspace 的成员（通信层三个 crate 都在里面），`cargo metadata --no-deps` 现取。
 fn workspace_packages() -> Vec<Package> {
     let manifest = repo_root().join("src/frontend/shell/Cargo.toml");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
@@ -130,7 +149,7 @@ fn workspace_packages() -> Vec<Package> {
         .collect()
 }
 
-/// 通信层那两个 crate：恰好 [`COMMS_CRATES`] 那两个，都住 `src/comms/` 下。
+/// 通信层那三个 crate：恰好 [`COMMS_CRATES`] 那三个，都住 `src/comms/` 下。
 fn comms_packages(all: &[Package]) -> Vec<&Package> {
     let comms_root = repo_root().join("src/comms");
     let found: Vec<&Package> = all
@@ -141,7 +160,7 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
     assert_eq!(
         names,
         COMMS_CRATES.iter().copied().collect::<BTreeSet<_>>(),
-        "壳那个 workspace 里找不全通信层那两个 crate —— 改名了 / 出列了"
+        "壳那个 workspace 里找不全通信层那三个 crate —— 改名了 / 出列了"
     );
     for p in &found {
         assert!(
@@ -155,7 +174,7 @@ fn comms_packages(all: &[Package]) -> Vec<&Package> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  二、人群：两个 crate 的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
+//  二、人群：三个 crate 的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份成员：`(仓根相对路径, 生产段)`。
@@ -188,7 +207,7 @@ fn production_of(rel: &str, raw: &str) -> String {
     guard_core::strip_comment_lines(raw)
 }
 
-/// 人群：两个通信层 crate 目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
+/// 人群：三个通信层 crate 目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
 ///
 /// 反空真：每个 crate 的 crate 根（`cargo metadata` 的 `targets[].src_path`）必须在人群里（两侧异源：清单 vs 走目录）；
 /// 人群里至少有一份 `.ts`（`C1` / `C3` 的 TS 那一面）。
@@ -244,7 +263,7 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "C2",
         "c2_the_comms_crates_depend_only_on_the_allowed_crates",
-        "两个 crate 的普通依赖（含传递的第一方 crate）⊆ 只许的那几个，业务 crate 一个都不许出现",
+        "三个 crate 的普通依赖（含传递的第一方 crate）⊆ 只许的那几个，业务 crate 一个都不许出现",
     ),
     (
         "C3",
@@ -300,7 +319,7 @@ fn path_mounts_into(comms: &Path, file: &Path, prod: &str) -> Vec<String> {
 }
 
 /// ★ **成员 ＝ crate**：生产代码里 `#[path]` 指进 `src/comms/` 的零处 —— 通信层的文件只经 crate 依赖进别的包，
-/// 不再被谁的模块树挂进去（挂进去的那一刻它就不受那两个 crate 的依赖边界管了）。
+/// 不再被谁的模块树挂进去（挂进去的那一刻它就不受那三个 crate 的依赖边界管了）。
 ///
 /// 人群：`src/` 下全部 `.rs` 的生产段（测试段里挂测试文件不算，那是 `tests/` 那一侧）。
 /// 正控：往一份合成的后端源码里塞一行 `#[path = "../comms/outward/x.rs"]` 必须数得出来。
@@ -326,7 +345,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
         hits.is_empty(),
         "生产代码用 `#[path]` 把通信层的文件挂进了自己的模块树：\n{}\n\n\
          ⇒ 通信层的文件只许经 crate 依赖用（`comms_inward::…` / `comms_outward::…`）；\
-         挂进去的那份就不再受那两个 crate 的依赖边界管。",
+         挂进去的那份就不再受那三个 crate 的依赖边界管。",
         hits.join("\n")
     );
     // 正控：识别器认得出那一形（相对路径按那份源码的住址解开）。
@@ -336,7 +355,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
         vec!["../comms/outward/x.rs".to_string()],
         "识别器认不出一行指进 `src/comms/` 的 `#[path]` —— 上面那条零命中在空转"
     );
-    // 两个 crate 都在、都住 `src/comms/` 下（人群的前提）。
+    // 三个 crate 都在、都住 `src/comms/` 下（人群的前提）。
     let _ = comms_packages(&workspace_packages());
 }
 
@@ -1148,7 +1167,7 @@ fn dependency_offences(pkg: &Package, all: &[Package]) -> Vec<String> {
     bad
 }
 
-/// ★ `C2` —— 由**依赖图**判：两个通信层 crate 的普通依赖 ⊆ [`ALLOWED_DEPS`]，
+/// ★ `C2` —— 由**依赖图**判：三个通信层 crate 的普通依赖 ⊆ [`ALLOWED_DEPS`]，
 /// 顺着第一方 path 依赖传递进来的第一方 crate 也必须在名单里。业务 crate 一个都不许出现。
 ///
 /// 同 crate 内的越界由编译器挡（crate 里写 `crate::ssh_source::…` 根本编不过）；跨 crate 的只有依赖这一条路，本条就钉它。

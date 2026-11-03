@@ -7,7 +7,7 @@ fn one_desk_per_machine_and_it_starts_empty() {
     let a = desk(&o("o-watch-test"));
     let b = desk(&o("o-watch-test"));
     assert!(Arc::ptr_eq(&a, &b), "同一台两张名单台");
-    assert!(a.sids().is_empty(), "冷起名单从空开始（不是全看）");
+    assert!(a.watched().is_empty(), "冷起名单从空开始（不是全看）");
     assert!(
         !Arc::ptr_eq(&a, &desk(&o("o-watch-test-2"))),
         "两台共用了一张"

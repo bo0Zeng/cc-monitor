@@ -9,7 +9,7 @@
 //! 连接断了那一刻也不在这一侧说：本机后端给那台活的 / 可重连的每一条发一帧 `session_left`（说不清），原样经 [`In::Told`] 进来；
 //! 这一侧只在那条连接收了时把那一本「清单报完了」作废（[`In::Closed`]），下一条连接自己再报。
 //!
-//! 裁决一条都不在这一侧。**每台那一本就是端核心的会话簿**（[`SessionBook`]，手机核心同一份）：会话帧原样交进来（[`In::Told`]），
+//! 裁决一条都不在这一侧。**每台那一本就是共享核心的会话簿**（[`SessionBook`]，手机核心同一份）：会话帧原样交进来（[`In::Told`]），
 //! 折法只调 [`SessionBook::fold`]，这一侧不另写一份。
 
 use parking_lot::RwLock;
@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
 use cmd_wire::frame::{Frame, Life, SessionAdded, SessionLeft, SessionRuns, SessionStatus};
-use resident_client::book::{Seat, SessionBook};
+use face_core::book::{Seat, SessionBook};
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
 #[derive(Debug, Clone, PartialEq)]

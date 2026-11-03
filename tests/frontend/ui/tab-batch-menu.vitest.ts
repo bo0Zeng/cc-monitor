@@ -25,7 +25,7 @@ const inTmux = () => {
   return { ...f, can: { ...f.can, end: { can: "yes" as const } } };
 };
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? inTmux() : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL, title: `T-${sid}`, label: `T-${sid}`, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? inTmux() : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -162,8 +162,8 @@ describe("批量菜单", () => {
   it("远端那几行机器只出一次：确认框里标题不带 `[机器]` 前缀，机器写在括号里", async () => {
     const devbox: Machine = "devbox";
     tabs = [
-      tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式", labelProject: "billing" }),
-      tab("l", true, { title: "[web] 首页", projectDir: "/w/web", label: "首页", labelProject: "web" }),
+      tab("r", true, { origin: devbox, title: "billing 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式" }),
+      tab("l", true, { title: "web 首页", projectDir: "/w/web", label: "首页" }),
     ];
     run.stop.mockResolvedValue(reply());
     open();

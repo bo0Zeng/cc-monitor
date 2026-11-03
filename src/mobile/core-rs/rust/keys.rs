@@ -11,7 +11,10 @@ use crate::{guarded, string};
 
 /// 几下的记号 ⇒ 字节；有一个记号读不出 ⇒ `None`。
 fn bytes_of(tokens: &[String]) -> Option<Vec<u8>> {
-    let presses: Vec<Press> = tokens.iter().map(|t| Press::from_token(t)).collect::<Option<_>>()?;
+    let presses: Vec<Press> = tokens
+        .iter()
+        .map(|t| Press::from_token(t))
+        .collect::<Option<_>>()?;
     Some(presses_bytes(&presses))
 }
 
@@ -120,15 +123,24 @@ mod tests {
     /// 旧按钮 ⇒ 几下；认不出 ⇒ `None`。
     #[test]
     fn legacy_buttons_turn_into_presses() {
-        assert_eq!(legacy_tokens(r"\e[1;5F"), Some(vec!["sctrl:end".to_string()]));
-        assert_eq!(legacy_tokens(r"git status\n"), Some(vec!["tgit status".to_string(), "s:enter".to_string()]));
+        assert_eq!(
+            legacy_tokens(r"\e[1;5F"),
+            Some(vec!["sctrl:end".to_string()])
+        );
+        assert_eq!(
+            legacy_tokens(r"git status\n"),
+            Some(vec!["tgit status".to_string(), "s:enter".to_string()])
+        );
         assert_eq!(legacy_tokens(r"\e[?1049h"), None);
     }
 
     /// 记号读不出一个 ⇒ 整串 `None`；读得出 ⇒ 一下接一下拼。
     #[test]
     fn tokens_turn_into_bytes() {
-        assert_eq!(bytes_of(&["s:up".into(), "tab".into()]), Some(b"\x1b[Aab".to_vec()));
+        assert_eq!(
+            bytes_of(&["s:up".into(), "tab".into()]),
+            Some(b"\x1b[Aab".to_vec())
+        );
         assert_eq!(bytes_of(&["s:nope".into()]), None);
     }
 }

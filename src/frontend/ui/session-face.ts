@@ -55,28 +55,6 @@ export function peekLine(tab: Tab): string | null {
   return lineOf(tab)?.peek ?? null;
 }
 
-/** 标题拆成几段（标签页行 · 会话头）：项目名（`--text-2`）· 标题 · 后台（齿轮）· 分叉来的（`↳`）。 */
-export interface TitleParts {
-  proj: string | null;
-  title: string;
-  bg: boolean;
-  forked: boolean;
-}
-
-export function titleParts(tab: Tab): TitleParts {
-  const bg = tab.background;
-  const forked = tab.forkedFromSessionId !== null;
-  const name = tab.label ?? tab.sessionId.slice(0, 8);
-  return { proj: tab.labelProject, title: name, bg, forked };
-}
-
-/** 一行写完的标题（会话头 · 悬停卡第一行）：`项目 标题`。 */
-export function fullTitle(tab: Tab): string {
-  const p = titleParts(tab);
-  const t = `${p.forked ? "↳ " : ""}${p.title}`;
-  return p.proj ? `${p.proj} ${t}` : t;
-}
-
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
 export function abbrOf(tab: Tab): string {
   const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.label ?? tab.sessionId;

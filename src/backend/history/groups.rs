@@ -148,10 +148,7 @@ pub(crate) fn seen_from(
 pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> Seen {
     let label = super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom: entry.and_then(|e| e.custom_title.clone()),
-        bg_name: None,
-        title: None,
-        first: String::new(),
-        project_dir: None,
+        ..Default::default()
     })
     .0;
     (
@@ -511,7 +508,7 @@ pub(crate) fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) ->
             let face = if seen {
                 m.face.clone()
             } else {
-                resident_client::book::unseen(Words(comms_inward::chan::said::offline(
+                face_core::book::unseen(Words(comms_inward::chan::said::offline(
                     &origin.to_string(),
                 )))
             };

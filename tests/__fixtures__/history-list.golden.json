@@ -108,6 +108,10 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
+          "attach": {
+            "can": "yes",
+            "from": "elsewhere"
+          },
           "close": {
             "can": "no",
             "why": "运行中"
@@ -192,6 +196,10 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
+          "attach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "close": {
             "can": "quiet"
           },
@@ -275,6 +283,10 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
+          "attach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "close": {
             "can": "quiet"
           },
@@ -359,6 +371,10 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
       "face": {
         "can": {
+          "attach": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "close": {
             "can": "quiet"
           },
@@ -445,6 +461,10 @@
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复\n未确认是否在运行",
       "face": {
         "can": {
+          "attach": {
+            "can": "no",
+            "why": "状态不明"
+          },
           "close": {
             "can": "no",
             "why": "状态不明"
