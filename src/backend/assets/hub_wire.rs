@@ -59,6 +59,7 @@ pub struct SkillReadFile {
     pub path: String,
     /// 原文；不是文本 / 太大 / 读不出来 ⇒ `null`（这一个装不过去），原因在 `why`。
     pub text: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes: u64,
     pub exec: bool,
     pub why: Option<String>,

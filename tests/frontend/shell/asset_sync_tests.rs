@@ -81,11 +81,12 @@ fn this_module_holds_no_sync_rule() {
         "src/backend/assets/asset_sync.rs",
     ] {
         let src = std::fs::read_to_string(root.join(f)).unwrap();
-        // 取「`pub` [`async`] `fn` <名字>」里的名字：按词走，不在语料上做带字面量的前缀匹配（needle 棘轮）。
+        // 取「`pub` / `pub(crate)` [`async`] `fn` <名字>」里的名字：按词走，不在语料上做带字面量的前缀匹配（needle 棘轮）。
+        // 包内可见的也算（资产域成了独立的包之后，包内才用的那几样是 `pub(crate)`，判定照样是后端的）。
         let words: Vec<&str> = src.split_whitespace().collect();
         for w in words.windows(3) {
             let (lead, kw, tail) = (w[0], w[1], w[2]);
-            if kw == "fn" && (lead == "pub" || lead == "async") {
+            if kw == "fn" && (lead == "pub" || lead == "pub(crate)" || lead == "async") {
                 let name: String = tail
                     .chars()
                     .take_while(|c| c.is_alphanumeric() || *c == '_')
