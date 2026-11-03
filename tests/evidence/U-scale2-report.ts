@@ -2,7 +2,7 @@
 /**
  * 秤 2 的**出表器 + 金标准刷新器**。
  *
- * 读 `/tmp/scale2-height-truth/result-{chromium,webkitgtk}.json`（探针的原始读数），
+ * 读 `$SCALE2_WORK/result-{chromium,webkitgtk}.json`（探针的原始读数；缺省目录与 `U-scale2-run.sh` 同一个，在盘上），
  * ① 打印按 card class 分桶的相对误差分布（p50/p90/max，两个口径）；
  * ② 把 Chromium 那一份**真高**固化成 `tests/evidence/U-scale2-truth-golden.json`，
  *    供 `tests/frontend/ui/scale2-height-truth.vitest.ts` 当门禁语料。
@@ -19,6 +19,7 @@
  * ⚠ 写成 `.ts` 而不是 `.mjs` 的理由与采样器同一条，原文记在那边的头注。
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,21 +40,18 @@ interface Row {
   trueContentBox: number;
   padBorder: number;
 }
-interface Intrinsic {
-  label: string;
-  cls: string;
-  declared: number | null;
-  padBorder: number;
-  measured: number;
-}
 interface Probe {
   error?: string;
   env: { ua: string; streamContentWidth: number; [k: string]: unknown };
   rows: Row[];
-  intrinsic: Intrinsic[];
 }
 
-const WORK = process.env.SCALE2_WORK ?? "/tmp/scale2-height-truth";
+const WORK =
+  process.env.SCALE2_WORK ??
+  resolve(
+    process.env.XDG_CACHE_HOME ?? resolve(homedir(), ".cache"),
+    "cc-monitor-scale2/work",
+  );
 const GOLDEN = resolve(REPO_ROOT, "tests/evidence/U-scale2-truth-golden.json");
 
 function load(engine: string): Probe {
@@ -103,7 +101,7 @@ function table(d: Probe, label: string): void {
     const src = [
       ...new Set(rs.map((r) => (r.source === "shaped" ? "真形" : "构造"))),
     ].join("+");
-    // content-box 口径：估值直接对 `contain-intrinsic-size` 的语义（B 段已实测它是 content-box）
+    // content-box 口径：估值是 content-box 值（padding 与 border 不算在内）
     const ec = rs.map(
       (r) => Math.abs(r.estApplied - r.trueContentBox) / r.trueContentBox,
     );
@@ -133,31 +131,6 @@ function table(d: Probe, label: string): void {
 table(chromium, "Chromium 153（Blink · 生产 WebView2 同引擎家族）");
 if (webkit) table(webkit, "WebKitGTK 2.52.6（Linux 侧 Tauri/wry 同一引擎）");
 
-console.log(
-  "\n=== B 段 · `contain-intrinsic-size` 的盒模型（两引擎读数相同则只打一行）",
-);
-for (const p of chromium.intrinsic) {
-  const verdict =
-    p.declared === null
-      ? "（CSS 兜底）"
-      : Math.abs(p.measured - p.declared) < 0.5
-        ? "⇒ border-box"
-        : Math.abs(p.measured - (p.declared + p.padBorder)) < 0.5
-          ? "⇒ **content-box**"
-          : "⇒ 都对不上";
-  console.log(
-    `  ${p.label.padEnd(46)} 声明=${String(p.declared).padStart(4)} padding+border=${String(p.padBorder).padStart(3)} 实测=${String(p.measured).padStart(5)} ${verdict}`,
-  );
-}
-if (webkit) {
-  const same =
-    JSON.stringify(chromium.intrinsic.map((p) => p.measured)) ===
-    JSON.stringify(webkit.intrinsic.map((p) => p.measured));
-  console.log(
-    `  两引擎 B 段读数${same ? "**完全一致**" : "🔴 不一致，见原始 JSON"}`,
-  );
-}
-
 // ── 金标准 ─────────────────────────────────────────────────────────────────
 const golden = {
   note:
@@ -175,7 +148,6 @@ const golden = {
       }
     : null,
   env: chromium.env,
-  intrinsic: chromium.intrinsic,
   rows: chromium.rows.map((r) => ({
     id: r.id,
     cls: r.cls,

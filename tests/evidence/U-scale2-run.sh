@@ -7,17 +7,18 @@
 #                            否则 web process 起不来。这是 Linux 侧 Tauri/wry 的同一引擎。
 #   · Chromium 153      ——  Playwright 的 headless shell，生产 WebView2 的同引擎家族。
 # 两个 runner 不进仓（取值约定 `window.__DONE` + `window.__RESULT`），住 `SCALE2_RIG` 指的目录；
-# 缺省是 `/tmp/cv-reparent-probe`，而 `/tmp` 在有的机器上是内存盘、**会被清掉** ⇒ 最好放到盘上、用环境变量指过来。
-# 清掉之后见本文件末尾那段「从零重建」。
+# 缺省在盘上的 `${XDG_CACHE_HOME:-$HOME/.cache}/cc-monitor-scale2/rig`（不放 `/tmp`：有的机器上它是内存盘、会被清掉）。
+# 目录里没有 runner 时见本文件末尾那段「从零重建」。
 #
 # 用法：bash tests/evidence/U-scale2-run.sh          # 从仓根跑
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# 两处都可由环境变量改到盘上（`/tmp` 在有的机器上是内存盘，在那里搭 runner 撞过整机 OOM）：
+# 两处缺省都在盘上（`/tmp` 在有的机器上是内存盘，在那里搭 runner 撞过整机 OOM），环境变量可另指：
 #   SCALE2_WORK=<探针产物与读数>  SCALE2_RIG=<两个 runner 所在目录>
-WORK="${SCALE2_WORK:-/tmp/scale2-height-truth}"
-RIG="${SCALE2_RIG:-/tmp/cv-reparent-probe}"          # 两个 runner 所在目录
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/cc-monitor-scale2"
+WORK="${SCALE2_WORK:-$CACHE/work}"
+RIG="${SCALE2_RIG:-$CACHE/rig}"          # 两个 runner 所在目录
 export SCALE2_WORK="$WORK"
 
 cd "$ROOT"

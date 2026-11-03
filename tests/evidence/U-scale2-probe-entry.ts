@@ -6,7 +6,7 @@
  * WebKitGTK（PyGObject + WebKit2-4.1）与 Chromium（Playwright）两个引擎跑，
  * 起法照抄那条已经被证明可行的路子，没有重新发明。
  *
- * # 它打三段读数
+ * # 它打两段读数
  *
  * - **A 段 · 真高**：整份语料（`tests/frontend/ui/scale2-height-corpus.ts`）插进真的
  *   `.stream > .stream-content`（真的 `src/frontend/ui/styles.css`），**关掉 `content-visibility`**
@@ -14,16 +14,6 @@
  *   ＋ 扣掉 padding/border 得到 **content-box**。
  *   关 c-v 的理由：c-v:auto 的卡在视口外会被 skip，那时读到的是**估值本身**，
  *   拿它当真值就是自己跟自己比（点名的那个病）。
- *
- * - **B 段 · `contain-intrinsic-size` 到底是 content-box 还是 border-box**：
- *   这一段专门回答 `height-estimate.ts` 自陈的那句「不加 padding/border：
- *   `contain-intrinsic-size` 是 content-box」到底成不成立。做法：一张真的
- *   `card-api-retry`（padding 3px 12px）放在**视口外、从没渲染过**的位置，
- *   inline 写 `contain-intrinsic-size: auto <N>px`，读它的 `getBoundingClientRect().height`。
- *   **读到 N ⇒ border-box；读到 N+padding+border ⇒ content-box。** 二选一，没有第三种。
- *   🔴 第一格的 N **不是写死的**，是 `appliedIntrinsicPx` 今天真写进 style 的那个数
- *   （`shipped: true`）—— 悬案③ 按这一格推「视口外一张 retry 实际占多少」，
- *   源码一改它跟着动。其余几格是写死的对照值（24/100/32/40 与无 inline 的 CSS 兜底）。
  *
  * - **C 段 · 环境**：UA、视口、devicePixelRatio、`.stream-content` 实际列宽、
  *   几个承重 CSS token 的 computed 值（字号/行高/字体族是否真的落到了 fallback）。
@@ -235,94 +225,6 @@ async function main(): Promise<void> {
     });
   }
 
-  // ── B 段：contain-intrinsic-size 的盒模型 ────────────────────────────────
-  // 视口外、从没渲染过的卡：读到的高度必然来自 contain-intrinsic-size 那个数。
-  const farStream = document.createElement("div");
-  farStream.className = "stream active";
-  farStream.style.position = "absolute";
-  farStream.style.top = "500000px"; // 远在视口外 ⇒ c-v:auto 一定 skip
-  farStream.style.width = "1000px";
-  const farContent = document.createElement("div");
-  farContent.className = "stream-content";
-  farStream.appendChild(farContent);
-  document.body.appendChild(farStream);
-
-  interface IntrinsicProbe {
-    label: string;
-    cls: string;
-    declared: number | null;
-    padBorder: number;
-    measured: number;
-    computedCIS: string;
-    computedCV: string;
-    skipped: boolean | null;
-    /**
-     * 🔴 这一格的 `declared` 是**今天 `applyIntrinsicSize` 真写进 style 的那个数**
-     * （不是写死的常数）。悬案③ 要的就是它 —— 按 `shipped` 找，不按数值找，
-     * 这样源码一改它自己就跟着动，而不是留在原地绿着量一个不再出货的配置。
-     */
-    shipped: boolean;
-  }
-  const intrinsic: IntrinsicProbe[] = [];
-  // 🔴 第一格的声明值**不是写死的** —— 它是 `applyIntrinsicSize` 今天真往一张真
-  // `card-api-retry` 的 style 里写的那个数（走 `appliedIntrinsicPx`，与生产同一条路）。
-  // 为什么要这样：悬案③ 那一段要的是「视口外每张 retry 实际占多少」，而它此前是去 B 段
-  // 找 `declared === 24` 那一格读的 ⇒ 常数/地板一改，那一格还在，只是**不再是出货的配置**，
-  // 于是整段安静地绿着量一个不存在的世界。
-  // 现在这一格跟着源码走，改了估高它自己就跟着动。
-  const shippedRetryPx = rows.find((r) => r.cls === "card-api-retry")?.estApplied ?? null;
-  const cases: [string, string, number | null][] = [
-    [
-      `card-api-retry / inline auto ${shippedRetryPx}px（**今天真写进 style 的那个数**，由 appliedIntrinsicPx 现算）`,
-      "card card-api-retry",
-      shippedRetryPx,
-    ],
-    ["card-api-retry / inline auto 24px（2026-09-18 之前那个 Math.max 地板的值，留作对照）", "card card-api-retry", 24],
-    ["card-api-retry / inline auto 100px（拉开差距好判读）", "card card-api-retry", 100],
-    ["card-api-retry / 无 inline（落 CSS 兜底 auto 120px）", "card card-api-retry", null],
-    ["card-bash-input / inline auto 32px（2026-09-18 上半场那个 border-box 手算值）", "card card-bash-input", 32],
-    ["card-api-error / inline auto 40px（今天的常数）", "card card-api-error", 40],
-  ];
-  for (const [, cls, declared] of cases) {
-    const el = document.createElement("div");
-    el.className = cls;
-    el.textContent = "x";
-    if (declared !== null) el.style.setProperty("contain-intrinsic-size", `auto ${declared}px`);
-    farContent.appendChild(el);
-  }
-  void farContent.getBoundingClientRect();
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  Array.from(farContent.children).forEach((node, i) => {
-    const el = node as HTMLElement;
-    const [label, cls, declared] = cases[i];
-    const shipped = i === 0; // 第 0 格就是「今天真写进 style 的那个数」那一格（见上面的构造）
-    const cs = getComputedStyle(el);
-    const pad =
-      parseFloat(cs.paddingTop || "0") +
-      parseFloat(cs.paddingBottom || "0") +
-      parseFloat(cs.borderTopWidth || "0") +
-      parseFloat(cs.borderBottomWidth || "0");
-    let skipped: boolean | null = null;
-    try {
-      skipped = !(el as unknown as { checkVisibility: (o: unknown) => boolean }).checkVisibility({
-        contentVisibilityAuto: true,
-      });
-    } catch {
-      skipped = null;
-    }
-    intrinsic.push({
-      label,
-      cls,
-      declared,
-      padBorder: pad,
-      measured: el.getBoundingClientRect().height,
-      computedCIS: cs.containIntrinsicSize || cs.getPropertyValue("contain-intrinsic-size"),
-      computedCV: cs.contentVisibility || cs.getPropertyValue("content-visibility"),
-      skipped,
-      shipped,
-    });
-  });
-
   // ── C 段：环境 ──────────────────────────────────────────────────────────
   // 产品造重试细条的那个函数（类怎么挂跟着产品走，不在这里抄一份）。
   const probeRetry = buildApiRetryCard({ timeLabel: "12:34", retryAttempt: 1, maxRetries: 5, reason: "network" });
@@ -368,7 +270,7 @@ async function main(): Promise<void> {
   };
   probeRetry.remove();
 
-  window.__RESULT = JSON.stringify({ env, rows, intrinsic, blockRows }, null, 1);
+  window.__RESULT = JSON.stringify({ env, rows, blockRows }, null, 1);
   window.__DONE = true;
 }
 
