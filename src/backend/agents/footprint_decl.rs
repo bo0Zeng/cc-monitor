@@ -317,7 +317,6 @@ impl ToolSpec {
     ///
     /// ⚠ 只在「不关心是哪个载体」时用它；关心的时候用 [`Self::carrier_touches`] ——
     /// 铺平会把这里立起来的那个 key 又丢掉一次。
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn touches(&self) -> impl Iterator<Item = &'static TouchedFile> {
         self.carriers.iter().flat_map(|c| c.touches.iter())
     }
@@ -361,7 +360,6 @@ pub enum Provisioning {
 
 impl Provisioning {
     /// 三值的**闭集**本身。现算用〔报一个基数也是复述〕。今天只有判据用它与 [`Self::label`]。
-    #[cfg_attr(not(test), allow(dead_code))]
     pub const ALL: &'static [Provisioning] = &[
         Provisioning::AppShips,
         Provisioning::UserProvides,
@@ -369,7 +367,6 @@ impl Provisioning {
     ];
 
     /// 给人看的措辞。定在这里，UI 与诊断文本不再各写一遍。
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn label(self) -> String {
         match self {
             Provisioning::AppShips => copy_text("rsToolRegistry.provisioning.appShips", &[]),

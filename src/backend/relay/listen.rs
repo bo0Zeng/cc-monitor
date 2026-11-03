@@ -49,7 +49,7 @@ pub const ENV_PORT: &str = "CCM_RELAY_PORT";
 /// 30 秒：对端就在本机（`listen()` 绑 `LOOPBACK`），回环上搬完一条最大请求体（`BODY_CAP` = 64 MiB）是零点零几秒的量级
 /// （按量级推，没实测）。设长则半开连接要很久才散、读起来像挂死；设短则负载高时合法的大请求体被掐掉、还不好查。
 /// 不跟上游用同一个数：下游请求在内存里已经拼好，慢是异常；上游是「模型在想」，慢是正常（见 [`UPSTREAM_DEADLINE`]）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "中转下游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（那个值今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按「期限值全部由后端交给它」搬出中转；…"
 )]
@@ -63,7 +63,7 @@ pub const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_m
 /// 会多钉住一条线程那么久。不拿「上游会周期发 `ping`」当依据：这个数要在上游合法地整段沉默时也站得住。
 ///
 /// `TcpStream::connect` 本身没有连接期限：那一步有内核 SYN 重试上限与解析器自己的上限兜着（具体多少没量，只能说不是无界）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "中转上游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（同上，那个值今天住`relay/listen.rs::UPSTREAM_DEADLINE`；装它的那一手仍在 `relay/upstre…"
 )]

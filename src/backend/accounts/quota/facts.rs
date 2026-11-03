@@ -150,7 +150,10 @@ fn barred_of(
 
 /// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条 ＋ 种类 ＋ 登录（`retry` ＝ 续令牌一时没成、几点再试）。
 /// 用不了的那一格照 [`standing::sendable`] / [`standing::sendable_again`] 出。`when` 把时刻写成给人看的样子。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "纯函数：一个号的几样事实（额度账那一条 · 种类 · 登录 · 再试时刻 · 此刻 · 槽位 · 时刻写法）逐样交进来，判据照样逐样喂"
+)]
 pub(crate) fn fact_of(
     account: &str,
     r: Option<&QuotaReading>,

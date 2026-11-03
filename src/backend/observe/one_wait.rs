@@ -32,12 +32,12 @@ impl<T> Armed<T> {
 }
 
 /// 一次有界等待：那一声 `ms` 毫秒内到了 ⇒ 它；没到 · 发声的那一头走了 ⇒ `None`。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "换号重启等压缩摘要 / 等会话报出 · 起会话等报到的一次有界等待：到了由事件（inotify · 那一帧 `session_added`）当场叫醒，没到就等到发起方给的期限、回「没等到」"
 )]
 pub(crate) async fn bounded<T>(hit: tokio::sync::oneshot::Receiver<T>, ms: u64) -> Option<T> {
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "一次性等待的期限：值由发起方给（换号重启的界面交下来的等压缩 / 等会话报出的期限 · `session-arrive` 请求信封的期限），只交给那一次有界等待"
     )]

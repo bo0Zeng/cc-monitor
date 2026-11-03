@@ -176,7 +176,7 @@ pub(crate) async fn ask(
 }
 
 /// 挂着的这一条自己带的期限（等满 `min` 分钟醒一次）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "会话设了「没人答时自动答」的那一条提问自己带的一次性期限，不是节拍：随这一条收场一起没，那一格关着就不起"
 )]

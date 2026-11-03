@@ -789,14 +789,14 @@ pub(crate) fn check_input_text(text: &str) -> Result<(), Said> {
 }
 
 /// 一次括号粘贴之后隔多久再送下一样：粘贴后立刻交的回车会被 agent 当成粘贴里的换行吞掉；一张图的路径粘进去，要等它收成图片附件再粘下一样。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "送一句里两下按键之间的间隔，只给 `settle` 那一次等待用；不是节拍：那一句送完就没了，不会自己再醒"
 )]
 pub(crate) const PASTE_SETTLE: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// 隔 [`PASTE_SETTLE`]（生产那一份）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "一次送字之内、括号粘贴与下一下按键之间等一下（agent 收完粘贴才认回车）；调用方是那一次送字，送完就返回，不是定时器"
 )]

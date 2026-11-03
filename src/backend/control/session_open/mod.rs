@@ -894,7 +894,10 @@ pub(crate) fn relaunch_in(
 }
 
 /// 新起：认那一家 · 启动命令 · 目录 · 号 · 放在哪 · 终端名 · 分叉（前面几格全过了才写分支记录）· 起。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "新起一个会话那几格（请求 · 号 · 启动命令 · 放在哪 · 终端 · 依赖 · 分叉 · 换号前置 · 家目录）由开会话的入口逐样判好递下来"
+)]
 fn start_new(
     req: NewOpen,
     asked: &AccountAsk,

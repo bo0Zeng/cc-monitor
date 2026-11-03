@@ -15,7 +15,7 @@ fn bad(why: &str) -> std::io::Error {
 /// 连上、设好期限、说 `hello`（只看：后端从不改尺寸；`front` ＝ 替哪个前端问）。
 pub fn open(sock: &Path, front: Option<&str>) -> std::io::Result<own_chan::BlockingStream> {
     let s = own_chan::connect_blocking(sock)?;
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "后端经托管口问一下的读写期限：有字节就返回，不驱动循环"
     )]

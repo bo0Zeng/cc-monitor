@@ -63,7 +63,13 @@ fn linux_rtt_us(stream: &tokio::net::TcpStream) -> Option<u32> {
 /// `mstcpip.h::TCP_INFO_v0`。只读 `rtt_us`，其余字段只为占住布局。
 #[repr(C)]
 #[derive(Default)]
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    all(not(windows), not(test)),
+    expect(
+        dead_code,
+        reason = "Windows 的 `SIO_TCP_INFO` 布局：生产段只有 Windows 臂读，别的平台只有判据钉它"
+    )
+)]
 struct TcpInfoV0 {
     state: i32,
     mss: u32,
@@ -87,7 +93,13 @@ struct TcpInfoV0 {
 }
 
 /// `SIO_TCP_INFO` = `_WSAIORW(IOC_VENDOR, 39)`。
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    all(not(windows), not(test)),
+    expect(
+        dead_code,
+        reason = "Windows 的 `SIO_TCP_INFO` 控制码：生产段只有 Windows 臂用，别的平台只有判据钉它"
+    )
+)]
 const SIO_TCP_INFO: u32 = 0xD800_0027;
 
 #[cfg(windows)]

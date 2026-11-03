@@ -2432,7 +2432,6 @@ pub fn count_new_lines_at(
     (n, cursor)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn scan_new_lines(
     chunk: &[u8],
     chunk_start: u64,

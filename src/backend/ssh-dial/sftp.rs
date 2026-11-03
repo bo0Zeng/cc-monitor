@@ -75,7 +75,10 @@ pub struct Session {
 /// 会话要攥着的东西。**不许省**：连接句柄一 drop 整条连接就断，这条通道跑在它上面；预算那一格要攥到会话用完。
 enum Keep {
     /// 台架 / files 链路：攥着就好，用完关掉（生产上 files 链路是 `(pool::Permit, Arc<Linked>)`）。
-    Hold(#[allow(dead_code)] Box<dyn std::any::Any + Send + Sync>),
+    Hold(
+        #[expect(dead_code, reason = "只攥着、用完随它关掉，不读")]
+        Box<dyn std::any::Any + Send + Sync>,
+    ),
     /// 传输：用完**停进这条连接的空位**（[`Parked`]）—— 连同这一格传输许可；空位已有 / 连接关了 ⇒ 照常关掉。
     Park(Option<pool::Permit>, Arc<Linked>),
 }
