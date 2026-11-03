@@ -8,7 +8,8 @@
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
-//! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
+//! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 主人类 ①–⑤〔⑤ 即缓存〕· 谁写 · 格式与版本 · 读上限），
+//!   客户端那一侧的落点（手机 Room · 界面存储）登在 `CLIENT_SPOTS`（同 `OWN_FILES` 只有判据读）；后端读写口
 //!   `common/own_state.rs` 的 `Doc::of` 与 monitor 读写 `config.json`（[`CONFIG_FILE`]）从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
 //! - **读上限**（[`Cap`] · [`Over`]）与**同步整读**：读到流尽 [`read_capped_from`] · 读一个窗口 [`read_window`] ·
 //!   读一份本机文件 [`read_capped_regular`]。后端 · 壳 · 文件窗口 · 手机核心同步地整读字节只经这一族（异步那一形住 `comms_inward::line`）。
@@ -124,7 +125,7 @@ pub const CHORES_REL: &str = ".cc-monitor/chores.json";
 pub const PLAN_REVIEW_REL: &str = ".cc-monitor/plan-review.json";
 
 /// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；断开时照它画、跨重启还在）。
-pub const LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
+pub const LAST_SEEN_REL: &str = ".cc-monitor/cache/last-seen.json";
 
 /// 〔同上〕这台的书签：文件窗口与手机收藏的这台上的目录（后端 `control/bookmarks.rs` 写；`bookmarks-read` / `-edit` 读写，本机与远端同形）。
 pub const BOOKMARKS_REL: &str = ".cc-monitor/bookmarks.json";
@@ -448,11 +449,140 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
 mod tests;
 
 /// 一份落盘文件丢了怎么办：状态（丢了就没了）读不出来 ⇒ 不覆盖、照实说；缓存（照别的东西能重建）读不出来 ⇒ 当没有。
+/// 由主人类推出（[`Owner::kind`]）：⑤ 是缓存，别的是状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     State,
     Cache,
 }
+
+/// 存储层那五类（ARCHITECTURE「存储层」）：一样东西说的是谁，主人就是谁，住在主人那里。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Owner {
+    /// ① 一条会话的事实（住会话那一台）。
+    Session,
+    /// ② 一台机器的事实 · 那台上的一个路径（住那一台）。
+    Machine,
+    /// ③ 几台机器上的东西凑成的一组（每台存自己那一片）。
+    Set,
+    /// ④ 这一端自己的（屏怎么摆 · 手上的东西 · 机器表 · 欠别台的话）。
+    End(End),
+    /// ⑤ 别人那里东西的副本（读不懂 · 版本对不上就当没有，不迁移）。
+    Cache,
+}
+
+impl Owner {
+    /// 丢了怎么办：⑤ 是缓存，别的是状态。
+    pub const fn kind(self) -> Kind {
+        match self {
+            Owner::Cache => Kind::Cache,
+            _ => Kind::State,
+        }
+    }
+}
+
+/// ④ 是哪一端的：桌面那一端 ＝ 壳 ＋ 界面 ＋ 本机后端（本机后端替它存机器表 · 主机指纹 · 欠别台的话）；手机那一端 ＝ 手机核心。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    Desktop,
+    Phone,
+}
+
+/// 落在哪：本机后端（家目录 `.cc-monitor/` 底下，后端写）· 壳（monitor 写）· 界面（网页存储）· 手机（Room · 核心那几份文件）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    Backend,
+    Shell,
+    Ui,
+    Phone,
+}
+
+/// 一处落点：在哪 · 叫什么（后端那几份是相对家目录的路径；客户端那几处 `room:<表名>` · `storage:<键>` · `phone-file:<名字>`）·
+/// 主人类 · 等迁的旧行在哪一版删（`X.Y.Z`；不是等迁的 ⇒ 没有）。同 [`OWN_FILES`] 只有判据读（测试档）。
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spot {
+    pub place: Place,
+    pub at: &'static str,
+    pub owner: Owner,
+    pub until: Option<&'static str>,
+}
+
+/// 手机 Room 的一张表（`room:<表名>`）。
+#[cfg(test)]
+const ROOM_SPOT: &str = "room:";
+/// 界面网页存储的一个键（`storage:<键>`；带参数的键写固定的前半）。
+#[cfg(test)]
+const STORAGE_SPOT: &str = "storage:";
+
+#[cfg(test)]
+const fn room(table: &'static str, owner: Owner) -> Spot {
+    Spot {
+        place: Place::Phone,
+        at: table,
+        owner,
+        until: None,
+    }
+}
+
+#[cfg(test)]
+const fn ui(key: &'static str) -> Spot {
+    Spot {
+        place: Place::Ui,
+        at: key,
+        owner: Owner::End(End::Desktop),
+        until: None,
+    }
+}
+
+#[cfg(test)]
+const PHONE: Owner = Owner::End(End::Phone);
+
+/// 〔「客户端的落点也登一行」〕不是后端家里文件的那几处：手机 Room 每张表 · 手机核心的主机指纹 · 界面存储的每个键。
+/// 判据两向核：Room 的 `@Entity` 表名 · 界面 `LS_KEYS` 的键与这里对得上；主人类照存储层那五类。
+#[cfg(test)]
+const CLIENT_SPOTS: &[Spot] = &[
+    room("room:hosts", PHONE),
+    room("room:identities", PHONE),
+    room("room:known_hosts", PHONE),
+    room("room:key_groups", PHONE),
+    room("room:term_keys", PHONE),
+    room("room:settings", PHONE),
+    room("room:pending", PHONE),
+    room("room:pending_batches", PHONE),
+    room("room:drafts", PHONE),
+    room("room:sessions", Owner::Cache),
+    room("room:list_holds", Owner::Cache),
+    room("room:record_pages", Owner::Cache),
+    room("room:sync_anchors", Owner::Cache),
+    // 书签已归那台（②）：旧表那几行等着迁过去，到那一版删表。
+    Spot {
+        until: Some("5.0.4"),
+        ..room("room:bookmarks", Owner::Machine)
+    },
+    Spot {
+        place: Place::Phone,
+        at: "phone-file:known_hosts",
+        owner: PHONE,
+        until: None,
+    },
+    ui("storage:cc-monitor.bottom-drawer"),
+    ui("storage:cc-monitor.history.expanded-forks"),
+    ui("storage:cc-monitor.tool-render."),
+    ui("storage:cc-monitor.last-active-sid"),
+    ui("storage:cc-monitor.history.prefs"),
+    ui("storage:cc-monitor.plan.prefs"),
+    ui("storage:cc-monitor.cmdk-hint.seen"),
+    ui("storage:cc-monitor.settings.restart-reasons"),
+    ui("storage:cc-monitor.tab-bar-w"),
+    ui("storage:cc-monitor.stream.process-expanded"),
+    ui("storage:cc-monitor.stream.show-injected"),
+    ui("storage:cc-monitor.main.zoom"),
+    ui("storage:cc-monitor.tab-bar.folded"),
+    ui("storage:cc-monitor.queue.pending"),
+    ui("storage:cc-monitor.said-edit.drafts"),
+    ui("storage:cc-monitor.composer.drafts"),
+];
 
 /// 一份落盘文件的格式：我们的 JSON（顶层整数 `version`，缺了当 1；读得懂 `floor..=version`，低于 `version` 的经升级步）·
 /// 不带版本（`Foreign`：不写版本、不查版本 —— 不是我们的格式，如 OpenSSH 的主机钥匙；或定了不加版本的，如 monitor 的设置）。
@@ -588,15 +718,24 @@ pub fn read_capped_regular<F: std::io::Read>(
     })
 }
 
-/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节与超了怎么办，见 [`Cap`]）·
+/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 主人类（①–⑤，[`Owner`]）· 谁写（[`Place`]：本机后端 · 壳）·
+/// 格式 · 读上限（字节与超了怎么办，见 [`Cap`]）·
 /// 下限抬于哪一版（`X.Y.Z`；下限低于版本的行必写：`package.json` 的 version 到了那一版，删升级步、下限抬成版本）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Row {
     pub rel: &'static str,
-    pub kind: Kind,
+    pub owner: Owner,
+    pub place: Place,
     pub format: Format,
     pub cap: Cap,
     pub floor_raised_in: Option<&'static str>,
+}
+
+impl Row {
+    /// 丢了怎么办（由主人类推出）。
+    pub const fn kind(&self) -> Kind {
+        self.owner.kind()
+    }
 }
 
 /// 种类那一格的类型形：[`State`] · [`Cache`]。
@@ -626,9 +765,14 @@ impl Class for Cache {
 /// ```
 ///
 /// ```
-/// use relay_route_core::{upgradable, Cap, Decl, Over, State};
-/// const S: Decl<State> =
-///     Decl::<State>::json(".cc-monitor/s.json", 2, 1, Cap { bytes: 1024, over: Over::Reject });
+/// use relay_route_core::{upgradable, Cap, Decl, Over, Owner, State};
+/// const S: Decl<State> = Decl::<State>::json(
+///     ".cc-monitor/s.json",
+///     Owner::Machine,
+///     2,
+///     1,
+///     Cap { bytes: 1024, over: Over::Reject },
+/// );
 /// let _ = upgradable(&S);
 /// ```
 pub trait Upgradable: Class {}
@@ -639,8 +783,8 @@ impl Upgradable for State {}
 /// 读上限只收 [`Cap`]：裸字节数编不过（超了怎么办跟着数一起写）。
 ///
 /// ```compile_fail,E0308
-/// use relay_route_core::{Decl, State};
-/// const S: Decl<State> = Decl::<State>::json(".cc-monitor/s.json", 1, 1, 1024);
+/// use relay_route_core::{Decl, Owner, State};
+/// const S: Decl<State> = Decl::<State>::json(".cc-monitor/s.json", Owner::Machine, 1, 1, 1024);
 /// ```
 pub struct Decl<K: Class> {
     pub row: Row,
@@ -648,11 +792,19 @@ pub struct Decl<K: Class> {
 }
 
 impl<K: Class> Decl<K> {
-    const fn new(rel: &'static str, format: Format, cap: Cap) -> Self {
+    const fn new(rel: &'static str, owner: Owner, format: Format, cap: Cap) -> Self {
+        assert!(
+            matches!(
+                (owner.kind(), K::KIND),
+                (Kind::State, Kind::State) | (Kind::Cache, Kind::Cache)
+            ),
+            "状态的主人类是 ①–④，缓存是 ⑤"
+        );
         Decl {
             row: Row {
                 rel,
-                kind: K::KIND,
+                owner,
+                place: Place::Backend,
                 format,
                 cap,
                 floor_raised_in: None,
@@ -661,25 +813,31 @@ impl<K: Class> Decl<K> {
         }
     }
 
-    /// 不带版本（不是我们的格式，或定了不加版本的）。
-    pub const fn foreign(rel: &'static str, cap: Cap) -> Self {
-        Self::new(rel, Format::Foreign, cap)
-    }
-
     /// 删了会丢（家里那几样那一格）。
     pub const fn kept(&self) -> bool {
-        matches!(self.row.kind, Kind::State)
+        matches!(self.row.owner.kind(), Kind::State)
+    }
+
+    /// 不是本机后端写的那一份（落点仍在家目录底下）：谁写。
+    pub const fn written_by(mut self, place: Place) -> Self {
+        self.row.place = place;
+        self
     }
 }
 
 impl Decl<State> {
-    /// 我们的 JSON：此刻写 `version`，读得懂 `floor..=version`（低于 `version` 的经升级步）。
-    pub const fn json(rel: &'static str, version: u32, floor: u32, cap: Cap) -> Self {
+    /// 我们的 JSON：此刻写 `version`，读得懂 `floor..=version`（低于 `version` 的经升级步）；主人类 ①–④。
+    pub const fn json(rel: &'static str, owner: Owner, version: u32, floor: u32, cap: Cap) -> Self {
         assert!(
             floor >= 1 && floor <= version,
             "版本从 1 起，下限不高于版本"
         );
-        Self::new(rel, Format::Json { version, floor }, cap)
+        Self::new(rel, owner, Format::Json { version, floor }, cap)
+    }
+
+    /// 不带版本（不是我们的格式，或定了不加版本的）；主人类 ①–④。
+    pub const fn foreign(rel: &'static str, owner: Owner, cap: Cap) -> Self {
+        Self::new(rel, owner, Format::Foreign, cap)
     }
 
     /// 下限抬于哪一版（`X.Y.Z`）：只挂在下限低于版本的那一行上。
@@ -699,12 +857,18 @@ impl Decl<Cache> {
         assert!(version >= 1, "版本从 1 起");
         Self::new(
             rel,
+            Owner::Cache,
             Format::Json {
                 version,
                 floor: version,
             },
             cap,
         )
+    }
+
+    /// 不带版本（不是我们的格式）。
+    pub const fn foreign(rel: &'static str, cap: Cap) -> Self {
+        Self::new(rel, Owner::Cache, Format::Foreign, cap)
     }
 }
 
@@ -719,8 +883,13 @@ const BACKEND_POLICY_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 /// 退出行为设置。
-pub const BACKEND_POLICY_FILE: Decl<State> =
-    Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, BACKEND_POLICY_MAX_BYTES);
+pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(
+    BACKEND_POLICY_REL,
+    Owner::Machine,
+    1,
+    1,
+    BACKEND_POLICY_MAX_BYTES,
+);
 /// 这台偏好那一份的读上限（几张小表）。
 const PREFS_MAX_BYTES: Cap = Cap {
     bytes: 256 * 1024,
@@ -728,28 +897,37 @@ const PREFS_MAX_BYTES: Cap = Cap {
 };
 /// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读，5.0.4 起不读）。
 pub const PREFS_FILE: Decl<State> =
-    Decl::<State>::json(PREFS_REL, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.0.4");
+    Decl::<State>::json(PREFS_REL, Owner::Machine, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.0.4");
 /// 机器表那一份的读上限（至多 256 台）。
 const MACHINES_MAX_BYTES: Cap = Cap {
     bytes: 1024 * 1024,
     over: Over::Reject,
 };
 /// 机器表。
-pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, MACHINES_MAX_BYTES);
+pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(
+    MACHINES_REL,
+    Owner::End(End::Desktop),
+    1,
+    1,
+    MACHINES_MAX_BYTES,
+);
 /// monitor 设置那一份的读上限（超了当读不懂：读那一口报错、写口一个字节不写）。
 const CONFIG_MAX_BYTES: Cap = Cap {
     bytes: 4 * 1024 * 1024,
     over: Over::Reject,
 };
 /// monitor 的设置（不带版本，定了的；monitor 在自己的数据目录里按 [`file_name_of`] 取名）。
-pub const CONFIG_FILE: Decl<State> = Decl::<State>::foreign(CONFIG_REL, CONFIG_MAX_BYTES);
+pub const CONFIG_FILE: Decl<State> =
+    Decl::<State>::foreign(CONFIG_REL, Owner::End(End::Desktop), CONFIG_MAX_BYTES)
+        .written_by(Place::Shell);
 /// 「待办」选择那一份的读上限（超了当读不懂：不覆盖、`marks_unreadable`）。
 const CHORES_MAX_BYTES: Cap = Cap {
     bytes: 64 * 1024,
     over: Over::Reject,
 };
 /// 「待办」里记下的选择。
-pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, CHORES_MAX_BYTES);
+pub const CHORES_FILE: Decl<State> =
+    Decl::<State>::json(CHORES_REL, Owner::Machine, 1, 1, CHORES_MAX_BYTES);
 /// 计划认可与退回那一份的读上限（超了当读不懂：不覆盖）。
 const PLAN_REVIEW_MAX_BYTES: Cap = Cap {
     bytes: 1024 * 1024,
@@ -757,7 +935,7 @@ const PLAN_REVIEW_MAX_BYTES: Cap = Cap {
 };
 /// 计划的认可与退回。
 pub const PLAN_REVIEW_FILE: Decl<State> =
-    Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, PLAN_REVIEW_MAX_BYTES);
+    Decl::<State>::json(PLAN_REVIEW_REL, Owner::Machine, 1, 1, PLAN_REVIEW_MAX_BYTES);
 /// 上次值整份的读上限：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
 const LAST_SEEN_MAX_BYTES: Cap = Cap {
     bytes: 32 * 1024 * 1024,
@@ -772,25 +950,37 @@ const BOOKMARKS_MAX_BYTES: Cap = Cap {
 };
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> =
-    Decl::<State>::json(BOOKMARKS_REL, 1, 1, BOOKMARKS_MAX_BYTES);
+    Decl::<State>::json(BOOKMARKS_REL, Owner::Machine, 1, 1, BOOKMARKS_MAX_BYTES);
 /// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`；第 1 版经一步升级读，5.0.4 起不读）。
-pub const SKILL_LEDGER_FILE: Decl<State> =
-    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, SKILL_LEDGER_MAX_BYTES).floor_raised_in("5.0.4");
+pub const SKILL_LEDGER_FILE: Decl<State> = Decl::<State>::json(
+    SKILL_LEDGER_REL,
+    Owner::Machine,
+    2,
+    1,
+    SKILL_LEDGER_MAX_BYTES,
+)
+.floor_raised_in("5.0.4");
 /// skill 装记录那一份的读上限（超了当读不懂：不覆盖、`ledger_unreadable`）。
 const SKILL_LEDGER_MAX_BYTES: Cap = Cap {
     bytes: 4 * 1024 * 1024,
     over: Over::Reject,
 };
 /// 资产目录。
-pub const ASSET_CATALOG_FILE: Decl<State> =
-    Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, ASSET_CATALOG_MAX_BYTES);
+pub const ASSET_CATALOG_FILE: Decl<State> = Decl::<State>::json(
+    ASSET_CATALOG_REL,
+    Owner::Machine,
+    1,
+    1,
+    ASSET_CATALOG_MAX_BYTES,
+);
 /// 资产目录那一份的读上限（读不出来就不覆盖）。
 const ASSET_CATALOG_MAX_BYTES: Cap = Cap {
     bytes: 16 * 1024 * 1024,
     over: Over::Reject,
 };
 /// 额度账。
-pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, QUOTA_MAX_BYTES);
+pub const QUOTA_FILE: Decl<State> =
+    Decl::<State>::json(QUOTA_LEDGER_REL, Owner::Machine, 1, 1, QUOTA_MAX_BYTES);
 /// 额度账那一份的读上限（读不出来就不覆盖）。
 const QUOTA_MAX_BYTES: Cap = Cap {
     bytes: 16 << 20,
@@ -802,15 +992,18 @@ const ROTATION_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 /// 账号轮换（第 4 版；第 3 版及更早当没有）。
-pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 4, 4, ROTATION_MAX_BYTES);
+pub const ROTATION_FILE: Decl<State> =
+    Decl::<State>::json(ROTATION_REL, Owner::Machine, 4, 4, ROTATION_MAX_BYTES);
 /// 历史注解那一份的读上限：一条约 150 字节 ⇒ 四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 const HISTORY_ANNOTATIONS_MAX_BYTES: Cap = Cap {
     bytes: 64 * 1024 * 1024,
     over: Over::Reject,
 };
 /// 历史注解（星标 · 改名 · 隐藏 · 组 …；住这台的数据目录，名字同 `creds_core::store::HISTORY_METADATA_FILE`）。
+/// 主人类记 ①：一条会话的那几格；组那一节是 ③ 在这台的那一片，同住会话那一台（判据里 ①③ 同一条：只住后端）。
 pub const HISTORY_ANNOTATIONS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/history-metadata.json",
+    Owner::Session,
     1,
     1,
     HISTORY_ANNOTATIONS_MAX_BYTES,
@@ -821,18 +1014,27 @@ const LINEAGE_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 /// 会话血缘。
-pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, LINEAGE_MAX_BYTES);
+pub const LINEAGE_FILE: Decl<State> =
+    Decl::<State>::json(LINEAGE_REL, Owner::Session, 1, 1, LINEAGE_MAX_BYTES);
 /// 起会话用的号。
-pub const LAUNCH_ACCOUNTS_FILE: Decl<State> =
-    Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, LAUNCH_ACCOUNTS_MAX_BYTES);
+pub const LAUNCH_ACCOUNTS_FILE: Decl<State> = Decl::<State>::json(
+    LAUNCH_ACCOUNTS_REL,
+    Owner::Session,
+    1,
+    1,
+    LAUNCH_ACCOUNTS_MAX_BYTES,
+);
 /// 起会话用的号那一份的读上限（读不出来就不覆盖）。
 const LAUNCH_ACCOUNTS_MAX_BYTES: Cap = Cap {
     bytes: 16 << 20,
     over: Over::Reject,
 };
-/// 主机钥匙（OpenSSH 格式）。
-pub const KNOWN_HOSTS_FILE: Decl<State> =
-    Decl::<State>::foreign(KNOWN_HOSTS_REL, KNOWN_HOSTS_MAX_BYTES);
+/// 主机钥匙（OpenSSH 格式）：这一端认的各台指纹（本机后端替桌面那一端存）。
+pub const KNOWN_HOSTS_FILE: Decl<State> = Decl::<State>::foreign(
+    KNOWN_HOSTS_REL,
+    Owner::End(End::Desktop),
+    KNOWN_HOSTS_MAX_BYTES,
+);
 /// 主机钥匙那一份的读上限（一台一行，远到不了；读不出来 ⇒ 不覆盖、回错）。
 const KNOWN_HOSTS_MAX_BYTES: Cap = Cap {
     bytes: 4 << 20,
@@ -864,6 +1066,7 @@ pub const LISTING_CACHE_FILE: Decl<Cache> =
 /// 一条会话的消息队（[`SESSION_QUEUE_DIR_REL`] 底下一条会话一份）。
 pub const SESSION_QUEUE_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/session-queue/<sid>.json",
+    Owner::Session,
     1,
     1,
     SESSION_QUEUE_MAX_BYTES,
@@ -908,6 +1111,7 @@ const REMOTE_LISTING_MAX_BYTES: Cap = Cap {
 /// API key 表（住数据目录根上；人手改的那一份，未知键原样留）。
 pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/apikey-credentials.json",
+    Owner::Machine,
     1,
     1,
     APIKEY_CREDENTIALS_MAX_BYTES,
@@ -920,6 +1124,7 @@ const APIKEY_CREDENTIALS_MAX_BYTES: Cap = Cap {
 /// 订阅号的凭据文件（一个号一份，住那个号的配置目录、文件名由那一家登记；那一家的格式）。
 pub const ACCOUNT_CREDS_FILE: Decl<State> = Decl::<State>::foreign(
     "<account-config-dir>/<credentials-file>",
+    Owner::Machine,
     ACCOUNT_CREDS_MAX_BYTES,
 );
 /// 订阅号凭据文件的读上限。
@@ -930,6 +1135,7 @@ const ACCOUNT_CREDS_MAX_BYTES: Cap = Cap {
 /// 一条会话一份的上游描述（起会话便条那个目录底下，按来处存）。
 pub const SESSION_UPSTREAM_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/launch-pending/upstream/<origin>.json",
+    Owner::Session,
     1,
     1,
     SESSION_UPSTREAM_MAX_BYTES,
@@ -942,6 +1148,7 @@ const SESSION_UPSTREAM_MAX_BYTES: Cap = Cap {
 /// 一个托管终端一份的事实。
 pub const HOST_FACTS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/hosts/<id>/facts.json",
+    Owner::Machine,
     1,
     1,
     HOST_FACTS_MAX_BYTES,
@@ -964,6 +1171,7 @@ const HOST_PROGRAM_NOT_READ: Cap = Cap {
 /// cc-bus 的状态（[`CC_BUS_DIR_REL`] 底下：各会话已读位置 ＋ 发信规矩的账）。
 pub const CC_BUS_STATE_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/cc-bus/state.json",
+    Owner::Machine,
     1,
     1,
     CC_BUS_STATE_MAX_BYTES,
@@ -974,8 +1182,11 @@ const CC_BUS_STATE_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 /// 一条会话的 cc-bus 收件箱（[`CC_BUS_DIR_REL`] 底下一条会话一份；一封一行，只往后加）。
-pub const CC_BUS_INBOX_FILE: Decl<State> =
-    Decl::<State>::foreign(".cc-monitor/cc-bus/<sid>.jsonl", CC_BUS_INBOX_MAX_BYTES);
+pub const CC_BUS_INBOX_FILE: Decl<State> = Decl::<State>::foreign(
+    ".cc-monitor/cc-bus/<sid>.jsonl",
+    Owner::Session,
+    CC_BUS_INBOX_MAX_BYTES,
+);
 /// 一份 cc-bus 收件箱的读上限：一封最多千来字节，64 MiB 装得下几万封。
 const CC_BUS_INBOX_MAX_BYTES: Cap = Cap {
     bytes: 64 << 20,
@@ -990,16 +1201,34 @@ const ANSWER_PLUGIN_MAX_BYTES: Cap = Cap {
     over: Over::SkipAndSay,
 };
 /// 套组名 ⇒ 为它建的那一组的 id（顶层键是组名，带 `version` 会撞名 ⇒ 不带版本）。
-pub const SET_GROUPS_FILE: Decl<State> =
-    Decl::<State>::foreign(".cc-monitor/set-groups.json", SET_GROUPS_MAX_BYTES);
+pub const SET_GROUPS_FILE: Decl<State> = Decl::<State>::foreign(
+    ".cc-monitor/set-groups.json",
+    Owner::Set,
+    SET_GROUPS_MAX_BYTES,
+);
 /// 套组绑定那一份的读上限。
 const SET_GROUPS_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::Reject,
+};
+/// 组的待补：改名 · 解散发给各片时没送到的那几台，这一端欠它们的那几句（本机后端替这一端记，`history/groups_owed.rs`；
+/// 那台再答 `groups-here` 时补发、补成了消掉）。
+pub const GROUPS_OWED_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/groups-owed.json",
+    Owner::End(End::Desktop),
+    1,
+    1,
+    GROUPS_OWED_MAX_BYTES,
+);
+/// 待补那一份的读上限（一条几十字节，台数 × 组数封顶）。
+const GROUPS_OWED_MAX_BYTES: Cap = Cap {
     bytes: 1 << 20,
     over: Over::Reject,
 };
 /// 一份轮换策略（`strategies/` 底下一份一个 `.rhai`，用户自己的源码）。
 pub const STRATEGY_SOURCE_FILE: Decl<State> = Decl::<State>::foreign(
     ".cc-monitor/strategies/<id>.rhai",
+    Owner::Machine,
     STRATEGY_SOURCE_MAX_BYTES,
 );
 /// 一份轮换策略的读上限（超了不加载，列表里照实写读不懂）。
@@ -1043,6 +1272,7 @@ const OWN_FILES: &[Row] = &[
     CC_BUS_INBOX_FILE.row,
     ANSWER_PLUGIN_FILE.row,
     SET_GROUPS_FILE.row,
+    GROUPS_OWED_FILE.row,
     STRATEGY_SOURCE_FILE.row,
 ];
 

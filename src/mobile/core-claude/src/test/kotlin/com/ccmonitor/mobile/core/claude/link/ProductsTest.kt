@@ -171,38 +171,18 @@ class ProductsTest {
     }
 
     @Test
-    fun `groups-read：只问这台自己那一片；组名 · 组头那几句 · 组员 · 固定照回包解，那台读不到的那一句照抄，缺格解不开`() {
-        assertEquals(mapOf("machines" to listOf("<local>")), Groups.ARGS)
-        val member = { sid: String, pinned: Boolean ->
+    fun `groups-here：问这台自己那一片、不带参数；照线上那一形解得开 ⇒ 原样交回（交核心合），缺格解不开`() {
+        assertEquals(emptyMap<String, Any?>(), Groups.ARGS)
+        val member =
             mapOf(
-                "origin" to "<local>",
-                "sid" to sid,
-                "pinned" to pinned,
+                "sid" to "a",
+                "groups" to listOf("g1"),
+                "pinned" to false,
                 "face" to Fixtures.face("ended"),
-                "facts" to mapOf("title" to "标题 $sid", "cwd" to "/w", "record" to null, "account" to null, "bg" to false, "at" to 1L),
+                "facts" to mapOf("title" to "标题 a", "cwd" to "/w", "record" to null, "account" to null, "bg" to false, "at" to 1L),
             )
-        }
-        val group =
-            mapOf(
-                "id" to "g1",
-                "name" to "开发",
-                "title" to "开发",
-                "made" to 1L,
-                "named" to 1L,
-                "known" to mapOf("is" to "now"),
-                "members" to listOf(member("a", false), member("b", true)),
-                "counts" to listOf(mapOf("dot" to "needs-you", "n" to 1L, "word" to "需手动", "text" to "需手动 1")),
-            )
-        val failed = mapOf("origin" to "<local>", "read" to mapOf("is" to "failed", "why" to "读不到注解"))
-        val got = Groups.of(mapOf("groups" to listOf(group), "pinned" to listOf(member("b", true)), "machines" to listOf(failed)))
-        assertNotNull(got)
-        val g = got!!.groups.single()
-        assertEquals("开发", g.title)
-        assertEquals(listOf("需手动 1"), g.counts.map { it.text })
-        assertEquals(listOf("a", "b"), g.members.map { it.sid })
-        assertEquals("标题 a", g.members[0].facts.title)
-        assertEquals(listOf("b"), got.pinned.map { it.sid })
-        assertEquals(listOf("读不到注解"), Groups.unread(got))
-        assertNull("缺 counts ⇒ 契约对不上", Groups.of(mapOf("groups" to listOf(group - "counts"), "pinned" to emptyList<Any>(), "machines" to emptyList<Any>())))
+        val slice = mapOf("groups" to listOf(mapOf("id" to "g1", "name" to "开发", "made" to 1L, "named" to 1L)), "members" to listOf(member))
+        assertEquals(slice, Groups.of(slice))
+        assertNull("缺 facts ⇒ 契约对不上", Groups.of(mapOf("groups" to emptyList<Any>(), "members" to listOf(member - "facts"))))
     }
 }

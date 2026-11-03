@@ -7,10 +7,10 @@ use super::*;
 use crate::common::said::Said;
 use crate::control::cc_bus::store;
 use crate::dial::remote_ask::Remote;
-use crate::history::groups::{
+use cmd_wire::groups::{
     GroupKnown, GroupMember, GroupRead, GroupsMachine, GroupsRead, MemberFacts,
 };
-use crate::history::history_browse::Read;
+use cmd_wire::listing::HistoryMachineRead as Read;
 use cmd_wire::Machine;
 use serde_json::{json, Value};
 use std::future::Future;

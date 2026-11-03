@@ -2,11 +2,13 @@
 //! 没有接手会话的块不问组模块 · 那一格的字后端写好。
 
 use super::*;
-use crate::history::groups::{merge, unlisted, GroupsHere, Half, HereGroup, HereMember};
+use crate::history::groups::unlisted;
 use crate::plan::fixture::{dump, made_with, who, MAIN};
 use crate::wire::WireLife;
+use cmd_wire::groups::{GroupsHere, HereGroup, HereMember};
 use cmd_wire::Machine;
 use copy_core::copy_text;
+use face_core::groups::{merge, Half};
 use std::cell::Cell;
 
 /// 这台那一半：g1「开发」· g3「评审」里有 MAIN；g2「杂项」里只有别人。

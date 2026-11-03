@@ -7,36 +7,41 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawHead
 import com.ccmonitor.mobile.core.data.db.CacheDao
 import com.ccmonitor.mobile.core.data.db.CachedSession
 import com.ccmonitor.mobile.core.data.db.Draft
+import com.ccmonitor.mobile.core.data.db.HandDao
 import com.ccmonitor.mobile.core.data.db.ListHold
 import com.ccmonitor.mobile.core.data.db.PendingBatch
 import com.ccmonitor.mobile.core.data.db.PendingSend
 import com.ccmonitor.mobile.core.data.db.RecordPage
 import com.ccmonitor.mobile.core.data.db.SyncAnchor
 
-/** 缓存落在 Room 那七张表里（`CacheDao`）：一台一份，成品原样写成 JSON 文本存、读回来原样交还。 */
+/**
+ * 手机落在 Room 的那几样：缓存（会话列表 · 记录页 · 续读点，住缓存库，`CacheDao`）与这一端手上的（待发 · 草稿 · 在做的一组，住状态库，`HandDao`）。
+ * 一台一份，成品原样写成 JSON 文本存、读回来原样交还。
+ */
 class LocalCache(
     private val dao: CacheDao,
+    private val hand: HandDao,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    fun chat(hostId: String): ChatCache = RoomChatCache(dao, hostId, now)
+    fun chat(hostId: String): ChatCache = RoomChatCache(dao, hand, hostId, now)
 
     fun list(hostId: String): ListCache = RoomListCache(dao, hostId)
 
-    fun batches(hostId: String): KeptBatches = RoomKeptBatches(dao, hostId)
+    fun batches(hostId: String): KeptBatches = RoomKeptBatches(hand, hostId)
 
     /** 这台名下该再交的待发（有会话 · 还没回执 · 没被拒），照落库的先后；那台一接上就照原编号重交（`PendingResend`）。 */
-    suspend fun due(hostId: String): List<Pending> = dao.duePending(hostId).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
+    suspend fun due(hostId: String): List<Pending> = hand.duePending(hostId).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
 
     /** 记回一句交的结局（同 [ChatCache.settle]）。 */
     suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
-    ) = dao.settle(id, outcome, attempts)
+    ) = hand.settle(id, outcome, attempts)
 }
 
 private class RoomKeptBatches(
-    private val dao: CacheDao,
+    private val dao: HandDao,
     private val hostId: String,
 ) : KeptBatches {
     override suspend fun all(): List<Pair<String, String>> = dao.batches(hostId).map { it.ticket to it.plan }
@@ -88,6 +93,7 @@ internal fun storedOf(
 
 private class RoomChatCache(
     private val dao: CacheDao,
+    private val hand: HandDao,
     private val hostId: String,
     private val now: () -> Long,
 ) : ChatCache {
@@ -125,32 +131,32 @@ private class RoomChatCache(
         dao.putPages(hostId, sid, appendRows(last, rows, anchor?.offset).map { it.row(sid) }, anchor?.row(sid))
     }
 
-    override suspend fun pending(sid: String): List<Pending> = dao.pending(hostId, sid).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
+    override suspend fun pending(sid: String): List<Pending> = hand.pending(hostId, sid).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
 
     override suspend fun promote(
         draftSid: String,
         p: Pending,
-    ) = dao.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, null, now(), p.outcome, p.attempts))
+    ) = hand.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, null, now(), p.outcome, p.attempts))
 
     override suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
-    ) = dao.settle(id, outcome, attempts)
+    ) = hand.settle(id, outcome, attempts)
 
     override suspend fun bind(
         ids: List<String>,
         sid: String,
-    ) = dao.bind(ids, sid)
+    ) = hand.bind(ids, sid)
 
-    override suspend fun forget(ids: List<String>) = dao.forget(ids)
+    override suspend fun forget(ids: List<String>) = hand.forget(ids)
 
-    override suspend fun draft(sid: String): String? = dao.draft(hostId, sid)?.text
+    override suspend fun draft(sid: String): String? = hand.draft(hostId, sid)?.text
 
     override suspend fun saveDraft(
         sid: String,
         text: String,
         cwd: String?,
         account: String?,
-    ) = if (text.isEmpty()) dao.dropDraft(hostId, sid) else dao.putDraft(Draft(hostId, sid, text, cwd, account, null, null, now()))
+    ) = if (text.isEmpty()) hand.dropDraft(hostId, sid) else hand.putDraft(Draft(hostId, sid, text, cwd, account, null, null, now()))
 }

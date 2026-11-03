@@ -159,10 +159,10 @@ fn open_req(
 }
 
 /// 这台那一片里叫 `id` 的那一组还在不在（在 ⇒ 它此刻的样子）。
-fn group_here(id: &str) -> Option<crate::history::groups::HereGroup> {
+fn group_here(id: &str) -> Option<cmd_wire::groups::HereGroup> {
     let (_, book) = crate::history::history_annotations::load_all()?.ok()?;
     let g = book.get(id)?;
-    Some(crate::history::groups::HereGroup {
+    Some(cmd_wire::groups::HereGroup {
         id: id.to_string(),
         name: g.name.name.clone(),
         made: g.made,
@@ -176,7 +176,8 @@ fn launch(
     files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
 ) -> Result<SetLaunched, crate::common::said::Said> {
-    use crate::history::groups::{self as groups, GroupsWriteReq, GroupsWritten, HereGroup};
+    use crate::history::groups::{self as groups, GroupsWriteReq, GroupsWritten};
+    use cmd_wire::groups::HereGroup;
     no_tmux()?;
     let store = crate::assets::aliases::load(files)
         .map_err(|m| crate::common::said::Said::new("refused", m))?;

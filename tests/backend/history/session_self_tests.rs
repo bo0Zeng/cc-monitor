@@ -10,8 +10,8 @@
 //! | S6 | 常驻答了 ⇒ 看了各台；常驻不在 ⇒ 只问本机、照实标「只看了本机」 |
 
 use super::*;
-use crate::history::groups::{GroupKnown, GroupMember, GroupRead, GroupsRead, MemberFacts};
 use crate::history::live_table::LiveRow;
+use cmd_wire::groups::{GroupKnown, GroupMember, GroupRead, GroupsRead, MemberFacts};
 use cmd_wire::Machine;
 
 fn row(pid: u32, sid: &str, alive: bool) -> LiveRow {

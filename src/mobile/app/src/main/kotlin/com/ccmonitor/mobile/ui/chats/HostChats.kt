@@ -21,7 +21,6 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.GroupMember
-import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -103,7 +102,7 @@ class HostChats(
         scope.launch { groupsChanged.debounce(LIST_DEBOUNCE_MS).collect { fetchGroups() } }
     }
 
-    /** 问这台自己那一片组（[Groups]）：答了 ⇒ 换上；答了读不出 · 那台报错 ⇒ 留着上一份、记下那一句；没答（断着 · 无应答）⇒ 留着上一份（条上已说）。 */
+    /** 问这台自己那一片组（[Groups]，几台由核心合）：答了 ⇒ 换上；答了读不出 · 那台报错 ⇒ 留着上一份、记下那一句；没答（断着 · 无应答）⇒ 留着上一份（条上已说）。 */
     fun fetchGroups() {
         scope.launch {
             val reply = link.call(Groups.COMMAND, Groups.ARGS)
@@ -218,15 +217,15 @@ data class HostSnap(
     val cached: HistoryListPage?,
     val deploying: Deploying?,
     val ask: ListAsk,
-    /** 这台自己那一片组（`groups-read` 最近答上的那一份）；还没答过 ⇒ `null`。 */
-    val groups: GroupsRead? = null,
+    /** 这台自己那一片组（`groups-here` 最近答上的那一份，原样交核心合）；还没答过 ⇒ `null`。 */
+    val groups: Any? = null,
     /** 最近那一问组答了读不出 · 那台报错的那一句；答上了 ⇒ `null`。 */
     val groupsProblem: Problem? = null,
 )
 
 /** 组那一问手上那一份：最近答上的 ＋ 之后那一问没成的那一句。 */
 private data class GroupsHeld(
-    val read: GroupsRead? = null,
+    val read: Any? = null,
     val problem: Problem? = null,
 )
 
@@ -291,13 +290,24 @@ data class HostPart(
     val loading: Boolean,
     /** 装 / 更新后端这一趟的结局（条上没画它时单独一行；走到哪一步在成品里，见 [HostBar.busy]）。 */
     val deploying: Deploying? = null,
-    /** 这台固定的会话（照那台的先后）；断着 · 还没答过组 ⇒ 空。 */
-    val pinned: List<ChatRow> = emptyList(),
-    /** 这台的组，一组一段（照那台的先后）；断着 · 还没答过组 ⇒ 空。 */
-    val bands: List<GroupBand> = emptyList(),
-    /** 组那一问没读全 · 没成的那几句（那台写的）。 */
+    /** 这台组那一片（交核心几台合一次）；断着 · 还没答过组 ⇒ `null`。 */
+    val slice: Slice? = null,
+    /** 组那一问没成的那一句（那台写的）。 */
     val groupLines: List<String> = emptyList(),
 )
+
+/** 一台组那一片：`groups-here` 回包原样（交核心）· 组员落成行要的那几样（清单里那几行 · 会话簿）。 */
+data class Slice(
+    val raw: Any?,
+    val rows: Map<String, ChatRow>,
+    val book: SessionBook,
+) {
+    /** 组里那一条 ⇒ 屏上那一行：清单里有的照清单那一行，没有的照组员那一行。 */
+    fun row(
+        hostId: String,
+        m: GroupMember,
+    ): ChatRow = rows[m.sid] ?: memberRow(hostId, m, book)
+}
 
 /**
  * 一台顶上那一条：[offline] ＝ 那台断着（虚线条 ＋［重新连接］），否则红条 ＋［重试］［复制详情］；
@@ -335,10 +345,7 @@ internal fun hostPart(
             s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy()) }
             else -> null
         }
-    val table = s.table.takeIf { down == null }
     val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, r, s.table) }
-    // 断着 ⇒ 不画组：组员的脸会过时，那几条回到按天那几段。
-    val g = grouped(s, rows, table?.takeIf { ssh !is HostLink.Failed })
     return HostPart(
         hostId = s.hostId,
         machine = s.machine,
@@ -349,42 +356,29 @@ internal fun hostPart(
         truncated = answer?.truncated == true,
         loading = down == null && ssh !is HostLink.Failed && s.list is Fetched.Loading && answer == null,
         deploying = s.deploying,
-        pinned = g.pinned,
-        bands = g.bands,
-        groupLines = g.lines,
+        slice = sliceOf(s, rows, ssh),
+        groupLines = listOfNotNull(s.groupsProblem?.text),
     )
 }
 
-/** 一台的固定 · 各组 · 组那一问没读全的那几句。 */
-private data class Grouped(
-    val pinned: List<ChatRow>,
-    val bands: List<GroupBand>,
-    val lines: List<String>,
-)
-
-/** 一台的组那一片 ⇒ 要画的（[table] 为 `null` ＝ 断着 ⇒ 不画组）。组员：清单里有的照清单那一行，没有的照组员那一行。 */
-private fun grouped(
+/** 这台组那一片（交核心合）：断着 · SSH 接不上 · 还没答过 ⇒ 不交（组员的脸会过时，那几条回到按天那几段）。 */
+private fun sliceOf(
     s: HostSnap,
     rows: List<ChatRow>,
-    table: SessionBook?,
-): Grouped {
-    val groups = s.groups?.takeIf { table != null } ?: return Grouped(emptyList(), emptyList(), listOfNotNull(s.groupsProblem?.text))
-    val byId = rows.associateBy { it.sessionId }
-    val member = { m: GroupMember -> byId[m.sid] ?: memberRow(s.hostId, m, table) }
-    return Grouped(
-        pinned = groups.pinned.map(member),
-        bands = groups.groups.map { g -> GroupBand(s.hostId, g.id, g.title, g.counts.map { it.text }, g.members.map(member)) },
-        lines = Groups.unread(groups) + listOfNotNull(s.groupsProblem?.text),
-    )
+    ssh: HostLink?,
+): Slice? {
+    val raw = s.groups ?: return null
+    if (s.link is LinkLine.Down || ssh is HostLink.Failed) return null
+    return Slice(raw, rows.associateBy { r -> r.sessionId }, s.table)
 }
 
 /** 组里那一条清单里没有（窗外 · 被筛掉）⇒ 照组员那一行：那台写的标题 · 脸（流上有它 ⇒ 流上那一份）；能不能删这里说不清。 */
 private fun memberRow(
     hostId: String,
     m: GroupMember,
-    table: SessionBook?,
+    table: SessionBook,
 ): ChatRow {
-    val face = table?.face(m.sid) ?: m.face
+    val face = table.face(m.sid) ?: m.face
     return ChatRow(
         hostId = hostId,
         sessionId = m.sid,

@@ -280,10 +280,211 @@ fn every_declared_file_is_consistent_and_declared_once() {
                 "{}：下限 {floor} · 版本 {version}",
                 r.rel
             );
-            if r.kind == Kind::Cache {
+            if r.kind() == Kind::Cache {
                 assert_eq!(floor, version, "{}：缓存不升级，下限要等于版本", r.rel);
             }
         }
+    }
+}
+
+/// 落点 · 主人类 · 等迁到哪一版：后端家里那几份（[`OWN_FILES`]）＋ 客户端那几处（[`CLIENT_SPOTS`]）排成一张。
+fn every_spot() -> Vec<Spot> {
+    OWN_FILES
+        .iter()
+        .map(|r| Spot {
+            place: r.place,
+            at: r.rel,
+            owner: r.owner,
+            until: None,
+        })
+        .chain(CLIENT_SPOTS.iter().copied())
+        .collect()
+}
+
+/// 每行都有主人类：缓存就是 ⑤（状态 / 缓存由主人类推出，不另记一格）；声明成状态的不许是 ⑤。
+#[test]
+fn every_row_has_an_owner_and_the_cache_rows_are_exactly_the_fifth() {
+    let mut owners = std::collections::BTreeSet::new();
+    for r in OWN_FILES {
+        assert_eq!(
+            r.owner == Owner::Cache,
+            r.kind() == Kind::Cache,
+            "{}：主人类 {:?}",
+            r.rel,
+            r.owner
+        );
+        owners.insert(format!("{:?}", r.owner));
+    }
+    assert!(
+        owners.len() >= 4,
+        "表里的主人类只有 {owners:?}：没照 ①–⑤ 分"
+    );
+}
+
+/// ①②③ 不许住客户端：会话 · 机器 · 跨机器集合的事实只住后端（问来的只当缓存）；等迁的旧行到期那一版前除外。
+#[test]
+fn session_machine_and_set_facts_never_live_on_a_client() {
+    let now = current_release();
+    for s in every_spot() {
+        if !matches!(s.owner, Owner::Session | Owner::Machine | Owner::Set) {
+            continue;
+        }
+        if s.place == Place::Backend {
+            continue;
+        }
+        let at = s
+            .until
+            .unwrap_or_else(|| panic!("{}：{:?} 住在 {:?}（客户端）", s.at, s.owner, s.place));
+        let due = release_of(at).unwrap_or_else(|| panic!("{}：到期 `{at}` 不是 X.Y.Z", s.at));
+        assert!(now < due, "{}：等迁的旧行到期（{at}）还在：删掉它", s.at);
+    }
+}
+
+/// ④ 不许经别台后端写：手机那一端的 ④ 只住手机（对手机，哪一台后端都是别台）；桌面那一端的 ④ 只住壳 · 界面 · 本机后端。
+#[test]
+fn an_ends_own_things_live_only_with_that_end() {
+    let mut ends = std::collections::BTreeSet::new();
+    for s in every_spot() {
+        let Owner::End(end) = s.owner else { continue };
+        let ok = match end {
+            End::Phone => s.place == Place::Phone,
+            End::Desktop => matches!(s.place, Place::Shell | Place::Ui | Place::Backend),
+        };
+        assert!(ok, "{}：{end:?} 那一端的 ④ 住在 {:?}", s.at, s.place);
+        ends.insert(format!("{end:?}"));
+    }
+    assert_eq!(ends.len(), 2, "两端的 ④ 都该登着：{ends:?}");
+}
+
+/// 后端家里那几份缓存（⑤，别台东西的副本）住缓存目录；名单里那几份照别的东西现造、落点由读它的那一方定（只许变短）。
+#[test]
+fn backend_caches_live_under_the_cache_dir() {
+    const AT_THE_READERS_PLACE: &[&str] = &[
+        KEY_FILE_REL,
+        SSH_CONFIG_REL,
+        ".cc-monitor/launch-pending/<pid>.json",
+        ".cc-monitor/hosts/.bin/<version>/ccm.exe",
+        ".cc-monitor/answer-plugin/<file>",
+    ];
+    for r in OWN_FILES {
+        if r.owner != Owner::Cache || r.place != Place::Backend {
+            continue;
+        }
+        let under = r.rel.starts_with(".cc-monitor/cache/");
+        assert_ne!(
+            under,
+            AT_THE_READERS_PLACE.contains(&r.rel),
+            "{}：缓存住 `.cc-monitor/cache/` 底下（名单里的那几份除外，进了缓存目录就从名单删掉）",
+            r.rel
+        );
+    }
+}
+
+/// 仓里一份源码（相对仓根）。
+fn repo_text(rel: &str) -> String {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join(rel);
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{rel} 读不动：{e}"))
+}
+
+/// 手机 Room 那几张表的名字（core-data 每个 `@Entity` 的 `tableName`，写成常量的照 `const val` 解）。
+fn room_tables() -> std::collections::BTreeSet<String> {
+    let db = "src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db";
+    // 两个库各自登的实体（`entities = [A::class, …]`）⇒ 实体住哪几份文件由下面那一核兜住：漏读一份就对不上。
+    let listed: std::collections::BTreeSet<String> = ["AppDatabase.kt", "CacheDatabase.kt"]
+        .iter()
+        .flat_map(|f| {
+            let t = repo_text(&format!("{db}/{f}"));
+            let body = t
+                .split_once("entities = [")
+                .and_then(|(_, b)| b.split_once(']'))
+                .expect("entities 那一段")
+                .0
+                .to_string();
+            body.split(',')
+                .filter_map(|c| c.trim().strip_suffix("::class").map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let text: String = ["Entities.kt", "CacheEntities.kt", "KeyEntities.kt"]
+        .iter()
+        .map(|f| repo_text(&format!("{db}/{f}")))
+        .collect();
+    let declared: std::collections::BTreeSet<String> = text
+        .match_indices("@Entity(")
+        .filter_map(|(i, _)| {
+            let after = &text[i..];
+            let name = after.split_once("data class ")?.1;
+            Some(name[..name.find(['(', ' '])?].to_string())
+        })
+        .collect();
+    assert_eq!(
+        listed, declared,
+        "两个库登的实体与那三份文件里的 @Entity 对不上（实体换了文件就把它加进上面那张）"
+    );
+    let consts: std::collections::BTreeMap<&str, &str> = text
+        .lines()
+        .filter_map(|l| {
+            let (name, v) = l.trim().strip_prefix("const val ")?.split_once(" = ")?;
+            Some((name.trim(), v.trim().trim_matches('"')))
+        })
+        .collect();
+    text.match_indices("@Entity(tableName = ")
+        .map(|(i, m)| {
+            let rest = &text[i + m.len()..];
+            let end = rest.find([',', ')']).expect("tableName 那一格有尾");
+            let v = rest[..end].trim();
+            match v.strip_prefix('"') {
+                Some(lit) => lit.trim_end_matches('"').to_string(),
+                None => consts
+                    .get(v)
+                    .unwrap_or_else(|| panic!("表名常量 {v} 没找到"))
+                    .to_string(),
+            }
+        })
+        .collect()
+}
+
+/// 界面 `LS_KEYS` 那几个键（`local-storage.ts`；带参数的那一形取它固定的前半）。
+fn ls_keys() -> std::collections::BTreeSet<String> {
+    let text = repo_text("src/frontend/ui/local-storage.ts");
+    let body = text
+        .split_once("export const LS_KEYS = {")
+        .and_then(|(_, b)| b.split_once("} as const;"))
+        .expect("LS_KEYS 那一段")
+        .0;
+    body.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('/') && !l.starts_with('*'))
+        .filter_map(|l| {
+            let q = l.find(['"', '`'])?;
+            let rest = &l[q + 1..];
+            let end = rest.find(['"', '`', '$'])?;
+            Some(rest[..end].to_string())
+        })
+        .collect()
+}
+
+/// 客户端落点登全：Room 每张表 · 界面每个存储键在 [`CLIENT_SPOTS`] 里各一行，表里也没有多出来的。
+#[test]
+fn client_spots_match_the_room_tables_and_the_storage_keys() {
+    let listed = |prefix: &str| -> std::collections::BTreeSet<String> {
+        CLIENT_SPOTS
+            .iter()
+            .filter_map(|s| s.at.strip_prefix(prefix).map(str::to_string))
+            .collect()
+    };
+    assert_eq!(
+        listed(ROOM_SPOT),
+        room_tables(),
+        "手机 Room 的表与登的对不上"
+    );
+    assert_eq!(listed(STORAGE_SPOT), ls_keys(), "界面存储键与登的对不上");
+    let mut seen = std::collections::BTreeSet::new();
+    for s in CLIENT_SPOTS {
+        assert!(seen.insert(s.at), "登了两行：{}", s.at);
+        assert_ne!(s.place, Place::Backend, "{}：客户端那几处不住后端", s.at);
     }
 }
 
@@ -292,11 +493,11 @@ fn every_declared_file_is_consistent_and_declared_once() {
 #[test]
 fn every_declared_cap_says_what_the_reader_does_on_overflow() {
     for r in OWN_FILES {
-        let want = match r.kind {
+        let want = match r.kind() {
             Kind::State => Over::Reject,
             Kind::Cache => Over::SkipAndSay,
         };
-        assert_eq!(r.cap.over, want, "{}：种类 {:?}", r.rel, r.kind);
+        assert_eq!(r.cap.over, want, "{}：主人类 {:?}", r.rel, r.owner);
     }
 }
 
@@ -364,7 +565,7 @@ fn home_entries_with_a_declaration_take_their_class_from_it() {
             assert!(!dir, "{id}：声明的是文件，家里那一格写成了目录");
             assert_eq!(
                 kept,
-                r.kind == Kind::State,
+                r.kind() == Kind::State,
                 "{id}：家里那一格与声明的种类对不上"
             );
             checked += 1;

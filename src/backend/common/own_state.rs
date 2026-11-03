@@ -71,7 +71,7 @@ impl<T> Doc<T> {
         Doc {
             rel: d.row.rel,
             cap: d.row.cap,
-            kind: d.row.kind,
+            kind: d.row.kind(),
             format: d.row.format,
             steps,
             of: PhantomData,
