@@ -462,7 +462,9 @@ fn the_tab_slot_goes_with_the_launch_and_names_its_alias() {
 #[test]
 fn the_tab_flag_takes_only_show_or_hide() {
     let parse = |a: &[&str]| {
-        crate::ccm_line::argv::test_support::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        crate::ccm_line::argv::test_support::parse(
+            &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
     };
     assert!(parse(&["--", "--tab", "hide"]).is_ok());
     assert!(parse(&["--", "--tab=show"]).is_ok());
@@ -665,7 +667,9 @@ fn the_alias_name_goes_with_the_launch() {
     };
     assert!(c.payload.contains("'--ccm-alias' 'dev'"), "{}", c.payload);
     let parse = |a: &[&str]| {
-        crate::ccm_line::argv::test_support::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        crate::ccm_line::argv::test_support::parse(
+            &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
     };
     assert!(parse(&["--", "--ccm-alias", "a b"]).is_err());
 }
