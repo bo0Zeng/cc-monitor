@@ -24,9 +24,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +76,7 @@ import com.ccmonitor.mobile.core.wire.gen.MdAlign
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
 import com.ccmonitor.mobile.core.wire.gen.SegHl
+import kotlinx.coroutines.CompletableDeferred
 import ru.noties.jlatexmath.JLatexMathDrawable
 
 // 正文排版器：后端解析好的块树（`cmd_wire::md::Doc`）→ Compose。只照树排，不解析 Markdown、不判高亮类别。
@@ -82,7 +86,7 @@ import ru.noties.jlatexmath.JLatexMathDrawable
 // - 高亮先出字、后上色：一段先照纯字建；那一段的代码块（[codesOf]，先序）交后端 `prose-hl` 拉，拉到了 [MdDocState.paint] 带色重排那一段。
 //   第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
 // - 公式经 JLaTeXMath 画成图；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文）。
-// - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段，[MdDocState.buildNext] 一段段往下接。
+// - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段；点了「展开」（[MdDocState.expand]）才 [MdDocState.buildNext] 一段段往下接。
 
 /** 排版要的几样样式（主题给，测试里另给一份好认的）。`hl` 的下标就是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`）。 */
 @Stable
@@ -226,7 +230,7 @@ fun codesOf(
     return out
 }
 
-/** 一份正文的排版状态：建好了哪几段。建出来就有第 0 段（代码照纯字）；往下接一段调 [buildNext]，拉到一段的高亮调 [paint]。 */
+/** 一份正文的排版状态：建好了哪几段。建出来就有第 0 段（代码照纯字）；点了「展开」调 [expand]，往下接一段调 [buildNext]，拉到一段的高亮调 [paint]。 */
 @Stable
 class MdDocState(
     val doc: Doc,
@@ -239,6 +243,20 @@ class MdDocState(
     val pieces: List<List<MdPiece>> get() = built0
 
     val built: Int get() = built0.size
+
+    private var asked by mutableStateOf(false)
+    private val go = CompletableDeferred<Unit>()
+
+    /** 还有没建的段、也还没点「展开」⇒ 画那一颗。 */
+    val more: Boolean get() = built0.size < segCount && !asked
+
+    /** 点了「展开」：余下几段由 [awaitExpand] 那一头一帧接一段建下去。 */
+    fun expand() {
+        asked = true
+        go.complete(Unit)
+    }
+
+    suspend fun awaitExpand() = go.await()
 
     init {
         buildNext()

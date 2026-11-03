@@ -59,6 +59,7 @@ import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.codeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.copy.sizeText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -584,7 +585,7 @@ private fun AssistantMarkdownCard(
 ) {
     val codeBlocks = remember(unit.doc) { unit.doc.codeBlocks() }
     Column(Modifier.fillMaxWidth().matchHighlight(matched)) {
-        MarkdownText(unit.doc, modifier = Modifier.fillMaxWidth())
+        MarkdownText(unit.doc, remember(unit.bytes) { sizeText(unit.bytes) }, modifier = Modifier.fillMaxWidth())
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SecondaryButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {

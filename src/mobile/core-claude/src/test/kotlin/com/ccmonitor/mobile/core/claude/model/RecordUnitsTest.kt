@@ -45,8 +45,8 @@ class RecordUnitsTest {
         val u = units("reply-full")
         assertEquals(listOf("a-full#0", "a-full#1", "a-full#2", "a-full#3", "a-full#4"), u.map { it.key })
         assertEquals(RenderUnit.Thinking("a-full#0", "plan it", "a-full"), u[0])
-        // 正文照记录里那棵树原样带上（后端解析好的），手机不再解析。
-        assertEquals(RenderUnit.AssistantMarkdown("a-full#1", Doc(listOf(MdBlock.P(listOf(Inl.Text("done")))), emptyList()), "a-full"), u[1])
+        // 正文照记录里那棵树原样带上（后端解析好的），手机不再解析；整块的字节数原样带到卡上（「展开 {大小}」那一格）。
+        assertEquals(RenderUnit.AssistantMarkdown("a-full#1", Doc(listOf(MdBlock.P(listOf(Inl.Text("done")))), emptyList()), 4, "a-full"), u[1])
         assertEquals("done", u[1].searchableText())
         val edit = u[3] as RenderUnit.ToolCall
         assertEquals("Edit", edit.name)

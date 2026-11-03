@@ -88,7 +88,7 @@ class CodexRecordGoldenTest {
                     sourceUuid = patch["id"] as String,
                     resultLine = resultLine("call-2"),
                 ),
-                RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), "msg-9"),
+                RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), 9, "msg-9"),
                 record("line-16").let { u ->
                     RenderUnit.Unread(u["id"] as String, u["text"] as String, u["timeText"] as String?, u["excerpt"] as String, u["id"] as String)
                 },

@@ -21,7 +21,7 @@ import org.junit.Test
 class TurnFoldsTest {
     private fun said(u: String) = RenderUnit.UserText("$u#0", "q", u)
 
-    private fun text(u: String) = RenderUnit.AssistantMarkdown("$u#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("t")))), emptyList()), u)
+    private fun text(u: String) = RenderUnit.AssistantMarkdown("$u#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("t")))), emptyList()), 1, u)
 
     private fun tool(u: String) = RenderUnit.ToolCall("$u#0", "c-$u", "Read", "r", false, false, u)
 

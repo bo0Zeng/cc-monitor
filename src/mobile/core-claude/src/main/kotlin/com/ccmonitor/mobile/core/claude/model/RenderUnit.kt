@@ -64,10 +64,11 @@ sealed interface RenderUnit {
         val attachments: List<Attachment> = emptyList(),
     ) : RenderUnit
 
-    /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版。 */
+    /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版；`bytes` 是整块原文的字节数（「展开 {大小}」那一格）。 */
     data class AssistantMarkdown(
         override val key: String,
         val doc: Doc,
+        val bytes: Long,
         override val sourceUuid: String?,
     ) : RenderUnit {
         /** 树上的字（搜索 · 跟到底那一格量长短用），取一次留着。 */
