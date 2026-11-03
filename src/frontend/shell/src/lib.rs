@@ -1250,7 +1250,10 @@ async fn bring_terminal_to_front(
 /// 照 `face_core::front` 写（与本机后端问那台没问成的那几张同一张表）。`machine` 是会话那台给人看的名字。只写字，不碰后端、不阻塞
 /// （照 `INVARIANTS §10` 的默认写成 async，不进同步白名单）。
 #[tauri::command]
-async fn front_missed(machine: String, miss: cmd_wire::front::FrontMiss) -> cmd_wire::front::FrontFace {
+async fn front_missed(
+    machine: String,
+    miss: cmd_wire::front::FrontMiss,
+) -> cmd_wire::front::FrontFace {
     face_core::front::Unplaced::from(miss).face(&machine)
 }
 
