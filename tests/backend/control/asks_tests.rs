@@ -594,7 +594,7 @@ async fn with_the_setting_off_a_question_just_waits() {
 fn the_default_auto_answer_holds_with_or_without_a_recommended_option() {
     let say = auto_say();
     assert!(say.contains("有推荐就"), "{say}");
-    assert!(say.contains("没有就"), "{say}");
+    assert!(say.contains("无推荐就"), "{say}");
     assert!(!say.contains("你"), "缺省那一句用了第二人称：{say}");
 }
 
