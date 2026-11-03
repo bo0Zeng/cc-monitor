@@ -294,7 +294,7 @@ pub(crate) fn domains_of(doc: &Value) -> Vec<PlanDomain> {
 /// 整份加工。`rev` 是这一份输出的摘要、`read_at` 是读到的时刻（[`super::book`] 给）。
 /// 要你看 · 认可 · 退回 · 时刻的字此刻都空着：本子（[`super::book`]）· 认可记录（[`super::review`]）· [`with_time_texts`] 再填。
 /// 随数据变的那几句（`said`）这里先写一遍；要时刻的那两句由 [`with_time_texts`] 写完时刻再整份重写。
-pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
+pub fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
     let repo = doc.get("current_repo").and_then(Value::as_str);
     let slices: Vec<PlanSlice> = arr(doc, "repos").map(|r| slice(r, repo, who)).collect();
     let by_session = by_session(&slices);
@@ -760,7 +760,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
 }
 
 /// `plan-list` 里一个工作区那一行（标过认可的成品 ⇒ 去掉格，只留切换与计数要的）。
-pub(crate) fn list_row(v: &PlanRead) -> PlanListWorkspace {
+pub fn list_row(v: &PlanRead) -> PlanListWorkspace {
     PlanListWorkspace {
         workspace: v.workspace.clone(),
         repo: v.repo.clone(),
@@ -789,7 +789,7 @@ pub(crate) fn slice_summary(sl: &PlanSlice) -> PlanListSlice {
 
 /// 时刻写成给人看的字（界面照抄，不换算）：读到的时刻 · 读不成那一份的时刻 · 退回的时刻旁边填 `*Text`，
 /// 按 `now_ms` 与看的那一台的时区经 [`crate::common::time::fmt_at`] 写。
-pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
+pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::Tz) {
     let text =
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);

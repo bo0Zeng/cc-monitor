@@ -10,7 +10,7 @@ use cmd_wire::plan::{PlanBlock, PlanBlockGroups, PlanGroup, PlanRead};
 pub(crate) type GroupsPort<'a> = &'a dyn Fn() -> Result<GroupsRead, String>;
 
 /// 给成品里每个建了的权力范围标上 `groups`。有接手会话的块才问组模块，整份只问一次。
-pub(crate) fn annotate(doc: &mut PlanRead, port: GroupsPort) {
+pub fn annotate(doc: &mut PlanRead, port: GroupsPort) {
     let asks = doc
         .slices
         .iter()
@@ -54,7 +54,7 @@ fn of_groups(groups: Vec<PlanGroup>) -> PlanBlockGroups {
 
 /// 生产的口：这台那份注解文件里的组与组员关系（不读清单、不画样子）照组那一份合法 [`merge`](face_core::groups::merge) 并一次。
 /// 推不出家 · 读不懂 ⇒ 那一句。
-pub(crate) fn here_ties() -> Result<GroupsRead, String> {
+pub fn here_ties() -> Result<GroupsRead, String> {
     use crate::history::groups::{here_of, unlisted};
     use face_core::groups::{merge, Half};
     let (table, book) = crate::history::history_annotations::load_all().unwrap_or_else(|| {

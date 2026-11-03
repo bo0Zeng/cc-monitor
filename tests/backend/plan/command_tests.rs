@@ -94,7 +94,11 @@ fn a_real_run_goes_from_the_workspace_root_with_only_the_verb_and_no_pb_id() {
     let root = scratch("command-run");
     let entry = fake_pb(&root.join("pb"), "planned-build", Some(2));
     let ws = workspace(&root.join("ws"), &dump("/x"));
-    let e = run(&entry, &ws, &["pause"]).unwrap_err();
+    // 设 `PB_ID` 的那条判据（起 pb 不传下去）同一把锁：这一条读的是不带它的环境。
+    let e = {
+        let _held = crate::plan::fixture::pb_id_env();
+        run(&entry, &ws, &["pause"]).unwrap_err()
+    };
     assert_eq!(
         (e.code.as_deref(), e.said.as_str()),
         (Some("refused"), "forced")

@@ -22,18 +22,49 @@
 //! 读面的状态全在进程内存里。判据 `tests/backend/plan/` 里那条「跑前跑后工作区逐字节不变」钉着。
 //! 认可与退回只记在后端自己家里（[`review`]，写经 `Own`），不回写 pb。
 
-pub(crate) mod book;
-pub(crate) mod command;
-pub(crate) mod dump;
-pub(crate) mod groups;
-pub(crate) mod locate;
-pub(crate) mod needs;
-pub(crate) mod new_slice;
-pub(crate) mod owners;
-pub(crate) mod product;
-pub(crate) mod refs;
-pub(crate) mod review;
-pub(crate) mod watch;
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
+    )
+)]
+
+// 包里照旧写 `crate::plan::…` · `crate::footprint::…` · `crate::observe::…` · `crate::history::…` · `crate::agents::…` ·
+// `crate::plugin::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
+extern crate self as plan;
+use backend_agents as agents;
+use backend_common as common;
+use backend_footprint as footprint;
+use backend_history as history;
+use backend_observe as observe;
+use backend_platform as platform;
+use backend_plugin as plugin;
+use backend_wire as wire;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
+
+pub mod book;
+pub mod command;
+pub mod dump;
+pub mod groups;
+pub mod locate;
+pub mod needs;
+pub mod new_slice;
+pub mod owners;
+pub mod product;
+pub mod refs;
+pub mod review;
+pub mod watch;
 
 /// 起 pb 的一条命令最多等多久。量过：252 格的研究盘 `dump` 1.1 秒，`render` 同量级；留一个数量级给慢盘与远端。
 pub(crate) const PB_DEADLINE_SECS: u64 = 20;
@@ -78,7 +109,7 @@ pub(crate) fn pb_fed(
 
 /// 一个 id（权力范围的负责人 · 节点的 signer）对到的会话：主会话 ＝ 它自己那个标签页；子 agent ＝ 父会话那个标签页。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Whose {
+pub enum Whose {
     /// 是一个会话自己的 id。
     Session {
         sid: String,
@@ -97,17 +128,17 @@ pub(crate) enum Whose {
 
 /// 一个活会话此刻在干什么（与主窗口标签页同一判）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Live {
+pub struct Live {
     /// `working` · `needs_you` · `idle`；说不清 ⇒ `None`。
-    pub(crate) activity: Option<crate::agents::SessionActivity>,
+    pub activity: Option<crate::agents::SessionActivity>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
-    pub(crate) needs: Option<crate::observe::recognize::facts::NeedsKind>,
+    pub needs: Option<crate::observe::recognize::facts::NeedsKind>,
 }
 
 /// 加工一份 dump 时问「这个 id 是谁」的口：生产由帧面宿主拼（会话表 ＋ 记录树），判据喂一张表。
 pub(crate) type WhoPort<'a> = &'a dyn Fn(&str) -> Whose;
 
-/// 计划读面判据共用的夹具（合成 dump · 假 pb 插件）。
-#[cfg(test)]
+/// 计划读面判据共用的夹具（合成 dump · 假 pb 插件；本包与上层判据经 `test-support`）。
+#[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/plan/fixture.rs"]
-pub(crate) mod fixture;
+pub mod fixture;

@@ -26,7 +26,7 @@ const DOC: crate::common::own_state::Doc<Review> =
 /// 记下的两样。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Review {
+pub struct Review {
     /// 工作区 ⇒ 片 ⇒ 认可过的键。
     #[serde(default)]
     acks: BTreeMap<String, BTreeMap<String, Vec<String>>>,
@@ -40,7 +40,7 @@ pub(crate) struct Review {
 
 impl Review {
     /// 这台问图用的那条别名（计划页［问这一块…］预选它）。
-    pub(crate) fn ask(&self) -> Option<&str> {
+    pub fn ask(&self) -> Option<&str> {
         self.ask.as_deref()
     }
 
@@ -53,7 +53,7 @@ impl Review {
     }
 
     /// 顶块那一条认可时记着的 rev（进程刚起、还不知道顶块哪次进的那一步时先用它）。
-    pub(crate) fn prior(&self, ws: &str, slice: &str) -> Option<String> {
+    pub fn prior(&self, ws: &str, slice: &str) -> Option<String> {
         self.acks
             .get(ws)?
             .get(slice)?
@@ -69,7 +69,7 @@ impl Review {
 
     /// 给一份成品（[`super::book::Book`] 出的）标上：每条要你看认可没有（`acked`）· 每片与整份的要你看数（`needCount`）·
     /// 退回过的格此刻的状态（`returned`：[`needs::landing`]；没退回过 ⇒ `null`；顶块那一次记在片上）。
-    pub(crate) fn annotate(&self, doc: &mut PlanRead) {
+    pub fn annotate(&self, doc: &mut PlanRead) {
         let ws = doc.workspace.clone();
         needs::mark_acked(doc, &|slice, key| self.acked(&ws, slice, key));
         let mut total = 0u32;
@@ -102,7 +102,7 @@ impl Review {
 }
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
-pub(crate) fn review_path() -> Option<PathBuf> {
+pub fn review_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_join(
         &crate::platform::paths::home_dir()?,
         relay_route_core::PLAN_REVIEW_REL,
@@ -115,7 +115,7 @@ pub(crate) fn read_at(path: &Path) -> crate::common::own_state::Read<Review> {
 }
 
 /// 标成品用：读不懂的那份照什么都没记算（写的那一刻才回错）。
-pub(crate) fn current(path: Option<&Path>) -> Review {
+pub fn current(path: Option<&Path>) -> Review {
     match path.map(read_at) {
         Some(crate::common::own_state::Read::Present(r)) => r,
         _ => Review::default(),
@@ -141,7 +141,7 @@ fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Said> {
     })?;
     let held = own
         .lock(&dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     let mut r = match read_at(file.as_path()) {
         crate::common::own_state::Read::Absent => Review::default(),
         crate::common::own_state::Read::Present(r) => r,
@@ -210,7 +210,7 @@ pub(crate) fn returned_at(
 }
 
 /// `plan-ack` 的写口（**只从 `faces/plan_review_face.rs` 进**）。
-pub(crate) fn answer_ack(
+pub fn answer_ack(
     own: &Own,
     ws: &str,
     slice: &str,
@@ -221,12 +221,12 @@ pub(crate) fn answer_ack(
 }
 
 /// `plan-unack` 的写口（同上）。
-pub(crate) fn answer_unack(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Said> {
+pub fn answer_unack(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Said> {
     unack_at(own, ws, slice, key)
 }
 
 /// `plan-return` 送出去之后记那一次的写口（**只从 `faces/plan_return_face.rs` 进**）。
-pub(crate) fn answer_returned(
+pub fn answer_returned(
     own: &Own,
     ws: &str,
     slice: &str,
@@ -237,7 +237,7 @@ pub(crate) fn answer_returned(
 }
 
 /// 记这台问图用的那条别名（盖掉上一条；**只从 `faces/plan_ask_face.rs` 进**）。
-pub(crate) fn ask_at(own: &Own, alias: &str) -> Result<(), Said> {
+pub fn ask_at(own: &Own, alias: &str) -> Result<(), Said> {
     edit_at(own, |r| r.ask = Some(alias.to_string()))
 }
 

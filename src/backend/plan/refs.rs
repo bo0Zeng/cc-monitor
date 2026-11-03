@@ -18,9 +18,9 @@ pub(crate) const SEAM: &str = "\n\n";
 
 /// 照哪一片认：工作区根 · 片名 · 那一份成品的摘要（进缓存键：图变了旧的不作数）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct At {
-    pub(crate) workspace: String,
-    pub(crate) slice: String,
+pub struct At {
+    pub workspace: String,
+    pub slice: String,
     pub(crate) rev: String,
 }
 
@@ -144,7 +144,7 @@ fn label(ids: &[String], nodes: Option<&Value>) -> String {
 type Key = (String, String, String, usize, u64, u64);
 
 /// 认过的每一段（条数到顶 ⇒ 整张清掉重来）。
-pub(crate) struct Memo {
+pub struct Memo {
     cap: usize,
     seen: Mutex<HashMap<Key, Vec<PlanMsgRef>>>,
 }
@@ -177,7 +177,7 @@ impl Memo {
 }
 
 /// 进程里那一份。
-pub(crate) fn memo() -> &'static Memo {
+pub fn memo() -> &'static Memo {
     static M: std::sync::OnceLock<Memo> = std::sync::OnceLock::new();
     M.get_or_init(|| Memo::new(4096))
 }
@@ -227,7 +227,7 @@ pub(crate) fn refs_in(
 
 /// `plan-refs` 的本体：认片 ⇒ 认这一批；认不出片 ⇒ 两样 `null`、每段空，不起 pb。
 /// 回复正文是树（`trees`）：投成一段字（[`md_core::ref_text`]）跟人说的话一起认，认出的几处插回树上（[`md_core::with_refs`]）。
-pub(crate) fn answer(
+pub fn answer(
     docs: &[PlanRead],
     sid: &str,
     cwd: Option<&str>,

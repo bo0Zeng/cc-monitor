@@ -631,7 +631,7 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     with_time_texts(
         &mut shanghai,
         now,
-        &crate::Tz::named("Asia/Shanghai").unwrap(),
+        &crate::common::time::Tz::named("Asia/Shanghai").unwrap(),
     );
     assert_eq!(shanghai.read_at_text.as_deref(), Some("11:10"));
 }
@@ -649,7 +649,7 @@ fn the_plan_product_carries_the_last_read_cell() {
     with_time_texts(
         &mut v,
         1_767_233_000_000,
-        &crate::Tz::named("Asia/Shanghai").unwrap(),
+        &crate::common::time::Tz::named("Asia/Shanghai").unwrap(),
     );
     assert_eq!(
         serde_json::to_value(&v).unwrap()["seen"],

@@ -20,7 +20,7 @@ use cmd_wire::plan::{
 use copy_core::copy_text;
 
 /// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
-pub(crate) fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActivity>> {
+pub fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActivity>> {
     match who.face.life {
         crate::wire::WireLife::Live { activity } => Some(activity),
         _ => None,
@@ -69,17 +69,17 @@ const ASK: &str = "ask";
 /// 一次「退回」记下的那一刻：送给谁 · 送没送到 · 那一格当时的子格集合与正文摘要（判落地用）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Returned {
+pub struct Returned {
     /// 送出的时刻（epoch ms）。
-    pub(crate) at: u64,
+    pub at: u64,
     /// 送到的会话 sid。
-    pub(crate) to: String,
+    pub to: String,
     /// `queued`（投进了输入队）；盘上也认 `delivered` · `unsure`（送达未知）。
-    pub(crate) result: String,
+    pub result: String,
     /// 当时那一格的子格。
-    pub(crate) children: Vec<String>,
+    pub children: Vec<String>,
     /// 当时那一格正文的摘要（[`body_digest`]）。
-    pub(crate) body: String,
+    pub body: String,
 }
 
 fn block<'a>(sl: &'a PlanSlice, id: &str) -> Option<&'a PlanBlock> {
@@ -244,17 +244,15 @@ pub(crate) fn of_slice(
             );
             n.sid = Some(sid.clone());
             out.push(n);
-        } else if owner_now(o) == OwnerNow::Stopped {
-            if !block_finished(sl, b) {
-                let mut n = need(
-                    "ended",
-                    format!("ended:{}@{}", b.id, o.id),
-                    Some(b.id.clone()),
-                    root_of(b),
-                );
-                n.sid = Some(sid.clone());
-                out.push(n);
-            }
+        } else if owner_now(o) == OwnerNow::Stopped && !block_finished(sl, b) {
+            let mut n = need(
+                "ended",
+                format!("ended:{}@{}", b.id, o.id),
+                Some(b.id.clone()),
+                root_of(b),
+            );
+            n.sid = Some(sid.clone());
+            out.push(n);
         }
     }
     for n in &mut out {
@@ -282,12 +280,12 @@ pub(crate) fn mark_acked(doc: &mut PlanRead, acked: &dyn Fn(&str, &str) -> bool)
 }
 
 /// 一片里此刻的键（认可只留这些，别的是过了版本的）。
-pub(crate) fn keys_of(sl: &PlanSlice) -> Vec<String> {
+pub fn keys_of(sl: &PlanSlice) -> Vec<String> {
     sl.needs.iter().map(|x| x.key.clone()).collect()
 }
 
 /// 这个键此刻在不在、能不能认可：不在 ⇒ `None`；在、是问人那一种 ⇒ `Some(false)`。
-pub(crate) fn ackable(sl: &PlanSlice, key: &str) -> Option<bool> {
+pub fn ackable(sl: &PlanSlice, key: &str) -> Option<bool> {
     sl.needs
         .iter()
         .find(|x| x.key == key)
@@ -316,7 +314,7 @@ pub(crate) fn open_cells(sl: &PlanSlice) -> Vec<Option<cmd_wire::needs::NeedsCel
 }
 
 /// 几份（标过认可的）成品里要人看的每一条，照成品 · 片 · [`open_cells`] 的先后摊开（`sessions-needs` 计划那一截，交给拼整份的那一处）。
-pub(crate) fn need_items(docs: &[PlanRead]) -> Vec<NeedAt> {
+pub fn need_items(docs: &[PlanRead]) -> Vec<NeedAt> {
     docs.iter()
         .flat_map(|doc| {
             doc.slices.iter().flat_map(move |sl| {
@@ -332,11 +330,11 @@ pub(crate) fn need_items(docs: &[PlanRead]) -> Vec<NeedAt> {
 
 /// 退回 / 说给负责的那一个对象：一格，或顶块 `project`（pb 里与格同样可寻址：`pb see project`）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Target {
+pub struct Target {
     pub(crate) id: String,
-    pub(crate) title: Option<String>,
-    pub(crate) children: Vec<String>,
-    pub(crate) body: Option<String>,
+    pub title: Option<String>,
+    pub children: Vec<String>,
+    pub body: Option<String>,
     /// 在长它的。
     pub(crate) owner: Option<PlanWho>,
     /// 签它的。
@@ -357,7 +355,7 @@ impl Target {
     }
 
     /// `owner` · `signer` 那一位；别的名字 ⇒ `None`。
-    pub(crate) fn who(&self, role: &str) -> Option<&PlanWho> {
+    pub fn who(&self, role: &str) -> Option<&PlanWho> {
         match role {
             "owner" => self.owner.as_ref(),
             "signer" => self.signer.as_ref(),
@@ -368,7 +366,7 @@ impl Target {
 
 /// 退回的对象：一格 ⇒ 那一格；`project`（顶块）⇒ 标题是片名 · 子是顶层那几格 · 在长它的是顶块接手 · 没有正文 · 没有签它的（project 谁都签不了）。
 /// 落地照格的判法（[`landing`]）：顶层多出退回之后新建的一格。这一片没有这一格 ⇒ `None`。
-pub(crate) fn target(sl: &PlanSlice, id: &str) -> Option<Target> {
+pub fn target(sl: &PlanSlice, id: &str) -> Option<Target> {
     if id == TOP_BLOCK {
         return Some(Target {
             id: TOP_BLOCK.to_string(),
@@ -383,7 +381,7 @@ pub(crate) fn target(sl: &PlanSlice, id: &str) -> Option<Target> {
 }
 
 /// 一格正文的摘要（只用来分辨「改没改」）。
-pub(crate) fn body_digest(body: Option<&str>) -> String {
+pub fn body_digest(body: Option<&str>) -> String {
     super::book::rev_of(body.unwrap_or_default().as_bytes())
 }
 
@@ -427,7 +425,7 @@ pub(crate) fn landing(r: &Returned, t: &Target, cells: &[PlanCell]) -> PlanRetur
 }
 
 /// 送进会话的那一行：只带事实（人 · 编号 标题：原话），收到人的话怎么办 pb 已经教过 agent。原话里的换行与连串空白并成一个空格（一行送出）。
-pub(crate) fn line(id: &str, title: &str, text: &str) -> String {
+pub fn line(id: &str, title: &str, text: &str) -> String {
     let text = copy_core::collapse_ws(text);
     copy_text(
         "bePlan.return.line",

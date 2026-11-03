@@ -17,22 +17,22 @@ pub(crate) const MAX_WATCHED: usize = 32;
 pub(crate) const PLAN_DIR: &str = ".planned-build";
 
 /// 一个工作区此刻的样子：输出摘要 · 要你看的数（不含问人那一种）。
-pub(crate) type Seen = (String, u64);
+pub type Seen = (String, u64);
 
 /// 重读一次、回新的样子（读不成 ⇒ `None`，不推）。生产由帧面宿主给（真 pb ＋ 会话表 ＋ 认可记录），判据喂假的。
-pub(crate) type Reread = Arc<dyn Fn(&Path) -> Option<(Seen, Spots)> + Send + Sync>;
+pub type Reread = Arc<dyn Fn(&Path) -> Option<(Seen, Spots)> + Send + Sync>;
 
 /// 各片仓库里要盯的：`dirs` 是工作区根往下、到每份声明过的文件所在目录一路上的每一层（都只盯直接子项）；
 /// `hits` 是那几份文件本身。算数的事件：落在 `hits` 上（删了 · 清空 · 写了）或落在 `dirs` 上（一层整个挪走 / 删掉）。
 /// 不整棵盯仓库：编译产物 · 依赖目录天天大批地动，又不在对账里，盯了只会白白重读、白占内核的监听名额。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Spots {
+pub struct Spots {
     pub(crate) dirs: Vec<PathBuf>,
     pub(crate) hits: Vec<PathBuf>,
 }
 
 /// 从一份成品算出 [`Spots`]：每片的仓库照 [`super::owners::repo_dir`]（与文件窗口反查同一处），每格的文件声明相对它。
-pub(crate) fn spots(doc: &cmd_wire::plan::PlanRead) -> Spots {
+pub fn spots(doc: &cmd_wire::plan::PlanRead) -> Spots {
     let mut out = Spots::default();
     let ws = doc.workspace.as_str();
     if ws.is_empty() {
@@ -76,10 +76,10 @@ pub(crate) fn spots(doc: &cmd_wire::plan::PlanRead) -> Spots {
 }
 
 /// 一帧 `changed {plan}`：`(工作区, 摘要, 要你看的数)`。
-pub(crate) type Change = (String, String, u64);
+pub type Change = (String, String, u64);
 
 /// 进程里那条「某个工作区的计划变了」的通道（流连接订它推 `changed {plan}`）。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
+pub fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<Change>> =
         std::sync::OnceLock::new();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<Change>(64).0)
@@ -116,7 +116,7 @@ fn dirs_of(ws: &Path, spots: &Spots) -> Vec<crate::platform::watch_file::Dir> {
 }
 
 /// 开始盯一个工作区（已在盯 ⇒ 什么都不做；满了 ⇒ 只出声）。`last` 是此刻的样子（之后变了才推）。
-pub(crate) fn arm(ws: &Path, spots: Spots, last: Option<Seen>, reread: Reread) {
+pub fn arm(ws: &Path, spots: Spots, last: Option<Seen>, reread: Reread) {
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.iter().any(|(p, _)| p == ws) {
         return;

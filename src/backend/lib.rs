@@ -98,7 +98,7 @@ use backend_observe as observe; // U3：观测面 —— 读，不改变世界�
 #[cfg(test)]
 #[path = "../../tests/backend/cross/observe.rs"]
 mod cross_observe; // 观测面判据里引到上层的那几条（那一层是独立的包、够不到上层）
-mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
+use backend_plan as plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写；独立的包 `backend-plan`：只引足迹 · 观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层）
 use backend_platform as platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线；独立的包 `backend-platform`）
 #[cfg(test)]
 #[path = "../../tests/backend/platform/cross_tests.rs"]
@@ -106,7 +106,8 @@ mod platform_cross_tests; // 平台层判据里引到上层的那几条（平台
 #[cfg(test)]
 #[path = "../../tests/backend/platform/fs/own_bytes_golden.rs"]
 mod platform_own_bytes_golden; // 经上层各写口写几份自有文件、盘上字节与金样逐字比（平台层的 `Own` 那一套）
-use backend_plugin as plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（独立的包 `backend-plugin`：只引平台层）
+#[cfg(test)]
+use backend_plugin as plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（独立的包 `backend-plugin`：只引平台层；生产段经计划读面起 pb，本包只剩最小假插件那份判据用它）
 #[cfg(test)]
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
 mod plugin_walk_fixture; // 最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）

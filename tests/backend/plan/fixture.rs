@@ -15,9 +15,9 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// 主会话 id · 子 agent id · 对不上的 id（写进权力范围的负责人与节点的 signer）。
-pub(crate) const MAIN: &str = "11111111-2222-3333-4444-555555555555";
-pub(crate) const SUB: &str = "a0b1c2d3e4f5a6b7c";
-pub(crate) const STRANGER: &str = "99999999-0000-0000-0000-000000000000";
+pub const MAIN: &str = "11111111-2222-3333-4444-555555555555";
+pub const SUB: &str = "a0b1c2d3e4f5a6b7c";
+pub const STRANGER: &str = "99999999-0000-0000-0000-000000000000";
 
 /// 常量里工作区根的占位。
 const WS: &str = "/synthetic/ws";
@@ -447,7 +447,7 @@ fn beta() -> Value {
 }
 
 /// 一份 dump，工作区根是 `workspace`。
-pub(crate) fn dump(workspace: &str) -> Value {
+pub fn dump(workspace: &str) -> Value {
     json!({
         "pb": "0.5.2", "shape": 6, "workspace": workspace, "current_repo": "alpha", "auto_continue": false,
         "domains": [research(), software()],
@@ -456,7 +456,7 @@ pub(crate) fn dump(workspace: &str) -> Value {
 }
 
 /// `pb dump --node alpha A1-2` 那一份。
-pub(crate) fn node_view(workspace: &str) -> Value {
+pub fn node_view(workspace: &str) -> Value {
     json!({
         "pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A1-2",
         "agent_view": "── A1-2 甲的写出（模块 · — · 元数据写在 .planned-build/alpha/图.md）\n> id: A1-2 | kind: 模块 | with: A1 | after: A1-1 | to: A9\n> file: src/write.txt\n\n照 A1-1 读进来的写出去。\n\nA1-2 的边 3 条\n  A1-2 --with--> A1 · A1 住 .planned-build/alpha/图.md\n待执行 1 条：\n  A1-5 sets A1-2 已签收\nA1-2 底下下一个可用编号：A1-2-1"
@@ -464,12 +464,12 @@ pub(crate) fn node_view(workspace: &str) -> Value {
 }
 
 /// `pb dump --node alpha A9` 那一份（图上没有的节点，带 `error`）。
-pub(crate) fn node_view_missing(workspace: &str) -> Value {
+pub fn node_view_missing(workspace: &str) -> Value {
     json!({"pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A9", "error": "A9 不在 alpha 的图上"})
 }
 
 /// 同一份，只是 alpha 顶层算活的那几个（A1 · A2 · A7）都记成了已签收（顶层全签收 ⇒ 要人过目那一条）。
-pub(crate) fn dump_top_signed(workspace: &str) -> Value {
+pub fn dump_top_signed(workspace: &str) -> Value {
     let mut d = dump(workspace);
     for c in d["repos"][0]["nodes"].as_array_mut().unwrap() {
         if ["A1", "A2", "A7"].iter().any(|i| c["id"] == *i) {
@@ -480,21 +480,21 @@ pub(crate) fn dump_top_signed(workspace: &str) -> Value {
 }
 
 /// 同一份，只是那个仓库登记在别处（`pb repo <路径>`：dump 每个仓库带 `path`，相对工作区根）。
-pub(crate) fn dump_at(workspace: &str, path: &str) -> Value {
+pub fn dump_at(workspace: &str, path: &str) -> Value {
     let mut d = dump(workspace);
     d["repos"][0]["path"] = json!(path);
     d
 }
 
 /// 同一份，只是 alpha 这一刻读不成（pb 给 `error`，就只有上面那几样）。
-pub(crate) fn dump_broken(workspace: &str) -> Value {
+pub fn dump_broken(workspace: &str) -> Value {
     let mut d = dump(workspace);
     d["repos"][0] = json!({"name": "alpha", "domain": "软件", "path": "repos/alpha", "plan_only": false, "error": "图.md 第 3 行：元数据缺 id"});
     d
 }
 
 /// 一份 dump 照给定的身份表加工成成品（摘要 `r0`、读到的时刻 0：判据里用不上它俩的那几处）。
-pub(crate) fn made_with(
+pub fn made_with(
     doc: &Value,
     who: &dyn Fn(&str) -> crate::plan::Whose,
 ) -> cmd_wire::plan::PlanRead {
@@ -502,12 +502,12 @@ pub(crate) fn made_with(
 }
 
 /// 线上那一份（判据按键看成品时用：键名 · 有没有某一格都照线上说）。
-pub(crate) fn as_json<T: serde::Serialize>(t: &T) -> Value {
+pub fn as_json<T: serde::Serialize>(t: &T) -> Value {
     serde_json::to_value(t).unwrap()
 }
 
 /// 夹具的身份表：MAIN 是一个活着、在等你批准的会话（叫「甲会话」）；SUB 是 MAIN 底下的子 agent；别的都对不上。
-pub(crate) fn who(id: &str) -> crate::plan::Whose {
+pub fn who(id: &str) -> crate::plan::Whose {
     use crate::plan::{Live, Whose};
     let live = Some(Live {
         activity: Some(crate::agents::SessionActivity::NeedsYou),
@@ -527,8 +527,51 @@ pub(crate) fn who(id: &str) -> crate::plan::Whose {
     }
 }
 
+/// 身份表说这条会话活着、在等人。
+pub fn waits_per(who: crate::plan::WhoPort, sid: &str) -> bool {
+    use crate::plan::{Live, Whose};
+    matches!(
+        who(sid),
+        Whose::Session {
+            live: Some(Live {
+                activity: Some(crate::agents::SessionActivity::NeedsYou),
+                ..
+            }),
+            ..
+        }
+    )
+}
+
+/// 判据用的读入口（生产不用）：本包与帧面那几份判据都经它喂结局。
+impl crate::plan::book::Book {
+    /// [`ingest_with`](crate::plan::book::Book::ingest_with)，本子里没记过的「哪次进的那一步」就用这一次的 rev；
+    /// 活会话表那一判照身份表说的讲（身份表说那条会话在等人 ⇒ 表也说在等）。
+    pub fn ingest(
+        &self,
+        ran: crate::plan::dump::Ran,
+        dir: &Path,
+        who: crate::plan::WhoPort,
+        now_ms: u64,
+    ) -> Result<cmd_wire::plan::PlanRead, crate::plan::book::Miss> {
+        self.ingest_with(
+            ran,
+            dir,
+            who,
+            &|sid| waits_per(who, sid),
+            now_ms,
+            &|_, _| None,
+        )
+    }
+}
+
+/// 进程环境里的 `PB_ID` 只许一条判据同时碰：设它的那条（起 pb 不传下去）与读它的那条（代敲认不认 agent）各持这把锁跑。
+pub fn pb_id_env() -> std::sync::MutexGuard<'static, ()> {
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    L.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// 一次性目录。
-pub(crate) fn scratch(tag: &str) -> PathBuf {
+pub fn scratch(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("plan-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
@@ -542,7 +585,7 @@ pub(crate) fn scratch(tag: &str) -> PathBuf {
 /// `dump --domains <目录>` 从那个目录（不在 ⇒ 往上第一个在的）往上找：找到 ⇒ 同上印 `dump.json`；找不到 ⇒ 印 `<root>/domains.json`（插件里那几档）、退 0。
 /// 它认的 `--` 旗标就是真 pb 那边后端会发的那几个（`protocol_doc_guard` 的子进程旗标对拍读这份）。
 /// `rc` 给了就不管上面，直接以它退出（造「没有 dump」「别的失败」）。
-pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
+pub fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
     let tools = root.join("skills/planned-build/tools");
     std::fs::create_dir_all(&tools).unwrap();
     std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
@@ -600,7 +643,7 @@ while True:
 
 /// 造一个工作区：`.planned-build/alpha/` ＋ 工作区配置 `.planned-build/.env` ＋ 一份 `dump.json` 与 `node.json`（假 pb 吐它们）。
 /// 仓库目录照 dump 里头一个仓库的 `path`（没有 ⇒ 仓库名）。
-pub(crate) fn workspace(root: &Path, doc: &Value) -> PathBuf {
+pub fn workspace(root: &Path, doc: &Value) -> PathBuf {
     let repo = doc["repos"][0]["path"].as_str().unwrap_or("alpha");
     std::fs::create_dir_all(root.join(".planned-build/alpha")).unwrap();
     std::fs::create_dir_all(root.join(repo).join("src")).unwrap();
@@ -616,7 +659,7 @@ pub(crate) fn workspace(root: &Path, doc: &Value) -> PathBuf {
 }
 
 /// 假 pb 一次一次被起时带的参数（`runs.log`，没起过 ⇒ 空）。
-pub(crate) fn runs(root: &Path) -> Vec<Vec<String>> {
+pub fn runs(root: &Path) -> Vec<Vec<String>> {
     std::fs::read_to_string(root.join("runs.log"))
         .unwrap_or_default()
         .lines()

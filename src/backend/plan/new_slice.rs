@@ -12,17 +12,17 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 问的是什么：那台机器上的目录 · 相对工作区根的路径 · 选了哪一档领域。
-pub(crate) struct Ask<'a> {
-    pub(crate) dir: &'a str,
-    pub(crate) path: &'a str,
-    pub(crate) domain: Option<&'a str>,
+pub struct Ask<'a> {
+    pub dir: &'a str,
+    pub path: &'a str,
+    pub domain: Option<&'a str>,
 }
 
 /// 一个工作区里已有的几片（名字 · 领域）：生产照本子里读好过的那一份（没读好过现读一次）。
 pub(crate) type SlicesPort<'a> = &'a dyn Fn(&str) -> Vec<(String, Option<String>)>;
 
 /// [`Ask`] ⇒ 回包。`entry` 是找 pb 的结局（找不到 ⇒ 那一句，不起子进程）。
-pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPort) -> PlanNewForm {
+pub fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPort) -> PlanNewForm {
     let dir = trim(ask.dir);
     let mut out = PlanNewForm {
         pb: pb_state("ok", None),
@@ -100,7 +100,7 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
 }
 
 /// `pb repo` 要敲的那几个参数（[`form`] 写出的那一行 · `plan-command repo` 敲的，同这一判）：撞上 ⇒ 只带名字；没选领域 ⇒ 不带。
-pub(crate) fn repo_args(path: &str, domain: Option<&str>, existing: Option<&str>) -> Vec<String> {
+pub fn repo_args(path: &str, domain: Option<&str>, existing: Option<&str>) -> Vec<String> {
     match (existing, domain.filter(|d| !d.is_empty())) {
         (Some(name), _) => vec!["repo".into(), name.into()],
         (None, Some(d)) => vec![
