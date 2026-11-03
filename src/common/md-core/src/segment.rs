@@ -43,7 +43,7 @@ fn weight_inl(k: &[Inl]) -> usize {
             Inl::N(InlNode::B { k } | InlNode::I { k } | InlNode::Del { k }) => weight_inl(k),
             Inl::N(InlNode::A { href, k }) => href.len() + weight_inl(k),
             Inl::N(InlNode::C { x }) => x.len(),
-            Inl::N(InlNode::M { tex }) => tex.len(),
+            Inl::N(InlNode::M { tex, .. }) => tex.len(),
             Inl::N(InlNode::Img { src, alt }) => src.len() + alt.len(),
             Inl::N(InlNode::Br | InlNode::Fn { .. }) => 1,
             Inl::N(InlNode::Ref { x, label, .. }) => x.len() + label.len(),
@@ -60,7 +60,7 @@ fn weight(b: &MdBlock) -> usize {
     match b {
         MdBlock::P { k } | MdBlock::H { k, .. } => weight_inl(k),
         MdBlock::Code { x, .. } => x.len(),
-        MdBlock::Math { tex } => tex.len(),
+        MdBlock::Math { tex, .. } => tex.len(),
         MdBlock::List { items, .. } => items.iter().map(|i| weight_blocks(&i.blocks)).sum(),
         MdBlock::Quote { blocks } | MdBlock::Alert { blocks, .. } => weight_blocks(blocks),
         MdBlock::Table { head, rows, .. } => {
