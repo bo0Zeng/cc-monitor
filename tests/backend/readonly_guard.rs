@@ -2169,6 +2169,14 @@ mod g6_dependency_signoff {
              **只在测试期链接**，不进发布二进制",
         ),
         (
+            "test-home",
+            DEPS,
+            UNMEASURED,
+            "同上面 `[dev-dependencies]` 那一行：宿主口那个包（`backend-host`）的 `[dependencies]` 里是 optional，\
+             只由它的 `test-support` 开（托管终端的夹具把数据目录建在测试进程的沙箱根底下）；\
+             开它的只有上层的 `[dev-dependencies]` ⇒ 照样只在测试期链接，不进发布二进制",
+        ),
+        (
             "sha2",
             DEV_DEPS,
             UNMEASURED,
