@@ -1421,7 +1421,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   /** 那台的脸说住在托管终端里（`can.attach` ＝ 哪台看都给）。 */
   const hosted = (): SessionFace => {
     const f = liveFace("working");
-    f.can.attach = { can: "yes", from: "anywhere" };
+    f.can.attach = { can: "yes", from: "everywhere" };
     return f;
   };
 

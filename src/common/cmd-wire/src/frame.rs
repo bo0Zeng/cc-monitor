@@ -1054,7 +1054,7 @@ pub enum CanTerm {
 }
 
 /// 接不接得进：`{can: "yes", from}` · `{can: "no", why: 写好的那一句}`。
-/// `from`：`anywhere` 哪台看都给（托管终端：瘦客户端接进去）· `elsewhere` 只在别的机器上看才给（tmux 会话：那台自己有 ccm 开的窗口，走 ↗）。
+/// `from`：`everywhere` 哪台看都给（托管终端：瘦客户端接进去）· `elsewhere` 只在别的机器上看才给（tmux 会话：那台自己有 ccm 开的窗口，走 ↗）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -1070,7 +1070,7 @@ pub enum CanAttach {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub enum AttachFrom {
-    Anywhere,
+    Everywhere,
     Elsewhere,
 }
 

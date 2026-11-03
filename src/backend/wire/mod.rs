@@ -416,7 +416,7 @@ fn live_face(
             // 托管终端：瘦客户端哪台都接得进；tmux 会话（住哪判不了 ⇒ 交了由那台认）：别的机器上接，本机那个有 ccm 开的窗口、走 ↗；
             // 不在任何宿主里 ⇒ 没有终端可接。
             attach: match host {
-                Some(Housed::In(TerminalHost::Managed)) => attach_yes(AttachFrom::Anywhere),
+                Some(Housed::In(TerminalHost::Managed)) => attach_yes(AttachFrom::Everywhere),
                 Some(Housed::In(TerminalHost::Tmux)) | None => attach_yes(AttachFrom::Elsewhere),
                 Some(Housed::Bare) => {
                     attach_no(Words(copy_core::copy_text("terminal.empty.notOurs", &[])))

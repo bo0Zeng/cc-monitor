@@ -1,6 +1,6 @@
 //! 「在终端里打开」点不点得了（`can.attach`）的判据：会话头 · 报错卡 · 右键菜单都只读这一格，由核心判。
 
-/// 活着住在托管终端里 ⇒ 能、哪台看都给（`anywhere`）；活着住在 tmux 里 · 住哪判不了 · 程序退了 tmux 会话还在 ⇒ 能、
+/// 活着住在托管终端里 ⇒ 能、哪台看都给（`everywhere`）；活着住在 tmux 里 · 住哪判不了 · 程序退了 tmux 会话还在 ⇒ 能、
 /// 只在别的机器上看才给（`elsewhere`：本机那个 tmux 会话有 ccm 开的窗口，走 ↗）；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、
 /// 写那一态那一句；pidfile 说接进去没有意义（`attachable: false`）⇒ 不能。
 #[test]
@@ -17,13 +17,13 @@ fn session_frames_say_whether_the_session_can_be_attached() {
     };
     assert_eq!(
         attach(live(Some(Housed::In(TerminalHost::Managed)))),
-        yes("anywhere")
+        yes("everywhere")
     );
     assert_eq!(
         attach(SessionFace::of(Life::Reading {
             host: Some(Housed::In(TerminalHost::Managed))
         })),
-        yes("anywhere")
+        yes("everywhere")
     );
     assert_eq!(
         attach(live(Some(Housed::In(TerminalHost::Tmux)))),

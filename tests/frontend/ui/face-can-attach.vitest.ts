@@ -1,6 +1,6 @@
 /**
  * 「在终端里打开」点不点得了只读后端脸上的 `can.attach`（会话头 · 报错卡 · 右键菜单同一道，`face-can.ts::canAttach`）：
- * 那台说能 ⇒ `from` 说在哪看才给（`anywhere` 托管终端哪台都给 · `elsewhere` tmux 会话只在别的机器上给，本机走 ↗）；那台说不能 · 还没收到脸 ⇒ 不给。
+ * 那台说能 ⇒ `from` 说在哪看才给（`everywhere` 托管终端哪台都给 · `elsewhere` tmux 会话只在别的机器上给，本机走 ↗）；那台说不能 · 还没收到脸 ⇒ 不给。
  * 界面不再自己看点（`dot === "exited"`）、不记 pidfile 的 `attachable`、不读 `can.attach` 以外的格判这一样。
  *
  * 脸取金样（`session-faces.ts`），不手写一份。
@@ -20,7 +20,7 @@ describe("「在终端里打开」只读脸上的 can.attach", () => {
     expect(canAttach(exited, false)).toBe(false);
 
     const managed = goldenFace("live-idle");
-    managed.can.attach = { can: "yes", from: "anywhere" };
+    managed.can.attach = { can: "yes", from: "everywhere" };
     expect(canAttach(managed, true)).toBe(true);
     expect(canAttach(managed, false)).toBe(true);
 
