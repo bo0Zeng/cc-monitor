@@ -165,7 +165,7 @@ fn launch_note_child_entry_point() {
         preset_args: Vec::new(),
         alias: None,
     };
-    let caps = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+    let caps = crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

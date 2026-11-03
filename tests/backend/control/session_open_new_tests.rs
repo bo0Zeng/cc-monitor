@@ -54,10 +54,11 @@ impl Rig {
     }
 
     fn call(&self, args: Value) -> Result<Value, Said> {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let caps: BTreeSet<String> =
+            crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
         let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(self.rows.clone(), vec![]))
         };

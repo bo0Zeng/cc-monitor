@@ -156,17 +156,6 @@ mod cross_wire; // 帧面零件判据里引到上层的那几条（那一层是�
 #[no_mangle]
 pub static CC_MONITOR_BUILD_STAMP: [u8; common::id::BUILD_STAMP_LEN] = common::id::build_stamp();
 
-/// `ccm --ccm-probe` 自报的能力：没有 tmux 的平台档上摘掉载体是 tmux 的那几条（`control::ccm::CCM_TMUX_CARRIED`）。
-/// 平台档是入参，本机是 Linux 也能算出「Windows 那一份会吐什么」。
-pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&'static str> {
-    let no_tmux = crate::platform::tmux::tmux_present(p, None) == Some(false);
-    control::ccm::CAPABILITIES
-        .iter()
-        .copied()
-        .filter(|c| !(no_tmux && control::ccm::CCM_TMUX_CARRIED.contains(c)))
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;

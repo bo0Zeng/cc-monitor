@@ -136,10 +136,11 @@ impl Rig {
 
     /// 拼一份替身 `Deps` 交给 `f`。
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let caps: BTreeSet<String> =
+            crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
         let list = || -> Result<crate::control::session_batch::Listed, Said> {
             match self.list_err {
                 Some(c) => Err(Said::new(c, "列不出".to_string())),

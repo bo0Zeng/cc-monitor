@@ -114,10 +114,11 @@ impl Rig {
         self.calls().iter().filter(|c| c.starts_with(what)).count()
     }
     fn deps<T>(&self, f: impl FnOnce(&Deps<'_>) -> T) -> T {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let caps: BTreeSet<String> =
+            crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
         let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(Some(self.rows.clone()), vec![]))

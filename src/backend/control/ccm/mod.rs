@@ -101,7 +101,7 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 
 /// 上面那张 [`CAPABILITIES`] 里，**载体是 tmux** 的那几条 —— 一条一条的依据：
 ///
-/// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`crate::ccm_launcher_with`]）。
+/// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`ccm_launcher_with`]）。
 /// 与「真靠 tmux 的那几条」两向相等，由 `target_parity_guard.rs` 的
 /// `every_ccm_capability_that_rides_tmux_is_declared_tmux_carried` 用真解析器 ＋ 真计划现推钉着。
 pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
@@ -113,6 +113,17 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "tmux-base",            // tmux 的 `base-index`
     "tmux-size",            // tmux 窗格尺寸
 ];
+
+/// `ccm --ccm-probe` 自报的能力：没有 tmux 的平台档上摘掉载体是 tmux 的那几条（[`CCM_TMUX_CARRIED`]）。
+/// 平台档是入参，本机是 Linux 也能算出「Windows 那一份会吐什么」。
+pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&'static str> {
+    let no_tmux = crate::platform::tmux::tmux_present(p, None) == Some(false);
+    CAPABILITIES
+        .iter()
+        .copied()
+        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .collect()
+}
 
 /// 撞名时那句话的**唯一格式串**。
 /// ⚠ 结尾那两个字符是**反斜杠 + n**，不是一个真换行 —— 它是一条 **`printf` 格式串**：
@@ -476,7 +487,7 @@ pub(crate) fn answer_probe_for(
 ) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
-        capabilities: crate::ccm_launcher_with(platform),
+        capabilities: ccm_launcher_with(platform),
         agents: agents(),
         build: crate::common::id::BUILD_ID,
         on_path,
@@ -669,7 +680,7 @@ pub(crate) fn terminal_name_mint_with(
 ///
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
-/// 吐本二进制那一档平台上的那一份：[`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)`
+/// 吐本二进制那一档平台上的那一份：[`ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)`
 /// —— 没有 tmux 的平台上摘掉 [`CCM_TMUX_CARRIED`] 那几条，不在这里另写名单。
 pub(crate) fn probe_output(self_path: &str) -> String {
     probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)
@@ -682,7 +693,7 @@ pub(crate) fn probe_output_for(
 ) -> String {
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
-        crate::ccm_launcher_with(platform).join(","),
+        ccm_launcher_with(platform).join(","),
         agents().join(","),
         crate::common::id::BUILD_ID
     )
