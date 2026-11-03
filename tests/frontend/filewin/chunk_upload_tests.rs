@@ -74,13 +74,13 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 窗口认的那个收场码 == 后端传输台发的那个（两个 crate 互相引不到，读后端源码钉相等）。
+/// 窗口认的那个收场码 == 后端传输台发的那个（两个 crate 互相引不到，读后端源码钉相等；钉值，不钉那一侧的可见性）。
 #[test]
 fn the_mismatch_code_is_the_backend_one() {
     let backend =
         guard_core::production_code(include_str!("../../../src/backend/control/transfer.rs"));
     let needle = format!(
-        "pub const SFTP_HOME_MISMATCH: &str = \"{}\";",
+        " const SFTP_HOME_MISMATCH: &str = \"{}\";",
         crate::transfer::SFTP_HOME_MISMATCH
     );
     assert_eq!(

@@ -306,8 +306,8 @@ pub struct BgTask {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "FactsBackground"
+        rename = "FactsBackground",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Background {
@@ -332,8 +332,8 @@ pub struct Background {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "FactsClock"
+        rename = "FactsClock",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Clock {
@@ -500,8 +500,8 @@ pub struct LastRequest {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "FactsCost"
+        rename = "FactsCost",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Cost {

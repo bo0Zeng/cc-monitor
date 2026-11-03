@@ -380,7 +380,6 @@ dependencies = [
  "backend-wire",
  "cmd-wire",
  "copy-core",
- "creds-core",
  "face-core",
  "guard-core",
  "libc",

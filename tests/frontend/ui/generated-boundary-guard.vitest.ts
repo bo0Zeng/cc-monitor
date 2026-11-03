@@ -57,6 +57,15 @@ import { filePaths, productionRsFiles, productionTsFiles as productionSources, s
 const code = (src: string) => stripComments(src, "ts");
 const rustCode = (src: string) => stripComments(src, "rust");
 
+/** Rust 的可见性前缀：无 · `pub` · `pub(crate)` · `pub(super)` · `pub(in …)`（会不会跨边界与可见性无关，几条扫描一律认全）。 */
+const VIS = String.raw`(?:pub(?:\([^)]*\))?\s+)?`;
+/** 类型头那一行（列 0）。 */
+const TYPE_HEAD = new RegExp(String.raw`^${VIS}(?:struct|enum)\s+\w+`);
+/** 字段声明那一行（结构体字段 · enum 变体字段）。 */
+const FIELD_HEAD = new RegExp(String.raw`^\s*${VIS}\w+\s*:`);
+/** 字段的类型是大整数（可包一层 `Option`）。 */
+const BIG_INT_TYPE = /:\s*(?:Option<)?(?:u64|i64)>?\s*,/;
+
 /** `src/` 下的**生产** `.ts` 文件（仓库相对路径，连生成物）。排除 `*.test.ts` / `*.vitest.ts`。 */
 function productionTsFiles(dir = "src"): string[] {
   return filePaths(dir, { ext: ".ts", generated: true });
@@ -306,8 +315,8 @@ describe("C01 边界生成物", () => {
         // `LegacyProfileEntry` / `CcPreviewResponse` 三个是**非 pub** 的（模块内可见即可，
         // 它们只作命令返回类型），但一样跨边界、一样该受这两条性质约束。
         // 那三个今天随「终端集成」命令删了；放宽照留 —— 非 pub 的跨边界类型哪天再出现，这条仍接得住。
-        // 范围必须等于性质的范围——「是不是 pub」与「会不会跨边界」无关。
-        if (!/^(pub )?(struct|enum)\s+\w+/.test(lines[k])) continue;
+        // 范围必须等于性质的范围——「是不是 pub」与「会不会跨边界」无关（`pub(crate)` · `pub(super)` 也认）。
+        if (!TYPE_HEAD.test(lines[k])) continue;
         let top = k;
         // **往上走时必须跳过空行**：`code()` 把注释行变成**空行**而不是删掉，
         // 而本仓的属性与 `pub struct` 之间常有解释性注释（`data_paths.rs` 就有一整段）。
@@ -328,9 +337,9 @@ describe("C01 边界生成物", () => {
         // C02 审计的 S2 只修了 **struct 层**的顺序敏感，**字段层**这个窗口漏了。
         // 现在与 u64 那条扫描同一个形状：往上收 ⇒ 顺序无关。
         for (let q = 0; q < body.length; q += 1) {
-          if (!/^\s*(pub\s+)?\w+\s*:/.test(body[q])) continue;
+          if (!FIELD_HEAD.test(body[q])) continue;
           let attrTop = q;
-          while (attrTop > 1 && !/^\s*(pub\s+)?\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
+          while (attrTop > 1 && !FIELD_HEAD.test(body[attrTop - 1])) attrTop -= 1;
           const own = body.slice(attrTop, q).join("\n");
           if (!own.includes("skip_serializing_if")) continue;
           const fieldLine = q;
@@ -383,7 +392,7 @@ describe("C01 边界生成物", () => {
       const lines = src.split("\n");
       for (let k = 0; k < lines.length; k += 1) {
         // 同上：`pub` 可选（非 pub 的命令返回类型一样跨边界）
-        if (!/^(pub )?(struct|enum)\s+\w+/.test(lines[k])) continue;
+        if (!TYPE_HEAD.test(lines[k])) continue;
         let top = k;
         top = attrTop(lines, k);
         let bottom = k;
@@ -392,10 +401,10 @@ describe("C01 边界生成物", () => {
         const body = lines.slice(k, bottom + 1);
         for (let q = 0; q < body.length; q += 1) {
           // `pub ` 可选：enum variant 的字段没有它
-          if (!/^\s*(pub\s+)?\w+\s*:\s*(Option<)?(u64|i64)>?\s*,/.test(body[q])) continue;
+          if (!(FIELD_HEAD.test(body[q]) && BIG_INT_TYPE.test(body[q]))) continue;
           // 该字段自己的属性块：往上收到上一个字段声明行（或类型头）为止
           let attrTop = q;
-          while (attrTop > 1 && !/^\s*(pub\s+)?\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
+          while (attrTop > 1 && !FIELD_HEAD.test(body[attrTop - 1])) attrTop -= 1;
           const own = body.slice(attrTop, q).join("\n");
           expect(
             own,
@@ -428,9 +437,9 @@ describe("C01 边界生成物", () => {
     for (const f of TS_DERIVING_SOURCES) {
       const lines = rustCode(read(f)).split("\n");
       for (let k = 0; k < lines.length; k += 1) {
-        if (!/^\s*(pub\s+)?\w+\s*:\s*Option<(u64|i64)>\s*,/.test(lines[k])) continue;
+        if (!(FIELD_HEAD.test(lines[k]) && /:\s*Option<(u64|i64)>\s*,/.test(lines[k]))) continue;
         let top = k;
-        while (top > 0 && !/^\s*(pub\s+)?\w+\s*:/.test(lines[top - 1])) top -= 1;
+        while (top > 0 && !FIELD_HEAD.test(lines[top - 1])) top -= 1;
         const attrs = lines.slice(top, k).join("\n");
         const declared = /ts\([^)]*type\s*=\s*"([^"]*)"/.exec(attrs);
         if (!declared) continue; // 没配 ts(type) 的由上一条断言负责
@@ -518,7 +527,7 @@ describe("C01 边界生成物", () => {
     const turns = rustCode(read("src/backend/observe/recognize/turns.rs"));
     for (const t of ["TurnRow", "Fold", "Part", "Span", "Phase"]) {
       expect(turns, `turns.rs 的 ${t} 没派生 ts_rs::TS`).toMatch(
-        new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),
+        new RegExp(String.raw`derive\(ts_rs::TS\)\)\]\s*(#\[[^\n]*\]\s*)*${VIS}(struct|enum) ${t}\b`),
       );
     }
     // 第 8 批第 3 刀：history-turns 走 `callTyped`，回包类型由生成的命令表给（`TypedCommands.ts` → `HistoryTurns` → `TurnRow`）。

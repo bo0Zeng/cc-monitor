@@ -44,7 +44,7 @@ fn rig(tag: &str) -> Rig {
     std::fs::write(&record, record_lines("t1")).unwrap();
     let mut state = ReaderState::new(dir.join("projects"));
     // 金样里带打标回的容器：写者的环境里没有 tmux 那两格 ⇒ 控制面打标那一手答「不在 tmux 里」，这里用它的替身。
-    state.tag = super::tests::not_in_tmux;
+    state.tag = super::tests::no_terminal_host;
     let kind = crate::agents::codex::AGENT_KIND;
     state.follow(&crate::agents::Followed {
         kind,

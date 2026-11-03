@@ -55,8 +55,6 @@ guard-core = { path = "../../common/guard-core" }
 # 量具（线程级内存 · 金样）：只在 dev 侧的包。
 test-meters = { path = "../test-meters" }
 acct-core = { path = "../../common/acct-core", features = ["fixtures"] }
-# 夹具里那份数据目录怎么推。
-creds-core = { path = "../../common/creds-core", features = ["harden"] }
 # 判据里直接问进程与信号。
 libc.workspace = true
 ts-rs.workspace = true

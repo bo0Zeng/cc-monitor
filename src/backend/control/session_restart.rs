@@ -154,11 +154,12 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Said> {
 pub enum Refused {
     /// `ambiguous`：在跑的那几个终端名。
     Ambiguous { names: Vec<String> },
-    /// `already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`。
+    /// `already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`，没停过 ⇒ 不带这一格。
     Live {
         pids: Vec<u32>,
-        #[serde(skip_serializing_if = "std::ops::Not::not")]
-        stopped: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        stopped: Option<bool>,
     },
     /// `stop_failed`：停那一步的码。
     StopFailed { why: String },
@@ -175,7 +176,14 @@ pub(crate) const ALREADY_LIVE: &str = "already_live";
 
 /// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
 fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Said {
-    refused(ALREADY_LIVE, said, Refused::Live { pids, stopped })
+    refused(
+        ALREADY_LIVE,
+        said,
+        Refused::Live {
+            pids,
+            stopped: stopped.then_some(true),
+        },
+    )
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）

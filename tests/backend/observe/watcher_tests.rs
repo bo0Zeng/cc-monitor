@@ -3075,7 +3075,7 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
 
 /// 打标那一手的替身：照控制面在「环境读得到、`TMUX_PANE` 没设」时的结局答（容器 `{host: none}`，没写）。
 /// 真打标住控制面（本包够不到），接真打标的那几条挂主 crate（`watcher_on_upper_tests.rs`）。
-pub(super) fn not_in_tmux(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+pub(super) fn no_terminal_host(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
     (Some(crate::wire::SessionContainer::None), false)
 }
 
@@ -3086,7 +3086,7 @@ pub(super) fn not_in_tmux(_: u32, _: &str) -> (Option<crate::wire::SessionContai
 ///   ⇒ 帧 kind 序列 == `[session_added, session_added, sessions_replayed]`；
 /// - `sessions/` 压根不在 ⇒ 序列 == `[sessions_replayed]`（空清单也是说完了）。
 ///
-/// 期望是手写的序列（不从实现生成）。打标那一手是 [`not_in_tmux`]（真打标在控制面，本包够不到）。
+/// 期望是手写的序列（不从实现生成）。打标那一手是 [`no_terminal_host`]（真打标在控制面，本包够不到）。
 #[test]
 fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     fn sleeper() -> std::process::Child {
@@ -3121,7 +3121,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
-    state.tag = not_in_tmux;
+    state.tag = no_terminal_host;
     initial_session_scan(&sessions, &mut state, &mut sink);
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
