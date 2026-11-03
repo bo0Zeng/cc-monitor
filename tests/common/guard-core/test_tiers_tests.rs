@@ -68,6 +68,7 @@ const SUPPORT: &[&str] = &[
     "tests/backend/cross/host.rs",          // 只挂宿主口与 ccm 行那几条上层判据，自己没有测试
     "tests/backend/cross/observe.rs",       // 只挂观测面那几条上层判据，自己没有测试
     "tests/backend/cross/control.rs",       // 只挂控制面那几条上层判据，自己没有测试
+    "tests/backend/cross/footprint.rs",     // 只挂足迹那几条上层判据，自己没有测试
     "tests/backend/observe/watcher_support.rs", // 跟读的判据夹具：本包与上层判据经 `test-support` 共用
     "tests/backend/observe/recognize/index_row_support.rs", // 从原文起的骨架索引行：本包与上层判据经 `test-support` 共用
     "tests/backend/observe/query/body_support.rs", // 照记录树那一家读一页成品：本包与上层判据经 `test-support` 共用
