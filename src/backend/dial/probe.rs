@@ -372,7 +372,7 @@ impl Dial for Real {
 }
 
 /// 握手每一行等多久（同手机：冷启要起常驻、读盘，给足）。比总期限长 ⇒ 卡在握手上的那一趟由总期限收，照最后一步说。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当握手每一行的期限；比总期限长，实际由 PROBE_CAP 先收"
 )]

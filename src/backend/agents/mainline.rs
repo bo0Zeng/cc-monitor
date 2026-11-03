@@ -192,7 +192,10 @@ impl Chain {
     }
 
     /// 记了几个节点（量内存与骨架大小用；链不当集合用，不答「空不空」）。
-    #[allow(clippy::len_without_is_empty)]
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "量内存与骨架大小用的计数；链不当集合用，不答「空不空」"
+    )]
     pub fn len(&self) -> usize {
         self.nodes.len()
     }

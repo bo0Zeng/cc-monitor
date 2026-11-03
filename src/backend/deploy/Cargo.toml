@@ -33,3 +33,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sy
 [lints.clippy]
 # 禁的路径与理由住上一级的 `clippy.toml`（系统钟 · 零定时器 · 出站 TCP 只在出网口开 · 起子进程只经原语）。
 disallowed_methods = "deny"
+# 放行一律 `expect` 带理由。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"

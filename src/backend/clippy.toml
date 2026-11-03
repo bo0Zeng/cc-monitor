@@ -2,7 +2,7 @@
 #（`Cargo.toml` 的 `[lints.clippy]` 把这条定成 deny；按解析后的路径认，`use … as` 起别名也认得出）。
 # 只有一处，截图台架才能把「现在」给死。
 # 后端零定时器（判活由内核事件驱动）：sleep · 带期限的等待 · interval · 掐表 · 构造 `Duration`，每用一处就在那一处
-#   `#[allow(clippy::disallowed_methods, reason = "…")]` 写清它为什么不是定时器、什么时候能去掉。
+#   `#[expect(clippy::disallowed_methods, reason = "…")]` 写清它为什么不是定时器、什么时候能去掉。
 # 后端不拉窗（拉窗只在 monitor 壳 `platform/`）：`windows-sys` · `windows` 两条路的拉窗那一族编不过，只在 Windows 那一支上认
 #   （`allow-invalid`：别的平台上没有那个 crate、路径解不出，不报；门禁 `winchk-backend` 那一格按 Windows target 跑 clippy）。
 #   手写 `extern "system"` 声明的认不出。

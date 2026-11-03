@@ -12,9 +12,12 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
         clippy::disallowed_methods,
         clippy::let_underscore_must_use,
-        clippy::unused_result_ok
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
 

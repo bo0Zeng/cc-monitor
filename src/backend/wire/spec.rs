@@ -181,7 +181,6 @@ pub fn wire<T: serde::Serialize>(t: &T) -> Result<serde_json::Value, Said> {
 }
 
 /// 一条入方向命令的登记。**名字与处理器绑在同一个值里**；协议文档的命令那一半也从这里生成。
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy)]
 pub struct CommandSpec {
     /// 线上命令名。

@@ -112,7 +112,10 @@ impl Write for Conn {
 /// 装进 `ClientConfig` 的那一份根证书集 —— 用 `webpki-roots` 内嵌的那套（不读机器上的证书目录：本 crate 会被推到任意远端）。
 /// 抽成有名字的生产段，判据打得到真正装进去的那一份（断 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空是另一个东西）。
 fn root_store() -> rustls::RootCertStore {
-    #[cfg_attr(not(test), allow(unused_mut))]
+    #[cfg_attr(
+        not(test),
+        expect(unused_mut, reason = "只有测试档往里多添一张沙箱 CA")
+    )]
     let mut roots = rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
     };
@@ -294,7 +297,7 @@ pub struct Fetched {
 /// 一问一答：发一整发（`Connection: close`）、读回整段回包。给后端自己要发的那几发用；
 /// 期限（连接上每一次读写）与回包体上限都由调用方给。回包体超过上限 ⇒ 错，不截断。
 /// TCP 经 `open` 开（同 [`connect`]）。
-#[allow(
+#[expect(
     clippy::too_many_arguments,
     reason = "一发请求的五样 ＋ 怎么连（开 TCP 的那一口 · 期限）＋ 回包上限，各自独立由调用方给"
 )]

@@ -749,7 +749,10 @@ fn column(m: &Map, k: &str) -> Result<Array, Bad> {
 }
 
 /// 照 `lib::project` 的八个参数（按列放的每份额度 · 别的会话 · 这一种走法）拼出内核的输入。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "一一对应策略库 `lib::project` 的八个参数（脚本那一侧按列传进来）"
+)]
 pub(crate) fn inputs(
     amt: &Array,
     st: &Array,

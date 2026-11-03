@@ -377,7 +377,10 @@ impl Accounts {
     }
 
     /// 判据换钟的那一口（产品不走：恒是真钟）。读者只有中转整趟的判据（`observe_retry_tests.rs`，测试档）。
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "判据换钟的那一口，产品恒用真钟")
+    )]
     pub(crate) fn clocked(mut self, clock: Clock) -> Self {
         self.clock = clock;
         self
@@ -675,7 +678,7 @@ const RETRY_AFTER: &str = "retry-after";
 /// 两形都落在请求已写出之后，那时照规矩不重发（`POST /v1/messages` 不幂等）⇒ 只能在取的时候不拿它。
 /// 30 秒：短于常见上游与代理的空闲关闭期限（几十秒到十几分钟），又盖得住一轮里紧挨着的几发（agent 连着调工具）；
 /// 隔得更久的那一发多付一次建连 ＋ TLS 握手。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "不是定时器：没有线程按它醒来，连接池在取连接那一下拿它比一下还回来的时刻"
 )]

@@ -552,7 +552,6 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
 
 /// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 发一件读数节点（带这一发的会话）、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
 /// 落盘失败只出声，不影响这一发（额度账不是请求的前提）。
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn record_seen(
     ledger: &Ledger,
     own: &Own,

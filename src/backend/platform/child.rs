@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 pub struct Deadline(Duration);
 
 impl Deadline {
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "起子进程原语的期限类型 `Deadline` 唯一造时长的地方：`Deadline` 只交给 `Child::run` 那一次有界等待，模块外拿不到它的时长（没有取值口），拿去做节拍做不到"
     )]
@@ -155,7 +155,7 @@ impl Span {
 }
 
 /// 异步档那一条命令的一次有界等待（总期限 `total`，由 [`Deadline::within`] 算）：到点 ⇒ 丢掉 `f`（它持有的一并收）、回 `Err(total)`。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "异步档命令的总期限（`child::bounded`）：发起方给的截止时刻与后端登记的上限里早的那个，只交给这一次有界等待，不驱动循环"
 )]
@@ -164,7 +164,7 @@ pub async fn bounded<F: std::future::Future>(total: Deadline, f: F) -> Result<F:
 }
 
 /// 读一次单调钟（后端生产段唯一一处）：只用来算总期限还剩多少，不驱动任何等待。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "起子进程原语的总期限（`Budget`）：一条阻塞档命令里连发几发时，各发共用剩下的时间 —— 装总期限时读一次、每发起之前读一次，只用来把那一次有界等待截短，不驱动任何循环、不产生节拍"
 )]
@@ -260,7 +260,7 @@ pub const TIMED_OUT: &str = "child_timed_out";
 )]
 #[cfg_attr(
     any(test, feature = "test-support"),
-    allow(
+    expect(
         clippy::let_underscore_must_use,
         reason = "测试档那一份先建 socket 目录、建不成也照起（同各包测试段放开的那几样）"
     )
@@ -379,7 +379,7 @@ impl Child {
     }
 
     fn command(&self) -> Command {
-        #[allow(
+        #[expect(
             clippy::disallowed_methods,
             reason = "起子进程原语：后端生产段起子进程只在这一处造 `Command`（期限 · 杀整组 · 环境都在这一层做）"
         )]
@@ -421,7 +421,7 @@ impl Child {
     /// 起它、等它、收两条输出；**期限必填**。到点 ⇒ 杀整组（Windows：终止 Job）、收尸、回 `TimedOut`。
     /// 装着总期限（[`Budget`]）⇒ 只等「自己的期限」与「剩下的」里小的那个；没剩 ⇒ 不起、直接回 `TimedOut`。
     /// 被总期限截短的那一次超时，话里报总期限（整条命令等了这么久）。
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志；起子进程原语（`Child::run`）等子进程结束的一次有界等待：阻塞档命令起的 tmux / ssh / PowerShell 卡住时，没有它整条命令（或 watcher 的事件循环）就一直挂着"
     )]

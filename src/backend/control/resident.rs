@@ -694,7 +694,7 @@ fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
     // 套接字住只给本人的目录里，连得上的就是本人那一位（常驻那一侧收连接时另核对端 uid）。
     let pid = s.peer_pid().map_err(|e| cannot(&e))?;
     // 在听的那一位连上就先写 hello；卡住不写也不把这一次性进程挂死，超长 ⇒ 不是它。
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "一次性进程读一行 hello 的期限：有字节就返回，不驱动循环；常驻后端的事件循环不经这里"
     )]

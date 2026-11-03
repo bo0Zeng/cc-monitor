@@ -2,7 +2,7 @@
 //!
 //! 「会让线程 / 任务自己醒来的构件」（sleep · 带期限的等待 · interval · 掐表 · 造 `Duration`）由 clippy 挡：
 //! `src/backend/clippy.toml` 的 `disallowed-methods`，后端与拨号核心两个包的 `[lints.clippy]` 都定成 deny；
-//! 每用一处在那一处 `#[allow(clippy::disallowed_methods, reason = "…")]` 写清它为什么不是定时器。
+//! 每用一处在那一处 `#[expect(clippy::disallowed_methods, reason = "…")]` 写清它为什么不是定时器。
 //! 期限 · 有界等待 · 掐表 · 一次性子命令的等待 · 常驻队列线程都走那些就地放行，这里不另设逐处登记的表。
 //!
 //! clippy 看不见、留在这里的：

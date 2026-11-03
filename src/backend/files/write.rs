@@ -2504,7 +2504,11 @@ macro_rules! acts {
     ($($req:ident => $reply:ident, |$r:ident, $f:ident| $body:expr;)*) => {
         $(impl Act for wire::$req {
             type Reply = wire::$reply;
-            #[allow(unused_variables)]
+            #[allow(
+                unused_variables,
+                clippy::allow_attributes,
+                reason = "宏展开的每一条命令各一份：有的命令体读 `face`、有的不读，写成 `expect` 必有几份落空 ⇒ 这一处只能 `allow`"
+            )]
             fn act(self, $f: &Face) -> Result<wire::$reply, Said> {
                 let $r = self;
                 $body

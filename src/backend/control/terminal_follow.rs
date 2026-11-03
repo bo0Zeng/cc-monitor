@@ -673,7 +673,7 @@ fn open_client(
 }
 
 /// 等重画的那一下最多等多久（按一下键之后，那一家重画屏底那一行通常在一百毫秒以内）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "切权限档按一下键之后等重画那一次有界等待的期限（`REDRAW_WAIT`，交给 `self.rx.recv_timeout(REDRAW_WAIT)`）：重画由控制模式客户端的 `%output` 当场叫醒，到…"
 )]
@@ -714,7 +714,7 @@ impl Watch {
     }
 
     /// 等下一次变化，至多 [`REDRAW_WAIT`]：变了 ⇒ `true`；到期 · 客户端退了 ⇒ `false`。
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "切权限档（`session-permission`）按一下键之后等那个终端重画的一次有界等待（`terminal_follow::Watch::changed`）：变化由 tmux 控制模式客户端的 `%output` …"
     )]

@@ -24,14 +24,17 @@ use crate::{DialRequest, Endpoint, JumpHop, Said, StageSink, Why};
 /// 为什么是 10 秒（从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
 /// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
 /// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "拨号代理交给 `russh` 的 SSH 层 keepalive 间隔（`client::Config`）"
 )]
 const KEEPALIVE: Duration = Duration::from_millis(10_000);
 
 /// 同一个间隔，毫秒（「多久没收包算久」照它定：`uses::STALE_AFTER_MS`）。
-#[allow(clippy::cast_possible_truncation)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "常量 10 秒换成毫秒，远在 u64 之内"
+)]
 pub const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
 
 /// 保活发出去之后，再过几轮还没有任何回话就判死（russh 的 `keepalive_max`：计时到点时「已发未回」的个数超过它 ⇒ 断开）。
@@ -39,7 +42,7 @@ pub const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
 pub const KEEPALIVE_MAX: usize = 1;
 
 /// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "短命探活（测试连接）交给 russh 的 inactivity 上限：一条连接没动静多久算断，不是周期唤醒"
 )]
@@ -483,7 +486,7 @@ pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<clie
 }
 
 /// 经代理那一跳的握手期限（代理收了连接却一直不答 ⇒ 这么久之后那一下读报错返回，拨号报 `timeout`）：一次阻塞读写的上限，不是周期唤醒。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "经代理拨 SSH 时代理握手那几次阻塞读写的上限（出网口装在 socket 上），不是会自己醒来的构件"
 )]

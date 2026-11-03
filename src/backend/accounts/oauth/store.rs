@@ -161,7 +161,7 @@ fn take<'a>(
     stale_ms: u64,
     reclaimed: Option<(&'static str, &mut Reclaimed)>,
 ) -> Result<Option<Hold<'a>>, Said> {
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "凭据文件那几把 mkdir 锁的过期门限（续期锁 `LoginFace::lock_stale_ms` · 整份写锁 `write_lock_stale_ms` · MCP 登录那一条的续期锁 `EntryLogins:…"
     )]

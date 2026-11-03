@@ -424,14 +424,20 @@ pub struct EnvEntry {
     pub id: &'static str,
     pub display_name: String,
     /// **谁该装**。「app 自带」这个人群就是 `who == AppShips` 的那几项。上界面的是由它派生的 [`Self::tier`] ⇒ 生产段零读者。
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "上界面的是由它派生的 `tier`，生产段零读者")
+    )]
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
     /// 给人看的那一句（取过文的）。
     pub why: String,
     /// 代码住址（从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "不上界面，只有判据核它")
+    )]
     pub site: &'static str,
     pub backing: EnvBacking,
 }

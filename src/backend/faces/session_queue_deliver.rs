@@ -295,7 +295,7 @@ pub(crate) fn start(own: Own, files: Files) {
 }
 
 /// 睡到被叫醒，或到 `wake` 那一刻（有的话）。叫醒的那一头全没了 ⇒ `false`（线程收）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "会话输入队投递那两样到点就要再看：送出一句没起一轮（`/clear` 一类）时没有事件来，不到点再看整条队就卡死；收着的那一条等够了要排进去"
 )]
