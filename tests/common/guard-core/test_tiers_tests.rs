@@ -1101,6 +1101,7 @@ fn module_path(
         "src/backend/agents/",
         "src/backend/relay/",
         "src/backend/stderr_log/",
+        "src/backend/control/",
         "src/backend/test-meters/",
         "src/backend/",
     ];

@@ -4,7 +4,7 @@
 //! （`ccm [交给 agent 的…] -- [ccm 自己的…]`）。键进已有 tmux 会话的也只是这一行（那台后端自己键）。
 //!
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
-//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
+//! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_support.rs::cells`，手写期望）。
 
 use crate::ccm_line::argv::flag;
 use crate::control::launch_account::Settled;
