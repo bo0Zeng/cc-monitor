@@ -1001,9 +1001,10 @@ else
 fi
 
 # 后端那一棵 workspace（`cc-monitor-backend` ＋ 拨号核心 `ssh-dial`）：缺省成员只有后端 ⇒ 带 `--workspace`，逐行求和、另判包的集合。
+# 目标只要库 · bin · bench（bench 冒烟档）：各包的 doctest 全是 0 条，不点名就白跑一趟 doctest（约 7 s）。
 gate_backend_libs() { gate_workspace_libs src/backend; }
 run_gate_sum backend gate_backend_libs \
-         gate_cargo_test_nonet src/backend --workspace
+         gate_cargo_test_nonet src/backend --workspace --lib --bins --benches
 # ── `rotation-500`：轮换一致性的大样本（#22 · #26 · #36 各 500 组；常规那一趟里只跑 20 · 5 · 2 组）──
 # 测试档的 Rhai 慢几十倍（100 组二十多分钟）⇒ 用 `perf` 档（发布档的优化、不做 LTO，后端 Cargo.toml 里那一节）单编一趟、只跑这一条。
 # gate-affected 里只在改到轮换那几处时点到（map 的 @rotation500），全量里恒跑。

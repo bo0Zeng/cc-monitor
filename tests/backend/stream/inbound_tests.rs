@@ -382,11 +382,11 @@ async fn an_oversized_line_does_not_grow_memory() {
     const FLOOD: usize = 256 * 1024 * 1024; // 256 MiB，是上限的 256 倍
 
     // 跑一次洪流。
-    async fn flood_once() -> tokio::sync::mpsc::Receiver<crate::wire::Frame> {
+    async fn flood_once(len: usize) -> tokio::sync::mpsc::Receiver<crate::wire::Frame> {
         let (tx, rx) = chan();
         let h = spawn(
             Flood {
-                left: FLOOD,
+                left: len,
                 nl_sent: false,
             },
             tx,
@@ -409,8 +409,12 @@ async fn an_oversized_line_does_not_grow_memory() {
     //
     // ⚠ 必须量**峰值**不是终值：那块 buffer 在 reader 返回前就 drop 了，
     //   终值看不见它。这也是最初不用当前 RSS 的同一个理由。
+    //
+    // ⚠ 先喂一条刚过上限的洪流再量：进程里只做一次的（超限应答头一回 `copy_text` 时文案表整份载进来，约 7 MiB）
+    //   记在头一个碰到它的线程上；单跑时那就是本线程，量到的是表不是读。暖过之后量的那一段只剩每一行都要做的。
+    drop(flood_once(2 * MAX_LINE_BYTES.as_len()).await);
     let base = crate::alloc_probe::reset_peak();
-    let mut rx = flood_once().await;
+    let mut rx = flood_once(FLOOD).await;
     let grew = crate::alloc_probe::peak_since(base);
     // 上限 2 MiB。实测峰值 **1_066_728 字节**（≈1.02 MiB，就是 `MAX_LINE_BYTES` 那块 buf
     // 本身加杂项），连跑三次**一字节不差** —— 线程级量具是确定的，所以余量可以收得很紧。

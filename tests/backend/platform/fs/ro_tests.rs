@@ -73,6 +73,9 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
     const CAP: u64 = 1024 * 1024;
     std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
 
+    // 先照样拒一次再量：进程里只做一次的（文案表头一回 `copy_text` 时整份载进来，约 7.5 MiB）记在头一个碰到它的线程上；
+    // 单跑时那就是本线程，量到的是表不是读。暖过之后量的那一段只剩每一次拒都要做的。
+    let _ = Ro::read_capped(&path, reject(CAP));
     let base = test_meters::alloc_probe::reset_peak();
     let err = Ro::read_capped(&path, reject(CAP)).expect_err("8 MiB > cap 1 MiB，必须拒");
     let grew = test_meters::alloc_probe::peak_since(base);
@@ -214,13 +217,17 @@ fn a_capped_read_refuses_before_reading_anything() {
     };
     std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
     for nofollow in [false, true] {
+        let read = || {
+            if nofollow {
+                Ro::read_capped_nofollow(&path, cap)
+            } else {
+                Ro::read_capped(&path, cap)
+            }
+        };
+        // 先照样拒一次再量（进程里只做一次的文案表载入不算进这一段，见上面 `the_early_return_…` 那条）。
+        let _ = read();
         let base = test_meters::alloc_probe::reset_peak();
-        let err = if nofollow {
-            Ro::read_capped_nofollow(&path, cap)
-        } else {
-            Ro::read_capped(&path, cap)
-        }
-        .expect_err("8 MiB > 上限 1 MiB");
+        let err = read().expect_err("8 MiB > 上限 1 MiB");
         let grew = test_meters::alloc_probe::peak_since(base);
         assert!(
             err.said.contains(&FILE.to_string()),

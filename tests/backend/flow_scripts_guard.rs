@@ -1619,7 +1619,7 @@ mod tests {
     }
 
     /// 快检后端那一段只编测试库：带 `--bins` / `--benches` 会让后端主库再按非测试形编一遍、多链 bin 与 bench 两份产物。
-    /// bin 与 bench 编不编得过由 clippy `--all-targets` 守，跑 bench 冒烟档的是门禁与 CI 的 `cargo test --workspace`；
+    /// bin 与 bench 编不编得过由 clippy `--all-targets` 守，跑 bench 冒烟档的是门禁后端那一格（`--benches`，见下一条）；
     /// `--workspace` 不能丢：拆出的几个包各自的库测试靠它跑到。
     #[test]
     fn quick_check_backend_segment_builds_only_the_test_libraries() {
@@ -1635,6 +1635,18 @@ mod tests {
             r#"out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?"#,
         )
         .unwrap_or_else(|e| panic!("快检后端那一段不是只编测试库的那一行：{e}"));
+    }
+
+    /// 门禁后端那一格只跑库 · bin · bench 三样目标：`src/backend` 各包的 doctest 全是 0 条，裸 `--workspace` 会白跑一趟
+    /// doctest（约 7 s）。bench 冒烟档靠 `--benches` 跑到；`--workspace` 不能丢（拆出的各包的库测试靠它）。
+    #[test]
+    fn gate_backend_cell_runs_lib_bin_and_bench_targets_only() {
+        let gate = std::fs::read_to_string(root().join("tests/scripts/gate.sh")).unwrap();
+        guard_core::pin_line(
+            &gate,
+            "gate_cargo_test_nonet src/backend --workspace --lib --bins --benches",
+        )
+        .unwrap_or_else(|e| panic!("门禁后端那一格不是只跑库 · bin · bench 的那一行：{e}"));
     }
 
     /// 手机读的仓内路径挑格表漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，改了每一条都得挑上 `mobile`
