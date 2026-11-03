@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.SpecialKey
 import com.ccmonitor.mobile.core.data.db.defaultKeys
+import com.ccmonitor.mobile.core.data.db.keyBytes
 import com.ccmonitor.mobile.core.terminal.KeyModifiers
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,7 +21,7 @@ class KeyDispatchTest {
         vararg m: KeyMod,
     ) = KeyPress.Special(k, m.toSet())
 
-    private fun bytes(vararg p: KeyPress) = String(inputBytes(p.toList()), Charsets.ISO_8859_1)
+    private fun bytes(vararg p: KeyPress) = String(keyBytes(p.toList()), Charsets.ISO_8859_1)
 
     @Test
     fun specialKeysAndCombosSendXtermBytes() {
@@ -44,13 +45,13 @@ class KeyDispatchTest {
         assertEquals("\u001bx", bytes(KeyPress.Chord("x", setOf(KeyMod.ALT))))
         assertEquals("\u0002c", bytes(KeyPress.Chord("b", setOf(KeyMod.CTRL)), KeyPress.Text("c")))
         assertEquals("git status\r", bytes(KeyPress.Text("git status"), sp(SpecialKey.ENTER)))
-        assertArrayEquals("中".toByteArray(Charsets.UTF_8), inputBytes(listOf(KeyPress.Text("中"))))
+        assertArrayEquals("中".toByteArray(Charsets.UTF_8), keyBytes(listOf(KeyPress.Text("中"))))
     }
 
     @Test
     fun everyDefaultKeyThatSendsInputSendsSomething() {
         defaultKeys().mapNotNull { it.tap as? KeyBinding.Input }.forEach {
-            assert(inputBytes(it.presses).isNotEmpty()) { "$it 送出空字节" }
+            assert(keyBytes(it.presses).isNotEmpty()) { "$it 送出空字节" }
         }
     }
 
@@ -112,7 +113,7 @@ class KeyDispatchTest {
     private fun withMods(
         mods: KeyModifiers,
         vararg p: KeyPress,
-    ) = String(inputBytes(withModifiers(p.toList(), mods)), Charsets.ISO_8859_1)
+    ) = String(keyBytes(withModifiers(p.toList(), mods)), Charsets.ISO_8859_1)
 
     @Test
     fun litModifiersGoOntoTheFirstKeystrokeOfAKeyBarInput() {

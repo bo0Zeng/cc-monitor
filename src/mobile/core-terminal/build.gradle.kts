@@ -15,6 +15,8 @@ android {
 dependencies {
     // api：core-terminal 的公开 API（rememberTerminalEmulator 返回 TerminalEmulator）暴露 termlib 类型给消费者
     api(libs.connectbot.termlib)
+    // 软键盘带修饰的那一下由核心算字节（`TermKeys`：xterm 键码全仓一张表）。
+    implementation(project(":core-rs"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

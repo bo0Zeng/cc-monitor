@@ -5,11 +5,9 @@ import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
-import com.ccmonitor.mobile.core.data.db.SpecialKey
+import com.ccmonitor.mobile.core.data.db.keyBytes
 import com.ccmonitor.mobile.core.terminal.KeyModifiers
 import com.ccmonitor.mobile.core.terminal.Mod
-import com.ccmonitor.mobile.core.terminal.applyKeyModifiers
-import java.io.ByteArrayOutputStream
 
 /** 键条上点了做不成的：那台做不了（[Unavailable.why] 那一句）· 要切去的组已经删了。 */
 sealed interface KeyActionFail {
@@ -72,7 +70,7 @@ fun dispatchBinding(
 ): KeyActionFail? =
     when (b) {
         is KeyBinding.Input -> {
-            onSend(inputBytes(withModifiers(b.presses, takeModifiers())))
+            onSend(keyBytes(withModifiers(b.presses, takeModifiers())))
             null
         }
         is KeyBinding.App -> actions.invoke(b)
@@ -136,13 +134,13 @@ fun pressVerdict(p: KeyPress): PressVerdict {
             is KeyPress.Chord -> p.mods
         }
     if (mods.isEmpty()) return PressVerdict.Sendable
-    val sent = pressBytes(p)
+    val sent = keyBytes(listOf(p))
     val order = KeyMod.entries.filter { it in mods }
     val fewest =
         subsets(order)
             .filter { it.size < mods.size }
             .sortedBy { it.size }
-            .firstOrNull { pressBytes(withOnly(p, it)).contentEquals(sent) }
+            .firstOrNull { keyBytes(listOf(withOnly(p, it))).contentEquals(sent) }
             ?: return PressVerdict.Sendable
     return if (fewest.isEmpty()) PressVerdict.Unsendable else PressVerdict.SameAs(withOnly(p, fewest))
 }
@@ -175,71 +173,4 @@ fun nextGroupId(
     val sorted = groups.sortedBy { it.sortOrder }
     val cur = currentGroup(sorted, saved) ?: return null
     return sorted[(sorted.indexOf(cur) + 1) % sorted.size].id
-}
-
-/** 「送输入」的字节：一下接一下拼起来。 */
-fun inputBytes(presses: List<KeyPress>): ByteArray {
-    val out = ByteArrayOutputStream()
-    presses.forEach { out.write(pressBytes(it)) }
-    return out.toByteArray()
-}
-
-private fun modsOf(mods: Set<KeyMod>) =
-    KeyModifiers(ctrl = KeyMod.CTRL in mods, alt = KeyMod.ALT in mods, shift = KeyMod.SHIFT in mods)
-
-/** xterm 的修饰参数：1 ＋ Shift(1) ＋ Alt(2) ＋ Ctrl(4)；不带修饰 ⇒ null。 */
-private fun xtermParam(mods: Set<KeyMod>): Int? =
-    if (mods.isEmpty()) {
-        null
-    } else {
-        1 + (if (KeyMod.SHIFT in mods) 1 else 0) + (if (KeyMod.ALT in mods) 2 else 0) + (if (KeyMod.CTRL in mods) 4 else 0)
-    }
-
-private fun csiLetter(
-    c: Char,
-    mods: Set<KeyMod>,
-) = (xtermParam(mods)?.let { "\u001b[1;$it$c" } ?: "\u001b[$c").toByteArray()
-
-private fun csiTilde(
-    n: Int,
-    mods: Set<KeyMod>,
-) = (xtermParam(mods)?.let { "\u001b[$n;$it~" } ?: "\u001b[$n~").toByteArray()
-
-private fun ss3(
-    c: Char,
-    mods: Set<KeyMod>,
-) = (xtermParam(mods)?.let { "\u001b[1;$it$c" } ?: "\u001bO$c").toByteArray()
-
-/** 单字节的特殊键（Esc · Tab · 回车 · 退格）：Alt 前缀 ESC；Shift-Tab 是 `ESC [ Z`；Ctrl · Shift 别的不变。 */
-private fun single(
-    b: Int,
-    mods: Set<KeyMod>,
-): ByteArray {
-    if (b == 0x09 && KeyMod.SHIFT in mods) return byteArrayOf(0x1B, '['.code.toByte(), 'Z'.code.toByte())
-    return if (KeyMod.ALT in mods) byteArrayOf(0x1B, b.toByte()) else byteArrayOf(b.toByte())
-}
-
-private val TILDE = mapOf(SpecialKey.DELETE to 3, SpecialKey.PAGE_UP to 5, SpecialKey.PAGE_DOWN to 6, SpecialKey.F5 to 15, SpecialKey.F6 to 17, SpecialKey.F7 to 18, SpecialKey.F8 to 19, SpecialKey.F9 to 20, SpecialKey.F10 to 21, SpecialKey.F11 to 23, SpecialKey.F12 to 24)
-
-private val SINGLE = mapOf(SpecialKey.ESC to 0x1B, SpecialKey.TAB to 0x09, SpecialKey.ENTER to 0x0D, SpecialKey.BACKSPACE to 0x7F)
-private val LETTER =
-    mapOf(SpecialKey.UP to 'A', SpecialKey.DOWN to 'B', SpecialKey.RIGHT to 'C', SpecialKey.LEFT to 'D', SpecialKey.HOME to 'H', SpecialKey.END to 'F')
-private val SS3 = mapOf(SpecialKey.F1 to 'P', SpecialKey.F2 to 'Q', SpecialKey.F3 to 'R', SpecialKey.F4 to 'S')
-
-/** 一下的字节：字照 UTF-8；组合与软键盘带修饰同一套（[applyKeyModifiers]）；特殊键照 xterm。 */
-fun pressBytes(p: KeyPress): ByteArray =
-    when (p) {
-        is KeyPress.Text -> p.text.toByteArray(Charsets.UTF_8)
-        is KeyPress.Chord -> applyKeyModifiers(p.char.toByteArray(Charsets.UTF_8), modsOf(p.mods))
-        is KeyPress.Special -> specialBytes(p.key, p.mods)
-    }
-
-private fun specialBytes(
-    k: SpecialKey,
-    mods: Set<KeyMod>,
-): ByteArray {
-    SINGLE[k]?.let { return single(it, mods) }
-    LETTER[k]?.let { return csiLetter(it, mods) }
-    SS3[k]?.let { return ss3(it, mods) }
-    return csiTilde(TILDE.getValue(k), mods)
 }
