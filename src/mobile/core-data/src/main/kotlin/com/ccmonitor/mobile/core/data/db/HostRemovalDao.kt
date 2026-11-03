@@ -7,7 +7,7 @@ import androidx.room.Upsert
 
 /**
  * 删了一台、撤销时放得回去的那几样：机器那一行 ＋ 这一端为它留的（草稿 · 待发 · 在做的一组）＋ 旧书签表那几行（书签已归那台，旧行还等着迁）。
- * 那台的缓存（会话列表 · 记号 · 记录页 · 续点）不在里面：撤回了，下次连上照那台重取。
+ * 那台的缓存（会话列表 · 记号 · 记录页 · 续点）住缓存库、不在里面：删一台时另清一次（[CacheDao.forgetHost]），撤回了，下次连上照那台重取。
  */
 data class HostRows(
     val host: Host,
@@ -17,7 +17,7 @@ data class HostRows(
     val bookmarks: List<Bookmark>,
 )
 
-/** 删一台只走这里：一个事务把它在这一端每张表里的行删光（[remove]），撤销照 [HostRows] 放回（[restore]）。 */
+/** 删一台只走这里：一个事务把它在状态库每张表里的行删光（[remove]），撤销照 [HostRows] 放回（[restore]）。 */
 @Dao
 abstract class HostRemovalDao {
     @Query("SELECT * FROM hosts WHERE id = :id")
@@ -37,18 +37,6 @@ abstract class HostRemovalDao {
 
     @Query("DELETE FROM hosts WHERE id = :id")
     protected abstract suspend fun dropHost(id: String)
-
-    @Query("DELETE FROM sessions WHERE hostId = :id")
-    protected abstract suspend fun dropSessions(id: String)
-
-    @Query("DELETE FROM list_holds WHERE hostId = :id")
-    protected abstract suspend fun dropListHold(id: String)
-
-    @Query("DELETE FROM record_pages WHERE hostId = :id")
-    protected abstract suspend fun dropPages(id: String)
-
-    @Query("DELETE FROM sync_anchors WHERE hostId = :id")
-    protected abstract suspend fun dropAnchors(id: String)
 
     @Query("DELETE FROM pending WHERE hostId = :id")
     protected abstract suspend fun dropPending(id: String)
@@ -83,10 +71,6 @@ abstract class HostRemovalDao {
         val host = host(id) ?: return null
         val kept = HostRows(host, drafts(id), pending(id), batches(id), bookmarks(id))
         dropHost(id)
-        dropSessions(id)
-        dropListHold(id)
-        dropPages(id)
-        dropAnchors(id)
         dropPending(id)
         dropDrafts(id)
         dropBatches(id)

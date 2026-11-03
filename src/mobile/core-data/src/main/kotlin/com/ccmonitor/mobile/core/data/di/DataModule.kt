@@ -6,7 +6,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
 import com.ccmonitor.mobile.core.data.db.AppDatabase
+import com.ccmonitor.mobile.core.data.db.CacheDatabase
 import com.ccmonitor.mobile.core.data.db.allMigrations
+import com.ccmonitor.mobile.core.data.db.cacheDatabase
 import com.ccmonitor.mobile.core.data.db.seedDefaultKeys
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -39,8 +41,11 @@ val dataModule =
         single { get<AppDatabase>().keyDao() }
         single { get<AppDatabase>().bookmarkDao() }
         single { get<AppDatabase>().settingsDao() }
-        single { get<AppDatabase>().cacheDao() }
+        single { get<AppDatabase>().handDao() }
         single { get<AppDatabase>().hostRemovalDao() }
+        // 缓存另一个库：不迁移，版本一换整份重建（见 cacheDatabase）。
+        single { cacheDatabase(androidContext()) }
+        single { get<CacheDatabase>().cacheDao() }
 
         single<CryptoBox> { KeystoreCryptoBox(androidContext()) }
 

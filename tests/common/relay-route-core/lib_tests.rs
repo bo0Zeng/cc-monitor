@@ -356,6 +356,30 @@ fn an_ends_own_things_live_only_with_that_end() {
     assert_eq!(ends.len(), 2, "两端的 ④ 都该登着：{ends:?}");
 }
 
+/// 后端家里那几份缓存（⑤，别台东西的副本）住缓存目录；名单里那几份照别的东西现造、落点由读它的那一方定（只许变短）。
+#[test]
+fn backend_caches_live_under_the_cache_dir() {
+    const AT_THE_READERS_PLACE: &[&str] = &[
+        KEY_FILE_REL,
+        SSH_CONFIG_REL,
+        ".cc-monitor/launch-pending/<pid>.json",
+        ".cc-monitor/hosts/.bin/<version>/ccm.exe",
+        ".cc-monitor/answer-plugin/<file>",
+    ];
+    for r in OWN_FILES {
+        if r.owner != Owner::Cache || r.place != Place::Backend {
+            continue;
+        }
+        let under = r.rel.starts_with(".cc-monitor/cache/");
+        assert_ne!(
+            under,
+            AT_THE_READERS_PLACE.contains(&r.rel),
+            "{}：缓存住 `.cc-monitor/cache/` 底下（名单里的那几份除外，进了缓存目录就从名单删掉）",
+            r.rel
+        );
+    }
+}
+
 /// 仓里一份源码（相对仓根）。
 fn repo_text(rel: &str) -> String {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
