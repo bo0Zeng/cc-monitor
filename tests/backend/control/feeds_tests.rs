@@ -187,12 +187,46 @@ async fn until(what: &str, mut f: impl FnMut() -> bool) {
     assert!(f(), "等不到：{what}");
 }
 
-fn state_of(machine: &str) -> String {
-    let all = machine_state::read_in(&[(machine.to_string(), true)], &Default::default());
-    serde_json::to_value(&all[machine]).unwrap()["state"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
+/// 机器状态推出来的那一路（[`machine_state::changes`]，接之前订）。
+type Pushes = tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>;
+
+/// 等那台推出成品是 `up` 的那一帧 `changed {machine}`（接上那一刻那一推）。等的是这一推，不读机器状态那张表：
+/// 那张表进程里只一份，同一进程里别的判据改机器表时照沙箱机器表把这几台摘掉（[`table_moved_elsewhere`]），读表就等不到了。
+async fn up_pushed(changes: &mut Pushes, machine: &str) -> cmd_wire::machine::MachineState {
+    use tokio::sync::broadcast::error::RecvError;
+    let wait = async {
+        loop {
+            match changes.recv().await {
+                Ok((m, p))
+                    if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up =>
+                {
+                    return p
+                }
+                Ok(_) => {}
+                Err(RecvError::Lagged(n)) => {
+                    panic!("机器状态那一路积了 {n} 帧没读，那台推的 up 可能就在里面")
+                }
+                Err(RecvError::Closed) => panic!("机器状态那一路收了"),
+            }
+        }
+    };
+    tokio::time::timeout(guard_core::wall::CEILING, wait)
+        .await
+        .unwrap_or_else(|_| panic!("等不到：{machine} 推一帧成品是 up 的 `changed {{machine}}`"))
+}
+
+/// 同一进程里别的判据改机器表的那一下（`machines-set` · `host-keys-forget` 都 `ring` ⇒ `machine_state::table_moved`）：
+/// 沙箱那张机器表里没有这几台 ⇒ 它们在机器状态表里的那一行被摘掉。这里造最不巧的那一刻：那台刚推完 `up` 就摘。
+fn table_moved_elsewhere(machine: &str) -> tokio::task::JoinHandle<()> {
+    let machine = machine.to_string();
+    let mut seen = machine_state::changes().subscribe();
+    tokio::spawn(async move {
+        while let Ok((m, p)) = seen.recv().await {
+            if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up {
+                machine_state::table_moved_in(&[], &Default::default());
+            }
+        }
+    })
 }
 
 /// ★ 先红的那一条：本机后端自己连上那台（替身那台跑的就是这一版）⇒ 那台的成品是 `up`、推了 `changed {machine}`；
@@ -207,16 +241,15 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
         .unwrap()
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
+    let neighbour = table_moved_elsewhere(machine);
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
-    until("那台的成品是 up", || state_of(machine) == "up").await;
-    let mut pushed = false;
-    while let Ok((m, p)) = changes.try_recv() {
-        if m == machine && serde_json::to_value(&p).unwrap()["state"] == "up" {
-            pushed = true;
-        }
-    }
-    assert!(pushed, "接上那一刻要推一帧 `changed {{machine}}`");
+    let up = up_pushed(&mut changes, machine).await;
+    neighbour.abort();
+    assert_eq!(
+        up.name, machine,
+        "接上那一刻推的那一帧 `changed {{machine}}` 是那台的成品"
+    );
     assert_eq!(fake.installs.load(Ordering::SeqCst), 0, "这一版 ⇒ 不装");
     assert_eq!(*fake.words.lock().unwrap(), vec!["attach".to_string()]);
     align_in(&[], &ssh, &quiet());
@@ -234,9 +267,10 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
         o.push_back(Peer::Absent);
         o.push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     }
+    let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
-    until("那台的成品是 up", || state_of(machine) == "up").await;
+    up_pushed(&mut changes, machine).await;
     let words = fake.words.lock().unwrap().clone();
     assert_eq!(
         words[..2],
@@ -257,9 +291,10 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
         .lock()
         .unwrap()
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
-    until("先接上", || state_of(machine) == "up").await;
+    up_pushed(&mut changes, machine).await;
     hold(machine);
     assert!(!running(machine), "停了 ⇒ 那一条收掉");
     align_in(&[machine.to_string()], &ssh, &quiet());
@@ -293,9 +328,10 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
         .lock()
         .unwrap()
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
-    until("那台的成品是 up", || state_of(machine) == "up").await;
+    up_pushed(&mut changes, machine).await;
 
     let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
     let got = forward(
@@ -386,9 +422,10 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
         .lock()
         .unwrap()
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
-    until("那台的成品是 up", || state_of(machine) == "up").await;
+    up_pushed(&mut changes, machine).await;
     let within =
         crate::platform::child::Until::after(crate::platform::child::Deadline::millis(30_000));
     let exit = MachineInterruptsReq {
