@@ -300,6 +300,11 @@ fn send_chunk(s: &mut TcpStream, sent: &AtomicU64, payload: &[u8]) -> std::io::R
     Ok(())
 }
 
+/// 桩的应答头。`Connection: close`：桩一条连接只答一发、答完就关，照实说出来。不说的话中转把它当 keep-alive 还回池里，
+/// 下一发取出来探活时桩的 FIN 到没到看调度：没到 ⇒ 请求写进一条正要关的连接 ⇒ RST ⇒ 502（机器一忙就红；
+/// 钉它的是 `a_stub_that_closes_late_still_answers_every_forward`）。
+const STUB_ANSWER_HEAD: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+
 fn spawn_fake_upstream(gate: Option<mpsc::Receiver<()>>) -> FakeUpstream {
     spawn_fake_upstream_faulted(gate, None)
 }
@@ -398,10 +403,7 @@ fn spawn_fake_upstream_faulted(
                     .expect("lock")
                     .push(format!("{} auth={}", line.trim(), auth));
                 s.set_nodelay(true).expect("nodelay");
-                s.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
-                )
-?;
+                s.write_all(STUB_ANSWER_HEAD)?;
                 s.flush()?;
                 for i in 1..=UPSTREAM_EVENTS {
                     if let Some(g) = gate.as_ref() {
@@ -2691,6 +2693,75 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
         after - before,
         0,
         "转了 {N} 发之后中转这一侧多留了这么多字节"
+    );
+}
+
+/// 桩答完一发要过一阵才关连接（机器忙时桩线程被挤开的那一形，这里拿睡一下钉成必然）：一条接一条转，每一发照样 200。
+/// 桩照实说 `Connection: close` ⇒ 中转不把它还回池里，下一发新连；不说 ⇒ 下一发取出这条，探活时 FIN 还没到 ⇒ 写进去被 RST ⇒ 502。
+#[test]
+fn a_stub_that_closes_late_still_answers_every_forward() {
+    const SENDS: usize = 3;
+    let stub = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 桩");
+    let stub_addr = stub.local_addr().expect("桩地址");
+    std::thread::spawn(move || {
+        for s in stub.incoming().take(SENDS) {
+            let Ok(mut s) = s else { continue };
+            s.set_read_timeout(Some(guard_core::wall::CEILING))
+                .expect("桩读期限");
+            let mut r = BufReader::new(s.try_clone().expect("clone"));
+            let mut clen = 0usize;
+            loop {
+                let mut h = String::new();
+                if r.read_line(&mut h).unwrap_or(0) == 0 || h == "\r\n" {
+                    break;
+                }
+                if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                    clen = v.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut body = vec![0u8; clen];
+            let _ = r.read_exact(&mut body);
+            let _ = s.write_all(STUB_ANSWER_HEAD);
+            let _ = s.write_all(b"9\r\ndata: x\n\n\r\n0\r\n\r\n");
+            let _ = s.flush();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    });
+    let base = Base::parse(&format!("http://127.0.0.1:{}", stub_addr.port())).expect("base");
+    let relay = Relay::new(
+        dest_of(two_accounts_no_key(&base)),
+        crate::relay::test_support::test_keys(),
+        no_tap(),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
+    );
+    let listener = listen(0).expect("listen");
+    let addr = listener.local_addr().expect("addr");
+    let client = std::thread::spawn(move || {
+        (0..SENDS)
+            .map(|_| {
+                let mut c = send_request(addr, "/s/agentA/acctA/v1/messages", "");
+                let mut got = Vec::new();
+                c.read_to_end(&mut got).expect("read");
+                String::from_utf8_lossy(&got)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+    });
+    for _ in 0..SENDS {
+        let down = accept_from(&listener, &client);
+        serve_one(down, &relay).expect("serve_one");
+    }
+    let status = client.join().expect("client");
+    assert_eq!(
+        status,
+        vec!["HTTP/1.1 200 OK"; SENDS],
+        "桩晚一点关连接，中转这几发就不全是 200：桩的应答头没说 `Connection: close`，中转把要关的连接拿去复用了"
     );
 }
 

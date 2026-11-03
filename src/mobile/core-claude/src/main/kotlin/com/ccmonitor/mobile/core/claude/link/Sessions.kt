@@ -432,7 +432,7 @@ object HistoryImage {
         at: Long,
         n: Int,
         id: String,
-    ): Map<String, Any?> = Commands.HistoryImage.args(HistoryImageReq(path = path, at = at, n = n.toLong(), id = id))
+    ): Map<String, Any?> = Commands.HistoryImage.args(HistoryImageReq(path = path, at = at, n = n, id = id))
 
     /** 回包里那张图的 base64；解不开 ⇒ `null`。 */
     fun of(data: Any?): String? = Commands.HistoryImage.reply(data)?.data
