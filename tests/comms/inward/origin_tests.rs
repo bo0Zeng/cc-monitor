@@ -506,6 +506,10 @@ fn every_origin_taking_command_splits_local_through_route() {
             if flat.contains("origin: crate::origin::Origin") || flat.contains("origin: Origin") {
                 takes_origin.insert(name.clone());
             }
+            // 收原样字节的命令（`tauri::ipc::Request`）实参只能走头：那台从头里造成 `Origin`，同样算吃 `Origin`。
+            if flat.contains("tauri::ipc::Request") && body.contains("Origin::named(") {
+                takes_origin.insert(name.clone());
+            }
             if body.contains(".route(") {
                 calls_route.insert(name);
             }
