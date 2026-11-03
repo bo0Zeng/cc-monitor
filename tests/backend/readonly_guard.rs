@@ -2234,6 +2234,15 @@ mod g6_dependency_signoff {
              现打 0 处写面：不开文件、不碰盘",
         ),
         (
+            "platform-core",
+            DEPS,
+            MEASURED_WRITES_ON_PURPOSE,
+            "平台原语（monitor 同一份）：目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表；仓内 crate。\
+             写面就是 `Own` 要的那两样本身（`dir::private_dir*` 建一层只给本人的目录 · `atomic::write_atomic` 旁名 → 落盘 → 换上去），\
+             后端只经 `platform/fs/own.rs` 一处叫它们（锁那一样不写）。\
+             边界判据：`the_platform_primitive_writes_are_reached_only_from_the_own_state_layer`",
+        ),
+        (
             "own-chan",
             DEPS,
             MEASURED_CLEAN,
@@ -2890,9 +2899,10 @@ mod g6_dependency_signoff {
         //   是「只许一份文件持有它的会话、写根 == 暂存区一处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
         // +`ssh-dial` 两行（拨号核心，远端写那一格随 SFTP 客户端搬进去）：前提同 `russh-sftp`，由同一条边界判据钉。
+        // +`platform-core`（本机自家状态的建目录与原子写）：前提是「后端只经 `platform/fs/own.rs` 叫它」，由它签字里点名的边界判据钉。
         assert_eq!(
             purposeful,
-            vec!["ssh-dial", "ssh-dial", GATED_CRATE, "russh-sftp"],
+            vec!["ssh-dial", "ssh-dial", GATED_CRATE, "russh-sftp", "platform-core"],
             "「就是要它写」那一档的成员变了：{purposeful:?}\n\
              本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）；新来的成员要在签字里点名它自己的边界判据。"
         );
@@ -2985,6 +2995,44 @@ mod g6_dependency_signoff {
         let sample = "let f = creds_core::perm::create_private(&tmp)?;";
         assert!(
             needles.iter().any(|n| guard_core::contains_word(sample, n)),
+            "针连样本 `{sample}` 都认不出 —— 上面那条相等此刻在空转"
+        );
+    }
+
+    /// 🔴 **`platform-core` 那条「就是要它写」的边界**：它的两样写面（建只给本人的目录 · 原子写）在后端生产段里
+    /// 只经 `platform/fs/own.rs`（`Own` 与两个窄句柄的本体）一处叫；多出一处 = 本机写自家状态的口子扩散到 `Own` 之外。
+    #[test]
+    fn the_platform_primitive_writes_are_reached_only_from_the_own_state_layer() {
+        let root = guard_core::addr::backend_src_root();
+        let needles = ["platform_core::atomic::", "platform_core::dir::private_dir"];
+        let mut found: std::collections::BTreeSet<String> = Default::default();
+        let mut scanned = 0usize;
+        for path in super::tests::core_files() {
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
+                continue;
+            }
+            scanned += 1;
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let prod = guard_core::production_code(&src);
+            if needles.iter().any(|n| prod.contains(n)) {
+                found.insert(
+                    path.strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+        assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
+        let want: std::collections::BTreeSet<String> =
+            ["platform/fs/own.rs".to_string()].into_iter().collect();
+        assert_eq!(
+            found, want,
+            "`platform-core` 的写面（建只给本人的目录 · 原子写）在后端生产段里的引用处对不上：应当恰好是 `platform/fs/own.rs`"
+        );
+        let sample = "platform_core::atomic::write_atomic(path, &tmp, open, fill)";
+        assert!(
+            needles.iter().any(|n| sample.contains(n)),
             "针连样本 `{sample}` 都认不出 —— 上面那条相等此刻在空转"
         );
     }
