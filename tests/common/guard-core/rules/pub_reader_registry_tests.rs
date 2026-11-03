@@ -30,6 +30,16 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "分块下载的结局：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/transfer.rs`，后端那棵 workspace，不在扫描面里）",
     ),
     (
+        "src/common/cmd-wire/src/keys.rs",
+        "from_token",
+        "一下的记号读回一下（JNI 两侧同一形）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/keys.rs`，后端那棵 workspace，不在扫描面里）",
+    ),
+    (
+        "src/common/cmd-wire/src/keys.rs",
+        "presses_of",
+        "送进终端的字节认回几下（旧按钮迁移）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/keys.rs`，后端那棵 workspace，不在扫描面里）",
+    ),
+    (
         "src/common/face-core/src/record.rs",
         "mend_records",
         "回包里记录那一格一条一条判认不认得：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",

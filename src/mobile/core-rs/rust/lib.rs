@@ -32,6 +32,7 @@ pub mod batch;
 mod busy;
 mod copy;
 mod host_keys;
+mod keys;
 pub mod install;
 pub mod plan;
 pub mod resident;
