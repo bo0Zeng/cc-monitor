@@ -11,12 +11,12 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const zh = (k: string): string => (TABLE.entries as Record<string, { zh: string }>)[k].zh;
 
 describe("界面只说认不出、只判版本旧那一形", () => {
-  it("回的形状不对 ⇒ 认不出那一句（带机器名，本机说「本机」），不提版本、细目不上屏", () => {
+  it("回的形状不对 ⇒ 认不出那一句（带机器名，本机说「本机」），不提版本；细目不上屏、进复制详情", () => {
     const e = new ReplyUnreadable("devbox", "x reply shape");
     expect(e.message).toBe(zh("peerVersion.said.unreadable").replace("{machine}", "devbox"));
     expect(e.message).not.toMatch(/版本|更新/);
     expect(e.message).not.toContain("x reply shape");
-    expect(e.detail).toBe("");
+    expect(e.detail, "认不出的那一处可复制（手机同样带原文）").toBe("x reply shape");
     expect(new ReplyUnreadable("<local>", "y").message).toBe(
       copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.unsure") }),
     );

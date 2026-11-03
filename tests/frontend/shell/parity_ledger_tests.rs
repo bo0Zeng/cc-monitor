@@ -226,6 +226,13 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿）",
     ),
     (
+        "front_missed",
+        "terminal.focus",
+        Side::Both,
+        Own::Front,
+        "↗ 出口那一跳没成的那一张，照 face_core::front 写（只写字，不碰后端）",
+    ),
+    (
         "open_local_terminal",
         "session.launch",
         Side::Local,
@@ -635,7 +642,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // `LEDGER` 里一行进出 `Local` / `Both`（新增、删掉、`Side` 改了），这个数就跟着变；
     //   同一条命令两侧收成一条路（`Remote` 改成 `Both`）也算，命令总数不动、这个数照样变。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 37;
+    const EXPECTED_LOCAL_OR_BOTH: usize = 38;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

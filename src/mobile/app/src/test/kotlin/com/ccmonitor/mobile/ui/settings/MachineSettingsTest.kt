@@ -108,10 +108,10 @@ class MachineSettingsTest {
         }
 
     @Test
-    fun `用量读不成也记下：超时 ⇒ 读不成、那一句是「{machine} 无应答」`() =
+    fun `用量读不成也记下：超时 ⇒ 读不成、那一句是核心写好的那一句`() =
         runTest {
-            val (m, _) = open(link(quotaReply = { Reply.TimedOut }))
-            assertEquals("devbox 无应答", (m.state.value.quota as? Fetched.Failed)?.problem?.text)
+            val (m, _) = open(link(quotaReply = { Reply.TimedOut("t-said", "") }))
+            assertEquals("t-said", (m.state.value.quota as? Fetched.Failed)?.problem?.text)
             assertNull(m.state.value.usage("personal"))
         }
 
@@ -121,12 +121,12 @@ class MachineSettingsTest {
             var answer: () -> Reply = { Reply.Ok(quota) }
             val (m, changes) = open(link(quotaReply = { answer() }))
             val held = m.state.value.quota
-            answer = { Reply.TimedOut }
+            answer = { Reply.TimedOut("t-said", "") }
             changes.emit(Changed.Quota())
             runCurrent()
             assertEquals(held, m.state.value.quota)
             assertEquals(
-                "devbox 无应答",
+                "t-said",
                 m.state.value.quotaRereadFailed
                     ?.text,
             )
@@ -143,7 +143,7 @@ class MachineSettingsTest {
             var answer: () -> Reply = { Reply.Ok(quota) }
             val l = link(quotaReply = { answer() })
             val (m, changes) = open(l)
-            answer = { Reply.TimedOut }
+            answer = { Reply.TimedOut("t-said", "") }
             changes.emit(Changed.Quota())
             runCurrent()
             val pushed = QuotaRead.of(QuotaGolden.reply("订阅 · 快满"))!!

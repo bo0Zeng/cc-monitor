@@ -142,9 +142,14 @@ pub fn halt(id: i64) -> bool {
     lock(halts()).get(&id).map(|h| h.set()).is_some()
 }
 
-/// 不看这台了（流收了）⇒ 下一块不送。
+/// 不看这台了（流收了）⇒ 下一块不送。那一句照一问一答撤了那一句（[`resident::cut`]；撤了那一句不带那台的名字）。
 fn cancelled(id: i64) -> String {
-    line(&CallEnd::Cancelled { call: id })
+    let (said, detail) = resident::cut(&copy_core::peer_machine(), &CallError::Cancelled);
+    line(&CallEnd::Cancelled {
+        call: id,
+        said,
+        detail,
+    })
 }
 
 /// 本机那一份读 / 写不动：那一句 ＋ 系统原话进详情。
@@ -630,9 +635,14 @@ mod tests {
                         () = stop => panic!("撤了还在等那台"),
                     }
                 });
+            let line = json(&line);
             assert_eq!(
-                json(&line),
-                serde_json::json!({"call": 11, "end": "cancelled"})
+                (&line["call"], &line["end"]),
+                (&serde_json::json!(11), &serde_json::json!("cancelled"))
+            );
+            assert_eq!(
+                line["said"],
+                copy_core::copy_text("reason.op.cancelled", &[])
             );
             assert_eq!(out.len(), chunk_core::CHUNK, "撤之前写下的只有第一块");
         }

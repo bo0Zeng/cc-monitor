@@ -36,7 +36,8 @@ extern "system" {
         user: *mut FileTime,
     ) -> i32;
     fn WaitForSingleObject(handle: RawHandle, milliseconds: u32) -> u32;
-    fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
+    /// 本 crate 里按句柄强杀一个进程只走这一处声明（`child.rs` 退成只杀直接子进程那一下也引它）。
+    pub(crate) fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
     fn GetCurrentThread() -> RawHandle;
     fn SetThreadPriority(thread: RawHandle, priority: i32) -> i32;
     /// 本 crate 里关手写拿到的 Win32 句柄（Job · 令牌 …）只走这一处声明。

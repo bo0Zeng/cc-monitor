@@ -495,8 +495,8 @@ class ResidentFeed(
             when (e) {
                 is CallEnd.Ok -> Reply.Ok(e.data.value)
                 is CallEnd.Failed -> Reply.Failed(Failed(e.code, e.said, e.detail, e.data))
-                is CallEnd.Timeout -> Reply.TimedOut
-                is CallEnd.Cancelled -> Reply.Cancelled
+                is CallEnd.Timeout -> Reply.TimedOut(e.said, e.detail)
+                is CallEnd.Cancelled -> Reply.Cancelled(e.said, e.detail)
                 is CallEnd.Down -> Reply.LinkDown
                 // 传文件那一趟的回包核心照类型解不开（形状对不上）：原样带回，详情里是 serde 那一句。
                 is CallEnd.Unreadable -> Reply.Unreadable(body)

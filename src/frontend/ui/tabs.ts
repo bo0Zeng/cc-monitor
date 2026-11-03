@@ -70,7 +70,8 @@ import {
   reportWatching,
   reportKept,
 } from "./tab-session-actions";
-import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
+import { frontView, type FrontAct, type FrontView } from "./front-result";
+import type { FrontTold } from "./generated/FrontTold";
 import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import type { MachineFix } from "./generated/MachineFix";
@@ -1528,14 +1529,14 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const origin = tab.origin;
-    const run = (): Promise<FrontResult> => bringTerminalToFront(origin, sid);
+    const run = (): Promise<FrontTold> => bringTerminalToFront(origin, sid);
     const r = await frontOnce(sid, run, (on) => {
       this.bar.setFrontPending(sid, on);
       setFrontBusy(this.frontAnchor(sid, from), on);
     });
     if (r === undefined) return;
     const anchor = this.frontAnchor(sid, from);
-    const view = frontView(r, machineName(origin));
+    const view = frontView(r);
     if (view === null) {
       closeFrontResult(sid);
       flashFrontDone(anchor);

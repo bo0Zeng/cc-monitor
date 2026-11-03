@@ -5,7 +5,7 @@
 //! | 每一种失败（三层逐格穷举）× 本机 / 远端都有一句：非空、不带枚举名与码；说到那台的称呼它（远端名字 · 本机「本机」） | [`every_failure_has_a_plain_sentence_on_both_kinds_of_machine`] |
 //! | 「发没发出去」一定说出来：没发出 ≠ 拿不准；发了与拿不准对人是同一件事 | [`whether_it_was_sent_is_always_said`] |
 //! | 对端拒了：它那一句原样；没写 ⇒「后端拒绝 · 原因不明」 | [`a_refusal_says_the_peer_sentence_or_that_it_is_unreadable`] |
-//! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那三处（壳交主界面 · 文件窗口 · `CallError` 的 `Display`） | [`the_channel_sentence_lives_in_one_file_with_three_callers`] |
+//! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那四处（壳交主界面 · 文件窗口 · `CallError` 的 `Display` · 手机核心一问没答成那一行） | [`the_channel_sentence_lives_in_one_file_with_four_callers`] |
 //! | 离线那一句称呼那台；`link.machine.offline` 在三端产品源码里只在本文件取，原先各出口各取的那 12 把键一处都不剩 | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
 
 use super::{machine, offline, said};
@@ -192,7 +192,7 @@ fn a_refusal_says_the_peer_sentence_or_that_it_is_unreadable() {
 }
 
 #[test]
-fn the_channel_sentence_lives_in_one_file_with_three_callers() {
+fn the_channel_sentence_lives_in_one_file_with_four_callers() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let mut keys = BTreeSet::new();
     let mut callers = BTreeSet::new();
@@ -222,8 +222,9 @@ fn the_channel_sentence_lives_in_one_file_with_three_callers() {
             "comms/inward/chan/wire.rs".to_string(),
             "frontend/filewin/src/source.rs".to_string(),
             "frontend/shell/src/chan/webview.rs".to_string(),
+            "mobile/core-rs/rust/resident.rs".to_string(),
         ]),
-        "调通道那一句的应恰是这三处：壳交给主界面的失败 · 文件窗口 · `CallError` 的 `Display`"
+        "调通道那一句的应恰是这四处：壳交给主界面的失败 · 文件窗口 · `CallError` 的 `Display` · 手机核心一问没答成那一行"
     );
 }
 

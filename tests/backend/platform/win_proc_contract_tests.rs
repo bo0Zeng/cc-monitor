@@ -140,8 +140,8 @@ fn the_win32_process_reads_live_in_exactly_one_file() {
     let root = guard_core::addr::backend_src_root();
     let names = ["OpenProcess", "GetExitCodeProcess", "GetProcessTimes"];
     // `WaitForSingleObject` 从这张名单里拆出去单列：它是 Win32 的**通用等待**，不只等进程 ——
-    //   `platform/lock.rs` 用它等第四层那把跨进程锁（命名互斥量）。那一格不是「又一份判活读法」，
-    //   所以它的人群单独两向相等（下面 `waiters`），而进程读法这三个名字的人群照旧只有 `win_proc.rs`。
+    //   第四层那把跨进程锁（命名互斥量）也等它，那一份住 `platform_core::dir`，不在后端源码里。
+    //   它的人群单独两向相等（下面 `waiters`），进程读法这三个名字的人群照旧只有 `win_proc.rs`。
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut waiters: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut scanned = 0usize;
@@ -157,12 +157,8 @@ fn the_win32_process_reads_live_in_exactly_one_file() {
             waiters.insert(rel);
         }
     }
-    let want_waiters: std::collections::BTreeSet<String> = [
-        "platform/win_proc.rs".to_string(),
-        "platform/lock.rs".to_string(),
-    ]
-    .into_iter()
-    .collect();
+    let want_waiters: std::collections::BTreeSet<String> =
+        ["platform/win_proc.rs".to_string()].into_iter().collect();
     assert_eq!(
         waiters, want_waiters,
         "后端生产段里用 `WaitForSingleObject` 的文件集合变了（登记：等进程退出 · 等第四层的跨进程锁）"

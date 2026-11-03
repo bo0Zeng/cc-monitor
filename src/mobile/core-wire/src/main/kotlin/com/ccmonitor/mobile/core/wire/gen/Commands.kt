@@ -1792,6 +1792,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.Forwards::class.java to com.ccmonitor.mobile.core.wire.gen.Forwards.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FrontAct::class.java to com.ccmonitor.mobile.core.wire.gen.FrontAct.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FrontFace::class.java to com.ccmonitor.mobile.core.wire.gen.FrontFace.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.FrontMiss::class.java to com.ccmonitor.mobile.core.wire.gen.FrontMiss.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FrontTold::class.java to com.ccmonitor.mobile.core.wire.gen.FrontTold.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.FrontendReadyPayload::class.java to com.ccmonitor.mobile.core.wire.gen.FrontendReadyPayload.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.GapCount::class.java to com.ccmonitor.mobile.core.wire.gen.GapCount.ADAPTER,

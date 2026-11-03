@@ -107,14 +107,6 @@ pub fn start_stamp(pid: u32) -> Option<u64> {
     }
 }
 
-/// `/proc/<pid>/stat` 要的三格（名字夹在第一个左括号与最后一个右括号之间：名字里可以有括号与空格）。
-#[cfg(target_os = "linux")]
-struct LinuxStat {
-    ppid: u32,
-    name: String,
-    start: u64,
-}
-
 /// `/proc/<pid>/stat` 的读上限：一行 52 格数字加一个至多 15 字节的名字，几百字节。超了跳过（当读不出）、日志说是哪一份。
 #[cfg(target_os = "linux")]
 const STAT_CAP: relay_route_core::Cap = relay_route_core::Cap {
@@ -122,8 +114,9 @@ const STAT_CAP: relay_route_core::Cap = relay_route_core::Cap {
     over: relay_route_core::Over::SkipAndSay,
 };
 
+/// 读一个进程的 `/proc/<pid>/stat`；切法只在 `platform_core::proc::parse_stat`（后端同一份）。
 #[cfg(target_os = "linux")]
-fn linux_stat(pid: u32) -> Option<LinuxStat> {
+fn linux_stat(pid: u32) -> Option<platform_core::proc::Stat> {
     if pid == 0 {
         return None;
     }
@@ -136,56 +129,17 @@ fn linux_stat(pid: u32) -> Option<LinuxStat> {
         }
         Ok(host_core::Capped::Absent) | Err(_) => return None,
     };
-    let (open, close) = (line.find('(')?, line.rfind(')')?);
-    let rest: Vec<&str> = line.get(close + 1..)?.split_whitespace().collect();
-    // 右括号之后：state(3) ppid(4) … starttime(22)
-    Some(LinuxStat {
-        ppid: rest.get(1)?.parse().ok()?,
-        name: line.get(open + 1..close)?.to_string(),
-        start: rest.get(19)?.parse().ok()?,
-    })
+    platform_core::proc::parse_stat(&line)
 }
 
 /// 此刻的进程表：`(进程号, 父进程号, 程序名)`，一趟 ToolHelp 快照（不用打开各个进程：提权的也列得出）。读不到 ⇒ 空。
 #[cfg(windows)]
 pub fn processes() -> Vec<(u32, u32, String)> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
-    };
-    let mut out = Vec::new();
-    unsafe {
-        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return out;
-        };
-        if snap.is_invalid() {
-            return out;
-        }
-        let mut entry = PROCESSENTRY32W {
-            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        if Process32FirstW(snap, &mut entry).is_ok() {
-            loop {
-                let n = entry
-                    .szExeFile
-                    .iter()
-                    .position(|&c| c == 0)
-                    .unwrap_or(entry.szExeFile.len());
-                out.push((
-                    entry.th32ProcessID,
-                    entry.th32ParentProcessID,
-                    String::from_utf16_lossy(&entry.szExeFile[..n]),
-                ));
-                if Process32NextW(snap, &mut entry).is_err() {
-                    break;
-                }
-            }
-        }
-        CloseHandle(snap).discard(Why::Reap);
-    }
-    out
+    platform_core::proc::processes()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| (p.pid, p.ppid, p.name))
+        .collect()
 }
 
 /// 别处：不列（只有 Windows 那一支要按进程树数终端的标签）。
