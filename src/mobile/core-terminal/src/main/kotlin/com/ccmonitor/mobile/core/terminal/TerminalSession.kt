@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.terminal
 
 import androidx.compose.ui.graphics.toArgb
+import com.ccmonitor.mobile.core.rs.TermKeys
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,35 +80,17 @@ class ModifierLatch {
 }
 
 /**
- * 把修饰应用到一次软键盘输入（纯函数）。只对单字节按键生效（不破坏 IME 组字/emoji/粘贴多字节）。
- * Shift = 小写字母→大写（'a'→'A'，非字母不动）；Ctrl+key = 标准控制码（仅字母与 `@ [ \ ] ^ _ 空格 ?`，见
- * [ctrlControlCode]，其余不变）；Alt/Meta = 前缀 ESC(0x1B)。叠加序：Shift→Ctrl→Alt。无修饰或多字节 → 原样。
+ * 把修饰应用到一次软键盘输入。只对单字节（ASCII）按键生效（不破坏 IME 组字/emoji/粘贴多字节）：那一下当带修饰的一个字交核心算
+ * （`TermKeys`，xterm 键码全仓一张表：Shift 小写变大写 · Ctrl 标准控制码 · Alt 前缀 ESC）。无修饰或多字节 → 原样。
  */
 fun applyKeyModifiers(
     raw: ByteArray,
     mods: KeyModifiers,
 ): ByteArray {
-    if (!mods.any || raw.size != 1) return raw
-    var b = raw[0].toInt() and 0xFF
-    if (mods.shift && b in 'a'.code..'z'.code) b -= 0x20 // Shift：小写字母→大写
-    if (mods.ctrl) b = ctrlControlCode(b) ?: b
-    return if (mods.alt) byteArrayOf(0x1B, b.toByte()) else byteArrayOf(b.toByte())
+    if (!mods.any || raw.size != 1 || raw[0] < 0) return raw
+    val words = listOfNotNull("ctrl".takeIf { mods.ctrl }, "alt".takeIf { mods.alt }, "shift".takeIf { mods.shift })
+    return checkNotNull(TermKeys.bytes(arrayOf(TermKeys.chord(String(raw, Charsets.US_ASCII), words))))
 }
-
-/**
- * Ctrl 组合的标准控制码映射（xterm 语义）：只有字母（大小写同码）与 `@ [ \ ] ^ _`（0x40..0x5F
- * 控制语义区）取 `& 0x1F`；`空格`→NUL（同 Ctrl+@，emacs set-mark 常用）、`?`→DEL(0x7F)。
- * 其余（数字/标点）没有标准 Ctrl 码 → null（原字节不变）。
- * 注意：不能对任意字节盲取 `& 0x1F`：Ctrl+1→0x11(XON)、Ctrl+3→0x13(XOFF) 会触发终端流控、无提示地冻结输出。
- */
-private fun ctrlControlCode(b: Int): Int? =
-    when {
-        b in 'a'.code..'z'.code || b in 'A'.code..'Z'.code -> b and 0x1F
-        b == '@'.code || b in '['.code..'_'.code -> b and 0x1F // @ [ \ ] ^ _
-        b == ' '.code -> 0x00 // Ctrl+Space = NUL（与 Ctrl+@ 同码）
-        b == '?'.code -> 0x7F // Ctrl+? = DEL
-        else -> null
-    }
 
 /**
  * SSH 交互 shell 流 ↔ termlib emulator 的桥。只收原始流 + resize lambda，不依赖 core-ssh。

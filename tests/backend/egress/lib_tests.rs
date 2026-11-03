@@ -376,18 +376,3 @@ fn the_description_never_prints_the_proxy_password() {
 fn without_an_installed_description_it_is_direct() {
     assert_eq!(here().hop_for("api.anthropic.com"), Hop::Direct);
 }
-
-#[test]
-fn base64_matches_the_rfc_vectors() {
-    for (i, o) in [
-        ("", ""),
-        ("f", "Zg=="),
-        ("fo", "Zm8="),
-        ("foo", "Zm9v"),
-        ("foob", "Zm9vYg=="),
-        ("fooba", "Zm9vYmE="),
-        ("foobar", "Zm9vYmFy"),
-    ] {
-        assert_eq!(tunnel::base64(i.as_bytes()), o);
-    }
-}

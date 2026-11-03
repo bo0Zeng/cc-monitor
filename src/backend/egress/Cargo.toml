@@ -16,6 +16,8 @@ path = "lib.rs"
 relay-route-core = { path = "../../common/relay-route-core" }
 # 回环那一个事实只有 `upstream_is_loopback` 那一个家：直连判定（`describe::stays_on_this_machine`）与测试档不许出网那一句都问它。零依赖。
 upstream-url-core = { path = "../../common/upstream-url-core" }
+# 代理鉴权那一头的 base64 用全仓那一份（`cmd_wire::b64`）。它带进 serde 一族，后端与拨号核心本就链着。
+cmd-wire = { path = "../../common/cmd-wire" }
 
 [features]
 # 后端 · 拨号核心的测试档经 dev 依赖开它（resolver 2 ⇒ 不并进发布构建）。
