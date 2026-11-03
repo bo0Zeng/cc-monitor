@@ -2,7 +2,7 @@
  * 写类工具（卡型 `diff`）展开的行级 diff：行 · 种类 · 收着画几行 · 增删数都是后端算好的（`LineDiff`：调用那一份
  * `steps[id].body.diff`，结果那一份 `results[id].patch`），这里只照行画。
  *
- * 仅 createElement + textContent，绕开 DOMPurify，三引号 / HTML / CJK / emoji 按字面渲染。
+ * 仅 createElement + textContent，不把任何字符串当 HTML 塞进去，三引号 / HTML / CJK / emoji 按字面渲染。
  */
 
 import { copyText } from "../copy-table";

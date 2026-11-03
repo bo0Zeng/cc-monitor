@@ -43,7 +43,7 @@ function card(...docs: Doc[]): HTMLElement {
     t: "reply",
     id: "a",
     at: "2026-01-01T00:00:00.000Z",
-    blocks: docs.map((doc) => ({ type: "prose", doc, bytes: 1 })),
+    blocks: docs.map((doc) => ({ type: "prose", doc, more: "" })),
     autoReply: false,
     draw: "card",
     human: false,

@@ -205,6 +205,7 @@ private fun ChatBody(
         onFollow = vm::follow,
         loadImage = vm::image,
         loadHl = vm::segHl,
+        loadDoc = vm::mdDoc,
     )
 }
 

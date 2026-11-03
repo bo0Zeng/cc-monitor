@@ -83,7 +83,7 @@ class BenchSeedActivity : ComponentActivity() {
                     draw = Draw.CARD,
                     human = false,
                     autoReply = false,
-                    blocks = listOf(Block.Prose(answer(n), ANSWER_BYTES)),
+                    blocks = listOf(Block.Prose(answer(n), "")),
                 ),
             )
         }
@@ -139,6 +139,5 @@ class BenchSeedActivity : ComponentActivity() {
         private const val AGENT = "claude"
         private const val TURNS = 60
         private const val BYTES_PER_LINE = 1_200L
-        private const val ANSWER_BYTES = 900L
     }
 }

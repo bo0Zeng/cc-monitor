@@ -50,7 +50,6 @@
           "autoReply": false,
           "blocks": [
             {
-              "bytes": 1,
               "doc": {
                 "blocks": [
                   {
@@ -62,6 +61,7 @@
                 ],
                 "segs": []
               },
+              "more": "展开 1 B",
               "type": "prose"
             }
           ],
@@ -118,7 +118,6 @@
           "autoReply": false,
           "blocks": [
             {
-              "bytes": 1,
               "doc": {
                 "blocks": [
                   {
@@ -130,6 +129,7 @@
                 ],
                 "segs": []
               },
+              "more": "展开 1 B",
               "type": "prose"
             }
           ],
@@ -189,7 +189,6 @@
           "autoReply": false,
           "blocks": [
             {
-              "bytes": 1,
               "doc": {
                 "blocks": [
                   {
@@ -201,6 +200,7 @@
                 ],
                 "segs": []
               },
+              "more": "展开 1 B",
               "type": "prose"
             }
           ],
@@ -248,7 +248,6 @@
           "autoReply": false,
           "blocks": [
             {
-              "bytes": 2,
               "doc": {
                 "blocks": [
                   {
@@ -260,6 +259,7 @@
                 ],
                 "segs": []
               },
+              "more": "展开 2 B",
               "type": "prose"
             }
           ],

@@ -49,7 +49,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -584,7 +583,7 @@ private fun AssistantMarkdownCard(
 ) {
     val codeBlocks = remember(unit.doc) { unit.doc.codeBlocks() }
     Column(Modifier.fillMaxWidth().matchHighlight(matched)) {
-        MarkdownText(unit.doc, modifier = Modifier.fillMaxWidth())
+        MarkdownText(unit.doc, unit.more, modifier = Modifier.fillMaxWidth())
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SecondaryButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
@@ -618,12 +617,7 @@ private fun ThinkingCard(
             Text(if (recorded) copyText("cards.thinking.title") else copyText("cards.thinking.unrecorded"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         AnimatedVisibility(recorded && expanded) {
-            Text(
-                unit.text,
-                style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = tokens.spacing.lg, top = tokens.spacing.xs),
-            )
+            ThinkingText(unit.text, Modifier.padding(start = tokens.spacing.lg, top = tokens.spacing.xs))
         }
     }
 }

@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
 import com.ccmonitor.mobile.core.claude.model.SaidImage
+import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.chat.attach.AttachActions
@@ -34,6 +35,9 @@ class ChatViewModel(
 
     /** 助手正文一段的代码高亮（建好那一段时拉，见 [ChatSession.segHl]）。 */
     suspend fun segHl(codes: List<HlCode>): SegHl? = session.segHl(codes)
+
+    /** 思考展开那一刻的块树（见 [ChatSession.mdDoc]）。 */
+    suspend fun mdDoc(text: String): Doc? = session.mdDoc(text)
 
     /** 视口贴不贴着底（见 [ChatSession.follow]）。 */
     fun follow(on: Boolean) = session.follow(on)

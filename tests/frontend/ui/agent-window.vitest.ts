@@ -73,12 +73,11 @@ const T0 = Date.parse("2026-10-01T10:00:00Z");
 function brief(text: string): unknown {
   return { record: { agent: "claude", t: "said", id: "u0", at: "2026-10-01T10:00:00Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "agentTask" }, text } } };
 }
-/** 助手说的一段：后端交的是块树（`prose`）；只给一句字 ⇒ 一段落，`bytes` 是那句字的字节数。 */
+/** 助手说的一段：后端交的是块树（`prose`）；只给一句字 ⇒ 一段落。「展开」那一格留空（只在树分了段时出）。 */
 function say(uuid: string, body: string | Doc): unknown {
   const doc: Doc = typeof body === "string" ? { blocks: [{ t: "p", k: [body] }], segs: [] } : body;
-  const bytes = typeof body === "string" ? new TextEncoder().encode(body).length : 0;
   return {
-    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "prose", doc, bytes }], model: "m", autoReply: false },
+    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "prose", doc, more: "" }], model: "m", autoReply: false },
   };
 }
 

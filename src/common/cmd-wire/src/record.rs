@@ -220,9 +220,8 @@ pub enum Block {
     /// 排在第一形：回包金样的结构夹具取第一形，跨语言那一对就照树解。
     Prose {
         doc: crate::md::Doc,
-        /// 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        bytes: u64,
+        /// 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
+        more: crate::cells::Words,
     },
     /// 一段正文（用户那一句 · 工具结果，按纯文本画）。只经 [`Block::text`] 建（`bytes` 跟着正文算）。
     Text {
@@ -283,12 +282,9 @@ impl Block {
         Block::Text { text, bytes }
     }
 
-    /// 一段助手正文块：`doc` 是 `text` 解析成的树，字节数照原文算。
-    pub fn prose(text: &str, doc: crate::md::Doc) -> Block {
-        Block::Prose {
-            doc,
-            bytes: text.len() as u64,
-        }
+    /// 一段助手正文块：`doc` 是原文解析成的树，`more` 是后端照原文字节写好的「展开 {大小}」（cmd-wire 不取文，由调用方交）。
+    pub fn prose(doc: crate::md::Doc, more: crate::cells::Words) -> Block {
+        Block::Prose { doc, more }
     }
 
     /// 一个工具结果块（字节数在这里算：正文块与图块的字节之和）。
@@ -302,14 +298,13 @@ impl Block {
         }
     }
 
-    /// 这一块多少字节（正文 · 工具结果 · 图有；别的 0）。
+    /// 这一块多少字节（纯文正文 · 工具结果 · 图有；别的 0）。
     fn bytes(&self) -> u64 {
         match self {
-            Block::Prose { bytes, .. }
-            | Block::Text { bytes, .. }
+            Block::Text { bytes, .. }
             | Block::ToolResult { bytes, .. }
             | Block::Image { bytes, .. } => *bytes,
-            Block::Thinking { .. } | Block::ToolUse { .. } => 0,
+            Block::Prose { .. } | Block::Thinking { .. } | Block::ToolUse { .. } => 0,
         }
     }
 }

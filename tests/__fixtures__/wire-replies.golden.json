@@ -602,7 +602,7 @@
       }
     },
     "history-lines": {
-      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]}}]}",
+      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]}}]}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -629,7 +629,6 @@
               ],
               "blocks": [
                 {
-                  "bytes": 7,
                   "doc": {
                     "blocks": [
                       {
@@ -643,6 +642,7 @@
                       7
                     ]
                   },
+                  "more": "more-x",
                   "type": "prose"
                 }
               ],
@@ -842,7 +842,7 @@
       }
     },
     "history-read": {
-      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
+      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
       "sample": {
         "eof": true,
         "next": 7,
@@ -868,7 +868,6 @@
               ],
               "blocks": [
                 {
-                  "bytes": 7,
                   "doc": {
                     "blocks": [
                       {
@@ -882,6 +881,7 @@
                       7
                     ]
                   },
+                  "more": "more-x",
                   "type": "prose"
                 }
               ],
@@ -1050,7 +1050,7 @@
       }
     },
     "history-tail": {
-      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"bytes\":7}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
+      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -1085,7 +1085,6 @@
               ],
               "blocks": [
                 {
-                  "bytes": 7,
                   "doc": {
                     "blocks": [
                       {
@@ -1099,6 +1098,7 @@
                       7
                     ]
                   },
+                  "more": "more-x",
                   "type": "prose"
                 }
               ],

@@ -2089,9 +2089,12 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         lines_mid,
         r#"{"end":152,"eof":false,"from":0,"lines":[{"cwd":"/w","end":152,"path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"bytes":1,"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
     );
+    // 正文那一块的「展开 {大小}」是后端照原文字节写好的那一格（这里 1 字节）。
+    let more = copy_core::copy_text("cards.text.showAll", &[("size", &copy_core::size_text(1))]);
     assert_eq!(
         tail,
-        r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"bytes":1,"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"bytes":1,"doc":{"blocks":[{"k":["a"],"t":"p"}],"segs":[]},"type":"prose"}],"draw":"card","human":false,"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
+        r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"bytes":1,"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"doc":{"blocks":[{"k":["a"],"t":"p"}],"segs":[]},"more":"〈more〉","type":"prose"}],"draw":"card","human":false,"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
+            .replace("〈more〉", &more)
     );
     assert_eq!(needs, r#"{"answered":[],"items":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。

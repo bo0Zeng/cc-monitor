@@ -380,7 +380,7 @@ export class SessionViewer {
     this.setLoading(true);
     this.statusEl.textContent = "";
 
-    // 高亮按需（lazy hljs）
+    // 批量重放：卡惰建（`lazy`），代码高亮等那一块进了视口才按段问后端（`prose-hl`）
     const ctx: RenderContext = {
       parentPath: opts.jsonlPath,
       speaker: speakerNameOf(opts.agent ?? null),

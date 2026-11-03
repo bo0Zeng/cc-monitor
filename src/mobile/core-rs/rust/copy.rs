@@ -1,4 +1,4 @@
-//! 手机写字的那几样（取文 ＋ 插值 · 大小 · 短时长 · 距今）直接调 `copy-core`，Kotlin 只剩 `CopyCore` 那几个 JNI 口。
+//! 手机写字的那几样（取文 ＋ 插值 · 短时长 · 距今；大小由后端写好交来）直接调 `copy-core`，Kotlin 只剩 `CopyCore` 那几个 JNI 口。
 
 use jni::objects::{JClass, JObjectArray, JString};
 use jni::sys::{jlong, jstring};

@@ -59,7 +59,7 @@ describe("mountWhole：后端交的整棵树（来话 · 计划卡 · 思考 · 
     for (const name of ["行内公式两种写法", "\\[ 块公式", "段落紧挨着的 $$ 块"]) {
       const el = mountWhole(doc(name));
       const prose = renderMessage(
-        { agent: "claude", t: "reply", id: "r", at: "2026-01-01T00:00:00.000Z", blocks: [{ type: "prose", doc: doc(name), bytes: 1 }], autoReply: false, draw: "card", human: false } as never,
+        { agent: "claude", t: "reply", id: "r", at: "2026-01-01T00:00:00.000Z", blocks: [{ type: "prose", doc: doc(name), more: "" }], autoReply: false, draw: "card", human: false } as never,
         ctx(),
       );
       if (prose.kind !== "card") throw new Error(prose.kind);

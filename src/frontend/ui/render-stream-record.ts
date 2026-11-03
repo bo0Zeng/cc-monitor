@@ -18,7 +18,7 @@ import type { JsonlLinePayload } from "./events";
  * caller（TabManager / SessionViewer / Subagent）提供的差异点。
  *
  * 必填：timeline。
- * 可选：title 路由、user-active 触发、lazy hljs 注册。
+ * 可选：title 路由、user-active 触发。
  */
 export interface StreamSink {
   /** 按 seq 排序插入用 */

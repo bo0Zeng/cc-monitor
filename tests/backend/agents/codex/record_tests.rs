@@ -294,9 +294,10 @@ fn maps_message_to_said_and_reply() {
         }
     ));
     assert_eq!((r.agent.as_str(), r.id.as_str()), ("codex", "m1"));
+    let more = copy_core::copy_text("cards.text.showAll", &[("size", &copy_core::size_text(6))]);
     assert_eq!(
         blocks_of(&r),
-        json!([{"type": "prose", "doc": {"blocks": [{"t": "p", "k": ["回复"]}], "segs": []}, "bytes": 6}])
+        json!([{"type": "prose", "doc": {"blocks": [{"t": "p", "k": ["回复"]}], "segs": []}, "more": more}])
     );
 
     let dev = env(

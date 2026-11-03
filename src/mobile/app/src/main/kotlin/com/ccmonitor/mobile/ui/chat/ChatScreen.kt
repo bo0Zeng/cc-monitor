@@ -25,11 +25,13 @@ import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
+import com.ccmonitor.mobile.ui.claude.LocalMdDoc
 import com.ccmonitor.mobile.ui.claude.LocalSaidImages
 import com.ccmonitor.mobile.ui.claude.LocalSegHl
 import kotlinx.coroutines.flow.drop
@@ -61,8 +63,10 @@ fun ChatScreen(
     loadImage: suspend (SaidImage) -> ByteArray? = { null },
     /** 助手正文一段的代码高亮：建好那一段时拉（拉不到 ⇒ `null`，照纯字）。 */
     loadHl: suspend (List<HlCode>) -> SegHl? = { null },
+    /** 思考展开那一刻：原文交那台解析成块树（问不到 ⇒ `null`，照原文的字）。 */
+    loadDoc: suspend (String) -> Doc? = { null },
 ) {
-    CompositionLocalProvider(LocalSaidImages provides loadImage, LocalSegHl provides loadHl) {
+    CompositionLocalProvider(LocalSaidImages provides loadImage, LocalSegHl provides loadHl, LocalMdDoc provides loadDoc) {
         Column(modifier.fillMaxSize()) {
             ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
             needs()

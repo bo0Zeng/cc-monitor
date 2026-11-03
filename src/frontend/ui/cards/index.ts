@@ -471,7 +471,7 @@ function renderBlock(
 ): HTMLElement | null {
   switch (block.type) {
     case "prose":
-      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy, hlPullOf(ctx.origin));
+      return buildProseBlock(block.doc, block.more, ctx.lazy, hlPullOf(ctx.origin));
     case "text":
       return buildPlainTextBlock(block.text);
     case "thinking": {
@@ -929,6 +929,8 @@ function buildResultBody(
 
   let textBodyEl: HTMLElement | null = null;
   let mdBodyEl: HTMLElement | null = null;
+  // 纯文 · Markdown 两种身子共用那一颗「展开 {大小}」。
+  const showAll = copyText("cards.text.showAll", { size });
   let currentMode: "text" | "md" =
     loadRenderModePreference(toolName) ?? (mdByDefault ? "md" : "text");
 
@@ -940,10 +942,10 @@ function buildResultBody(
 
     bodyHost.replaceChildren();
     if (mode === "text") {
-      if (!textBodyEl) textBodyEl = buildTextBody(text, size);
+      if (!textBodyEl) textBodyEl = buildTextBody(text, showAll);
       bodyHost.appendChild(textBodyEl);
     } else {
-      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text, size, origin);
+      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text, showAll, origin);
       bodyHost.appendChild(mdBodyEl);
     }
   };
@@ -995,11 +997,11 @@ function onceVisible(el: HTMLElement): Promise<void> {
 
 /**
  * 一个回复正文块：照后端交的树排（`md-view.ts`），只排第 0 段；树分了段 ⇒ 下面一颗「展开 {全文大小}」，
- * 点了余下的一段一跳地补（不卡输入）。分在哪几块是后端定的（`Doc.segs`）。`size` 是后端交的整块字节数写成的那一格。
+ * 点了余下的一段一跳地补（不卡输入）。分在哪几块是后端定的（`Doc.segs`）。`showAll` 是按钮上那一格写好的字（回复正文是后端交的 `Block::Prose.more`）。
  * 急路（实时）当场排公式；惰路（批量重放）留占位，卡进视口由 `enhanceCard` 补。点开补的那几段就在眼前，当场排。
  * 代码高亮按段问那台后端（`prose-hl`）：急路建好就问；惰路等这块进了视口才问（批量建几百张卡不一齐发）。
  */
-function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined, pull: HlPull, askRefs = true): HTMLElement {
+function buildProseBlock(doc: Doc, showAll: string, lazy: boolean | undefined, pull: HlPull, askRefs = true): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
   const lazyPull: HlPull = lazy ? (codes) => onceVisible(div).then(() => pull(codes)) : pull;
@@ -1019,7 +1021,7 @@ function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined, pull
     const more = document.createElement("button");
     more.type = "button";
     more.className = "block-body-show-full";
-    more.textContent = copyText("cards.text.showAll", { size });
+    more.textContent = showAll;
     more.addEventListener(
       "click",
       () => {
@@ -1057,7 +1059,7 @@ function buildPlainTextBlock(text: string): HTMLElement {
 }
 const LARGE_TEXT_HEAD_LINES = 800;
 
-function buildTextBody(text: string, size: string): HTMLElement {
+function buildTextBody(text: string, showAll: string): HTMLElement {
   const pre = document.createElement("pre");
   pre.className = "block-body block-body-result";
   // 大 output 截断：避免一次性塞几百 K 到 DOM
@@ -1070,7 +1072,7 @@ function buildTextBody(text: string, size: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    expand.textContent = copyText("cards.text.showAll", { size });
+    expand.textContent = showAll;
     expand.addEventListener(
       "click",
       () => {
@@ -1107,11 +1109,11 @@ function buildThinkingBody(text: string, origin: Machine): HTMLElement {
  * 工具结果的 Markdown 模式：原文交后端解析（`md-doc {as: tool_result}`：Read / Grep 那种行号前缀后端先剥），回来的树照回复正文卡那样排
  * （长的按 `segs` 分段、只排第 0 段，下面一颗「展开 {大小}」）。没问成 ⇒ 照原文的字。
  */
-function buildMarkdownBody(text: string, size: string, origin: Machine): HTMLElement {
+function buildMarkdownBody(text: string, showAll: string, origin: Machine): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-body block-body-result block-body-md";
   fetchDoc(origin, text, "tool_result").then(
-    (doc) => div.replaceChildren(buildProseBlock(doc, size, false, hlPullOf(origin), false)),
+    (doc) => div.replaceChildren(buildProseBlock(doc, showAll, false, hlPullOf(origin), false)),
     (e: unknown) => {
       console.warn("[md-doc] 没问成：", e);
       div.textContent = text;
@@ -1146,7 +1148,7 @@ function buildUnrecordedThinking(): HTMLElement {
 
 /**
  * 构造 <details><summary>summaryText</summary><body></body></details>。
- * body 用 lazy 函数生成，首次展开时才渲染（renderMarkdown 不便宜）。
+ * body 用 lazy 函数生成，首次展开时才建（照树排一块正文不便宜）。
  */
 function makeCollapsible(
   cls: string,

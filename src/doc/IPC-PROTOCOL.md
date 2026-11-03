@@ -217,7 +217,7 @@
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `unread`（这一家的这一行认不出：没见过的类型 · 见过的类型形状变了） | `why`（闭集 `unknownType` `parseFailed`）· `type`（那一行自己说的类型原样，只当标签、出口不按它取字；没有 ⇒ `null`）· `text`（写好的一句）· `tone`（恒 `warn`）· `excerpt`（原文截到 400 字节、按字符截，给［复制详情］，出口照抄不解析）· `count`（并了几条：出记录页那一遍把相邻、原因与类型都一样的并成一条；实时 `line` 帧每行一条、恒 1） |
 
-内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text, bytes}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError, bytes}` · `image {source}`（`bytes` ＝ UTF-8 字节，结果块是内容各块之和）。
+内容块 `blocks[]`（两家共有的词，按 `type`）：`prose {doc, more}`（助手正文：后端解析好的块树 ＋ 写好的「展开 {大小}」那一格，两端照放）· `text {text, bytes}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError, bytes}` · `image {source}`（`bytes` ＝ UTF-8 字节，结果块是内容各块之和）。
 
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
 - 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch"]}`；

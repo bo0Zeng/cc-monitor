@@ -23,7 +23,7 @@ class ReadingSearchTest {
                 ),
                 emptyList(),
             )
-        assertEquals("md body\n把 <Composer> 换掉", RenderUnit.AssistantMarkdown("k", doc, null).searchableText())
+        assertEquals("md body\n把 <Composer> 换掉", RenderUnit.AssistantMarkdown("k", doc, "", null).searchableText())
     }
 
     @Test fun searchableTextToolCallIncludesNameSummaryResult() {

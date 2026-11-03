@@ -240,16 +240,15 @@ export function withSession(p: RigPayload, sessionId: string): RigPayload {
 
 /**
  * 一条回复记录（清单口径里它必须被排掉，判据要拿它当反例）。正文是后端交的块树（`prose`）：
- * 给一句字 ⇒ 一段落（照字出现，不经解析），`bytes` 是那句字的字节数；要别的块（公式 · 代码块）就直接给树。
+ * 给一句字 ⇒ 一段落（照字出现，不经解析）；要别的块（公式 · 代码块）就直接给树。「展开」那一格留空（只在树分了段时出）。
  */
 export function assistantLine(seq: number, id: string, body: string | Doc): RigPayload {
   const doc: Doc = typeof body === "string" ? { blocks: [{ t: "p", k: [body] }], segs: [] } : body;
-  const bytes = typeof body === "string" ? new TextEncoder().encode(body).length : 0;
   return line(seq, {
     t: "reply",
     id,
     at: atOf(seq),
-    blocks: [{ type: "prose", doc, bytes }],
+    blocks: [{ type: "prose", doc, more: "" }],
     autoReply: false,
     draw: "card",
     human: false,
