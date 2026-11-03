@@ -56,20 +56,7 @@ fn proc_net_tcp_rows_read_back_to_addresses_ports_and_inodes() {
     );
 }
 
-/// ★ `/proc/<pid>/stat` 那一行 ⇒ 父进程号 · 名字 · 启动时刻；名字里带空格与括号也认得对（找最后一个右括号）。
-#[test]
-fn proc_stat_reads_parent_name_and_start_even_with_odd_names() {
-    let line = "4242 (my (odd) term) S 4200 4242 4242 34816 4242 4194304 1 0 0 0 0 0 0 0 20 0 1 0 987654 1000 100";
-    assert_eq!(
-        parse_stat(line),
-        Some(StatLine {
-            ppid: 4200,
-            name: "my (odd) term".into(),
-            start: 987654,
-        })
-    );
-    assert_eq!(parse_stat("4242 no-parens S 1"), None);
-}
+// `/proc/<pid>/stat` 那一行怎么切（名字里带空格与括号 · 缺栏）的判据住 `tests/common/platform-core/lib_tests.rs`。
 
 /// ★ `socket:[N]` 那种链接 ⇒ N；别的链接（文件 · 管道 · anon_inode）不是。
 #[test]

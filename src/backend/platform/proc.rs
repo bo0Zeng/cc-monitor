@@ -47,28 +47,10 @@ pub fn pid_alive(pid: u32) -> bool {
     }
 }
 
-/// Parse the `starttime` (field 22) out of a `/proc/<pid>/stat` line.
-///
-/// **The comm gotcha**: field 2 is `(comm)` and the executable name can contain
-/// spaces and parentheses (e.g. `(my proc)` or `((odd))`). Splitting the whole
-/// line on whitespace is therefore wrong. The robust parse — used by ps/htop —
-/// is to find the **last** `')'`, then count fields in the remainder: the first
-/// token after it is field 3 (`state`), so `starttime` (field 22) is token index
-/// `22 - 3 = 19` (0-based) of the post-`)` whitespace split.
-///
-/// Only called from the Linux branch of [`proc_starttime`] (and by unit tests on
-/// every platform); on a non-Linux build the function body is unreferenced.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+/// `/proc/<pid>/stat` 一行里的起始时刻（第 22 栏）。切法只在 `platform_core::proc::parse_stat`（monitor 同一份）；
+/// 这一个只剩 `observe/watcher_tests.rs` 那四条在叫，那四条挪进 `tests/common/platform-core/lib_tests.rs` 之后删。
 pub fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
-    /// 0-based index of `starttime` (field 22) within the tokens that follow the
-    /// closing paren of `comm` (field 3 = `state` is token 0).
-    const STARTTIME_IDX_AFTER_COMM: usize = 22 - 3;
-    let after_comm = &stat[stat.rfind(')')? + 1..];
-    after_comm
-        .split_whitespace()
-        .nth(STARTTIME_IDX_AFTER_COMM)?
-        .parse::<u64>()
-        .ok()
+    platform_core::proc::parse_stat(stat).map(|s| s.start)
 }
 
 /// 读一次 `/proc/<pid>/environ` 抠某个键的三态结果。
@@ -162,8 +144,7 @@ pub fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 pub fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
-        parse_starttime_from_stat(&stat)
+        stat_of(pid).map(|s| s.start)
     }
     #[cfg(windows)]
     {
@@ -178,12 +159,11 @@ pub fn proc_starttime(pid: u32) -> Option<u64> {
 
 /// 这个进程的父进程号（读不到 · 这个平台不知道 ⇒ `None`）。agent 自问（`history/session_self.rs`）往上找会话用。
 ///
-/// Linux：`/proc/<pid>/stat` 第 4 栏（名字里的括号照 [`super::linux_tables::parse_stat`] 那一处跳过）。Windows：进程快照里那一格（`win_tables::parent_of`）。
+/// Linux：`/proc/<pid>/stat` 第 4 栏（[`stat_of`]）。Windows：进程快照里那一格（`win_tables::parent_of`）。
 pub fn parent_of(pid: u32) -> Option<u32> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
-        super::linux_tables::parse_stat(&stat).map(|s| s.ppid)
+        stat_of(pid).map(|s| s.ppid)
     }
     #[cfg(windows)]
     {
@@ -202,8 +182,7 @@ pub fn parent_of(pid: u32) -> Option<u32> {
 pub fn has_controlling_tty(pid: u32) -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
-        let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
-        parse_tty_nr_from_stat(&stat).map(|n| n != 0)
+        stat_of(pid).map(|s| s.tty_nr != 0)
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -212,16 +191,11 @@ pub fn has_controlling_tty(pid: u32) -> Option<bool> {
     }
 }
 
-/// `tty_nr`（第 7 栏）—— 与 [`parse_starttime_from_stat`] 同一个切法：从**最后一个** `)` 之后数（`comm` 里可以有空格与括号）。
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) fn parse_tty_nr_from_stat(stat: &str) -> Option<i64> {
-    const TTY_NR_IDX_AFTER_COMM: usize = 7 - 3;
-    let after_comm = &stat[stat.rfind(')')? + 1..];
-    after_comm
-        .split_whitespace()
-        .nth(TTY_NR_IDX_AFTER_COMM)?
-        .parse::<i64>()
-        .ok()
+/// 读一个进程的 `/proc/<pid>/stat`（有上限）；怎么切只在 `platform_core::proc::parse_stat`（monitor 同一份）。
+#[cfg(target_os = "linux")]
+fn stat_of(pid: u32) -> Option<platform_core::proc::Stat> {
+    let stat = Ro::read_string_capped(format!("/proc/{pid}/stat"), PROC_FILE_CAP).ok()?;
+    platform_core::proc::parse_stat(&stat)
 }
 
 /// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.

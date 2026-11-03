@@ -9,7 +9,6 @@
 import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
 import { askRefs } from "./plan-refs";
-import { applyIntrinsicSize } from "./height-estimate";
 import { isRetryBar, mergeRetry } from "./cards/api-error";
 import { buildInjectedLine } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
@@ -75,12 +74,12 @@ export function renderStreamRecord(
 // | 子段 | 覆盖 |
 // |---|---|
 // | `render`   | `renderMessage()`（O(len) 的活都在这里） |
-// | `estimate` | `markCardId` ＋ `onCardRendered` ＋ `applyIntrinsicSize` |
+// | `mark`     | `markCardId` ＋ `onCardRendered` |
 // | `mount`    | `timeline.insert` ＋ `observeForEnhance` |
 //
 // `total` 是入口出口真夹的，`total − Σ三段` 是分派开销与调用方回调，不摊进任何一段。
 // 默认关：分桶要的字节数只能 `JSON.stringify(record)` 现算（本身就是 O(len)）；探针 `null` 时热路径只多一次布尔判断。
-// 开了之后字节数、卡型（`card`：第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard` 同口径）、
+// 开了之后字节数、卡型（`card`：第一个 `card-*` 类名）、
 // 物化进 DOM 的字符数（`domChars`）都在总时刻取完之后才算，不污染分段读数。
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -99,11 +98,11 @@ export interface RenderCostSample {
   domChars: number;
   /** ① `renderMessage()` */
   render: number;
-  /** ② 估高（markCardId + onCardRendered + applyIntrinsicSize） */
-  estimate: number;
+  /** ② 标卡（markCardId + onCardRendered） */
+  mark: number;
   /** ③ DOM 挂载（timeline.insert + observeForEnhance） */
   mount: number;
-  /** 入口出口夹出来的总 wall time。`≥ render+estimate+mount` */
+  /** 入口出口夹出来的总 wall time。`≥ render+mark+mount` */
   total: number;
 }
 
@@ -157,7 +156,7 @@ function recordBytes(record: LineRecord): number {
   }
 }
 
-/** 卡型：第一个 `card-*` 类名（同 `height-estimate.ts::warnUnknownCard` 的口径）。 */
+/** 卡型：第一个 `card-*` 类名（没有就是标签名）。 */
 function cardTypeOf(el: HTMLElement): string {
   return Array.from(el.classList).find((c) => c.startsWith("card-")) ?? `<${el.tagName.toLowerCase()}>`;
 }
@@ -175,8 +174,7 @@ function domCharsOf(els: readonly Element[]): number {
  *
  * 秤 1 的仪表夹在本函数的入口与每一条 `return` 之前（见上方那段）。
  * **仪表不改渲染行为**：探针关着时每处只多一次 `probe ?` 布尔判断，
- * 开着时也只是多读几次 `performance.now()`，DOM 产物一个字节都不动
- * （`tests/frontend/ui/scale2-height-truth.vitest.ts` 的 DOM 指纹格钉着这一条）。
+ * 开着时也只是多读几次 `performance.now()`，DOM 产物一个字节都不动。
  */
 export function renderContentRecord(
   payload: JsonlLinePayload,
@@ -192,12 +190,12 @@ export function renderContentRecord(
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx, payload.seq);
   const tRender = probe ? performance.now() : 0;
-  markToolAnchors(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage；秤 2 的 DOM 指纹也只认它的产物）
+  markToolAnchors(message, ctx); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
 
   switch (result.kind) {
     case "skip": {
       // 系统注入：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
-      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合（收场通知并不并一组由后端判，同一条规矩）。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
+      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合（收场通知并不并一组由后端判，同一条规矩）。不进 `renderMessage`。
       const sp = message.draw === "strip" && message.t === "said" ? message.who.speaker : undefined;
       const injected = sp !== undefined && "body" in sp ? sp.body : undefined;
       if (typeof injected === "string") {
@@ -213,7 +211,7 @@ export function renderContentRecord(
           card: "skip",
           domChars: 0,
           render: tRender - t0,
-          estimate: 0,
+          mark: 0,
           mount: 0,
           total,
         });
@@ -233,8 +231,7 @@ export function renderContentRecord(
       // 普通卡：直接 markCardId + timeline.insert
       markCardId(result.element, message);
       sink.onCardRendered?.(result.element, message); // 查看器挂分支按钮
-      applyIntrinsicSize(result.element); // content-visibility 的估高初值
-      const tEstimate = probe ? performance.now() : 0;
+      const tMark = probe ? performance.now() : 0;
       sink.timeline.insert({
         seq: payload.seq,
         element: result.element,
@@ -259,8 +256,8 @@ export function renderContentRecord(
           card: cardTypeOf(result.element),
           domChars: domCharsOf([result.element]),
           render: tRender - t0,
-          estimate: tEstimate - tRender,
-          mount: tMount - tEstimate,
+          mark: tMark - tRender,
+          mount: tMount - tMark,
           total,
         });
       }
@@ -270,8 +267,7 @@ export function renderContentRecord(
     case "steps": {
       const card = buildStepsCard(result.units);
       markCardId(card, message);
-      applyIntrinsicSize(card);
-      const tEstimate = probe ? performance.now() : 0;
+      const tMark = probe ? performance.now() : 0;
       sink.timeline.insert({ seq: payload.seq, element: card, kind: "card" });
       if (sink.enhanceRoot) observeForEnhance(card, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
@@ -283,8 +279,8 @@ export function renderContentRecord(
           card: cardTypeOf(card),
           domChars: domCharsOf([card]),
           render: tRender - t0,
-          estimate: tEstimate - tRender,
-          mount: tMount - tEstimate,
+          mark: tMark - tRender,
+          mount: tMount - tMark,
           total,
         });
       }
@@ -296,7 +292,7 @@ export function renderContentRecord(
 /**
  * **落点标记**：一次工具调用画成的那一块记 `data-tool`（调用 id）。查找 · 搜索的命中落在哪次调用的卡里是核心说的
  * （命中的 `tool`，`search_query.rs`），`revealCard` 按它找这一块；调用那一块还没到、结果先画成独立一条的，那一条也记
- * （收尾对账注入之后它被摘掉，落到调用那一块上）。放在管线这一层、不放进 `renderMessage`：后者的产物是秤 2 金标准的 DOM 指纹。
+ * （收尾对账注入之后它被摘掉，落到调用那一块上）。放在管线这一层、不放进 `renderMessage`（那里只管把一条记录画成卡）。
  */
 function markToolAnchors(record: LineRecord, ctx: RenderContext): void {
   if (record.t !== "reply" && record.t !== "said") return;

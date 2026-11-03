@@ -14,6 +14,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { nonEmpty } from "../../test-support/non-empty";
+import { productionTsFiles } from "../../test-support/production-sources";
+import { stripComments } from "../../test-support/strip-comments";
 
 const repo = path.resolve(__dirname, "../../..");
 const css = readFileSync(path.join(repo, "src/frontend/ui/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -77,5 +79,16 @@ describe("② 流里的行不挂 content-visibility", () => {
       const d = decls(sel);
       expect([d.has("content-visibility"), d.has("contain-intrinsic-size")], sel).toEqual([false, false]);
     }
+  });
+
+  it("建卡不往 style 里写 contain-intrinsic-size（行不挂 content-visibility，写了也不起作用）", () => {
+    const files = productionTsFiles("src/frontend");
+    nonEmpty(files);
+    const SET_CIS = /["'`]contain-intrinsic-size["'`]|\.containIntrinsicSize\s*=/;
+    const bad = files
+      .filter((f) => !f.file.endsWith(".d.css.ts"))
+      .filter((f) => SET_CIS.test(stripComments(f.text, "ts")))
+      .map((f) => f.file);
+    expect(bad, "界面源码在往 style 里写 contain-intrinsic-size").toEqual([]);
   });
 });
