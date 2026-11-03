@@ -67,7 +67,7 @@ pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
 
 /// 一帧画面（`view` 序列化之后）的字节上限：超了不推，改推收尾帧 `too_big`。
 /// 依据：200 列 × 60 行、每格都着色的满屏约 150 KiB；512 KiB 留三倍多余量，又远小于客户端一行的上限（64 MiB）。
-pub const SCREEN_FRAME_CAP: relay_route_core::Cap = relay_route_core::Cap {
+pub(crate) const SCREEN_FRAME_CAP: relay_route_core::Cap = relay_route_core::Cap {
     bytes: 512 * 1024,
     over: relay_route_core::Over::Reject,
 };
@@ -82,7 +82,7 @@ const MAX_TICKET_BYTES: usize = 128;
 const MIN_TMUX: (u32, u32) = (3, 2);
 
 /// `#{version}` 够不够（`3.6` · `3.2a` · `next-3.4` 认；`3.1c` · `master` · 空串不认）。
-pub(crate) fn tmux_version_ok(v: &str) -> bool {
+pub fn tmux_version_ok(v: &str) -> bool {
     let v = v.trim().trim_start_matches("next-");
     let mut it = v.split('.');
     let major = it.next().and_then(|m| m.parse::<u32>().ok());
@@ -133,14 +133,14 @@ fn lock(t: &Tickets) -> std::sync::MutexGuard<'_, Book> {
 }
 
 /// 订阅那一问占上的位（起好 tmux 之后凭它登记；起不成凭它让出）。
-pub(crate) struct Seat {
+pub struct Seat {
     ticket: String,
     n: u64,
 }
 
 /// 本连接的订阅票表。随连接的读循环一起死（最后一份放手 ⇒ 全部退订）。可以 `clone`（起订阅那一下在阻塞线程池里做，带一份过去）。
 #[derive(Clone)]
-pub(crate) struct Desk(Arc<Inner>);
+pub struct Desk(Arc<Inner>);
 
 struct Inner {
     replies: mpsc::Sender<Frame>,
@@ -167,32 +167,32 @@ fn ticket_ok(t: &str) -> Result<(), Said> {
 
 /// `terminal-follow` 的入参：订阅票 ＋ 目标（`terminal` 与 `sid` 恰给一个）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FollowReq {
+pub struct FollowReq {
     /// 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它。
     pub(crate) ticket: String,
     /// 目标：名单里的句柄（与 `sid` 恰给一个）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) terminal: Option<String>,
     /// 目标：会话 id（与 `terminal` 恰给一个）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) sid: Option<String>,
 }
 
 /// `terminal-follow-ack` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AckReq {
-    pub(crate) ticket: String,
+pub struct AckReq {
+    pub ticket: String,
     /// 画完的那一帧的序号。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) seq: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub seq: u64,
 }
 
 /// `terminal-unfollow` 的入参住 cmd-wire（壳替界面照同一份发）。
@@ -214,17 +214,17 @@ const FOLLOW_CODES: &[&str] = &[
 /// `terminal-follow` 订不上：码 ＋ 那一句（原话跟着那一句走）。投出去时带上实时那一格落在「只能快照」还是「停了」
 /// （[`live_after_refusal`]；入参形状不对那一种不带）。
 #[derive(Debug)]
-pub(crate) struct FollowErr(Said);
+pub struct FollowErr(Said);
 
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
-    pub(crate) fn of(e: Said) -> FollowErr {
+    pub fn of(e: Said) -> FollowErr {
         crate::wire::typed::of_fail_said(e, |said| FollowErr(Said::new("unobservable", said)), said)
     }
 }
 
 /// 订实时画面被拒成 `code` 时给人看的那一句；太老的 tmux（带版本）与满了（带上限）处理器那句就是成品 ⇒ `None`。
-pub(crate) fn said(code: &str) -> Option<String> {
+pub fn said(code: &str) -> Option<String> {
     Some(match code {
         "tmux_too_old" | "too_many_follows" => return None,
         "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
@@ -260,18 +260,18 @@ impl crate::wire::typed::Codes for FollowErr {
 
 crate::wire::typed::codes! {
     /// `terminal-follow-ack` 的码：不认的票（停了 / 没订过）。
-    pub(crate) enum AckErr {
+    pub enum AckErr {
         NotKnown = "not_known",
     }
 }
 
 crate::wire::typed::codes! {
     /// `terminal-unfollow` 没有别的码（幂等）。
-    pub(crate) enum UnfollowErr {}
+    pub enum UnfollowErr {}
 }
 
 /// `terminal-follow`（帧面硬臂：要碰本连接的票表与应答通道；订上那一下起几个 tmux ⇒ 挪进阻塞线程池）。
-pub(crate) struct TerminalFollow;
+pub struct TerminalFollow;
 
 impl crate::wire::typed::Command for TerminalFollow {
     const NAME: &'static str = "terminal-follow";
@@ -281,7 +281,7 @@ impl crate::wire::typed::Command for TerminalFollow {
 }
 
 /// `terminal-follow-ack`（帧面硬臂，就地记账）。
-pub(crate) struct TerminalFollowAck;
+pub struct TerminalFollowAck;
 
 impl crate::wire::typed::Command for TerminalFollowAck {
     const NAME: &'static str = "terminal-follow-ack";
@@ -291,7 +291,7 @@ impl crate::wire::typed::Command for TerminalFollowAck {
 }
 
 /// `terminal-unfollow`（帧面硬臂，就地记账、幂等）。
-pub(crate) struct TerminalUnfollow;
+pub struct TerminalUnfollow;
 
 impl crate::wire::typed::Command for TerminalUnfollow {
     crate::wire::typed::by_call!(UnfollowReq);
@@ -300,17 +300,17 @@ impl crate::wire::typed::Command for TerminalUnfollow {
 
 /// 订不上之后实时那一格落在哪。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "FollowLive"
+        rename = "FollowLive",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Live {
+pub enum Live {
     /// 这台只能快照（没装 tmux · tmux 太老）。
     SnapshotOnly,
     /// 别的。
@@ -319,21 +319,21 @@ pub(crate) enum Live {
 
 /// `terminal-follow` 订不上时失败应答的 `data`（订上了不回 `data`：画面走 `terminal_screen` 帧）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "FollowRefused"
+        rename = "FollowRefused",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
-pub(crate) struct Refused {
+pub struct Refused {
     pub(crate) live: Live,
 }
 
 /// 订不上（码）⇒ 失败应答的 `data`：`{live}`。
-pub(crate) fn live_after_refusal(code: &str) -> Refused {
+pub fn live_after_refusal(code: &str) -> Refused {
     Refused {
         live: match code {
             "tmux_too_old" | "no_tmux" => Live::SnapshotOnly,
@@ -343,7 +343,7 @@ pub(crate) fn live_after_refusal(code: &str) -> Refused {
 }
 
 /// 停因 ⇒ 给人看的那一句（进 `terminal_follow_end` 的 `said`）。
-pub(crate) fn end_said(why: FollowEnd) -> String {
+pub fn end_said(why: FollowEnd) -> String {
     match why {
         FollowEnd::Gone => copy_text("beTermFollow.end.gone", &[]),
         FollowEnd::Lost => copy_text("terminal.liveWhy.lost", &[]),
@@ -362,11 +362,11 @@ fn end_of<T>(seen: &Result<T, Said>) -> FollowEnd {
 }
 
 impl Desk {
-    pub(crate) fn new(replies: mpsc::Sender<Frame>) -> Desk {
+    pub fn new(replies: mpsc::Sender<Frame>) -> Desk {
         Desk::on_socket(replies, None)
     }
 
-    pub(crate) fn on_socket(replies: mpsc::Sender<Frame>, socket: Option<String>) -> Desk {
+    pub fn on_socket(replies: mpsc::Sender<Frame>, socket: Option<String>) -> Desk {
         Desk(Arc::new(Inner {
             replies,
             socket,
@@ -375,7 +375,13 @@ impl Desk {
     }
 
     /// 三条命令之一 ⇒ 一帧应答（判据与 CLI 式调用用；帧面分派里 `terminal-follow` 走阻塞线程池，见 [`Desk::follow`]）。
-    pub(crate) fn answer_wire(&self, cmd: &str, id: &str, args: &Value, tz: &crate::Tz) -> Frame {
+    pub fn answer_wire(
+        &self,
+        cmd: &str,
+        id: &str,
+        args: &Value,
+        tz: &crate::common::time::Tz,
+    ) -> Frame {
         use crate::wire::typed::answer;
         match cmd {
             FOLLOW => {
@@ -401,7 +407,7 @@ impl Desk {
     /// 订上：占位 · 认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 登记 · 起订阅线程（它当场推第一帧）。
     /// 会起几个 tmux ⇒ 帧面放进阻塞线程池。这张票退过 ⇒ 什么都不起、回 `Ok`。
     /// `tz` ＝ 看的那一台的时区（订阅那一问带来的）：之后推的每一帧的抓屏时刻按它写。
-    pub(crate) fn follow(&self, req: &FollowReq, tz: &crate::Tz) -> Result<(), Said> {
+    pub fn follow(&self, req: &FollowReq, tz: &crate::common::time::Tz) -> Result<(), Said> {
         let Some(seat) = self.reserve(&req.ticket)? else {
             return Ok(());
         };
@@ -413,7 +419,7 @@ impl Desk {
     }
 
     /// 占位：查重 · 查上限 · 占上（一把锁里）。这张票退过 ⇒ `None`（订阅那一问到得比退订晚，不必再起）。
-    fn reserve(&self, ticket: &str) -> Result<Option<Seat>, Said> {
+    pub fn reserve(&self, ticket: &str) -> Result<Option<Seat>, Said> {
         ticket_ok(ticket)?;
         let ticket = ticket.to_string();
         let mut g = lock(&self.0.tickets);
@@ -440,7 +446,7 @@ impl Desk {
     }
 
     /// 让出占位（起不成）：还是这一次占的那一格才摘。
-    fn release(&self, seat: &Seat) {
+    pub fn release(&self, seat: &Seat) {
         let mut g = lock(&self.0.tickets);
         if matches!(g.slots.get(&seat.ticket), Some(Slot::Starting(n)) if *n == seat.n) {
             g.slots.remove(&seat.ticket);
@@ -448,7 +454,12 @@ impl Desk {
     }
 
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
-    fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), Said> {
+    pub fn take_seat(
+        &self,
+        seat: &Seat,
+        req: &FollowReq,
+        tz: &crate::common::time::Tz,
+    ) -> Result<(), Said> {
         let me = &self.0;
         if let Some(sock) = terminals::hosted_sock_of(req.terminal.as_deref(), req.sid.as_deref())?
         {
@@ -494,7 +505,12 @@ impl Desk {
 
     /// 托管那一形凭占位起：经托管口开一条只看的连接（`hello{want: view, who: backend}`），读线记「变了」；
     /// 抓屏照旧走托管口 `capture`，帧里带此刻的持有者。托管口连接失败 ⇒ `not_known`（同 tmux 那一行不在）。不设定时器：同 tmux 那一形，一次只有一帧在送。
-    fn take_hosted(&self, seat: &Seat, sock: &std::path::Path, tz: &crate::Tz) -> Result<(), Said> {
+    fn take_hosted(
+        &self,
+        seat: &Seat,
+        sock: &std::path::Path,
+        tz: &crate::common::time::Tz,
+    ) -> Result<(), Said> {
         let me = &self.0;
         let (conn, held, buf) = open_hosted(sock)?;
         let held = Arc::new(Mutex::new(held));
@@ -538,12 +554,12 @@ impl Desk {
     }
 
     /// 判据那一口：直接订托管口 `sock` 那个终端（不经名单认）。
-    #[cfg(test)]
-    pub(crate) fn follow_hosted_at(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn follow_hosted_at(
         &self,
         ticket: &str,
         sock: &std::path::Path,
-        tz: &crate::Tz,
+        tz: &crate::common::time::Tz,
     ) -> Result<(), Said> {
         let Some(seat) = self.reserve(ticket)? else {
             return Ok(());
@@ -556,7 +572,11 @@ impl Desk {
     }
 
     /// 帧面那一口：[`Desk::follow`] 挪进阻塞线程池做（起 tmux 那几下不占 worker，同换号重启那几步）。
-    pub(crate) async fn follow_off_worker(self, req: FollowReq, tz: crate::Tz) -> Result<(), Said> {
+    pub async fn follow_off_worker(
+        self,
+        req: FollowReq,
+        tz: crate::common::time::Tz,
+    ) -> Result<(), Said> {
         tokio::task::spawn_blocking(move || self.follow(&req, &tz))
             .await
             .unwrap_or_else(|e| {
@@ -569,7 +589,7 @@ impl Desk {
     }
 
     /// 第 `seq` 帧画完了。不认的票（停了 / 没订过）⇒ `not_known`。
-    pub(crate) fn ack(&self, req: &AckReq) -> Result<(), Said> {
+    pub fn ack(&self, req: &AckReq) -> Result<(), Said> {
         ticket_ok(&req.ticket)?;
         match lock(&self.0.tickets).slots.get(&req.ticket) {
             Some(Slot::On(f)) if f.tx.send(Ev::Ack(req.seq)).is_ok() => Ok(()),
@@ -681,7 +701,7 @@ const REDRAW_WAIT: std::time::Duration = std::time::Duration::from_millis(2_000)
 
 /// 一次性地看一个终端「变没变」：起一个控制模式客户端（同实时预览那一个），之后每问一次 [`Watch::changed`] 等下一次变化，
 /// 带期限 [`REDRAW_WAIT`]（一次一等、不循环；问几次由调用方定、有上限）。放手 ⇒ 关输入等它自己退（不杀，同 [`detach`]）。
-pub(crate) struct Watch {
+pub struct Watch {
     proc: Option<crate::platform::child::Streaming>,
     rx: smpsc::Receiver<Ev>,
     pending: Arc<AtomicBool>,
@@ -690,7 +710,7 @@ pub(crate) struct Watch {
 
 impl Watch {
     /// 起：挂在那个终端所在的 tmux 会话上，只看它那个窗格的输出（没有窗格 ⇒ 整个会话）。
-    pub(crate) fn open(socket: Option<&str>, t: &terminals::FollowTarget) -> Result<Watch, Said> {
+    pub fn open(socket: Option<&str>, t: &terminals::FollowTarget) -> Result<Watch, Said> {
         let (proc, out) = open_client(socket, &t.session)?;
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
@@ -704,7 +724,7 @@ impl Watch {
     }
 
     /// 忘掉此刻之前报过的变化（按键之前调：之后等到的才是按键带来的）。
-    pub(crate) fn forget(&mut self) {
+    pub fn forget(&mut self) {
         while let Ok(ev) = self.rx.try_recv() {
             if matches!(ev, Ev::Closed) {
                 self.closed = true;
@@ -718,7 +738,7 @@ impl Watch {
         clippy::disallowed_methods,
         reason = "切权限档（`session-permission`）按一下键之后等那个终端重画的一次有界等待（`terminal_follow::Watch::changed`）：变化由 tmux 控制模式客户端的 `%output` …"
     )]
-    pub(crate) fn changed(&mut self) -> bool {
+    pub fn changed(&mut self) -> bool {
         if self.closed {
             return false;
         }
@@ -775,10 +795,8 @@ fn spawn_reader(
                     .next()
                     .unwrap_or_default();
                 pane.as_deref().is_none_or(|p| p.as_bytes() == who)
-            } else if line.starts_with(b"%layout-change ") {
-                true
             } else {
-                false
+                line.starts_with(b"%layout-change ")
             };
             if !is_change {
                 continue;
@@ -798,7 +816,8 @@ fn spawn_reader(
 ///   - 控制模式客户端被 SIGKILL 掉，哪怕一次只有一个：六台 server 四百轮里没了五台；
 ///   - 两个以上控制模式客户端同时起落（各自关输入正常断开）：六台全没（每台百来轮）；
 ///   - 关输入断开、起落一个一个来：同样的负载（十组压满 CPU）、六台各四百多次起落，一台没崩。
-///   ⇒ 不杀、只关输入（[`detach`]）；起与收都排在这把锁后面。锁是进程级的（判据各起各的隔离 server，也一起排，慢不了几毫秒）。
+///
+/// ⇒ 不杀、只关输入（[`detach`]）；起与收都排在这把锁后面。锁是进程级的（判据各起各的隔离 server，也一起排，慢不了几毫秒）。
 static SHIFT: Mutex<()> = Mutex::new(());
 
 /// 读到 attach 那一问答完：`%end`（接上了）· `%error`（没接上，客户端随即退出）· 读到头（已经退了）。之前那几行（`%begin`）不要。
@@ -844,6 +863,10 @@ fn held_by(h: crate::host::managed::wire::Holder) -> crate::host::HeldBy {
 }
 
 /// 开一条只看的连接、读到 `welcome`（此刻的持有者）；之后读那一半不设期限（有字节才醒）。交回连接 · 持有者 · 读剩下的半帧。
+#[expect(
+    clippy::type_complexity,
+    reason = "交回的三样只在这一处拆开用，另起类型名只为过这条提示"
+)]
 fn open_hosted(
     sock: &std::path::Path,
 ) -> Result<
@@ -923,7 +946,10 @@ enum Source {
 
 impl Source {
     /// 这一刻那一屏 ＋ 输入那一格（tmux 恒 `shared`；托管 ＝ 读线记下的持有者，`mine` 按桌面那一问算）。
-    fn shot(&self, tz: &crate::Tz) -> Result<(cmd_wire::session::Preview, TermInput), Said> {
+    fn shot(
+        &self,
+        tz: &crate::common::time::Tz,
+    ) -> Result<(cmd_wire::session::Preview, TermInput), Said> {
         match self {
             Source::Tmux { target, socket } => terminals::screen_view_on(
                 On {
@@ -945,7 +971,7 @@ impl Source {
     }
 
     /// 看着它的那条路收了之后的停因：托管口说过 `ended` ⇒ `gone`；否则再看一眼（终端 / tmux 都没了 ⇒ `gone`，还在 ⇒ `lost`）。
-    fn end_after_close(&self, tz: &crate::Tz) -> FollowEnd {
+    fn end_after_close(&self, tz: &crate::common::time::Tz) -> FollowEnd {
         if let Source::Hosted { ended, .. } = self {
             if ended.load(Ordering::Acquire) {
                 return FollowEnd::Gone;
@@ -982,7 +1008,7 @@ struct Worker {
     tickets: Tickets,
     pending: Arc<AtomicBool>,
     /// 看的那一台的时区（订阅那一问带来的）。
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
 }
 
 /// 一次抓屏之后怎么走。
@@ -1081,7 +1107,3 @@ impl Worker {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/control/terminal_follow_tests.rs"]
-mod tests;

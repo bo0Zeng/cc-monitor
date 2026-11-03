@@ -8,8 +8,8 @@ use copy_core::copy_text;
 
 /// 要做的那一下。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum UserPathOp {
     Read,
@@ -19,17 +19,17 @@ pub(crate) enum UserPathOp {
 
 /// `ccm-user-path` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct UserPathReq {
+pub struct UserPathReq {
     pub(crate) op: UserPathOp,
 }
 
 /// 现问出来的状态。问不出 ⇒ `unknown`，不说成「不在」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum UserPathState {
     On,
@@ -40,9 +40,9 @@ pub(crate) enum UserPathState {
 
 /// `ccm-user-path` 的应答：做完那一下之后现问的状态 ＋ 给人读的那一句（出了岔子时就是那一岔）＋ 复制详情 ＋ 那段命令。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct UserPath {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct UserPath {
     pub(crate) state: UserPathState,
     pub(crate) said: String,
     /// 问不出 / 改没成时的复制详情（原话在里面）；顺利 ⇒ `null`。
@@ -150,11 +150,11 @@ pub(crate) fn here(op: UserPathOp) -> UserPath {
 
 crate::wire::typed::codes! {
     /// `ccm-user-path` 没有别的码：问不出 · 改没成都在成品里（状态 ＋ 那一句 ＋ 详情）。
-    pub(crate) enum UserPathErr {}
+    pub enum UserPathErr {}
 }
 
 /// `ccm-user-path`：用户级 `PATH` 那一格（读 / 加 / 撤，做完现问）。
-pub(crate) struct CcmUserPath;
+pub struct CcmUserPath;
 
 impl crate::wire::typed::Command for CcmUserPath {
     const NAME: &'static str = "ccm-user-path";
@@ -165,11 +165,11 @@ impl crate::wire::typed::Command for CcmUserPath {
 
 impl crate::wire::typed::Handle for CcmUserPath {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: UserPathReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<UserPath, UserPathErr>> + Send + 'static {
-        async move { Ok(here(req.op)) }
+    ) -> Result<UserPath, UserPathErr> {
+        Ok(here(req.op))
     }
 }
 

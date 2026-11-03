@@ -7,7 +7,7 @@
 //!   带着哪几格后端字节是 monitor 落在盘上的那一份清单（[`deploy_contract::SLOTS_MANIFEST`]）。
 //! - 机器表一改（`machines::ring`）就对齐（[`align`]）：新来的起、没了的收；机器页「停」那一台停着（[`hold`]），「起」/［重试］叫醒（[`resume`]）。
 //! - 版本号：那台 hello 自报的那一格（`version`；没带 ⇒ 空）。
-//! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `main.rs` 接上）：
+//! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `stream/entry.rs` 接上）：
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
 //!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（共享核心的会话簿）。
 //!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
@@ -52,8 +52,8 @@ pub(crate) trait Ssh: Send + Sync + 'static {
     fn far(&self, machine: &str) -> bool;
 }
 
-/// 那台流上的事转到哪（生产 ＝ 每一份 watcher 的出方向，`main.rs` 起常驻时交进来，[`start`]；判据收下来看）。
-pub type Relay = Arc<dyn Fn(Frame) + Send + Sync>;
+/// 那台流上的事转到哪（生产 ＝ 每一份 watcher 的出方向，`stream/entry.rs` 起常驻时交进来，[`start`]；判据收下来看）。
+pub(crate) type Relay = Arc<dyn Fn(Frame) + Send + Sync>;
 
 /// 生产那一份转出口（[`start`] 交进来的；还没起 ⇒ 不转）。
 fn relay_out() -> Relay {
@@ -383,7 +383,7 @@ fn union_of(machine: &str) -> (BTreeSet<String>, BTreeSet<String>) {
 
 /// **一条流报那台的在看名单**（`stream-watch` 信封带 `machine`，分派在 `stream/inbound`）：记在这条流名下、并起来交那台的名单台；
 /// 回那一趟报上去之后那台说的 `from[]` 里这条流名单里的那几条（那台此刻没接着 ⇒ 空的，下一条连接的 attach 行照样带上）。
-pub(crate) fn watch_at(
+pub fn watch_at(
     machine: &str,
     conn: u64,
     ask: WatchAsk,
@@ -406,7 +406,7 @@ pub(crate) fn watch_at(
 }
 
 /// 一条流在各台报过的名单：随它的读循环活着，读循环收了就从各台摘掉、各台的名单台照剩下的那几份重报。
-pub(crate) struct Watching(pub(crate) u64);
+pub struct Watching(pub u64);
 
 impl Drop for Watching {
     fn drop(&mut self) {
@@ -526,7 +526,7 @@ fn named(machine: &str) -> Result<&str, String> {
 
 crate::wire::typed::codes! {
     /// `machine-wake` 的码：机器表里没有那台 · 那台停用着（「连接这台」关着）· 正在连 / 装 / 更新（带那一刻的成品）。
-    pub(crate) enum MachineWakeErr {
+    pub enum MachineWakeErr {
         UnknownMachine = "unknown_machine",
         Disabled = "disabled",
         Busy = "busy" => MachineState,
@@ -535,7 +535,7 @@ crate::wire::typed::codes! {
 
 /// `machine-wake`：重新连接一台（机器条 · 新建会话框 · 会话头 · 机器页「起」/［重试］都是这一条）——
 /// 那台不再停着；断着 ⇒ 不等退避马上再接。回那台此刻的成品（多半之后照常推 `changed {machine}`）。
-pub(crate) struct MachineWake;
+pub struct MachineWake;
 
 impl crate::wire::typed::Command for MachineWake {
     crate::wire::typed::by_call!(MachineWakeReq);
@@ -544,6 +544,10 @@ impl crate::wire::typed::Command for MachineWake {
 
 impl crate::wire::typed::Handle for MachineWake {
     type Needs = crate::wire::typed::needs::Nothing;
+    #[expect(
+        clippy::result_large_err,
+        reason = "叫醒那一条的错带着那台此刻的整份成品回给界面，一趟一次，不值得装箱"
+    )]
     fn run(
         req: MachineWakeReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
@@ -558,6 +562,10 @@ impl crate::wire::typed::Handle for MachineWake {
 }
 
 /// [`MachineWake`] 的本体（各台此刻的成品与「叫醒」由调用方给）：先照那台的成品判拒不拒，不拒才叫醒。
+#[expect(
+    clippy::result_large_err,
+    reason = "叫醒那一条的错带着那台此刻的整份成品回给界面，一趟一次，不值得装箱"
+)]
 pub(crate) fn wake_in(
     machine: &str,
     states: &std::collections::BTreeMap<String, MachineState>,
@@ -587,13 +595,13 @@ pub(crate) fn wake_in(
 
 crate::wire::typed::codes! {
     /// `machine-stop` 的码：在那台上停没成（够不到 · 那台说的那一句）。
-    pub(crate) enum MachineStopErr {
+    pub enum MachineStopErr {
         StopFailed = "stop_failed",
     }
 }
 
 /// `machine-stop`：机器页「停」—— 先停这一端那一条（不然转眼又 ensure 起来），再在那台跑一次 `--resident-stop`、回它的结局。
-pub(crate) struct MachineStop;
+pub struct MachineStop;
 
 impl crate::wire::typed::Command for MachineStop {
     crate::wire::typed::by_call!(MachineStopReq);
@@ -602,20 +610,17 @@ impl crate::wire::typed::Command for MachineStop {
 
 impl crate::wire::typed::Handle for MachineStop {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: MachineStopReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachineStopped, MachineStopErr>> + Send + 'static
-    {
-        async move {
-            let machine = named(&req.machine)
-                .map_err(MachineStopErr::BadArgs)?
-                .to_string();
-            hold(&machine);
-            stop_with(&Pool, &machine)
-                .await
-                .map_err(|f| crate::wire::typed::of_fail(f, MachineStopErr::StopFailed))
-        }
+    ) -> Result<MachineStopped, MachineStopErr> {
+        let machine = named(&req.machine)
+            .map_err(MachineStopErr::BadArgs)?
+            .to_string();
+        hold(&machine);
+        stop_with(&Pool, &machine)
+            .await
+            .map_err(|f| crate::wire::typed::of_fail(f, MachineStopErr::StopFailed))
     }
 }
 
@@ -639,7 +644,7 @@ pub(crate) async fn stop_with(
 }
 
 /// 那一跳断开（那台没有在跑的一条 · 等到期限还没接上 · 接着的时候断了）：与问那台的别处同一个码。
-pub(crate) const UNREACHABLE: &str = "unreachable";
+pub const UNREACHABLE: &str = "unreachable";
 
 /// 发起方没带期限时，转过去那一问等多久（帧面的调用方都带 `within_ms`；这只是兜底）。
 #[expect(
@@ -655,10 +660,7 @@ const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：发起方那一份期限（`within_ms` 换成的截止时刻）原样换成连那台的客户端要的那一刻，交它去等"
 )]
-pub(crate) async fn forward(
-    machine: String,
-    req: crate::wire::Request,
-) -> crate::wire::spec::Outcome {
+pub async fn forward(machine: String, req: crate::wire::Request) -> crate::wire::spec::Outcome {
     use resident_client::client::CallError;
     let left = req.until.map_or(FORWARD_WITHOUT_DEADLINE, |u| {
         Duration::from_millis(u.left_ms())
@@ -707,7 +709,7 @@ pub(crate) async fn forward(
 
 /// **本机后端自己问那台一条有类型的命令**（并好再答的那几条用它：界面只问本机后端一次）：与 [`forward`] 同一条路
 /// （经那台的常驻流），入参 · 回包照那条命令的类型；期限是发起方那一份（`until`）。那台的回包对不上类型 ⇒ 说读不懂那台的回包。
-pub(crate) async fn call<C>(
+pub async fn call<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,
@@ -722,7 +724,7 @@ where
 }
 
 /// [`call`] 那一问，回包不收成类型、原样交回：这一侧只转交、不读的那几条用（`ext-list` 带各台那一格 `mcp-read`）。
-pub(crate) async fn call_passing<C>(
+pub async fn call_passing<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,

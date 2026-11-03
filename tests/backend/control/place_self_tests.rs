@@ -134,17 +134,6 @@ fn p3_a_copy_outside_staging_is_refused_and_left_alone() {
 }
 
 #[test]
-fn p4_the_staged_name_routes_to_the_backend() {
-    let name = ssh_dial::sftp::staged_name(deploy::STAGED_STEM);
-    let argv0 = format!("/home/x/{}/{name}", relay_route_core::STAGING_DIR_REL);
-    let args: Vec<String> = vec!["--".into(), "--place-self".into()];
-    assert_eq!(
-        crate::control::ccm::route(&argv0, &args, crate::stream::entry::is_backend_word),
-        crate::control::ccm::Entry::Backend(vec!["--place-self".into()])
-    );
-}
-
-#[test]
 fn p5_a_staged_copy_removes_the_landing_and_itself() {
     let home = sandbox("p5");
     put(

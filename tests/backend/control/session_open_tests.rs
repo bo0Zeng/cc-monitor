@@ -1,8 +1,10 @@
 //! `session-open`：默认放在哪的整张表 · 恢复 / 接回 / 新起各落在哪 · 已有进程在写就不起（直路一样）· 给了 tmux 而没有就拒 ·
 //! 每个码都有后端写好的那一句（替身记下被调了什么；tmux 一个都不起）。
 
-use super::*;
-use crate::control::launch_account as la;
+use crate::common::said::Said;
+use crate::control::launch_account::{self as la, AccountAsk, Settled};
+use crate::control::session_batch::{Deps, NameBase, TermEntry};
+use crate::control::session_open::*;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeSet;

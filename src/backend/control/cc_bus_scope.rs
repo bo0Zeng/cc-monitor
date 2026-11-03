@@ -64,9 +64,7 @@ pub(crate) async fn groups_now(tz: crate::common::time::Tz) -> Result<GroupsRead
 
 /// 转给这台的常驻：`groups-read {这台 ＋ 机器表里的每一台}`（等 20 秒：它问到各台 ＋ 回程）。
 /// `session-self` 那一问也走这一处（命令表 `registry/history.rs` 里那一份同样的换成调这里）。
-pub(crate) async fn groups_via_resident(
-    tz: &crate::common::time::Tz,
-) -> Result<GroupsRead, String> {
+pub async fn groups_via_resident(tz: &crate::common::time::Tz) -> Result<GroupsRead, String> {
     let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
     let machines: Vec<cmd_wire::Machine> =
         std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))

@@ -10,14 +10,14 @@ use std::future::Future;
 const WORDS_LINES: usize = 6;
 
 /// 起在的那个 tmux 会话此刻的样子：在（句柄 ＋ 那一屏原文）· 不在 · 读不到（那一句）。
-pub(crate) enum Screen {
+pub enum Screen {
     There { terminal: String, text: String },
     Gone,
     Unread(String),
 }
 
 /// 入口交进来的两样（生产那一份在 `faces/session_arrive_face.rs`）。
-pub(crate) trait Host: Send + Sync + 'static {
+pub trait Host: Send + Sync + 'static {
     /// `ms` 毫秒内等到 `since` 之后报到、`by` 认得出的那一条 ⇒ 它的 sid；没等到 ⇒ `None`。
     fn arrival(
         &self,
@@ -86,11 +86,7 @@ pub(crate) fn missed(waited_ms: u64, session: Option<&str>, screen: Option<Scree
 
 /// `session-arrive` 本体。`wait_ms`：发起方期限折成的毫秒数（[`MAX_WAIT_MS`] 封顶）。
 /// 坏入参 ⇒ `Err(那一句)`，不等。
-pub(crate) async fn run<H: Host>(
-    ask: ArriveAsk,
-    wait_ms: u64,
-    host: &H,
-) -> Result<ArriveEnd, String> {
+pub async fn run<H: Host>(ask: ArriveAsk, wait_ms: u64, host: &H) -> Result<ArriveEnd, String> {
     match &ask.by {
         ArriveBy::Cwd { cwd } if cwd.is_empty() => {
             return Err(crate::common::contract::malformed(

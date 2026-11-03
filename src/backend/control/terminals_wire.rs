@@ -10,40 +10,40 @@ use serde::Deserialize;
 // ── 入参 ──────────────────────────────────────────────────────────────
 
 // L1 三条的入参住 `cmd-wire::terminal`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::terminal::{TerminalInputReq, TerminalPreviewReq, TerminalsListReq};
+pub use cmd_wire::terminal::{TerminalInputReq, TerminalPreviewReq, TerminalsListReq};
 
 /// `terminal-take-input` · `terminal-release-input` 的入参：名单里的句柄 ＋ 自报的前端（替它接管 / 交还）。
 #[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TerminalHoldReq {
+pub struct TerminalHoldReq {
     /// 名单里的不透明句柄（托管那一形）。
     pub(crate) terminal: String,
     /// 自报的前端（`desktop` · `mobile`；缺省按桌面）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) client: Option<String>,
 }
 
 /// `session-interrupt` 的入参：哪条会话 ＋ 自报的前端（过「哪个前端的会话」那一维）。
 #[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SessionInterruptReq {
+pub struct SessionInterruptReq {
     /// 会话 id。
     pub(crate) sid: String,
     /// 自报的前端。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) client: Option<String>,
 }
 
 // ── 回包 ──────────────────────────────────────────────────────────────
 
 // 回包的线上形住 `cmd-wire::session`（手机嵌的 Rust 核心按同一份类型解）。
-pub(crate) use cmd_wire::session::{
+pub use cmd_wire::session::{
     Ability, Attached, Cursor, Preview, ScreenLine, Sent, SentResult, Span, StartedBy, TermSession,
     TermState, TerminalCan, TerminalItem, TerminalsList,
 };
@@ -60,7 +60,7 @@ pub(crate) fn refused(why: t::Refused) -> Ability {
 
 typed::codes! {
     /// `terminals-list` 的码：列名单那两发 tmux。
-    pub(crate) enum TerminalsListErr {
+    pub enum TerminalsListErr {
         /// 列不出：`list-panes` 失败（不是「没起 server」那一种），或 tmux 装了、但起不来。
         Unobservable = "unobservable",
         /// 那一发 `tmux` 过了期限。
@@ -70,7 +70,7 @@ typed::codes! {
 
 typed::codes! {
     /// `terminal-preview` 的码：认目标 · 列名单 · 抓屏 · 问尺寸。
-    pub(crate) enum TerminalPreviewErr {
+    pub enum TerminalPreviewErr {
         /// 目标没恰给一个（或不是非空短串）。
         BadTarget = "bad_target",
         /// 名单里此刻没有它。
@@ -94,7 +94,7 @@ typed::codes! {
 
 typed::codes! {
     /// `terminal-input` 的码：认目标 · 列名单 · 过门 · 比画面 · 送。认不出 / 不归我们 / 画面变了不是错（`result: "refused"`）。
-    pub(crate) enum TerminalInputErr {
+    pub enum TerminalInputErr {
         /// 目标没恰给一个（或不是非空短串）。
         BadTarget = "bad_target",
         /// tmux 起不来。
@@ -114,7 +114,7 @@ typed::codes! {
 
 typed::codes! {
     /// `terminal-take-input` · `terminal-release-input` 的码：认目标 · 过门 · 托管口那一下。
-    pub(crate) enum TerminalHoldErr {
+    pub enum TerminalHoldErr {
         /// 句柄不是非空短串。
         BadTarget = "bad_target",
         /// 名单里此刻没有它。
@@ -137,7 +137,7 @@ typed::codes! {
 // ── 怎么跑 ────────────────────────────────────────────────────────────
 
 /// `terminal-take-input`：替自报的前端接管托管终端的输入（之后 `terminal-input` 经它送）。阻塞档（连托管口）。
-pub(crate) struct TerminalTakeInputCmd;
+pub struct TerminalTakeInputCmd;
 
 impl Command for TerminalTakeInputCmd {
     const NAME: &'static str = "terminal-take-input";
@@ -148,18 +148,16 @@ impl Command for TerminalTakeInputCmd {
 
 impl crate::wire::typed::Handle for TerminalTakeInputCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalHoldReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<cmd_wire::session::InputNow, TerminalHoldErr>>
-           + Send
-           + 'static {
-        async move { hold(&req, true) }
+    ) -> Result<cmd_wire::session::InputNow, TerminalHoldErr> {
+        hold(&req, true)
     }
 }
 
 /// `terminal-release-input`：交还（托管进程交给最近连上的真终端，没有就空着）。阻塞档。
-pub(crate) struct TerminalReleaseInputCmd;
+pub struct TerminalReleaseInputCmd;
 
 impl Command for TerminalReleaseInputCmd {
     const NAME: &'static str = "terminal-release-input";
@@ -170,13 +168,11 @@ impl Command for TerminalReleaseInputCmd {
 
 impl crate::wire::typed::Handle for TerminalReleaseInputCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalHoldReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<cmd_wire::session::InputNow, TerminalHoldErr>>
-           + Send
-           + 'static {
-        async move { hold(&req, false) }
+    ) -> Result<cmd_wire::session::InputNow, TerminalHoldErr> {
+        hold(&req, false)
     }
 }
 
@@ -203,7 +199,7 @@ pub(crate) fn hold_refused(f: Said) -> TerminalHoldErr {
 }
 
 /// `terminals-list`：这台的终端名单。阻塞档（起 tmux）。
-pub(crate) struct TerminalsListCmd;
+pub struct TerminalsListCmd;
 
 impl Command for TerminalsListCmd {
     typed::by_call!(TerminalsListReq);
@@ -212,26 +208,23 @@ impl Command for TerminalsListCmd {
 
 impl crate::wire::typed::Handle for TerminalsListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalsListReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<TerminalsList, TerminalsListErr>> + Send + 'static
-    {
-        async move {
-            // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
-            //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
-            t::list_on(On::default(), &req).map_err(|f| match f.code.as_deref() {
-                Some("no_tmux") => {
-                    TerminalsListErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
-                }
-                _ => typed::of_fail(f, TerminalsListErr::Unobservable),
-            })
-        }
+    ) -> Result<TerminalsList, TerminalsListErr> {
+        // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
+        //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
+        t::list_on(On::default(), &req).map_err(|f| match f.code.as_deref() {
+            Some("no_tmux") => {
+                TerminalsListErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+            }
+            _ => typed::of_fail(f, TerminalsListErr::Unobservable),
+        })
     }
 }
 
 /// `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方）。只读、不过身份门。
-pub(crate) struct TerminalPreviewCmd;
+pub struct TerminalPreviewCmd;
 
 impl Command for TerminalPreviewCmd {
     typed::by_call!(TerminalPreviewReq);
@@ -259,7 +252,7 @@ impl crate::wire::typed::Handle for TerminalPreviewCmd {
 }
 
 /// `terminal-input`：往一个终端送字或送键（过身份门）。
-pub(crate) struct TerminalInputCmd;
+pub struct TerminalInputCmd;
 
 impl Command for TerminalInputCmd {
     typed::by_call!(TerminalInputReq);
@@ -268,17 +261,15 @@ impl Command for TerminalInputCmd {
 
 impl crate::wire::typed::Handle for TerminalInputCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: TerminalInputReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Sent, TerminalInputErr>> + Send + 'static {
-        async move {
-            input(&req).map_err(|f| {
-                typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
-                    Some(copy_text("terminalReads.input.refused", &[]))
-                })
+    ) -> Result<Sent, TerminalInputErr> {
+        input(&req).map_err(|f| {
+            typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
+                Some(copy_text("terminalReads.input.refused", &[]))
             })
-        }
+        })
     }
 }
 
@@ -305,7 +296,7 @@ pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, Said> {
 
 /// `session-interrupt`：中断一条会话这一轮（会话 ■）。不进输入队、不靠持有输入：托管那一形经托管口 `interrupt`，tmux 那一形送一个 Escape。
 /// 回包同 `terminal-input`（送到了 · 不知道 · 被拒 ＋ 那一句）。阻塞档（起 tmux · 连托管口）。
-pub(crate) struct SessionInterruptCmd;
+pub struct SessionInterruptCmd;
 
 impl Command for SessionInterruptCmd {
     const NAME: &'static str = "session-interrupt";
@@ -316,21 +307,19 @@ impl Command for SessionInterruptCmd {
 
 impl crate::wire::typed::Handle for SessionInterruptCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: SessionInterruptReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Sent, TerminalInputErr>> + Send + 'static {
-        async move {
-            t::interrupt_on(On::default(), &req.sid, req.client.as_deref()).map_err(|f| {
-                typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
-                    Some(copy_text("terminalReads.input.refused", &[]))
-                })
+    ) -> Result<Sent, TerminalInputErr> {
+        t::interrupt_on(On::default(), &req.sid, req.client.as_deref()).map_err(|f| {
+            typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
+                Some(copy_text("terminalReads.input.refused", &[]))
             })
-        }
+        })
     }
 }
 
 /// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。输入队投递经它送（`faces/session_send.rs`）。
-pub(crate) fn say(req: &TerminalInputReq) -> Result<Sent, Said> {
+pub fn say(req: &TerminalInputReq) -> Result<Sent, Said> {
     t::say_on(On::default(), req)
 }

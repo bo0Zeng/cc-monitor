@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// 终端里敲 `ccm` 走到哪。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Reach {
+pub enum Reach {
     /// 终端的 `PATH` 问不出 —— 判不了，不说成「没有」。
     Unknown,
     /// `PATH` 上没有 `ccm`。
@@ -18,8 +18,8 @@ pub(crate) enum Reach {
 
 /// `ccm-probe` 那一格的判词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum OnPathVerdict {
     Ours,
@@ -30,15 +30,15 @@ pub(crate) enum OnPathVerdict {
 
 /// 终端里敲 `ccm` 走到哪 ＋ 给人读的那一句（走到的就是落点那一份 ⇒ 空串）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct OnPath {
     pub(crate) verdict: OnPathVerdict,
     pub(crate) said: String,
 }
 
 /// `PATH` 上敲 `ccm` 会起来的那个文件（找法只住 `platform::shell::find_session_command`）与落点那一份比：解过链接是同一个文件 ⇒ 是它。
-pub(crate) fn reach(
+pub fn reach(
     path_env: Option<&str>,
     landing: &Path,
     windows: bool,

@@ -18,16 +18,17 @@ use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 后端在每台机器上的家目录名（相对用户家目录；值住 `common::own_dir`）。
-pub const DIR_NAME: &str = crate::common::own_dir::DIR_NAME;
+pub(crate) const DIR_NAME: &str = crate::common::own_dir::DIR_NAME;
 
 /// 那个值住的文件名。字面量只住契约 crate（`relay_route_core::BACKEND_POLICY_REL`：monitor 的数据位置页按它列出），写者只有本模块。
-pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::BACKEND_POLICY_REL);
+pub(crate) const FILE_NAME: &str =
+    relay_route_core::file_name_of(relay_route_core::BACKEND_POLICY_REL);
 
 /// 文件里那一格的键。键名与线上 `data.killOnExit` 同一个词，免得两个名字说一件事。
-pub const KEY_KILL_ON_EXIT: &str = "killOnExit";
+pub(crate) const KEY_KILL_ON_EXIT: &str = "killOnExit";
 
 /// 缺省：**不结束**（`C8③` 的前半句，`§3.3b ⑤` 逐字「本条不推翻」）。
-pub const DEFAULT_KILL_ON_EXIT: bool = false;
+pub(crate) const DEFAULT_KILL_ON_EXIT: bool = false;
 
 // 线上形状由 `tests::the_wire_shape_is_exactly_the_registered_fields` 按键集相等钉住（四格 ＋ 成品 `said`）。
 
@@ -53,7 +54,7 @@ impl Read {
     }
 
     /// 线上 `state` 那一格。三个词与 TS 那侧 `ExitPolicyState` 逐字对齐。
-    pub fn state(&self) -> &'static str {
+    pub(crate) fn state(&self) -> &'static str {
         match self {
             Read::Chosen(_) => "chosen",
             Read::Absent => "absent",
@@ -77,7 +78,7 @@ const DOC: crate::common::own_state::Doc<serde_json::Value> =
     crate::common::own_state::Doc::of(&relay_route_core::BACKEND_POLICY_FILE);
 
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。
-pub fn read_at(path: &Path) -> Read {
+pub(crate) fn read_at(path: &Path) -> Read {
     use crate::common::own_state::Read as Raw;
     let v: serde_json::Value = match DOC.read(path) {
         Raw::Present(v) => v,
@@ -226,11 +227,11 @@ pub(crate) fn answer_set(
 
 crate::wire::typed::codes! {
     /// `exit-policy-read` 没有别的码：「读不出来」是一个状态（`state: "unreadable"` ＋ `reason`），不是一次失败。
-    pub(crate) enum ExitReadErr {}
+    pub enum ExitReadErr {}
 }
 
 /// `exit-policy-read`：读「退出行为」那个值（值住后端所在那台；同步文件 I/O ⇒ 阻塞档）。
-pub(crate) struct ExitPolicyRead;
+pub struct ExitPolicyRead;
 
 impl crate::wire::typed::Command for ExitPolicyRead {
     crate::wire::typed::by_call!(ExitPolicyReadReq);
@@ -240,23 +241,23 @@ impl crate::wire::typed::Command for ExitPolicyRead {
 
 impl crate::wire::typed::Handle for ExitPolicyRead {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: ExitPolicyReadReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitReadErr>> + Send + 'static {
-        async move { Ok(answer_read()) }
+    ) -> Result<ExitPolicy, ExitReadErr> {
+        Ok(answer_read())
     }
 }
 
 crate::wire::typed::codes! {
     /// `exit-policy-set` 的码：家目录说不出 · 写没成。
-    pub(crate) enum ExitSetErr {
+    pub enum ExitSetErr {
         IoFailed = "io_failed",
     }
 }
 
 /// `exit-policy-set`：写「退出行为」那个值，写完读回（写自家状态 ⇒ 只递写句柄）。
-pub(crate) struct ExitPolicySetCmd;
+pub struct ExitPolicySetCmd;
 
 impl crate::wire::typed::Command for ExitPolicySetCmd {
     crate::wire::typed::by_call!(ExitPolicySetReq);

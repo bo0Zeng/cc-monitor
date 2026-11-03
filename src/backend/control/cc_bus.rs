@@ -75,9 +75,9 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), S
 /// 后端对一条会话判的那两样（判官住能读观测层的帧面宿主，`faces::bus_list_face`）：叫它什么 · 此刻有没有谁持着它。
 /// 这台没有它的记录 · 那一家判不了活 ⇒ 对应那一格是 `None`（不是「不在」）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Seen {
-    pub(crate) title: Option<String>,
-    pub(crate) live: Option<bool>,
+pub struct Seen {
+    pub title: Option<String>,
+    pub live: Option<bool>,
 }
 
 /// 总线名单 —— `bus-list` 读它。行是这台的收件箱（[`store::inboxes`]）；叫它什么 · 在不在问 `seen`（后端那一处）。

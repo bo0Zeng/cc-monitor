@@ -21,7 +21,7 @@ fn list_on(on: On<'_>, args: &Value) -> Result<Value, Said> {
     super::list_on(on, &req(args)?).map(val)
 }
 
-fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, Said> {
+fn preview_on(on: On<'_>, args: &Value, tz: &crate::common::time::Tz) -> Result<Value, Said> {
     super::preview_on(on, &req(args)?, tz).map(val)
 }
 
@@ -92,17 +92,6 @@ fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow 
 fn golden() -> Value {
     serde_json::from_str(include_str!("../../__fixtures__/terminals.golden.json"))
         .expect("金样读不懂")
-}
-
-fn codes_of(name: &str) -> Vec<String> {
-    crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == name)
-        .unwrap_or_else(|| panic!("注册表里没有 {name}"))
-        .codes
-        .iter()
-        .map(|c| c.to_string())
-        .collect()
 }
 
 /// 名单原文 ⇒ 行：读得懂的按名字排好；读不懂的不猜、记成「没报全」。
@@ -379,7 +368,7 @@ fn colours_become_spans_and_the_fingerprint_ignores_them() {
     );
 }
 
-/// 金样：请求过解析、原料喂纯构造器 == 成品、码集合 == 注册表。
+/// 金样：请求过解析、原料喂纯构造器 == 成品（码集合 == 注册表那一条要命令表，住 `on_upper_tests.rs`）。
 #[test]
 fn the_products_match_the_golden() {
     let g = golden();
@@ -394,10 +383,6 @@ fn the_products_match_the_golden() {
         l["reply"],
         "terminals-list 成品：{}",
         serde_json::to_string_pretty(&got).unwrap()
-    );
-    assert_eq!(
-        serde_json::to_value(codes_of("terminals-list")).unwrap(),
-        l["codes"]
     );
 
     let p = &g["terminal-preview"];
@@ -425,10 +410,6 @@ fn the_products_match_the_golden() {
         "terminal-preview 成品：{}",
         serde_json::to_string_pretty(&got).unwrap()
     );
-    assert_eq!(
-        serde_json::to_value(codes_of("terminal-preview")).unwrap(),
-        p["codes"]
-    );
 
     let i = &g["terminal-input"];
     for r in i["requests"].as_array().unwrap() {
@@ -443,10 +424,6 @@ fn the_products_match_the_golden() {
         input_reply("unsure", None, None),
     ];
     assert_eq!(serde_json::to_value(built).unwrap(), i["replies"]);
-    assert_eq!(
-        serde_json::to_value(codes_of("terminal-input")).unwrap(),
-        i["codes"]
-    );
 }
 
 // ═══ 真 tmux（隔离 socket，显式 `-S`；不碰任何默认 socket；收尾按 server 的 pid 收）═══
@@ -1066,7 +1043,7 @@ fn the_next_steps_after_a_send_are_judged_here() {
 }
 
 /// 终端这一族线上的原因码与状态（名单 `can.*.no` · `terminal-input` 的 `why` · 名单行的 `state`）和同族命令级码一个写法：
-/// 小写 ＋ 下划线，不带短横。从金样里真出的成品逐格取，不另列一份码表。
+/// 小写 ＋ 下划线，不带短横。从金样里真出的成品逐格取，不另列一份码表（命令级码那一半要命令表，住 `on_upper_tests.rs`）。
 #[test]
 fn terminal_reason_codes_use_underscores_like_command_codes() {
     fn walk(v: &Value, out: &mut Vec<String>) {
@@ -1096,12 +1073,6 @@ fn terminal_reason_codes_use_underscores_like_command_codes() {
             !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_'),
             "终端码 `{c}` 不是小写下划线写法"
         );
-    }
-    for code in codes_of("terminal-input")
-        .iter()
-        .chain(codes_of("terminals-list").iter())
-    {
-        assert!(!code.contains('-'), "命令级码 `{code}` 带短横");
     }
 }
 

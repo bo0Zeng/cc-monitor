@@ -13,18 +13,18 @@ use super::session_batch::{
     carriers, listed, pids_said, pretrust, Deps, Listed, NameBase, Standing, TermEntry,
 };
 use crate::common::said::Said;
-pub(crate) mod new;
+pub mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
-pub(crate) use new::{ForkWrite, PreRotation};
+pub use new::{ForkWrite, PreRotation};
 
 use cmd_wire::open::RotationPick;
 /// `session-open` 的入参与它引到的几样：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::open::{NewOpen, OpenWhat as Open, SessionOpenReq};
+pub use cmd_wire::open::{NewOpen, OpenWhat as Open, SessionOpenReq};
 
 /// `session-open` 会回的码（`bad_args` 打头）。
-pub(crate) const OPEN_CODES: &[&str] = &[
+pub const OPEN_CODES: &[&str] = &[
     "bad_args",
     "unknown_agent",
     "bad_command",
@@ -48,7 +48,7 @@ pub(crate) const OPEN_CODES: &[&str] = &[
 
 /// `session-open` 的失败（码表封闭：下层交上来的码不在表里 ⇒ 测试档当场红）。
 #[derive(Debug)]
-pub(crate) struct SessionOpenErr(pub(crate) Said);
+pub struct SessionOpenErr(pub Said);
 
 impl crate::wire::typed::Codes for SessionOpenErr {
     const ALL: &'static [&'static str] = OPEN_CODES;
@@ -83,7 +83,7 @@ pub(crate) fn fail(code: &'static str, said: String, field: Option<Field>) -> Sa
 }
 
 /// 下层交上来的整体失败（不指哪一格：`field: null`）⇒ 带上 `session-open` 的那一份 [`Refusal`]，码与那一句照旧。
-pub(crate) fn whole(s: Said) -> Said {
+pub fn whole(s: Said) -> Said {
     refused(
         s,
         Refusal {
@@ -101,7 +101,7 @@ fn refused(s: Said, data: Refusal) -> Said {
     }
 }
 
-fn malformed(m: &str) -> Said {
+pub fn malformed(m: &str) -> Said {
     fail("bad_args", crate::common::contract::malformed(m), None)
 }
 
@@ -122,7 +122,7 @@ fn lower(f: Said) -> Said {
 
 /// 起会话的意图（只看「放在哪」那一维）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Intent {
+pub enum Intent {
     /// 新起；`fork_tmux` ＝ 分叉的源会话此刻在不在 tmux 里（不是分叉 / 说不出 ⇒ `None`）。
     New {
         fork_tmux: Option<bool>,
@@ -134,12 +134,7 @@ pub(crate) enum Intent {
 /// 想进 tmux（新起：分叉的源会话在 tmux 里；不是分叉 ⇒ 这台不能托管时才想；恢复：偏好「恢复时放在哪」说的，
 /// `machine_prefs::Prefs::resume_wants_tmux`）且有 tmux ⇒ tmux；
 /// 否则这台能托管（`managed`）⇒ 托管；都不能 ⇒ 直路（A3-3-19：Windows 托管做完那一版删）。
-pub(crate) fn default_run(
-    intent: Intent,
-    resume_wants_tmux: bool,
-    tmux: bool,
-    managed: bool,
-) -> Launch {
+pub fn default_run(intent: Intent, resume_wants_tmux: bool, tmux: bool, managed: bool) -> Launch {
     let want_tmux = match intent {
         Intent::New { fork_tmux } => fork_tmux.unwrap_or(!managed),
         Intent::Resume => resume_wants_tmux,
@@ -154,32 +149,32 @@ pub(crate) fn default_run(
 }
 
 /// 一个要起的会话（恢复那一形，已过形状关）。
-pub(crate) struct Item {
-    pub(crate) sid: String,
-    pub(crate) cwd: String,
-    pub(crate) account: AccountAsk,
+pub struct Item {
+    pub sid: String,
+    pub cwd: String,
+    pub account: AccountAsk,
     /// 起的时候就交的第一句（`session-say` 终端没了、恢复再送那一项）。
-    pub(crate) say: Option<String>,
+    pub say: Option<String>,
     /// 这一趟用的模型（会话记录里最后那一个）；缺 ＝ 跟随偏好表。
-    pub(crate) model: Option<String>,
+    pub model: Option<String>,
     /// 起在哪一个权限档（会话记录里最后那一档）；缺 ＝ 跟随那一家自己的默认。
-    pub(crate) permission_mode: Option<String>,
+    pub permission_mode: Option<String>,
 }
 
 /// 恢复要从记录里读的那几样（宿主读，[`answer`] 只收结果）。
-pub(crate) struct ResumeOf {
-    pub(crate) agent: String,
-    pub(crate) cwd: String,
-    pub(crate) model: Option<String>,
-    pub(crate) permission_mode: Option<String>,
+pub struct ResumeOf {
+    pub agent: String,
+    pub cwd: String,
+    pub model: Option<String>,
+    pub permission_mode: Option<String>,
 }
 
 /// 宿主交进来的事实：恢复那一条读出来的记录（`None` ＝ 读不到 ⇒ `record_gone`）· 分叉源会话此刻在不在 tmux 里 ·
 /// 起之前这台报到的序号（回包的 `arrival.since`）。
-pub(crate) struct Facts {
-    pub(crate) resume: Option<ResumeOf>,
-    pub(crate) fork_tmux: Option<bool>,
-    pub(crate) since: u64,
+pub struct Facts {
+    pub resume: Option<ResumeOf>,
+    pub fork_tmux: Option<bool>,
+    pub since: u64,
 }
 
 /// 那一家的几样（启动命令 · 模型表 · 起会话的说法）。
@@ -218,7 +213,7 @@ fn here_of(local: bool, deps: &Deps) -> Here {
 }
 
 /// `session-open` 的本体（入参已按类型解好，恢复那一条的记录宿主已读）。`home` ＝ 这台的家目录（展开 `~`）。
-pub(crate) fn answer(
+pub fn answer(
     req: SessionOpenReq,
     facts: Facts,
     deps: &Deps,
@@ -250,7 +245,7 @@ pub(crate) fn answer(
 }
 
 /// 起了一家 ⇒ 带上等它报到那一问：有 sid（恢复 · 先定好的新起）按 sid，否则按目录。在跑 · 只剩空 shell · 没起 agent 的 ⇒ 不等。
-pub(crate) fn with_arrival(o: Opened, since: u64) -> Opened {
+pub fn with_arrival(o: Opened, since: u64) -> Opened {
     let starts =
         matches!(o.landed, Landed::Started | Landed::InPlace | Landed::Window) && o.agent.is_some();
     let by = match (&o.sid, &o.cwd) {
@@ -443,7 +438,7 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
     lr::line_of(&l, &Settled::Unsaid, here, deps.caps, &entry).map_err(|m| fail("refused", m, None))
 }
 
-fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Opened {
+pub fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Opened {
     Opened {
         landed,
         session,
@@ -836,12 +831,12 @@ const SELF_AS_CCM_SECS: u64 = 15;
 const SELF_AS_CCM_WITHIN: Deadline = Deadline::secs(SELF_AS_CCM_SECS);
 
 /// `session-open` 一条的总期限：列一次名单（同 `sessions-where` 的 8 s）＋ 当 ccm 起一趟。
-pub(crate) const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
+pub const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
 
 /// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
 /// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
 /// 失败 ⇒ 单个那一条的码 ＋ 原话：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
-pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
+pub fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
     let me = std::env::current_exe().map_err(|e| Said::new("start_failed", e.to_string()))?;
     let out = Child::new(me)
         .args(argv.iter().skip(1))
@@ -857,11 +852,11 @@ pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), 
 }
 
 /// 原因码：那一家起的时候不收第一句（恢复再送那一项起不了）。
-pub(crate) const NO_FIRST_PROMPT: &str = "no_first_prompt";
+pub const NO_FIRST_PROMPT: &str = "no_first_prompt";
 
 /// **恢复再送**（`session-say` 送的时候终端已经没了）：在 tmux 里恢复一项，那一句随行交给那一家；那一家不收第一句 ⇒ 不起。
 /// 起法用远端那一行（这台后端自己当 ccm 跑，工作目录随行）。
-pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said> {
+pub fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said> {
     let b = Batch::of(agent, deps.prefs);
     if it.say.is_some() && !b.takes_first_say() {
         return Err(Said::new(NO_FIRST_PROMPT, agent.to_string()));
@@ -875,7 +870,7 @@ pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opene
 }
 
 /// **换号重启**起新那一步：旧的已停，在让出来的那个名字里用判好的号起。
-pub(crate) fn relaunch_in(
+pub fn relaunch_in(
     it: &Item,
     agent: &str,
     account: &Settled,
@@ -1175,11 +1170,3 @@ fn new_tmux_name(
     };
     fresh_name(base, rows, deps)
 }
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/session_open_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/session_open_new_tests.rs"]
-mod new_tests;

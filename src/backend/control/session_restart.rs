@@ -38,12 +38,12 @@ pub(crate) const MAX_WAIT_MS: u64 = 3_600_000;
 pub(crate) const SWAP_CAP: Deadline = Deadline::secs(8 + 8 + 6);
 
 /// 一次装好的等待：交期限（毫秒）⇒ 等到没有。
-pub(crate) trait Wait: Send + 'static {
+pub trait Wait: Send + 'static {
     fn within(self, ms: u64) -> impl Future<Output = bool> + Send;
 }
 
 /// 入口交进来的几样（生产那一份在 `faces/session_restart_face.rs`）。
-pub(crate) trait Host: Send + Sync + 'static {
+pub trait Host: Send + Sync + 'static {
     type Ears: Wait;
     /// 在阻塞线程上、带这台的生产事实做一步。
     fn blocking<T: Send + 'static>(
@@ -86,12 +86,12 @@ fn ms_of(k: &str, n: u64) -> Result<u64, Said> {
 
 /// `session-restart` 的入参（`deny_unknown_fields`）。值域由 [`parse`] 判。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct RestartReq {
+pub struct RestartReq {
     /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
+    pub sid: cmd_wire::Sid,
     /// 工作目录。
     pub(crate) cwd: String,
     /// 用户点名的号（只收名字，非空）。
@@ -99,19 +99,19 @@ pub(crate) struct RestartReq {
     /// 先请求压缩、等记录里出现压缩摘要再停。
     pub(crate) compact_first: bool,
     /// 等压缩的期限（≤ 3 600 000）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) compact_within_ms: u64,
     /// 等新进程报出的期限（≤ 3 600 000）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) arrive_within_ms: u64,
     /// 这台是不是界面所在那台（同 `session-open`）。
     pub(crate) local: bool,
     /// 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
-    pub(crate) agent: crate::agents::AgentKind,
+    pub agent: crate::agents::AgentKind,
     /// 自报的前端，同 `kill`。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
 }
 
 /// 入参的值域：sid 的形状 · 号非空 · 两个期限有界。
@@ -141,17 +141,17 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Said> {
 
 /// 失败信封里按码定形的 `data`（`account_unavailable` 那一形是 [`la::AccountUnavailable`]，与起会话那几条同一份）。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "RestartRefused"
+        rename = "RestartRefused",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(untagged)]
-pub(crate) enum Refused {
+pub enum Refused {
     /// `ambiguous`：在跑的那几个终端名。
     Ambiguous { names: Vec<String> },
     /// `already_live`：另有活进程在写的那几个 pid；停完旧的之后才发现的 ⇒ 带 `stopped: true`。
@@ -281,8 +281,8 @@ fn swap(
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Compact {
     Done,
@@ -294,8 +294,8 @@ pub(crate) enum Compact {
 
 /// 新进程报没报出（等到期限为止）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Arrival {
     Arrived,
@@ -304,9 +304,9 @@ pub(crate) enum Arrival {
 
 /// `session-restart` 的应答。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Restarted {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Restarted {
     /// 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`。
     pub(crate) compact: Compact,
     /// 新进程报没报出：`arrived` · `missed`。
@@ -347,7 +347,7 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
 
 /// `session-restart` 本体 ⇒ `{compact, started, terminal, account}`。
 /// `until`：发起方的截止时刻（分派那一层由请求信封换来；没带 ⇒ 各步只按上限）。
-pub(crate) async fn run<H: Host>(
+pub async fn run<H: Host>(
     args: RestartReq,
     until: Option<Until>,
     host: H,
@@ -410,7 +410,7 @@ const SHUTTING_DOWN: &str = "shutting_down";
 
 /// `session-restart` 的失败：码 ＋ 那一句 ＋ 按码定形的 `data`（[`Refused`] · 选不了号那一形）。码表封闭（[`RESTART_CODES`]）。
 #[derive(Debug)]
-pub(crate) struct RestartErr(pub(crate) Said);
+pub struct RestartErr(pub Said);
 
 impl crate::wire::typed::Codes for RestartErr {
     const ALL: &'static [&'static str] = RESTART_CODES;
@@ -438,7 +438,3 @@ impl crate::wire::typed::Codes for RestartErr {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../../../tests/backend/control/session_restart_tests.rs"]
-mod tests;

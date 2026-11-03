@@ -9,7 +9,7 @@ thread_local! {
 }
 
 /// 注入凭证：活着时本线程的 `tag` 起的是那个假 tmux；丢掉即摘。
-pub(crate) struct Isolated(());
+pub struct Isolated(());
 
 impl Drop for Isolated {
     fn drop(&mut self) {
@@ -18,13 +18,13 @@ impl Drop for Isolated {
 }
 
 /// 本线程的 `tag` 改起 `script`（经 `/bin/sh`）。
-pub(crate) fn isolate_with(script: &std::path::Path) -> Isolated {
+pub fn isolate_with(script: &std::path::Path) -> Isolated {
     FAKE_TMUX.with(|f| *f.borrow_mut() = Some(script.to_path_buf()));
     Isolated(())
 }
 
 /// 不关心打标的测试用：一个一声不吭、退出码 1 的假 tmux（探测回空 ⇒ `NoSuchPane`，从不写）。
-pub(crate) fn isolate() -> Isolated {
+pub fn isolate() -> Isolated {
     let p = std::env::temp_dir().join(format!("ccm-resync-mute-tmux-{}", std::process::id()));
     if !p.exists() {
         // 同进程并发写同一份内容，谁赢都一样；经 `/bin/sh` 读，不 exec 它（理由见 `identity_tag_tests::fake_cmd`）。

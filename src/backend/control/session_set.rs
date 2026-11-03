@@ -15,16 +15,16 @@ use serde::Serialize;
 
 /// 这台此刻活着的一条会话：会话 id · 工作目录 · 经哪条别名起的（台账里没有 ⇒ `None`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Live {
-    pub(crate) sid: String,
-    pub(crate) cwd: String,
-    pub(crate) alias: Option<String>,
+pub struct Live {
+    pub sid: String,
+    pub cwd: String,
+    pub alias: Option<String>,
 }
 
 /// 一行补足的样子。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RowPlan {
     pub(crate) cwd: String,
@@ -53,10 +53,10 @@ pub(crate) struct RowPlan {
 
 /// 整组补足的样子：每行 ＋ 合计再起几个，连同界面照摆的几句。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SetPlan {
+pub struct SetPlan {
     pub(crate) rows: Vec<RowPlan>,
     pub(crate) more: u32,
     /// 组菜单那一项的第二行：「N 个目录 · M 个会话」（有起不了的行 ⇒ 再写「K 行起不了」）。
@@ -145,11 +145,7 @@ fn blocked_of(
 }
 
 /// 这一行已有的那几条：目录对得上、用这一行的别名起的。
-pub(crate) fn members<'a>(
-    r: &RowEdit,
-    live: &'a [Live],
-    home: Option<&std::path::Path>,
-) -> Vec<&'a Live> {
+pub fn members<'a>(r: &RowEdit, live: &'a [Live], home: Option<&std::path::Path>) -> Vec<&'a Live> {
     let key = dir_key(&r.cwd, home);
     live.iter()
         .filter(|l| l.alias.as_deref() == Some(r.alias.as_str()))
@@ -266,21 +262,21 @@ pub(crate) fn plan_rows(
 
 /// `set-plan` 的入参：存好的哪一组（`name`），或框里还没存的那几行（`rows`），两格给一格。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SetPlanReq {
+pub struct SetPlanReq {
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) name: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub name: Option<String>,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) rows: Option<Vec<RowEdit>>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub rows: Option<Vec<RowEdit>>,
 }
 
 crate::wire::typed::codes! {
     /// `set-plan` 的码（入参不对是通用的 `bad_args`）：没有那一组 · 那一组写错或配置文件读不了（那一句说清哪一样）。
-    pub(crate) enum SetPlanErr {
+    pub enum SetPlanErr {
         /// 这台没有 tmux（一组只起在 tmux 里）。
         NoTmux = "no_tmux",
         NoSuchSet = "no_such_set",
@@ -289,7 +285,7 @@ crate::wire::typed::codes! {
 }
 
 /// `set-plan` 的本体（配置文件 · 活着的会话 · 目录在不在由入口交）。
-pub(crate) fn answer(
+pub fn answer(
     req: &SetPlanReq,
     book: &Book,
     live: &[Live],
@@ -332,22 +328,22 @@ pub(crate) fn answer(
 
 /// 一行起出来的会话进的那一组：组 id ＋ 名字。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct GroupRef {
-    pub(crate) id: String,
-    pub(crate) name: String,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct GroupRef {
+    pub id: String,
+    pub name: String,
 }
 
 /// 一行起的结果：进的组 · 起成的那几条（`session-open` 的回包，带等它报到那一问）· 没起成的那几条 · 起不了的原因。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct RowLaunched {
+pub struct RowLaunched {
     pub(crate) cwd: String,
     pub(crate) alias: String,
-    pub(crate) group: Option<GroupRef>,
+    pub group: Option<GroupRef>,
     pub(crate) opened: Vec<cmd_wire::session::Opened>,
     /// 没起成的那几条：各是交出去那一形失败（`session-open` 回的码 · 那一句 · 复制详情）。
     pub(crate) failed: Vec<Failed>,
@@ -356,10 +352,10 @@ pub(crate) struct RowLaunched {
 
 /// `set-launch` 的回包：每行 ＋ 起成几条 · 没成几条。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SetLaunched {
-    pub(crate) rows: Vec<RowLaunched>,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SetLaunched {
+    pub rows: Vec<RowLaunched>,
     pub(crate) started: u32,
     pub(crate) failed: u32,
     /// 起完那一句：全成「已启动 n」· 有没成的「启动 成/全」。
@@ -369,21 +365,25 @@ pub(crate) struct SetLaunched {
 }
 
 /// 起一组要动的那几下（入口交：找 / 建组 · 先定 sid 并写好组注解 · 走 `session-open` 起一条 · 起不成摘掉注解）。
-pub(crate) struct Hands<'a> {
+#[expect(
+    clippy::type_complexity,
+    reason = "注入的那几只手照调用方的签名写在格上；另起类型名只为过这条提示"
+)]
+pub struct Hands<'a> {
     /// 组名 ⇒ 那一组（为这个组名建过、还在 ⇒ 它；否则新建）。
-    pub(crate) group_for: &'a mut dyn FnMut(&str) -> Result<GroupRef, Failed>,
+    pub group_for: &'a mut dyn FnMut(&str) -> Result<GroupRef, Failed>,
     /// 先定这一条的 sid、写好它进这一组的注解；那一家不认先定 sid ⇒ `None`（起好之后再归）。
-    pub(crate) mark: &'a mut dyn FnMut(&GroupRef) -> Option<String>,
+    pub mark: &'a mut dyn FnMut(&GroupRef) -> Option<String>,
     /// 起这一行的一条（先定的 sid 交进去）。
-    pub(crate) start:
+    pub start:
         &'a mut dyn FnMut(&RowEdit, Option<&str>) -> Result<cmd_wire::session::Opened, Failed>,
     /// 起不成：摘掉先写的那一笔注解。
-    pub(crate) unmark: &'a mut dyn FnMut(&str, &GroupRef),
+    pub unmark: &'a mut dyn FnMut(&str, &GroupRef),
 }
 
 /// **照补足起**：每行只起 [`RowPlan::more`] 条；起之前那一笔先写好组注解（界面不猜归哪组）；一条不行不挡别的。
 /// 同一个组名的几行进同一个组，组只找 / 建一次。
-pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> SetLaunched {
+pub fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> SetLaunched {
     let mut groups: Vec<GroupRef> = Vec::new();
     let mut out = SetLaunched {
         rows: Vec::new(),
@@ -475,7 +475,7 @@ const BINDINGS: crate::common::own_state::Doc<Bindings> =
 const BINDINGS_FILE: &str = relay_route_core::file_name_of(BINDINGS.rel);
 
 /// 为组名 `name` 建过的那一组的 id（没有 · 读不出 ⇒ `None`）。
-pub(crate) fn bound(own: &crate::platform::fs::Own, name: &str) -> Option<String> {
+pub fn bound(own: &crate::platform::fs::Own, name: &str) -> Option<String> {
     let file = own.root()?.join(BINDINGS_FILE).ok()?;
     match BINDINGS.read(file.as_path()) {
         crate::common::own_state::Read::Present(b) => b.get(name).cloned(),
@@ -484,7 +484,7 @@ pub(crate) fn bound(own: &crate::platform::fs::Own, name: &str) -> Option<String
 }
 
 /// 记下：组名 `name` 进 `id` 那一组。读不懂那一份 ⇒ 不覆盖、那一句。
-pub(crate) fn bind(
+pub fn bind(
     own: &crate::platform::fs::Own,
     name: &str,
     id: &str,
@@ -505,11 +505,11 @@ pub(crate) fn bind(
 
 /// `set-launch` 的入参：照存好的哪一组补足、立刻起（补足是幂等的：连点两下不多起）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SetLaunchReq {
-    pub(crate) name: String,
+pub struct SetLaunchReq {
+    pub name: String,
 }
 
 #[cfg(test)]

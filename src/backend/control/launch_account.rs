@@ -46,8 +46,8 @@ fn alternative_to(list: &AccountsList, requested: &str) -> Option<String> {
 /// 选不了的那一形（线上 `account_unavailable` 的 `data`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct AccountUnavailable {
     /// 要的那个号。
     pub requested: String,
@@ -63,7 +63,7 @@ pub struct AccountUnavailable {
 ///
 /// `last` ＝ 这条会话上次用的号（[`last_of`]；只有跟随看它）。跟随却什么都没选上（没有上次的号、默认号也用不了）⇒ [`Settled::Unsaid`]；
 /// 点名的 · 上次的号选不了 ⇒ `Err`（不起，给一个显式的替代）。判出来的号不带模型（模型由调用方照号补，[`settle`]）。
-pub(crate) fn pick(
+pub fn pick(
     asked: &AccountAsk,
     list: &AccountsList,
     last: Option<&str>,
@@ -103,21 +103,21 @@ pub(crate) fn pick(
 pub use cmd_wire::open::AccountAsk;
 
 /// 判定要的事实，由入口交（control 不读观测层）。
-pub(crate) struct Facts<'a> {
+pub struct Facts<'a> {
     /// 这一家有没有账号这一维（没有 ⇒ 跟随什么都不选）。
-    pub(crate) has_accounts: bool,
+    pub has_accounts: bool,
     /// 这台的账号清单成品（`accounts-list`，只在要判的时候读）。
-    pub(crate) library: &'a dyn Fn() -> AccountsList,
+    pub library: &'a dyn Fn() -> AccountsList,
     /// 某条会话上次用的号。
-    pub(crate) last: &'a dyn Fn(&str) -> Option<String>,
+    pub last: &'a dyn Fn(&str) -> Option<String>,
 }
 
 /// 这一趟实际用的号（应答里的 `account`）：线上形住 `cmd-wire::session`。
-pub use cmd_wire::session::LaunchedAccount;
+pub(crate) use cmd_wire::session::LaunchedAccount;
 
 /// 判完之后交给渲染那一步的号。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Settled {
+pub enum Settled {
     /// 不表态（继承）：跟随却什么都没选上 / 这一家没有账号这一维。
     Unsaid,
     /// 账号 0。
@@ -127,7 +127,7 @@ pub(crate) enum Settled {
 }
 
 /// 三条起会话请求共用：线上那一格 ＋ 这条会话（resume 才有）⇒ 用哪个号。选不了 ⇒ `Err`（`account_unavailable` 的 `data`）。
-pub(crate) fn settle(
+pub fn settle(
     asked: &AccountAsk,
     sid: Option<&str>,
     models: &BTreeMap<String, String>,
@@ -176,21 +176,20 @@ pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
 // ───────────────────────────── 记录 ─────────────────────────────
 
 /// 便条目录名。
-pub(crate) const NOTES_DIR: &str =
-    relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
+pub const NOTES_DIR: &str = relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
 
 /// 起会话时那一格 `--tab`（线上形住 `cmd-wire`：那一台的清单每行带它）。隐藏的判定读启动台账里记下的那一格。
-pub(crate) use cmd_wire::session::LaunchTab;
+pub use cmd_wire::session::LaunchTab;
 
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Note {
+pub struct Note {
     /// 用的号；空串 ＝ 没用账号库里说得出名字的号（只为下一格留的便条）。
     pub(crate) account: String,
     pub(crate) at: u64,
     /// 这个进程起来时答题插件经环境交下去了（换了启动器那一支）：hook 认「是 ccm 起的那一个」· 会话事实判「启动器没把环境传下去」都看它。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) plugin: bool,
+    pub plugin: bool,
     /// 起这个进程时给了 `--tab`（别名里写的也算）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) tab: Option<LaunchTab>,
@@ -213,8 +212,8 @@ pub(crate) fn leave(own: &Own, pid: u32, note: &Note) -> Result<(), crate::commo
 }
 
 /// [`leave`] 不带别名的那几格写法（判据夹具用）。
-#[cfg(test)]
-pub(crate) fn leave_note(
+#[cfg(any(test, feature = "test-support"))]
+pub fn leave_note(
     own: &Own,
     pid: u32,
     account: Option<&str>,
@@ -237,7 +236,7 @@ pub(crate) fn leave_note(
 }
 
 /// 这个进程（`pid`，起始时刻 `started`）的便条，且对它作数（不早于它起）。`data` ＝ 数据目录。没有 ⇒ `None`。
-pub(crate) fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
+pub fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
     let f = data.join(NOTES_DIR).join(format!("{pid}.json"));
     match NOTE.read(&f) {
         crate::common::own_state::Read::Present(n) => Some(n).filter(|n| fresh(n, started)),
@@ -264,7 +263,7 @@ fn places(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
     Ok((home, dir))
 }
 
-/// 观测侧看见 `pid` 的会话 `sid` 那一刻（`observe::watcher::Reactions::session_seen`，由 `main.rs` 接上）：照这个进程与别的进程此刻在不在 [`adopt`]；写不成只出声。
+/// 观测侧看见 `pid` 的会话 `sid` 那一刻（`observe::watcher::Reactions::session_seen`，由 `stream/entry.rs` 接上）：照这个进程与别的进程此刻在不在 [`adopt`]；写不成只出声。
 pub fn adopt_seen(own: &Own, pid: u32, sid: &str) {
     let started_at = |p: u32| {
         crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
@@ -278,7 +277,7 @@ pub fn adopt_seen(own: &Own, pid: u32, sid: &str) {
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`（便条带 `--tab` ⇒ 连同 `sid → 标签页`）；
 /// 顺手清掉进程已不在的便条。
 /// `started` ＝ 这个进程的起始时刻（unix 秒；说不出 ⇒ `None`）。`alive(p)` ＝ 别的 pid：不在 ⇒ `None`，在 ⇒ 它的起始时刻（说不出 ⇒ `Some(None)`）。
-pub(crate) fn adopt(
+pub fn adopt(
     own: &Own,
     pid: u32,
     sid: &str,

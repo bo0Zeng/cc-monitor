@@ -67,7 +67,7 @@ impl Rig {
     }
 
     fn path(&self) -> String {
-        format!("{}:/usr/bin:/bin", self.root.join("bin").display()).into()
+        format!("{}:/usr/bin:/bin", self.root.join("bin").display())
     }
 
     fn ask(&self, account: &'static str, conn: u64) -> (SignInAsk<'static>, String) {
@@ -322,7 +322,7 @@ fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
         rig.root.join("bin").display(),
         rig_bin_marker()
     );
-    a.path = Some(session.into());
+    a.path = Some(session);
     let s = start(&a, on_end(&log))
         .expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来，且子进程拿的是那一份");
     assert_eq!(s.url, FAKE_URL);
@@ -330,7 +330,7 @@ fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
 
     let not_installed = copy_core::copy_text("reason.spawn.notInstalled", &[]);
     let (mut a, _) = rig.ask("acct-spath-none", conn());
-    a.path = Some(format!("{}:/usr/bin:/bin", rig.root.join("acct").display()).into());
+    a.path = Some(format!("{}:/usr/bin:/bin", rig.root.join("acct").display()));
     let e = start(&a, on_end(&log)).expect_err("那一份 PATH 上没有 ⇒ 起不成");
     assert!(e.said.contains("×3"), "要说查过几个目录：{e:?}");
     assert!(

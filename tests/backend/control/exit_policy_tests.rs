@@ -327,7 +327,7 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     let said = |env: &[(&str, &str)]| -> serde_json::Value {
         let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
             .args([
-                "control::exit_policy::tests::wire_child",
+                "exit_policy::tests::wire_child",
                 "--exact",
                 "--ignored",
                 "--nocapture",

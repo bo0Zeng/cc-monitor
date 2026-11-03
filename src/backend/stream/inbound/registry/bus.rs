@@ -5,7 +5,7 @@ use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // 名单：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少。
-    super::typed::blocking::<crate::control::cc_bus_wire::BusListCmd>("谁在线 + 各自待读多少"),
+    super::typed::blocking::<crate::faces::bus_list_face::BusListCmd>("谁在线 + 各自待读多少"),
     // 发信：核信封 · 判范围 · 去重 · 限流，收进收件人的收件箱，回那一封与敲不敲。
     super::typed::asynchronous::<crate::control::cc_bus_wire::BusSendCmd>(
         "发一封信：核信封、照规矩收进收件箱",

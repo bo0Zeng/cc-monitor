@@ -239,7 +239,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/control/exit_policy_tests.rs",
         "wire_child",
-        Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
+        Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "exit_policy::tests::wire_child" },
     ),
     (
         "tests/backend/test_home_tests.rs",
@@ -289,12 +289,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
         "history_resume_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "control::launch_render::history_resume_e2e::history_resume_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "cross_control::history_resume_e2e::history_resume_child_entry_point" },
     ),
     (
         "tests/backend/control/ccm/launch_note_e2e_tests.rs",
         "launch_note_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "control::ccm::launch_note_e2e::launch_note_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "cross_control::launch_note_e2e::launch_note_child_entry_point" },
     ),
     (
         "tests/backend/platform/shell/dialect_tests.rs",

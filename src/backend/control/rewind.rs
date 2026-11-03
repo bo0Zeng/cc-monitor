@@ -14,7 +14,7 @@
 //! - 送进改好的那一句之后从记录读回：主线上人说过的那几句 ＝ 被编辑那一句之前的那几句 ＋ 改好的那一句，才算成了；没读到 ⇒ 不重发，照实说。
 //! - 不改 agent 的记录文件（R18），只替人按那一家自己的那几下。
 
-pub(crate) use crate::agents::{RewindFace, RewindRow, RewindScreen};
+pub use crate::agents::{RewindFace, RewindRow, RewindScreen};
 use crate::common::said::Said;
 use crate::control::terminals::no_said;
 use crate::control::terminals_wire::{Sent, SentResult};
@@ -30,15 +30,15 @@ pub(crate) const READ_BACKS: usize = 8;
 
 /// 记录主线上人说过的一句（读回 · 核对列表用）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UserLine {
+pub struct UserLine {
     /// 记录里那一句的 id。
-    pub(crate) uuid: String,
+    pub uuid: String,
     /// 那一句的字（可能是截短的摘要）。
-    pub(crate) text: String,
+    pub text: String,
 }
 
 /// 回退那一串要的副作用（判据拿假 agent 的终端喂）。
-pub(crate) trait RewindIo {
+pub trait RewindIo {
     /// 此刻那一屏（纯文本行）。
     fn screen(&mut self) -> Result<Vec<String>, Said>;
     /// 按一个键（`terminal-input` 键表里的名字）。
@@ -55,14 +55,14 @@ pub(crate) trait RewindIo {
 
 /// 这一趟要做的：退到哪一句之前 · 怎么退 · 什么时候退 · 改好的那一句。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Plan<'a> {
-    pub(crate) rewind: &'a Rewind,
-    pub(crate) text: &'a str,
+pub struct Plan<'a> {
+    pub rewind: &'a Rewind,
+    pub text: &'a str,
 }
 
 /// 没退成 · 没做完的原因（[`Walked::said`] 写成给人看的那一句）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Why {
+pub enum Why {
     /// 这一家没申报回退菜单 · 没有所选那一种退法。
     Unsupported,
     /// 记录主线上找不到被编辑的那一句。
@@ -91,7 +91,7 @@ pub(crate) enum Why {
 
 /// 走完的结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Walked {
+pub enum Walked {
     /// 退了、改好的那一句送进去了、记录里读回来了。
     Done,
     /// 主 agent 在干活、选的是等这一轮完：一个键没按，照排着。
@@ -104,7 +104,7 @@ pub(crate) enum Walked {
 
 impl Walked {
     /// 给人看的那一句（成了 · 在等 ⇒ `None`）：投递那一下把它写进那一条的样子（未送达 · 说不准）。
-    pub(crate) fn said(&self) -> Option<String> {
+    pub fn said(&self) -> Option<String> {
         match self {
             Walked::Done | Walked::Wait => None,
             Walked::No(w) | Walked::Unsure(w) => Some(said_of(w)),
@@ -144,15 +144,15 @@ fn how_text(how: RewindHow) -> String {
 /// 发送那一下的选项（`session-rewind-options` 的本体）：那一家申报的几项照摆；`busy` ＝ 主 agent 此刻在干活（只有后台子 agent 在跑不算）。
 /// 被编辑那一句之后的事（发送那一下判哪一项能选 · 要不要多说一句）。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct After {
+pub struct After {
     /// 那一句起，主 agent 改过代码（[`code_after`]）。
-    pub(crate) code: bool,
+    pub code: bool,
     /// 那一句之后派出、此刻还在跑的子 agent 几个（[`runs_after`]）。
-    pub(crate) runs: usize,
+    pub runs: usize,
 }
 
 /// 运行表里「`since_ms` 之后派出、还在跑」的几个：起的时刻不知道的不数；那一句的时刻不知道 ⇒ 0（不照猜的说）。
-pub(crate) fn runs_after(runs: &[cmd_wire::frame::RunInfo], since_ms: Option<u64>) -> usize {
+pub fn runs_after(runs: &[cmd_wire::frame::RunInfo], since_ms: Option<u64>) -> usize {
     let Some(since) = since_ms else {
         return 0;
     };
@@ -164,7 +164,7 @@ pub(crate) fn runs_after(runs: &[cmd_wire::frame::RunInfo], since_ms: Option<u64
 
 /// `kind` 那一家的这几条记录（那一句起，文件序）里，主线上有没有写文件的调用：那一家的一拍里认（[`crate::agents::beat_of`]）；
 /// 子运行的记录 · `off`（主线外，回退掉的那几条的 id）不算。
-pub(crate) fn code_after<'a>(
+pub fn code_after<'a>(
     kind: &str,
     records: impl IntoIterator<Item = &'a serde_json::Value>,
     off: &[String],
@@ -195,7 +195,7 @@ fn off_why(declared: bool, how: RewindHow, after: After) -> Option<String> {
 
 /// 发送那一下的选项（`session-rewind-options` 的本体）：通用的几种退法都列，那一家申报的照它的字，不能选的灰着带原因；
 /// `busy` ＝ 主 agent 此刻在干活（只有后台子 agent 在跑不算）；`after` ＝ 被编辑那一句之后的事。
-pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool, after: After) -> RewindOptions {
+pub fn options_of(face: Option<&RewindFace>, busy: bool, after: After) -> RewindOptions {
     let Some(face) = face.filter(|f| !f.choices.is_empty()) else {
         return RewindOptions {
             said: Some(copy_text("beRewind.no.unsupported", &[])),
@@ -255,11 +255,7 @@ pub(crate) fn same_line(shown: &str, said: &str) -> bool {
 }
 
 /// 走一趟（见头注）。`face` ＝ 那一家的回退菜单。
-pub(crate) fn walk(
-    face: &RewindFace,
-    plan: Plan<'_>,
-    io: &mut dyn RewindIo,
-) -> Result<Walked, Said> {
+pub fn walk(face: &RewindFace, plan: Plan<'_>, io: &mut dyn RewindIo) -> Result<Walked, Said> {
     let Some(choice) = face.choices.iter().find(|c| c.how == plan.rewind.how) else {
         return Ok(Walked::No(Why::Unsupported));
     };
