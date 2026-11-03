@@ -320,9 +320,9 @@ backend-accounts = { path = "accounts", features = ["test-support", "ts"] }
 # 资产域只给测试用的那几样（落在临时目录上的真盘门）＋ 它那几个线上类型的 TS 派生。
 backend-assets = { path = "assets", features = ["test-support", "ts"] }
 # 控制面只给测试用的那几样（上层判据够到的夹具）。
-backend-control = { path = "control", features = ["test-support"] }
+backend-control = { path = "control", features = ["test-support", "ts"] }
 # 观测面只给测试用的那几样（上层判据够到的夹具）。
-backend-observe = { path = "observe", features = ["test-support"] }
+backend-observe = { path = "observe", features = ["test-support", "ts"] }
 
 # 发布档按速度编：后端在 monitor 里内嵌三份（本机一份 · 远端两份）。
 # · opt-level 3 而不是 "s"：一份 587 MB 记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；

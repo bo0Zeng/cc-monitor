@@ -495,12 +495,12 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
             .iter()
             .map(|l| {
-                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(crate::agents::claudecode::AGENT_KIND, l.as_bytes(), 0, l.len() as u64)).unwrap()
+                serde_json::to_value(crate::observe::recognize::index_row::test_support::index_row(crate::agents::claudecode::AGENT_KIND, l.as_bytes(), 0, l.len() as u64)).unwrap()
             })
             .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
-                serde_json::to_value(crate::observe::recognize::index_row::tests::index_row(
+                serde_json::to_value(crate::observe::recognize::index_row::test_support::index_row(
                     crate::agents::claudecode::AGENT_KIND,
                     line,
                     0,

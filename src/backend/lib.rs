@@ -120,8 +120,6 @@ mod ratchet_guard; // 动过的那几张登记表，**断言那几行**逐字没
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
 #[cfg(test)]
-use platform::tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；住平台层的 `test-support`）
-#[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
 use backend_relay as relay;
