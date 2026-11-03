@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -723,6 +723,28 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     owner: "排队那一行（`queue-row.ts`）",
     why: "排队那一行的头还在界面截：待发那几句只在这一端（还没送到那台），没有后端写好的那一行；名单里那台写好的那几句改照抄之后删 `firstLineOf`",
   },
+  J43: {
+    what: "平台原语只一个家：目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc/<pid>/stat 怎么切 · Windows 进程表 · CREATE_NO_WINDOW",
+    // 唯一的家是 `platform-core`；后端 `platform/` 与壳 `platform/` 只留造那一句的一层。
+    //   全量的「本包之外零份」由 `tests/common/platform-core/single_home_tests.rs` 钉；这里登记并家之后不许长回来的那几个旧名。
+    homes: ["platform-core::hold", "platform-core::private_dir", "platform-core::private_dir_all", "platform-core::write_atomic", "platform-core::parse_stat", "platform-core::processes"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustGone: [
+      "src/frontend/shell/src/platform/fs.rs::dir_lock_name",
+      "src/backend/platform/lock.rs::mutex_name",
+      "src/backend/platform/linux_tables.rs::parse_stat",
+      "src/backend/platform/proc.rs::parse_tty_nr_from_stat",
+      "src/common/host-core/src/atomic.rs::atomic_replace_path",
+      "src/frontend/shell/src/platform/own_fs.rs::write_atomic",
+    ],
+    rustNeedles: [
+      { file: "src/frontend/shell/src/platform/pid.rs", text: "rfind(')')", count: 0 },
+      { file: "src/backend/platform/child.rs", text: "0x0800_0000", count: 0 },
+      { file: "src/frontend/shell/src/platform/spawn.rs", text: "0x0800_0000", count: 0 },
+    ],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -1219,6 +1241,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SYNCHRONIZE: NONE,
     open: NONE,
   },
+  // 平台原语（目录锁 · 只给本人的目录 · 自家状态的原子写 · /proc stat · 进程表 · CREATE_NO_WINDOW）：后端 · 壳 · host-core 同一份；TS 侧没有孪生。
+  "platform-core": {
+    create_new_private: NONE,
+    write_atomic: "J43",
+    PRIVATE_DIR_MODE: NONE,
+    private_dir: "J43",
+    private_dir_all: "J43",
+    hold: "J43",
+    CREATE_NO_WINDOW: NONE,
+    parse_stat: "J43",
+    processes: "J43",
+  },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
     SANDBOX_MARK: NONE,
@@ -1438,8 +1472,8 @@ const CARGO_TOMLS_TOP = [
   "src/frontend/filewin/Cargo.toml",
   "src/backend/Cargo.toml",
 ];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core 各一）。 */
-const GUARD_CORE_DEP_LINES = 6;
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core · platform-core 各一）。 */
+const GUARD_CORE_DEP_LINES = 7;
 
 const CRATES_ROOT = "src/common";
 
