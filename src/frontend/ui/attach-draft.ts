@@ -2,18 +2,21 @@
  * **桌面附件草稿**：一条会话那一条没送的话里带的附件（按会话各一份，宿主记着）。
  *
  * - 加进来先问那台收不收（`session-attachment-check`，草稿里已有的也列进去、按先后）⇒ 不收的那份当场落失败（那台写好的一句，不给重试）。
- * - 收的逐份传：逐块 `files-stage-chunk`（[`CHUNK`] 一块，同 `chunk_core::CHUNK`）进会话那台的暂存区 ⇒ `session-attachment-commit {chunks, bytes, expect}`
- *   落进会话工作目录、回编号。字节只经通道走，本机远端同一条路（webview 只给 File 对象，没有本机路径），与手机同一形。
- * - 那台断着 ⇒ 排队 · 离线（传到哪一块留着，同一个暂存键）；连上宿主调 [`AttachDraft.resume`] 接着传。别的失败 ⇒ 失败 · 可重试（换新键从头传）。
- * - ✕：传着的那份下一块不再送（已送的块交那台的孤儿扫）；传完的那份 `session-attachment-drop`。
+ * - 收的逐份传：那一份交给壳（`attach_stage`）逐块送进会话那台的暂存区 —— 块多大 · 整份摘要 · 暂存键都是壳里的 `chunk_core`
+ *   （文件窗口与手机同一份），这里只交 Blob、收进度 ⇒ `session-attachment-commit {chunks, bytes, expect}` 落进会话工作目录、回编号。
+ *   字节本机远端同一条路（webview 只给 File 对象，没有本机路径），与手机同一形。
+ * - 那台断着 ⇒ 排队 · 离线（传了多少照着画）；连上宿主调 [`AttachDraft.resume`] 从头再传（同手机：断了回排队、重走一遍）。
+ *   别的失败 ⇒ 失败 · 可重试（从头传）。
+ * - ✕：传着的那份撤单（下一块不再送，已送的块交那台的孤儿扫）；传完的那份 `session-attachment-drop`。
  * - 送出那一下要的：编号（[`AttachDraft.ids`]，按草稿先后）· 挡着送出的那一句（[`AttachDraft.blocker`]）。
  *
- * 判收不收 · 上限 · 落点 · 类别都是那台的事（`class` · `class_text` 从那一问的答来）；这里只排先后、记进度。问那台的几口 · 读文件 · 摘要都经 [`AttachIo`]，测试换假的。
+ * 判收不收 · 上限 · 落点 · 类别都是那台的事（`class` · `class_text` 从那一问的答来）；这里只排先后、记进度。问那台的几口与交壳那一口都经 [`AttachIo`]，测试换假的。
  */
 import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { commands } from "./ipc/commands";
 import { settleTyped } from "./control-said";
-import { ChanError } from "../../comms/inward/chan";
+import { ChanError, decodeFail, detailOfFail, saidOfFail } from "../../comms/inward/chan";
 import { detailOf, saidOf } from "./kit/detail";
 import type { Machine } from "./ipc/origin";
 import type { AttachItem } from "./generated/AttachItem";
@@ -21,21 +24,21 @@ import type { AttachVerdict } from "./generated/AttachVerdict";
 import type { FileClass } from "./generated/FileClass";
 import type { SessionAttachmentCommitReply } from "./generated/SessionAttachmentCommitReply";
 import type { SessionAttachmentCommitReq } from "./generated/SessionAttachmentCommitReq";
+import type { Staged } from "./generated/Staged";
 
-/** 一块多少原始字节（== `chunk_core::CHUNK` == 后端读写一块的上限）。 */
-export const CHUNK = 256 * 1024;
+/** 交给壳传的那一趟：传完回暂存区里那一份（键 · 块数 · 字节 · 摘要）；`stop()` ⇒ 下一块不再送。 */
+export interface Staging {
+  readonly done: Promise<Staged>;
+  stop(): void;
+}
 
-/** 问那台的几口 ＋ 读本机那一份（缺省走通道；测试换假的）。 */
+/** 问那台的几口 ＋ 交壳传那一口（缺省走通道与壳；测试换假的）。 */
 export interface AttachIo {
   check(sid: string, items: AttachItem[]): Promise<AttachVerdict[]>;
-  stage(key: string, seq: number, bytes: Uint8Array): Promise<void>;
+  /** 那一份交给壳逐块送进那台暂存区；`moved` 逐块报已送字节。 */
+  stage(blob: Blob, moved: (done: number) => void): Staging;
   commit(req: SessionAttachmentCommitReq): Promise<SessionAttachmentCommitReply>;
   drop(sid: string, id: string): Promise<void>;
-  /** 整份 SHA-256（小写十六进制）。 */
-  digest(blob: Blob): Promise<string>;
-  read(blob: Blob, start: number, end: number): Promise<Uint8Array>;
-  /** 现造一个暂存键（32 位小写十六进制）。 */
-  newKey(): string;
   /** 没成的原因是会话所在机器未连接（⇒ 排队 · 离线，不算失败）。 */
   offline(e: unknown): boolean;
 }
@@ -70,10 +73,10 @@ export interface AttachInput {
   dir?: boolean;
 }
 
-/** 草稿里一份的内账：暂存键 · 送到第几块 · 问过没有 · 撤了没有。 */
+/** 草稿里一份的内账：已送多少 · 在传那一趟的撤单 · 问过没有 · 撤了没有。 */
 interface Slot extends Chip {
-  stash: string;
-  seq: number;
+  sent: number;
+  stop: (() => void) | null;
   checked: boolean;
   dropped: boolean;
 }
@@ -99,32 +102,33 @@ export class AttachDraft {
   /** 加一批：先问那台收不收，收的排进去传。 */
   add(files: readonly AttachInput[]): void {
     for (const f of files) {
-      this.slots.push({ n: ++this.seq, name: f.name, bytes: f.blob.size, blob: f.blob, dir: f.dir === true, class: null, classText: "", at: { at: "queued" }, stash: "", seq: 0, checked: false, dropped: false });
+      this.slots.push({ n: ++this.seq, name: f.name, bytes: f.blob.size, blob: f.blob, dir: f.dir === true, class: null, classText: "", at: { at: "queued" }, sent: 0, stop: null, checked: false, dropped: false });
     }
     this.changed();
     void this.ask();
   }
 
-  /** ✕ 一份：传着的停、传完的让那台删掉。 */
+  /** ✕ 一份：传着的撤单、传完的让那台删掉。 */
   remove(n: number): void {
     const i = this.slots.findIndex((s) => s.n === n);
     if (i < 0) return;
     const [s] = this.slots.splice(i, 1);
     s.dropped = true;
+    s.stop?.();
     if (s.at.at === "done") void this.io.drop(this.sid, s.at.id).catch(() => {});
     this.changed();
   }
 
-  /** 失败那颗上的［重试］：换新键从头传。 */
+  /** 失败那颗上的［重试］：从头传。 */
   retry(n: number): void {
     const s = this.slots.find((x) => x.n === n);
     if (!s || s.at.at !== "failed" || !s.at.retry) return;
-    this.restart(s);
+    s.at = { at: "queued" };
     this.changed();
     void this.pump();
   }
 
-  /** 那台连上了：断着的接着传、没问成的再问。 */
+  /** 那台连上了：断着的从头再传、没问成的再问。 */
   resume(): void {
     for (const s of this.slots) if (s.at.at === "offline") s.at = { at: "queued" };
     this.changed();
@@ -167,12 +171,6 @@ export class AttachDraft {
       cut: this.slots.some((s) => s.at.at === "offline"),
       pending: this.slots.some((s) => s.at.at !== "done"),
     };
-  }
-
-  private restart(s: Slot): void {
-    s.at = { at: "queued" };
-    s.stash = "";
-    s.seq = 0;
   }
 
   /** 问那台收不收：没问过的那几份连同草稿里已收的（按先后）一起问，答落到没问过的那几份上。 */
@@ -219,28 +217,21 @@ export class AttachDraft {
   }
 
   private async upload(s: Slot): Promise<void> {
-    if (s.stash === "") {
-      s.stash = this.io.newKey();
-      s.seq = 0;
-    }
-    const chunks = Math.ceil(s.bytes / CHUNK);
-    s.at = { at: "sending", done: Math.min(s.bytes, s.seq * CHUNK) };
+    s.sent = 0;
+    s.at = { at: "sending", done: 0 };
     this.changed();
-    try {
-      while (s.seq < chunks) {
-        const start = s.seq * CHUNK;
-        const end = Math.min(s.bytes, start + CHUNK);
-        const bytes = await this.io.read(s.blob, start, end);
-        if (s.dropped) return;
-        await this.io.stage(s.stash, s.seq, bytes);
-        if (s.dropped) return;
-        s.seq++;
-        s.at = { at: "sending", done: end };
-        this.changed();
-      }
-      const sha256 = await this.io.digest(s.blob);
+    const run = this.io.stage(s.blob, (done) => {
       if (s.dropped) return;
-      const got = await this.io.commit({ sid: this.sid, key: s.stash, name: s.name, bytes: s.bytes, chunks, expect: { sha256 } });
+      s.sent = done;
+      s.at = { at: "sending", done };
+      this.changed();
+    });
+    s.stop = run.stop;
+    try {
+      const staged = await run.done;
+      s.stop = null;
+      if (s.dropped) return;
+      const got = await this.io.commit({ sid: this.sid, key: staged.key, name: s.name, bytes: staged.bytes, chunks: staged.chunks, expect: { sha256: staged.sha256 } });
       if (s.dropped) {
         void this.io.drop(this.sid, got.id).catch(() => {});
         return;
@@ -248,38 +239,40 @@ export class AttachDraft {
       s.class = got.class;
       s.at = { at: "done", id: got.id };
     } catch (e) {
+      s.stop = null;
       if (s.dropped) return;
-      if (this.io.offline(e)) s.at = { at: "offline", done: Math.min(s.bytes, s.seq * CHUNK) };
-      else {
-        s.at = { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
-        s.stash = "";
-        s.seq = 0;
-      }
+      s.at = this.io.offline(e) ? { at: "offline", done: s.sent } : { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
     }
     this.changed();
   }
 }
 
-/** 一块 / 一问的期限（远端一块 512 KiB 十六进制，慢线上也够）。 */
+/** 一问的期限（问收不收 · 提交 · 删）。 */
 const STEP_BUDGET_MS = 30_000;
 
-const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-
-/** 生产那一份：经通道问会话那台（本机远端同一条路）。 */
+/** 生产那一份：问那台经通道、传字节交壳（本机远端同一条路）。 */
 export function channelIo(origin: Machine): AttachIo {
   return {
     check: async (sid, items) =>
       (await settleTyped(origin, "session-attachment-check", callTyped(origin, "session-attachment-check", { sid, items }, budgetWithin(STEP_BUDGET_MS)))).items,
-    stage: async (key, seq, bytes) => {
-      await settleTyped(origin, "files-stage-chunk", callTyped(origin, "files-stage-chunk", { key, seq, content: { b16: hex(bytes) } }, budgetWithin(STEP_BUDGET_MS)));
+    stage: (blob, moved) => {
+      const ticket = nextTicket();
+      const done = blob.arrayBuffer().then((buf) =>
+        commands.attach_stage(origin, ticket, new Uint8Array(buf), moved).catch((raw: unknown) => {
+          // 失败是通道那一形（`chan/webview.rs::Fail`）：照 `chan.call` 解回三层，离线照 `hop` 层认。
+          throw new ChanError(decodeFail(raw), saidOfFail(raw), detailOfFail(raw));
+        }),
+      );
+      return { done, stop: () => void commands.attach_stage_stop({ ticket }).catch(() => {}) };
     },
     commit: (req) => settleTyped(origin, "session-attachment-commit", callTyped(origin, "session-attachment-commit", req, budgetWithin(STEP_BUDGET_MS))),
     drop: async (sid, id) => {
       await settleTyped(origin, "session-attachment-drop", callTyped(origin, "session-attachment-drop", { sid, id }, budgetWithin(STEP_BUDGET_MS)));
     },
-    digest: async (blob) => hex(new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()))),
-    read: async (blob, start, end) => new Uint8Array(await blob.slice(start, end).arrayBuffer()),
-    newKey: () => hex(crypto.getRandomValues(new Uint8Array(16))),
     offline: (e) => e instanceof ChanError && e.error.layer === "hop",
   };
 }
+
+/** 这一窗里交壳那几趟的撤单号（壳按窗口 · 单号记）。 */
+let tickets = 0;
+const nextTicket = (): number => ++tickets;

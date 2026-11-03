@@ -28,6 +28,14 @@ const backend = new FakeBackend(scene.world(), { mainWindow: label === "main" })
 (window as { __CCM_HOST__?: unknown }).__CCM_HOST__ = (HOST_FACTS as Record<string, unknown>)[scene.hostOs ?? "linux"] ?? null;
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
+// 交原样字节的那一条（`attach_stage`）实参走头：`mockIPC` 不把 options 交给回调 ⇒ 这一条在这里接走、头照交。
+{
+  type Invoke = (cmd: string, args?: unknown, options?: { headers?: Record<string, string> }) => Promise<unknown>;
+  const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+  const mocked = internals.invoke;
+  internals.invoke = (cmd, args, options) =>
+    cmd === "attach_stage" ? backend.attachStage(args as Uint8Array, options?.headers ?? {}) : mocked(cmd, args, options);
+}
 backend.attachEmitter((event, payload) => emit(event, payload));
 // 场景等「开页之后台架在演的那几样落定」用（`scenes/helpers.ts::mainReady`）。
 (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled = () => backend.settled();
