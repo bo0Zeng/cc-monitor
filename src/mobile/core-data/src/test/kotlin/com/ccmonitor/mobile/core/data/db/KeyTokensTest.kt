@@ -23,8 +23,7 @@ class KeyTokensTest {
             generateSequence(File("").absoluteFile) { it.parentFile }
                 .map { File(it, "tests/__fixtures__/xterm-keys.tsv") }
                 .first { it.isFile }
-        f.readLines().mapIndexedNotNull { i, l ->
-            if (l.isEmpty() || l.startsWith("#")) return@mapIndexedNotNull null
+        f.readLines().mapIndexed { i, l ->
             val c = l.split('\t')
             assertEquals("第 ${i + 1} 行该是三列", 3, c.size)
             Row(i + 1, c[0], c[1].chunked(2).map { it.toInt(16).toByte() }.toByteArray(), c[2])

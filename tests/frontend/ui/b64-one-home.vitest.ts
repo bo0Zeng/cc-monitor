@@ -5,7 +5,7 @@
  * ## 钉什么
  *
  * 1. 剥了注释的生产 Rust（`src/` 下）里，base64 字母表那一串字面恰好一处，在 `b64.rs`。
- * 2. 先前那几份的函数名（`fn base64(` · `fn base64_encode(`）在生产 Rust 里零处。
+ * 2. 手写一份常起的那两个函数名（`fn base64(` · `fn base64_encode(`）在生产 Rust 里零处。
  * 3. 反空真：人群非空，`b64.rs` 在人群里且有 `pub fn b64_encode` · `pub fn b64_decode`。
  */
 import { describe, expect, it } from "vitest";

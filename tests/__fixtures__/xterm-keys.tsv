@@ -1,9 +1,3 @@
-# xterm 那一套键码的金样（TERM=xterm-256color）：一下的记号 ⇒ 送进终端的字节。
-# 读它的两处：cmd-wire（表本身）· 手机（经 JNI 调同一张表）。
-# 列：记号 · 字节（小写十六进制）· 方向（= 两向 · > 只编 · < 只解）。
-# 记号：t<字> · s<修饰>:<键> · c<修饰>:<字>；修饰是 ctrl · alt · shift 的逗号连写（照这个先后），可空。
-#
-# 单字节那几颗
 s:esc	1b	=
 s:tab	09	=
 s:enter	0d	=
@@ -13,7 +7,6 @@ salt:esc	1b1b	>
 salt:enter	1b0d	>
 sctrl:tab	09	>
 s:enter	0a	<
-# CSI 字母
 s:up	1b5b41	=
 s:down	1b5b42	=
 s:right	1b5b43	=
@@ -25,7 +18,6 @@ sshift:up	1b5b313b3241	=
 salt:left	1b5b313b3344	=
 sctrl,alt,shift:right	1b5b313b3843	=
 s:up	1b5b313b3141	<
-# SS3
 s:f1	1b4f50	=
 s:f2	1b4f51	=
 s:f3	1b4f52	=
@@ -33,7 +25,6 @@ s:f4	1b4f53	=
 sctrl:f1	1b5b313b3550	=
 s:up	1b4f41	<
 s:home	1b4f48	<
-# ~ 号
 s:delete	1b5b337e	=
 s:pgup	1b5b357e	=
 s:pgdn	1b5b367e	=
@@ -51,7 +42,6 @@ s:home	1b5b317e	<
 s:end	1b5b347e	<
 s:home	1b5b377e	<
 s:end	1b5b387e	<
-# 带修饰的字
 cctrl:c	03	=
 cctrl:a	01	=
 cctrl:h	08	=
@@ -71,6 +61,5 @@ cctrl,alt:c	1b03	>
 cshift:a	41	>
 cshift:1	31	>
 cctrl:中	e4b8ad	>
-# 字
 tab	6162	=
 t中	e4b8ad	=

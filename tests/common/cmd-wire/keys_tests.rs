@@ -1,6 +1,8 @@
 use super::*;
 
-/// 金样（`tests/__fixtures__/xterm-keys.tsv`）：记号 · 字节 · 方向。手机那一侧读同一份。
+/// 金样（`tests/__fixtures__/xterm-keys.tsv`，`TERM=xterm-256color`）：一行一下，手机那一侧（`KeyTokensTest.kt`）读同一份。
+/// 三列（tab 分隔）：记号（[`Press::token`]）· 字节（小写十六进制）· 方向（`=` 两向 · `>` 只编 · `<` 只解）。
+/// 照单字节那几颗 · CSI 字母 · SS3 · `~` 号 · 带修饰的字 · 字的先后排；没有注释行（每行都是数据）。
 const GOLDEN: &str = include_str!("../../__fixtures__/xterm-keys.tsv");
 
 fn unhex(s: &str) -> Vec<u8> {
@@ -15,7 +17,6 @@ fn rows() -> Vec<(usize, &'static str, Vec<u8>, &'static str)> {
     GOLDEN
         .lines()
         .enumerate()
-        .filter(|(_, l)| !l.is_empty() && !l.starts_with('#'))
         .map(|(n, l)| {
             let cols: Vec<&str> = l.split('\t').collect();
             assert_eq!(cols.len(), 3, "第 {} 行该是三列：{l:?}", n + 1);
