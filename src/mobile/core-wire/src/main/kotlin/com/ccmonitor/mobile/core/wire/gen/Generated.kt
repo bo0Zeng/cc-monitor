@@ -3302,6 +3302,8 @@ sealed interface CallEnd {
     @Suppress("UNCHECKED_CAST")
     data class Timeout(
         override val call: Long,
+        val said: String,
+        val detail: String,
     ) : CallEnd, Ordered {
         override val end: String get() = "timeout"
         override var wireOrder: IntArray? = null
@@ -3309,6 +3311,8 @@ sealed interface CallEnd {
     @Suppress("UNCHECKED_CAST")
     data class Cancelled(
         override val call: Long,
+        val said: String,
+        val detail: String,
     ) : CallEnd, Ordered {
         override val end: String get() = "cancelled"
         override var wireOrder: IntArray? = null
@@ -3359,17 +3363,21 @@ sealed interface CallEnd {
                         listOf(
                         Field("end", { tag("timeout") }, optional = false, nullable = false),
                         Field("call", { Lng }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> CallEnd.Timeout(a[1] as Long) },
-                        { v -> arrayOf("timeout", v.call) },
+                        { a -> CallEnd.Timeout(a[1] as Long, a[2] as String, a[3] as String) },
+                        { v -> arrayOf("timeout", v.call, v.said, v.detail) },
                     )),
                 Variant("cancelled", CallEnd.Cancelled::class.java, obj(
                         listOf(
                         Field("end", { tag("cancelled") }, optional = false, nullable = false),
                         Field("call", { Lng }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> CallEnd.Cancelled(a[1] as Long) },
-                        { v -> arrayOf("cancelled", v.call) },
+                        { a -> CallEnd.Cancelled(a[1] as Long, a[2] as String, a[3] as String) },
+                        { v -> arrayOf("cancelled", v.call, v.said, v.detail) },
                     )),
                 Variant("down", CallEnd.Down::class.java, obj(
                         listOf(
@@ -8015,6 +8023,86 @@ data class FrontFace(
             { a -> FrontFace(a[0] as String, a[1] as String, a[2] as String?, a[3] as Tone, a[4] as List<FrontAct>) },
             { v -> arrayOf(v.title, v.body, v.hint, v.tone, v.acts) },
         )
+    }
+}
+
+sealed interface FrontMiss {
+    /** 判别格（`kind`）那个词。 */
+    val kind: String
+
+    data object Old : FrontMiss {
+        override val kind: String get() = "old"
+    }
+    data object TimedOut : FrontMiss {
+        override val kind: String get() = "timed-out"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Unreached(
+        val said: String,
+    ) : FrontMiss, Ordered {
+        override val kind: String get() = "unreached"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Broken(
+        val detail: String,
+    ) : FrontMiss, Ordered {
+        override val kind: String get() = "broken"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class BadShape(
+        val detail: String,
+    ) : FrontMiss, Ordered {
+        override val kind: String get() = "bad-shape"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<FrontMiss> =
+            tagged<FrontMiss>(
+                "kind",
+                listOf(
+                Variant("old", FrontMiss.Old::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("old") }, optional = false, nullable = false),
+                        ),
+                        { FrontMiss.Old },
+                        { arrayOf("old") },
+                    )),
+                Variant("timed-out", FrontMiss.TimedOut::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("timed-out") }, optional = false, nullable = false),
+                        ),
+                        { FrontMiss.TimedOut },
+                        { arrayOf("timed-out") },
+                    )),
+                Variant("unreached", FrontMiss.Unreached::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("unreached") }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> FrontMiss.Unreached(a[1] as String) },
+                        { v -> arrayOf("unreached", v.said) },
+                    )),
+                Variant("broken", FrontMiss.Broken::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("broken") }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> FrontMiss.Broken(a[1] as String) },
+                        { v -> arrayOf("broken", v.detail) },
+                    )),
+                Variant("bad-shape", FrontMiss.BadShape::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("bad-shape") }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> FrontMiss.BadShape(a[1] as String) },
+                        { v -> arrayOf("bad-shape", v.detail) },
+                    )),
+                ),
+            )
     }
 }
 
