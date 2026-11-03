@@ -98,12 +98,9 @@ fn write_state(at: &Path, bytes: &[u8]) -> Result<()> {
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    platform_core::atomic::write_atomic(
-        at,
-        &tmp,
-        platform_core::atomic::create_new_private,
-        |f| f.write_all(bytes),
-    )
+    platform_core::atomic::write_atomic(at, &tmp, platform_core::atomic::create_new_private, |f| {
+        f.write_all(bytes)
+    })
     .map_err(|fail| match fail.stage {
         platform_core::atomic::Stage::Replace => at_path(at, &fail.err),
         _ => at_path(&tmp, &fail.err),

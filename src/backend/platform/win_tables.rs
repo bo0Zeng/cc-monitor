@@ -132,8 +132,7 @@ fn established() -> Result<Vec<serde_json::Value>, String> {
 
 /// 进程表四格（进程号 · 父进程号 · 名字取 `platform_core::proc::processes` 那一趟快照，monitor 同一份）。启动时刻开不出句柄 ⇒ 0（系统没给）。
 fn processes() -> Result<Vec<serde_json::Value>, String> {
-    let table = platform_core::proc::processes()
-        .map_err(|e| format!("process snapshot: {e}"))?;
+    let table = platform_core::proc::processes().map_err(|e| format!("process snapshot: {e}"))?;
     Ok(table
         .into_iter()
         .map(|p| {

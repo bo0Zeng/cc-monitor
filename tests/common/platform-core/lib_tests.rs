@@ -79,7 +79,8 @@ fn the_dir_lock_on_a_missing_dir_fails_at_open() {
 #[test]
 fn stat_line_splits_around_the_last_paren() {
     // 名字里带空格与括号；右括号之后：state(3) ppid(4) pgrp(5) session(6) tty_nr(7) … starttime(22)。
-    let line = "4242 (my (odd) proc) S 17 4242 4242 34816 4242 4194560 1 0 0 0 0 0 0 0 20 0 1 0 98765 1 1";
+    let line =
+        "4242 (my (odd) proc) S 17 4242 4242 34816 4242 4194560 1 0 0 0 0 0 0 0 20 0 1 0 98765 1 1";
     let s = parse_stat(line).expect("切得开");
     assert_eq!(s.ppid, 17);
     assert_eq!(s.name, "my (odd) proc");

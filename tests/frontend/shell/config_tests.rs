@@ -362,7 +362,8 @@ fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let body = &core[at..];
     let body = &body[..body.find("\n}").expect("函数体没收尾")];
     let sync = guard_core::find_pinned(body, ".sync_all()").expect("原子写里落盘不是恰好一处");
-    let swap = guard_core::find_pinned(body, "replace(tmp, path)").expect("原子写里换上去不是恰好一处");
+    let swap =
+        guard_core::find_pinned(body, "replace(tmp, path)").expect("原子写里换上去不是恰好一处");
     assert!(
         sync < swap,
         "落盘排在换上去之后 —— 换上去的那一份可能还没写到盘上"
@@ -392,7 +393,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
         "../../../src/frontend/shell/src/platform/fs.rs"
     ));
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
-    for (who, src) in [("monitor", &mine), ("后端", &theirs)] {
+    for (who, src) in [("monitor", &mine), ("backend", &theirs)] {
         assert_eq!(
             src.matches("platform_core::dir::hold(dir)").count(),
             1,

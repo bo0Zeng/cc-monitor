@@ -5,20 +5,14 @@ use crate::atomic::{create_new_private, write_atomic, AtomicFail, Stage};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-fn scratch(tag: &str) -> PathBuf {
+/// 一格一个临时目录 ＋ 目标 ＋ 旁名。
+fn scratch(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
     let d = std::env::temp_dir().join(format!("ccm-platcore-atomic-{tag}-{}", std::process::id()));
     std::fs::remove_dir_all(&d).ok();
     std::fs::create_dir_all(&d).expect("建测试目录");
-    d
-}
-
-fn names(dir: &Path) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(dir)
-        .expect("列")
-        .map(|e| e.expect("项").file_name().to_string_lossy().into_owned())
-        .collect();
-    v.sort();
-    v
+    let at = d.join("state.json");
+    let tmp = d.join(".state.json.tmp");
+    (d, at, tmp)
 }
 
 fn put(path: &Path, tmp: &Path, body: &[u8]) -> Result<(), AtomicFail> {
@@ -27,32 +21,29 @@ fn put(path: &Path, tmp: &Path, body: &[u8]) -> Result<(), AtomicFail> {
 
 #[test]
 fn first_write_creates_the_file_and_leaves_no_side_file() {
-    let d = scratch("first");
-    let at = d.join("state.json");
-    put(&at, &d.join(".state.json.1.tmp"), b"{\"v\":1}").expect("写");
+    let (d, at, tmp) = scratch("first");
+    put(&at, &tmp, b"{\"v\":1}").expect("写");
     assert_eq!(std::fs::read(&at).expect("读"), b"{\"v\":1}");
-    assert_eq!(names(&d), vec!["state.json"]);
+    assert!(!tmp.exists(), "旁名留下了");
     std::fs::remove_dir_all(&d).ok();
 }
 
 #[test]
 fn overwrite_replaces_the_whole_file() {
-    let d = scratch("over");
-    let at = d.join("state.json");
+    let (d, at, tmp) = scratch("over");
     std::fs::write(&at, b"old old old old").expect("预置");
-    put(&at, &d.join(".state.json.2.tmp"), b"new").expect("写");
+    put(&at, &tmp, b"new").expect("写");
     assert_eq!(std::fs::read(&at).expect("读"), b"new");
-    assert_eq!(names(&d), vec!["state.json"]);
+    assert!(!tmp.exists(), "旁名留下了");
     std::fs::remove_dir_all(&d).ok();
 }
 
 /// 写到一半失败（正文交了一截就出错，像写一半崩）：目标原样、旁名删掉。
 #[test]
 fn a_fill_that_fails_halfway_leaves_the_target_and_no_side_file() {
-    let d = scratch("half");
-    let at = d.join("state.json");
+    let (d, at, tmp) = scratch("half");
     std::fs::write(&at, b"intact").expect("预置");
-    let err = write_atomic(&at, &d.join(".state.json.3.tmp"), create_new_private, |f| {
+    let err = write_atomic(&at, &tmp, create_new_private, |f| {
         f.write_all(b"half of it")?;
         Err(std::io::Error::other("崩在一半"))
     })
@@ -60,16 +51,14 @@ fn a_fill_that_fails_halfway_leaves_the_target_and_no_side_file() {
     .expect("该失败");
     assert_eq!(err.stage, Stage::WriteTmp);
     assert_eq!(std::fs::read(&at).expect("读"), b"intact");
-    assert_eq!(names(&d), vec!["state.json"]);
+    assert!(!tmp.exists(), "旁名留下了");
     std::fs::remove_dir_all(&d).ok();
 }
 
 /// 旁名那个名字上已经有一份（不是这一趟建的）：不碰它、不碰目标。
 #[test]
 fn a_side_name_already_taken_is_not_ours_and_is_left_alone() {
-    let d = scratch("taken");
-    let at = d.join("state.json");
-    let tmp = d.join(".state.json.4.tmp");
+    let (d, at, tmp) = scratch("taken");
     std::fs::write(&at, b"intact").expect("预置");
     std::fs::write(&tmp, b"someone else").expect("预置旁名");
     let err = put(&at, &tmp, b"new").err().expect("该失败");
@@ -82,15 +71,12 @@ fn a_side_name_already_taken_is_not_ours_and_is_left_alone() {
 /// 换不上去（目标是一个非空目录）：旁名删掉。
 #[test]
 fn a_replace_that_fails_removes_the_side_file() {
-    let d = scratch("noreplace");
-    let at = d.join("state.json");
+    let (d, at, tmp) = scratch("noreplace");
     std::fs::create_dir(&at).expect("预置目录");
     std::fs::write(at.join("inside"), b"x").expect("预置");
-    let err = put(&at, &d.join(".state.json.5.tmp"), b"new")
-        .err()
-        .expect("该失败");
+    let err = put(&at, &tmp, b"new").err().expect("该失败");
     assert_eq!(err.stage, Stage::Replace);
-    assert_eq!(names(&d), vec!["state.json"]);
+    assert!(!tmp.exists(), "旁名留下了");
     std::fs::remove_dir_all(&d).ok();
 }
 
@@ -99,9 +85,8 @@ fn a_replace_that_fails_removes_the_side_file() {
 #[test]
 fn the_new_file_is_owner_only() {
     use std::os::unix::fs::PermissionsExt as _;
-    let d = scratch("mode");
-    let at = d.join("state.json");
-    put(&at, &d.join(".state.json.6.tmp"), b"x").expect("写");
+    let (d, at, tmp) = scratch("mode");
+    put(&at, &tmp, b"x").expect("写");
     let m = std::fs::metadata(&at).expect("meta").permissions().mode() & 0o777;
     assert_eq!(m, 0o600);
     std::fs::remove_dir_all(&d).ok();

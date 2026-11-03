@@ -607,20 +607,16 @@ fn atomic_write_with(
         std::thread::current().id(),
         SEQ.fetch_add(1, Ordering::Relaxed),
     ));
-    platform_core::atomic::write_atomic(path, &tmp, creds_core::perm::create_private, |f| {
-        fill(f)
-    })
-    .map_err(|platform_core::atomic::AtomicFail { stage, err }| {
+    use platform_core::atomic::{AtomicFail, Stage};
+    let said = |AtomicFail { stage, err }: AtomicFail| {
         let tmp_s = tmp.display().to_string();
         let w = copy_core::io_reason(err.kind());
         let said = match stage {
-            platform_core::atomic::Stage::CreateTmp | platform_core::atomic::Stage::WriteTmp => {
-                copy_text(
-                    "beOwnState.write.tmpWriteFailed",
-                    &[("tmp", &tmp_s), ("why", &w)],
-                )
-            }
-            platform_core::atomic::Stage::Replace => copy_text(
+            Stage::CreateTmp | Stage::WriteTmp => copy_text(
+                "beOwnState.write.tmpWriteFailed",
+                &[("tmp", &tmp_s), ("why", &w)],
+            ),
+            Stage::Replace => copy_text(
                 "beOwnState.write.renameFailed",
                 &[
                     ("tmp", &tmp_s),
@@ -630,7 +626,9 @@ fn atomic_write_with(
             ),
         };
         Said::with_raw(said, &err)
-    })
+    };
+    platform_core::atomic::write_atomic(path, &tmp, creds_core::perm::create_private, |f| fill(f))
+        .map_err(said)
 }
 
 // 判据用的几种造法（临时家目录 · 只给数据目录 · 两个根各一处）：本包的判据与上层的测试档共用。

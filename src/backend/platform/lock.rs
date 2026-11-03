@@ -15,7 +15,7 @@
 
 use copy_core::copy_text;
 use copy_core::said::Said;
-use platform_core::dir::{LockFail, LockStage};
+use platform_core::dir::{HoldError, LockStage};
 use std::path::Path;
 
 /// 持着的那把锁。落地即放。
@@ -24,7 +24,7 @@ pub use platform_core::dir::DirLock;
 /// 拿 `dir` 那把锁（阻塞到拿到为止）。`dir` 必须已经在（调用方先建那一层 —— 建目录是 `Own` 的方法，本层不建）。
 /// 拿不到 ⇒ 那一句（带原因词）＋ 系统原话。
 pub fn hold(dir: &Path) -> Result<DirLock, Said> {
-    platform_core::dir::hold(dir).map_err(|LockFail { stage, err }| {
+    platform_core::dir::hold(dir).map_err(|HoldError { stage, err }| {
         let shown = dir.display().to_string();
         let why = copy_core::io_reason(err.kind());
         let said = match stage {

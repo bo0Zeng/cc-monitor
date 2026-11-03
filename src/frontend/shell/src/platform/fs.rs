@@ -93,8 +93,8 @@ pub fn only_me_on_create(opts: &mut std::fs::OpenOptions) {
 /// （Windows 对应）把它也包上」。锁本身只有一处（`platform_core::dir::hold`，后端第四层那把同一份 ⇒ 两边进内核同一张表、互斥）；
 /// 这里只造拿不到时的那一句。阻塞等到拿到为止（等的是别人放锁，不是节拍）。`dir` 必须已经在（这里不建：建目录是调用方的事）。
 pub fn hold_dir_lock(dir: &Path) -> Result<platform_core::dir::DirLock, Said> {
-    use platform_core::dir::{LockFail, LockStage};
-    platform_core::dir::hold(dir).map_err(|LockFail { stage, err }| {
+    use platform_core::dir::{HoldError, LockStage};
+    platform_core::dir::hold(dir).map_err(|HoldError { stage, err }| {
         let shown = dir.display().to_string();
         let said = match stage {
             LockStage::Open => copy_text(

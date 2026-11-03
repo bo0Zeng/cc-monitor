@@ -119,8 +119,8 @@ fn each_primitive_has_its_only_home_in_platform_core() {
 fn the_three_own_state_writers_go_through_one_atomic_write() {
     let mut bad = Vec::new();
     for (file, must, never) in ATOMIC_WRITERS {
-        let src = std::fs::read_to_string(root().join(file))
-            .unwrap_or_else(|e| panic!("读 {file}: {e}"));
+        let src =
+            std::fs::read_to_string(root().join(file)).unwrap_or_else(|e| panic!("读 {file}: {e}"));
         let code = guard_core::production_code(&src);
         if !code.contains(must) {
             bad.push(format!("{file}：没调 `{must}`"));
@@ -131,7 +131,11 @@ fn the_three_own_state_writers_go_through_one_atomic_write() {
             }
         }
     }
-    assert!(bad.is_empty(), "自家状态的原子写还有不止一份：\n{}", bad.join("\n"));
+    assert!(
+        bad.is_empty(),
+        "自家状态的原子写还有不止一份：\n{}",
+        bad.join("\n")
+    );
 }
 
 /// 正控：同一把尺子在合成语料里认得出多出来的一份。

@@ -62,7 +62,7 @@ pub enum LockStage {
 
 /// 拿不到锁：卡在哪一步 ＋ 系统原话。
 #[derive(Debug)]
-pub struct LockFail {
+pub struct HoldError {
     pub stage: LockStage,
     pub err: io::Error,
 }
@@ -77,9 +77,9 @@ pub struct DirLock {
 
 /// 拿 `dir` 那把锁（阻塞到拿到为止）。`dir` 必须已经在（这里不建：建目录是调用方的事）。
 #[cfg(unix)]
-pub fn hold(dir: &Path) -> Result<DirLock, LockFail> {
+pub fn hold(dir: &Path) -> Result<DirLock, HoldError> {
     use std::os::fd::AsRawFd as _;
-    let f = std::fs::File::open(dir).map_err(|err| LockFail {
+    let f = std::fs::File::open(dir).map_err(|err| HoldError {
         stage: LockStage::Open,
         err,
     })?;
@@ -91,7 +91,7 @@ pub fn hold(dir: &Path) -> Result<DirLock, LockFail> {
         }
         let err = io::Error::last_os_error();
         if err.kind() != io::ErrorKind::Interrupted {
-            return Err(LockFail {
+            return Err(HoldError {
                 stage: LockStage::Lock,
                 err,
             });
@@ -124,7 +124,7 @@ fn mutex_name(namespace: &str, dir: &Path) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-pub fn hold(dir: &Path) -> Result<DirLock, LockFail> {
+pub fn hold(dir: &Path) -> Result<DirLock, HoldError> {
     /// 「一直等」—— 只等内核那一个事件。
     const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
     const WAIT_OBJECT_0: u32 = 0;
@@ -140,7 +140,7 @@ pub fn hold(dir: &Path) -> Result<DirLock, LockFail> {
         }
     }
     if handle.is_null() {
-        return Err(LockFail {
+        return Err(HoldError {
             stage: LockStage::Lock,
             err: io::Error::last_os_error(),
         });
@@ -151,7 +151,7 @@ pub fn hold(dir: &Path) -> Result<DirLock, LockFail> {
         other => {
             // SAFETY: 同上；没拿到就只关句柄。
             unsafe { CloseHandle(handle) };
-            Err(LockFail {
+            Err(HoldError {
                 stage: LockStage::Wait,
                 err: io::Error::other(format!("WaitForSingleObject {other:#x}")),
             })
