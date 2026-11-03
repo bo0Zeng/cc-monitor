@@ -1253,7 +1253,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             Some(t::Refused::HeldElsewhere),
             None
         )),
-        r#"{"result":"refused","said":"输入在另一端 · 没送","why":"held_elsewhere"}"#
+        r#"{"result":"refused","said":"输入在另一端 · 未送出","why":"held_elsewhere"}"#
     );
     // terminal-end：手机那一份入参（`core-claude/.../link/Terminals.kt`）经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 名单里没有它）。
     assert_eq!(

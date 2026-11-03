@@ -52,8 +52,7 @@
     "tests/backend/plan/fixture.rs": [
       { "text": "替换", "use": "输入" },
       { "text": "原话", "use": "输入" },
-      { "text": "待定", "use": "输入" },
-      { "text": "没签收的", "use": "输入" }
+      { "text": "待定", "use": "输入" }
     ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
@@ -268,8 +267,7 @@
       { "text": "订阅", "use": "输入" },
       { "text": "替换", "use": "输入" },
       { "text": "原话", "use": "输入" },
-      { "text": "待定", "use": "输入" },
-      { "text": "没签收的", "use": "输入" }
+      { "text": "待定", "use": "输入" }
     ],
     "tests/shots/fake/history.ts": [
       { "text": "重试", "use": "输入" }

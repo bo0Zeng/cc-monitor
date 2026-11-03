@@ -193,7 +193,6 @@ fn stat_of(pid: u32) -> Option<platform_core::proc::Stat> {
 }
 
 /// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn parse_btime(proc_stat: &str) -> Option<u64> {
     proc_stat.lines().find_map(|l| {
         l.strip_prefix("btime ")
@@ -204,7 +203,6 @@ pub fn parse_btime(proc_stat: &str) -> Option<u64> {
 /// `/proc` time values are exported in USER_HZ ticks, which is a compile-time
 /// constant 100 on every mainstream Linux arch (independent of the kernel's
 /// internal HZ) — hardcoding avoids a libc dependency for sysconf(_SC_CLK_TCK).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub const USER_HZ: u64 = 100;
 
 /// Starttime ticks → wall-clock epoch seconds: `/proc/stat` btime + ticks/USER_HZ.
@@ -236,16 +234,20 @@ pub fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
 }
 
 /// FILETIME（100ns、自 1601-01-01 UTC）与 Unix 纪元之间差的 100ns 个数（369 年，含 89 个闰日）。
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const FILETIME_TICKS_BEFORE_UNIX_EPOCH: u64 = 116_444_736_000_000_000;
 
 /// 每秒多少个 FILETIME 刻度（100ns 一格）。
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const FILETIME_TICKS_PER_SEC: u64 = 10_000_000;
 
 /// FILETIME 原值 → Unix 纪元秒（向下取整，与 Linux 臂 `ticks / USER_HZ` 同一种取整）。
 /// 早于 1970 的值 ⇒ `None`（不是一个会话进程能有的起始时刻）。纯函数，放在 cfg 外 ⇒ 在 Linux 上就测得到。
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    all(not(windows), not(test)),
+    expect(
+        dead_code,
+        reason = "FILETIME 换算放在平台门外好测；生产段只有 Windows 臂用它"
+    )
+)]
 pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
     filetime
         .checked_sub(FILETIME_TICKS_BEFORE_UNIX_EPOCH)

@@ -23,7 +23,7 @@ use std::sync::Mutex;
 /// 取值 30 秒：在飞的阻塞写（存盘 ≤ 8 MiB · 递归删 ≤ 10 万条 · 一次 tmux）在正常盘上都是秒内；30 秒是它们的一个量级以上，
 /// 超过它多半是卡在挂死的文件系统 / 一个不回话的子进程上，再等也等不来。大文件同机复制（`files-copy`，不可取消）
 /// 可能超过它 —— 那一条会被列进「没做完」里说出来。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "流模式收场的退出排空期限（`wire::drain::DRAIN_DEADLINE`）：只在收场时装一次，到点说出哪几条没做完再退"
 )]
@@ -184,7 +184,7 @@ where
         std::future::pending::<()>().await
     };
     // 后端零定时器让位的一处（`clippy.toml` 的 `disallowed-methods`，就地放行）：只在收场时装这一次。
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的上限：到点仍没排空 ⇒ 说出哪几条没做完、退出"
     )]

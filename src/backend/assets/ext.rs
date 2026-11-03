@@ -945,7 +945,10 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "一格要的几样（种类 · 名字 · 那一列 · 本机的 · 用户的 · 规范名 · 参照 · 来源）由调用方逐列逐行现拿"
+)]
 fn cell(
     kind: ExtKind,
     name: &str,

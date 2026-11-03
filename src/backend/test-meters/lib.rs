@@ -8,9 +8,12 @@
 
 // 测试档的量具可以直接问系统钟、收尾时丢结果不写理由（同各包测试段）。
 #![allow(
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
     clippy::disallowed_methods,
     clippy::let_underscore_must_use,
-    clippy::unused_result_ok
+    clippy::unused_result_ok,
+    reason = "整包只在测试档用，照各包测试段放开；用不用得到随量具增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
 )]
 
 #[path = "../../../tests/backend/alloc_probe.rs"]

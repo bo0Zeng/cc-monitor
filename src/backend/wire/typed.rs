@@ -206,13 +206,22 @@ macro_rules! codes {
         #[derive(Debug)]
         $vis enum $name {
             /// 入参组合不对（形状不对的那一种在解入参那一步就回了，不经这里）。
-            #[allow(dead_code)] // 不是每条命令都有「组合不对」这一种；码表里它恒在（解入参那一步）。
+            #[allow(
+                dead_code,
+                clippy::allow_attributes,
+                reason = "宏展开的每一条命令各一份：不是每条命令都有「组合不对」这一种（码表里它恒在，解入参那一步），写成 `expect` 必有几份落空 ⇒ 这一处只能 `allow`"
+            )]
             BadArgs(String),
             $($vars)*
         }
         impl $crate::typed::Codes for $name {
             const ALL: &'static [&'static str] = &["bad_args", $($codes)*];
-            #[allow(unreachable_patterns, clippy::match_single_binding)]
+            #[allow(
+                unreachable_patterns,
+                clippy::match_single_binding,
+                clippy::allow_attributes,
+                reason = "宏展开的每一条命令各一份：没有自己失败码的命令只剩兜底那一臂，有的那几条不剩，写成 `expect` 必有几份落空 ⇒ 这一处只能 `allow`"
+            )]
             fn of_code(code: &str, said: String) -> Result<Self, String> {
                 Ok(match code {
                     "bad_args" => $name::BadArgs(said),

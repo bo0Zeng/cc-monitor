@@ -1770,6 +1770,16 @@ data class AttachFaceNote(
     }
 }
 
+enum class AttachFrom(val wire: String) {
+    EVERYWHERE("everywhere"),
+    ELSEWHERE("elsewhere"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachFrom> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class AttachItem(
     val name: String,
@@ -3424,6 +3434,51 @@ data class Can(
     }
 }
 
+sealed interface CanAttach {
+    /** 判别格（`can`）那个词。 */
+    val can: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Yes(
+        val from: AttachFrom,
+    ) : CanAttach, Ordered {
+        override val can: String get() = "yes"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class No(
+        val why: String,
+    ) : CanAttach, Ordered {
+        override val can: String get() = "no"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<CanAttach> =
+            tagged<CanAttach>(
+                "can",
+                listOf(
+                Variant("yes", CanAttach.Yes::class.java, obj(
+                        listOf(
+                        Field("can", { tag("yes") }, optional = false, nullable = false),
+                        Field("from", { AttachFrom.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> CanAttach.Yes(a[1] as AttachFrom) },
+                        { v -> arrayOf("yes", v.from) },
+                    )),
+                Variant("no", CanAttach.No::class.java, obj(
+                        listOf(
+                        Field("can", { tag("no") }, optional = false, nullable = false),
+                        Field("why", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> CanAttach.No(a[1] as String) },
+                        { v -> arrayOf("no", v.why) },
+                    )),
+                ),
+            )
+    }
+}
+
 sealed interface CanClose {
     /** 判别格（`can`）那个词。 */
     val can: String
@@ -4655,18 +4710,18 @@ data class ClashRow(
 
 @Suppress("UNCHECKED_CAST")
 data class ColumnAt(
-    val host: Long,
-    val at: Long,
+    val host: Int,
+    val at: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<ColumnAt> = obj(
             listOf(
-            Field("host", { Lng }, optional = false, nullable = false),
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("host", { Int32 }, optional = false, nullable = false),
+            Field("at", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> ColumnAt(a[0] as Long, a[1] as Long) },
+            { a -> ColumnAt(a[0] as Int, a[1] as Int) },
             { v -> arrayOf(v.host, v.at) },
         )
     }
@@ -4674,7 +4729,7 @@ data class ColumnAt(
 
 @Suppress("UNCHECKED_CAST")
 data class ColumnFork(
-    val host: Long,
+    val host: Int,
     val sid: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -4682,10 +4737,10 @@ data class ColumnFork(
     companion object {
         val ADAPTER: JsonAdapter<ColumnFork> = obj(
             listOf(
-            Field("host", { Lng }, optional = false, nullable = false),
+            Field("host", { Int32 }, optional = false, nullable = false),
             Field("sid", { Str }, optional = false, nullable = false),
             ),
-            { a -> ColumnFork(a[0] as Long, a[1] as String) },
+            { a -> ColumnFork(a[0] as Int, a[1] as String) },
             { v -> arrayOf(v.host, v.sid) },
         )
     }
@@ -4712,10 +4767,10 @@ data class ColumnHost(
 
 @Suppress("UNCHECKED_CAST")
 data class ColumnLine(
-    val host: Long,
-    val at: Long,
+    val host: Int,
+    val at: Int,
     val child: Boolean,
-    val forks: Long,
+    val forks: Int,
     val forksOpen: Boolean,
     val orphan: Boolean,
 ) : Ordered {
@@ -4724,14 +4779,14 @@ data class ColumnLine(
     companion object {
         val ADAPTER: JsonAdapter<ColumnLine> = obj(
             listOf(
-            Field("host", { Lng }, optional = false, nullable = false),
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("host", { Int32 }, optional = false, nullable = false),
+            Field("at", { Int32 }, optional = false, nullable = false),
             Field("child", { Bool }, optional = false, nullable = false),
-            Field("forks", { Lng }, optional = false, nullable = false),
+            Field("forks", { Int32 }, optional = false, nullable = false),
             Field("forksOpen", { Bool }, optional = false, nullable = false),
             Field("orphan", { Bool }, optional = false, nullable = false),
             ),
-            { a -> ColumnLine(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as Long, a[4] as Boolean, a[5] as Boolean) },
+            { a -> ColumnLine(a[0] as Int, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean) },
             { v -> arrayOf(v.host, v.at, v.child, v.forks, v.forksOpen, v.orphan) },
         )
     }
@@ -12097,7 +12152,7 @@ data class LiveCardNow(
     companion object {
         val ADAPTER: JsonAdapter<LiveCardNow> = obj(
             listOf(
-            Field("card", { Lng }, optional = false, nullable = false),
+            Field("card", { U64 }, optional = false, nullable = false),
             Field("rid", { Str }, optional = false, nullable = false),
             Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
             Field("clipped", { Bool }, optional = false, nullable = false),
@@ -12302,8 +12357,8 @@ data class LiveTail(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("run", { opt(Str) }, optional = true, nullable = true),
-            Field("card", { Lng }, optional = false, nullable = false),
-            Field("keep", { Lng }, optional = false, nullable = false),
+            Field("card", { U64 }, optional = false, nullable = false),
+            Field("keep", { U64 }, optional = false, nullable = false),
             Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
             Field("last", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -22917,7 +22972,7 @@ data class SessionAdded(
     val container: SessionContainer? = null,
     val pid: Int,
     val label: String,
-    val labelProject: String? = null,
+    val title: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -22937,10 +22992,10 @@ data class SessionAdded(
             Field("container", { opt(SessionContainer.ADAPTER) }, optional = true, nullable = true),
             Field("pid", { Int32 }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
-            Field("label_project", { opt(Str) }, optional = true, nullable = true),
+            Field("title", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionAdded(a[0] as String, a[1] as String, a[2] as Boolean?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as SessionFace, a[9] as Hidden?, a[10] as SessionContainer?, a[11] as Int, a[12] as String, a[13] as String?) },
-            { v -> arrayOf(v.sid, v.agentKind, v.background, v.attachable, v.cwd, v.projectDir, v.name, v.path, v.face, v.hidden, v.container, v.pid, v.label, v.labelProject) },
+            { a -> SessionAdded(a[0] as String, a[1] as String, a[2] as Boolean?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as SessionFace, a[9] as Hidden?, a[10] as SessionContainer?, a[11] as Int, a[12] as String, a[13] as String) },
+            { v -> arrayOf(v.sid, v.agentKind, v.background, v.attachable, v.cwd, v.projectDir, v.name, v.path, v.face, v.hidden, v.container, v.pid, v.label, v.title) },
         )
     }
 }
@@ -23127,6 +23182,7 @@ data class SessionCan(
     val resume: Allow,
     val term: CanTerm,
     val reattach: Allow,
+    val attach: CanAttach,
     val model: Allow,
     val permission: Allow,
     val stop: Allow,
@@ -23142,14 +23198,15 @@ data class SessionCan(
             Field("resume", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("term", { CanTerm.ADAPTER }, optional = false, nullable = false),
             Field("reattach", { Allow.ADAPTER }, optional = false, nullable = false),
+            Field("attach", { CanAttach.ADAPTER }, optional = false, nullable = false),
             Field("model", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("permission", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("stop", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("say", { CanSay.ADAPTER }, optional = false, nullable = false),
             Field("end", { Allow.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as Allow, a[5] as Allow, a[6] as Allow, a[7] as CanSay, a[8] as Allow) },
-            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.model, v.permission, v.stop, v.say, v.end) },
+            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as CanAttach, a[5] as Allow, a[6] as Allow, a[7] as Allow, a[8] as CanSay, a[9] as Allow) },
+            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.attach, v.model, v.permission, v.stop, v.say, v.end) },
         )
     }
 }
@@ -23831,7 +23888,7 @@ data class SessionStatus(
     val waitingFor: String? = null,
     val path: String? = null,
     val label: String,
-    val labelProject: String? = null,
+    val title: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23843,10 +23900,10 @@ data class SessionStatus(
             Field("waiting_for", { opt(Str) }, optional = true, nullable = true),
             Field("path", { opt(Str) }, optional = true, nullable = true),
             Field("label", { Str }, optional = false, nullable = false),
-            Field("label_project", { opt(Str) }, optional = true, nullable = true),
+            Field("title", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionStatus(a[0] as String, a[1] as SessionFace, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String?) },
-            { v -> arrayOf(v.sid, v.face, v.waitingFor, v.path, v.label, v.labelProject) },
+            { a -> SessionStatus(a[0] as String, a[1] as SessionFace, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String) },
+            { v -> arrayOf(v.sid, v.face, v.waitingFor, v.path, v.label, v.title) },
         )
     }
 }

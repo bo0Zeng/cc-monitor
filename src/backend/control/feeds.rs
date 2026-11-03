@@ -29,7 +29,7 @@ use crate::dial::probe::Dial as _;
 pub(crate) use crate::dial::probe::Pipe;
 
 /// 握手每一行等多久（同测试连接 · 手机：冷启要起常驻、读盘，给足）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当握手每一行的期限"
 )]
@@ -642,7 +642,7 @@ pub(crate) async fn stop_with(
 pub(crate) const UNREACHABLE: &str = "unreachable";
 
 /// 发起方没带期限时，转过去那一问等多久（帧面的调用方都带 `within_ms`；这只是兜底）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当这一问的期限；帧面的调用方都带自己的期限"
 )]
@@ -651,7 +651,7 @@ const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
 /// **问那台的一问经它的常驻流转过去**（请求信封带 `machine` 的那一形，分派在 `stream/inbound`）：命令 · 入参 · 出口声明原样交那台，
 /// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 原话 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
 /// 由这一端连那台的客户端判（`InboundClient::call`），判下来的那几种照码说。期限是发起方那一份（`within_ms`）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：发起方那一份期限（`within_ms` 换成的截止时刻）原样换成连那台的客户端要的那一刻，交它去等"
 )]

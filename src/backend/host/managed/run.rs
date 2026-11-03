@@ -318,7 +318,7 @@ const LAST_LINES_MS: u64 = 500;
 const LAST_WRITE_MS: u64 = 2000;
 
 /// 收尾时的有界等待：等的东西一直不来就不等了（不是节拍，只等一次）。
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "托管终端收尾时等最后那几行 · 各端写完 ended 的一次有界宽限：孙进程攥着终端或某一端不读时不能一直挂着"
 )]
@@ -378,7 +378,7 @@ async fn write_out<W: tokio::io::AsyncWrite + Unpin>(out: &Outbox, wr: &mut W) {
 /// 起托管终端的夹具（沙箱数据目录 · 假子进程 · `start` · `hello` · 读到哪一句）：本包判据与上层判据（经 `test-support`）共用。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../../tests/backend/host/run_support.rs"]
-#[allow(
+#[expect(
     clippy::let_underscore_must_use,
     reason = "测试档的夹具：只在测试档与上层测试档（`test-support`）编；清上一趟留下的沙箱目录 · 回报绑好的口时丢结果，同各包测试段放开的那一样"
 )]

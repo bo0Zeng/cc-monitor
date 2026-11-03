@@ -4,13 +4,11 @@
 #![cfg(windows)]
 
 #[repr(C)]
-#[allow(dead_code)] // 只经 FFI 填；读的只有几格偏移
 struct SystemTime {
     parts: [u16; 8],
 }
 
 #[repr(C)]
-#[allow(dead_code)] // 同上
 struct TimeZoneInformation {
     bias: i32,
     standard_name: [u16; 32],

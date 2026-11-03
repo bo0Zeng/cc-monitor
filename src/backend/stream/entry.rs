@@ -69,7 +69,7 @@ pub async fn run() {
     // argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
     // 起第一个子进程之前：各家「我是哪个会话」的变量一律不往下传（常驻后端若在某个会话里起，它起的会话不许认错父）。
     agents::install_child_env_filter();
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "进程 argv 只在这里取一次，要它的模块由调用方交"
     )]

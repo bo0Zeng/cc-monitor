@@ -7,6 +7,10 @@
 //   node read-big.mjs <后端二进制> <HOME> <输出目录> [--phase cold|warm|grown] [--append 3000] [--live 3000]
 //     cold  ＝ 先删骨架目录（头一次开）· warm ＝ 骨架留着、记录没变（重启）· grown ＝ 骨架留着、起之前往大记录追加 `--append` 行
 //     --live N：问完之后往大记录一口气追加 N 行，量 N 帧 `line` 出完要多久、后端花了多少 CPU
+//     --ask [--ask-lines 20]：冷开那几问之后在同一个开着的进程里再问一组：切回 tab（尾段 600 行 · 骨架索引从 0，各 3 次）·
+//       会话内查找 `history-find`（不含 / 含工具，各 3 次：头一问与之后）· 全文搜索 `history-search`（同上）·
+//       追一行到出 `line` 帧的延迟（一次一行、隔 200 ms，量 `--ask-lines` 次）· 常驻
+//   记录只按块读（头 4 MB 认 cwd · 尾 8 MB 取追加的样子）：过 512 MB 的记录照样跑得动。
 //   node read-big.mjs --compare <输出目录A> <输出目录B>
 //     两趟的冷开应答逐字节比（`writers` · 事实令牌的 `rev` 每趟都不一样，比之前抹掉）；不一样的逐份印出，退出码 1。
 // 输出：一行一条 JSON 读数；应答原样写进 <输出目录>/replies/<命令>.json（几页的按页一行）。
@@ -14,7 +18,7 @@
 // 读数里 `recordMb` 是后端进程这一趟从文件读进来的字节（/proc/<pid>/io 的 rchar，含骨架与其它小文件）；墙钟随机器负载抖，
 // 开头结尾各记一次 loadavg。
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -52,6 +56,8 @@ if (!bin || !home || !outDir) throw new Error("usage: read-big.mjs <后端二进
 const PHASE = opt("--phase", "cold");
 const APPEND = Number(opt("--append", 3000));
 const LIVE = Number(opt("--live", 0));
+const ASK = argv.includes("--ask");
+const ASK_LINES = Number(opt("--ask-lines", 20));
 // --strace：后端经 strace 起（只记 read / pread64，带路径），停下之后按文件合计读了多少字节 —— 墙钟会被拖慢，这一趟只看字节。
 const STRACE = argv.includes("--strace");
 mkdirSync(join(outDir, "replies"), { recursive: true });
@@ -63,11 +69,38 @@ const files = readdirSync(projects)
   .sort((x, y) => statSync(y).size - statSync(x).size);
 const [big, small] = files;
 const sidOf = (p) => p.slice(p.lastIndexOf("/") + 1, -".jsonl".length);
-const cwdOf = (p) => JSON.parse(readFileSync(p, "utf8").slice(0, 65536).split("\n")[0]).cwd;
+/** 读 `p` 从 `at` 起的 `n` 字节（不把整份读成字符串：记录过 512 MB 时 Node 的字符串装不下）。 */
+function slice(p, at, n) {
+  const fd = openSync(p, "r");
+  const b = Buffer.alloc(n);
+  const k = readSync(fd, b, 0, n, at);
+  closeSync(fd);
+  return b.subarray(0, k).toString("utf8");
+}
+/** 头 4 MB 里第一条带 `cwd` 的行（真记录头几行是 `summary` 那一类，不带它）。 */
+const cwdOf = (p) => {
+  for (const l of slice(p, 0, 4 << 20).split("\n")) {
+    if (!l.includes('"cwd"')) continue;
+    try {
+      const o = JSON.parse(l);
+      if (o.cwd) return o.cwd;
+    } catch {
+      /* 4 MB 那一刀切断的最后一行解不出，跳过 */
+    }
+  }
+  return "/";
+};
 
-/** 往 `path` 末尾追加 `n` 行：照记录里最后一轮的样子换 uuid（`tag` 区分这一批）。 */
+/** 往 `path` 末尾追加 `n` 行：照记录里最后一轮的样子换 uuid（`tag` 区分这一批）。只读尾 8 MB（头一行可能被切断，丢掉）。 */
 function append(path, n, tag) {
-  const tail = readFileSync(path, "utf8").slice(-400000).split("\n").filter(Boolean).slice(-12);
+  const size = statSync(path).size;
+  const span = Math.min(size, 8 << 20);
+  // 取样不要过 256 KB 的行：`make-big.mjs` 每 1 000 轮一条 1.38 MB 的工具结果，落在尾巴上时 3 000 行会追出几百 MB。
+  const tail = slice(path, size - span, span)
+    .split("\n")
+    .slice(span < size ? 1 : 0)
+    .filter((l) => l && l.length < 256 << 10)
+    .slice(-12);
   const rows = [];
   let parent = JSON.parse(tail[tail.length - 1]).uuid ?? null;
   for (let i = 0; i < n; i++) {
@@ -205,6 +238,35 @@ await cold("branch", "history-branch", { path: big, from: 0 }, "from");
 await cold("index-small", "history-index", { path: small, offset: 0 }, "offset");
 await cold("turns-small", "history-turns", { path: small, from: 0 }, "from");
 emit({ name: "after-cold", recordMbTotal: mb(rchar() - r0), cpuMsTotal: cpuMs(), ...mem() });
+
+if (ASK) {
+  // 切回一个已开的 tab：界面先要尾段、再从 0 要骨架索引。
+  for (let i = 0; i < 3; i++) {
+    await cold(`switch-tail-${i}`, "history-tail", { path: big, n: 600 }, null);
+    await cold(`switch-index-${i}`, "history-index", { path: big, offset: 0 }, "offset");
+  }
+  // 查找与搜索：第一问建索引 / 读整份，之后的问走现成的。查询词是 `make-big.mjs` 正文里有的。
+  for (const [tag, tools, query] of [["plain", false, "游标分页"], ["tools", true, "npm test"]]) {
+    for (let i = 0; i < 3; i++) await cold(`find-${tag}-${i}`, "history-find", { path: big, query, include_tools: tools, limit: 200 }, null);
+  }
+  for (const [tag, tools, query] of [["plain", false, "游标分页"], ["tools", true, "npm test"]]) {
+    for (let i = 0; i < 3; i++) await cold(`search-${tag}-${i}`, "history-search", tools ? { query, include_tools: true } : { query }, null);
+  }
+  // 追一行到出 `line` 帧：一次一行，隔 200 ms（不让两行并进同一次读）。
+  const waits = [];
+  for (let i = 0; i < ASK_LINES; i++) {
+    const base = lines;
+    const s = performance.now();
+    append(big, 1, `ask${i}`);
+    await Promise.race([until(() => lines > base), new Promise((r) => setTimeout(r, 10000))]);
+    waits.push(lines > base ? performance.now() - s : null);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  const got = waits.filter((w) => w !== null).sort((a, b) => a - b);
+  const at = (q) => (got.length ? +got[Math.min(got.length - 1, Math.floor(q * got.length))].toFixed(1) : null);
+  emit({ name: "one-line", n: ASK_LINES, got: got.length, p50Ms: at(0.5), maxMs: got.length ? +got[got.length - 1].toFixed(1) : null });
+  emit({ name: "after-ask", cpuMsTotal: cpuMs(), ...mem() });
+}
 
 if (LIVE > 0) {
   const base = lines;

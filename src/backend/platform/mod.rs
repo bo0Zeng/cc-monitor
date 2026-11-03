@@ -31,9 +31,12 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
         clippy::disallowed_methods,
         clippy::let_underscore_must_use,
-        clippy::unused_result_ok
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
 
@@ -112,7 +115,7 @@ mod win_proc_contract_tests;
 /// 判据用的私有 tmux server（`-L` ＋ 私有 `TMUX_TMPDIR`，碰不到用户的缺省 server）：本包与上层的测试档（经 `test-support`）共用。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/tmux_sandbox.rs"]
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     clippy::let_underscore_must_use,
     reason = "测试档的台架：只在测试档与上层测试档（`test-support`）编；直接起 tmux、等它的 socket 出现、收尾时丢结果，同各包测试段放开的那几样"

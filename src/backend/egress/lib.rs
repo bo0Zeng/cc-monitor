@@ -9,7 +9,15 @@
 //! 本 crate 不读环境变量、不碰家目录、不起定时器：期限由调用方给，握手期间装在 socket 上（读写一次的上限，不是周期唤醒）。
 
 // 测试段可以用会自己醒来的构件（夹具的期限）；生产段零期限字面量（期限都由调用方给）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
+        clippy::disallowed_methods,
+        reason = "测试段放开禁用名单：夹具自己定期限；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
+    )
+)]
 
 use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -124,7 +132,7 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
             io: io::Error::new(io::ErrorKind::NotFound, format!("{h}: no address")),
         });
     }
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "出网口：这台出站 TCP 只在这一处开，中转 · 拨号 · 探活都经 `open` 到这里"
     )]

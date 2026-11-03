@@ -239,7 +239,7 @@ impl RewindIo for Live<'_> {
     fn redrawn(&mut self) -> bool {
         self.watch.as_mut().is_some_and(|w| w.changed())
     }
-    #[allow(
+    #[expect(
         clippy::disallowed_methods,
         reason = "调出回退菜单那两下之间隔一下（那一家申报的毫秒数：挨得太近会被并成一键）；调用方是那一趟回退，按完就返回，不是定时器"
     )]

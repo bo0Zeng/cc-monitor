@@ -21,4 +21,4 @@ waiting_for?: string,
 /**
  * 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线。
  */
-path?: string, label: Words, label_project?: Words, };
+path?: string, label: Words, title: Words, };

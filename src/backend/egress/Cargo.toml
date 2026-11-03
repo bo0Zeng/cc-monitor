@@ -30,3 +30,6 @@ test-home = { path = "../../common/test-home" }
 [lints.clippy]
 # 禁的路径与理由住上一级的 `clippy.toml`（零定时器 · 出站 TCP 只在这里开那两组；开 TCP 的那一处就地放行）。
 disallowed_methods = "deny"
+# 放行一律 `expect` 带理由（测试段在 `lib.rs` 根上一行放开）。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"

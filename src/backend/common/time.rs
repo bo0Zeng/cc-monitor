@@ -288,7 +288,10 @@ pub fn ms_hm(ms: i64, tz: &Tz) -> String {
 
 /// **此刻**：后端各处取当前墙钟只走这一个（`clippy.toml` 的 `disallowed-methods`：别处直接问系统钟 clippy 红）。
 /// 正式构建里它就是系统钟；只有带特性 `shots` 编的后端（截图台架）认台架交来的起点时刻、从那一刻接着走（[`shots_clock`]）。
-#[allow(clippy::disallowed_methods)] // 唯一那一处
+#[expect(
+    clippy::disallowed_methods,
+    reason = "后端取墙钟的唯一那一处：别处一律经它"
+)]
 pub fn now() -> std::time::SystemTime {
     #[cfg(feature = "shots")]
     if let Some(t) = shots_clock::now() {
@@ -307,7 +310,10 @@ mod shots_clock {
     /// （往后拨?, 拨多少）。
     static SHIFT: OnceLock<Option<(bool, Duration)>> = OnceLock::new();
 
-    #[allow(clippy::disallowed_methods)] // 拨钟以系统钟为底
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "截图台架的拨钟以系统钟为底，只在带特性 `shots` 的构建里编"
+    )]
     pub(super) fn now() -> Option<SystemTime> {
         let sys = SystemTime::now();
         let (ahead, d) = (*SHIFT.get_or_init(|| {

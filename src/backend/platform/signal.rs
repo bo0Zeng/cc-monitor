@@ -208,7 +208,7 @@ impl Stoppable {
             // EINTR：一次性子命令没装信号处理器，几乎不会来；来了就再等一整段（至多三次，有界）。
             for _ in 0..3 {
                 // SAFETY：pfd 是栈上的一个合法 pollfd，nfds=1 与之匹配；fd 由 self 持有，等的期间不会被 close。
-                #[allow(
+                #[expect(
                     clippy::disallowed_methods,
                     reason = "Linux 臂：在 pidfd 上至多等宽限期（`Stoppable::exited_within`），进程一退内核就叫醒；只在一次性子命令里用，常驻后端不走这里"
                 )]

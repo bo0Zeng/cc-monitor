@@ -456,7 +456,10 @@ impl Hop {
     }
 
     /// 这一判成了（换到的号备好了料 · 停发）⇒ 落账、记进缓存（带着 `tried` 判的不缓存：下一发照事实重判）。
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "落账要的几样（会话 · 采用的策略 · 结论 · 它看的事实 · 换过的号）都是这一判里现成的散值"
+    )]
     fn commit(
         &self,
         own: &Own,
@@ -539,7 +542,10 @@ impl Hop {
 
     /// 照结论备料：停发 ⇒ 这一家的「用满」回包；换到的号接不上 ⇒ 记进 `tried`、照同一份会话与事实再判（同 429），还是没有 ⇒ 照开会话用的号走。
     /// 只有成了的那一判落账（`judged` ＝ 这一判与它看的事实；照缓存来的 ⇒ 空）：接不上的号没换成，不记。
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "照结论备料要的几样（号簿 · 会话 · 策略 · 选中的号 · 这一判 · 换过的号）随重判一轮轮改写，拼成结构体只给这一个函数用"
+    )]
     fn go_for(
         &self,
         own: &Own,

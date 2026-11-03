@@ -31,9 +31,12 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
         clippy::disallowed_methods,
         clippy::let_underscore_must_use,
-        clippy::unused_result_ok
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
 use std::sync::{Arc, Mutex};
@@ -57,7 +60,7 @@ pub mod uses;
 
 /// 拨了必被拒、又不会被别人捡走的本机口（测试用）：本 crate 的判据与后端的测试档（经 `test-support`）共用这一份。
 #[cfg(any(test, feature = "test-support"))]
-#[allow(
+#[expect(
     clippy::disallowed_methods,
     reason = "测试档的夹具：只在本机回环上绑一个口占着、不连出去"
 )]

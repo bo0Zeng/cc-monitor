@@ -2,7 +2,7 @@
 import type { Machine } from "./Machine";
 
 /**
- * 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（壳照端核心的活卡板折好，
- * `resident_client::live`；界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
+ * 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（壳照共享核心的活卡板折好，
+ * `face_core::live`；界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
  */
 export type SessionLiveCardsPayload = { origin: Machine, live: import("./LiveChange").LiveChange, };

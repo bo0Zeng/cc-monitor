@@ -145,7 +145,7 @@ pub fn watch_opens(
                     },
                 ];
                 // SAFETY：两个栈上的合法 pollfd，nfds 与之匹配；timeout=-1 = 无限等；两个 fd 的所有权都在本闭包里。
-                #[allow(
+                #[expect(
                     clippy::disallowed_methods,
                     reason = "无期限地等两个 fd 之一可读（-1）：事件来了内核叫醒，不会自己醒"
                 )]

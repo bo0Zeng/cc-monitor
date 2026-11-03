@@ -217,7 +217,10 @@ fn fetch(
 
 /// 在续期锁里（同一时刻一个号只有一个在续：跨进程锁让同进程的几条线程也排队）：
 /// 再看一眼盘（前一个刚续过就用它的）→ 发续期 → 比对盘上的刷新令牌还是不是发出去那个 → 整份写回。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "续期锁里那一趟要的几样（盘 · 那一家的登录面 · 令牌端点 · 时刻 · 号 · 收回的旧令牌 · 写锁 · 回写的去处）各由调用方给，拼成结构体只给这一个函数用"
+)]
 fn refresh_locked(
     dir: &Path,
     face: &LoginFace,
@@ -331,7 +334,10 @@ type Writing<'a> = (
     &'a crate::platform::fs::CredsLock,
 );
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "发一次续期要的几样（登录面 · 令牌端点 · 时刻 · 盘上那一份 · 发出去的刷新令牌 · 留痕 · 写锁 · 回写的去处）由 `refresh_locked` 逐样递下来"
+)]
 fn renew(
     face: &LoginFace,
     endpoint: &TokenEndpoint,

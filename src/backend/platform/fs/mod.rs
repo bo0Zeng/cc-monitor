@@ -33,7 +33,13 @@ const WIN_HELD: [i32; 2] = [32, 33];
 /// 改名顶掉目标没成，这回事归哪一类（Windows 的错号；纯函数，各平台都编、都测）：
 /// 错号本身是占用那一类 ⇒ 被占用；拒绝访问而目标此刻按「删」打开回的是占用那一类 ⇒ 也是被占用
 /// （换名到别的程序独占着的文件，系统回的是拒绝访问）；别的 ⇒ `None`（照原错，真没权限就是没权限）。
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    all(not(windows), not(test)),
+    expect(
+        dead_code,
+        reason = "纯函数放在平台门外好测；生产段只有 Windows 臂用它"
+    )
+)]
 pub(crate) fn replace_refusal(rename: i32, probe: Option<i32>) -> Option<std::io::ErrorKind> {
     let held = |c: i32| WIN_HELD.contains(&c);
     (held(rename) || (rename == WIN_ACCESS_DENIED && probe.is_some_and(held)))
@@ -77,7 +83,6 @@ pub fn is_executable(p: &Path) -> bool {
 /// 不读 `PATHEXT`：那一整套（`.bat` / `.cmd` / `.com` …）是「在 `PATH` 上按名字找命令」的规矩，而经这一口起的东西名字里就带着 `.exe`；
 /// `.bat` / `.cmd` 要经 `cmd.exe` 解释才起得来，插件口是 argv 直传、不过 shell 的。这不是完整的 Windows 语义。
 /// 纯函数（不碰盘、不带平台门），在哪个平台上都能测；只有 Windows 那一臂用它。
-#[cfg_attr(not(windows), allow(dead_code))]
 pub fn windows_launchable_name(p: &Path) -> bool {
     p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
 }

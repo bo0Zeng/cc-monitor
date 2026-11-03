@@ -163,7 +163,7 @@ pub(crate) struct Inherit {
     pub(crate) tmux: Pass,
     pub(crate) change: Change,
     /// 只有判据读它（两向对拍）。
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), expect(dead_code, reason = "只有判据读它（两向对拍）"))]
     pub(crate) judge: &'static str,
 }
 

@@ -373,6 +373,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `resume` | Allow | 恢复（起一个新进程接着那份记录） |
 | `term` | CanTerm | 还有终端可去（拉前 · 停 · 杀 · 终端页） |
 | `reattach` | Allow | 程序退了、tmux 会话还在 ⇒ 接回 |
+| `attach` | CanAttach | 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它 |
 | `model` | Allow | 换模型（`session-model`） |
 | `permission` | Allow | 切权限档（`session-permission`） |
 | `stop` | Allow | 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能 |
@@ -408,14 +409,28 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `can: "yes"`，带 `host` Launch
 - `can: "no"`，带 `why` Words
 
+#### `CanAttach`
+
+接不接得进：`{can: "yes", from}` · `{can: "no", why: 写好的那一句}`。
+
+- `can: "yes"`，带 `from` AttachFrom
+- `can: "no"`，带 `why` Words
+
+#### `AttachFrom`
+
+`CanAttach::Yes` 在哪台看才给。
+
+- `everywhere`
+- `elsewhere`
+
 #### `NameFace`
 
-**这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` 与历史清单 · 全文搜索同一个函数算；`label_project` ＝ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
+**这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ 名字（与历史清单 · 全文搜索同一个函数算）；`title` ＝ 写好的整行标题（项目 · 分叉 · 后台那几个记号 · 名字），界面照抄。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `label` | Words |  |
-| `label_project` | Words? |  |
+| `title` | Words |  |
 
 #### `TerminalHost`
 
@@ -4332,6 +4347,8 @@ removed: boolean, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -4384,6 +4401,10 @@ term: CanTerm,
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
+/**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -4453,6 +4474,8 @@ type Words = string;
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -4546,6 +4569,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -4631,6 +4658,8 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -4709,6 +4738,10 @@ term: CanTerm,
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
+/**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -4820,6 +4853,7 @@ type PlanRef = { start: number, end: number, ids: Array<string>, };
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4837,6 +4871,7 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
@@ -4972,6 +5007,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -5045,6 +5084,7 @@ type Words = string;
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5062,6 +5102,7 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
@@ -5229,6 +5270,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -5384,6 +5429,7 @@ type Tab = "show" | "hide";
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5401,6 +5447,7 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
@@ -5547,6 +5594,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -5616,6 +5667,7 @@ type Words = string;
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -5633,6 +5685,7 @@ fork: boolean,
  * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
  */
 delete: CanDelete, };
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
@@ -5807,6 +5860,10 @@ term: CanTerm,
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
+/**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -7901,6 +7958,8 @@ type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -8110,6 +8169,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -8181,6 +8244,8 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -8383,6 +8448,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -8519,6 +8588,7 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AttachFrom = "everywhere" | "elsewhere";
 type AutoChoice = { min: number, text: Words, };
 type BgTask = { 
 /**
@@ -8537,6 +8607,7 @@ cmd: string | null,
  * 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
  */
 at: string | null, };
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -8968,6 +9039,10 @@ term: CanTerm,
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
+/**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */
@@ -16263,6 +16338,8 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -16663,6 +16740,10 @@ term: CanTerm,
  */
 reattach: Allow, 
 /**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
+/**
  * 换模型（`session-model`）。
  */
 model: Allow, 
@@ -17061,6 +17142,8 @@ key: string, };
 
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AttachFrom = "everywhere" | "elsewhere";
+type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
@@ -17140,6 +17223,10 @@ term: CanTerm,
  * 程序退了、tmux 会话还在 ⇒ 接回。
  */
 reattach: Allow, 
+/**
+ * 「在终端里打开」（另开一个终端窗口接进它住的那个终端）：会话头 · 报错卡 · 右键菜单都只读它。
+ */
+attach: CanAttach, 
 /**
  * 换模型（`session-model`）。
  */

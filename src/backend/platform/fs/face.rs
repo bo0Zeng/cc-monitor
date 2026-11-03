@@ -103,14 +103,14 @@ impl AsRef<Path> for Resolved {
 }
 
 /// 非 unix 臂按路径开文件的三种开法（都只写）：新建（已在即失败）· 截断已在的 · 开已在的（落盘用）。
-#[cfg_attr(unix, allow(dead_code))]
+#[cfg_attr(unix, expect(dead_code, reason = "只有非 unix 臂按路径开文件"))]
 enum Open {
     New,
     Truncate,
     Existing,
 }
 
-#[cfg_attr(unix, allow(dead_code))]
+#[cfg_attr(unix, expect(dead_code, reason = "只有非 unix 臂按路径开文件"))]
 fn by_path(how: Open) -> std::fs::OpenOptions {
     let mut o = std::fs::OpenOptions::new();
     o.write(true);
