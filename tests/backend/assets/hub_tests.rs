@@ -41,11 +41,11 @@ pub(crate) async fn ap(
 struct FakeHere {
     answers: BTreeMap<&'static str, Value>,
     asked: Mutex<Vec<(String, Value)>>,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
 }
 
 impl Here for FakeHere {
-    fn viewer_tz(&self) -> crate::Tz {
+    fn viewer_tz(&self) -> crate::common::time::Tz {
         self.tz.clone()
     }
 
@@ -157,11 +157,11 @@ async fn the_hub_hands_the_viewers_time_zone_to_the_machine_it_asks() {
     let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null });
     for (tz, tail) in [
         (
-            crate::Tz::iana("Asia/Shanghai").unwrap(),
+            crate::common::time::Tz::iana("Asia/Shanghai").unwrap(),
             " -- '--mcp-sync-source' '--stdin-line' '--tz' 'Asia/Shanghai'",
         ),
         (
-            crate::Tz::default(),
+            crate::common::time::Tz::default(),
             " -- '--mcp-sync-source' '--stdin-line' '--tz' 'UTC'",
         ),
     ] {
@@ -172,7 +172,7 @@ async fn the_hub_hands_the_viewers_time_zone_to_the_machine_it_asks() {
             asked: Mutex::new(Vec::new()),
             tz,
         });
-        let r = remote(&[src.clone()]);
+        let r = remote(std::slice::from_ref(&src));
         pv(
             &h,
             &mcp_args(json!("devbox"), Value::Null),
@@ -342,7 +342,7 @@ struct WindowsHere {
 }
 
 impl Here for WindowsHere {
-    fn viewer_tz(&self) -> crate::Tz {
+    fn viewer_tz(&self) -> crate::common::time::Tz {
         Default::default()
     }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {

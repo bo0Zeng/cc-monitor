@@ -39,21 +39,21 @@ pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 const CC_TEMPLATE: &str = include_str!("../../../shared/cc.ps1.tpl");
 
 /// 启动文件里、我们的围栏之外，自己定义了一个与清单里某条同名的函数（会和那条别名打架：后定义的赢）。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "AliasNameClash"
+        rename = "AliasNameClash",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct NameClash {
+pub struct NameClash {
     pub name: String,
     /// 1 起的行号。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub line: usize,
     /// 新开的终端里敲这个名字，起的是哪一个（[`Wins`]）。
     pub wins: Wins,
@@ -64,18 +64,18 @@ pub(crate) struct NameClash {
 /// 只在同一份文件里比：别名块（它接上别名文件）与你那一行都在这份里 ⇒ 比行号；
 /// 这份里没有别名块、哪一份候选里也没有 ⇒ 别名清单根本没接上，生效的是你写的；
 /// 别名块在另一份文件里 ⇒ 两份谁先读说不清（[`Wins::Unclear`]）。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "AliasWins"
+        rename = "AliasWins",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Wins {
+pub enum Wins {
     /// 你写的那一条。
     Yours,
     /// 清单里那一条。
@@ -89,18 +89,18 @@ pub(crate) enum Wins {
 /// 别名块与别名文件那一行 source 装进的是**同一批**启动文件 ⇒ 候选只有一份来历：
 /// `account_aliases::StartupFile` 每份候选都带着这一格，
 /// 由 [`block_state`] 在读回口那一次扫描里一起算出来。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "AliasBlockState"
+        rename = "AliasBlockState",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct BlockState {
+pub struct BlockState {
     /// 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
     pub present: bool,
     /// 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
@@ -128,7 +128,7 @@ pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockStat
 ///
 /// 两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
 /// 由同一个函数保证，不是两份拼法对拍。
-pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
+pub fn render_block(shell: Shell, home: &str) -> Result<String, String> {
     let what = copy_text("rsFilewinWorkspace.label.preview", &[]);
     plan_install(shell, "", &what, home)
 }
@@ -140,14 +140,14 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
 // 本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
-///
-/// 它就是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
-/// 不许有两个枚举各答一半。`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
-///
-/// 🔴 **它不猜路径。** 路径始终由界面上的人选（`account_aliases` 的 `§0e` 那条理由
-/// 原样适用：`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法不同，替人选一份是最坏的
-/// 那条路）。它回答的是**人选定之后**的那个问题：往这份文件里写哪种语言。
+// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
+//
+// 它就是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
+// 不许有两个枚举各答一半。`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
+//
+// 🔴 **它不猜路径。** 路径始终由界面上的人选（`account_aliases` 的 `§0e` 那条理由
+// 原样适用：`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法不同，替人选一份是最坏的
+// 那条路）。它回答的是**人选定之后**的那个问题：往这份文件里写哪种语言。
 
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///

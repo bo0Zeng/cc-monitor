@@ -120,6 +120,8 @@ backend-host = { path = "host" }
 backend-history = { path = "history" }
 # 账号域：上游选择 · 账号库 · 登录 · 额度与轮换 · oauth（只引历史清单 · agents · 宿主口 · 中转宿主 · 帧面零件 · 纯工具 · 平台七层）。
 backend-accounts = { path = "accounts" }
+# 后端代管的用户资产：别名 · MCP · skill · 扩展 · 枢纽 · 公钥 · 资产目录（只引账号域 · agents · 宿主口 · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台八层）。
+backend-assets = { path = "assets" }
 # 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
 comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
@@ -311,6 +313,8 @@ backend-host = { path = "host", features = ["test-support"] }
 backend-history = { path = "history", features = ["test-support", "ts"] }
 # 账号域只给测试用的那几样（号表里的一行 · 三份样例策略 · 换掉一家默认上游）＋ 它那几个线上类型的 TS 派生。
 backend-accounts = { path = "accounts", features = ["test-support", "ts"] }
+# 资产域只给测试用的那几样（落在临时目录上的真盘门）＋ 它那几个线上类型的 TS 派生。
+backend-assets = { path = "assets", features = ["test-support", "ts"] }
 
 # 发布档按速度编：后端在 monitor 里内嵌三份（本机一份 · 远端两份）。
 # · opt-level 3 而不是 "s"：一份 587 MB 记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；
@@ -328,7 +332,7 @@ strip = true
 # 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
+members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "assets", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。

@@ -5,7 +5,7 @@
 #![cfg(unix)]
 
 use crate::accounts::sign_in::*;
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::test_support::HomeDoor;
 use crate::common::said::Said;
 use crate::faces::accounts_face::{tests::answer, KeyDoor};
 use serde_json::{json, Value};

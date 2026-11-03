@@ -1,7 +1,7 @@
 //! cc-bus 装到这台的判据：从 monitor `cc_bus_deploy_tests.rs` 搬来（判 · 写 · 记进了后端）。
-//! 写经本进程的 `files-*`（[`crate::stream::inbound::LocalFiles`]，根由调用方给 ⇒ 临时目录）；装记录的写口换成替身（记下交了什么）。
+//! 写经这台文件管理的本体（[`crate::assets::aliases::test_support::FilesHere`]，根由调用方给 ⇒ 临时目录）；装记录的写口换成替身（记下交了什么）。
 use super::*;
-use crate::stream::inbound::LocalFiles;
+use crate::assets::aliases::test_support::FilesHere;
 use serde_json::{json, Value};
 
 /// 回包按 JSON 比（同帧面那一跳）。
@@ -37,7 +37,7 @@ fn tmpdir(tag: &str) -> TmpDir {
 }
 /// 装到 `<p>/skills/cc-bus`（装记录的写口是个不记事的替身）。
 fn install(p: &Path) -> Result<Value, crate::common::said::Said> {
-    install_at(&LocalFiles, &p.join("skills"), &|_| Ok(Default::default()))
+    install_at(&FilesHere, &p.join("skills"), &|_| Ok(Default::default()))
 }
 
 /// ★ 装卸账**复用 skill 装记录那一份**：装完交给记录写口的是 `{op:"add", name:"cc-bus", files:{路径:{digest, created}}}`
@@ -50,7 +50,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
         seen.lock().unwrap().push(serde_json::to_value(v).unwrap());
         Ok(Default::default())
     };
-    install_at(&LocalFiles, &t.0.join("skills"), &rec).expect("装");
+    install_at(&FilesHere, &t.0.join("skills"), &rec).expect("装");
     let got = seen.lock().unwrap().clone();
     assert_eq!(got.len(), 1, "{got:?}");
     assert_eq!(got[0]["op"], "add");
@@ -64,7 +64,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
             std::str::from_utf8(skill.1).unwrap()
         ))
     );
-    install_at(&LocalFiles, &t.0.join("skills"), &rec).expect("再装");
+    install_at(&FilesHere, &t.0.join("skills"), &rec).expect("再装");
     let got = seen.lock().unwrap().clone();
     assert_eq!(got.len(), 2, "一致那一趟也交给记录（记录没变由写口不写盘）");
     for (rel, d) in got[1]["files"].as_object().unwrap() {
@@ -83,13 +83,13 @@ fn an_install_over_identical_files_refreshes_a_stale_record() {
     let rec = |a: &crate::assets::skill_ledger::RecordReq| {
         crate::assets::skill_ledger::record_at(&own, Some(&skills), a)
     };
-    install_at(&LocalFiles, &skills, &rec).expect("装");
+    install_at(&FilesHere, &skills, &rec).expect("装");
     let mut l = crate::assets::skill_ledger::load_at(&ledger).unwrap();
     for f in l.installs.values_mut().flat_map(|i| i.files.values_mut()) {
         f.digest = "0000000000000000".into();
     }
     std::fs::write(&ledger, serde_json::to_string(&l).unwrap()).unwrap();
-    let again = install_at(&LocalFiles, &skills, &rec).expect("再装");
+    let again = install_at(&FilesHere, &skills, &rec).expect("再装");
     assert_eq!(again["written"], json!([]), "{again}");
     let dir = skills.join(NAME).display().to_string();
     let seen =

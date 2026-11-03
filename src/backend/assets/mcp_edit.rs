@@ -6,7 +6,7 @@ use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
 /// 项目级 MCP 配置的文件名（写面只此一个落点）：资产面那一家的（`AssetFace.project_mcp_file`，Claude：`.mcp.json`）。
-pub(crate) fn mcp_json() -> &'static str {
+pub fn mcp_json() -> &'static str {
     super::project_mcp_file()
 }
 

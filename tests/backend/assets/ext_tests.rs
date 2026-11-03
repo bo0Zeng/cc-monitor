@@ -22,7 +22,7 @@ fn answer_uninstall_apply(
     let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
 }
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::test_support::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
 use crate::assets::mcp_sync::{Facts, There};
@@ -488,7 +488,7 @@ impl M {
 /// 本机那一跳：这台自己。
 struct HereM(Arc<M>);
 impl Here for HereM {
-    fn viewer_tz(&self) -> crate::Tz {
+    fn viewer_tz(&self) -> crate::common::time::Tz {
         Default::default()
     }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
@@ -878,12 +878,11 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// 在这台的临时家目录里经账号库那几条帧命令建库（z）、加一个号（b）；之后它的用户级 MCP 就是各账号共用的那一份。
-/// 夹具只造结构：登录状态是写死的假邮箱。
+/// 在这台的临时家目录里经账号库那一层的本体建库（z）、加一个号（b），每一步之后同步一趟共用的 MCP（同帧面那一跳建完号做的那一步）；
+/// 之后它的用户级 MCP 就是各账号共用的那一份。夹具只造结构：登录状态是写死的假邮箱。
 #[cfg(unix)]
 fn make_library(m: &mut M) {
-    use crate::accounts::upstream_select::file_face;
-    use crate::faces::accounts_face::{tests::answer, KeyDoor};
+    use crate::accounts::manage::{mcp_share_exec, wire};
     let home = m.env.home.clone().unwrap();
     let w = |rel: &str, body: &str| {
         let p = home.join(rel);
@@ -897,42 +896,27 @@ fn make_library(m: &mut M) {
         &json!({ "oauthAccount": { "emailAddress": "z@example.test" }, "mcpServers": {} })
             .to_string(),
     );
-    let table = home.join(".cc-monitor/apikey-credentials.json");
-    let set = |v: &crate::accounts::upstream_select::file_face::KeySetReq| {
-        file_face::answer_set_at(
-            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
-            v,
-        )
-    };
-    let drop = |v: &Value| {
-        file_face::answer_drop_at(
-            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
-            v,
-        )
-    };
-    let restore = |v: &Value| {
-        file_face::answer_restore_at(
-            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
-            v,
-        )
-    };
-    let path = || Ok(table.clone());
-    let keys = KeyDoor {
-        set: &set,
-        drop: &drop,
-        restore: &restore,
-        path: &path,
-    };
     let d = HomeDoor(home.clone());
-    let init = answer(&d, "accounts-init", &json!({ "name": "z" }), &keys).expect("建库");
-    assert_eq!(init["applied"], true, "{init}");
-    answer(
+    fn take<R: serde::de::DeserializeOwned>(v: Value) -> R {
+        crate::wire::typed::take(&v).expect("入参")
+    }
+    let init = wire::run_change(
         &d,
-        "accounts-add",
-        &json!({ "name": "b", "kind": "subscription" }),
-        &keys,
+        &wire::Request::Init(take(json!({ "name": "z" }))),
+        None,
+        &Vec::new,
+    )
+    .expect("建库");
+    assert!(init.change.applied, "{:?}", init.change);
+    mcp_share_exec::sync(&d).expect("建库之后同步共用的 MCP");
+    wire::run_change(
+        &d,
+        &wire::Request::Add(take(json!({ "name": "b", "kind": "subscription" }))),
+        None,
+        &Vec::new,
     )
     .expect("加号");
+    mcp_share_exec::sync(&d).expect("加号之后同步共用的 MCP");
     let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home.display().to_string())
         .expect("建了库却没有共用的那一份");
     m.env.user_mcp = Some(PathBuf::from(store));
@@ -1146,7 +1130,7 @@ fn no_production_code_writes_the_agent_settings_file() {
     ];
     let code = |text: &str| guard_core::strip_comment_lines(text);
     let writes = |text: &str| WRITES.iter().any(|w| text.contains(w));
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo = guard_core::addr::repo_root();
     let files: Vec<(PathBuf, String)> =
         guard_core::scan_tree_excluding(&repo.join("src"), &["rs", "ts"], &[]);
     let mut seen: Vec<String> = files
@@ -1283,7 +1267,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
 /// （BUILD_ID 的子命令历史那张表是冻结的旧记录，照原样留）。正控：同一把尺子数得出新那一套。
 #[test]
 fn the_old_hub_command_names_are_gone_from_the_repo() {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo = guard_core::addr::repo_root();
     let old: Vec<String> = ["skill-install", "mcp-sync"]
         .iter()
         .flat_map(|p| [format!("{p}-hub-"), format!("{}_hub_", p.replace('-', "_"))])

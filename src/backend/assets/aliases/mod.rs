@@ -46,13 +46,13 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::Path;
 
-pub(crate) mod accounts;
-pub(crate) mod block;
+pub mod accounts;
+pub mod block;
 pub(crate) mod fence;
 pub(crate) mod form;
-pub(crate) mod links;
-pub(crate) mod page;
-pub(crate) mod profile;
+pub mod links;
+pub mod page;
+pub mod profile;
 
 use crate::ccm_line::argv::flag;
 use crate::common::door::{self, Door};
@@ -62,9 +62,9 @@ use crate::platform::child::Deadline;
 use crate::platform::shell::dialect::{self, Listed, RestTo, Shell};
 
 /// `aliases-read` 整条命令总期限的上限（每一代 PowerShell 问一次执行策略，最多两发）。
-pub(crate) const ALIASES_READ_CAP: Deadline = Deadline::secs(28);
+pub const ALIASES_READ_CAP: Deadline = Deadline::secs(28);
 /// `powershell-policy-set` 整条命令总期限的上限（设一发 ＋ 再问一发）。
-pub(crate) const POLICY_SET_CAP: Deadline = Deadline::secs(28);
+pub const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 
 /// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`、落点住 `relay_route_core`，适配层不往上够 ⇒ 由这里交下去。
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
@@ -82,18 +82,18 @@ const FILE_END: &str = "# === cc-monitor aliases END ===";
 ///
 /// 「接没接上别名文件」与别名块（`cc` / `cct` · `__ccm_bind`）装进的是**同一批**文件
 /// ⇒ 一份候选、一次扫描，两件事都在这一格上（`block`）。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "AliasStartupFile"
+        rename = "AliasStartupFile",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct StartupFile {
+pub struct StartupFile {
     /// 绝对路径。
     pub path: String,
     /// `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
@@ -110,7 +110,7 @@ pub(crate) struct StartupFile {
     /// 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
     pub policy: Option<crate::platform::shell::powershell::ExecPolicy>,
     /// 把别名块装进这一份会写几行（与装进去的那一块同源：[`block::render_block`]，方言按这份的扩展名；渲染不出 ⇒ 0）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub block_lines: usize,
 }
 
@@ -180,11 +180,11 @@ impl Alias {
 }
 
 /// 读回口的产物：启动文件候选（接入那一格）。清单在配置文件那一页（`page.rs::read_with`）。
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct AliasListing {
+pub struct AliasListing {
     /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
     pub rc_candidates: Vec<StartupFile>,
     /// 人另指的那一份（`read_via` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
@@ -192,7 +192,7 @@ pub(crate) struct AliasListing {
 }
 
 /// 别名文件写过之后给人的那一句：已开着的终端不会自己重读它（启动文件只在启动时读一次）。
-pub(crate) fn reload_hint(path: &str) -> String {
+pub fn reload_hint(path: &str) -> String {
     copy_text("rsAccountAliases.install.reload", &[("path", path)])
 }
 
@@ -261,7 +261,7 @@ fn account_table(home: &str) -> Vec<String> {
 
 /// 这台机器的**能力**—— 不是方言（`has_tmux()` 不进那一族）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Caps {
+pub struct Caps {
     /// 有没有 tmux（`--ccm-tmux` 那一族能不能用）。
     pub tmux: bool,
 }
@@ -350,7 +350,7 @@ pub(crate) fn start_line(name: &str, shell: Shell, ccm: &str) -> String {
 
 /// 这一条要不要写进别名文件（写成函数）：PowerShell 一律是函数；POSIX 只有与系统命令 / 自带片段撞名的那几条
 /// （比如 `cc`：把链接放进 `PATH` 会让编译调到它），其余做成 `~/.cc-monitor/bin/<名>` 的链接（[`links`]）。
-pub(crate) fn wants_function(name: &str, shell: Shell) -> bool {
+pub fn wants_function(name: &str, shell: Shell) -> bool {
     shell == Shell::PowerShell || collision_note(name, shell).is_some()
 }
 
@@ -359,7 +359,7 @@ pub(crate) fn wants_function(name: &str, shell: Shell) -> bool {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 这台机器上配置文件此刻的样子（读的那一刻）。
-pub(crate) struct Store {
+pub struct Store {
     pub home: String,
     /// 盘上原文（不在 ⇒ `None`）。
     pub text: Option<String>,
@@ -367,7 +367,7 @@ pub(crate) struct Store {
 }
 
 /// 读配置文件（不在 ⇒ 空清单）。
-pub(crate) fn load(d: &dyn Door) -> Result<Store, String> {
+pub fn load(d: &dyn Door) -> Result<Store, String> {
     let home = door::home(d)?;
     let path = profile::path_in(&home);
     let text = read_profiles(d, &home, &path)?;
@@ -387,7 +387,7 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
 /// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::align_aliases` 递）：配置文件在、读得懂 ⇒
 /// 照它把别名文件 · 链接对齐一次（[`sync_outputs`]，内容一样一个字节不写）—— 写法变了的那一份不等人再改一次清单才换。
 /// 配置文件不在 ⇒ 什么都不做（旧形状的别名文件不转）。没做成只记日志，不挡起来。
-pub(crate) fn align_here(d: &dyn Door) {
+pub fn align_here(d: &dyn Door) {
     let res = door::home(d).and_then(|home| {
         let path = profile::path_in(&home);
         if let Some(text) = read_profiles(d, &home, &path)? {
@@ -533,7 +533,7 @@ pub(crate) fn sync_outputs(
 /// **事实全问这台的文件管理面**（「怎么读到这个事实 → 下沉」）：
 /// home（`files-home`）· 别名文件（`Door::peek`）· 候选各一次（`Door::peek`，PS 7 那两份的目录 `files-stat`）。
 /// 门就是本进程的 `files-*`（[`door`]），`origin` 退役。
-pub(crate) fn read_via(
+pub fn read_via(
     d: &dyn Door,
     shell: Shell,
     extra_rc: Option<&str>,
@@ -574,7 +574,7 @@ fn look(d: &dyn Door, home: &str, abs: &str) -> Result<Look, String> {
 
 /// 建号 / 删号那一刻改配置文件没成。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AmendErr {
+pub enum AmendErr {
     /// 配置文件里有这么多处写错 ⇒ 不动它（等人先改好）。
     Unparsed {
         path: String,
@@ -585,7 +585,7 @@ pub(crate) enum AmendErr {
 
 /// 改配置文件的结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Amended {
+pub struct Amended {
     pub path: String,
     pub wrote: bool,
     /// 动了的别名文件（已开的终端要重读它）。
@@ -594,7 +594,7 @@ pub(crate) struct Amended {
 
 /// 建号 / 删号那一刻：读配置文件（不在 ⇒ 从首建那几条起）→ `f` 给改动 → 写回，再照它生成别名；盘上被别处改过 ⇒ 重读重算一次。
 /// `f` 可能被叫不止一次（重读那一趟），它记的结果以最后一次为准。
-pub(crate) fn amend_via(
+pub fn amend_via(
     d: &dyn Door,
     f: &mut dyn FnMut(&profile::Book) -> Vec<profile::Change>,
 ) -> Result<Amended, AmendErr> {
@@ -764,6 +764,9 @@ fn write_alias_file(
     })
 }
 
+/// 照盘上此刻那一份（`None` ＝ 不在）算要写的全文（`None` ＝ 不写）。
+type PlanText<'a> = dyn FnMut(Option<&str>) -> Result<Option<String>, String> + 'a;
+
 /// 本模块写盘的唯一一口：`~/.cc-monitor` 下我们自己的文件（别名文件 · 配置文件）经这台的文件管理面
 /// （`Door::peek` / `Door::put`：原子替换 · 内容比对 · 回读 · 回滚）。`plan` 拿到盘上此刻那一份（`None` ＝ 不在），
 /// 回要写的全文（`None` ＝ 不写）。不留备份文件（配置文件的历史由那份文件自己的写法管：按条目改、手写的留着）。
@@ -771,9 +774,9 @@ fn write_ours(
     d: &dyn Door,
     home: &str,
     rel: &str,
-    plan: &mut dyn FnMut(Option<&str>) -> Result<Option<String>, String>,
+    plan: &mut PlanText<'_>,
 ) -> Result<bool, String> {
-    let done = door::edit(d, home, rel, false, true, |now| plan(now))?;
+    let done = door::edit(d, home, rel, false, true, plan)?;
     Ok(matches!(done, door::Edited::Written(_)))
 }
 
@@ -788,14 +791,14 @@ fn refused(said: String) -> Said {
 
 /// `aliases-read` 的入参：哪种 shell 的候选 · 人另指的那一份启动文件（`null` = 不指；过围栏后并进候选）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct AliasesReadReq {
+pub struct AliasesReadReq {
     /// `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
     pub(crate) shell: Shell,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) rc_path: Option<String>,
 }
 
@@ -807,10 +810,10 @@ pub(crate) fn answer_read(d: &dyn Door, req: &AliasesReadReq) -> Result<AliasLis
 
 /// 别名块那三条的入参：目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell）。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct BlockReq {
+pub struct BlockReq {
     pub(crate) rc_path: String,
 }
 
@@ -824,17 +827,17 @@ fn block_target(d: &dyn Door, req: &BlockReq) -> Result<(String, String), Said> 
 
 /// `aliases-block-render` 的应答：往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`）。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct BlockText {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct BlockText {
     pub(crate) text: String,
 }
 
 /// 装好 / 卸掉了（零出参）。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct BlockDone {}
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct BlockDone {}
 
 /// `aliases-block-render {rcPath}` → `{text}`（纯：往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。
 pub(crate) fn answer_block_render(d: &dyn Door, req: &BlockReq) -> Result<BlockText, Said> {
@@ -861,20 +864,20 @@ pub(crate) fn answer_block_remove(d: &dyn Door, req: &BlockReq) -> Result<BlockD
 
 /// `powershell-policy-set` 的入参：哪一代 PowerShell。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PolicySetReq {
+pub struct PolicySetReq {
     /// `powershell`（5.1）· `pwsh`（7）。
     pub(crate) host: crate::platform::shell::PsHost,
 }
 
 /// `powershell-policy-set` 的应答：设完现问的那一份 ＋ 设的那一下没成的原因词。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PolicySet {
+pub struct PolicySet {
     /// 形状同 `aliases-read` 候选里的 `policy`。
     pub(crate) policy: crate::platform::shell::powershell::ExecPolicy,
     /// 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报。
@@ -891,13 +894,13 @@ pub(crate) fn answer_policy_set(req: &PolicySetReq) -> Result<PolicySet, Said> {
 
 crate::wire::typed::codes! {
     /// 别名那几条的码：这台的方言不认 · 过不了围栏 · 读写没成（那一句说清哪一样）。
-    pub(crate) enum AliasErr {
+    pub enum AliasErr {
         Refused = "refused",
     }
 }
 
 /// `aliases-read`：启动文件候选（接入那一格）（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct AliasesRead;
+pub struct AliasesRead;
 
 impl crate::wire::typed::Command for AliasesRead {
     const NAME: &'static str = "aliases-read";
@@ -922,7 +925,7 @@ impl crate::wire::typed::Handle for AliasesRead {
 }
 
 /// `aliases-block-render`：别名块预览（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct AliasesBlockRender;
+pub struct AliasesBlockRender;
 
 impl crate::wire::typed::Command for AliasesBlockRender {
     const NAME: &'static str = "aliases-block-render";
@@ -948,7 +951,7 @@ impl crate::wire::typed::Handle for AliasesBlockRender {
 }
 
 /// `aliases-block-install`：别名块装进人选的那份启动文件（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct AliasesBlockInstall;
+pub struct AliasesBlockInstall;
 
 impl crate::wire::typed::Command for AliasesBlockInstall {
     const NAME: &'static str = "aliases-block-install";
@@ -974,7 +977,7 @@ impl crate::wire::typed::Handle for AliasesBlockInstall {
 }
 
 /// `aliases-block-remove`：别名块卸掉（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct AliasesBlockRemove;
+pub struct AliasesBlockRemove;
 
 impl crate::wire::typed::Command for AliasesBlockRemove {
     const NAME: &'static str = "aliases-block-remove";
@@ -1000,7 +1003,7 @@ impl crate::wire::typed::Handle for AliasesBlockRemove {
 }
 
 /// `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（起一次那一代 PowerShell ⇒ 阻塞档）。
-pub(crate) struct PowershellPolicySet;
+pub struct PowershellPolicySet;
 
 impl crate::wire::typed::Command for PowershellPolicySet {
     const NAME: &'static str = "powershell-policy-set";
@@ -1011,16 +1014,24 @@ impl crate::wire::typed::Command for PowershellPolicySet {
 
 impl crate::wire::typed::Handle for PowershellPolicySet {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PolicySetReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<PolicySet, AliasErr>> + Send + 'static {
-        async move {
-            answer_policy_set(&req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
-        }
+    ) -> Result<PolicySet, AliasErr> {
+        answer_policy_set(&req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
     }
 }
 
+// 判据用的真盘门（`HomeDoor` · `FilesHere`）：本包与上层判据经 `test-support` 共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../../tests/backend/assets/aliases/aliases_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/assets/aliases/aliases_tests.rs"]
-pub(crate) mod tests;
+mod tests;
+
+// 两种方言的别名读法里用到这一族的调用形状与别名块正文的几条（方言住平台层，那个包够不到这一层）。
+#[cfg(test)]
+#[path = "../../../../tests/backend/assets/aliases/dialect_tests.rs"]
+mod dialect_tests;

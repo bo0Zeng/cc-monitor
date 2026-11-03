@@ -8,7 +8,7 @@ use crate::common::door::{self, Door};
 use cmd_wire::files as wire;
 
 /// 链接住的目录（ccm 自己住的那个，`~/.cc-monitor/bin`）。
-pub(crate) fn bin_rel() -> &'static str {
+pub fn bin_rel() -> &'static str {
     relay_route_core::BACKEND_LANDING_REL
         .rsplit_once('/')
         .map_or("", |(dir, _)| dir)

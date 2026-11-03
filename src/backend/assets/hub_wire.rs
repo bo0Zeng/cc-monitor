@@ -2,7 +2,7 @@
 //!
 //! 这是**两台后端之间**的线上形：远端那台可能更旧或更新。于是入参拒多出来的键（这台收到的是同版本枢纽发的），
 //! 回包不拒（对面可能更新、多带一格）；回包解不出 ⇒ 枢纽说「那台后端版本不同」（`hub::ask_one`）。
-//! 帧面那一侧（`faces/hub_inner_face.rs`）每条一行 `impl Command`（线上名 · 入参 · 回包 · 码），名字只写那一处。
+//! 每条一行 `impl Command`（线上名 · 入参 · 回包 · 码）住 [`super::hub_inner`]，名字只写那一处。
 //! 有 `null` 的那几格照出 `null`（不省略）：钉住的字节（`hub_inner_wire_tests`）就是这一形。
 
 use super::ext::{ExtLoc, ExtSlot};
@@ -10,40 +10,40 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-// 标记类型住这里（枢纽按它们问）；帧面的 `impl Command`（线上名 · 入参 · 回包）住 `faces/hub_inner_face.rs`，线上名只写在那一处。
+// 标记类型住这里（枢纽按它们问）；`impl Command`（线上名 · 入参 · 回包）住 `hub_inner.rs`，线上名只写在那一处。
 
 /// 来源那台读一个 skill 的全部文件（`skill-read`）。
-pub(crate) struct SkillReadCmd;
+pub struct SkillReadCmd;
 /// 被写那台判 skill 装不装得过来（`skill-install-plan`）。
-pub(crate) struct SkillPlanCmd;
+pub struct SkillPlanCmd;
 /// 被写那台把勾的那几个 skill 文件写进去（`skill-install-apply`）。
-pub(crate) struct SkillApplyCmd;
+pub struct SkillApplyCmd;
 /// 来源那台交那一条 MCP，密钥值换成空位（`mcp-sync-source`）。
-pub(crate) struct McpSourceCmd;
+pub struct McpSourceCmd;
 /// 被写那台看装上之后那一条（`mcp-sync-preview`）。
-pub(crate) struct McpPreviewCmd;
+pub struct McpPreviewCmd;
 /// 被写那台把那一条写进去（`mcp-sync-apply`）。
-pub(crate) struct McpApplyCmd;
+pub struct McpApplyCmd;
 /// 装 cc-bus 之前看一眼（`cc-bus-install-state`）。
-pub(crate) struct CcBusStateCmd;
+pub struct CcBusStateCmd;
 /// 把这台二进制带着的 cc-bus 装到这台（`cc-bus-install`）。
-pub(crate) struct CcBusInstallCmd;
+pub struct CcBusInstallCmd;
 
 /// 不收入参的那两条：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。发出去是 `{}`。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NoReq {}
+pub struct NoReq {}
 
 // ───────────────────────── skill ─────────────────────────
 
 /// `skill-read`：哪一个 skill；`project` 给了 ⇒ 那个项目里的（这台上的绝对路径），缺 / `null` ⇒ 用户级。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SkillReadReq {
+pub struct SkillReadReq {
     /// skill 的目录名（一段：不许分隔符 / `..` / 点开头）。
     pub name: String,
     #[serde(default)]
@@ -52,13 +52,14 @@ pub(crate) struct SkillReadReq {
 
 /// 来源那台读到的一个文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillReadFile {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillReadFile {
     /// skill 里的相对路径（`/` 分段）。
     pub path: String,
     /// 原文；不是文本 / 太大 / 读不出来 ⇒ `null`（这一个装不过去），原因在 `why`。
     pub text: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes: u64,
     pub exec: bool,
     pub why: Option<String>,
@@ -66,9 +67,9 @@ pub(crate) struct SkillReadFile {
 
 /// `skill-read` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillRead {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillRead {
     /// 这台 skill 的根。
     pub root: String,
     /// 这个 skill 的目录（绝对路径）。
@@ -80,10 +81,10 @@ pub(crate) struct SkillRead {
 
 /// 装那一跳交给被写那台的一个文件（来源那台读到的那三格）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SkillSourceFile {
+pub struct SkillSourceFile {
     pub path: String,
     /// `null` = 装不过去的那一个。
     pub text: Option<String>,
@@ -93,20 +94,20 @@ pub(crate) struct SkillSourceFile {
 
 /// 被写那台上一个文件现有的原文（写的时候当 CAS 期望）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SkillTargetFile {
+pub struct SkillTargetFile {
     pub path: String,
     pub text: String,
 }
 
 /// `skill-install-plan`：给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SkillPlanReq {
+pub struct SkillPlanReq {
     pub name: String,
     pub source: Vec<SkillSourceFile>,
     #[serde(default)]
@@ -120,9 +121,9 @@ pub(crate) struct SkillPlanReq {
 /// skill 一个文件里的一条可疑项。`kind` 闭集 `abs-path` · `binary` · `command-missing` · `executable`；
 /// `there` = 它在被写那台上的样子（`present` · `absent` · `foreign` · `unknown`；不问那台的那几种 ⇒ `null`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillSuspect {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillSuspect {
     pub kind: String,
     pub value: String,
     pub there: Option<String>,
@@ -130,9 +131,9 @@ pub(crate) struct SkillSuspect {
 
 /// 判定表里一个路径一行。`state` 闭集 `new` · `same` · `differs` · `only-there`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillPlanRow {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillPlanRow {
     pub path: String,
     pub state: String,
     pub suspects: Vec<SkillSuspect>,
@@ -142,18 +143,18 @@ pub(crate) struct SkillPlanRow {
 
 /// 装记录里一个文件：装进去的那一份的摘要 ＋ 装之前在不在。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillLedgerFile {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillLedgerFile {
     pub digest: String,
     pub created: bool,
 }
 
 /// `skill-install-plan` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SkillPlan {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SkillPlan {
     pub root: String,
     pub dir: String,
     /// 写的时候 `Door::put` 用的 `root`。
@@ -170,10 +171,10 @@ pub(crate) struct SkillPlan {
 
 /// `skill-install-apply`：`source` = 来源那台读到的（原样）；`target` = 看差异时这台回的那几份原文（CAS 期望）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SkillApplyReq {
+pub struct SkillApplyReq {
     pub name: String,
     #[serde(default)]
     pub project: Option<String>,
@@ -187,10 +188,10 @@ pub(crate) struct SkillApplyReq {
 
 /// `skill-install-apply` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SkillApplied {
+pub struct SkillApplied {
     pub dir: String,
     /// 真写成了的那几个（按写的顺序）。
     pub written: Vec<String>,
@@ -204,19 +205,19 @@ pub(crate) struct SkillApplied {
 
 /// `mcp-sync-source`：哪一条 · 在这台上哪一级。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct McpSourceReq {
+pub struct McpSourceReq {
     pub name: String,
     pub at: ExtLoc,
 }
 
 /// 来源那台换成空位的一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpSourceSlot {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpSourceSlot {
     /// `env` · `headers`。
     pub field: String,
     pub key: String,
@@ -224,13 +225,13 @@ pub(crate) struct McpSourceSlot {
 
 /// `mcp-sync-source` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpSource {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpSource {
     /// 读的是哪一份。
     pub path: String,
     /// 那一条；`env` / `headers` 的值在这台就换成 `null`。
-    #[cfg_attr(test, ts(type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub def: Value,
     pub slots: Vec<McpSourceSlot>,
     /// 按原样那一条（含密钥值）算的记号。
@@ -239,21 +240,21 @@ pub(crate) struct McpSource {
 
 /// `mcp-sync-preview`：`def` = 来源那台交回的那一条，原样。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct McpPreviewReq {
+pub struct McpPreviewReq {
     pub name: String,
     pub at: ExtLoc,
-    #[cfg_attr(test, ts(type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub def: Value,
 }
 
 /// MCP 那一条里的一条可疑项：`kind` 闭集 `abs-path` · `command-missing` · `command-relative`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpSuspect {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpSuspect {
     pub kind: String,
     pub field: String,
     pub value: String,
@@ -262,14 +263,14 @@ pub(crate) struct McpSuspect {
 
 /// `mcp-sync-preview` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpPreview {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpPreview {
     /// 这台那份的路径。
     pub path: String,
     /// `new` · `same` · `differs`。
     pub state: String,
-    #[cfg_attr(test, ts(type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub def: Value,
     pub slots: Vec<ExtSlot>,
     pub suspects: Vec<McpSuspect>,
@@ -279,13 +280,13 @@ pub(crate) struct McpPreview {
 
 /// `mcp-sync-apply`：`fill` = 用户在卡上填的 `{env: {键: 值}, headers: {…}}`；`target` = 看卡时这台那份的记号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct McpApplyReq {
+pub struct McpApplyReq {
     pub name: String,
     pub at: ExtLoc,
-    #[cfg_attr(test, ts(type = "unknown"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub def: Value,
     #[serde(default)]
     pub fill: Option<BTreeMap<String, BTreeMap<String, String>>>,
@@ -295,10 +296,10 @@ pub(crate) struct McpApplyReq {
 
 /// `mcp-sync-apply` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct McpApplied {
+pub struct McpApplied {
     pub path: String,
     /// 真写了吗（与原有那一条逐字相同 ⇒ `false`）。
     pub written: bool,
@@ -309,9 +310,9 @@ pub(crate) struct McpApplied {
 
 /// `cc-bus-install-state` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct CcBusState {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct CcBusState {
     /// 落点（`<skills 根>/cc-bus`）。
     pub dest: String,
     /// 内容会变的那几个（缺的 ＋ 不一样的）；空 ⇒ 已是这一版。
@@ -324,10 +325,10 @@ pub(crate) struct CcBusState {
 
 /// `cc-bus-install` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CcBusInstalled {
+pub struct CcBusInstalled {
     pub dest: String,
     /// 写了的那几个相对路径（全一致 ⇒ 空）。
     pub written: Vec<String>,
@@ -343,10 +344,10 @@ pub(crate) type Fill = BTreeMap<String, BTreeMap<String, String>>;
 
 /// `ext-hub-preview`：装到勾上的几台之前那一张卡。`to` 里 `null` = 这台自己；`place` = 用户在卡上选的那一处。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HubReq {
+pub struct HubReq {
     pub kind: super::asset_catalog::ExtKind,
     pub name: String,
     pub to: Vec<Option<String>>,
@@ -356,10 +357,10 @@ pub(crate) struct HubReq {
 
 /// `ext-hub-apply`：同 [`HubReq`]，再带每台那张卡上的记号（键 = 机器键，本机 = 空串）与填的值。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HubApplyReq {
+pub struct HubApplyReq {
     pub kind: super::asset_catalog::ExtKind,
     pub name: String,
     pub to: Vec<Option<String>>,
@@ -373,9 +374,9 @@ pub(crate) struct HubApplyReq {
 
 /// 几张卡的要填格并成一份：每格一次，`kept` = 那一格已经有值的几台（名字）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HubSlot {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HubSlot {
     pub field: String,
     pub key: String,
     pub kept: Vec<String>,
@@ -383,9 +384,9 @@ pub(crate) struct HubSlot {
 
 /// 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（进那一行的复制详情；没有 ⇒ `null`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HubMachineCard {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HubMachineCard {
     pub to: Option<String>,
     pub name: String,
     pub card: Option<super::ext::ExtCard>,
@@ -397,9 +398,9 @@ pub(crate) struct HubMachineCard {
 
 /// `ext-hub-preview` 的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HubPreview {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HubPreview {
     /// 各台能装的各处并起来：勾上的每台都能装才 `ok`。
     pub places: Vec<super::ext::ExtTarget>,
     /// 共用的那一处（没有每台都能装的 ⇒ `null`）。
@@ -410,9 +411,9 @@ pub(crate) struct HubPreview {
 
 /// 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（同 [`HubMachineCard`]）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HubMachineDone {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HubMachineDone {
     pub to: Option<String>,
     pub name: String,
     pub done: Option<super::ext::ExtDone>,
@@ -422,8 +423,8 @@ pub(crate) struct HubMachineDone {
 
 /// `ext-hub-apply` 的回包：每台各自结局，一台没成不挡别台。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HubApplied {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HubApplied {
     pub machines: Vec<HubMachineDone>,
 }

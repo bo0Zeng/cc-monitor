@@ -28,7 +28,7 @@ use crate::ccm_line::argv::{self, flag, Die, Layer, Origin, Parsed};
 /// 「基于」那一项的键（命令行上是 `@名`）。
 pub(crate) const FROM_KEY: &str = "from";
 /// 交给 agent 的那几个词（命令行上 `--` 左边那串）。
-pub(crate) const ARGS_KEY: &str = "args";
+pub const ARGS_KEY: &str = "args";
 /// 一组会话那一节（`[set."组名"]`）：保留名，不能当别名（它也是 shell 内建命令，做成链接或函数都会坏事）。
 pub(crate) const SET_KEY: &str = "set";
 /// 一组里那几行的键。
@@ -39,12 +39,12 @@ const ROW_ALIAS: &str = "alias";
 const ROW_N: &str = "n";
 const ROW_TAB_GROUP: &str = "tab-group";
 /// 一行最多几个、一组合计最多几个。
-pub(crate) const ROW_MAX: u8 = 9;
-pub(crate) const SET_MAX: u32 = 12;
+pub const ROW_MAX: u8 = 9;
+pub const SET_MAX: u32 = 12;
 
 /// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
 /// （`--no-rotation` 是给程序起的那一发用的；常用的会话不轮换在轮换设置里定），写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
-pub(crate) const PROFILE_FLAGS: &[&str] = &[
+pub const PROFILE_FLAGS: &[&str] = &[
     flag::CWD,
     flag::CWD_IF,
     flag::ACCOUNT,
@@ -61,7 +61,7 @@ pub(crate) const PROFILE_FLAGS: &[&str] = &[
 ];
 
 /// [`PROFILE_FLAGS`] 写进文件的那个键（去掉打头的 `--`）。
-pub(crate) fn key_of(f: &'static str) -> &'static str {
+pub fn key_of(f: &'static str) -> &'static str {
     f.trim_start_matches('-')
 }
 
@@ -71,7 +71,7 @@ pub(crate) fn flag_of(key: &str) -> Option<&'static str> {
 
 /// 配置文件里写的一项：键 ＋ 变回的命令行词（一组一个 `Vec`；`--cwd-if` 可以几组）＋ 行号。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Setting {
+pub struct Setting {
     pub key: String,
     pub groups: Vec<Vec<String>>,
     pub line: usize,
@@ -79,7 +79,7 @@ pub(crate) struct Setting {
 
 /// 一段（一份具名配置）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Profile {
+pub struct Profile {
     pub name: String,
     /// 段头那一行。
     pub line: usize,
@@ -92,7 +92,7 @@ pub(crate) struct Profile {
 
 impl Profile {
     /// 这一段自己那几项，写成命令行 `--` 右边的词。
-    pub(crate) fn ccm_words(&self) -> Vec<String> {
+    pub fn ccm_words(&self) -> Vec<String> {
         self.items
             .iter()
             .flat_map(|i| i.groups.iter().flatten().cloned())
@@ -110,7 +110,7 @@ impl Profile {
 
 /// 一组里的一行：在哪个目录 · 用哪条别名 · 补足到几个 · 进哪个标签页组（`None` ＝ 缺省，由补足那一侧算）· 行号。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SetRow {
+pub struct SetRow {
     pub cwd: String,
     pub alias: String,
     pub n: u8,
@@ -120,7 +120,7 @@ pub(crate) struct SetRow {
 
 /// 一组会话（`[set."名"]`）：名字 · 段头那一行 · 几行 · 写错的几处（有 ⇒ 这一组此刻不能用，别的组与别名照用）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Set {
+pub struct Set {
     pub name: String,
     pub line: usize,
     pub rows: Vec<SetRow>,
@@ -129,7 +129,7 @@ pub(crate) struct Set {
 
 /// 一处写错：哪一段（`None` ＝ 整份文件；组那一侧的记在组身上）· 第几行 · 什么错。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct Problem {
+pub struct Problem {
     pub profile: Option<String>,
     pub line: Option<usize>,
     pub message: String,
@@ -141,18 +141,18 @@ pub(crate) struct Problem {
 /// 读出来的整份：认得的几段 ＋ 几组 ＋ 写错的几处。TOML 本身写错 ⇒ 一段一组都不认（整份不能用）。
 /// 组写错的那几处记在那一组自己身上（[`Set::problems`]），不进 `problems`：一组坏了不挡别名。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Book {
+pub struct Book {
     pub profiles: Vec<Profile>,
     pub sets: Vec<Set>,
     pub problems: Vec<Problem>,
 }
 
 impl Book {
-    pub(crate) fn find(&self, name: &str) -> Option<&Profile> {
+    pub fn find(&self, name: &str) -> Option<&Profile> {
         self.profiles.iter().find(|p| p.name == name)
     }
 
-    pub(crate) fn find_set(&self, name: &str) -> Option<&Set> {
+    pub fn find_set(&self, name: &str) -> Option<&Set> {
         self.sets.iter().find(|s| s.name == name)
     }
 
@@ -178,7 +178,7 @@ fn line_at(raw: &str, at: usize) -> usize {
 }
 
 /// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::ccm_line::is_own_name`]）。
-pub(crate) fn name_ok(name: &str) -> Result<(), String> {
+pub fn name_ok(name: &str) -> Result<(), String> {
     use crate::platform::shell::dialect::Shell;
     if name == SET_KEY {
         return Err(copy_text("beProfile.name.reserved", &[("name", name)]));
@@ -252,7 +252,7 @@ fn parser_said(key: &str, m: &str) -> String {
 }
 
 /// **读口**：整份文本 ⇒ [`Book`]。一个字节的盘都不碰。
-pub(crate) fn parse_book(text: &str) -> Book {
+pub fn parse_book(text: &str) -> Book {
     let doc = match toml_edit::Document::parse(text) {
         Ok(d) => d,
         Err(e) => {
@@ -498,12 +498,12 @@ fn row_of(t: &dyn toml_edit::TableLike, line: usize) -> Result<SetRow, String> {
 }
 
 /// 配置文件在这台机器上的路径。
-pub(crate) fn path_in(home: &str) -> String {
+pub fn path_in(home: &str) -> String {
     crate::common::door::join_under(home, relay_route_core::PROFILES_REL)
 }
 
 /// ccm 那一趟直接读（一次性模式不经文件管理面）：不在 ⇒ 一段都没有；读不了 ⇒ 那一句。
-pub(crate) fn read_at(home: &str) -> Result<Book, String> {
+pub fn read_at(home: &str) -> Result<Book, String> {
     let path = path_in(home);
     if matches!(Ro::metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
         return Ok(Book::default());
@@ -524,7 +524,7 @@ const PROFILES_CAP: relay_route_core::Cap = relay_route_core::Cap {
 
 /// 合并的成品：落好的意图 ＋ 每一项来自哪一层 ＋ 继承链（父 → 子）。
 #[derive(Debug)]
-pub(crate) struct Resolved {
+pub struct Resolved {
     pub parsed: Parsed,
     pub origins: Vec<Origin>,
     pub chain: Vec<String>,
@@ -590,7 +590,7 @@ pub(crate) fn chain<'a>(book: &'a Book, name: &str) -> Result<Vec<&'a Profile>, 
 /// `args` 是命令行当场给的（`[交给 agent 的…] -- [ccm 选项…]`），盖在合并结果最上面；合并规则只住 `argv::parse_layered`。
 ///
 /// 〔继承表〕别名那一格：只认这一发自己的 `@名`，不随主会话。
-pub(crate) fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolved, String> {
+pub fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolved, String> {
     let chain = chain(book, name)?;
     let layers: Vec<Layer> = chain.iter().map(|p| p.layer()).collect();
     let (parsed, origins) = argv::parse_layered(&layers, args)
@@ -609,7 +609,7 @@ pub(crate) fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolv
 /// 改一段要写成的样子：名字 · 基于谁 · 交给 agent 的词 · ccm 选项（命令行 `--` 右边那种写法）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProfileEdit {
+pub struct ProfileEdit {
     pub name: String,
     pub from: Option<String>,
     pub agent: Vec<String>,
@@ -793,20 +793,20 @@ pub(crate) fn set_from(
 
 /// 一组要写成的样子：名字 ＋ 几行。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SetEdit {
+pub struct SetEdit {
     pub name: String,
     pub rows: Vec<RowEdit>,
 }
 
 /// 一行要写成的样子（`tab_group` 只在改过组名时给）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct RowEdit {
+pub struct RowEdit {
     pub cwd: String,
     pub alias: String,
     pub n: u8,
@@ -815,7 +815,7 @@ pub(crate) struct RowEdit {
 }
 
 /// 这一组自己写的样子（框的回填从这里取）。
-pub(crate) fn edit_of_set(s: &Set) -> SetEdit {
+pub fn edit_of_set(s: &Set) -> SetEdit {
     SetEdit {
         name: s.name.clone(),
         rows: s
@@ -923,7 +923,7 @@ pub(crate) fn remove_set(doc: &mut DocumentMut, name: &str) {
 
 /// 对配置文件的一处改动（设置窗存一下、建号删号那一刻、迁移、存一组，都折成这几种）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Change {
+pub enum Change {
     /// 存一组（没有就加在末尾）。
     SetSet(SetEdit),
     /// 删一组。
@@ -950,7 +950,7 @@ pub(crate) fn apply_changes(text: Option<&str>, changes: &[Change]) -> Result<St
             .map(|l| format!("# {l}\n"))
             .collect::<String>()
     };
-    let mut doc = edit_start(text.map_or_else(|| header(), str::to_string).as_str())?;
+    let mut doc = edit_start(text.map_or_else(header, str::to_string).as_str())?;
     for c in changes {
         match c {
             Change::Set(e) => set_profile(&mut doc, e)?,
@@ -965,7 +965,7 @@ pub(crate) fn apply_changes(text: Option<&str>, changes: &[Change]) -> Result<St
 }
 
 /// 改完之后整份还合格吗：每一处写错、每一段合不下来的，都是一句（带段名）。空 ＝ 合格。
-pub(crate) fn problems_after(text: &str) -> Vec<String> {
+pub fn problems_after(text: &str) -> Vec<String> {
     let b = parse_book(text);
     let mut out: Vec<String> = b
         .problems
@@ -1011,7 +1011,7 @@ pub(crate) fn children_of<'a>(book: &'a Book, name: &str) -> Vec<&'a str> {
 }
 
 /// 这一段自己写的样子（设置窗的表单回填、旧帧那条清单都从这里取）。
-pub(crate) fn edit_of(p: &Profile) -> ProfileEdit {
+pub fn edit_of(p: &Profile) -> ProfileEdit {
     ProfileEdit {
         name: p.name.clone(),
         from: p.from.clone(),

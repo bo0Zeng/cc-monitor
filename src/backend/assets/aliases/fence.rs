@@ -66,15 +66,15 @@ pub(crate) fn find_pair(
             begin = Some(idx);
             continue;
         }
-        if begin.is_some() && l.starts_with(end_marker) {
-            return Ok(Some((begin.unwrap(), idx)));
+        if let (Some(b), true) = (begin, l.starts_with(end_marker)) {
+            return Ok(Some((b, idx)));
         }
     }
     match begin {
         None => Ok(None),
         Some(b) => Err(copy_text(
             "rsFencedBlock.pair.noEnd",
-            &[("what", &what.to_string()), ("line", &(b + 1).to_string())],
+            &[("what", what), ("line", &(b + 1).to_string())],
         )),
     }
 }

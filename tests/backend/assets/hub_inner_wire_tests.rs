@@ -3,8 +3,8 @@
 //! 换形之前用旧代码跑出来，钉成字面量；换形之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。临时目录换成 `<D>`。
 //! 换形之后入参照旧用 JSON 写、经 `typed::take` 解成入参类型（同帧面那一跳）。
 
+use crate::assets::aliases::test_support::FilesHere;
 use crate::assets::mcp_sync::{Facts, There};
-use crate::stream::inbound::LocalFiles;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -103,12 +103,12 @@ fn the_skill_trio_keeps_its_wire_bytes() {
     let mut apply = take.clone();
     apply["target"] = plan["target"].clone();
     let done = via(&apply, |r| {
-        crate::assets::skill_flow::answer_install(&LocalFiles, &NoFacts, Some(&dst), &ok_record, r)
+        crate::assets::skill_flow::answer_install(&FilesHere, &NoFacts, Some(&dst), &ok_record, r)
     })
     .unwrap();
     pin("APPLY", wire(&done, &d), APPLY);
     let again = via(&apply, |r| {
-        crate::assets::skill_flow::answer_install(&LocalFiles, &NoFacts, Some(&dst), &ok_record, r)
+        crate::assets::skill_flow::answer_install(&FilesHere, &NoFacts, Some(&dst), &ok_record, r)
     });
     pin(
         "APPLY_AGAIN",
@@ -137,25 +137,25 @@ fn the_mcp_trio_keeps_its_wire_bytes() {
     .unwrap();
     let at = |p: &Path| json!({ "level": "project", "dir": p.display().to_string() });
     let source = via(&json!({ "name": "s", "at": at(&src) }), |r| {
-        crate::assets::mcp_sync_flow::answer_source(&LocalFiles, None, r)
+        crate::assets::mcp_sync_flow::answer_source(&FilesHere, None, r)
     })
     .unwrap();
     pin("SOURCE", wire(&source, &d), SOURCE);
     let pre = via(
         &json!({ "name": "s", "at": at(&dst), "def": source["def"] }),
-        |r| crate::assets::mcp_sync_flow::answer_preview(&LocalFiles, &NoFacts, r),
+        |r| crate::assets::mcp_sync_flow::answer_preview(&FilesHere, &NoFacts, r),
     )
     .unwrap();
     pin("PREVIEW", wire(&pre, &d), PREVIEW);
     let apply = json!({ "name": "s", "at": at(&dst), "def": source["def"], "fill": null, "target": pre["target"] });
     let done = via(&apply, |r| {
-        crate::assets::mcp_sync_flow::answer_apply(&LocalFiles, &ok_record, r)
+        crate::assets::mcp_sync_flow::answer_apply(&FilesHere, &ok_record, r)
     })
     .unwrap();
     pin("MCP_APPLY", wire(&done, &d), MCP_APPLY);
     let none = via(
         &json!({ "name": "s", "at": at(&d.join("none")), "def": source["def"] }),
-        |r| crate::assets::mcp_sync_flow::answer_preview(&LocalFiles, &NoFacts, r),
+        |r| crate::assets::mcp_sync_flow::answer_preview(&FilesHere, &NoFacts, r),
     );
     pin(
         "PREVIEW_ABSENT",
@@ -180,16 +180,14 @@ fn the_cc_bus_pair_keeps_its_wire_bytes() {
             r#"{{"dest":"<D>/skills/cc-bus","existing":false,"version":"<V>","writes":{files}}}"#
         )
     );
-    let first =
-        crate::assets::cc_bus_install::install_at(&LocalFiles, &skills, &ok_record).unwrap();
+    let first = crate::assets::cc_bus_install::install_at(&FilesHere, &skills, &ok_record).unwrap();
     assert_eq!(
         wire(&first, &d),
         format!(
             r#"{{"backup":null,"dest":"<D>/skills/cc-bus","recordFailed":null,"written":{files}}}"#
         )
     );
-    let again =
-        crate::assets::cc_bus_install::install_at(&LocalFiles, &skills, &ok_record).unwrap();
+    let again = crate::assets::cc_bus_install::install_at(&FilesHere, &skills, &ok_record).unwrap();
     assert_eq!(
         wire(&again, &d),
         r#"{"backup":null,"dest":"<D>/skills/cc-bus","recordFailed":null,"written":[]}"#
@@ -211,46 +209,3 @@ const MCP_APPLY: &str = r##"{"path":"<D>/dst/.mcp.json","recordFailed":null,"wri
 const PREVIEW_ABSENT: &str = r##"{"Err":"refused"}"##;
 const APPLY_AGAIN: &str =
     r##"{"Ok":{"chmodFailed":[],"dir":"<D>/dst/demo","recordFailed":null,"written":[]}}"##;
-
-/// 入参多一个键 ⇒ `bad_args`（入参照拒；回包不拒多的键，见 `hub_tests`）。经本进程那一行登记跑（同枢纽本机那一跳）。
-#[test]
-fn an_inner_request_with_an_extra_key_is_bad_args() {
-    use crate::wire::spec::{invoke, Prepared};
-    let cases = [
-        ("skill-read", json!({ "name": "demo", "bogus": 1 })),
-        (
-            "skill-install-plan",
-            json!({ "name": "demo", "source": [], "bogus": 1 }),
-        ),
-        (
-            "mcp-sync-source",
-            json!({ "name": "s", "at": { "level": "user" }, "bogus": 1 }),
-        ),
-        (
-            "mcp-sync-preview",
-            json!({ "name": "s", "at": { "level": "user" }, "def": {}, "bogus": 1 }),
-        ),
-        ("cc-bus-install-state", json!({ "bogus": 1 })),
-    ];
-    for (cmd, args) in cases {
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == cmd)
-            .unwrap();
-        let Some(Prepared::Blocking(run)) = invoke(spec.run, &crate::stream::inbound::hands(None))
-        else {
-            panic!("{cmd} 不在阻塞档");
-        };
-        let req = crate::wire::Request {
-            id: "t".to_string(),
-            cmd: cmd.to_string(),
-            args,
-            within_ms: None,
-            view: Value::Null,
-            tz: Default::default(),
-            until: None,
-        };
-        let got = run(req).map(|_| ()).map_err(|f| f.code);
-        assert_eq!(got, Err(Some("bad_args".to_string())), "{cmd}");
-    }
-}

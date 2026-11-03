@@ -34,7 +34,7 @@ fn uses(book: &Book, p: &Profile, account: &str) -> bool {
 
 /// 建号 / 删号那一刻要对配置文件做的改动，与说给人听的那几个名字。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct Planned {
+pub struct Planned {
     pub changes: Vec<Change>,
     /// 这一趟加进去的名字。
     pub added: Vec<String>,
@@ -46,7 +46,7 @@ pub(crate) struct Planned {
 
 /// 建号：给 `account` 加上 `<名>cc`（`tmux` 为真时再加 `<名>cct`），各自基于 wrapper 那两段（`cc` / `cct`，在的话）、只写自己的号。
 /// 已有同一形的（不论名字）⇒ 不再加；名字被占 ⇒ 跳过、记下。`same_name` 是那种 shell 认不认两个名字是同一个。
-pub(crate) fn plan_add(
+pub fn plan_add(
     book: &Book,
     account: &str,
     tmux: bool,
@@ -102,7 +102,7 @@ pub(crate) fn plan_add(
 }
 
 /// 删号：删掉合下来用这个号的全部段（不论名字）；剩下的段里基于被删那一段的，改成基于它基于的那一段（往上找到第一个没删的）。
-pub(crate) fn plan_remove(book: &Book, account: &str) -> Planned {
+pub fn plan_remove(book: &Book, account: &str) -> Planned {
     let mut out = Planned::default();
     let gone: Vec<&str> = book
         .profiles

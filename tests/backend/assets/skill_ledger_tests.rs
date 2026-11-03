@@ -348,11 +348,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         guard_core::addr::repo_root().join("src/backend/agents/claudecode/footprint.rs"),
     )
     .unwrap();
-    let declared = format!(
-        "\"~/{}/{}\"",
-        crate::control::exit_policy::DIR_NAME,
-        FILE_NAME
-    );
+    let declared = format!("\"~/{}/{}\"", crate::common::own_dir::DIR_NAME, FILE_NAME);
     assert_eq!(
         guard_core::production_code(&registry)
             .matches(declared.as_str())

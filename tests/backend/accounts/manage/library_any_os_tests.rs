@@ -2,9 +2,9 @@
 //! （只有 `files-home` 答临时目录）建库、加一个订阅号，看盘上落成了什么、核对报不报错。
 //! 同一份在 Linux 门禁里跑，也交叉编到 Windows 上真跑（`cargo test --target x86_64-pc-windows-gnu --no-run` 之后在那台跑）。
 //! 另有核对先对齐那一条（临时家目录里真建库，看新冒出来的共享项链给各号）。
-//! 夹具只造结构，凭据是写死的假串，邮箱是 `*.test`。挂在资产那一层底下：经本进程文件管理面的那扇门（`HomeDoor`）住那里。
+//! 夹具只造结构，凭据是写死的假串，邮箱是 `*.test`。挂在资产那一层底下：判据用的那扇真盘门（`HomeDoor`）住那里。
 use crate::accounts::manage::wire::{run_change, run_verify, Request};
-use crate::assets::aliases::tests::HomeDoor;
+use crate::assets::aliases::test_support::HomeDoor;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -88,7 +88,7 @@ fn the_account_library_lands_on_this_os() {
     if !can_link(&t.0) {
         let said =
             crate::platform::acct_view::unsupported_said().expect("建不了链接却说做得了多账号");
-        let e = init.err().expect("做不了多账号却建成了");
+        let e = init.expect_err("做不了多账号却建成了");
         assert_eq!(
             (e.code.as_deref(), e.said.as_str()),
             (Some("unsupported"), said.as_str())

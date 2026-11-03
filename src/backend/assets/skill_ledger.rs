@@ -42,7 +42,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
-pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
+pub(crate) const FILE_NAME: &str =
+    relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
 
 /// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 版经 [`v1_to_v2`] 读成这一版。
 const DOC: crate::common::own_state::Doc<Ledger> =
@@ -72,13 +73,13 @@ use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
 /// 一个装时写进去的文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "LedgerFile"
+        rename = "LedgerFile",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(deny_unknown_fields)]
@@ -90,7 +91,7 @@ pub struct Recorded {
 /// 一个 skill 目录的记录。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Install {
+pub(crate) struct Install {
     pub name: String,
     pub files: BTreeMap<String, Recorded>,
 }
@@ -98,7 +99,7 @@ pub struct Install {
 /// 整份文件。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Ledger {
+pub(crate) struct Ledger {
     pub installs: BTreeMap<String, Install>,
     /// MCP 装记录：配置文件的绝对路径 → server 名 → 装进去的那一条的摘要（[`mcp_digest`]）。
     /// 没有一条时不写这一格（旧文件与新文件同形）。
@@ -107,7 +108,7 @@ pub struct Ledger {
 }
 
 /// 一条 MCP 定义的摘要（键序无关：按规范写法算）。装的时候记、卸的时候比。
-pub fn mcp_digest(def: &Value) -> String {
+pub(crate) fn mcp_digest(def: &Value) -> String {
     crate::common::digest::fnv_digest(&crate::assets::asset_catalog::canonical(def))
 }
 
@@ -116,15 +117,15 @@ fn valid_digest(d: &str) -> bool {
 }
 
 /// 这台机器上记录文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`；都没有 ⇒ `None`（不猜）。
-pub fn ledger_path() -> Option<PathBuf> {
+pub(crate) fn ledger_path() -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir()?;
     Some(home.join(crate::common::own_dir::DIR_NAME).join(FILE_NAME))
 }
 
 /// 读一次。三态：没有（还没装过）/ 读得懂 / 读不懂（**不覆盖**）。
-pub type Read = crate::common::own_state::Read<Ledger>;
+pub(crate) type Read = crate::common::own_state::Read<Ledger>;
 
-pub fn read_at(path: &Path) -> Read {
+pub(crate) fn read_at(path: &Path) -> Read {
     // 版本由读写口先过（更新的格式整份不认、也不覆盖；第 1 版经升级步），这里只把这一版的原文解成记录。
     DOC.read_as::<Value>(path)
         .and_then(|v| match serde_json::from_value::<Ledger>(v) {
@@ -140,7 +141,7 @@ pub fn read_at(path: &Path) -> Read {
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-pub fn load_at(path: &Path) -> Result<Ledger, crate::common::said::Said> {
+pub(crate) fn load_at(path: &Path) -> Result<Ledger, crate::common::said::Said> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
         Read::Present(l) => Ok(l),
@@ -194,7 +195,7 @@ fn check_files(files: &BTreeMap<String, Recorded>) -> Result<(), crate::common::
 /// 装记录写口的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
-pub(crate) enum RecordReq {
+pub enum RecordReq {
     /// 装完记：`files` = `skill-install-plan` 答的 `ledger` 里真写成了的那几个。
     Add {
         /// skill 的目录名。
@@ -218,7 +219,7 @@ pub(crate) enum RecordReq {
 
 /// 装记录写口的回包。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
-pub(crate) struct RecordReply {
+pub struct RecordReply {
     /// 这一条记录的目录（MCP：那份配置文件）。
     pub dir: String,
     pub name: String,
@@ -233,7 +234,12 @@ pub(crate) type Record<'a> =
     &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::common::said::Said>;
 
 /// `add`：并进那个目录的记录。回 `(目录, 变没变)`。**纯**（目录由调用方算好）。
-pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, Recorded>) -> bool {
+pub(crate) fn add(
+    ledger: &mut Ledger,
+    dir: &str,
+    name: &str,
+    files: BTreeMap<String, Recorded>,
+) -> bool {
     let entry = ledger
         .installs
         .entry(dir.to_string())
@@ -256,7 +262,7 @@ pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, R
 }
 
 /// `drop`：摘掉那几个路径；剩零个 ⇒ 整条摘掉。回剩几个。路径不在记录里 ⇒ `Err`（不静默当成功）。**纯**。
-pub fn drop_paths(
+pub(crate) fn drop_paths(
     ledger: &mut Ledger,
     dir: &str,
     paths: &[String],
@@ -266,10 +272,7 @@ pub fn drop_paths(
         .get_mut(dir)
         .ok_or(crate::common::said::Said::new(
             "not_found",
-            copy_text(
-                "beSkillLedger.drop.notRecorded",
-                &[("dir", &dir.to_string())],
-            ),
+            copy_text("beSkillLedger.drop.notRecorded", &[("dir", dir)]),
         ))?;
     if let Some(p) = paths.iter().find(|p| !entry.files.contains_key(*p)) {
         return Err(crate::wire::spec::fail(
@@ -317,7 +320,7 @@ pub(crate) fn record_at(
     })?;
     let held = own
         .lock(&lock_dir)
-        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match req {
         RecordReq::Add {
@@ -427,10 +430,7 @@ pub(crate) fn record_at(
 }
 
 /// 装记录的写口（本进程里记；写句柄只从 `stream/inbound/` 递进来）。
-pub(crate) fn answer_record(
-    req: &RecordReq,
-    own: &Own,
-) -> Result<RecordReply, crate::common::said::Said> {
+pub fn answer_record(req: &RecordReq, own: &Own) -> Result<RecordReply, crate::common::said::Said> {
     record_at(own, None, req)
 }
 

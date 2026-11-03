@@ -1,7 +1,7 @@
 //! 「写：一趟，不重算」·「`stale` ⇒ 停、说清停在哪 / 前面写了哪几个，**不重读**」—— skill 装 / 卸的写那一半进了被写那台（MIG-3a）。
 use super::*;
+use crate::assets::aliases::test_support::FilesHere;
 use crate::assets::mcp_sync::There;
-use crate::stream::inbound::LocalFiles;
 
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
@@ -66,7 +66,8 @@ fn sub(v: &Value, root: &str) -> Value {
     serde_json::from_str(&v.to_string().replace("<ROOT>", root)).unwrap()
 }
 
-/// 跨语言金样：装两个（一个新建、一个说了盖）→ 记进装记录 → 卸一个 == 金样；码集合 == 登记表。
+/// 跨语言金样：装两个（一个新建、一个说了盖）→ 记进装记录 → 卸一个 == 金样。
+/// 码集合 == 登记表那一条要命令表，住上层（`tests/backend/assets/on_upper_tests.rs`）。
 #[test]
 fn the_skill_flow_matches_the_cross_language_golden() {
     let g = golden();
@@ -85,7 +86,7 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     )
     .unwrap();
     let installed = answer_install(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         Some(&root),
         &record,
@@ -104,7 +105,7 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     )
     .unwrap();
     let removed = answer_uninstall(
-        &LocalFiles,
+        &FilesHere,
         &ledger,
         &record,
         &json!({ "dir": root.join("demo").display().to_string(), "seen": seen["seen"], "take": g["uninstallTake"] }),
@@ -113,21 +114,6 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     assert_eq!(removed, sub(&g["uninstallReply"], &r));
     assert!(!root.join("demo/SKILL.md").exists() && root.join("demo/lib/a.txt").exists());
     let _ = std::fs::remove_dir_all(&base);
-    for (name, want) in g["codes"].as_object().unwrap() {
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == name)
-            .expect("登记表里没有");
-        let mut codes: Vec<&str> = spec.codes.to_vec();
-        codes.sort_unstable();
-        let want: Vec<&str> = want
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| c.as_str().unwrap())
-            .collect();
-        assert_eq!(codes, want, "`{name}` 的拒绝码与金样不相等");
-    }
 }
 
 /// 看过之后那一份变了 ⇒ `stale`、停在那一个，说清前面写了哪几个，不重读重算；写了的照记。
@@ -143,7 +129,7 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
         crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
     };
     let failed = answer_install(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         Some(&root),
         &record,
@@ -196,7 +182,7 @@ fn a_file_already_equal_to_the_source_is_recorded_with_the_source_digest() {
     )
     .unwrap();
     answer_install(
-        &LocalFiles,
+        &FilesHere,
         &NoFacts,
         Some(&root),
         &record,
