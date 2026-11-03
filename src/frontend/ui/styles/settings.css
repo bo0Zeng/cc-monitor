@@ -2323,10 +2323,12 @@ body.settings-window-mode .settings-panel {
   flex-direction: column;
 }
 
+/* 那一句分行写（`\n`）：照分行画。 */
 .cfg-intro {
   margin: 0 0 var(--space-6);
   color: var(--text-2);
   font-size: var(--font-size-mono);
+  white-space: pre-line;
 }
 
 .cfg-cap {
