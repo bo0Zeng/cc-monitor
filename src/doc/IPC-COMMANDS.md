@@ -17495,7 +17495,7 @@ alias?: string | null, };
 | `dr` | Draw? | 画成哪一形（就是那条通用记录的 `draw`）；不画 ⇒ 省略 |
 | `hu` | bool? | 人在这条里说了话（就是那条通用记录的 `human`） |
 | `ch` | number? | 正文字符数（**代码块之外**；Unicode 标量计，不含换行） |
-| `cj` | number? | 其中 CJK/全宽字符数（口径 = `height-estimate.ts::fallbackTextHeight` 的 `> 0x2E80`） |
+| `cj` | number? | 其中 CJK/全宽字符数（口径 = `height-estimate.ts::factLines` 的码点 `> 0x2E80`） |
 | `pl` | number? | 正文**非空**硬行数（代码块之外） |
 | `cb` | number? | 围栏代码块数（```` ``` ```` / `~~~` 开合一对算一个；没合上的算到文末）。 |
 | `cl` | number? | 代码块内总行数 |
