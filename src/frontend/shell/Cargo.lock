@@ -2641,13 +2641,12 @@ name = "host-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "copy-core",
  "iana-time-zone",
+ "platform-core",
  "relay-route-core",
  "serde",
  "serde_json",
  "test-home",
- "win-path-core",
  "windows 0.56.0",
 ]
 
@@ -3468,6 +3467,7 @@ dependencies = [
  "own-chan",
  "parking_lot",
  "pidwatch-core",
+ "platform-core",
  "relay-route-core",
  "resident-client",
  "serde",
@@ -4422,6 +4422,18 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
+name = "platform-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "libc",
+ "test-home",
+ "win-path-core",
+]
 
 [[package]]
 name = "plist"
