@@ -5977,9 +5977,9 @@ sizeText?: string,
 gone?: boolean, };
 type Block = { "type": "prose", doc: Doc, 
 /**
- * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ * 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
  */
-bytes: number, } | { "type": "text", text: string, 
+more: Words, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -6371,6 +6371,7 @@ text: string,
  * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
  */
 pasted?: Array<Pasted>, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed` · `not_found` · `path_refused` · `refused` · `too_large`
@@ -6460,9 +6461,9 @@ sizeText?: string,
 gone?: boolean, };
 type Block = { "type": "prose", doc: Doc, 
 /**
- * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ * 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
  */
-bytes: number, } | { "type": "text", text: string, 
+more: Words, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -6854,6 +6855,7 @@ text: string,
  * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
  */
 pasted?: Array<Pasted>, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -6967,9 +6969,9 @@ sizeText?: string,
 gone?: boolean, };
 type Block = { "type": "prose", doc: Doc, 
 /**
- * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ * 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
  */
-bytes: number, } | { "type": "text", text: string, 
+more: Words, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -7345,6 +7347,7 @@ text: string,
  * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
  */
 pasted?: Array<Pasted>, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -7403,9 +7406,9 @@ sizeText?: string,
 gone?: boolean, };
 type Block = { "type": "prose", doc: Doc, 
 /**
- * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ * 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
  */
-bytes: number, } | { "type": "text", text: string, 
+more: Words, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -7797,6 +7800,7 @@ text: string,
  * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
  */
 pasted?: Array<Pasted>, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
@@ -9455,9 +9459,9 @@ sizeText?: string,
 gone?: boolean, };
 type Block = { "type": "prose", doc: Doc, 
 /**
- * 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+ * 树分了段时下面那一颗「展开 {大小}」：后端照原文字节写好的那一格，两端照放进按钮、不插值。
  */
-bytes: number, } | { "type": "text", text: string, 
+more: Words, } | { "type": "text", text: string, 
 /**
  * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
  */
@@ -9879,6 +9883,7 @@ text: string,
  * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
  */
 pasted?: Array<Pasted>, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed`

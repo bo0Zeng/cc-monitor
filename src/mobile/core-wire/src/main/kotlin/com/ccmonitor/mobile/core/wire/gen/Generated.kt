@@ -2388,7 +2388,7 @@ sealed interface Block {
     @Suppress("UNCHECKED_CAST")
     data class Prose(
         val doc: Doc,
-        val bytes: Long,
+        val more: String,
     ) : Block, Ordered {
         override val `type`: String get() = "prose"
         override var wireOrder: IntArray? = null
@@ -2448,10 +2448,10 @@ sealed interface Block {
                         listOf(
                         Field("type", { tag("prose") }, optional = false, nullable = false),
                         Field("doc", { Doc.ADAPTER }, optional = false, nullable = false),
-                        Field("bytes", { U64 }, optional = false, nullable = false),
+                        Field("more", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> Block.Prose(a[1] as Doc, a[2] as Long) },
-                        { v -> arrayOf("prose", v.doc, v.bytes) },
+                        { a -> Block.Prose(a[1] as Doc, a[2] as String) },
+                        { v -> arrayOf("prose", v.doc, v.more) },
                     )),
                 Variant("text", Block.Text::class.java, obj(
                         listOf(
