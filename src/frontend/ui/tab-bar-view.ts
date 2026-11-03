@@ -30,7 +30,7 @@ import { copyText } from "./copy-table";
 import { place } from "./kit/morph";
 import { icon } from "./kit/icon";
 import { paintDot, statusDot } from "./kit/status-dot";
-import { countBadge, tag, kbd } from "./kit/badge";
+import { countBadge, cappedCount, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip } from "./kit/tooltip";
 import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
@@ -1236,7 +1236,7 @@ export class TabBarView {
     const needsText = n ? n.text : "";
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
-    const unreadText = unread && !n ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
+    const unreadText = unread && !n ? cappedCount(tab.unread) : "";
     // 空闲、跑完你还没看 ⇒ 标题 600 字重（点开即恢复）。
     const unseenDone = unread && dot === "idle";
     const titleText = tab.title;

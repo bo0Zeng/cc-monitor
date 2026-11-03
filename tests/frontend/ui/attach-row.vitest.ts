@@ -27,14 +27,15 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut>; tab?: Tab } 
   let n = 0;
   const io: AttachIo = {
     check: async (_sid: string, items: AttachItem[]) => items.map((it) => ({ ok: true, class: it.name.endsWith(".png") ? ("image" as const) : ("code" as const), class_text: "kind-code" })),
-    stage: async () => {
-      if (opts.hold) await held;
-    },
+    stage: (b: Blob) => ({
+      done: (async () => {
+        if (opts.hold) await held;
+        return { key: "0".repeat(32), chunks: 1, bytes: b.size, sha256: "ab".repeat(32) };
+      })(),
+      stop: () => {},
+    }),
     commit: async (req: SessionAttachmentCommitReq) => ({ id: `1027-1200-000${++n}`, name: req.name, path: "/p", rel: "r", bytes: req.bytes, sha256: req.expect.sha256, class: "code" as const }),
     drop: async () => {},
-    digest: async () => "ab".repeat(32),
-    read: async (_b, start, end) => new Uint8Array(end - start),
-    newKey: () => "0".repeat(32),
     offline: () => false,
   };
   const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, place: 1, said: "q-1" })));
