@@ -205,7 +205,7 @@ fn the_record_replies_match_the_cross_language_golden() {
     }
 }
 
-/// 助手那一行的正文上线是块树（`prose`：解析好的 `doc` ＋ 原文字节），不是原文：照类型解得开、写回逐字同；
+/// 助手那一行的正文上线是块树（`prose`：解析好的 `doc` ＋ 写好的「展开」那一格），不是原文：照类型解得开、写回逐字同；
 /// 解不开就成了「认不出」那一条（`t: unread`），这里红。夹具是造的短样例，不放真正文。
 #[test]
 fn a_reply_carrying_a_prose_tree_reads_back_as_itself() {
@@ -221,7 +221,7 @@ fn a_reply_carrying_a_prose_tree_reads_back_as_itself() {
                 ],
                 "segs": []
             },
-            "bytes": 52
+            "more": "more-x"
         }],
         "draw": "card", "human": false, "id": "a-prose", "t": "reply", "timeText": "01:30"
     });

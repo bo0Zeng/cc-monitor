@@ -1,4 +1,4 @@
-//! 手机写字的那几样（取文 ＋ 插值 · 大小 · 短时长 · 距今）直接调 `copy-core`，Kotlin 只剩 `CopyCore` 那几个 JNI 口。
+//! 手机写字的那几样（取文 ＋ 插值 · 短时长 · 距今；大小由后端写好交来）直接调 `copy-core`，Kotlin 只剩 `CopyCore` 那几个 JNI 口。
 
 use jni::objects::{JClass, JObjectArray, JString};
 use jni::sys::{jlong, jstring};
@@ -50,18 +50,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_text<'l>(
         let key = string(&mut env, &key).unwrap_or_default();
         let flat = strings(&mut env, &args);
         out(&env, Some(text(&key, &flat)))
-    })
-}
-
-/// `CopyCore.sizeText(bytes)`：负数按 0。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_sizeText<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    v: jlong,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        out(&env, Some(copy_core::size_text(u64::try_from(v).unwrap_or(0))))
     })
 }
 

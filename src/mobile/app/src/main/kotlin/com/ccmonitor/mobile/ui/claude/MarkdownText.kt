@@ -10,7 +10,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.Doc
@@ -27,14 +26,14 @@ val LocalSegHl = staticCompositionLocalOf<suspend (List<HlCode>) -> SegHl?> { { 
 
 /**
  * 助手正文：照后端解析好的块树排（[MdDocState] · [MdDocView]），手机不解析 Markdown。
- * 只排第 0 段；树分了段 ⇒ 下面一颗「展开 {size}」，点了余下几段一帧接一段补完（同桌面 `buildProseBlock`）。
- * `size` 是整块正文的大小（`Block.Prose.bytes` 经核心写成的那一格）。
+ * 只排第 0 段；树分了段 ⇒ 下面一颗「展开」，点了余下几段一帧接一段补完（同桌面 `buildProseBlock`）。
+ * `showAll` 是按钮上的字：后端写好的那一格（`Block.Prose.more`），照放、不插值。
  * 每段先出字、后上色：建好一段就去拉它的高亮（[LocalSegHl]），拉到了那一段带色重排；拉不到照纯字。
  */
 @Composable
 fun MarkdownText(
     doc: Doc,
-    size: String,
+    showAll: String,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.onSurface,
 ) {
@@ -44,7 +43,7 @@ fun MarkdownText(
     Column(modifier) {
         MdDocView(state, Modifier.fillMaxWidth(), color)
         if (state.more) {
-            SecondaryButton(onClick = state::expand) { Text(copyText("cards.text.showAll", "size" to size), style = monoSmall) }
+            SecondaryButton(onClick = state::expand) { Text(showAll, style = monoSmall) }
         }
     }
 }

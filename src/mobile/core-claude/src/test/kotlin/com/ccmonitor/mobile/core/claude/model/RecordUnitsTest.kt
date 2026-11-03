@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Block
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
@@ -45,8 +46,10 @@ class RecordUnitsTest {
         val u = units("reply-full")
         assertEquals(listOf("a-full#0", "a-full#1", "a-full#2", "a-full#3", "a-full#4"), u.map { it.key })
         assertEquals(RenderUnit.Thinking("a-full#0", "plan it", "a-full"), u[0])
-        // 正文照记录里那棵树原样带上（后端解析好的），手机不再解析；整块的字节数原样带到卡上（「展开 {大小}」那一格）。
-        assertEquals(RenderUnit.AssistantMarkdown("a-full#1", Doc(listOf(MdBlock.P(listOf(Inl.Text("done")))), emptyList()), 4, "a-full"), u[1])
+        // 正文照记录里那棵树原样带上（后端解析好的），手机不再解析；「展开 {大小}」那一格是后端写好的，原样带到卡上。
+        val prose = (cases.getValue("reply-full") as LineRecord.Reply).blocks[1] as Block.Prose
+        assertTrue("「展开」那一格后端写好了", prose.more.isNotEmpty())
+        assertEquals(RenderUnit.AssistantMarkdown("a-full#1", Doc(listOf(MdBlock.P(listOf(Inl.Text("done")))), emptyList()), prose.more, "a-full"), u[1])
         assertEquals("done", u[1].searchableText())
         val edit = u[3] as RenderUnit.ToolCall
         assertEquals("Edit", edit.name)

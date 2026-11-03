@@ -862,7 +862,7 @@ mod specimens {
             }),
             rec(Body::Reply {
                 blocks: vec![
-                    Block::prose("t", md_core::parse("t")),
+                    crate::agents::record::prose("t"),
                     crate::agents::beat::thinking(s("t")),
                     Block::ToolUse {
                         id: s("c"),

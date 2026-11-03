@@ -14,8 +14,6 @@ import type { Doc } from "../../../../src/frontend/ui/generated/Doc";
 import type { MdBlock } from "../../../../src/frontend/ui/generated/MdBlock";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { __mathSettledForTests } from "../../../../src/frontend/ui/render";
-import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { sizeText } from "../../../../src/frontend/ui/format";
 
 interface Case {
   name: string;
@@ -41,13 +39,13 @@ const ctx = (lazy = false) => ({
   pendingToolResults: new Map(),
   lazy,
 });
-const reply = (doc: Doc, bytes = 0, extra: object = {}): LineRecord =>
+const reply = (doc: Doc, more = "", extra: object = {}): LineRecord =>
   ({
     agent: "claude",
     t: "reply",
     id: "a",
     at: "2026-01-01T00:00:00.000Z",
-    blocks: [{ type: "prose", doc, bytes }],
+    blocks: [{ type: "prose", doc, more }],
     autoReply: false,
     draw: "card",
     human: false,
@@ -110,7 +108,7 @@ describe("正文卡读树", () => {
       ],
       segs: [],
     };
-    const el = cardOf(reply(doc, 0, { error: { reason: "overloaded" } }));
+    const el = cardOf(reply(doc, "", { error: { reason: "overloaded" } }));
     expect(el.querySelector(".api-error-body")?.textContent).toBe("上游 过载，529\nretry later");
   });
 });
@@ -130,10 +128,10 @@ describe("长正文分段", () => {
     vi.stubGlobal("MessageChannel", undefined); // 让出走 `setTimeout` 那一支，好用假定时器一跳一跳地走
     vi.useFakeTimers();
     const doc = long(4, 9);
-    const el = cardOf(reply(doc, 123_456));
+    const el = cardOf(reply(doc, "〈后端写好的那一格〉"));
     expect(count(el)).toBe(9);
     const btn = el.querySelector<HTMLButtonElement>(".block-body-show-full")!;
-    expect(btn.textContent, "按钮上的大小是后端交的整块字节数").toBe(copyText("cards.text.showAll", { size: sizeText(123_456) }));
+    expect(btn.textContent, "按钮上的字是后端写好的那一格（`Block::Prose.more`），出口不插值").toBe("〈后端写好的那一格〉");
     btn.click();
     expect(count(el), "点的那一下就同步排了").toBe(9);
     for (let i = 2; i <= 4; i++) {

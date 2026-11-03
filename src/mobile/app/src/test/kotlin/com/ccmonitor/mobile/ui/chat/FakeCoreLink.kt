@@ -263,9 +263,9 @@ internal class FakeCoreLink :
             text: String,
         ): Map<String, Any?> = mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(prose(text)))
 
-        /** 助手正文块：后端解析好的那一形（一段字的树）。 */
+        /** 助手正文块：后端解析好的那一形（一段字的树；只一段 ⇒ 「展开」那一格留空）。 */
         fun prose(text: String): Map<String, Any?> =
-            mapOf("type" to "prose", "doc" to mapOf("blocks" to listOf(mapOf("t" to "p", "k" to listOf(text))), "segs" to emptyList<Any>()), "bytes" to text.toByteArray().size.toLong())
+            mapOf("type" to "prose", "doc" to mapOf("blocks" to listOf(mapOf("t" to "p", "k" to listOf(text))), "segs" to emptyList<Any>()), "more" to "")
 
         fun failed(message: String) = Reply.Failed(Failed("start_failed", message, "detail"))
 

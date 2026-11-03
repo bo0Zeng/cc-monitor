@@ -11,9 +11,6 @@ fun copyText(
     vararg args: Pair<String, Any>,
 ): String = CopyCore.text(key, args.flatMap { listOf(it.first, it.second.toString()) }.toTypedArray())
 
-/** 字节数 ⇒ 给人看的一格（核心 `copy_core::size_text` 那一份，对金样 `tests/__fixtures__/size-text.golden.json`）；负数按 0。 */
-fun sizeText(bytes: Long): String = CopyCore.sizeText(bytes)
-
 /**
  * `libmobcore.so` 里写字的那几个口（`core-rs/rust/copy.rs`）。App 里那份 `.so` 由 core-rs 打进包；
  * JVM 单测加载同一个 crate 的宿主编译（根 `build.gradle.kts` 给每个模块的单测指好 `java.library.path`）。
@@ -28,9 +25,6 @@ internal object CopyCore {
         key: String,
         args: Array<String>,
     ): String
-
-    /** 负数按 0。 */
-    external fun sizeText(bytes: Long): String
 
     /** 负数按 0。 */
     external fun shortDuration(ms: Long): String

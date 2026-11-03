@@ -41,6 +41,10 @@ class CodexRecordGoldenTest {
             .mapNotNull { ((it["record"] as Map<String, Any?>)["results"] as Map<String, Any?>?)?.get(call) as Map<String, Any?>? }
             .single()["text"] as String
 
+    /** 回复那一条正文块上后端写好的「展开 {大小}」那一格：金样里必须有。 */
+    private fun moreOf(reply: Map<String, Any?>): String =
+        ((reply["blocks"] as List<Map<String, Any?>>).single { it["type"] == "prose" }["more"] as String).also { check(it.isNotEmpty()) }
+
     /** 金样照 `history-read` 的回话交进来（`rows[].record` · `end`）。 */
     private fun read(): List<LineRecord> {
         val rows = golden.mapIndexed { i, g -> mapOf("end" to (i + 1).toLong(), "hash" to 0L, "record" to g["record"]) }
@@ -88,7 +92,7 @@ class CodexRecordGoldenTest {
                     sourceUuid = patch["id"] as String,
                     resultLine = resultLine("call-2"),
                 ),
-                RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), 9, "msg-9"),
+                RenderUnit.AssistantMarkdown("msg-9#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("two files")))), emptyList()), moreOf(answer), "msg-9"),
                 record("line-16").let { u ->
                     RenderUnit.Unread(u["id"] as String, u["text"] as String, u["timeText"] as String?, u["excerpt"] as String, u["id"] as String)
                 },

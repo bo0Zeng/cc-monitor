@@ -775,7 +775,7 @@ fn an_image_becomes_a_reference_to_its_line_and_place() {
     assert!(!wire.contains("AAAA"), "图的字节不上线：{wire}");
 }
 
-/// ★ 正文块 · 工具结果块带着多少字节（UTF-8；结果块是内容各块之和）：界面写「展开 3.0 KB」照它，不拿字符数当字节。
+/// ★ 正文块照原文 UTF-8 字节写好「展开 {大小}」那一格（两端照放，不插值）· 工具结果块带着多少字节（内容各块之和）：不拿字符数当字节。
 #[test]
 fn text_and_result_blocks_carry_their_utf8_bytes() {
     let han = "字".repeat(1000);
@@ -786,8 +786,9 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
     let Body::Reply { blocks, .. } = &r.body else {
         panic!("{r:?}")
     };
+    let want = copy_core::copy_text("cards.text.showAll", &[("size", &copy_core::size_text(3000))]);
     assert!(
-        matches!(blocks[0], Block::Prose { bytes: 3000, .. }),
+        matches!(&blocks[0], Block::Prose { more, .. } if more.0 == want),
         "{:?}",
         blocks[0]
     );

@@ -63,7 +63,7 @@ fun sampleRenderUnits(): List<RenderUnit> =
                 ),
                 MdBlock.Quote(listOf(p(s("注：阈值默认 4_000_000 格，约对应 2000×2000 行。")))),
             ),
-            420,
+            "",
             "a1",
         ),
         RenderUnit.ToolCall(
@@ -135,7 +135,7 @@ fun sampleRenderUnits(): List<RenderUnit> =
             pending = false,
             sourceUuid = "a5",
         ),
-        RenderUnit.AssistantMarkdown("s9", doc(p(s("全部测试通过 ✅，已经把守卫加上并验证了边界用例。"))), 72, "a6"),
+        RenderUnit.AssistantMarkdown("s9", doc(p(s("全部测试通过 ✅，已经把守卫加上并验证了边界用例。"))), "", "a6"),
         // 公式样本：块公式单独一块，行内公式占一个行内槽；钱数在树里就是字。
         RenderUnit.AssistantMarkdown(
             "s10",
@@ -145,7 +145,7 @@ fun sampleRenderUnits(): List<RenderUnit> =
                 MdBlock.Math("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"),
                 p(s("行内 "), Inl.InlNode(InlNode.M("a^2+b^2")), s(" 与价格 \$5 到 \$10。")),
             ),
-            96,
+            "",
             "a7",
         ),
     )

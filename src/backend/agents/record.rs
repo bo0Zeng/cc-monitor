@@ -22,10 +22,19 @@ pub(crate) fn reply_blocks(blocks: Vec<Block>) -> Vec<Block> {
     blocks
         .into_iter()
         .map(|b| match b {
-            Block::Text { text, .. } => Block::prose(&text, md_core::parse(&text)),
+            Block::Text { text, .. } => prose(&text),
             b => b,
         })
         .collect()
+}
+
+/// 一段助手正文 ⇒ [`Block::Prose`]：树（`md_core::parse`）＋ 照原文字节写好的「展开 {大小}」（两端照放进按钮）。
+pub fn prose(text: &str) -> Block {
+    let size = copy_core::size_text(text.len() as u64);
+    Block::prose(
+        md_core::parse(text),
+        cmd_wire::cells::Words(copy_core::copy_text("cards.text.showAll", &[("size", &size)])),
+    )
 }
 
 /// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
