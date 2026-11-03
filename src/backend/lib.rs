@@ -15,9 +15,12 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::allow_attributes,
+        clippy::allow_attributes_without_reason,
         clippy::disallowed_methods,
         clippy::let_underscore_must_use,
-        clippy::unused_result_ok
+        clippy::unused_result_ok,
+        reason = "测试段放开禁用名单与吞结果那两条：夹具自己定期限、读写盘、起进程、收尾时丢结果；用不用得到随判据增减，写成 `expect` 会在用不到时报 ⇒ 整包唯一许写 `allow` 的一行"
     )
 )]
 mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
@@ -160,7 +163,6 @@ pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&
         .collect()
 }
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;
@@ -173,17 +175,14 @@ pub(crate) fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow
     common::time::fill_at(line, tz)
 }
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/main_fourth_face_tests.rs"]
 mod fourth_face_tests;
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/one_clock_guard.rs"]
 mod one_clock_guard;
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;

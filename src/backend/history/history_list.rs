@@ -711,7 +711,10 @@ fn views_for(ask: &Ask) -> &'static Views {
 }
 
 /// [`answer_from`] 那一份经数据层答成 `range` 那一窗：带着对得上的 `held` ⇒ 没变 / 只给变了的；否则整份。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "备忘 · 清单 · 哪台 · 注解 · 筛法 · 记号 · 此刻 · 时区各是这一答的一维，由帧面那一臂与判据各自给"
+)]
 pub(crate) fn patch_from(
     views: &Views,
     listing: &Listing,

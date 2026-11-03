@@ -334,6 +334,9 @@ disallowed_methods = "deny"
 # 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
 let_underscore_must_use = "deny"
 unused_result_ok = "deny"
+# 放行一律 `expect(…, reason)`：不再需要时编译器自己报；理由必写。包根测试段那一行是唯一许写 `allow` 的地方。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
 
 [workspace.lints.rust]
 # 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。

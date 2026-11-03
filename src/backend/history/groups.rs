@@ -409,7 +409,10 @@ pub enum Half {
 }
 
 /// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻由调用方给）。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 期限 · 此刻都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
+)]
 pub(crate) async fn read_with(
     machines: &[Machine],
     local: impl std::future::Future<Output = Result<GroupsHere, Said>> + Send,
@@ -926,7 +929,6 @@ pub fn write_at(
 
 /// `rename` · `dissolve` 发给各片（本机那一片怎么写 · 可达表 · 对面由调用方给）：先核 id 与名字，再 `ask_each`；
 /// 转给别的台的那一问 `machines` 只写那台自己。没送到的那几台照问的先后列进回包。
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_with(
     req: GroupsWriteReq,
     local: impl FnOnce(GroupsWriteReq) -> Result<GroupsWritten, GroupsWriteErr> + Send,
