@@ -17,12 +17,18 @@ pub(crate) fn lay(tex: &str, display: bool) -> Option<MathBox> {
         return None;
     }
     // 排版器是第三方的：哪条式子让它 panic 了，也只是这一条照原文排，不带倒整段正文。
-    std::panic::catch_unwind(|| lay_unchecked(tex, display)).ok().flatten()
+    std::panic::catch_unwind(|| lay_unchecked(tex, display))
+        .ok()
+        .flatten()
 }
 
 fn lay_unchecked(tex: &str, display: bool) -> Option<MathBox> {
     let nodes = ratex_parser::parse(tex).ok()?;
-    let style = if display { MathStyle::Display } else { MathStyle::Text };
+    let style = if display {
+        MathStyle::Display
+    } else {
+        MathStyle::Text
+    };
     let laid = layout(&nodes, &LayoutOptions::default().with_style(style));
     validate_layout(&laid).ok()?;
     let list = to_display_list(&laid);
@@ -78,7 +84,11 @@ fn item(i: &DisplayItem) -> Option<MathItem> {
             dash: *dashed,
         },
         DisplayItem::Rect {
-            x, y, width, height, ..
+            x,
+            y,
+            width,
+            height,
+            ..
         } => MathItem::R {
             x: milli(*x),
             y: milli(*y),

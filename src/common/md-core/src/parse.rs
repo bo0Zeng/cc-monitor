@@ -304,7 +304,10 @@ impl<'s> Conv<'s> {
             }
             NodeValue::Math(m) => {
                 let m_box = crate::math::lay(&m.literal, false);
-                out.node(InlNode::M { tex: m.literal, m: m_box })
+                out.node(InlNode::M {
+                    tex: m.literal,
+                    m: m_box,
+                })
             }
             NodeValue::Raw(r) => out.text(&r),
             NodeValue::EscapedTag(t) => out.text(t),

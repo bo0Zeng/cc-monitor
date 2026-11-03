@@ -232,12 +232,7 @@ pub enum MathItem {
         dash: bool,
     },
     /// 实心矩形：左上 (`x`, `y`)。
-    R {
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-    },
+    R { x: i32, y: i32, w: i32, h: i32 },
     /// 一条路径（伸缩的根号 · 括号 · 箭头）：命令里的坐标相对 (`x`, `y`)；`fill` ⇒ 填，否则描边。
     P {
         x: i32,
@@ -253,10 +248,28 @@ pub enum MathItem {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum MathPath {
-    M { x: i32, y: i32 },
-    L { x: i32, y: i32 },
-    C { x1: i32, y1: i32, x2: i32, y2: i32, x: i32, y: i32 },
-    Q { x1: i32, y1: i32, x: i32, y: i32 },
+    M {
+        x: i32,
+        y: i32,
+    },
+    L {
+        x: i32,
+        y: i32,
+    },
+    C {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        x: i32,
+        y: i32,
+    },
+    Q {
+        x1: i32,
+        y1: i32,
+        x: i32,
+        y: i32,
+    },
     Z,
 }
 

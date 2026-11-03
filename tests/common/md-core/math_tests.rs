@@ -5,10 +5,19 @@ use crate::md::{Inl, InlNode, MathFont, MathItem, MdBlock};
 use crate::parse;
 
 /// 仓里正文夹具（金样 · 两端判据）里出现过的公式。
-const FIXTURES: [&str; 5] = ["E=mc^2", "a+b", "\\sum_i x_i", "x^2", "\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"];
+const FIXTURES: [&str; 5] = [
+    "E=mc^2",
+    "a+b",
+    "\\sum_i x_i",
+    "x^2",
+    "\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}",
+];
 
 fn glyphs(m: &MathBox) -> usize {
-    m.items.iter().filter(|i| matches!(i, MathItem::G { .. })).count()
+    m.items
+        .iter()
+        .filter(|i| matches!(i, MathItem::G { .. }))
+        .count()
 }
 
 #[test]
@@ -26,7 +35,14 @@ fn fixtures_lay_out_into_non_empty_boxes() {
 fn letters_use_katex_math_italic() {
     let m = lay("x", false).unwrap();
     assert!(
-        m.items.iter().any(|i| matches!(i, MathItem::G { f: MathFont::MathItalic, u: 0x78, .. })),
+        m.items.iter().any(|i| matches!(
+            i,
+            MathItem::G {
+                f: MathFont::MathItalic,
+                u: 0x78,
+                ..
+            }
+        )),
         "x 应当是 Math-Italic 的 x：{m:?}"
     );
 }
@@ -35,7 +51,9 @@ fn letters_use_katex_math_italic() {
 fn a_fraction_has_a_bar() {
     let m = lay("\\frac{a}{b}", true).unwrap();
     assert!(
-        m.items.iter().any(|i| matches!(i, MathItem::L { w, th, .. } if *w > 0 && *th > 0)),
+        m.items
+            .iter()
+            .any(|i| matches!(i, MathItem::L { w, th, .. } if *w > 0 && *th > 0)),
         "分数没有横线：{m:?}"
     );
 }
@@ -44,7 +62,12 @@ fn a_fraction_has_a_bar() {
 fn inline_style_is_shorter_than_display() {
     let tex = "\\sum_{i=1}^{n} \\frac{1}{i}";
     let (d, t) = (lay(tex, true).unwrap(), lay(tex, false).unwrap());
-    assert!(t.h + t.d < d.h + d.d, "行内应当比块级矮：行内 {}，块级 {}", t.h + t.d, d.h + d.d);
+    assert!(
+        t.h + t.d < d.h + d.d,
+        "行内应当比块级矮：行内 {}，块级 {}",
+        t.h + t.d,
+        d.h + d.d
+    );
 }
 
 #[test]
@@ -83,6 +106,10 @@ fn parsed_math_carries_its_box() {
     assert_eq!(m, lay("E=mc^2", false), "行内公式的画单应当照行内样式排");
     let (tex, m) = block.expect("没解析出块级公式");
     assert_eq!(tex, "\\sum_i x_i");
-    assert_eq!(m, lay("\\sum_i x_i", true), "块级公式的画单应当照块级样式排");
+    assert_eq!(
+        m,
+        lay("\\sum_i x_i", true),
+        "块级公式的画单应当照块级样式排"
+    );
     assert!(m.is_some());
 }
