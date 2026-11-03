@@ -19,6 +19,7 @@ import { copyText } from "../copy-table";
 import { machineName } from "../control-said";
 import { saidOf } from "../kit/detail";
 import { setDot, statusDot } from "../kit/status-dot";
+import { countText } from "../kit/badge";
 import { place } from "../kit/morph";
 
 /** grid 数据源（TabManager 的只读子集 ＋ 版面那一问——便于测试注入桩）。 */
@@ -116,7 +117,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
   if (s.unread > 0) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-unread";
-    b.textContent = s.unread > 99 ? "99+" : `${s.unread}`;
+    b.textContent = countText(s.unread);
     b.title = copyText("gridMonitor.renderBadges.unread", { unread: s.unread });
     badges.appendChild(b);
   }
