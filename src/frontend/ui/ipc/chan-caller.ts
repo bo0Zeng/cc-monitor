@@ -107,13 +107,15 @@ export function unreadableSaid(origin: Machine): string {
 
 /**
  * 那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。这一句是界面自己知道的事，界面说
- * （通道上的失败那一句由 monitor 写，在 `ChanError.message`）。`detail` 恒空串：屏上就是这一句、不出［复制详情］；细目只进日志。
+ * （通道上的失败那一句由 monitor 写，在 `ChanError.message`）。`detail` 是认不出的那一处（哪条命令 · 哪一格不对）：
+ * 出［复制详情］，原文可复制（手机 `Problem.kt::unreadableReply` 同样带上命令与原文）。
  */
 export class ReplyUnreadable extends Error {
-  readonly detail = "";
+  readonly detail: string;
   constructor(origin: Machine, why: string) {
     super(unreadableSaid(origin));
     this.name = "ReplyUnreadable";
+    this.detail = why;
     console.warn(`reply unreadable from ${origin}: ${why}`);
   }
 }

@@ -40,7 +40,6 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { bringTerminalToFront } from "./tab-session-actions";
 import { frontView } from "./front-result";
 import { flashFrontDone, showFrontResult } from "./front-pop";
-import { machineName } from "./control-said";
 import { onMachineState } from "./machine-feed";
 import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
@@ -205,7 +204,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
 /** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。 */
 async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Machine): Promise<void> {
   const res = await bringTerminalToFront(origin, r.sessionId);
-  const view = frontView(res, machineName(origin));
+  const view = frontView(res);
   if (view === null) {
     flashFrontDone(b);
     return;

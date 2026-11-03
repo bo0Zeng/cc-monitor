@@ -421,7 +421,7 @@ class ChatSessionTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), reply("a1", "答")))
             var up = false
-            link.answer = { cmd, args -> if (up) file.answer(cmd, args) ?: Reply.LinkDown else Reply.TimedOut }
+            link.answer = { cmd, args -> if (up) file.answer(cmd, args) ?: Reply.LinkDown else Reply.TimedOut("t-said", "") }
             link.report("s1", "/w")
             val s = existing(link)
             runCurrent()
@@ -442,7 +442,7 @@ class ChatSessionTest {
                     listOf(
                         queued,
                         Reply.Ok(mapOf("outcome" to "seen", "said" to "in")),
-                        Reply.TimedOut,
+                        Reply.TimedOut("t-said", ""),
                         failed("队满了"),
                     ),
                 )

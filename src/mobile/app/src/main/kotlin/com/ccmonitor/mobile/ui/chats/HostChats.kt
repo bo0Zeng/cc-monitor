@@ -162,7 +162,7 @@ class HostChats(
     /** 搜这台的会话内容（[Searched]）。 */
     suspend fun searchContent(q: String): Searched =
         when (val reply = link.call(HistorySearch.COMMAND, HistorySearch.args(q))) {
-            Reply.TimedOut, Reply.LinkDown, Reply.Cancelled -> Searched.Down
+            is Reply.TimedOut, Reply.LinkDown, is Reply.Cancelled -> Searched.Down
             else ->
                 when (val got = fetched(reply, HistorySearch.COMMAND) { d -> (d as? Map<*, *>)?.let { Searched.Got(d) } }) {
                     is Fetched.Got -> got.value

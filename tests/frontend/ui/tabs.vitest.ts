@@ -2066,14 +2066,22 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
   /** 一张写好的浮层（字是夹具里的占位，判的是照摆）。 */
   const face = (title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string) => ({ title, body, tone, acts, ...(hint ? { hint } : {}) });
   const said = (f: ReturnType<typeof face>) => ({ kind: "said", ...f });
-  /** 本机后端答什么（`reject` ⇒ 那一问失败）；壳那一跳回什么结局（缺 ⇒ 没对上 `null`）。 */
+  /** 出口这一跳没成那几种，壳照 `face_core::front` 写的那一张（夹具：标题带种类与那台的名字、按钮照种类带；逐种的字判在 front_tests.rs）。 */
+  const MISS_ACTS: Record<string, unknown[]> = { old: [{ kind: "update" }], "timed-out": [{ kind: "retry" }], unreached: [{ kind: "reconnect" }] };
+  function shellMissed(args: unknown): ReturnType<typeof face> {
+    const { machine, miss } = args as { machine: string; miss: { kind: string; said?: string; detail?: string } };
+    return face(`壳写的·${miss.kind}·${machine}`, miss.said ?? "", "fail", MISS_ACTS[miss.kind] ?? [{ kind: "copy", detail: miss.detail ?? "" }]);
+  }
+  /** 本机后端答什么（`reject` ⇒ 那一问失败）；壳那一跳回什么结局（缺 ⇒ 没对上 `null`）；没成的那一张壳照写（[`shellMissed`]）。 */
   function answer(placed: unknown, front: () => Promise<unknown> = () => Promise.resolve(null), reject = false): void {
     mockInvoke.mockImplementation((cmd: string, args: unknown) => {
       if (isChanCall(cmd, args, "session-window")) return reject ? Promise.reject(placed) : Promise.resolve(chanReply(placed));
       if (cmd === "bring_terminal_to_front") return front();
+      if (cmd === "front_missed") return Promise.resolve(shellMissed(args));
       return Promise.resolve([]);
     });
   }
+  const missedCalls = (): unknown[] => (mockInvoke.mock.calls as [string, unknown][]).filter(([c]) => c === "front_missed").map(([, a]) => a);
   const asks = (): [string, unknown][] => (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => isChanCall(c, a, "session-window"));
   const shellCalls = (): unknown[] => (mockInvoke.mock.calls as [string, unknown][]).filter(([c]) => c === "bring_terminal_to_front").map(([, a]) => a);
   beforeEach(() => {
@@ -2173,13 +2181,35 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     expect(popText()).toContain("后端写的正文");
   });
 
-  it("★ 链空又没带那一张 ⇒ 认不出（［复制详情］带细节），不找窗口", async () => {
+  it("★ 链空又没带那一张 ⇒ 认不出（交壳写那一张，［复制详情］带细节），不找窗口", async () => {
     const tm = makeTM();
     tm.ensureTab("l7", "/w", "p", LOCAL);
     answer({ labels: [], chain: [], tmux: false });
     await clickFront(tm, "l7");
     expect(shellCalls()).toEqual([]);
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.badShape"));
+    expect(missedCalls()).toEqual([{ machine: copyText("control.machine.unsure"), miss: { kind: "bad-shape", detail: "session-window: empty chain without face" } }]);
+    expect(pop()!.firstElementChild!.textContent).toBe(`壳写的·bad-shape·${copyText("control.machine.unsure")}`);
+    expect(popButtons()).toEqual([copyText("detail.act.copy")]);
+  });
+
+  it("★ 壳那一跳没回 · 出错 ⇒ 期限到 · 出错，同样交壳写那一张", async () => {
+    vi.useFakeTimers();
+    try {
+      const tm = makeTM();
+      tm.createSkeletonTab("r6", "/p", "devbox", false);
+      answer(PLACED, () => new Promise(() => {}));
+      frontBtn(tm, "r6")!.click();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(missedCalls()).toEqual([{ machine: "devbox", miss: { kind: "timed-out" } }]);
+    } finally {
+      vi.useRealTimers();
+    }
+    const tm = makeTM();
+    tm.createSkeletonTab("r7", "/p", "devbox", false);
+    mockInvoke.mockReset();
+    answer(PLACED, () => Promise.reject(new Error("壳出错原话")));
+    await clickFront(tm, "r7");
+    expect(missedCalls()).toEqual([{ machine: "devbox", miss: { kind: "broken", detail: "壳出错原话" } }]);
     expect(popButtons()).toEqual([copyText("detail.act.copy")]);
   });
 
@@ -2242,27 +2272,29 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     }
   });
 
-  it("★ 本机这一跳问不到：本机后端不认 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；断开 ⇒ 照摆那一句 ＋［重新连接］（问那台没问成是后端那一张）", async () => {
+  it("★ 本机这一跳问不到：本机后端不认 ⇒ 要更新；期限到；断开 ⇒ 带连接层那一句 —— 界面只挑种类，那一张交壳写（问那台没问成是后端那一张）", async () => {
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false);
     // 壳交回来的失败形状（`wire::WireErr` 的线上形状，`chan.ts::decodeFail` 收）。
-    // 断开那一句是壳随失败交回的（`said`），浮层照摆。
+    // 断开那一句是壳随失败交回的（`said`），原样交给写那一张的壳。
     const dropped = "壳写的本机后端断开那一句";
     const hop = (why: "Overrun" | "Unreachable") => ({ err: { Hop: { idx: 0, tag: "wait", reach: "Sent", why } }, body: [], said: why === "Unreachable" ? dropped : "" });
-    const cases: [unknown, string, string, string[]][] = [
-      [UNSUPPORTED, copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
-      [hop("Overrun"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
-      [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("history.list.reconnect")]],
+    const cases: [unknown, unknown, string[]][] = [
+      [UNSUPPORTED, { kind: "old" }, [copyText("front.act.update")]],
+      [hop("Overrun"), { kind: "timed-out" }, [copyText("front.act.retry")]],
+      [hop("Unreachable"), { kind: "unreached", said: dropped }, [copyText("history.list.reconnect")]],
     ];
-    for (const [err, title, body, buttons] of cases) {
+    for (const [err, miss, buttons] of cases) {
       mockInvoke.mockReset();
       answer(err, undefined, true);
       await clickFront(tm, "r3");
-      expect(pop()!.firstElementChild!.textContent, title).toBe(title);
-      expect(popText(), title).toContain(body);
-      expect(popButtons(), title).toEqual(buttons);
-      expect(shellCalls(), `${title}：没问到还去找了窗口`).toEqual([]);
+      const kind = (miss as { kind: string }).kind;
+      expect(missedCalls(), kind).toEqual([{ machine: "devbox", miss }]);
+      expect(pop()!.firstElementChild!.textContent, kind).toBe(`壳写的·${kind}·devbox`);
+      expect(popButtons(), kind).toEqual(buttons);
+      expect(shellCalls(), `${kind}：没问到还去找了窗口`).toEqual([]);
     }
+    expect(popText(), "断开那一句照摆").toContain(dropped);
   });
 
   it("★ ［更新］就地做：不开设置，经共用部署模块换上这一版；过程与结局在同一个浮层里说", async () => {
@@ -2275,7 +2307,9 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     });
     const clickUpdate = async (): Promise<void> => {
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((cmd: string, args: unknown) => (isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : Promise.resolve([])));
+      mockInvoke.mockImplementation((cmd: string, args: unknown) =>
+        isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : cmd === "front_missed" ? Promise.resolve(shellMissed(args)) : Promise.resolve([]),
+      );
       await clickFront(tm, "r5");
       const btn = [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"));
       expect(btn, "量具自检：浮层上有［更新］").toBeDefined();
@@ -2300,7 +2334,13 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     vi.mocked(updateBackendOf).mockResolvedValue("已部署 Y");
     mockInvoke.mockReset();
     mockInvoke.mockImplementation((cmd: string, args: unknown) =>
-      isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : cmd === "backend_start" ? Promise.reject(new Error("拨不通")) : Promise.resolve([]),
+      isChanCall(cmd, args, "session-window")
+        ? Promise.reject(UNSUPPORTED)
+        : cmd === "backend_start"
+          ? Promise.reject(new Error("拨不通"))
+          : cmd === "front_missed"
+            ? Promise.resolve(shellMissed(args))
+            : Promise.resolve([]),
     );
     await clickFront(tm, "r5");
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"))!.click();

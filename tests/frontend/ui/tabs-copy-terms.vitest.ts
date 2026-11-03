@@ -109,8 +109,8 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   it("★ 抽取器自检：12 份里抽得出字面量，且认得出改之后的新词", () => {
     const all = SPOKEN.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     nonEmpty(all);
-    expect(all, "出口自己那一跳的失败（壳 · 后端写好的那一张在 `face-core/src/front.rs`，不在这几份里）").toContain(copyText("front.title.failed"));
-    expect(all, "期限到的那一族（原先「切到终端窗口超时」）").toContain(copyText("front.body.timeout", { machine: "{machine}" }));
+    expect(all, "浮层上一颗按钮的字（那一张的字在 `face-core/src/front.rs`，不在这几份里）").toContain(copyText("front.act.retry"));
+    expect(all, "就地更新那一张（带插值的键）").toContain(copyText("front.title.updating", { machine: "{machine}" }));
     // 模板字面量也要抽得到（插值处留空）。
     expect(all).toContain("[tabs] 骨架未接（）：");
   });

@@ -361,7 +361,7 @@ class ChatsBoardTest {
         runTest {
             val a = Host(HostName("h1", "a"))
             val b = Host(HostName("h2", "gpu"))
-            a.search = Reply.TimedOut
+            a.search = Reply.TimedOut("t-said", "")
             b.search = Reply.Ok(hits("s2"))
             val merge = Merge().apply { out = mergedOf("h2" to "s2") }
             val board = board(a, b, merge = merge)

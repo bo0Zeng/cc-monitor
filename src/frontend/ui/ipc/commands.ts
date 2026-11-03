@@ -63,6 +63,8 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
 import type { Machine } from "../generated/Machine";
 import type { FrontTold } from "../generated/FrontTold";
+import type { FrontFace } from "../generated/FrontFace";
+import type { FrontMiss } from "../generated/FrontMiss";
 import type { SessionWindow } from "../generated/SessionWindow";
 import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
@@ -279,6 +281,10 @@ export const commands = {
   /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链 · tmux 那一格原样交来，先按标签、再沿链；回切过去了或写好的那一张（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
   bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain" | "tmux">) =>
     invoke<FrontTold | null>("bring_terminal_to_front", args),
+
+  /** ↗ 出口那一跳没成（界面挑哪一种）⇒ 浮层那一张，壳照 `face_core::front` 写；`machine` 是会话那台给人看的名字。**桶①**。 */
+  front_missed: (args: { machine: string; miss: FrontMiss }) =>
+    invoke<FrontFace>("front_missed", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) =>

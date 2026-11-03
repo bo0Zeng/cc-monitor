@@ -65,7 +65,7 @@ class ChatSessionMidTest {
     fun `换模型没读回（unsure · 超时）⇒ 回原字 ＋ 一句；那台带了那一句就照它`() =
         runTest {
             val link = FakeCoreLink()
-            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("result" to "done", "model" to "Sonnet", "said" to null)), Reply.TimedOut, Reply.Ok(mapOf("result" to "unsure", "model" to null, "said" to "结果未知，看一眼终端"))))
+            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("result" to "done", "model" to "Sonnet", "said" to null)), Reply.TimedOut("t-said", ""), Reply.Ok(mapOf("result" to "unsure", "model" to null, "said" to "结果未知，看一眼终端"))))
             val s = existing(link) { cmd, _ -> if (cmd == "session-model") replies.removeFirst() else null }
             runCurrent()
             s.switchModel(AgentPick("sonnet", "Sonnet"))
@@ -218,7 +218,7 @@ class ChatSessionMidTest {
     fun `面板里的动作同 ➤ 那一句：进待发、投进那条会话的输入队；没回执 ⇒ 在输入框上方发送中，回执到了离开待发`() =
         runTest {
             val link = FakeCoreLink()
-            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")), Reply.TimedOut))
+            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")), Reply.TimedOut("t-said", "")))
             val s = existing(link) { cmd, _ -> if (cmd == "session-queue-put") replies.removeFirst() else null }
             runCurrent()
             s.say("/compact")

@@ -241,10 +241,10 @@ class NewSessionPickerTest {
     @Test
     fun `那台问不到（新建会话信息）⇒ 那一句照文案表带核心那句；目录退回从哪进来的 · 家目录`() =
         runTest {
-            val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.TimedOut } }
+            val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.TimedOut("t-said", "") } }
             val p = picker(l)
             assertEquals("~", p.state.value.cwd)
-            assertEquals(copyText("newSession.facts.failed", "machine" to "smokebox", "why" to copyText("front.body.timeout", "machine" to "smokebox")), p.state.value.factsFailed)
+            assertEquals(copyText("newSession.facts.failed", "machine" to "smokebox", "why" to "t-said"), p.state.value.factsFailed)
         }
 
     @Test
