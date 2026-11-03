@@ -1,6 +1,5 @@
 /**
- * 秤 2（表第 2 行）的**语料构造器** —— 真浏览器那一侧与 jsdom 门禁那一侧
- * **共用同一份**，否则"估值"与"真值"就不是同一张卡的两个读数，整杆秤失去意义。
+ * 几杆秤共用的**语料构造器**（骨架外框的真浏览器探针 `tests/evidence/skel-probe-entry.ts` · 秤 6）。
  *
  * 它做的事只有一件：`通用记录 → 真实卡片 DOM`，走的是生产的总分发器
  * `renderMessage(rec, ctx)`（`src/frontend/ui/cards/index.ts`），不是手搭 DOM。
@@ -36,8 +35,7 @@
  * # 口径（改这里等于改秤，改之前先想清楚）
  *
  * - 一条 `kind:"steps"` 记录一张 `card-steps` 卡（`buildStepsCard`），与生产同形：界面不把相邻的并组。
- * - 折叠态：`<details>` 一律保持默认（关），与 `estimateStreamNodeHeight` 的
- *   `SUMMARY_H` 那一支对齐。
+ * - 折叠态：`<details>` 一律保持默认（关），与骨架粗估的 `SUMMARY_H`（收着只剩一行）对齐。
  */
 import { withTimeText } from "../../test-support/time-text";
 import {
@@ -90,23 +88,6 @@ function freshCtx(): RenderContext {
     pendingToolResults: new Map(),
     lazy: false,
   };
-}
-
-/** CSS Modules 的哈希类名（vite 构建 `_name_xxxxx_行号` · vitest `_name_xxxxxx`）⇒ 原名：两套构建起的名不同，DOM 是同一个。 */
-const MODULE_CLASS = /\b_([A-Za-z][A-Za-z0-9]*)_[0-9a-z]{5,6}(?:_\d+)?(?=[\s"])/g;
-
-/**
- * 便宜的字符串指纹（FNV-1a 32bit）—— **只用来发现"语料变了"**，不做安全用途。
- * 探针侧与门禁侧必须用同一个，否则金标准过期哨兵恒绿。卡里有 kit 件（图标 · 转圈）时，它们的 CSS Modules 类名先归一成原名再算。
- */
-export function htmlFingerprint(raw: string): string {
-  const s = raw.replace(MODULE_CLASS, "$1");
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
 }
 
 function cardClassOf(el: HTMLElement): string {

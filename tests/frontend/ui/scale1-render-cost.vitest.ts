@@ -27,10 +27,8 @@
  *
  * # ⚠ 它量不到什么（射程边界，不许只报好消息）
  *
- * 1. **jsdom 不是浏览器。** 没有布局引擎 ⇒ `applyIntrinsicSize` 里
- *    `estimateStreamNodeHeight` 走的是算术降级路（同秤 2 头注第 1 条），
- *    `timeline.insert` 的 `insertNode` 也不触发真正的 layout/paint。
- *    ⇒ `estimate` 与 `mount` 两段在真 WebView2 上**只会更贵**，这里的读数是**下界**。
+ * 1. **jsdom 不是浏览器。** 没有布局引擎 ⇒ `timeline.insert` 的 `insertNode` 不触发真正的 layout/paint。
+ *    ⇒ `mount` 那一段在真 WebView2 上**只会更贵**，这里的读数是**下界**。
  * 2. **不含 `routeMetaAndBranch`。** 设计点名的被测面就是 `renderContentRecord`；
  *    `toExcerpt`（§2.1）住在 `tabs.ts` 的收纳路径上、在本函数**之外**，
  *    ⇒ §2.1 那条声称本秤**答不了**，只能答 §2.4/§2.5/§2.6/§2.8 那几条（它们都在 `renderMessage` 里）。
@@ -78,7 +76,7 @@ import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
-// `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
+// `__dirname` 在 vitest 里指向 `tests/`
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 const fixtureLines = readFileSync(FIXTURE, "utf8")
   .split("\n")
@@ -243,11 +241,11 @@ function p(values: number[], q: number): number {
   return v[f] + (v[c] - v[f]) * (k - f);
 }
 
-const SEGMENTS = ["render", "estimate", "mount"] as const;
+const SEGMENTS = ["render", "mark", "mount"] as const;
 const BRANCHES = ["skip", "card", "steps"] as const;
 
 function segSum(s: RenderCostSample): number {
-  return s.render + s.estimate + s.mount;
+  return s.render + s.mark + s.mount;
 }
 
 let samples: RenderCostSample[] = [];
@@ -319,7 +317,7 @@ beforeAll(() => {
   lines.push("");
   lines.push("② 按字节分桶（设计原先要的那张；**反例附表**：同一桶里混着便宜与贵的卡型）：");
   lines.push(
-    "| 桶 | n | total p50 | total p90 | total max | render p50 | estimate p50 | mount p50 | render 占 total p50 |",
+    "| 桶 | n | total p50 | total p90 | total max | render p50 | mark p50 | mount p50 | render 占 total p50 |",
   );
   lines.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const [name] of BUCKETS) {
@@ -496,7 +494,7 @@ describe("秤 1 · 反空真（绿必须来自相等断言，不是「扫不到�
 });
 
 describe("秤 1 · 三个子段真的各自被量到（死值验的着力点）", () => {
-  it("★ render / estimate / mount 三段各自至少在一条样本上 > 0", () => {
+  it("★ render / mark / mount 三段各自至少在一条样本上 > 0", () => {
     const dead = SEGMENTS.filter(
       (k) => !samples.some((s) => (s[k] as number) > 0),
     );
@@ -620,7 +618,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导�
   // 随正文长度怎么涨。墙钟在门禁并发时抖（render 占比红过一次 53.0%），一个会随机红的判据就是会随机骗人的判据。
   //
   // 今天数的是**这条记录物化进 DOM 的字符数**（探针在同一处取，`textContent` 长度）。为什么与原来等价：
-  // · 那几条 O(len) 操作（建正文 · 高亮 · 公式 · 估高按正文算）的工作量都正比于**进了 DOM 的正文** ——
+  // · 那几条 O(len) 操作（建正文 · 高亮 · 公式）的工作量都正比于**进了 DOM 的正文** ——
   //   正文卡把正文整段物化，折叠卡（惰性正文 · 摘要）只物化一行摘要；同一条记录只加字节时，
   //   折叠卡物化量不动、正文卡跟着涨（上一组 S2 已逐卡钉过这一条）。
   // · ⇒「正文卡随字节单调涨」「长比短多一个量级」「长尾桶里的折叠卡比正文卡少一个量级」这三句话
