@@ -16,12 +16,12 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Option<String
 }
 
 /// 这条会话的需手动那一判可能变了 ⇒ 推 `changed {needs, key: sid}`。
-pub(crate) fn moved(sid: &str) {
+pub fn moved(sid: &str) {
     ring_for(Some(sid.to_string()));
 }
 
 /// 不止一条会话、或会话外那几项可能变了 ⇒ 推 `changed {needs}`（不带 key，整份重问）。
-pub(crate) fn ring() {
+pub fn ring() {
     ring_for(None);
 }
 
@@ -31,7 +31,7 @@ fn ring_for(sid: Option<String>) {
 }
 
 /// 订那一声（watcher）。
-pub(crate) fn moved_rx() -> tokio::sync::broadcast::Receiver<Option<String>> {
+pub fn moved_rx() -> tokio::sync::broadcast::Receiver<Option<String>> {
     changes().subscribe()
 }
 
@@ -44,15 +44,12 @@ struct Reads {
 static ASKED: OnceLock<Reads> = OnceLock::new();
 
 /// 待答登记表开张那一刻交它的读法（只认头一回）。
-pub(crate) fn answer_asked(
-    sids: fn() -> Vec<String>,
-    pending: fn(&str) -> Vec<cmd_wire::needs::Ask>,
-) {
+pub fn answer_asked(sids: fn() -> Vec<String>, pending: fn(&str) -> Vec<cmd_wire::needs::Ask>) {
     ASKED.get_or_init(|| Reads { sids, pending });
 }
 
 /// 此刻挂着请求的会话。
-pub(crate) fn asked_sids() -> BTreeSet<String> {
+pub fn asked_sids() -> BTreeSet<String> {
     ASKED
         .get()
         .map(|r| (r.sids)())
@@ -62,6 +59,6 @@ pub(crate) fn asked_sids() -> BTreeSet<String> {
 }
 
 /// 这条会话此刻挂着的请求（挂上的先后；watcher 照它给运行表那几项配 needs）。登记表没开张 ⇒ 空。
-pub(crate) fn pending_of(sid: &str) -> Vec<cmd_wire::needs::Ask> {
+pub fn pending_of(sid: &str) -> Vec<cmd_wire::needs::Ask> {
     ASKED.get().map(|r| (r.pending)(sid)).unwrap_or_default()
 }

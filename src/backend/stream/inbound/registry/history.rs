@@ -25,8 +25,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::asynchronous::<crate::history::groups::GroupsWriteCmd>(
         "建组 · 进出组 · 改名与解散扇出给各片",
     ),
-    // agent 自问（`history/session_self.rs`）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
-    super::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
+    // agent 自问（本体 `history/session_self.rs`，标记类型住本文件）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
+    super::typed::asynchronous::<crate::stream::inbound::registry::history::SessionSelfCmd>(
         "我是哪条会话 · 在哪几组 · 组员有谁",
     ),
     // 一段 Markdown 原文解析成块树（纯函数、不碰盘；长正文解析几毫秒 ⇒ 阻塞档，不占反应堆）。
@@ -140,8 +140,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
 // ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────
 
 // 转给常驻问各台那一段住 `control/cc_bus_scope.rs::groups_via_resident`（cc-bus 的范围判定也读它，只一处）。
+// 命令的标记类型住这里：`Handle` 要接控制面那一段，按孤儿规则只能和标记类型同在一个包（回包与码住 `backend-history`）。
 
-impl crate::wire::typed::Handle for crate::history::session_self::SessionSelfCmd {
+/// `session-self`：调用进程往上找这台的哪一条会话、它在哪几组。
+pub(crate) struct SessionSelfCmd;
+
+impl crate::wire::typed::Command for SessionSelfCmd {
+    const NAME: &'static str = "session-self";
+    type Req = crate::wire::typed::NoArgs;
+    type Reply = crate::history::session_self::SessionSelf;
+    type Err = crate::history::session_self::SessionSelfErr;
+}
+
+impl crate::wire::typed::Handle for SessionSelfCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,

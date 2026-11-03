@@ -1,0 +1,58 @@
+# 历史清单那一族（项目 / 会话清单 · 注解 · 历史页那一列 · 组 · 会话输入队 · 判活那张表）＋ 会话血缘。只引 agents · dial · host · wire · 纯工具 · 平台六层。
+[package]
+name = "backend-history"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（这台记录树的串行锁）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts"]
+
+[dependencies]
+backend-agents = { path = "../agents" }
+backend-dial = { path = "../dial" }
+backend-host = { path = "../host" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 注解那份文件住哪（数据目录与文件名）。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+# 会话簿那几张（几台并一列 · 叫会话什么）：桌面与手机核心同一份。
+face-core = { path = "../../common/face-core" }
+relay-route-core = { path = "../../common/relay-route-core" }
+# 组员那台没答时那一句（离线那一句只由连接层写）。
+comms-inward = { path = "../../comms/inward" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 量具（线程级内存 · 金样 · 听 `tracing` 说了什么）：只在 dev 侧的包。
+test-meters = { path = "../test-meters" }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tokio = { workspace = true, features = ["test-util"] }
+# 判据造写句柄（`Own::issue_at` · `issue_data_at`）用平台那一层的 `test-support`。
+backend-platform = { path = "../platform", features = ["test-support"] }
+# 整份读按块的夹具（纯工具那一层的 `test-support`）。
+backend-common = { path = "../common", features = ["test-support"] }
+# 跨台合并那几条判据的「那几台」替身（拨号那一侧的 `test-support`）。
+backend-dial = { path = "../dial", features = ["test-support"] }

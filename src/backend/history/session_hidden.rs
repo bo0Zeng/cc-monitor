@@ -17,27 +17,27 @@ use cmd_wire::session::{Hidden, HiddenBy, Hide, LaunchTab, Tab};
 use copy_core::copy_text;
 
 /// 这台偏好里那两格（线上形与缺省住 `cmd-wire`）。
-pub(crate) use cmd_wire::session::Rules;
+pub use cmd_wire::session::Rules;
 
 /// 判一条会话要的事实。
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Facts<'a> {
+pub struct Facts<'a> {
     /// 单个那一格（注解）。
-    pub(crate) hide: Option<Hide>,
+    pub hide: Option<Hide>,
     /// 起会话时那一格（启动台账）。
-    pub(crate) launch: Option<&'a LaunchTab>,
+    pub launch: Option<&'a LaunchTab>,
     /// 是不是分身会话。
-    pub(crate) bg: bool,
+    pub bg: bool,
     /// 主会话叫什么（有主会话才有；叫法由调用方定，[`title_here`] 那一种）。
-    pub(crate) parent: Option<&'a str>,
+    pub parent: Option<&'a str>,
     /// 这台偏好。
-    pub(crate) rules: Rules,
+    pub rules: Rules,
 }
 
 /// **唯一的判定**（五档见头注）。不隐藏 ⇒ `None`。
 ///
 /// 〔继承表〕标签页那一格：命令行或别名写了 `--tab` 照它；没写 ⇒ 不随调用方，照这台偏好（分身 · 有主会话各一格）。
-pub(crate) fn judge(f: &Facts) -> Option<Hidden> {
+pub fn judge(f: &Facts) -> Option<Hidden> {
     let hide = |by: HiddenBy, said: String| Some(Hidden { by, said });
     match f.hide {
         Some(Hide::On) => return hide(HiddenBy::Own, copy_text("history.row.hidden", &[])),
@@ -71,15 +71,15 @@ pub(crate) fn judge(f: &Facts) -> Option<Hidden> {
 
 /// 这台读一次的那几样（启动台账 · 会话血缘 · 偏好；单个那一格是注解，调用方手里那一份）：一问里要判好几条时读一次、逐条判。读不到的那一样当没有。
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Here {
-    pub(crate) ledger: super::launch_book::Book,
-    pub(crate) lineage: crate::lineage::Book,
-    pub(crate) rules: Rules,
+pub struct Here {
+    pub ledger: super::launch_book::Book,
+    pub lineage: crate::lineage::Book,
+    pub rules: Rules,
 }
 
 impl Here {
     /// 现读这台那几份（家说不出 ⇒ 空的）。
-    pub(crate) fn read_now() -> Here {
+    pub fn read_now() -> Here {
         Here::read_in(
             crate::platform::paths::data_home().as_deref(),
             crate::common::machine_prefs::read_now().prefs().rules(),
@@ -107,7 +107,7 @@ impl Here {
     }
 
     /// 这条会话的主会话（会话血缘）。
-    pub(crate) fn parent_of(&self, sid: &str) -> Option<&str> {
+    pub fn parent_of(&self, sid: &str) -> Option<&str> {
         self.lineage.parent_of(sid)
     }
 
@@ -131,7 +131,7 @@ impl Here {
 }
 
 /// 隐藏的规则那一侧住的两份文件（这台偏好 · 会话血缘）：动了就该重判（观测侧挂耳朵）。说不出位置的那一份不在里面。
-pub(crate) fn rule_files() -> Vec<std::path::PathBuf> {
+pub fn rule_files() -> Vec<std::path::PathBuf> {
     [
         crate::common::machine_prefs::path_now(),
         crate::platform::paths::data_home().map(|d| d.join(crate::lineage::FILE_NAME)),
@@ -142,7 +142,7 @@ pub(crate) fn rule_files() -> Vec<std::path::PathBuf> {
 }
 
 /// 这条会话隐不隐藏（`annotations` ＝ 这台的注解：单个那一格从它取；`bg` ＝ 是不是分身会话；`title_of` ＝ 主会话叫什么）。
-pub(crate) fn hidden_here(
+pub fn hidden_here(
     here: &Here,
     annotations: &Table,
     sid: &str,
@@ -154,7 +154,7 @@ pub(crate) fn hidden_here(
 
 /// 叫这条会话什么（这台的）：改过的名 ＞ 记录里的标题 · 第一句（与历史清单 · 标签页同一条规则，[`super::search_rules::session_label`]）；
 /// 记录找不到 ⇒ 那条规则里「记录没读到」那一档。
-pub(crate) fn title_here(sid: &str, annotations: &Table) -> String {
+pub fn title_here(sid: &str, annotations: &Table) -> String {
     let custom = annotations.get(sid).and_then(|e| e.custom_title.clone());
     match crate::agents::find_session(&super::listing::agent_home(), sid) {
         Ok(at) => super::listing::session_title_of(&at.file, custom),

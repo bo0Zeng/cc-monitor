@@ -30,17 +30,17 @@ use crate::platform::fs::{Own, OwnPath};
 
 /// `history-listing` 的入参：手上那份的记号（没问过 ⇒ 缺 ⇒ 整份）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryListingReq {
+pub struct HistoryListingReq {
     #[serde(default)]
     pub(crate) held: Option<Held>,
 }
 
 crate::wire::typed::codes! {
     /// `history-listing` 的码。
-    pub(crate) enum HistoryListingErr {
+    pub enum HistoryListingErr {
         /// 读不了这台的记录树 · 读的那一趟没做完。
         Failed = "failed",
     }
@@ -48,7 +48,7 @@ crate::wire::typed::codes! {
 
 /// `history-listing`：这台自己的清单（不筛不排、并好这台的注解与隐藏规则），按带键集合答（键 ＝ 会话 ID）。
 /// 别的后端经 `--resident-call` 问它（问的那一方记着副本）；备忘住本进程，只在被问时比。
-pub(crate) struct HistoryListingCmd;
+pub struct HistoryListingCmd;
 
 impl crate::wire::typed::Command for HistoryListingCmd {
     const NAME: &'static str = "history-listing";
@@ -62,17 +62,14 @@ static VIEWS: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::ne
 
 impl crate::wire::typed::Handle for HistoryListingCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryListingReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Self::Reply, HistoryListingErr>> + Send + 'static
-    {
-        async move {
-            let listing = super::history_list::blocking(super::history_list::machine_listing)
-                .await
-                .map_err(crate::wire::typed::of_fail_with(HistoryListingErr::Failed))?;
-            Ok(answer_with(&VIEWS, listing, req.held.as_ref()))
-        }
+    ) -> Result<Self::Reply, HistoryListingErr> {
+        let listing = super::history_list::blocking(super::history_list::machine_listing)
+            .await
+            .map_err(crate::wire::typed::of_fail_with(HistoryListingErr::Failed))?;
+        Ok(answer_with(&VIEWS, listing, req.held.as_ref()))
     }
 }
 
@@ -196,7 +193,7 @@ fn store_at(own: &Own, machine: &str, body: &[u8]) {
 pub(crate) async fn listing(
     machine: &str,
     fresh: bool,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     until: Option<Until>,
 ) -> Result<Listing, crate::common::said::Said> {
     let Some(until) = until else {
@@ -224,7 +221,7 @@ pub(crate) async fn listing(
 pub(crate) async fn listing_with(
     machine: &str,
     fresh: bool,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     total: Deadline,
     table: &Table,
     remote: &dyn Remote,

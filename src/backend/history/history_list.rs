@@ -54,7 +54,7 @@ static NARROW: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::n
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
     match loaded {
         Loaded::Read(t) => Ok(t),
-        Loaded::NoPath => Err(copy_text("beHistoryJoin.annotations.unknown", &[]).into()),
+        Loaded::NoPath => Err(copy_text("beHistoryJoin.annotations.unknown", &[])),
         Loaded::Unreadable(why) => Err(copy_text(
             "beHistoryJoin.annotations.unparsable",
             &[("why", &why.to_string())],
@@ -182,7 +182,7 @@ fn group_key(agent: &str, project_path: &str) -> String {
 
 /// 这台的平铺清单（并上这台的注解）：记录树每个目录 ＋ 合成历史各家；判活 ＝ 这台 pidfile；上次的号 ＝ 这台的起会话账号记录。
 /// `last` 读不懂 ⇒ 那一格都不带（界面不说「上次用的」，照样能恢复）。
-pub(crate) fn machine_listing() -> Result<Listing, Said> {
+pub fn machine_listing() -> Result<Listing, Said> {
     machine_listing_for(None, crate::history::list_node::node())
 }
 
@@ -198,11 +198,7 @@ fn machine_listing_for(
     let home = crate::history::listing::agent_home();
     let live = crate::history::live_table::now(&home);
     let tree = tree_for(&home, only).map_err(|e| Said::new("failed", e))?;
-    let synth: Vec<(
-        &'static str,
-        Vec<crate::agents::SynthSession>,
-        fn(&std::path::Path) -> String,
-    )> = crate::agents::history_faces()
+    let synth: Vec<Synth> = crate::agents::history_faces()
         .into_iter()
         .map(|(k, f)| (k, (f.sessions)(), f.excerpt))
         .collect();
@@ -219,12 +215,19 @@ fn machine_listing_for(
     Ok(listing)
 }
 
+/// 记录树分好的目录：每个目录一项（目录名 · 那一目录的会话行，读不了 ⇒ 为什么）。
+pub(crate) type Tree = Vec<(String, Result<Vec<Value>, String>)>;
+
+/// 一家的合成历史：那一家叫什么 · 它的会话 · 第一句怎么取。
+pub(crate) type Synth = (
+    &'static str,
+    Vec<crate::agents::SynthSession>,
+    fn(&std::path::Path) -> String,
+);
+
 /// 记录树分好的目录（[`crate::history::listing::sessions_by_dir_for`]）；按 sid 问的那一条是分叉来的 ⇒ 父会话那一份也整份扫
 /// （那一行要父会话的显示标题，与整台扫那一份同一个字）。
-pub(crate) fn tree_for(
-    home: &std::path::Path,
-    only: Option<&str>,
-) -> Result<Option<Vec<(String, Result<Vec<Value>, String>)>>, String> {
+pub(crate) fn tree_for(home: &std::path::Path, only: Option<&str>) -> Result<Option<Tree>, String> {
     let tree = crate::history::listing::sessions_by_dir_for(home, only)?;
     let (Some(sid), Some(mut tree)) = (only, tree) else {
         return crate::history::listing::sessions_by_dir_for(home, only);
@@ -266,12 +269,8 @@ pub(crate) fn with_own_rules(listing: &mut Listing, here: &crate::history::sessi
 
 /// [`machine_listing`] 的可喂夹具那一半（记录树分好的目录 · 合成历史 · 判活 · 上次的号由调用方给；不并注解）。
 pub(crate) fn listing_from(
-    tree: Vec<(String, Result<Vec<Value>, String>)>,
-    synth: &[(
-        &'static str,
-        Vec<crate::agents::SynthSession>,
-        fn(&std::path::Path) -> String,
-    )],
+    tree: Tree,
+    synth: &[Synth],
     live: &crate::history::live_table::LiveTable,
     last: &Value,
 ) -> Listing {
@@ -312,7 +311,7 @@ pub(crate) fn listing_from(
 
 crate::wire::typed::codes! {
     /// `history-list` 的码。
-    pub(crate) enum HistoryListErr {
+    pub enum HistoryListErr {
         /// 读不了这台的记录树 · 读的那一趟没做完。
         Failed = "failed",
         /// 问的是那一台、可达表里没有它（还没连上过）· 拨号 / 链路不通。
@@ -323,7 +322,7 @@ crate::wire::typed::codes! {
 }
 
 /// `history-list`：历史页的平铺会话清单。扫记录树在阻塞池里做，并 · 筛 · 排是纯计算 ⇒ 异步档。
-pub(crate) struct HistoryListCmd;
+pub struct HistoryListCmd;
 
 impl crate::wire::typed::Command for HistoryListCmd {
     crate::wire::typed::by_call!(HistoryListReq);
@@ -332,17 +331,13 @@ impl crate::wire::typed::Command for HistoryListCmd {
 
 impl crate::wire::typed::Handle for HistoryListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: HistoryListReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Patch<HistoryHead, HistoryRow>, HistoryListErr>>
-           + Send
-           + 'static {
-        async move {
-            answer(req, cx.tz, cx.until)
-                .await
-                .map_err(crate::wire::typed::of_fail_with(HistoryListErr::Failed))
-        }
+    ) -> Result<Patch<HistoryHead, HistoryRow>, HistoryListErr> {
+        answer(req, cx.tz, cx.until)
+            .await
+            .map_err(crate::wire::typed::of_fail_with(HistoryListErr::Failed))
     }
 }
 
@@ -509,7 +504,7 @@ fn row_of(
     at: i64,
     context: bool,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     labels: &BTreeMap<String, String>,
 ) -> HistoryRow {
     let mut r = f.raw;
@@ -574,7 +569,7 @@ pub(crate) fn answer_from(
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> (HistoryHead, Vec<HistoryRow>) {
     let t = ann.as_ref().ok().copied();
     let mut all: Vec<Finished> = listing
@@ -671,7 +666,7 @@ struct Source<'a> {
     ann: Result<&'a Table, String>,
     ask: &'a Ask,
     now_ms: i64,
-    tz: &'a crate::Tz,
+    tz: &'a crate::common::time::Tz,
 }
 
 impl ViewSource for Source<'_> {
@@ -716,7 +711,10 @@ fn views_for(ask: &Ask) -> &'static Views {
 }
 
 /// [`answer_from`] 那一份经数据层答成 `range` 那一窗：带着对得上的 `held` ⇒ 没变 / 只给变了的；否则整份。
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "备忘 · 清单 · 哪台 · 注解 · 筛法 · 记号 · 此刻 · 时区各是这一答的一维，由帧面那一臂与判据各自给"
+)]
 pub(crate) fn patch_from(
     views: &Views,
     listing: &Listing,
@@ -725,7 +723,7 @@ pub(crate) fn patch_from(
     ask: &Ask,
     held: Option<&Held>,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Patch<HistoryHead, HistoryRow> {
     let src = Source {
         listing,
@@ -754,7 +752,7 @@ fn groups_of(
     listing: &Listing,
     origin: &cmd_wire::Machine,
     now_ms: i64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Vec<HistoryGroup> {
     let mut by: BTreeMap<String, HistoryGroup> = BTreeMap::new();
     for v in rows.iter().filter(|v| v.context.is_none()) {
@@ -825,7 +823,7 @@ fn groups_of(
 }
 
 /// 格目录与出参对拍的样本：每个可缺的格都填上、每个列表都不空。
-pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
+pub fn specimen() -> Patch<HistoryHead, HistoryRow> {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
     let mut rows = vec![HistoryRow {
@@ -933,7 +931,7 @@ pub(crate) async fn blocking<T: Send + 'static>(
 /// 帧面 `history-list` 的本体（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写；`until` ＝ 发起方给的截止时刻，问那一台时照它等）。
 pub(crate) async fn answer(
     req: HistoryListReq,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
 ) -> Result<Patch<HistoryHead, HistoryRow>, Said> {
     let ask = parse_ask(&req)?;
@@ -969,6 +967,11 @@ pub(crate) async fn answer(
     .await
 }
 
+// 只给测试用的那几样（这台记录树的串行锁）：本包判据与上层判据（`test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/history/history_list_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/history/history_list_tests.rs"]
-pub(crate) mod tests;
+mod tests;

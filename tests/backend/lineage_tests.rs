@@ -186,7 +186,7 @@ fn an_unreadable_file_is_reported_once_and_not_retried_on_every_request() {
     std::fs::write(&path, b"{not json").unwrap();
     let own = crate::platform::fs::Own::issue_data_at(&dir);
     let store = LineageStore::at(Some(path.clone()));
-    let said = crate::stream::run_route::tests::heard(|| {
+    let said = test_meters::heard(|| {
         for n in 0..3 {
             relay_saw(
                 &store,

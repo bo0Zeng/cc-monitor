@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 /// 一份节点：已经响过、还没答过清单的那几个会话 ＋ 只留最新的那条通道。
-pub(crate) struct ListNode {
+pub struct ListNode {
     rung: Mutex<HashSet<String>>,
     tx: tokio::sync::watch::Sender<u64>,
 }
@@ -26,7 +26,7 @@ impl Default for ListNode {
 
 impl ListNode {
     /// 这个会话那一行可能变了（`None` ＝ 不分会话：注解 · 隐藏规则，每次都响）。
-    pub(crate) fn moved(&self, sid: Option<&str>) {
+    pub fn moved(&self, sid: Option<&str>) {
         if let Some(sid) = sid {
             let fresh = self
                 .rung
@@ -41,7 +41,7 @@ impl ListNode {
     }
 
     /// 这台要答一份清单了（读之前调）：响过的那几个会话放开，之后再变的再响。
-    pub(crate) fn asked(&self) {
+    pub fn asked(&self) {
         self.rung
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -49,13 +49,13 @@ impl ListNode {
     }
 
     /// 订它：每响一下（连着几下只算一下）醒一次。
-    pub(crate) fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
         self.tx.subscribe()
     }
 }
 
 /// 本进程那一份。
-pub(crate) fn node() -> &'static std::sync::Arc<ListNode> {
+pub fn node() -> &'static std::sync::Arc<ListNode> {
     static NODE: std::sync::OnceLock<std::sync::Arc<ListNode>> = std::sync::OnceLock::new();
     NODE.get_or_init(Default::default)
 }

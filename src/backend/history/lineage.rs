@@ -28,9 +28,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub(crate) use relay_route_core::Origin;
+pub use relay_route_core::Origin;
 
-pub(crate) const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::LINEAGE_REL);
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::LINEAGE_REL);
 
 /// 一条被用到的时刻隔多久才刷新一次（秒）。
 pub(crate) const SEEN_REFRESH: u64 = 86_400;
@@ -39,27 +39,27 @@ pub(crate) const DROP_AFTER: u64 = 90 * 86_400;
 
 /// 一个来处绑给了哪个会话。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Bound {
-    pub(crate) sid: String,
-    pub(crate) at: u64,
+pub struct Bound {
+    pub sid: String,
+    pub at: u64,
 }
 
 /// 一个会话的父。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Parent {
-    pub(crate) parent: String,
+pub struct Parent {
+    pub parent: String,
     /// 这个会话是哪一家（路由第 1 段）。
-    pub(crate) agent: String,
-    pub(crate) at: u64,
+    pub agent: String,
+    pub at: u64,
 }
 
 /// 整份 `lineage.json`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Book {
+pub struct Book {
     #[serde(default)]
-    pub(crate) origins: BTreeMap<String, Bound>,
+    pub origins: BTreeMap<String, Bound>,
     #[serde(default)]
-    pub(crate) parents: BTreeMap<String, Parent>,
+    pub parents: BTreeMap<String, Parent>,
 }
 
 impl Book {
@@ -133,12 +133,12 @@ impl Book {
     }
 
     /// 这个会话的父（没记过 ⇒ `None`）：隐藏的判定（有主会话那一档）· 会话事实的「由谁启动」读它。
-    pub(crate) fn parent_of(&self, sid: &str) -> Option<&str> {
+    pub fn parent_of(&self, sid: &str) -> Option<&str> {
         self.parents.get(sid).map(|p| p.parent.as_str())
     }
 
     /// 这个会话起的那几个，按记下的先后（同一刻按会话编号）：会话事实的「子会话」读它。
-    pub(crate) fn children_of(&self, sid: &str) -> Vec<&str> {
+    pub fn children_of(&self, sid: &str) -> Vec<&str> {
         let mut kids: Vec<(u64, &str)> = self
             .parents
             .iter()
@@ -157,12 +157,12 @@ type Read = crate::common::own_state::Read<Book>;
 /// 那一份：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
 const DOC: Doc<Book> = Doc::of(&relay_route_core::LINEAGE_FILE);
 
-pub(crate) fn read_at(path: &Path) -> Read {
+pub fn read_at(path: &Path) -> Read {
     DOC.read(path)
 }
 
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
-pub(crate) struct LineageStore {
+pub struct LineageStore {
     path: Option<PathBuf>,
     cache: Mutex<Cached>,
 }
@@ -176,7 +176,7 @@ struct Cached {
 }
 
 impl LineageStore {
-    pub(crate) fn at(path: Option<PathBuf>) -> Self {
+    pub fn at(path: Option<PathBuf>) -> Self {
         Self {
             path,
             cache: Mutex::new(Cached::default()),
@@ -236,7 +236,7 @@ impl LineageStore {
 }
 
 /// **唯一的写口**（门是上游选择对中转的那个口）：中转那一路每一发认一次「谁起的谁」。
-pub(crate) fn relay_saw(
+pub fn relay_saw(
     store: &LineageStore,
     own: &Own,
     origin: Option<Origin<'_>>,
@@ -279,5 +279,5 @@ fn write_locked(own: &Own, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, Sa
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/lineage_tests.rs"]
+#[path = "../../../tests/backend/lineage_tests.rs"]
 mod tests;
