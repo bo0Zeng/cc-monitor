@@ -192,5 +192,4 @@ org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.7.3=releaseRuntimeClasspa
 org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3=releaseRuntimeClasspath
 org.jetbrains:annotations:23.0.0=releaseRuntimeClasspath
 org.jspecify:jspecify:1.0.0=releaseRuntimeClasspath
-ru.noties:jlatexmath-android:0.2.0=releaseRuntimeClasspath
 empty=

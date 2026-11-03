@@ -51176,9 +51176,3 @@ SPLorg/koin/viewmodel/factory/AndroidParametersHolder;->getOrNull(Lkotlin/reflec
 Lorg/koin/viewmodel/factory/KoinViewModelFactory;
 SPLorg/koin/viewmodel/factory/KoinViewModelFactory;-><init>(Lkotlin/reflect/KClass;Lorg/koin/core/scope/Scope;Lorg/koin/core/qualifier/Qualifier;Lkotlin/jvm/functions/Function0;)V
 SPLorg/koin/viewmodel/factory/KoinViewModelFactory;->create(Lkotlin/reflect/KClass;Landroidx/lifecycle/viewmodel/CreationExtras;)Landroidx/lifecycle/ViewModel;
-Lru/noties/jlatexmath/JLatexMathAndroid;
-SPLru/noties/jlatexmath/JLatexMathAndroid;-><clinit>()V
-SPLru/noties/jlatexmath/JLatexMathAndroid;->init(Landroid/content/Context;)V
-Lru/noties/jlatexmath/JLatexMathInitProvider;
-SPLru/noties/jlatexmath/JLatexMathInitProvider;-><init>()V
-SPLru/noties/jlatexmath/JLatexMathInitProvider;->onCreate()Z

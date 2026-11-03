@@ -31,10 +31,3 @@
 # ── Koin / Compose / Room ──
 # 这些库各自 ship consumer proguard 规则（随 AAR 传入），通常无需额外 keep。
 # 若 release 运行期出现 ClassNotFound/NoSuchMethod，再按需补 -keep。
-
-# ── JLaTeXMath 数学渲染 ──
-# JLaTeXMath 经反射/资源加载符号定义(.xml)+字体；R8 误删 → 渲染崩/空。整包 keep + dontwarn。
--keep class ru.noties.jlatexmath.** { *; }
--keep class org.scilab.forge.jlatexmath.** { *; }
--dontwarn ru.noties.jlatexmath.**
--dontwarn org.scilab.forge.jlatexmath.**
