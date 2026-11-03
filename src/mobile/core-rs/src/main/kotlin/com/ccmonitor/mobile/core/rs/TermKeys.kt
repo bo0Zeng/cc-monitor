@@ -41,12 +41,14 @@ object TermKeys {
 
     /** [text] · [special] · [chord] 的逆；形不对 ⇒ null。 */
     fun parse(token: String): Token? {
-        val kind = token.firstOrNull() ?: return null
-        if (kind == 't') return Token(kind, emptyList(), token.substring(1))
-        if (kind != 's' && kind != 'c') return null
-        val colon = token.indexOf(':').takeIf { it > 0 } ?: return null
-        val mods = token.substring(1, colon).split(',').filter { it.isNotEmpty() }
-        return Token(kind, mods, token.substring(colon + 1))
+        val kind = token.firstOrNull()
+        val colon = token.indexOf(':')
+        return when {
+            kind == 't' -> Token(kind, emptyList(), token.substring(1))
+            (kind == 's' || kind == 'c') && colon > 0 ->
+                Token(kind, token.substring(1, colon).split(',').filter { it.isNotEmpty() }, token.substring(colon + 1))
+            else -> null
+        }
     }
 
     /** 几下（记号）⇒ 送进终端的字节，一下接一下拼起来；有一个记号核心读不出 ⇒ null。 */
