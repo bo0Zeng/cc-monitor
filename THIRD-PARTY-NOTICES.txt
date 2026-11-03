@@ -4082,12 +4082,9 @@ Used by:
     crate: num-bigint 0.5.1
     crate: num-integer 0.1.46
     crate: num-traits 0.2.19
-    crate: regex 1.12.3
     crate: regex 1.13.1
-    crate: regex-automata 0.4.14
     crate: regex-automata 0.4.18
     crate: regex-lite 0.1.9
-    crate: regex-syntax 0.8.10
     crate: regex-syntax 0.8.11
 
 Copyright (c) 2014 The Rust Project Developers
