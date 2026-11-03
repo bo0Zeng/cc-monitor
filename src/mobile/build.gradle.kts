@@ -2,6 +2,8 @@
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.android.test) apply false
+    alias(libs.plugins.androidx.baselineprofile) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.jvm) apply false // 纯 JVM 模块用；在根解析版本，子模块 apply 时不冲突
     alias(libs.plugins.kotlin.compose) apply false
@@ -102,6 +104,16 @@ subprojects {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
             compileSdk = 36
             defaultConfig { minSdk = 26 } // targetSdk 在 app 模块里
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_11
+                targetCompatibility = JavaVersion.VERSION_11
+            }
+        }
+    }
+    plugins.withId("com.android.test") {
+        extensions.configure<com.android.build.api.dsl.TestExtension> {
+            compileSdk = 36
+            defaultConfig { minSdk = 28 } // Macrobenchmark 生成 profile 要 API 28+（量测本身 23+）
             compileOptions {
                 sourceCompatibility = JavaVersion.VERSION_11
                 targetCompatibility = JavaVersion.VERSION_11

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 只进量测那两族构建类型：`:baselineprofile` 量之前 `am start -W -n com.ccmonitor.mobile/.bench.BenchSeedActivity` 写造的数 -->
+        <activity
+            android:name=".bench.BenchSeedActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>
