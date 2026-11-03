@@ -10722,6 +10722,7 @@ sealed interface InlNode {
     @Suppress("UNCHECKED_CAST")
     data class M(
         val tex: String,
+        val m: MathBox?,
     ) : InlNode, Ordered {
         override val t: String get() = "m"
         override var wireOrder: IntArray? = null
@@ -10803,9 +10804,10 @@ sealed interface InlNode {
                         listOf(
                         Field("t", { tag("m") }, optional = false, nullable = false),
                         Field("tex", { Str }, optional = false, nullable = false),
+                        Field("m", { opt(MathBox.ADAPTER) }, optional = false, nullable = true),
                         ),
-                        { a -> InlNode.M(a[1] as String) },
-                        { v -> arrayOf("m", v.tex) },
+                        { a -> InlNode.M(a[1] as String, a[2] as MathBox?) },
+                        { v -> arrayOf("m", v.tex, v.m) },
                     )),
                 Variant("a", InlNode.A::class.java, obj(
                         listOf(
@@ -13857,6 +13859,269 @@ sealed interface ManualItem {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MathBox(
+    val w: Int,
+    val h: Int,
+    val d: Int,
+    val items: List<MathItem>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MathBox> = obj(
+            listOf(
+            Field("w", { Int32 }, optional = false, nullable = false),
+            Field("h", { Int32 }, optional = false, nullable = false),
+            Field("d", { Int32 }, optional = false, nullable = false),
+            Field("items", { arr(MathItem.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MathBox(a[0] as Int, a[1] as Int, a[2] as Int, a[3] as List<MathItem>) },
+            { v -> arrayOf(v.w, v.h, v.d, v.items) },
+        )
+    }
+}
+
+enum class MathFont(val wire: String) {
+    AMS("ams"),
+    CALIGRAPHIC_REGULAR("caligraphic_regular"),
+    FRAKTUR_REGULAR("fraktur_regular"),
+    FRAKTUR_BOLD("fraktur_bold"),
+    MAIN_REGULAR("main_regular"),
+    MAIN_BOLD("main_bold"),
+    MAIN_ITALIC("main_italic"),
+    MAIN_BOLD_ITALIC("main_bold_italic"),
+    MATH_ITALIC("math_italic"),
+    MATH_BOLD_ITALIC("math_bold_italic"),
+    SANS_SERIF_REGULAR("sans_serif_regular"),
+    SANS_SERIF_BOLD("sans_serif_bold"),
+    SANS_SERIF_ITALIC("sans_serif_italic"),
+    SCRIPT_REGULAR("script_regular"),
+    SIZE1("size1"),
+    SIZE2("size2"),
+    SIZE3("size3"),
+    SIZE4("size4"),
+    TYPEWRITER("typewriter"),
+    SYS("sys"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<MathFont> = enumOf(entries) { it.wire }
+    }
+}
+
+sealed interface MathItem {
+    /** 判别格（`t`）那个词。 */
+    val t: String
+
+    val x: Int
+
+    val y: Int
+
+    @Suppress("UNCHECKED_CAST")
+    data class G(
+        val f: MathFont,
+        val u: Int,
+        override val x: Int,
+        override val y: Int,
+        val s: Int,
+    ) : MathItem, Ordered {
+        override val t: String get() = "g"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class L(
+        override val x: Int,
+        override val y: Int,
+        val w: Int,
+        val th: Int,
+        val dash: Boolean,
+    ) : MathItem, Ordered {
+        override val t: String get() = "l"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class R(
+        override val x: Int,
+        override val y: Int,
+        val w: Int,
+        val h: Int,
+    ) : MathItem, Ordered {
+        override val t: String get() = "r"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class P(
+        override val x: Int,
+        override val y: Int,
+        val fill: Boolean,
+        val d: List<MathPath>,
+    ) : MathItem, Ordered {
+        override val t: String get() = "p"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<MathItem> =
+            tagged<MathItem>(
+                "t",
+                listOf(
+                Variant("g", MathItem.G::class.java, obj(
+                        listOf(
+                        Field("t", { tag("g") }, optional = false, nullable = false),
+                        Field("f", { MathFont.ADAPTER }, optional = false, nullable = false),
+                        Field("u", { Int32 }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        Field("s", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathItem.G(a[1] as MathFont, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int) },
+                        { v -> arrayOf("g", v.f, v.u, v.x, v.y, v.s) },
+                    )),
+                Variant("l", MathItem.L::class.java, obj(
+                        listOf(
+                        Field("t", { tag("l") }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        Field("w", { Int32 }, optional = false, nullable = false),
+                        Field("th", { Int32 }, optional = false, nullable = false),
+                        Field("dash", { Bool }, optional = false, nullable = false),
+                        ),
+                        { a -> MathItem.L(a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Boolean) },
+                        { v -> arrayOf("l", v.x, v.y, v.w, v.th, v.dash) },
+                    )),
+                Variant("r", MathItem.R::class.java, obj(
+                        listOf(
+                        Field("t", { tag("r") }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        Field("w", { Int32 }, optional = false, nullable = false),
+                        Field("h", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathItem.R(a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int) },
+                        { v -> arrayOf("r", v.x, v.y, v.w, v.h) },
+                    )),
+                Variant("p", MathItem.P::class.java, obj(
+                        listOf(
+                        Field("t", { tag("p") }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        Field("fill", { Bool }, optional = false, nullable = false),
+                        Field("d", { arr(MathPath.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MathItem.P(a[1] as Int, a[2] as Int, a[3] as Boolean, a[4] as List<MathPath>) },
+                        { v -> arrayOf("p", v.x, v.y, v.fill, v.d) },
+                    )),
+                ),
+            )
+    }
+}
+
+sealed interface MathPath {
+    /** 判别格（`t`）那个词。 */
+    val t: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class M(
+        val x: Int,
+        val y: Int,
+    ) : MathPath, Ordered {
+        override val t: String get() = "m"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class L(
+        val x: Int,
+        val y: Int,
+    ) : MathPath, Ordered {
+        override val t: String get() = "l"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class C(
+        val x1: Int,
+        val y1: Int,
+        val x2: Int,
+        val y2: Int,
+        val x: Int,
+        val y: Int,
+    ) : MathPath, Ordered {
+        override val t: String get() = "c"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Q(
+        val x1: Int,
+        val y1: Int,
+        val x: Int,
+        val y: Int,
+    ) : MathPath, Ordered {
+        override val t: String get() = "q"
+        override var wireOrder: IntArray? = null
+    }
+    data object Z : MathPath {
+        override val t: String get() = "z"
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<MathPath> =
+            tagged<MathPath>(
+                "t",
+                listOf(
+                Variant("m", MathPath.M::class.java, obj(
+                        listOf(
+                        Field("t", { tag("m") }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathPath.M(a[1] as Int, a[2] as Int) },
+                        { v -> arrayOf("m", v.x, v.y) },
+                    )),
+                Variant("l", MathPath.L::class.java, obj(
+                        listOf(
+                        Field("t", { tag("l") }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathPath.L(a[1] as Int, a[2] as Int) },
+                        { v -> arrayOf("l", v.x, v.y) },
+                    )),
+                Variant("c", MathPath.C::class.java, obj(
+                        listOf(
+                        Field("t", { tag("c") }, optional = false, nullable = false),
+                        Field("x1", { Int32 }, optional = false, nullable = false),
+                        Field("y1", { Int32 }, optional = false, nullable = false),
+                        Field("x2", { Int32 }, optional = false, nullable = false),
+                        Field("y2", { Int32 }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathPath.C(a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int, a[6] as Int) },
+                        { v -> arrayOf("c", v.x1, v.y1, v.x2, v.y2, v.x, v.y) },
+                    )),
+                Variant("q", MathPath.Q::class.java, obj(
+                        listOf(
+                        Field("t", { tag("q") }, optional = false, nullable = false),
+                        Field("x1", { Int32 }, optional = false, nullable = false),
+                        Field("y1", { Int32 }, optional = false, nullable = false),
+                        Field("x", { Int32 }, optional = false, nullable = false),
+                        Field("y", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> MathPath.Q(a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int) },
+                        { v -> arrayOf("q", v.x1, v.y1, v.x, v.y) },
+                    )),
+                Variant("z", MathPath.Z::class.java, obj(
+                        listOf(
+                        Field("t", { tag("z") }, optional = false, nullable = false),
+                        ),
+                        { MathPath.Z },
+                        { arrayOf("z") },
+                    )),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class McpApplied(
     val path: String,
     val written: Boolean,
@@ -14291,6 +14556,7 @@ sealed interface MdBlock {
     @Suppress("UNCHECKED_CAST")
     data class Math(
         val tex: String,
+        val m: MathBox?,
     ) : MdBlock, Ordered {
         override val t: String get() = "math"
         override var wireOrder: IntArray? = null
@@ -14375,9 +14641,10 @@ sealed interface MdBlock {
                         listOf(
                         Field("t", { tag("math") }, optional = false, nullable = false),
                         Field("tex", { Str }, optional = false, nullable = false),
+                        Field("m", { opt(MathBox.ADAPTER) }, optional = false, nullable = true),
                         ),
-                        { a -> MdBlock.Math(a[1] as String) },
-                        { v -> arrayOf("math", v.tex) },
+                        { a -> MdBlock.Math(a[1] as String, a[2] as MathBox?) },
+                        { v -> arrayOf("math", v.tex, v.m) },
                     )),
                 Variant("list", MdBlock.List::class.java, obj(
                         listOf(

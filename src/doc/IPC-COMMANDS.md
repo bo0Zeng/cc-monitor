@@ -4826,10 +4826,14 @@ type Doc = { blocks: Array<MdBlock>,
  */
 segs: Array<number>, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
 type MdAs = "prose" | "tool_result";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdDocReq = { text: string, as: MdAs, 
 /**
  * 原文里提到的格（pb 给的 UTF-16 起止，计划格的正文带着）：那几段解成引用节点，标题留空、由界面照编号写。只认 `prose`。
@@ -6075,7 +6079,7 @@ tail?: boolean | null,
  */
 before?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6196,8 +6200,12 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
@@ -6543,7 +6551,7 @@ from?: number | null,
  */
 until?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -6664,8 +6672,12 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
@@ -7043,7 +7055,7 @@ offset?: number | null,
  */
 until?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -7164,8 +7176,12 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
@@ -7488,7 +7504,7 @@ until?: number | null,
  */
 seq?: number | null, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -7609,8 +7625,12 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
@@ -9578,7 +9598,7 @@ n: number,
  */
 held?: Held, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -9699,8 +9719,12 @@ excerpt: string,
  * 并了几条（适配层每行给 1）。
  */
 count: number, });
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
@@ -17063,9 +17087,13 @@ type Doc = { blocks: Array<MdBlock>,
  */
 segs: Array<number>, };
 type Inl = string | InlNode;
-type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type InlNode = { "t": "b", k: Array<Inl>, } | { "t": "i", k: Array<Inl>, } | { "t": "del", k: Array<Inl>, } | { "t": "c", x: string, } | { "t": "m", tex: string, m: MathBox | null, } | { "t": "a", href: string, k: Array<Inl>, } | { "t": "img", src: string, alt: string, } | { "t": "br" } | { "t": "fn", n: number, } | { "t": "ref", x: string, ids: Array<string>, label: string, };
+type MathBox = { w: number, h: number, d: number, items: Array<MathItem>, };
+type MathFont = "ams" | "caligraphic_regular" | "fraktur_regular" | "fraktur_bold" | "main_regular" | "main_bold" | "main_italic" | "main_bold_italic" | "math_italic" | "math_bold_italic" | "sans_serif_regular" | "sans_serif_bold" | "sans_serif_italic" | "script_regular" | "size1" | "size2" | "size3" | "size4" | "typewriter" | "sys";
+type MathItem = { "t": "g", f: MathFont, u: number, x: number, y: number, s: number, } | { "t": "l", x: number, y: number, w: number, th: number, dash: boolean, } | { "t": "r", x: number, y: number, w: number, h: number, } | { "t": "p", x: number, y: number, fill: boolean, d: Array<MathPath>, };
+type MathPath = { "t": "m", x: number, y: number, } | { "t": "l", x: number, y: number, } | { "t": "c", x1: number, y1: number, x2: number, y2: number, x: number, y: number, } | { "t": "q", x1: number, y1: number, x: number, y: number, } | { "t": "z" };
 type MdAlign = "none" | "left" | "center" | "right";
-type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
+type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
 type PlanMsgRef = { start: number, end: number, ids: Array<string>, label: string, };
