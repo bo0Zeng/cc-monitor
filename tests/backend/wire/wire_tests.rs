@@ -880,9 +880,14 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     let off: Vec<String> = (0..40_000)
         .map(|i| format!("{i:08}-0000-4000-8000-000000000000"))
         .collect();
-    let frames = Frame::branch_pages("s", "/p/s.jsonl", &off, 0);
+    let runs: Vec<std::ops::Range<usize>> = (0..off.len())
+        .step_by(7)
+        .map(|s| s..(s + 7).min(off.len()))
+        .collect();
+    let frames = Frame::branch_pages("s", "/p/s.jsonl", &off, &runs, 0);
     assert!(frames.len() > 1, "要分好几帧：{}", frames.len());
     let mut all = Vec::new();
+    let mut got_runs = Vec::new();
     for f in &frames {
         let line = to_line(f).unwrap();
         assert!(
@@ -890,10 +895,26 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
             "一帧 {} 字节",
             line.len()
         );
-        let Frame::SessionBranch(crate::wire::SessionBranch { at, off, sum, .. }) = f else {
+        let Frame::SessionBranch(crate::wire::SessionBranch {
+            at,
+            off,
+            runs: rs,
+            sum,
+            ..
+        }) = f
+        else {
             panic!()
         };
         assert_eq!(*at as usize, all.len());
+        // 这一帧的段：段首都落在这一帧那几条里。
+        for r in rs {
+            assert!(
+                (*at..*at + off.len() as u64).contains(&r.at),
+                "段首 {} 不在这一帧里",
+                r.at
+            );
+            got_runs.push(r.at as usize..(r.at + r.n) as usize);
+        }
         all.extend(off.iter().cloned());
         // read8c：每帧的摘要 ＝ 到它末尾为止那一截的摘要（客户端交回的就是它）。
         assert_eq!(
@@ -903,7 +924,8 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
         );
     }
     assert_eq!(all, off);
-    let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], 8);
+    assert_eq!(got_runs, runs, "各帧的段拼起来不是整份的段");
+    let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], &[], 8);
     assert!(
         matches!(&tail[..], [Frame::SessionBranch(crate::wire::SessionBranch { at: 8, off: o, sum, .. })] if o.len() == 2 && *sum == crate::wire::branch_sum(&off[..10]))
     );
@@ -917,9 +939,56 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
                 .wrapping_mul(0x0100_0000_01b3)
         )
     );
-    let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], 3);
+    let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], &[], 3);
     assert!(
         matches!(&none[..], [Frame::SessionBranch(crate::wire::SessionBranch { at: 3, off, .. })] if off.is_empty())
+    );
+}
+
+/// 发变了的那一截时 `at` 挪到段首：第 `at - 1` 条所在那一段可能接上了新来的（条数变了）⇒ 整段重发，起在它之前的段不动。
+/// 每段带写好的框头那一句（`×n`）。
+#[test]
+fn a_branch_delta_starts_at_the_head_of_the_run_it_cuts_into() {
+    let off: Vec<String> = (0..10).map(|i| format!("id{i}")).collect();
+    let runs = [0..4, 4..10];
+    let delta = Frame::branch_pages(
+        "s",
+        "/p/s.jsonl",
+        &off,
+        &runs,
+        crate::wire::run_head(&runs, 7),
+    );
+    let [Frame::SessionBranch(b)] = &delta[..] else {
+        panic!("一帧：{delta:?}")
+    };
+    assert_eq!(b.at, 4, "没挪到段首");
+    assert_eq!(b.off, off[4..]);
+    assert_eq!(
+        b.runs,
+        [crate::wire::BranchRun {
+            at: 4,
+            n: 6,
+            said: crate::common::cells::Words(copy_core::copy_text(
+                "branchFold.wrapRun.summary",
+                &[("n", "6")]
+            )),
+        }]
+    );
+    assert_eq!(b.sum, crate::wire::branch_sum(&off));
+    // 「前 4 条照旧」：第 3 条那一段可能接上了第 4 条起新来的（两段之间的边界在不在前缀里说不准）⇒ 也挪回它的段首。
+    assert_eq!(crate::wire::run_head(&runs, 4), 0);
+    assert_eq!(crate::wire::run_head(&runs, 0), 0);
+    // 清单缩成前缀（尾上那几条回到主线）⇒ 最后那一段条数变了，也挪到它的段首整段重发。
+    let short = [0..4, 4..6];
+    let shrunk = Frame::branch_pages(
+        "s",
+        "/p/s.jsonl",
+        &off[..6],
+        &short,
+        crate::wire::run_head(&short, 6),
+    );
+    assert!(
+        matches!(&shrunk[..], [Frame::SessionBranch(b)] if b.at == 4 && b.off.len() == 2 && b.runs.len() == 1 && b.runs[0].n == 2)
     );
 }
 

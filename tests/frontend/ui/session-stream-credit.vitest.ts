@@ -31,7 +31,7 @@ const ONE: { [K in Kind]: unknown } = {
   listed: { origin: "<local>", all: true },
   snapshot_inflight: { count: 0 },
   runs: { sid: "s", runs: [], ended: [] },
-  branch: { sid: "s", off: [] },
+  branch: { sid: "s", off: [], runs: [] },
   watch: { sid: "s", path: "/p/s.jsonl", seq: 0 },
 };
 const FRAMES = Object.entries(ONE).map(([k, v]) => ({ [k]: v }));

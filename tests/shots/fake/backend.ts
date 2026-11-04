@@ -117,6 +117,12 @@ export const REAL_OPS = new Set([
   "machine-read",
   // 等起好的会话报到（起新会话那一下回包里的 `arrival` 原样交回）：真后端认报到、没见到就抓那个 tmux 会话那一屏写那一句。
   "session-arrive",
+  // 命令面板里一台机器的那几条（打机器名之后）：真后端读台架盘上的机器表答。
+  "machine-menu",
+  // 网格总览那一份（各台的会话卡 · 后台任务）：本机后端问各台、合一份。
+  "monitor-board",
+  // 一批会话跨几台（批量结束 · 隐藏 · 固定）：本机那一组同进程做，别台经常驻问它自己那一组；`hopDown` 照这一条认那一跳断开。
+  "sessions-batch",
 ]);
 
 /**
@@ -249,6 +255,16 @@ export class FakeBackend {
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
+  }
+
+  /** 壳的 `front_missed`：无头壳写的那一张原样交回；壳没答成 ⇒ 抛壳交的那一形。 */
+  private async face(args: Record<string, unknown>): Promise<unknown> {
+    await this.ready;
+    const r = await fetch("/__ccm/face", { method: "POST", body: JSON.stringify({ key: this.key, machine: args.machine, miss: args.miss }) });
+    if (!r.ok) throw new Error(`/__ccm/face：${await r.text()}`);
+    const f = (await r.json()) as { ok: boolean; body?: unknown; fail?: unknown };
+    if (!f.ok) throw f.fail;
+    return f.body;
   }
 
   /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
@@ -426,6 +442,9 @@ export class FakeBackend {
       case "attach_stage_stop":
         this.stoppedTickets.add(Number(args.ticket));
         return null;
+      case "front_missed":
+        // ↗ 出口那一跳没成的那一张：交无头壳照 `face_core::front` 写（同壳那一条命令），台架不写字。
+        return this.face(args);
     }
     const own = this.world.commands[cmd];
     if (own) return own(args, this.world);

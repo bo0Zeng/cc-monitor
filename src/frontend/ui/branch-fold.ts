@@ -1,16 +1,27 @@
 /**
- * ESC 回退分支的折叠 UI：消息流容器（卡片已按记录顺序摆好）＋ 主线外清单（回退掉的那几条记录的 `id`）⇒
- * 把连续的主线外卡包进 `.branch-fold-wrap`。
+ * ESC 回退分支的折叠 UI：消息流容器（卡片已按记录顺序摆好）＋ 主线外清单与它分成的段 ⇒ 把每一段的卡包进 `.branch-fold-wrap`。
  *
- * 清单是那台后端给的成品（实时帧 `branch` 整份 · 冷读 `history-branch`），界面不判谁在主线上、只按清单排版：
- * - 段：`data-id` 在清单里的卡连成一段；不在清单里的卡与没有 `data-id` 的元素断段。
- *   清单一换可能一大段卡转进 / 转出主线，重折按段差量做，见 `rebuild`。
+ * 清单与段是那台后端给的成品（实时帧 `branch` 整份 · 冷读 `history-branch`），界面不判谁在主线上、不分段、不数数，只照段排版：
+ * - 段里那几条 ＝ `off[at..at + n]`，框头照段的 `said`，键 ＝ 段首条 id。DOM 上相邻、同一段的卡包一个框；
+ *   不在清单里的卡、没有 `data-id` 的元素、换了一段的卡断框。清单一换可能一大段卡转进 / 转出，重折按段差量做，见 `rebuild`。
  * - 折叠状态保留：wrap 的展开态记在 `foldExpanded`（key = 段首条 id）。
  * - 增量读到的、在已有清单里的那几条照样折（清单不随读法变；插卡之后 `rebuildNow` 重折一遍）。
  */
 
-import { copyText } from "./copy-table";
 import { icon } from "./kit/icon";
+import type { BranchRun } from "./generated/BranchRun";
+
+/** 一份主线外清单（整份）：那几条的 `id` ＋ 后端分好的段（`history-branch` 拼好的 · 会话流 `branch` 格同形）。 */
+export interface BranchList {
+  readonly off: readonly string[];
+  readonly runs: readonly BranchRun[];
+}
+
+/** 清单里一条属于哪一段：段首条 id（框的键）＋ 框头那一句。 */
+interface RunOf {
+  key: string;
+  said: string;
+}
 
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 const FOLD_HEADER_CLASS = "branch-fold-header";
@@ -27,11 +38,13 @@ export class BranchFolder {
   /** stream 容器（卡片直接挂在它的 children 上，可能跟 fold-wrap 混合） */
   private container: HTMLElement;
   /** 此刻的主线外清单（后端给的整份）。 */
-  private off: ReadonlySet<string> = new Set();
+  private list: BranchList = { off: [], runs: [] };
+  /** 清单里每一条 ⇒ 它在哪一段（照 `list.runs` 摊开）。 */
+  private runOf = new Map<string, RunOf>();
   /** 折叠 ID（每个 fold 的第一条 id） → 用户是否手动展开了 */
   private foldExpanded = new Map<string, boolean>();
-  /** 每个 wrap 包它时有几条（标题上那个数）—— 差量重折判「这个 wrap 还原样可用吗」用 */
-  private wrapSize = new WeakMap<Element, number>();
+  /** 每个 wrap 包它时的框头那一句与 DOM 里几张卡 —— 差量重折判「这个 wrap 还原样可用吗」用 */
+  private wrapSaid = new WeakMap<Element, string>();
   /** 帧末那一次重折排上了没有（新卡挂进来 ⇒ 帧末重折一次，一帧来多少条都只折一次）。 */
   private scheduled = false;
   private disposed = false;
@@ -42,16 +55,23 @@ export class BranchFolder {
 
   /** 此刻的主线外清单有几条（DEV 探针用）。 */
   get offCount(): number {
-    return this.off.size;
+    return this.runOf.size;
   }
 
   /**
-   * **换一份主线外清单**（整份）并当场重折。清单与上一份相同 ⇒ 什么都不动。
+   * **换一份主线外清单**（整份，带段）并当场重折。清单与段都与上一份相同 ⇒ 什么都不动。
    */
-  setOff(off: ReadonlySet<string>): void {
+  setList(list: BranchList): void {
     if (this.disposed) return;
-    if (setsEqual(off, this.off)) return;
-    this.off = new Set(off);
+    if (listsEqual(list, this.list)) return;
+    this.list = { off: [...list.off], runs: [...list.runs] };
+    this.runOf = new Map();
+    for (const r of list.runs) {
+      const key = list.off[r.at];
+      if (key === undefined) continue;
+      const of: RunOf = { key, said: r.said };
+      for (const id of list.off.slice(r.at, r.at + r.n)) this.runOf.set(id, of);
+    }
     this.rebuild();
   }
 
@@ -59,7 +79,7 @@ export class BranchFolder {
    * 新卡挂进来之后调：清单非空 ⇒ 帧末重折一次（新卡可能正落在回退掉的那一段里 / 夹在两段之间）；清单空 ⇒ 什么都不做。
    */
   cardsAdded(): void {
-    if (this.off.size === 0 || this.scheduled || this.disposed) return;
+    if (this.runOf.size === 0 || this.scheduled || this.disposed) return;
     this.scheduled = true;
     const run = (): void => {
       this.scheduled = false;
@@ -80,14 +100,15 @@ export class BranchFolder {
   rebuildNow(): void {
     if (this.disposed) return;
     // 清单空、也没有折着的段 ⇒ 无事可做（批末每个 tab 都叫一次，别白扫一遍）。
-    if (this.off.size === 0 && !this.container.querySelector(`:scope > .${FOLD_WRAP_CLASS}`)) return;
+    if (this.runOf.size === 0 && !this.container.querySelector(`:scope > .${FOLD_WRAP_CLASS}`)) return;
     this.rebuild();
   }
 
   /** Tab 销毁时调，断 GC 引用 */
   dispose(): void {
     this.disposed = true;
-    this.off = new Set();
+    this.list = { off: [], runs: [] };
+    this.runOf = new Map();
     this.foldExpanded.clear();
   }
 
@@ -97,15 +118,15 @@ export class BranchFolder {
    * 按主线外清单重折 fold 结构 —— 按段差量，不全量解开重包。
    *
    * 1. 逻辑序列：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
-   * 2. 目标段：逻辑序列里连续的、`data-id` 在清单里的卡（无 `data-id` 的元素断段）。
-   * 3. 现存 wrap 若**恰好**等于某个目标段（inner 的卡 == 段成员、同序）⇒ 原地不动（展开态、DOM 都不碰）；
-   *    其余 wrap 解开（卡搬回 wrap 所在位置）；没有现成 wrap 的目标段新包一个。
+   * 2. 目标框：逻辑序列里连续的、`data-id` 在同一段里的卡（无 `data-id` 的元素 · 不在清单里的卡 · 换了一段的卡断框）。
+   * 3. 现存 wrap 若**恰好**等于某个目标框（inner 的卡 == 框成员、同序，键与框头那一句没变）⇒ 原地不动（展开态、DOM 都不碰）；
+   *    其余 wrap 解开（卡搬回 wrap 所在位置）；没有现成 wrap 的目标框新包一个。
    *
    * DOM 写只落在归属真变了的段上；扫描是 O(顶层子节点 ＋ 折叠卡数) 次读。
    * 等价：差量结果与「平铺容器上从零折一遍」逐字相同（`tests/frontend/ui/branch-fold-batching.vitest.ts`）。
    */
   private rebuild(): void {
-    const off = this.off;
+    const runOf = this.runOf;
     // 第 1 步：逻辑序列（wrap 展开读，不搬）
     const items: Array<{ el: HTMLElement; wrap: HTMLElement | null }> = [];
     const innerCount = new Map<HTMLElement, number>();
@@ -121,17 +142,19 @@ export class BranchFolder {
       }
     }
 
-    // 第 2 步：目标段
-    const runs: Array<Array<{ el: HTMLElement; wrap: HTMLElement | null; uuid: string }>> = [];
-    let cur: (typeof runs)[number] | null = null;
+    // 第 2 步：目标框（DOM 上相邻、同一段的卡）
+    type Box = { of: RunOf; cards: Array<{ el: HTMLElement; wrap: HTMLElement | null }> };
+    const runs: Box[] = [];
+    let cur = null as Box | null;
     for (const it of items) {
       const uuid = it.el.getAttribute("data-id");
-      if (uuid && off.has(uuid)) {
-        if (!cur) {
-          cur = [];
+      const of = uuid ? runOf.get(uuid) : undefined;
+      if (of) {
+        if (cur?.of !== of) {
+          cur = { of, cards: [] };
           runs.push(cur);
         }
-        cur.push({ ...it, uuid });
+        cur.cards.push(it);
       } else {
         cur = null;
       }
@@ -141,16 +164,15 @@ export class BranchFolder {
     const kept = new Set<HTMLElement>();
     const todo: typeof runs = [];
     for (const run of runs) {
-      const w = run[0].wrap;
-      // 「恰好等于」：段成员全在 w 里、w 里没有别的卡 —— 还要 w 的键（首条 id）与包它时记下的条数都没变：
-      // 有卡插进段首（`insertNode` 插在锚点前，锚点在段里就插进段里）会让键过期；段内一增一减会让标题上的条数过期。
+      const w = run.cards[0].wrap;
+      // 「恰好等于」：框里的卡全在 w 里、w 里没有别的卡 —— 还要 w 的键（段首条 id）与框头那一句都没变（段长了 · 短了 ⇒ 那一句变了）。
       if (
         w &&
         !kept.has(w) &&
-        run.every((it) => it.wrap === w) &&
-        innerCount.get(w) === run.length &&
-        w.getAttribute("data-fold-key") === run[0].uuid &&
-        this.wrapSize.get(w) === run.length
+        run.cards.every((it) => it.wrap === w) &&
+        innerCount.get(w) === run.cards.length &&
+        w.getAttribute("data-fold-key") === run.of.key &&
+        this.wrapSaid.get(w) === run.of.said
       ) {
         kept.add(w);
       } else {
@@ -159,7 +181,7 @@ export class BranchFolder {
     }
     this.unwrapFolds([...innerCount.keys()].filter((w) => !kept.has(w)));
     for (const run of todo) {
-      this.wrapRun(run[0].el, run[run.length - 1].el, run.map((it) => it.uuid));
+      this.wrapRun(run.cards[0].el, run.cards[run.cards.length - 1].el, run.of);
     }
   }
 
@@ -195,14 +217,14 @@ export class BranchFolder {
   /**
    * 把 [start, end] 这一段连续元素包到 fold-wrap 里。
    */
-  private wrapRun(start: HTMLElement, end: HTMLElement, uuids: string[]): void {
-    const foldKey = uuids[0]; // 用第一条 uuid 当稳定 key
+  private wrapRun(start: HTMLElement, end: HTMLElement, of: RunOf): void {
+    const foldKey = of.key; // 段首条 id 当稳定 key
     const expanded = this.foldExpanded.get(foldKey) ?? false; // 默认折叠
 
     const wrap = document.createElement("div");
     wrap.className = FOLD_WRAP_CLASS;
     wrap.setAttribute("data-fold-key", foldKey);
-    this.wrapSize.set(wrap, uuids.length);
+    this.wrapSaid.set(wrap, of.said);
     if (expanded) wrap.classList.add("expanded");
 
     const header = document.createElement("div");
@@ -218,7 +240,7 @@ export class BranchFolder {
 
     const title = document.createElement("span");
     title.className = "branch-fold-title";
-    title.textContent = copyText("branchFold.wrapRun.summary", { n: uuids.length });
+    title.textContent = of.said;
     header.appendChild(title);
 
     const toggleFn = () => {
@@ -261,8 +283,8 @@ export class BranchFolder {
   }
 }
 
-function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const x of a) if (!b.has(x)) return false;
-  return true;
+function listsEqual(a: BranchList, b: BranchList): boolean {
+  if (a.off.length !== b.off.length || a.runs.length !== b.runs.length) return false;
+  if (a.off.some((id, i) => id !== b.off[i])) return false;
+  return a.runs.every((r, i) => r.at === b.runs[i].at && r.n === b.runs[i].n && r.said === b.runs[i].said);
 }

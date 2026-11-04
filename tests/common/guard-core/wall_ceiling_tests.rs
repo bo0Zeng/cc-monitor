@@ -792,7 +792,7 @@ fn brace_span(src: &str, open: usize) -> &str {
 /// （等的是圈里那个条件；圈数改成 `guard_core::wall::rounds()`，到兜底的那个数才停）。
 /// 圈里没有 `break` / `return` 的不是在等什么（固定做几遍），不算。虚拟时间里的不算。
 pub(super) fn rs_poll_hits(src: &str) -> Vec<Hit> {
-    let masked = crate::mask_all_literals(src).unwrap_or_else(|| src.to_string());
+    let masked = crate::code_only(src);
     let sleep = re!(r"\bsleep\s*\(");
     let mut v = Vec::new();
     let mut push = |at: usize| {
@@ -865,7 +865,7 @@ fn rs_enclosing_heads(masked: &str, at: usize) -> Vec<String> {
 /// 「睡一会儿再看」（后面紧跟断言、藏进辅助函数、隔几句才判，都是这一形）。轮询圈 ＝ `loop` / `while` / `for` / `wall::rounds()` 那一圈。
 /// 虚拟时间（`start_paused` / `time::pause()`）里的不算。
 pub(super) fn rs_sleep_hits(src: &str) -> Vec<Hit> {
-    let masked = crate::mask_all_literals(src).unwrap_or_else(|| src.to_string());
+    let masked = crate::code_only(src);
     let call = re!(r"\bsleep\s*\(");
     let poll = re!(r"\b(loop|while|for)\b|\brounds\(\)|\(0\.\.[\w_]+\)\.(any|all|find|find_map)\(");
     let mut v = Vec::new();

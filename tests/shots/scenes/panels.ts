@@ -737,6 +737,25 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, wayland), hostOs: "linux" },
+  frontScene("panel-front-shell-timeout", "↗ · 壳那一跳超时", "本机后端答了窗口在哪，壳那一跳到期限还没回（Win32 调用卡住）⇒ 未切换 · 期限到那一张（红），字由壳照 `face_core::front` 写", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
+    w.commands.bring_terminal_to_front = () => new Promise(() => {});
+  }),
+  frontScene("panel-front-shell-broken", "↗ · 壳那一跳坏了", "壳那一跳出错（拉前那一步自己坏了）⇒ 未切换 · 原因不明那一张（红），原话可复制；字由壳照 `face_core::front` 写", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "pwsh.exe", start: 1 }], tmux: false });
+    w.commands.bring_terminal_to_front = () =>
+      Promise.reject({ code: "crashed", said: copyText("rsShellCmd.self.crashed"), detail: `${copyText("detail.label.command")}：bring_terminal_to_front\n${copyText("detail.label.raw")}：SetForegroundWindow: Access is denied. (os error 5)` });
+  }),
   { ...frontScene("panel-front-wayland-open-here", "↗ · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 浮层收起，底部抽屉开到这个会话的「终端」页", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

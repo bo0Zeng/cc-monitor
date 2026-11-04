@@ -6,6 +6,7 @@
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
  *                      {key, diskFrom: <配方>} ⇒ 盘由伺服照配方造（`backendPool` 的 `disks`），答 `{ok, tails}`
  *   POST /__ccm/call   {key, origin, op, args, view?, leftMs?} ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
+ *   POST /__ccm/face   {key, machine, miss}                   ⇒ ↗ 出口那一跳没成的那一张（同 Tauri 命令 `front_missed`，壳照 `face_core::front` 写）：`{ok:true, body}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
  *   POST /__ccm/kept   {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口手上的 tab（同 Tauri 命令 `kept_sessions`）
@@ -644,7 +645,9 @@ export function backendPool({ repo, sandbox, disks = null }) {
         }
       }
     };
-    return { child, up, send, call };
+    /** ↗ 出口那一跳没成的那一张（同 Tauri 命令 `front_missed`）：壳照 `face_core::front` 写。 */
+    const face = (machine, miss) => ask({ t: "face", machine, miss });
+    return { child, up, send, call, face };
   }
 
   /**
@@ -810,6 +813,12 @@ export function backendPool({ repo, sandbox, disks = null }) {
     return w.sh.call(body.origin, body.op, body.args, body.view, body.leftMs);
   }
 
+  async function face(body) {
+    const w = worlds.get(body.key);
+    if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
+    return w.sh.face(String(body.machine), body.miss);
+  }
+
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */
   function tell(url, body) {
     const w = worlds.get(body.key);
@@ -888,12 +897,13 @@ export function backendPool({ repo, sandbox, disks = null }) {
       });
       return;
     }
-    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || TELL.has(req.url))) return next();
+    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/face" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
       let out = { ok: true };
       if (req.url === "/__ccm/world") out = await makeWorld(body);
       else if (req.url === "/__ccm/call") out = await call(body);
+      else if (req.url === "/__ccm/face") out = await face(body);
       else if (req.url === "/__ccm/end") {
         worlds.get(body.key)?.trace(`http /__ccm/end ${body.origin}`);
         await endAll(body);

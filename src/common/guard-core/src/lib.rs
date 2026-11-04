@@ -340,8 +340,17 @@ pub fn test_source(src: &str) -> String {
 ///
 /// ⚠ 生命周期（`&'a str` / `'static`）刻意不匹配：它们没有收尾引号。
 fn mask_char_literals(line: &str) -> String {
+    let mut out = line.as_bytes().to_vec();
+    for (start, end) in char_literal_spans(line) {
+        out[start..=end].fill(b'_');
+    }
+    String::from_utf8(out).expect("只把整字符替成 `_`，不会切碎多字节 ⇒ 仍是合法 UTF-8")
+}
+
+/// 一行里每个字符字面量的 `(开头引号, 收尾引号)` 字节下标（含两端）。生命周期没有收尾引号，不在里面。
+fn char_literal_spans(line: &str) -> Vec<(usize, usize)> {
     let b = line.as_bytes();
-    let mut out = b.to_vec();
+    let mut spans = Vec::new();
     let mut i = 0usize;
     while i < b.len() {
         if b[i] == b'\'' {
@@ -349,16 +358,16 @@ fn mask_char_literals(line: &str) -> String {
             if i + 3 < b.len() && b[i + 1] == b'\\' {
                 if let Some(k) = b[i + 3..].iter().position(|&c| c == b'\'') {
                     let end = i + 3 + k;
-                    out[i..=end].fill(b'_');
+                    spans.push((i, end));
                     i = end + 1;
                     continue;
                 }
             }
-            // `'c'`（c 可能是多字节 —— 整个字符一起替，UTF-8 才不会被切碎）。
+            // `'c'`（c 可能是多字节 —— 整个字符一起算，UTF-8 才不会被切碎）。
             if let Some(c) = line[i + 1..].chars().next() {
                 let cl = c.len_utf8();
                 if c != '\'' && c != '\\' && b.get(i + 1 + cl) == Some(&b'\'') {
-                    out[i..=i + 1 + cl].fill(b'_');
+                    spans.push((i, i + 1 + cl));
                     i = i + 2 + cl;
                     continue;
                 }
@@ -366,7 +375,7 @@ fn mask_char_literals(line: &str) -> String {
         }
         i += 1;
     }
-    String::from_utf8(out).expect("只把整字符替成 `_`，不会切碎多字节 ⇒ 仍是合法 UTF-8")
+    spans
 }
 
 /// **剥掉行尾注释**（`//` 到行末），字符串字面量安全。
@@ -576,7 +585,7 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// ② 看门判据把「块」也当一个单位去量（它两个单位各判一遍）。
 /// ⚠ 它量的是**那两个单位**，不是「所有单位」。
 fn try_strip_block_comments(src: &str) -> Option<String> {
-    scan_and_blank(src, false)
+    blank_bytes(src, |c| c == Cls::Block)
 }
 
 /// 把**块注释 ＋ 行注释 ＋ 字符串/原始串/字节串的内容 ＋ 字符字面量**一律抹成**等长空格**。
@@ -605,7 +614,7 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
 /// ⚠ **它不是「括号配平」**：收尾判据仍然逐字是「列 0 的右大括号」
 /// （`production_source` 头注里那条边界），变的只是「在哪份文本上找它」。
 fn mask_all_literals(src: &str) -> Option<String> {
-    scan_and_blank(src, true)
+    blank_bytes(src, |c| c != Cls::Code)
 }
 
 /// 只留代码：注释 · 串 · 字符字面量逐字节抹成空格（[`mask_all_literals`]），行数与偏移不变。
@@ -615,65 +624,207 @@ pub fn code_only(src: &str) -> String {
     mask_all_literals(src).unwrap_or_else(|| src.to_string())
 }
 
-/// [`try_strip_block_comments`] 与 [`mask_all_literals`] **共用的那一台状态机**
-/// （E3：一个事实恰好一个权威源 —— 两份近似的词法器是这一族最贵的病）。
+/// 按语言认的那一形：注释 · 串的内容 · 字符字面量的内容 · TS 正则字面量的内容抹成空格，
+/// **引号（连原始串的 `r#"` / `"#`）与正则的两道 `/` 留着**，换行原样。
+/// **逐字符等长**（一个字符换一个空格）⇒ 与原文逐行、逐列一一对应：按列回原文取字面量的抽取器靠这一点。
+/// 收不了口照样往下抹到文件尾（不回原样）：认的是「哪儿是字面量」，原样回来会把串里的引号当代码。
+pub fn code_only_quoted(src: &str, lang: Lang) -> String {
+    keep_chars(src, lang, |c| matches!(c, Cls::Code | Cls::Quote))
+}
+
+/// 只抹注释（连 TS 正则字面量与 Rust 字符字面量的内容），串原样留着：引用常常就写在串里（`include_str!("…")`）。
+/// 逐字符等长；收不了口照样往下抹。
+pub fn code_and_strings(src: &str, lang: Lang) -> String {
+    keep_chars(src, lang, |c| {
+        matches!(c, Cls::Code | Cls::Quote | Cls::Lit)
+    })
+}
+
+/// 词法按哪门语言认。[`code_only`] · [`strip_block_comments`] 这些不带语言的入口一律按 Rust。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Lang {
+    Rust,
+    /// TS / JS：`'…'` 与 `` `…` `` 也是串（模板里的 `${}` 一并算串）；块注释不嵌套；没有原始串与字符字面量；认正则字面量。
+    Ts,
+}
+
+/// 词法给每个字节分的类（换行算 `Code`）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Cls {
+    Code,
+    /// 块注释（连 `/*` `*/`）。
+    Block,
+    /// 行注释（`//` 到行尾）。
+    Line,
+    /// 串的定界符：引号 · 原始串的 `r#"` / `"#` · 字节串的 `b"` · 字符字面量的引号 · 正则的两道 `/`。
+    Quote,
+    /// 串的内容（连转义）。
+    Lit,
+    /// Rust 字符字面量的内容。
+    Char,
+    /// TS 正则字面量的内容。
+    Pattern,
+}
+
+/// 词法的结果：每个字节一类；`closed == false` ⇒ 扫完还停在注释或串里（词法与这份文本对不上）。
+struct Lexed {
+    cls: Vec<Cls>,
+    closed: bool,
+}
+
+/// 逐字节：`blank` 认的类抹成空格，别的原样。收不了口 · 抹出来不是合法 UTF-8 ⇒ `None`。
+fn blank_bytes(src: &str, blank: impl Fn(Cls) -> bool) -> Option<String> {
+    let lexed = lex(src, Lang::Rust);
+    if !lexed.closed {
+        return None;
+    }
+    let out: Vec<u8> = src
+        .bytes()
+        .zip(&lexed.cls)
+        .map(|(b, &c)| if blank(c) { b' ' } else { b })
+        .collect();
+    String::from_utf8(out).ok()
+}
+
+/// 逐字符：`keep` 认的类原样，别的换成一个空格（换行留着）。一个字符的类看它的头一个字节。
+fn keep_chars(src: &str, lang: Lang, keep: impl Fn(Cls) -> bool) -> String {
+    let lexed = lex(src, lang);
+    src.char_indices()
+        .map(|(i, c)| {
+            if c == '\n' || keep(lexed.cls[i]) {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect()
+}
+
+/// TS：一道 `/` 开不开正则，看它前面（跳过空格与制表符；注释 · 串的内容算空白，引号算字符）最后那个字符：
+/// 行首 · 运算符 · 开括号 ⇒ 开；一个词 ⇒ 只有 `return` · `typeof` · `case` · `do` · `else` 开。
+/// 不认正则的话，正则里的一个引号或反引号会被当成串的开头，把后面整份文件吃掉（`/`|⇒/` 这一形现打就有）。
+#[derive(Default)]
+struct RegexStart {
+    last: Option<char>,
+    word: String,
+    gap: bool,
+}
+
+impl RegexStart {
+    fn newline(&mut self) {
+        self.last = Some('\n');
+        self.word.clear();
+        self.gap = false;
+    }
+    fn gap(&mut self) {
+        self.gap = true;
+    }
+    fn sig(&mut self, c: char) {
+        let ident = |c: char| c.is_alphanumeric() || c == '_';
+        if ident(c) {
+            if self.gap || !self.last.is_some_and(ident) {
+                self.word.clear();
+            }
+            self.word.push(c);
+        } else {
+            self.word.clear();
+        }
+        self.last = Some(c);
+        self.gap = false;
+    }
+    fn can_start(&self) -> bool {
+        match self.last {
+            None | Some('\n') => true,
+            Some(c) if "(,=:[!&|?{};+-*%<>~^".contains(c) => true,
+            Some(c) if c.is_alphanumeric() || c == '_' => {
+                matches!(
+                    self.word.as_str(),
+                    "return" | "typeof" | "case" | "do" | "else"
+                )
+            }
+            _ => false,
+        }
+    }
+}
+
+/// TS：从 `sb[i]`（一道 `/`）起找同一行里收尾的那道 `/`（不在 `[…]` 里、没被转义）。
+fn regex_close(sb: &[u8], i: usize) -> Option<usize> {
+    let mut k = i + 1;
+    let mut in_class = false;
+    while k < sb.len() {
+        match sb[k] {
+            b'\\' => {
+                k += 2;
+                continue;
+            }
+            b'[' => in_class = true,
+            b']' => in_class = false,
+            b'/' if !in_class => return Some(k),
+            _ => {}
+        }
+        k += 1;
+    }
+    None
+}
+
+/// 本仓判据**唯一的那一台词法器**（E3：一个事实恰好一个权威源 —— 两份近似的词法器是这一族最贵的病）：
+/// 单趟从左往右扫，给每个字节分一类（[`Cls`]），出口只在「哪几类抹掉 · 按字节还是按字符等长」上不同：
+/// [`try_strip_block_comments`]（只抹块注释）· [`mask_all_literals`] / [`code_only`]（只留代码）按字节；
+/// [`code_only_quoted`]（引号留着）· [`code_and_strings`]（只抹注释）按字符、按语言。
 ///
-/// - `blank_all == false` ⇒ 只抹块注释。
-/// - `blank_all == true`  ⇒ 连行注释、串内容（含定界符）、字符字面量一起抹。
-///
-/// 两档都**等长**（逐字节换成空格），行数与字节偏移一律不动。
-fn scan_and_blank(src: &str, blank_all: bool) -> Option<String> {
-    let mut out: Vec<u8> = Vec::with_capacity(src.len());
+/// 状态 = 码 / 串（记着是哪种引号）/ 原始串（记着井号个数）/ 行注释 / 块注释（Rust 带深度）。
+/// Rust：字符字面量先过 [`mask_char_literals`]（只在一行从「码」状态开头时掩：串里 / 注释里的 `'` 是普通字符，
+/// 掩了反而可能把一个真的收尾引号盖住）；`'{'` / `'}'` 因此也算字面量，不污染按花括号计数的下游
+/// （本仓真有：`.trim_start_matches('{')`）。
+/// TS：`'` `` ` `` 也开串；块注释不嵌套；一道 `/` 照 [`RegexStart`] 判开不开正则，开了吃到同一行收尾的那道 `/`。
+fn lex(src: &str, lang: Lang) -> Lexed {
+    let rust = lang == Lang::Rust;
+    let mut cls: Vec<Cls> = Vec::with_capacity(src.len());
     let mut depth = 0usize;
-    let mut in_str = false;
+    let mut quote: Option<u8> = None;
     let mut raw_hashes: Option<usize> = None;
+    let mut re = RegexStart::default();
 
     for (li, raw) in src.split('\n').enumerate() {
         if li > 0 {
-            out.push(b'\n');
+            cls.push(Cls::Code);
+            re.newline();
         }
-        // 掩码只在「码」这个状态下做：串里 / 注释里的 `'` 是普通字符，
-        // 掩了反而可能把一个真的收尾引号盖住。
+        let rb = raw.as_bytes();
+        // 分在**原行**的下标上（掩码是等长的 ⇒ 下标一一对应）。
+        let mut line = vec![Cls::Code; rb.len()];
         let masked;
-        let scan: &str = if depth == 0 && !in_str && raw_hashes.is_none() {
+        let scan: &str = if rust && depth == 0 && quote.is_none() && raw_hashes.is_none() {
             masked = mask_char_literals(raw);
+            for (start, end) in char_literal_spans(raw) {
+                line[start..=end].fill(Cls::Char);
+                line[start] = Cls::Quote;
+                line[end] = Cls::Quote;
+            }
             &masked
         } else {
             raw
         };
         let sb = scan.as_bytes();
-        // 抹在**原行**上（掩码是等长的 ⇒ 下标一一对应）。
-        let mut line: Vec<u8> = raw.as_bytes().to_vec();
-        // `blank_all`：字符字面量也抹掉 —— `'{'` / `'}'` 会污染任何**按花括号计数**的下游
-        // （本仓真有：`.trim_start_matches('{')`）。`mask_char_literals` 已经在 `scan` 上
-        // 把它们换成了 `_`，照着位置抹到 `line` 上就行，不用第二台词法器。
-        if blank_all {
-            for (k, (&m, &r)) in sb.iter().zip(raw.as_bytes()).enumerate() {
-                if m == b'_' && r != b'_' {
-                    line[k] = b' ';
-                }
-            }
-        }
         let mut i = 0usize;
         while i < sb.len() {
             if depth > 0 {
-                if sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
+                if rust && sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
                     depth += 1;
-                    line[i] = b' ';
-                    line[i + 1] = b' ';
+                    line[i..i + 2].fill(Cls::Block);
                     i += 2;
                     continue;
                 }
                 if sb[i] == b'*' && sb.get(i + 1) == Some(&b'/') {
                     depth -= 1;
-                    line[i] = b' ';
-                    line[i + 1] = b' ';
+                    line[i..i + 2].fill(Cls::Block);
                     i += 2;
                     continue;
                 }
-                // 逐**字节**抹成空格：多字节字符整段变空格，仍是合法 UTF-8，
+                // 逐**字节**记：多字节字符整段同一类 ⇒ 按字节抹出来仍是合法 UTF-8，
                 // 而且长度不变 ⇒ `find_pinned` 的字节偏移、`pin_line` 的行号都不动。
-                line[i] = b' ';
+                line[i] = Cls::Block;
+                re.gap();
                 i += 1;
                 continue;
             }
@@ -683,83 +834,94 @@ fn scan_and_blank(src: &str, blank_all: bool) -> Option<String> {
                     && sb[i + 1..i + 1 + h].iter().all(|&c| c == b'#')
                 {
                     raw_hashes = None;
-                    if blank_all {
-                        line[i..i + 1 + h].fill(b' ');
-                    }
+                    line[i..i + 1 + h].fill(Cls::Quote);
                     i += 1 + h;
                     continue;
                 }
-                if blank_all {
-                    line[i] = b' ';
-                }
+                line[i] = Cls::Lit;
                 i += 1;
                 continue;
             }
-            if in_str {
+            if let Some(q) = quote {
                 if sb[i] == b'\\' {
-                    if blank_all {
-                        line[i] = b' ';
-                        if i + 1 < line.len() {
-                            line[i + 1] = b' ';
-                        }
+                    line[i] = Cls::Lit;
+                    if i + 1 < line.len() {
+                        line[i + 1] = Cls::Lit;
                     }
+                    re.gap();
                     i += 2;
                     continue;
                 }
-                if sb[i] == b'"' {
-                    in_str = false;
-                }
-                if blank_all {
-                    line[i] = b' ';
+                if sb[i] == q {
+                    quote = None;
+                    line[i] = Cls::Quote;
+                    re.sig(char::from(q));
+                } else {
+                    line[i] = Cls::Lit;
+                    re.gap();
                 }
                 i += 1;
                 continue;
             }
             // ── 以下是「码」状态 ──
-            if let Some((h, consumed)) = raw_string_open(sb, i) {
-                // `b"…"`（无井号且不是 `br`）走普通串那条路：它认反斜杠转义。
-                if h == 0 && sb[i] == b'b' {
-                    in_str = true;
-                } else {
-                    raw_hashes = Some(h);
-                }
-                if blank_all {
+            if rust {
+                if let Some((h, consumed)) = raw_string_open(sb, i) {
+                    // `b"…"`（无井号且不是 `br`）走普通串那条路：它认反斜杠转义。
+                    if h == 0 && sb[i] == b'b' {
+                        quote = Some(b'"');
+                    } else {
+                        raw_hashes = Some(h);
+                    }
                     let stop = (i + consumed).min(line.len());
-                    line[i..stop].fill(b' ');
+                    line[i..stop].fill(Cls::Quote);
+                    i += consumed;
+                    continue;
                 }
-                i += consumed;
-                continue;
             }
-            if sb[i] == b'"' {
-                in_str = true;
-                if blank_all {
-                    line[i] = b' ';
-                }
+            if sb[i] == b'"' || (!rust && (sb[i] == b'\'' || sb[i] == b'`')) {
+                quote = Some(sb[i]);
+                line[i] = Cls::Quote;
+                re.sig(char::from(sb[i]));
                 i += 1;
                 continue;
             }
             if sb[i] == b'/' && sb.get(i + 1) == Some(&b'/') {
                 // 行注释：本行剩下的一律不看（`//` 那一半归 `strip_trailing_comments`）。
-                if blank_all {
-                    line[i..].fill(b' ');
-                }
+                line[i..].fill(Cls::Line);
                 break;
             }
             if sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
                 depth += 1;
-                line[i] = b' ';
-                line[i + 1] = b' ';
+                line[i..i + 2].fill(Cls::Block);
+                re.gap();
                 i += 2;
                 continue;
             }
+            if !rust && sb[i] == b'/' && re.can_start() {
+                if let Some(end) = regex_close(sb, i) {
+                    line[i] = Cls::Quote;
+                    line[i + 1..end].fill(Cls::Pattern);
+                    line[end] = Cls::Quote;
+                    re.sig('/');
+                    i = end + 1;
+                    continue;
+                }
+            }
+            if !rust && line[i] == Cls::Code && rb[i] & 0xC0 != 0x80 {
+                match raw[i..].chars().next() {
+                    Some(' ' | '\t') => re.gap(),
+                    Some(c) => re.sig(c),
+                    None => {}
+                }
+            }
             i += 1;
         }
-        out.extend_from_slice(&line);
+        cls.extend_from_slice(&line);
     }
-    if depth != 0 || in_str || raw_hashes.is_some() {
-        return None;
+    Lexed {
+        cls,
+        closed: depth == 0 && quote.is_none() && raw_hashes.is_none(),
     }
-    String::from_utf8(out).ok()
 }
 
 /// **剥掉块注释**（内容抹成等长空格，行数不变）。剥不动时**原样返回**。
@@ -1109,7 +1271,7 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
 /// - **接得住**：区间收在字符串字面量 / 原始串 / 块注释里的那一形；
 ///   收在**无花括号体** `mod x;` 之后那一形（区间会多吞一个 `}`）。
 /// - **接不住**：① 收尾挪晚、吞掉的恰好是配平的整块（上一段已写）；
-///   ② 它与剥法**共用同一台词法状态机**（[`scan_and_blank`]）——
+///   ② 它与剥法**共用同一台词法状态机**（[`lex`]）——
 ///   词法本身认错，两边一起错。看着词法那一档的是 [`assert_block_comment_model_holds`]
 ///   与本条的兜底分支（下面那句 panic）。
 /// - **判不了就明说**：掩码走兜底（词法收不了口）⇒ 本条**当场 panic 说「判不了」**，
@@ -1190,7 +1352,7 @@ pub fn assert_stripper_keeps(who: &str, raw: &str, anchors: &[&str]) {
 pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
     let Some(masked) = mask_all_literals(src) else {
         panic!(
-            "{who}：词法掩码对这份文本收不了口（`scan_and_blank` 走了兜底）\n\
+            "{who}：词法掩码对这份文本收不了口（`lex` 走了兜底）\n\
              ⇒ **本条对这一份判不了**，不许把它读成通过。同一档还会让\n\
              `assert_block_comment_model_holds` 出声 —— 先去看那一条说了什么。"
         )

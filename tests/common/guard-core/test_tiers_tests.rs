@@ -565,12 +565,9 @@ fn ts_tests_are_only_the_vitest_suffix() {
 }
 
 // ───────────────────────────── 词法：剥注释 ＋ 抹字符串 ─────────────────────────────
+// 词法器只 guard-core 一台（`crate::code_only_quoted` · `crate::code_and_strings`），这里只认语言。
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Lang {
-    Rust,
-    Ts,
-}
+use crate::Lang;
 
 fn lang_of(rel: &str) -> Lang {
     if rel.ends_with(".rs") {
@@ -582,185 +579,6 @@ fn lang_of(rel: &str) -> Lang {
 
 fn is_ident(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
-}
-
-/// 剥注释、把字符串字面量的**内容**抹成空格（引号留着），**逐字符等长**、换行原样保留
-/// ⇒ 输出与原文逐行、逐字符位置一一对应（抽取器靠这一点回原文取字面量）。
-///
-/// 认得：`//` · `/* */`（Rust 可嵌套）· `"…"`（带转义）· Rust 的 `r#"…"#` / `br"…"` 与字符字面量
-/// （`'a` 这种生命周期**不是**字符字面量）· TS 的 `'…'` 与 `` `…` ``（模板里的 `${}` 一并抹掉）。
-/// 不认：TS 的正则字面量（当代码留着）。
-fn code_only(text: &str, lang: Lang) -> String {
-    let b: Vec<char> = text.chars().collect();
-    let n = b.len();
-    let mut out = String::with_capacity(text.len());
-    let blank = |c: char| if c == '\n' { '\n' } else { ' ' };
-    let mut i = 0usize;
-    while i < n {
-        let c = b[i];
-        let next = if i + 1 < n { b[i + 1] } else { '\0' };
-        if c == '/' && next == '/' {
-            while i < n && b[i] != '\n' {
-                out.push(' ');
-                i += 1;
-            }
-            continue;
-        }
-        if c == '/' && next == '*' {
-            let mut depth = 0usize;
-            while i < n {
-                if b[i] == '/' && i + 1 < n && b[i + 1] == '*' && (lang == Lang::Rust || depth == 0)
-                {
-                    depth += 1;
-                    out.push_str("  ");
-                    i += 2;
-                    continue;
-                }
-                if b[i] == '*' && i + 1 < n && b[i + 1] == '/' {
-                    depth -= 1;
-                    out.push_str("  ");
-                    i += 2;
-                    if depth == 0 {
-                        break;
-                    }
-                    continue;
-                }
-                out.push(blank(b[i]));
-                i += 1;
-            }
-            continue;
-        }
-        // Rust 原始串：`r"…"` / `r#"…"#` / `br#"…"#`。`r#ident`（原始标识符）不是串。
-        if lang == Lang::Rust && c == 'r' {
-            let prev = if i > 0 { b[i - 1] } else { ' ' };
-            let prev2 = if i > 1 { b[i - 2] } else { ' ' };
-            let starts = !is_ident(prev) || (prev == 'b' && !is_ident(prev2));
-            if starts {
-                let mut j = i + 1;
-                while j < n && b[j] == '#' {
-                    j += 1;
-                }
-                let hashes = j - (i + 1);
-                if j < n && b[j] == '"' {
-                    for k in i..=j {
-                        out.push(b[k]);
-                    }
-                    let mut k = j + 1;
-                    loop {
-                        if k >= n {
-                            break;
-                        }
-                        if b[k] == '"' && (k + 1..k + 1 + hashes).all(|h| h < n && b[h] == '#') {
-                            break;
-                        }
-                        out.push(blank(b[k]));
-                        k += 1;
-                    }
-                    for h in k..(k + 1 + hashes).min(n) {
-                        out.push(b[h]);
-                    }
-                    i = (k + 1 + hashes).min(n);
-                    continue;
-                }
-            }
-        }
-        // TS 的正则字面量：`/` 前面（跳过空白）是运算符 / 开括号 / 行首 / `return` ⇒ 它开一条正则，
-        // 一直吃到同一行里不在 `[…]` 里、没被转义的那个 `/`。不认的话，正则里的一个引号或反引号
-        // 会被当成串的开头，把后面整份文件吃掉（`/`|⇒/` 这一形现打就有）。
-        if lang == Lang::Ts && c == '/' && ts_regex_can_start(&out) {
-            let mut k = i + 1;
-            let mut in_class = false;
-            let mut closed = None;
-            while k < n && b[k] != '\n' {
-                match b[k] {
-                    '\\' => {
-                        k += 2;
-                        continue;
-                    }
-                    '[' => in_class = true,
-                    ']' => in_class = false,
-                    '/' if !in_class => {
-                        closed = Some(k);
-                        break;
-                    }
-                    _ => {}
-                }
-                k += 1;
-            }
-            if let Some(end) = closed {
-                out.push('/');
-                for _ in i + 1..end {
-                    out.push(' ');
-                }
-                out.push('/');
-                i = end + 1;
-                continue;
-            }
-        }
-        let quote = match (lang, c) {
-            (_, '"') => Some('"'),
-            (Lang::Ts, '\'') => Some('\''),
-            (Lang::Ts, '`') => Some('`'),
-            _ => None,
-        };
-        if let Some(q) = quote {
-            out.push(c);
-            let mut k = i + 1;
-            while k < n && b[k] != q {
-                if b[k] == '\\' && k + 1 < n {
-                    out.push(' ');
-                    out.push(blank(b[k + 1]));
-                    k += 2;
-                    continue;
-                }
-                out.push(blank(b[k]));
-                k += 1;
-            }
-            if k < n {
-                out.push(q);
-            }
-            i = k + 1;
-            continue;
-        }
-        if lang == Lang::Rust && c == '\'' {
-            // 字符字面量：`'\n'` / `'x'`；否则是生命周期，当代码。
-            let close = if next == '\\' {
-                (i + 2..n.min(i + 12)).find(|&k| b[k] == '\'')
-            } else if i + 2 < n && b[i + 2] == '\'' {
-                Some(i + 2)
-            } else {
-                None
-            };
-            if let Some(end) = close {
-                out.push('\'');
-                for k in i + 1..end {
-                    out.push(blank(b[k]));
-                }
-                out.push('\'');
-                i = end + 1;
-                continue;
-            }
-        }
-        out.push(c);
-        i += 1;
-    }
-    out
-}
-
-/// TS：此处的 `/` 能不能开一条正则（看已输出部分最后一个非空白字符 / 最后一个词）。
-fn ts_regex_can_start(out: &str) -> bool {
-    let t = out.trim_end_matches([' ', '\t']);
-    match t.chars().next_back() {
-        None | Some('\n') => true,
-        Some(c) if "(,=:[!&|?{};+-*%<>~^".contains(c) => true,
-        Some(c) if is_ident(c) => {
-            let mut w: Vec<char> = t.chars().rev().take_while(|c| is_ident(*c)).collect();
-            w.reverse();
-            let word: String = w.into_iter().collect();
-            matches!(word.as_str(), "return" | "typeof" | "case" | "do" | "else")
-        }
-        _ => false,
-    }
 }
 
 /// 原文第 `line` 行、从第 `col` 个字符（一个 `"` / `'`）起的那个字面量的内容。
@@ -935,7 +753,7 @@ fn ts_has_test(code: &str) -> bool {
 /// 一份测试文件按信号判出来的层。
 fn detect(rel: &str, raw: &str) -> Tier {
     let lang = lang_of(rel);
-    let code = code_only(raw, lang);
+    let code = crate::code_only_quoted(raw, lang);
     match lang {
         Lang::Rust => {
             if !rust_has_test(&code) {
@@ -1034,7 +852,7 @@ fn mounts(root: &Path) -> BTreeMap<String, Vec<(String, String)>> {
 
 /// 一份 Rust 源码里的 `#[path = "…"]` 与紧随其后的 `mod <名>`（跳过中间的属性行）。
 fn path_mounts(raw: &str) -> Vec<(String, String)> {
-    let code = code_only(raw, Lang::Rust);
+    let code = crate::code_only_quoted(raw, Lang::Rust);
     let raw_lines: Vec<&str> = raw.lines().collect();
     let code_lines: Vec<&str> = code.lines().collect();
     let head = concat!("#[pa", "th");
@@ -1336,7 +1154,7 @@ const ROOT_FNS: &[(&str, &str)] = &[
 /// 本文件里自己定义的根函数转调 `addr::<住址>()` 的，认作那个住址；与住址同名却不转调的（`fn shell_root(`），语义是本地的 ⇒ 跳过；
 /// 一个变量名在本文件里还被绑到别的东西上 ⇒ 歧义 ⇒ 跳过（宁可少核，不许误红）。
 fn root_anchored_literals(raw: &str) -> Vec<(usize, String, String)> {
-    let code = code_only(raw, Lang::Rust);
+    let code = crate::code_only_quoted(raw, Lang::Rust);
     let raw_lines: Vec<&str> = raw.lines().collect();
     let code_lines: Vec<&str> = code.lines().collect();
     // 住址名 ⇒ 它是哪个住址。本文件自己定义的函数、函数体只有一句 `[guard_core::]addr::<住址>()` 的 ⇒ 认作那个住址；
@@ -1601,7 +1419,7 @@ fn integration_tier_never_skips_silently() {
     for f in three.iter().filter(|f| lang_of(f) == Lang::Rust) {
         let f = f.as_str();
         let Some(raw) = rust.get(f) else { continue };
-        for (name, ignored, body) in rust_test_fns(&code_only(raw, Lang::Rust)) {
+        for (name, ignored, body) in rust_test_fns(&crate::code_only_quoted(raw, Lang::Rust)) {
             if ignored {
                 continue;
             }
@@ -1715,7 +1533,7 @@ fn e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned() {
     )
     .expect("读 e2e_gate_registry_tests.rs");
     if let Err(e) = crate::find_pinned(
-        &code_only(&gate_reg, Lang::Rust),
+        &crate::code_only_quoted(&gate_reg, Lang::Rust),
         "fn every_e2e_suite_is_either_gated_or_registered_as_exempt(",
     ) {
         bad.push(format!(
@@ -1748,7 +1566,7 @@ fn reference_corpus(root: &Path) -> Vec<(String, String)> {
         let lang = lang_of(&rel);
         out.push((
             rel,
-            crate::strip_comment_lines(&code_only_keep_strings(&disk_text, lang)),
+            crate::strip_comment_lines(&crate::code_and_strings(&disk_text, lang)),
         ));
     }
     for (p, disk_text) in crate::scan_tree_excluding(&root.join(".github/workflows"), &["yml"], &[])
@@ -1763,51 +1581,20 @@ fn reference_corpus(root: &Path) -> Vec<(String, String)> {
     out
 }
 
-/// 只剥注释、**留着**字符串（引用常常就在串里：`bash "$HERE/tmux-shim.sh"`、`include_str!("…")`）。
-fn code_only_keep_strings(text: &str, lang: Lang) -> String {
-    let code = code_only(text, lang);
-    // 注释处 code_only 给的是空格、串内容也是空格 —— 用原文回填「串内容」那部分：
-    // 逐字符比，原文与 code_only 不同且 code_only 是空格的位置，若落在一对引号之间就回填原文。
-    let raw: Vec<char> = text.chars().collect();
-    let cod: Vec<char> = code.chars().collect();
-    let mut out = String::with_capacity(text.len());
-    let mut in_str: Option<char> = None;
-    for (k, &c) in cod.iter().enumerate() {
-        let r = raw.get(k).copied().unwrap_or(' ');
-        match in_str {
-            Some(q) => {
-                if c == q && r == q {
-                    in_str = None;
-                    out.push(c);
-                } else {
-                    out.push(r);
-                }
-            }
-            None => {
-                if (c == '"' || (lang == Lang::Ts && (c == '\'' || c == '`'))) && r == c {
-                    in_str = Some(c);
-                }
-                out.push(c);
-            }
-        }
-    }
-    out
-}
-
 // ───────────────────────────── T5 真机层 ─────────────────────────────
 
 /// 盘上的真机层人群：`(文件, 键)`。Rust 的键是测试函数名；TS 的键是 `skipIf(…)` 里那段条件（原样去空白）。
 fn real_machine_on_disk(root: &Path) -> BTreeSet<(String, String)> {
     let mut out = BTreeSet::new();
     for (rel, disk_text) in rust_test_files(root) {
-        for (name, ignored, _) in rust_test_fns(&code_only(&disk_text, Lang::Rust)) {
+        for (name, ignored, _) in rust_test_fns(&crate::code_only_quoted(&disk_text, Lang::Rust)) {
             if ignored {
                 out.insert((rel.clone(), name));
             }
         }
     }
     for (rel, disk_text) in ts_test_files(root) {
-        for key in ts_skip_keys(&code_only(&disk_text, Lang::Ts)) {
+        for key in ts_skip_keys(&crate::code_only_quoted(&disk_text, Lang::Ts)) {
             out.insert((rel.clone(), key));
         }
     }
@@ -1885,7 +1672,7 @@ fn real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reac
                     continue;
                 };
                 let text = if by.ends_with(".rs") || by.ends_with(".ts") {
-                    crate::strip_comment_lines(&code_only_keep_strings(&disk_text, lang_of(by)))
+                    crate::strip_comment_lines(&crate::code_and_strings(&disk_text, lang_of(by)))
                 } else {
                     crate::strip_hash_comment_lines(&disk_text)
                 };
@@ -1900,7 +1687,7 @@ fn real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reac
                         bad.push(format!("  `{f}` 算不出模块路径（挂载不是恰好一处）"));
                         continue;
                     };
-                    let inline = inline_mods_of(&code_only(
+                    let inline = inline_mods_of(&crate::code_only_quoted(
                         &std::fs::read_to_string(root.join(f)).unwrap_or_default(),
                         Lang::Rust,
                     ));
@@ -2108,9 +1895,12 @@ fn the_silent_skip_detector_can_tell_a_skip_from_a_panic() {
     let skip = format!(
         "fn t() {{\n    let Ok(h) = std::{v}\"HOME\") else {{\n        return;\n    }};\n}}\n"
     );
-    assert_eq!(silent_skips(&code_only(&skip, Lang::Rust)), vec![2]);
+    assert_eq!(
+        silent_skips(&crate::code_only_quoted(&skip, Lang::Rust)),
+        vec![2]
+    );
     let panic = format!("fn t() {{\n    let h = std::{v}\"HOME\").expect(\"要 HOME\");\n}}\n");
-    assert!(silent_skips(&code_only(&panic, Lang::Rust)).is_empty());
+    assert!(silent_skips(&crate::code_only_quoted(&panic, Lang::Rust)).is_empty());
 }
 
 /// S5：测试函数切法认得出上方 / 下方的 `#[ignore]`、`tokio` 测试，以及行内 `mod` 链。
@@ -2122,7 +1912,7 @@ fn the_test_fn_splitter_sees_ignores_on_both_sides_and_inline_mods() {
         "{t}\nfn plain() {{}}\n\n{ig} = \"x\"]\n{t}\nfn above() {{}}\n\n{t}\n{ig}]\nfn below() {{}}\n\n\
          mod inner {{\n    #[tokio::test]\n    async fn deep() {{ let x = {{ 1 }}; }}\n}}\n"
     );
-    let code = code_only(&src, Lang::Rust);
+    let code = crate::code_only_quoted(&src, Lang::Rust);
     let got: Vec<(String, bool)> = rust_test_fns(&code)
         .into_iter()
         .map(|(n, i, _)| (n, i))

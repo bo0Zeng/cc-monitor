@@ -216,6 +216,7 @@ A new session file appeared。
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `at` | number | 前几条照旧 |
 | `off` | [string] | 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止） |
+| `runs` | [BranchRun] | 段首落在这一帧那几条里的段（`BranchRun`，`at` 是整份清单里的下标；`n` 是整段，可越过这一帧的末尾） |
 | `sum` | string | 清单前 `at + off.len()` 条的摘要：客户端在 `stream-watch` 的 `branch` 里原样交回，后端照它判手上那份前缀还对不对 |
 
 ### `terminal_screen`
@@ -313,6 +314,16 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 |---|---|---|
 | `head` | Words |  |
 | `sub` | RunLine |  |
+
+#### `BranchRun`
+
+主线外清单里的**一段**（一次 Esc 回退掉的、文件里连着的那几条）：段里那几条 ＝ 清单 `off[at..at + n]`，框头照 `said` 摆。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `at` | number | 段首在整份清单里第几条（0 起） |
+| `n` | number | 段里几条 |
+| `said` | Words | 框头那一句（写好的） |
 
 #### `SessionActivity`
 
@@ -9297,6 +9308,10 @@ type Branch = {
  */
 off: Array<string>, 
 /**
+ * 段首落在这一页里的段（同 `session_branch.runs`：`at` 是整份清单里的下标，`n` 是整段、可越过页尾）。
+ */
+runs: Array<BranchRun>, 
+/**
  * 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
  */
 end: number, 
@@ -9317,6 +9332,20 @@ from?: number | null,
  * 可选：一页最多几条（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };
+type BranchRun = { 
+/**
+ * 段首在整份清单里第几条（0 起）。
+ */
+at: number, 
+/**
+ * 段里几条。
+ */
+n: number, 
+/**
+ * 框头那一句（写好的）。
+ */
+said: Words, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed`

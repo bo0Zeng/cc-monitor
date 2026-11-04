@@ -205,6 +205,8 @@ pub struct SessionBranchPayload {
     pub sid: String,
     /// 清单里那几条记录的 `id`（整份）。
     pub off: Vec<String>,
+    /// 清单分成的段（那台分好的，整份；段里那几条 ＝ `off[at..at + n]`，框头照 `said`）。
+    pub runs: Vec<cmd_wire::frame::BranchRun>,
 }
 
 /// 界面报给壳的一格（Tauri 命令 `watch_sessions` · `kept_sessions` 的入参）：哪台的哪个会话。

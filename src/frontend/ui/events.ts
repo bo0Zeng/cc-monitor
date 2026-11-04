@@ -800,8 +800,8 @@ export type FollowEvent =
   | { t: "sight"; seen: boolean }
   /** 这个会话的运行表（每次变都是整份）。 */
   | { t: "runs"; payload: SessionRuns }
-  /** 这个会话的主线外清单（每次变都是整份）。 */
-  | { t: "branch"; off: string[] }
+  /** 这个会话的主线外清单（每次变都是整份，带后端分好的段）。 */
+  | { t: "branch"; branch: SessionBranchPayload }
   /** 这个会话刚进了这条流的「在看」名单：从第 `seq` 行起上流，之前没上流的那段调用方按行号补。 */
   | { t: "from"; path: string; seq: number };
 
@@ -832,7 +832,7 @@ export async function followSession(origin: Machine, sid: string, sink: (e: Foll
         } else if ("runs" in f) {
           if (f.runs.sid === sid) out.push({ t: "runs", payload: f.runs });
         } else if ("branch" in f) {
-          if (f.branch.sid === sid) out.push({ t: "branch", off: f.branch.off });
+          if (f.branch.sid === sid) out.push({ t: "branch", branch: f.branch });
         } else if ("watch" in f) {
           if (f.watch.sid === sid) out.push({ t: "from", path: f.watch.path, seq: f.watch.seq });
         }
