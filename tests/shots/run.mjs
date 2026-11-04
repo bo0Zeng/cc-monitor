@@ -1,7 +1,10 @@
 /**
  * 截图工具：把 cc-monitor 的每个界面、每种状态真画出来截图，出一页图集（`index.html`）。
  *
- *   npm run shots -- [--out <目录>] [--only <正则>] [--repeat <N>] [--no-filewin] [--no-web]
+ *   npm run shots -- [--out <目录>] [--only <正则>] [--repeat <N>] [--no-filewin] [--no-web] [--webkit]
+ *
+ * `--webkit`：网页场景换 WebKitGTK 截（Linux 桌面版壳的那一个引擎；`webkit.mjs`），图默认落 `.build/shots-webkit/`。
+ *   系统没有 python-gi WebKit2 ⇒ 照实说缺哪一样、跳过，不装。
  *
  * `--repeat N`：每个网页场景连拍 N 次（同一份代码、同一份世界），各次的 PNG 与消息流的 scrollTop 要逐字节相同，
  *   不同 ⇒ 记进问题表（同一份输入画出两种样子 = 先后不定）。图只存第一次的。
@@ -28,6 +31,7 @@ import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
 import { findChrome, toolchainEnv } from "./host-tools.mjs";
 import { writeIndex } from "./index-page.mjs";
 import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
+import { shootWebkit, webkitMissing } from "./webkit.mjs";
 
 // 等页里起好的上限：兜底的那一个数（与 `tests/test-support/wall-ceiling.ts` · Rust `guard_core::wall::CEILING_SECS` 同值，
 // 判据 `wall_ceiling` 逐份核）。上限短了，机器负载高时随机漏图；等到了就走，不白等。
@@ -35,7 +39,7 @@ const WALL_CEILING_MS = 300_000;
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseArgs(process.argv.slice(2));
-const out = path.resolve(args.out ?? path.join(repo, ".build/shots"));
+const out = path.resolve(args.out ?? path.join(repo, args.webkit ? ".build/shots-webkit" : ".build/shots"));
 const sandbox = path.join(repo, ".build/shots-sandbox");
 const only = args.only ? new RegExp(args.only) : null;
 const repeat = args.repeat === undefined ? 1 : Number(args.repeat);
@@ -115,6 +119,13 @@ cleanup();
 process.exit(results.some((r) => !r.ok) || problems.length > 0 ? 1 : 0);
 
 async function shootWeb() {
+  if (args.webkit) {
+    const missing = webkitMissing(isolatedEnv());
+    if (missing) {
+      console.log(`WebKitGTK 那一份跳过：这台没有 python-gi WebKit2 4.1 · PIL（${missing}）；不装`);
+      return;
+    }
+  }
   // 真后端与无头壳：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份后端。
   const broken = buildBins({ repo, env: scrubbedEnv() });
   if (broken) {
@@ -137,6 +148,14 @@ async function shootWeb() {
     vite.on("exit", (code) => reject(new Error(`vite 起不来（退出码 ${code}）`)));
   });
   const base = `http://127.0.0.1:${port}`;
+
+  if (args.webkit) {
+    const r = await shootWebkit({ repo, base, out, sandbox, only: args.only, boot: pinDateSource() + NO_CARET, env: isolatedEnv(), children, ceilingMs: WALL_CEILING_MS });
+    results.push(...r.results);
+    problems.push(...r.problems);
+    if (r.skipped.length > 0) console.log(`\nWebKitGTK 跳过 ${r.skipped.length} 幕（要调试口那一套真输入）：\n${r.skipped.map((s) => `  - ${s}`).join("\n")}`);
+    return;
+  }
 
   const chrome = findChrome(process.env);
   const profile = path.join(sandbox, "chrome");
