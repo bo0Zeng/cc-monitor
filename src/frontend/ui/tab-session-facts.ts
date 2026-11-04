@@ -48,8 +48,9 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const agent = f.agent !== null && f.agent !== tab.agent;
   if (agent) tab.agent = f.agent;
 
-  const writers = tab.writers.length !== f.writers.length || tab.writers.some((p, i) => p !== f.writers[i]);
-  tab.writers = [...f.writers];
+  const writersLine = f.writersLine ?? null;
+  const writers = tab.writersLine !== writersLine;
+  tab.writersLine = writersLine;
 
   const needs =
     JSON.stringify(tab.needs) !== JSON.stringify(f.needs) ||

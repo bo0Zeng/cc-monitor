@@ -69,14 +69,16 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         .unwrap();
         serde_json::json!({ "total": total, "hits": hits })
     };
+    // 两臂比的是命中与全量（结果头由这两样在出口那一处写，判据住 `history_find_head_tests`）。
     let ask = |tools: bool| {
-        find_wire(
+        let v = find_wire(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "include_tools": tools, "limit": 500}),
             &Default::default(),
         )
-        .unwrap()
+        .unwrap();
+        serde_json::json!({ "total": v["total"], "hits": v["hits"] })
     };
     assert_eq!(ask(false), scan(false));
     assert_eq!(ask(true), scan(true));
@@ -150,13 +152,14 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |skip: usize, limit: usize| {
-        find_wire(
+        let v = find_wire(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "skip": skip, "limit": limit}),
             &Default::default(),
         )
-        .unwrap()
+        .unwrap();
+        serde_json::json!({ "total": v["total"], "hits": v["hits"] })
     };
     let all = ask(0, 100);
     assert_eq!(all, scan(0, 100), "索引那一臂 == 现扫");

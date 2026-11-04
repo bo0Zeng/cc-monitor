@@ -978,7 +978,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         case "tasks": {
           // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 直接落账；没带 / 可能漏了 ⇒ 重问。
           const p = pushedProducts(change, "tasks");
-          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list.tasks);
+          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list);
           const ask = p.ask.filter((s): s is string => s !== null);
           if (p.all || ask.length > 0 || p.ask.includes(null)) tabs.refreshTasks(origin, ask, p.all || p.ask.includes(null));
           break;

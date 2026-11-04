@@ -144,6 +144,8 @@ const LIMIT_RESET_LEAD: &str = "Your claude.ai usage limit has reset.";
 const FORK_OPEN: &str = "<fork-boilerplate>";
 const PASTE_OPEN: &str = "<pasted_content";
 const PASTE_CLOSE: &str = "</pasted_content";
+/// 粘贴块的正文超过这么多行 ⇒ 折成一行（`Pasted::fold`）。
+const PASTE_FOLD_LINES: u32 = 12;
 
 /// 判「谁说的」要看的几格（解析成品与通用层的已解析 JSON 各取一份，判定是同一个函数）。
 pub(crate) struct Facts<'a> {
@@ -699,13 +701,15 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
         };
         let end = body + j + close.len();
         let inner = text[body..body + j].trim_matches(['\n', '\r']);
+        let lines = u32::try_from(inner.lines().count()).unwrap_or(u32::MAX);
         out.push(Pasted {
             id,
             start: utf16(start),
             end: utf16(end),
             body_start: utf16(body),
             body_end: utf16(body + j),
-            lines: u32::try_from(inner.lines().count()).unwrap_or(u32::MAX),
+            lines,
+            fold: lines > PASTE_FOLD_LINES,
         });
         from = end;
     }

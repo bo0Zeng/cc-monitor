@@ -88,10 +88,13 @@ const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn
   tsMs,
   tsText,
 });
-const found = (hits: ReturnType<typeof hit>[], total = hits.length): FindResult => ({
+/** 那台的回包：结果头 `head` 与［搜全部］那一格 `widen` 是后端写好的（这里只造占位，界面照摆）。 */
+const found = (hits: ReturnType<typeof hit>[], total = hits.length, head = `头 ${hits.length}`, widen = false): FindResult => ({
   available: true,
   hits,
   total,
+  head,
+  widen,
 });
 
 // ── 单元：面板本身（宿主是替身） ─────────────────────────────────────────────
@@ -233,16 +236,16 @@ describe("会话内查找 · 搜索", () => {
     expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
     expect(rows[0].hasAttribute("data-id"), "命中行不许叫 data-id（那是消息卡的名字）").toBe(false);
-    expect(status(p)).toBe(copyText("findStrip.status.count", { n: "3" }));
+    expect(status(p)).toBe("头 3");
   });
 
-  it("🔴 全量 > 条数 ⇒ 说出来，滚到底续下一页（skip ＝ 已列的条数）", async () => {
-    const pages: FindResult[] = [found([hit("a"), hit("b")], 3), found([hit("c")], 3)];
+  it("🔴 全量 > 条数 ⇒ 照摆那一页的结果头，滚到底续下一页（skip ＝ 已列的条数）、头换成新那一页的", async () => {
+    const pages: FindResult[] = [found([hit("a"), hit("b")], 3, "甲页头"), found([hit("c")], 3, "乙页头")];
     const search = vi.fn(async () => pages.shift()!);
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "x");
     await settleOutline();
-    expect(status(p)).toBe(copyText("findStrip.status.truncated", { n: "2", total: "3" }));
+    expect(status(p)).toBe("甲页头");
     const list = q(p, "[role=listbox]");
     Object.defineProperty(list, "scrollHeight", { value: 100, configurable: true });
     Object.defineProperty(list, "clientHeight", { value: 100, configurable: true });
@@ -250,19 +253,19 @@ describe("会话内查找 · 搜索", () => {
     await settleOutline();
     expect(search.mock.calls.at(-1)).toEqual(["x", false, 2]);
     expect(hitRows(p.el).map((r) => r.dataset.hitUuid)).toEqual(["a", "b", "c"]);
-    expect(status(p)).toBe(copyText("findStrip.status.count", { n: "3" }));
+    expect(status(p)).toBe("乙页头");
     list.dispatchEvent(new Event("scroll"));
     await settleOutline();
     expect(search, "列完了不再要").toHaveBeenCalledTimes(2);
   });
 
-  it("零条 ⇒ 无匹配；查不了 ⇒ 说原因；空查询 ⇒ 不发", async () => {
-    const results: FindResult[] = [found([]), { available: false, reason: "后端版本旧", hits: [], total: 0 }];
+  it("零条 ⇒ 照摆那台的那一句；查不了 ⇒ 说原因；空查询 ⇒ 不发", async () => {
+    const results: FindResult[] = [found([], 0, "空的头"), { available: false, reason: "后端版本旧", hits: [], total: 0 }];
     const search = vi.fn(async () => results.shift()!);
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "y");
     await settleOutline();
-    expect(status(p)).toBe(copyText("kit.menu.noMatch", { q: "y" }));
+    expect(status(p)).toBe("空的头");
     enter(p, "z");
     await settleOutline();
     expect(status(p)).toBe(copyText("findStrip.status.unavailable", { reason: "后端版本旧" }));
@@ -490,8 +493,8 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
     expect(rows[1].firstElementChild!.textContent, "第一句之前的：只写时刻").toBe("10:40");
   });
 
-  it("★ 范围「用户」下没命中：「无匹配「x」 · 仅用户」＋［搜全部］⇒ 回「全部」、词不变、马上找、焦点留在框里；「全部」下没命中照旧、无按钮", async () => {
-    const s = vi.fn(async () => found([]));
+  it("★ 那台说可以放宽（widen）：那一句 ＋［搜全部］⇒ 回「全部」、词不变、马上找、焦点留在框里；不放宽的照摆、无按钮", async () => {
+    const s = vi.fn(async (_q: string, _t: boolean, _k: number, scope?: "user") => (scope === "user" ? found([], 0, "只在用户里没有", true) : found([], 0, "全都没有")));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
     seg(p.el, "user").click();
@@ -499,14 +502,14 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
     await settleOutline();
     const head = q(p, "[data-role=find-head]");
     const btn = head.querySelector<HTMLButtonElement>("button")!;
-    expect(head.textContent).toBe(copyText("sessionFind.status.noneScoped", { q: "指数退避" }) + copyText("sessionFind.status.searchAll"));
+    expect(head.textContent).toBe("只在用户里没有" + copyText("sessionFind.status.searchAll"));
     expect(btn.textContent).toBe(copyText("sessionFind.status.searchAll"));
     btn.click();
     await settleOutline();
     expect(s.mock.calls.at(-1)).toEqual(["指数退避", false, 0]);
     expect(seg(p.el, "all").getAttribute("aria-checked")).toBe("true");
     expect(document.activeElement).toBe(input(p));
-    expect(status(p)).toBe(copyText("kit.menu.noMatch", { q: "指数退避" }));
+    expect(status(p)).toBe("全都没有");
     expect(head.querySelector("button")).toBeNull();
   });
 

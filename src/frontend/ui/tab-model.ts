@@ -55,8 +55,8 @@ export interface Tab {
    * 悬停卡那一行说源会话（标题里的 `↳` 是核心写进整行的）。
    */
   forkedFromSessionId: string | null;
-  /** 此刻持着这条会话的活进程 pid（后端会话事实的 `writers`，到了才有）。不止一个 ⇒ 几个进程在同时写这条会话。 */
-  writers: number[];
+  /** 不止一个进程在同时写这条会话时那一句（后端会话事实的 `writersLine`，界面照摆）；没有 ⇒ `null`。 */
+  writersLine: string | null;
   /**
    * 数据来源：本机 = `LOCAL`；远端 = 那台的键（标签页 · 会话头另画那台的标签）。
    * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。
