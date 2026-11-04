@@ -942,7 +942,7 @@ pub fn assert_block_comment_model_holds(
          ⇒ 凡是**先切块再剥**的判据，在这几块上「块注释喂饱判据」那个洞此刻是**开着**的：\
          {bad_blocks:?}\n\
          ★ 典型形状：`/*` 落在一块里、`*/` 落在下一块里 —— 对 rustc 它就是一条合法的\
-         跨行块注释，**编得过、整份配平**，所以文件级那一半看不见它（`K-R9` 落定拍实打）。\n\
+         跨行块注释，**编得过、整份配平**，所以文件级那一半看不见它。\n\
          ★ 出路**不是**把本条这一半删掉：把那条判据的次序改成\
          **先剥整份、再切块**（`guard_core::test_attr_chunks` 头注写着为什么），\
          那样它交进剥法的单位就是整份文件、与本条量的单位对上了。\n\
@@ -1070,8 +1070,8 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
     assert!(
         offenders.is_empty(),
         "{who}：生产段里残留了 {} 处**剥法没认出来的测试模块** —— 此刻这些判据在扫测试代码：\n{}\n\
-         ★ 这一族已经犯过三形：① 无花括号体的 `mod x;`（backend main.rs 曾整段 26–179 行消失）\n\
-         ② 可见性前缀 `pub(crate) mod`（`K-R74` 实打：判定行 1403/0 → 1399/10）③ 就是你现在看到的这一处。\n\
+         ★ 这一族的三形：① 无花括号体的 `mod x;`（整段生产代码会被当成测试模块剥掉）\n\
+         ② 可见性前缀 `pub(crate) mod` ③ 就是你现在看到的这一处。\n\
          ⇒ **改的是 `guard_core::test_module_ranges` 的剥法，不是这份文件的写法**；\n\
          而且**不许再列一张前缀表** —— 要认形状（`strip_visibility` 那一档是范例）。",
         offenders.len(),
@@ -2121,8 +2121,8 @@ pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {
         )),
         n => Err(format!(
             "`{needle}` 命中 {n} 处（偏移 {clean:?}）—— 断言指不明是哪一处。\n\
-             ★ F19 就栽在这里：`exe_suffix: &str` 同时出现在另一个函数的参数表里，\n\
-             于是「已收敛到单点」那句话锚定的是别人。把 needle 扩到能唯一确定那个事实的大小。"
+             ★ 例：`exe_suffix: &str` 同时出现在另一个函数的参数表里，\n\
+             「已收敛到单点」那句话就锚定到了别人。把 needle 扩到能唯一确定那个事实的大小。"
         )),
     }
 }
