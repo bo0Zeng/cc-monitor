@@ -400,7 +400,7 @@ fn exit_code_const_name(line: &str) -> Option<String> {
 ///
 /// - 码表**不写整数字面量**，改用 `use` 进来的具名常量。这一半有两道旁证但**都不完整**：
 ///   常量若定义在本层 ⇒ [`the_only_exit_code_constants_here_are_the_registered_generic_ones`]
-///   会红；若从 `control` / `observe` 引进来 ⇒ `layering_guard` 会红。
+///   会红；若从 `control` / `observe` 引进来 ⇒ 编不过（本包不依赖它们）。
 ///   ⛔ 两道都不覆盖的缝：常量来自 `plugin/` 之外、又不在那两层里。
 /// - 码的类型不是 `i32`（`u8` / `Option<u8>` / 字符串码）。
 /// - 表是**运行期**从数据里读出来的（`HashMap` / 切片 / 配置文件），源码里一个数字都没有。
@@ -446,7 +446,7 @@ fn the_generic_port_does_not_translate_exit_codes() {
 /// 一个整数字面量都不出现在 `match` 里，形状针**看不见**。
 ///
 /// ⚠ 射程：只认**定义在 `plugin/` 生产段里**、且类型里带 `i32` 的常量。
-/// 从别处 `use` 进来的常量不在本条视野内（那一半归 `layering_guard`，且它也有缝 ——
+/// 从别处 `use` 进来的常量不在本条视野内（那一半归 Cargo 的依赖图，且它也有缝 ——
 /// 见 [`the_generic_port_does_not_translate_exit_codes`] 头注那一条）。
 /// `mod.rs` 同样不在扫描面里（[`plugin_sources`] 的构造性缺口）。
 #[test]

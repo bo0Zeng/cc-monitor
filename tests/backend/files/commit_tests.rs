@@ -331,7 +331,8 @@ fn answer_wire(_face: &Face, name: &str, args: &serde_json::Value) -> Answer {
 /// 家由判据给的那三形（不改进程的 `HOME`）。
 fn answer_commit_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
     via(args, |r| {
-        commit_upload_at(face, home, r, &crate::Tz::default()).map_err(CommitRefused::flat)
+        commit_upload_at(face, home, r, &crate::common::time::Tz::default())
+            .map_err(CommitRefused::flat)
     })
 }
 fn answer_stage_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
@@ -1077,7 +1078,7 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
         }
         crate::wire::typed::take::<wire::FilesCommitUploadReq>(&v).unwrap()
     };
-    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::Tz::default());
+    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::common::time::Tz::default());
     stage_chunk(&Face::issue(), &h, &key, 0, b"hello ").expect("块 0");
     stage_chunk(&Face::issue(), &h, &key, 1, b"world").expect("块 1");
     match at(req(None)) {
@@ -1140,7 +1141,7 @@ fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file()
         }))
         .unwrap()
     };
-    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::Tz::default());
+    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::common::time::Tz::default());
     assert!(matches!(at(v("ask")), Err(CommitRefused::Clash(..))));
     at(v("overwrite")).expect("暂存件在、块已收 ⇒ 照那一份提交");
     assert_eq!(std::fs::read(h.join("dst/r.bin")).unwrap(), b"abc");

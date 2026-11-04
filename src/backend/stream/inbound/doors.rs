@@ -54,7 +54,7 @@ impl Door for LocalFiles {
 /// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
 pub(crate) struct LocalFrames {
     /// 引起这一趟的请求信封里的时区（内层命令照它写「几点」，问别台时转过去）。
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     /// 写自家状态的句柄：内层那几条里写装记录的（`BlockingOwn`）要它。由引起这一趟的那条命令（它自己就是 `AsyncOwning`）递进来。
     own: crate::platform::Own,
 }
@@ -93,14 +93,14 @@ impl crate::wire::typed::Here for LocalFrames {
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
 
-    fn viewer_tz(&self) -> crate::Tz {
+    fn viewer_tz(&self) -> crate::common::time::Tz {
         self.tz.clone()
     }
 }
 
 /// `tz` ＝ 引起这一趟的那条请求的信封 `tz`；`own` ＝ 分派递给那条命令的写句柄。
 pub(super) fn hub_here(
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     own: &crate::platform::Own,
 ) -> std::sync::Arc<dyn crate::wire::typed::Here> {
     std::sync::Arc::new(LocalFrames {

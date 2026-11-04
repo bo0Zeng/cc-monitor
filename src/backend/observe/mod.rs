@@ -3,7 +3,7 @@
 //! 本层仍是 Claude 专属的：`watcher`/`accounts_query`/`query::locate` 都直接认识 Claude 的目录布局与文件格式（Codex 那半在 [`crate::agents::codex`]）。
 //!
 //! 读一份记录分四层，只许往下引：读行 [`lines`] → 认行 [`recognize`] → 扫描图与骨架（[`record_scan`] · [`skeleton`]）→ 查询 [`query`]；
-//! 跟读（[`watcher`]）在查询之上。方向由主 crate `layering_guard` 的 `ONE_WAY` 钉住。
+//! 跟读（[`watcher`]）在查询之上。方向由本包的判据 `layers_guard` 钉住。
 //!
 //! 独立的包 `backend-observe`：只引 `assets` · `accounts` · `agents` · `history` · `host` · `wire` · `common` · `platform`，
 //! 引了上层就编不过。上层只够得到这里的 `pub` 项。
@@ -12,7 +12,7 @@
 //!
 //! 时机在这边、做的那一半在控制面的三件（装 tmux hook · 认起会话便条 · 打身份标）watcher 只报一声，
 //! 由进程入口（`stream/entry.rs` 的 `WATCH_REACTIONS`）起 watcher 时接上控制面的函数（`watcher::Reactions`）；打标的回值（容器）照样随 `session_added` 报出去。
-//! 本包不引控制面（引了编不过）；控制面也不引这里，由主 crate `layering_guard` 钉住。
+//! 本包不引控制面、控制面也不引这里：两个包谁都没把对方列进依赖，引了就编不过。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
 // 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
@@ -87,3 +87,8 @@ pub mod watcher;
 #[cfg(test)]
 #[path = "../../../tests/backend/agents/on_observe_tests.rs"]
 mod agents_tests;
+
+// 读一份记录的四层只许往下引（包内模块之间编译器不管，扫生产段钉住）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/layers_guard.rs"]
+mod layers_guard;

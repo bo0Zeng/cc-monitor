@@ -5,7 +5,7 @@
 //!
 //! 归到哪台：池按拨号身份分族（`ssh_dial::pool::identity`），身份照机器表现算 —— 与开连接那一处同一个组法（[`super::dial_named`]），
 //! 对上的进那台；对不上（机器表改过、旧身份的连接还没收掉 · 测试连接那种表外的）哪台都不进。
-//! 住拨号层不住观测层：用它的是控制面（`control/machine_state.rs`），控制面不许引观测面（`layering_guard`）。
+//! 住拨号层不住观测层：用它的是控制面（`control/machine_state.rs`），控制面不许引观测面（控制面那个包不依赖观测面）。
 
 use std::collections::BTreeMap;
 

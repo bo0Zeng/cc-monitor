@@ -125,7 +125,7 @@ pub struct TapRx {
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::wire::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     out: std::collections::VecDeque<Frame>,
 }
 
@@ -167,7 +167,7 @@ impl TapRx {
 }
 
 /// 不现算小成品（判据自己接的那一形）。
-fn no_bodies(_: Topic, _: Option<&str>, _: &crate::Tz) -> Option<Changed> {
+fn no_bodies(_: Topic, _: Option<&str>, _: &crate::common::time::Tz) -> Option<Changed> {
     None
 }
 
@@ -242,7 +242,7 @@ impl TapSource for TapRx {
 
 /// 一条流连接接上了 ⇒ 在进程级 hub 的活卡上登记一条连接（两条载体各在「流开始」那一处调一次）。
 /// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）；`watch` ＝ attach 行带的名单（没带 ⇒ 全看，等 `stream-watch`）。
-pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
+pub fn attach(tz: crate::common::time::Tz, watch: Option<&[String]>) -> TapRx {
     let mut rx = attach_rx(hub());
     if let Some(sids) = watch {
         // 写者还没开始取：名单外的卡还没欠下的那几张当场撤掉，一张都不发。
@@ -342,7 +342,7 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         dirs: None,
         list: None,
         bodies: no_bodies,
-        tz: crate::Tz::default(),
+        tz: crate::common::time::Tz::default(),
     }
 }
 

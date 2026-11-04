@@ -56,7 +56,7 @@ fn the_stream_view_flag_is_parsed_in_stream_mode_only() {
 /// 缺值 · 认不得 ⇒ UTC（不拒）。一次性 CLI 面与流模式同一个旗标。
 #[test]
 fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
-    use super::Tz;
+    use crate::common::time::Tz;
     use crate::stream::inbound::views::StreamWants;
     let sh = Tz::named("Asia/Shanghai").expect("时区库里有上海");
     let (rest, got) = split_stream_flags(v(&["--stream", "--tz", "Asia/Shanghai"])).unwrap();
@@ -101,7 +101,7 @@ fn query_args_pass_through() {
 /// 写了却说不清（缺值 · 认不得）⇒ 照旧 UTC，不猜。一次性命令与流模式同一处读。
 #[test]
 fn no_time_zone_flag_means_the_viewer_is_on_this_machine() {
-    use super::Tz;
+    use crate::common::time::Tz;
     let here = Tz::named(crate::common::time::TZ_HERE).expect("认得 local");
     for argv in [
         &["--rotation-view"][..],

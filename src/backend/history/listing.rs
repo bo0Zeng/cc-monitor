@@ -3,7 +3,7 @@
 //! 藏起来的那个工作目录（[`hidden_cwd`]）· `<agent_home>/projects/` 那道围栏（[`fence_under_projects`]）· 这台的 agent 家（[`agent_home`]）。
 //!
 //! 历史清单（`history_list`）· 资产目录（`assets::asset_catalog`）· 观测侧（记录级的读 · 全文搜索 · watcher）都来这里拿；
-//! 这一族不引 observe（`layering_guard::ONE_WAY`）。
+//! 这一族不引 observe（历史清单那个包排在观测面之下，不依赖它）。
 //!
 //! 安全：按名字给的项目目录不许含路径分隔符；路径一律经 [`crate::common::fence::Fence`] 放行（`canonicalize` 后前缀校验，防 `../` 穿越）。
 //! 读记录只 read_dir / read；写只有清单缓存落盘那一份（经启动时装的 [`Own`]）。

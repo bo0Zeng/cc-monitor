@@ -175,7 +175,9 @@ fn each_arm_has_the_cells_the_table_says() {
 fn a_computed_body_is_a_declared_body() {
     use crate::wire::typed::Command as _;
     for t in ALL {
-        if crate::stream::topic_body::body_now(t, Some("x"), &crate::Tz::default()).is_some() {
+        if crate::stream::topic_body::body_now(t, Some("x"), &crate::common::time::Tz::default())
+            .is_some()
+        {
             assert!(t.spec().body, "{t:?} 现算小成品，表里却写不带 body");
         }
     }
@@ -199,7 +201,11 @@ fn a_computed_body_is_a_declared_body() {
 #[test]
 fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
+        crate::stream::topic_body::body_now(
+            Topic::RotationStrategies,
+            None,
+            &crate::common::time::Tz::default()
+        ),
         {
             use crate::wire::typed::Handle;
             Some(crate::wire::Changed::RotationStrategies {
@@ -207,7 +213,7 @@ fn a_computed_body_is_the_reask_reply() {
                     crate::faces::rotation_view_face::RotationStrategies::run(
                         Default::default(),
                         crate::wire::typed::Cx {
-                            tz: crate::Tz::default(),
+                            tz: crate::common::time::Tz::default(),
                             until: None,
                             needs: (),
                         },
@@ -222,7 +228,7 @@ fn a_computed_body_is_the_reask_reply() {
         crate::stream::topic_body::body_now(
             Topic::Tasks,
             Some("no-such-sid"),
-            &crate::Tz::default()
+            &crate::common::time::Tz::default()
         ),
         {
             use crate::wire::typed::Handle as _;
@@ -233,7 +239,7 @@ fn a_computed_body_is_the_reask_reply() {
                         sid: "no-such-sid".to_string(),
                     },
                     crate::wire::typed::Cx {
-                        tz: crate::Tz::default(),
+                        tz: crate::common::time::Tz::default(),
                         until: None,
                         needs: (),
                     },
@@ -244,13 +250,17 @@ fn a_computed_body_is_the_reask_reply() {
         "任务清单的小成品不是 tasks-list 的应答"
     );
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::Tasks, None, &crate::Tz::default()),
+        crate::stream::topic_body::body_now(
+            Topic::Tasks,
+            None,
+            &crate::common::time::Tz::default()
+        ),
         None,
         "没 key 的任务清单没得问"
     );
     for t in [Topic::Accounts, Topic::Profiles, Topic::Plan] {
         assert_eq!(
-            crate::stream::topic_body::body_now(t, Some("x"), &crate::Tz::default()),
+            crate::stream::topic_body::body_now(t, Some("x"), &crate::common::time::Tz::default()),
             None,
             "{t:?} 不该现算"
         );

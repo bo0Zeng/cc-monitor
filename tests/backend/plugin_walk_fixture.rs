@@ -885,7 +885,7 @@ mod tests {
         );
         assert!(
             !prod.contains("crate::plugin"),
-            "本文件的生产段里出现了 `plugin` 边 —— 那条边会进 `layering_guard` 的账，\
+            "本文件的生产段里出现了 `plugin` 边 —— 那条边会让主 crate 生产段依赖插件口，\
              而本文件的每一条都该在 `#[cfg(test)]` 里"
         );
         guard_core::assert_no_test_code("plugin_walk_fixture.rs", &prod);
@@ -1322,7 +1322,7 @@ mod tests {
     /// | 1 | `inbound::REGISTRY` 加一条 `CommandSpec` | ✅ 红（`protocol_doc_gen`：协议参考要重生成） | **无条件** —— 插件要被宿主调，就得有一条命令 |
     /// | 2 | 协议参考里它那一节 | ✅ 红（`protocol_doc_gen` 从登记生成，要 `summary`） | 无条件（跟着 1） |
     /// | 3 | 新插件自己的适配层（码表 · 候选路径 · 必需清单） | ➖ **不算宿主改动** | `E6`/`E9` 明写它就该每插件一份 |
-    /// | 4 | `layering_guard::ALLOWED_INTO_PLUGIN`（今天 **5 条**，条数钉死） | ✅ 红 | 🔴 **只在适配层住 `control/` 或 `observe/` 时** —— 那条判据逐字 `for layer in ["control", "observe"]` |
+    /// | 4 | 那个包的 `Cargo.toml` 把 `backend-plugin` 列进依赖 | ✅ 编不过 | 🔴 **只在适配层住在不依赖插件口的包里时**（今天生产段只有计划读面依赖它） |
     /// | 5 | `readonly_guard::spawn_registry`（`SPAWN_SITES_TODAY` 今天 **9**，相等断言） | ✅ 红 | 🔴 **只在没有复用那唯一一处起进程口时**；`E5` 裁定复用 ⇒ 这个数**不许涨**（这里一处没动） |
     /// | 6 | `plugin::layer_guard::FILES_IN_THIS_LAYER`（逐个列名） | ✅ 红 | 🔴 **只在往 `plugin/` 里加文件时** —— 而按 `E6` 新插件的东西根本不该进那一层 |
     /// | 7 | `agent_boundary_guard::CORE_FILES` + 它的棘轮表 | ✅ 红 | 🔴 同 6（`FILES_IN_THIS_LAYER` 的诊断文案逐字要求**同轮**加） |

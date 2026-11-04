@@ -1545,7 +1545,7 @@ fn extra_cells_scenario(shape: &Shape) {
         "[{}] 运行表里不写钟面（推出去那一下按这条流的时区写）",
         shape.name
     );
-    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
     let mut f = crate::wire::Frame::SessionRuns(crate::wire::SessionRuns {
         sid: "s".into(),
         runs: vec![info_of(&book, "g6")],

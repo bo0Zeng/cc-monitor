@@ -1,11 +1,11 @@
 //! 一条流的写者：应答 · 出方向 · tap 三路排空，一帧一行写进那一端（stdio 那条载体是 stdout，常驻那条是套接字的写半边）。
 //! 两条载体都由 `stream/entry.rs` 起它；优先序与 flush 的口径只在这里一份。
 
+use crate::common::time::Tz;
 use crate::observe;
 use crate::stream::inbound::views::{to_line_viewed, StreamView};
 use crate::stream::tap;
 use crate::wire::{Frame, FrameRules as _};
-use crate::Tz;
 use tokio::io::AsyncWriteExt;
 
 /// 写者自上次 flush 起写满这么多字节就照 flush 一次：帧一直排着时首帧的延迟有界。

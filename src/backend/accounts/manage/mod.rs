@@ -24,7 +24,7 @@
 //! 平台差异（符号链接 · 权限位 · 这台做不做得了多账号）只在 `platform::acct_view`。
 //! 与上游选择（`accounts::upstream_select`）零引用：建 API 号时写 key 那一步、改完账号表后重写别名文件那一步，
 //! 由帧面宿主 `faces/accounts_face.rs` 接起来。
-//! 不引资产域（`layering_guard::ONE_WAY`）：写用户文件经 `common::door`；资产那边（MCP 装到这台 · 卸 · 资产目录 · 别名）反过来调这里的 MCP 共享与号清单。
+//! 不引资产域（账号域那个包不依赖资产，引了编不过）：写用户文件经 `common::door`；资产那边（MCP 装到这台 · 卸 · 资产目录 · 别名）反过来调这里的 MCP 共享与号清单。
 
 pub mod aliases;
 pub(crate) mod exec;

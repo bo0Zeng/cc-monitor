@@ -231,14 +231,18 @@ fn a_computed_topic_carries_the_arm_the_hook_gives() {
     rt.block_on(async {
         let mut t = attach_rx(std::sync::Arc::new(TapHub::default()));
         // 只认额度账；时区写进一个看得见的格里（换成那条连接的时区 ⇒ 这一格跟着变）。
-        fn fake(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<crate::wire::Changed> {
+        fn fake(
+            topic: Topic,
+            key: Option<&str>,
+            tz: &crate::common::time::Tz,
+        ) -> Option<crate::wire::Changed> {
             (topic == Topic::Quota && key.is_none()).then(|| crate::wire::Changed::Tasks {
                 key: tz.iana_name(),
                 body: None,
             })
         }
         t.bodies = fake;
-        t.tz = crate::Tz::named("Asia/Shanghai").unwrap();
+        t.tz = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
         let tx = tokio::sync::broadcast::channel(4).0;
         t.nodes = Some(tx.subscribe());
         crate::accounts::quota::nodes::emit(

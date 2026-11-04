@@ -141,7 +141,7 @@ fn retired_oneshot_subcommands_answer_unknown_command() {
         let args = vec![f.to_string(), "/x.jsonl".to_string()];
         assert!(is_query_mode(&args));
         let mut err: Vec<u8> = Vec::new();
-        let rc = refuse_unknown_to(&args, &mut err, &crate::Tz::default());
+        let rc = refuse_unknown_to(&args, &mut err, &crate::common::time::Tz::default());
         let line = String::from_utf8(err).unwrap();
         let v: serde_json::Value = serde_json::from_str(line.trim())
             .unwrap_or_else(|e| panic!("`{f}` 的失败不是一行 JSON（{e}）：{line}"));
@@ -1104,7 +1104,7 @@ fn the_cli_envelope_says_in_said() {
     let rc = refuse_unknown_to(
         &["--no-such-flag".to_string()],
         &mut err,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     );
     let line = String::from_utf8(err).unwrap();
     let v: serde_json::Value = serde_json::from_str(line.trim()).expect("一行 JSON");

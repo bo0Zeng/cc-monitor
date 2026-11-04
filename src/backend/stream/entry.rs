@@ -496,7 +496,7 @@ struct Attached {
     writer: listen::Down<BufWriter<tokio::io::WriteHalf<own_chan::Stream>>>,
     hello_flushed: wire::HelloFlushed,
     /// 看的这一台的时区（attach 行里的 `tz`）。
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
     watch: Option<crate::wire::WatchAsk>,
 }
@@ -562,7 +562,10 @@ async fn handshake_one(
                 cmd_wire::attach::AttachReply::Ok { deflate: true, .. }
             );
             let w = listen::Down::new(w, deflate);
-            let tz = tz.as_deref().and_then(crate::Tz::named).unwrap_or_default();
+            let tz = tz
+                .as_deref()
+                .and_then(crate::common::time::Tz::named)
+                .unwrap_or_default();
             attached
                 .send(Attached {
                     reader: r,

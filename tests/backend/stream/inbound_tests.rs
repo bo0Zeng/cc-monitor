@@ -1042,7 +1042,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
 #[test]
 fn the_hub_local_hop_reaches_every_inner_command() {
     let here = super::doors::hub_here(
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &crate::platform::fs::Own::for_tests(),
     );
     let mut missed = Vec::new();
