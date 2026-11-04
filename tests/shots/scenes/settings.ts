@@ -566,9 +566,18 @@ export const SETTINGS_SCENES: Scene[] = [
     await machineMenu("devbox");
   }),
   settings("settings-machine-removed", "设置 · 删机器 ＋ 8 秒撤销", "⋯ →「从列表删除」：那一行当场没了，底下一条撤销", async () => {
-    await machineMenu("gpu-01");
-    await click(await byText("[role=menuitem], button", "从列表删除"));
-    await until(() => (document.querySelector('.remote-machine-row[data-page-id="machine:gpu-01"]') === null ? true : null));
+    // 机器表读回会重画那几行（开着的 ⋯ 菜单跟着收）：点了「从列表删除」那一行还在 ⇒ 照新的那一行再开 ⋯ 再点，直到那一行没了。
+    await go("machines");
+    const row = '.remote-machine-row[data-page-id="machine:gpu-01"]';
+    const end = performance.now() + WALL_CEILING_MS;
+    while (document.querySelector(row) !== null) {
+      if (performance.now() > end) throw new Error("gpu-01 那一行点了「从列表删除」还在");
+      const item = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find((e) => (e.textContent ?? "").includes("从列表删除"));
+      const more = document.querySelector<HTMLElement>(`${row} button[aria-label]`);
+      if (item !== undefined) await click(item);
+      else if (document.querySelector('[role="menu"]') === null && more !== null) await click(more);
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
     await waitFor('[role="status"]');
   }),
   page("settings-machine-win", "设置 · Windows 机器", "win-laptop 那一页", "machine:win-laptop"),
