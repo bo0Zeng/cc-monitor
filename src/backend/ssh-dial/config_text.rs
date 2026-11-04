@@ -58,7 +58,7 @@ pub fn parse(text: &str) -> Vec<ConfigHost> {
 
 /// 拆 `Key value` / `Key=value`（先出现的那个分隔符算数）；没有值 ⇒ `None`。
 fn split_key_value(line: &str) -> Option<(&str, &str)> {
-    let sep = line.find(|c: char| c == '=' || c == ' ' || c == '\t')?;
+    let sep = line.find(['=', ' ', '\t'])?;
     let key = line[..sep].trim();
     let value = line[sep + 1..]
         .trim()

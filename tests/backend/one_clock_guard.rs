@@ -165,6 +165,10 @@ fn c3_the_rig_builds_it_and_hands_a_moment() {
 }
 
 #[test]
+#[expect(
+    clippy::assertions_on_constants,
+    reason = "判的就是这一次编译开没开特性：带着特性编测试要红在这一条，不是整个测试档编不过"
+)]
 fn c4_default_build_reads_the_system_clock() {
     assert!(!cfg!(feature = "shots"), "默认构建里特性 `shots` 没开");
     let sys = std::time::SystemTime::now()

@@ -480,6 +480,10 @@ async fn handle_line(
 /// - [`Disposition::Done`]：已经在 `dispatch` 里**同步**做完了。非 async 意味着它做不了会阻塞的事。
 /// - [`Disposition::Reply`]：立刻回这一帧，**由调用方 await 发送**（保住背压，不像 `try_send` 会丢）。
 /// - [`Disposition::SpawnData`]：交给独立 task。绝大多数命令走这里。
+#[expect(
+    clippy::large_enum_variant,
+    reason = "每条请求只造一个、在栈上当场拆开交走，不进集合也不跨 await 存着；装箱只多一次分配"
+)]
 enum Disposition {
     Done,
     Reply(Frame),
@@ -713,10 +717,7 @@ fn by_registry(req: Request, given: &Given) -> Disposition {
             None => Disposition::Reply(Frame::err(
                 &req.id,
                 "unknown_command",
-                &copy_text(
-                    "beInbound.dispatch.unhandled",
-                    &[("other", &other.to_string())],
-                ),
+                &copy_text("beInbound.dispatch.unhandled", &[("other", other)]),
             )),
         },
         None => Disposition::Reply(Frame::err(

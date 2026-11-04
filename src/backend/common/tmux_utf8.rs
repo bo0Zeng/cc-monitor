@@ -73,6 +73,7 @@ pub const UTF8_CLIENT_FLAG: &str = "-u";
 /// - 写成 `case` 不写 `if [ -n "…" ]`：这一行会被交给 Windows 本机终端开 ssh，那条路拒双引号（`dial/terminal.rs`，PowerShell 5.1 传参畸变）；
 ///   `case` 的那个词不分词、不展开通配，不用引号也对；空的那一支写成 `x${TMUX:-}` 对 `x)`，连空串字面量 `''` 都不用
 ///   （单引号字面量只许经 `dialect::ps_literal` 进 PowerShell 那一形，`shell_home_guard` 钉着）。
+///
 /// 渲给客户端的每一条 tmux 子命令都带旗：判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`。
 pub fn join_session(name: &str) -> String {
     let t = shell_quote_core::posix_quote(&format!("={name}:"));

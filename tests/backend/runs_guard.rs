@@ -391,10 +391,11 @@ fn feed(
 fn said(frames: &[Routed]) -> Vec<(u64, Option<String>, String)> {
     frames
         .iter()
-        .map(|f| match f {
-            Routed {
+        .map(|f| {
+            let Routed {
                 resp, run, ev, end, ..
-            } => (
+            } = f;
+            (
                 *resp,
                 run.clone(),
                 match (ev, end) {
@@ -406,7 +407,7 @@ fn said(frames: &[Routed]) -> Vec<(u64, Option<String>, String)> {
                     (None, Some(e)) => format!("end {e:?}"),
                     (None, None) => "?".into(),
                 },
-            ),
+            )
         })
         .collect()
 }

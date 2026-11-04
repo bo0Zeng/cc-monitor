@@ -1349,9 +1349,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     let mut dirty = env();
     dirty.inherited_base_url = Some("http://x\nevil".into());
     build_of(&[], &dirty).unwrap_or_else(|e| panic!("直路上用不上的继承值挡住了起会话：{}", e.0));
-    let e = build_of(&["--ccm-tmux=n"], &dirty)
-        .err()
-        .expect("容器路把带换行的继承值拼进载荷了");
+    let e = build_of(&["--ccm-tmux=n"], &dirty).expect_err("容器路把带换行的继承值拼进载荷了");
     assert!(e.0.contains("ANTHROPIC_BASE_URL"), "{}", e.0);
 }
 
@@ -1382,8 +1380,7 @@ fn a_config_dir_from_the_manifest_goes_through_the_full_table() {
         .unwrap_or_else(|e| panic!("好目录被拒了：{}", e.0));
     assert!(render(&ok).contains("CLAUDE_CONFIG_DIR"));
     let e = build_of(&["--cwd", "/p", "--account", "x"])
-        .err()
-        .expect("带 `$` 的配置目录拼进去了（自由文本那一层不拒元字符，全表拒）");
+        .expect_err("带 `$` 的配置目录拼进去了（自由文本那一层不拒元字符，全表拒）");
     assert!(e.0.contains("a$b"), "拒了，但没说清是哪个目录：{}", e.0);
 }
 
@@ -2567,7 +2564,8 @@ fn a_changed_launcher_that_cannot_take_the_plugin_says_why() {
     use crate::agents::asks::HookOff;
     let mut e = env();
     e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
-    let cases: [(Option<fn(&crate::agents::PluginFace) -> Sideload>, HookOff); 5] = [
+    type Sideloader = fn(&crate::agents::PluginFace) -> Sideload;
+    let cases: [(Option<Sideloader>, HookOff); 5] = [
         (Some(sideload_policy), HookOff::Policy),
         (Some(sideload_old), HookOff::Version),
         (Some(sideload_unknown_version), HookOff::Version),

@@ -59,7 +59,7 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
-                ("path", &win_path_core::shown(&p)),
+                ("path", &win_path_core::shown(p)),
                 ("why", &io_reason(e.kind())),
             ],
         )

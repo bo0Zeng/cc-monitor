@@ -36,18 +36,19 @@ pub const MARKS: Marks<'static> = Marks {
 };
 
 pub type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+/// 问一个文件的那两次取样：`(metadata 的 size, 补问的 exists)`；连不上 ⇒ `Err`。
+pub type Probed = Result<(Option<Option<u64>>, Option<bool>), String>;
+/// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
+pub type Listed = Option<Vec<(String, Option<u64>)>>;
 
 /// 对面：在那台上跑一条一次性命令（收全三样）· 问那台落点上一个文件（SFTP）。生产 = [`DialFacing`]；判据用替身。
 pub trait Facing: Send + Sync {
     /// 收全三样（退出码 · stdout · stderr）。
     fn exec(&self, command: String) -> Fut<'_, Result<Captured, String>>;
     /// `(metadata 的 size, 补问的 exists)` —— 与 [`interpret_target_probe`] 入参同形。
-    fn stat<'a>(
-        &'a self,
-        rel: &'a str,
-    ) -> Fut<'a, Result<(Option<Option<u64>>, Option<bool>), String>>;
-    /// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
-    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
+    fn stat<'a>(&'a self, rel: &'a str) -> Fut<'a, Probed>;
+    /// 列一个目录（[`Listed`]）。
+    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Listed>;
 }
 
 // ═══ 部署判定 ══════════════
@@ -151,7 +152,7 @@ pub fn identity_decision(
         RemoteIdentity::Stamp(s) if build_relation(s, expected) == Relation::Older => {
             Ok(DeployAction::Deploy(copy_text(
                 "rsSftp.identity.other",
-                &[("s", &s.to_string()), ("expected", &expected.to_string())],
+                &[("s", &s.to_string()), ("expected", expected)],
             )))
         }
         RemoteIdentity::Stamp(s) => Ok(DeployAction::Keep {
@@ -159,25 +160,25 @@ pub fn identity_decision(
             why: copy_text(
                 "rsSftp.identity.notOlder",
                 &[
-                    ("machine", &machine.to_string()),
+                    ("machine", machine),
                     ("s", &s.to_string()),
-                    ("expected", &expected.to_string()),
+                    ("expected", expected),
                 ],
             ),
         }),
         RemoteIdentity::NoStamp => Err(copy_text(
             "rsSftp.identity.unstamped",
             &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
+                ("machine", machine),
+                ("path", path),
                 ("handsOff", &hands_off.to_string()),
             ],
         )),
         RemoteIdentity::Ambiguous(ids) => Err(copy_text(
             "rsSftp.identity.multiple",
             &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
+                ("machine", machine),
+                ("path", path),
                 ("ids", &ids.join(&copy_text("kit.text.sep", &[]))),
                 ("handsOff", &hands_off.to_string()),
             ],
@@ -185,8 +186,8 @@ pub fn identity_decision(
         RemoteIdentity::Unreadable(why) => Err(copy_text(
             "rsSftp.identity.undecidable",
             &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
+                ("machine", machine),
+                ("path", path),
                 ("why", &why.to_string()),
             ],
         )),
@@ -377,10 +378,7 @@ impl Facing for DialFacing {
         (self.exec)(command)
     }
 
-    fn stat<'a>(
-        &'a self,
-        rel: &'a str,
-    ) -> Fut<'a, Result<(Option<Option<u64>>, Option<bool>), String>> {
+    fn stat<'a>(&'a self, rel: &'a str) -> Fut<'a, Probed> {
         Box::pin(async move {
             // 部署这一问只带一句话（`Facing::stat` 回 `String`）：SFTP 那一下的原话进日志。
             let s = self.session().await.map_err(|s| {
@@ -398,7 +396,7 @@ impl Facing for DialFacing {
         })
     }
 
-    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>> {
+    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Listed> {
         Box::pin(async move {
             let s = self.session().await.ok()?;
             ssh_dial::sftp::list_dir(s, rel).await

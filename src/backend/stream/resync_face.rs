@@ -53,25 +53,23 @@ impl Command for ResyncCmd {
 
 impl crate::wire::typed::Handle for ResyncCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: ResyncReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Resynced, ResyncErr>> + Send + 'static {
-        async move {
-            if req.sid.as_deref() == Some("") {
-                return Err(ResyncErr::BadArgs(crate::common::contract::malformed(
-                    "`sid` must be a non-empty string when given",
-                )));
-            }
-            let (d, watchers) = crate::observe::watcher::resync(req.sid.as_deref());
-            Ok(Resynced {
-                added: d.added,
-                removed: d.removed,
-                retagged: d.retagged,
-                caught_up: d.caught_up,
-                watchers,
-                unavailable: crate::stream::inbound::unavailable_here(),
-            })
+    ) -> Result<Resynced, ResyncErr> {
+        if req.sid.as_deref() == Some("") {
+            return Err(ResyncErr::BadArgs(crate::common::contract::malformed(
+                "`sid` must be a non-empty string when given",
+            )));
         }
+        let (d, watchers) = crate::observe::watcher::resync(req.sid.as_deref());
+        Ok(Resynced {
+            added: d.added,
+            removed: d.removed,
+            retagged: d.retagged,
+            caught_up: d.caught_up,
+            watchers,
+            unavailable: crate::stream::inbound::unavailable_here(),
+        })
     }
 }
