@@ -67,13 +67,6 @@ fn two_threads_asking_for_the_same_tag_get_two_empty_dirs_under_the_sandbox() {
     assert_ne!(a, b, "两个线程同一个 tag 撞进了同一个目录");
     assert_ne!(a, c, "同一线程再拿一回撞进了上一回的目录");
     assert!(a.join("f").exists(), "再拿一回动了上一回的目录");
-    for d in [&b, &c] {
-        assert!(
-            d.read_dir().unwrap().next().is_none(),
-            "{} 不是空的",
-            d.display()
-        );
-    }
     for d in [&a, &b, &c] {
         assert!(
             d.starts_with(&root),
@@ -82,8 +75,12 @@ fn two_threads_asking_for_the_same_tag_get_two_empty_dirs_under_the_sandbox() {
             root.display()
         );
         assert!(d.is_dir(), "{} 没建", d.display());
-        let _ = std::fs::remove_dir_all(d);
     }
+    // `remove_dir` 只删得掉空目录：删得掉 ⇒ 拿到时是空的。
+    for d in [&b, &c] {
+        assert!(std::fs::remove_dir(d).is_ok(), "{} 不是空的", d.display());
+    }
+    let _ = std::fs::remove_dir_all(&a);
 }
 
 /// 外面那个会话漏进来、子测试进程里要看见「都不在」的那几样（名字 ＝ 值随便；真值是什么不要紧，要紧的是进不来）。
