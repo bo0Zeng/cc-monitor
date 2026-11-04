@@ -204,6 +204,10 @@ pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, Stri
 
 /// 生产那一个执行器。**socket 定位**：不传 `-L`/`-S`，靠继承的 `TMUX_TMPDIR` / 默认 socket ——
 /// backend 与它观测的那台 server 本来就在同一套 socket 语义下（`tmux ls` 探测也是这么跑的）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "装 / 摘 tmux hook（`set-hook` · `show-hooks`）：改的是 tmux server 的运行期状态，不写任何文件"
+)]
 fn run_tmux(args: &[String]) -> Result<(bool, String), RunErr> {
     run_tmux_via(crate::host::tmux::child(None), HOOK_TMUX_WITHIN, args)
 }

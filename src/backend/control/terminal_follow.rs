@@ -665,6 +665,10 @@ fn open_client(
             .and_then(|t| t.split(',').next().map(str::to_string))
             .filter(|s| !s.is_empty())
     });
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "终端实时预览：起一个只读、不改尺寸的 tmux 控制模式客户端（`-C attach-session -f read-only,ignore-size`），只读它报的输出事件；不写文件，订阅一停就杀组收尸"
+    )]
     let child = crate::host::tmux::child(socket.as_deref())
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")

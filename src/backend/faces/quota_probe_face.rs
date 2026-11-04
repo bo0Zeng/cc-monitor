@@ -155,6 +155,10 @@ pub(crate) fn answer_probe_with(
     };
     let at = crate::platform::shell::agent_launch(face.program, path)
         .map_err(|why| crate::wire::spec::fail("failed", failed(&why)))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "起那一家官方客户端报一次某个号的用量（适配层登记的那一形，argv 不过 shell、期限 30 秒）：它照自己的样子用自己的配置目录，后端不写；不许加第二种用途"
+    )]
     let mut child = Child::new(at.program)
         .args(at.lead)
         .args(face.args)
