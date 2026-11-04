@@ -9021,13 +9021,6 @@
       "zh": "待处理命令已达上限 · 未执行 · 稍后重试",
       "args": []
     },
-    "rsConfigSurface.scope.userNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "钩子诊断读的就是此份 · 是否已装以 cc-bus 钩子页为准",
-      "args": [],
-      "limited": ["hook"]
-    },
     "rsConfigSurface.probe.cannot": {
       "kind": "error",
       "role": "原因格",
@@ -9063,12 +9056,6 @@
       "role": "报错",
       "zh": "登记的路径与安装位置不一致 · {why}",
       "args": ["why"]
-    },
-    "rsConfigSurface.host.remote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端",
-      "args": []
     },
     "rsConfigSurface.observe.profileNotWindows": {
       "kind": "error",

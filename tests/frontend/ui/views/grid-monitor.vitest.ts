@@ -84,7 +84,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = fixed([
       snap({ sessionId: "l1", title: "本地会话", origin: LOCAL, running: "核心·在跑 2", face: liveFace("working") }),
-      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("mobDrawer.item.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
+      snap({ sessionId: "r1", title: "远端会话", origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
     ]);
     const view = new GridMonitorView(source);
     await openSettled(view);

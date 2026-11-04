@@ -1289,7 +1289,7 @@ fn the_list_product_says_when_account_zero_is_missing() {
     assert!(
         n.contains(copy_core::copy_static!(
             "beAccountsQuery.listProductAt.noDefault"
-        )) && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
+        )),
         "{n}"
     );
     let off = list_product_with(

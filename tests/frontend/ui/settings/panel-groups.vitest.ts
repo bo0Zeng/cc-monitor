@@ -393,7 +393,6 @@ describe("S2 设置面板分页结构", () => {
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
     // ⇒ 同一件事实写在两处，改了那件事实 ⇒ 两处一起改，不是二选一。
     expect(visibleTitles).toContain(copyText("beProfile.slot.account"));
-    expect(visibleTitles).not.toContain(copyText("rsConfigSurface.scope.userNote"));
   });
 
   it("🔴 步 3：机器页还没注册上来时，列表页上是**骨架**，不是兜底态", async () => {
@@ -491,8 +490,6 @@ describe("S2 设置面板分页结构", () => {
       strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:devbox#${id === "term" ? "config" : id}"]`)!;
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
-    const titles = [...strip.querySelectorAll(".settings-group-title")].map((e) => e.textContent);
-    expect(titles, "cc-bus 钩子那一块该拿掉了（它在扩展页 cc-bus 那一行里）").not.toContain(copyText("rsConfigSurface.scope.userNote"));
     // 反向：账号**不该**也出现在终端栏里（搬 DOM 一处一份，不能有两份）
     const termTitles = [...tabPage("term").querySelectorAll(".settings-group-title")].map((e) => e.textContent);
     expect(termTitles).not.toContain(copyText("beProfile.slot.account"));
