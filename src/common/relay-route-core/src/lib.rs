@@ -175,6 +175,14 @@ pub const SKELETON_DIR_REL: &str = ".cc-monitor/cache/skeleton";
 pub const LISTING_CACHE_REL: &str = ".cc-monitor/cache/listing.json";
 /// 远端那几台的会话清单副本（本机后端在数据目录底下落的缓存：一台一份 `<机器>.json`，重启后头一问带它的记号；删了照那台再问一次整份；`history/remote_listing.rs`）。
 pub const REMOTE_LISTING_DIR_REL: &str = ".cc-monitor/cache/remote-listing";
+/// 补足会话为各组名建的那一组（组名 ⇒ 组 id；`control/session_set.rs`，声明 [`SET_GROUPS_FILE`]）。
+pub const SET_GROUPS_REL: &str = ".cc-monitor/set-groups.json";
+/// 组的待补：改名 · 解散没送到别台的那几句（`history/groups_owed.rs`，声明 [`GROUPS_OWED_FILE`]）。
+pub const GROUPS_OWED_REL: &str = ".cc-monitor/groups-owed.json";
+/// 轮换策略的源码（一份一个 `.rhai`，用户自己的；声明 [`STRATEGY_SOURCE_FILE`]）。
+pub const STRATEGIES_DIR_REL: &str = ".cc-monitor/strategies";
+/// 托管终端那一层：每个一个目录（事实 · 连接入口），按版本的程序副本在 `.bin/` 底下（声明 [`HOST_FACTS_FILE`] · [`HOST_PROGRAM_FILE`]）。
+pub const HOSTS_DIR_REL: &str = ".cc-monitor/hosts";
 
 /// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。
 pub const ANSWER_PLUGIN_DIR_REL: &str = ".cc-monitor/answer-plugin";
@@ -1202,7 +1210,7 @@ const ANSWER_PLUGIN_MAX_BYTES: Cap = Cap {
 };
 /// 套组名 ⇒ 为它建的那一组的 id（顶层键是组名，带 `version` 会撞名 ⇒ 不带版本）。
 pub const SET_GROUPS_FILE: Decl<State> = Decl::<State>::foreign(
-    ".cc-monitor/set-groups.json",
+    SET_GROUPS_REL,
     Owner::Set,
     SET_GROUPS_MAX_BYTES,
 );
@@ -1214,7 +1222,7 @@ const SET_GROUPS_MAX_BYTES: Cap = Cap {
 /// 组的待补：改名 · 解散发给各片时没送到的那几台，这一端欠它们的那几句（本机后端替这一端记，`history/groups_owed.rs`；
 /// 那台再答 `groups-here` 时补发、补成了消掉）。
 pub const GROUPS_OWED_FILE: Decl<State> = Decl::<State>::json(
-    ".cc-monitor/groups-owed.json",
+    GROUPS_OWED_REL,
     Owner::End(End::Desktop),
     1,
     1,
@@ -1237,8 +1245,9 @@ const STRATEGY_SOURCE_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 
-/// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上 · 壳那一侧查「文件与数据」那一页列全了它）。
-pub const OWN_FILES: &[Row] = &[
+/// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上 · 壳那一侧读这一段原文查「文件与数据」那一页列全了它）。
+#[cfg(test)]
+const OWN_FILES: &[Row] = &[
     BACKEND_POLICY_FILE.row,
     PREFS_FILE.row,
     MACHINES_FILE.row,
@@ -1323,8 +1332,8 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("remoteListing", REMOTE_LISTING_DIR_REL, true, false),
     declared("setGroups", &SET_GROUPS_FILE),
     declared("groupsOwed", &GROUPS_OWED_FILE),
-    ("strategies", ".cc-monitor/strategies", true, true),
-    ("hosts", ".cc-monitor/hosts", true, true),
+    ("strategies", STRATEGIES_DIR_REL, true, true),
+    ("hosts", HOSTS_DIR_REL, true, true),
 ];
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
