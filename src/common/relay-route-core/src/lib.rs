@@ -1209,11 +1209,8 @@ const ANSWER_PLUGIN_MAX_BYTES: Cap = Cap {
     over: Over::SkipAndSay,
 };
 /// 套组名 ⇒ 为它建的那一组的 id（顶层键是组名，带 `version` 会撞名 ⇒ 不带版本）。
-pub const SET_GROUPS_FILE: Decl<State> = Decl::<State>::foreign(
-    SET_GROUPS_REL,
-    Owner::Set,
-    SET_GROUPS_MAX_BYTES,
-);
+pub const SET_GROUPS_FILE: Decl<State> =
+    Decl::<State>::foreign(SET_GROUPS_REL, Owner::Set, SET_GROUPS_MAX_BYTES);
 /// 套组绑定那一份的读上限。
 const SET_GROUPS_MAX_BYTES: Cap = Cap {
     bytes: 1 << 20,
