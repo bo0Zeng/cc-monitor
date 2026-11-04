@@ -526,7 +526,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 //
 // 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
 // `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数要求：「`ccm.exe --ccm-probe`
-// 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base` 等能力 —— 这些在 Windows 上都做不到」。
+// 在 Windows 上自报 `tmux, detach, tmux-size, tmux-base` 等能力 —— 这些在 Windows 上都做不到」。
 // 异源：Windows 那一格的期望是**手写的两张名单**（做得到 / 做不到），不从 `CCM_TMUX_CARRIED` 或
 // `ccm_launcher_with` 里抠 —— 否则两侧同源、恒真。
 // ⚠ 买不到：`TMUX_PLATFORM` 在本机是 `AskThePath`，Windows 那一档由入参模拟；真 `ccm.exe` 吐什么要真机
@@ -550,16 +550,17 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
     ));
     let want_absent = [
         "tmux",
-        "attach",
         "detach",
         "tmux-size",
         "tmux-base",
         "ccm-sid",
         "base-url-across-tmux",
     ];
+    // `attach` 做得到：`--attach <名>` 先认托管名单（瘦客户端接上），认不到才落 `tmux attach`。
     let want_present = [
         "new",
         "resume",
+        "attach",
         "account",
         "model",
         "cwd",

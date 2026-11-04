@@ -261,7 +261,8 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
 //   能不能走到一个**真起 `tmux`** 的函数（`Command::new("tmux")`，或经 `platform::shell::posix_shell` 起 shell 送 tmux 脚本的那一个）。
 //   够得着的 == 声明 `no_tmux` 的 ∪ 登记的「够得着但 tmux 只是可选的」。
 // - **ccm 面**：`control::ccm::CAPABILITIES` 每一条配一个最小探针 argv，经**真解析器 ＋ 真计划**（`argv::parse_layered` → `plan::build`，纯、不起进程）
-//   看它落在哪条路上：接回 / 容器 ⇒ 靠 tmux；直路 ⇒ 它在直路上必须**有效果**（计划与基线不同），否则它离了 tmux 什么都不做。
+//   看它落在哪条路上：容器 ⇒ 靠 tmux；直路 ⇒ 它在直路上必须**有效果**（计划与基线不同），否则它离了 tmux 什么都不做；
+//   接回按宿主分（托管名单在执行那一刻才认），计划层判不了 ⇒ 进例外表。
 //   靠 tmux 的 ∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 //
 // ⚠ 买不到（如实）：
@@ -1565,7 +1566,6 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("account", &["--account", "acct-x"], &[]),
     ("account-via-backend", &["--account", "acct-x"], &[]),
     ("agent", &["--ccm-agent", "codex"], &[]),
-    ("attach", &["--attach", "foo"], &[]), // 位置动作是 `--attach`
     (
         "backend-discover",
         &["--resume", "11111111-2222-3333-4444-555555555555"], // 交给 claude 的那一形
@@ -1591,6 +1591,11 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
 
 /// 计划那一层判不了的几条：`(能力, 算不算靠 tmux, 为什么)`。
 const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
+    (
+        "attach",
+        false,
+        "接回按宿主分：`--attach <名>` 执行那一刻先认托管名单（认到 ⇒ 瘦客户端接上，不靠 tmux），认不到才落 `tmux attach` —— 计划里只有 `Plan::Attach { name }`，托管名单计划层看不见；没有 tmux 的平台上它照样接得上托管终端",
+    ),
     (
         "base-url-across-tmux",
         true,
@@ -1663,7 +1668,11 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
                 "能力 `{cap}` 的探针带了载体旗标 `{c}`，拿掉它照样起得来 ⇒ 那个旗标是白带的，本条会把它判成「靠 tmux」而冤枉它"
             );
         }
-        let rides = matches!(p, Plan::Attach { .. } | Plan::Container(_));
+        assert!(
+            !matches!(p, Plan::Attach { .. }),
+            "能力 `{cap}` 的探针 {argv:?} 落在接回上 —— 接回按宿主分、计划层判不了，那条能力进例外表"
+        );
+        let rides = matches!(p, Plan::Container(_));
         if !rides {
             assert_ne!(
                 p, baseline,
