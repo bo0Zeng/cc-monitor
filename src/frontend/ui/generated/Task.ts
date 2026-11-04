@@ -17,6 +17,10 @@ subject: string,
  */
 status: string, 
 /**
+ * `status` 写给人看的那一个字（读屏念它；界面照摆，不自己映）。
+ */
+statusText: string, 
+/**
  * 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
  */
 blocks: Array<string>, 
