@@ -265,6 +265,10 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
 
 /// 账号库在就拿它那把锁（与改账号库那几条命令同一把：锁的是账号库目录本身）。
 /// 不借命令那一层的那一份：那一层还认得 `ccm` 的命令行，扩展页读共享集合时会被连带引用进来。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "各号共用的用户级 MCP 那一趟读—改—写：监听器那一路、帧命令那一路、改账号库的命令同时来，后写的会拿旧的对照底算错。与账号库同一把锁"
+)]
 pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
     let accts = super::scan::accts_root(home);
     if item_at(&accts).exists() {

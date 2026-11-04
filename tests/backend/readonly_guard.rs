@@ -4,7 +4,7 @@
 //!
 //! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 碰盘只经 `platform/fs/` 交出去的句柄：读经 `Ro`（没有写方法）· 改用户文件只经文件管理面的 `Face`（写方法只收已过路径解析的 `Resolved`，只递给命令表文件管理那一族）· 分叉只经只会 `O_EXCL` 新建的 `NewFile` · 后端自家状态只经 `Own`（只写家目录的 `.cc-monitor` 与数据目录底下）。
 //! - **它扫的人群是**：`src/backend/` 底下各包里调碰盘标准库与系统调用的地方（`platform/fs/` 之外一处都不许，由 clippy 按解析后的路径认）·
-//!   本 crate `src/` 递归全部 `.rs` 的生产段源码文本里造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
+//!   造写句柄 · 拿跨进程锁的地方（同一份名单，逐处放行）· 要文件管理写句柄的处理器（同一份名单），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
 //!
 //! # 怎么挡：一处实现，四种句柄
 //!
@@ -15,9 +15,10 @@
 //!   起别名 · 分组导入照认；放行写在用不到它的地方 ⇒「期望没满足」（警告，不红）。⚠ 只在 clippy 里红、`cargo test` 不红；Windows 那几臂只有门禁 `winchk-backend` 看得见。
 //!   名单认不出的几形写在那份 toml 的头注里（`Path` 上的读方法 · 经 `From` 的换法 · `libc::syscall` 裸调 · 手写 `extern`）。
 //! - 读不用递句柄：`Ro` 没有写方法，`Ro::open` 交回的那一份不实现 `Write`（[`tests::the_read_only_file_has_no_write`]）。
-//! - 写要拿到句柄，句柄只在登记的那几处造（[`tests::the_write_handles_are_issued_only_at_startup`]：`Own` 只在启动入口 ·
-//!   `Face` 只在分派那一层 · `NewFile` 只在分叉那两条命令 · `Resolved` 只由路径解析担保）；
-//!   `Face` 只递给文件管理那一族（[`tests::only_the_file_manager_commands_are_handed_the_face`]），写方法不收 `&Path`（[`tests::the_face_writes_take_only_resolved_paths`]）。
+//! - 写要拿到句柄，句柄只在该造的那几处造：`Own` · `DiagLog` 只在启动入口 · `Face` 只在分派那一层 · `NewFile` 只在分叉那两条命令 ·
+//!   `Resolved` 只由路径解析与删会话那一道担保；跨进程锁只在写自家状态的句柄与账号库那两趟读—改—写里拿。
+//!   这几个口列在后端 `clippy.toml`（deny），每一处在调用点 `expect` 写理由；
+//!   `Face` 只递给文件管理那一族（`needs::Face` 进同一份名单的 `disallowed-types`，那两扇门的挂载行放行），写方法不收 `&Path`（[`tests::the_face_writes_take_only_resolved_paths`]）。
 //!
 //! 今后加一处读，不用改护栏；加一处写，只要拿到对的句柄。只有新开一种写能力、或者多一个造句柄的地方，才回来改这里。
 //!
@@ -124,62 +125,6 @@ mod tests {
         // 安全性：`create_new(true)` **不含**子串 `create(true)`，不会自伤。
         "create(true)",
     ];
-
-    /// 拿这把跨进程锁的（`(模块, 为什么)`）：自家状态的写句柄本身 ＋ 两份不经它、却同样是一趟读—改—写的账号库那一面。
-    /// 锁只是只读打开那个目录，不添任何写动词。
-    const LOCK_HOLDERS: &[(&str, &str)] = &[
-        (
-            "platform/fs/own.rs",
-            "自家状态写句柄 `Own::lock` 与凭据窄句柄 `AccountCreds::lock` 的本体（同一处拿）：原子写的签名要这把锁的守卫 ⇒ \
-             写自家状态的每一份都在锁里写（类型管，不再逐份登记）；它自己不读—改—写任何一份",
-        ),
-        (
-            "accounts/manage/wire.rs",
-            "账号库的读—改—写（读清单与各号目录 → 算计划 → 经文件管理面落盘）：本机常驻后端与一次性 CLI 同时改，\
-             后写的会把先写的那个号从清单里抹掉。锁的是账号库目录本身",
-        ),
-        (
-            "accounts/manage/mcp_share_exec.rs",
-            "各号共用的用户级 MCP 那一趟读—改—写（读共享集合与各号配置 → 对照 → 经文件管理面写各号与共享集合）：\
-             监听器那一路、帧命令那一路、改账号库的命令同时来，后写的会拿旧的对照底算错。与账号库同一把锁",
-        ),
-    ];
-
-    /// 🔴 **拿跨进程锁的只有登记的那几处 —— 人群两向相等。**
-    ///
-    /// 要求：「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」。写自家状态那一半由类型保证：`Own::write` 的签名要
-    /// 那个目录的锁的守卫（拿不到守卫就写不了）。本条管另一向：生产段里拿 `platform::lock::hold` 的文件 == [`LOCK_HOLDERS`]
-    /// （两向；每份**恰好一处**）—— 多出来的 ⇒ 有人绕过写句柄自己拿锁、多半也在自己写。
-    #[test]
-    fn hx2_the_cross_process_lock_is_taken_only_where_registered() {
-        let root = guard_core::addr::backend_src_root();
-        let needle = "platform::lock::hold(";
-        let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
-        for path in core_files() {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let src = std::fs::read_to_string(&path).expect("read rs file");
-            let n = guard_core::production_code(&src).matches(needle).count();
-            if n > 0 {
-                holders.insert(rel, n);
-            }
-        }
-        let want: std::collections::BTreeSet<String> =
-            LOCK_HOLDERS.iter().map(|(p, _)| p.to_string()).collect();
-        let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
-        assert_eq!(
-            got, want,
-            "拿跨进程锁的模块 ≠ 登记的那几处。\n\
-             多了 ⇒ 有人绕过写句柄自己拿锁（写自家状态经 `platform::fs::Own`，锁随它拿）；\n\
-             少了 ⇒ 登记挂空号（搬走 / 改名了，这张表没跟）。"
-        );
-        for (m, n) in &holders {
-            assert_eq!(*n, 1, "`{m}` 里拿了 {n} 处锁 —— 每份一处");
-        }
-    }
 
     // ═══════════════════ 删历史会话那一条═══════════════════
 
@@ -458,96 +403,10 @@ mod tests {
     //
     // 谁能调碰盘的标准库与系统调用，不在这里扫文本：后端 `clippy.toml` 碰盘那一组（deny）按解析后的路径认，
     // 只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行（理由写在那个函数上：读那一份是「只读」）。
-    // 下面几条只管 clippy 名单管不到的：谁能造句柄 · 谁拿得到 `Face` · `Face` 的签名 · `RoFile` 不能写。
-
-    /// 碰盘的那一层住在哪：造句柄的判据不把它算进调用方。
-    const FS_HOME: &str = "platform/fs/";
-
-    /// 自家状态写句柄的造法（`(针, 只许出现在哪几份)`）：[`crate::platform::fs::Own`] 启动时造一次、顺着入口递下去；
-    /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
-    // 针不带括号：`Own::issue` 一族（照进程环境 · 照注入的环境）都只许启动入口造。
-    const ISSUERS: &[(&str, &[&str])] = &[
-        ("Own::issue", &["stream/entry.rs"]),
-        ("DiagLog::issue", &["stream/entry.rs"]),
-        // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
-        //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
-        ("Face::issue", &["stream/inbound/mod.rs", "wire/spec.rs"]),
-        // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
-        (
-            "NewFile::issue",
-            &["faces/fork_face.rs", "faces/session_open_face.rs"],
-        ),
-        // 「已过路径解析」只有路径解析本身造得出：从根句柄逐段开（`common/root_path.rs`，文件管理写面与传输台共用）；
-        // 按路径担保的那一形只给删会话那一道（写面）。
-        ("Resolved::walk", &["common/root_path.rs"]),
-        ("Resolved::vouch", &["files/write.rs"]),
-    ];
-
-    #[test]
-    fn the_write_handles_are_issued_only_at_startup() {
-        let root = guard_core::addr::backend_src_root();
-        for (needle, want) in ISSUERS {
-            let mut got: Vec<String> = Vec::new();
-            for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-                let rel = path
-                    .strip_prefix(&root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if rel.starts_with(FS_HOME) {
-                    continue;
-                }
-                if guard_core::production_code(&src).contains(needle) {
-                    got.push(rel);
-                }
-            }
-            got.sort();
-            assert_eq!(
-                got, *want,
-                "`{needle}` 出现的地方不是启动入口 —— 写句柄只许在启动时造一次、顺着入口递下去；\n\
-                 要写自家状态的那一处改成收一个 `&Own` 参数，由调它的那一层递进来"
-            );
-        }
-        // 正控：针认得出合成语料里的那一造。
-        assert!(
-            guard_core::production_code("fn f() { let o = Own::issue(); }").contains(ISSUERS[0].0)
-        );
-    }
-
-    /// 递 [`crate::platform::fs::Face`] 的那一种能力（处理器写 `type Needs = needs::Face`）只有文件管理那一族用：
-    /// 这样声明的处理器只住文件管理的两扇门（写面 · 上传提交 · 解压那一份，删会话那一份）。别处的处理器要了它，就是多了一个写用户文件的口。
-    #[test]
-    fn only_the_file_manager_commands_are_handed_the_face() {
-        let root = guard_core::addr::backend_src_root();
-        let needle = format!("needs::{};", "Face");
-        let got: std::collections::BTreeSet<String> = core_files()
-            .into_iter()
-            .filter(|p| p.file_name().and_then(|n| n.to_str()) != Some("readonly_guard.rs"))
-            .filter(|p| {
-                guard_core::production_code(&std::fs::read_to_string(p).expect("读后端源码"))
-                    .contains(needle.as_str())
-            })
-            .map(|p| {
-                p.strip_prefix(&root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
-            .collect();
-        assert_eq!(
-            got.into_iter().collect::<Vec<_>>(),
-            vec![
-                "stream/inbound/files_session_face.rs".to_string(),
-                "stream/inbound/files_write_face.rs".to_string(),
-            ],
-            "要文件管理写句柄的处理器住到了文件管理那两扇门以外"
-        );
-        // 正控：针认得出处理器里那一句声明。
-        assert!(guard_core::production_code(&format!(
-            "impl Handle for X {{ type Needs = crate::wire::typed::{needle} }}"
-        ))
-        .contains(needle.as_str()));
-    }
+    // 谁能造写句柄、谁能拿跨进程锁，也由同一份 `clippy.toml` 那一组认（`Own` · `DiagLog` · `Face` · `NewFile` 的 `issue`、
+    // `Resolved::walk` · `vouch`、`platform::lock::hold`），每一处在调用点 `expect` 写理由；
+    // 要文件管理写句柄的处理器（`type Needs = needs::Face`）由同一份的 `disallowed-types` 认，只在文件管理那两扇门的挂载行放行。
+    // 下面几条只管 clippy 名单管不到的：`Face` 的签名 · `RoFile` 不能写。
 
     /// `Face` 的写方法只收 [`crate::platform::fs::Resolved`]：`impl Face` 里每个方法的参数表都不点名 `Path`
     /// （建链接那一处的链接内容是原样写的文本，不是落点 ⇒ 登记的唯一例外）。拿 `&Path` 调它编不过 —— 本条钉的是签名没被放宽。

@@ -50,6 +50,10 @@ fn home_of(d: &dyn Door) -> Result<String, Said> {
 }
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "账号库的读—改—写（读清单与各号目录 → 算计划 → 经文件管理面落盘）：本机常驻后端与一次性 CLI 同时改，后写的会把先写的那个号从清单里抹掉。锁的是账号库目录本身"
+)]
 fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
     let accts = scan::accts_root(home);
     if scan::item_at(&accts).exists() {

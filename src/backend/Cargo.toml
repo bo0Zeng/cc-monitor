@@ -357,6 +357,8 @@ default-members = ["."]
 [workspace.lints.clippy]
 # 「现在」只有一处（禁的路径与理由住 `clippy.toml`）：别处直接问系统钟 ⇒ clippy 红。
 disallowed_methods = "deny"
+# 要文件管理写句柄的处理器只住文件管理那两扇门（禁的类型与理由住 `clippy.toml`）。
+disallowed_types = "deny"
 # 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
 let_underscore_must_use = "deny"
 unused_result_ok = "deny"
