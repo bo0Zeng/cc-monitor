@@ -1014,7 +1014,9 @@ fn start_new(
         .as_deref()
         .map(str::trim)
         .filter(|c| !c.is_empty());
-    if let Some(c) = command.and_then(shell_quote_core::launcher_refused_char) {
+    // 照那一行在哪台跑认（本机 Windows ⇒ Windows 那一形），同 `launch_render` 判工作目录那一格。
+    let windows = here == Here::Local { windows: true };
+    if let Some(c) = command.and_then(|c| shell_quote_core::launcher_refused_char(c, windows)) {
         return Err(fail(
             "bad_command",
             copy_core::copy_text(
