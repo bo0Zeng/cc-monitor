@@ -10365,7 +10365,7 @@ data class Host(
             listOf(
             Field("label", { Str }, optional = false, nullable = false),
             Field("host", { Str }, optional = false, nullable = false),
-            Field("port", { U64 }, optional = false, nullable = false),
+            Field("port", { Lng }, optional = false, nullable = false),
             Field("user", { Str }, optional = false, nullable = false),
             Field("keyPath", { Str }, optional = false, nullable = false),
             Field("addresses", { arr(Str) }, optional = false, nullable = false),
