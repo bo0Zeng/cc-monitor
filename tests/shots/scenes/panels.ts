@@ -590,11 +590,9 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[data-role=message-more]");
     await sleep(500);
   }, () => {
+    // devbox 那一跳断开：本机后端问它那一组（`sessions-batch`）问不到 ⇒ 那一台的几个记失败。
     const w = defaultWorld();
-    w.ops["sessions-stop"] = (origin, req) => {
-      if (origin === "devbox") throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
-      return { results: (req.sids as string[]).map((sid) => ({ sid, outcome: "done", why: null, detail: "", session: null, bus: null, cmd: null, account: null, unavailable: null })) };
-    };
+    w.hopDown = { devbox: ["sessions-batch"] };
     return w;
   }),
   panel(
@@ -613,6 +611,7 @@ export const PANEL_SCENES: Scene[] = [
       const w = defaultWorld();
       w.commands.open_file_window = () =>
         Promise.reject({
+          code: "crashed",
           said: "文件窗口未启动 · 程序出错",
           detail: "时刻：2026-10-08 15:20:44 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_file_window\n码：exit status: 1\n原话：thread 'main' panicked at src/main.rs:12:5:\nwinit: no display",
         });
@@ -633,6 +632,7 @@ export const PANEL_SCENES: Scene[] = [
       const w = defaultWorld();
       w.commands.open_settings_window = () =>
         Promise.reject({
+          code: "crashed",
           said: "打开设置窗口失败 · 程序出错",
           detail: "时刻：2026-10-08 16:05:12 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_settings_window\n原话：a webview with label `settings` already exists",
         });
