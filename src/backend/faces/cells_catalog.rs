@@ -984,6 +984,7 @@ mod specimens {
                     project_dir: some("/w"),
                     agent: Some("agent".into()),
                     writers: vec![1],
+                    writers_line: Some(Words(s("w"))),
                     pending: vec![PendingCall {
                         id: s("c"),
                         name: s("Bash"),

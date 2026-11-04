@@ -139,7 +139,7 @@ beforeEach(() => {
   dispatcher.start();
 });
 
-const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", statusText: "未开始", blocks: [], blockedBy: [] });
+const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", statusText: "甲态", blocks: [], blockedBy: [] });
 /** 任务清单那一份：chip 的字是后端写好的（这里只造一句占位，界面照摆）。 */
 const tasksOf = (tasks: TaskEntry[], chip = "任务枚"): TasksList => ({ tasks, chip, hint: "" });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
@@ -277,7 +277,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     drawer.toggle("tasks");
     tasks.setSession("s", tasksOf([task("1"), task("2")]));
     const row1 = drawer.dock.el.querySelector('[data-task-id="1"]');
-    tasks.setSession("s", tasksOf([{ ...task("1"), status: "completed", statusText: "完成" }, task("2"), task("3")]));
+    tasks.setSession("s", tasksOf([{ ...task("1"), status: "completed", statusText: "乙态" }, task("2"), task("3")]));
     expect(drawer.dock.el.querySelector('[data-task-id="1"]')).toBe(row1);
     expect(row1?.className).toContain("status-completed");
     expect(drawer.dock.el.querySelectorAll(".tasks-item").length).toBe(3);

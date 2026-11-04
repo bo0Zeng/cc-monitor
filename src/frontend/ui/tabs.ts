@@ -718,7 +718,7 @@ export class TabManager {
       label: pendingName?.label ?? null,
       forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
-      writers: [], // 同上
+      writersLine: null, // 同上
       origin,
       // 脸早于建 Tab 到 ⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
       face: this.store.pendingFace.get(sessionId) ?? null,

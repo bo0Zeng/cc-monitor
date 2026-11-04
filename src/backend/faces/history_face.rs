@@ -1447,6 +1447,7 @@ pub(crate) fn facts_at(
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = locate::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
+    facts.writers_line = facts::writers_line(&facts.writers);
     // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
     facts.permission_mode_text = facts
         .agent

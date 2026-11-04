@@ -5069,21 +5069,22 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     }
   });
 
-  it("成品说不止一个进程在写这条会话 ⇒ tab 的悬停提示多一行；一个 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
-    let writers = [4242, 5252];
-    answerFacts(() => facts({ writers }));
+  it("成品带写入进程那一句 ⇒ tab 的悬停提示照摆那一句；不带 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
+    // 夹具那一句与 pid 个数故意无关：界面若还在自己数 pid、自己拼，就红。
+    const said = "那台写的写入进程句";
+    let writersLine: string | undefined = said;
+    answerFacts(() => facts({ writers: [4242], ...(writersLine === undefined ? {} : { writersLine }) }));
     tm.onLine(line("dup", 0));
     await settle();
     const tab = home(tm).store.tabs.get("dup")!;
     const tip = () => cardText(tm, "dup").split("\n");
-    const said = copyText("tabBarView.tab.writers", { n: 2 });
-    expect(tab.writers).toEqual([4242, 5252]);
+    expect(tab.writersLine).toBe(said);
     expect(tip()).toContain(said);
-    writers = [4242];
+    writersLine = undefined;
     tm.onLine(line("dup", 1));
     await settle();
     expect(tip()).not.toContain(said);
-    writers = [4242, 5252];
+    writersLine = said;
     tm.onLine(line("dup", 2));
     await settle();
     expect(tip()).toContain(said);
