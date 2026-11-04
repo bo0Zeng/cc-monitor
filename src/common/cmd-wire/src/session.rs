@@ -1201,6 +1201,10 @@ pub struct HistoryTail<R = serde_json::Value> {
     pub plan: TailPlan,
     /// 怎么接。
     pub how: TailHow,
+    /// 手上那一份作废的那两种（变短 · 被改写）写好的那一句（界面照摆）；别的接法 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub said: Option<crate::cells::Words>,
     /// `rows` 第一行的行号（续传 ＝ 交来的 `held.next`；`handoff` ＝ `total`；其余 ＝ `tail_from`）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub from: u64,

@@ -208,8 +208,8 @@ describe("〔STC〕第五问：会话事实", () => {
       needs: null,
       handedBack: ["ag-7"],
       retries: [
-        { id: "rt-1", outcome: "recovered" },
-        { id: "rt-2", outcome: "retrying" },
+        { id: "rt-1", outcome: "recovered", text: copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.overloaded"), a: "1", time: "07:34" }) },
+        { id: "rt-2", outcome: "retrying", text: copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: "1", maxRetries: "10" }), time: "08:30" }) },
       ],
       notices: [{ id: "n-1", members: ["n-1", "n-2", "n-3"], hidden: ["n-1"], head: "后台任务 ×2 · 07:31–07:33 · 失败 ×1", failed: true }],
       permissionMode: "acceptEdits",
@@ -243,6 +243,8 @@ describe("〔STC〕第五问：会话事实", () => {
       autoAnswered: null,
       startedBy: null,
       children: [],
+      startedByText: null,
+      childrenText: null,
       line: null,
       quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },
     });

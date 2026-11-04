@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use serde_json::Value;
 
 use crate::agents::beat::{
-    contains, one_line, Act, Beat, CallAsk, CostSaid, Side, StopWhy, Usage, Watch,
+    contains, one_line, Act, Beat, CallAsk, CostSaid, RetrySaid, Side, StopWhy, Usage, Watch,
 };
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
@@ -145,7 +145,16 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         model = msg.and_then(|m| str_of(m, "model")).map(Cow::Borrowed);
     }
     if kind == Some("system") && str_of(v, "subtype") == Some("api_error") {
-        acts.push(Act::Retry);
+        let count = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+        };
+        acts.push(Act::Retry(RetrySaid {
+            reason: super::steps::api_reason(None, v.get("error"), ""),
+            attempt: count("retryAttempt"),
+            max: count("maxRetries"),
+        }));
     }
     if let Some(said) = super::text::user_text_of_record(v) {
         acts.push(Act::Said(said));

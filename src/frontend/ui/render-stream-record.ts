@@ -9,7 +9,7 @@
 import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
 import { askRefs } from "./plan-refs";
-import { isRetryBar, mergeRetry } from "./cards/api-error";
+import { isRetryBar } from "./cards/api-error";
 import { buildInjectedLine } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
@@ -220,13 +220,10 @@ export function renderContentRecord(
     }
 
     case "card": {
-      // 重试细条（§5.2.5）：左邻居也是一条还在重试的细条 ⇒ 并进它、原地更新，不另起一条。
+      // 重试细条（§5.2.5）：左邻居也是一条还在重试的细条 ⇒ 并进它、不另起一条（这一串的整句是会话事实那一格，下一份事实到了照它重摆）。
       if (isRetryBar(result.element)) {
         const prev = sink.timeline.peekPrev(payload.seq);
-        if (prev && isRetryBar(prev.element) && prev.element.dataset.state === "retrying") {
-          mergeRetry(prev.element, result.element);
-          return;
-        }
+        if (prev && isRetryBar(prev.element) && prev.element.dataset.state === "retrying") return;
       }
       // 普通卡：直接 markCardId + timeline.insert
       markCardId(result.element, message);

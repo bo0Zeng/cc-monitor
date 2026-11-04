@@ -32,6 +32,7 @@
       }
     ],
     "children": [],
+    "childrenText": null,
     "cost": {
       "micros": 424200,
       "partial": false,
@@ -116,14 +117,17 @@
     "retries": [
       {
         "id": "rt-1",
-        "outcome": "recovered"
+        "outcome": "recovered",
+        "text": "服务器过载 · 重试 ×1 后恢复 · 07:34"
       },
       {
         "id": "rt-2",
-        "outcome": "retrying"
+        "outcome": "retrying",
+        "text": "服务器过载 · 重试 1/10 · 08:30 起"
       }
     ],
     "startedBy": null,
+    "startedByText": null,
     "tokens": {
       "cacheRead": 3,
       "cacheWrite1h": 0,

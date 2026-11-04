@@ -795,7 +795,7 @@ describe("报错卡上去它的终端那两颗（与会话头同一道）", () =
   });
 
   it("报错卡摆出两颗（看不看得见由消息流根上的标记管），点了的那颗带着它是哪条路", () => {
-    const card = buildApiErrorCard({ timeLabel: "02:10", text: "overloaded" });
+    const card = buildApiErrorCard({ timeLabel: "02:10", title: "CARD-HEAD", text: "overloaded" });
     expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([
       ["front", copyText("terminal.head.front")],
       ["attach", copyText("sessionHead.act.openTerm")],

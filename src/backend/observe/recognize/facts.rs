@@ -26,7 +26,7 @@
 //! | `pending` | 代理那侧的工具调用，等到用户那侧同 id 的工具结果才摘；人又发了一句（用户那侧没有工具结果）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
 //! | `lastSay` | 文件序最后一段代理那侧正文的头一个非空行，至多 [`SAY_CHARS`] 字 |
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
-//! | `retries` | 一串相邻的上游重试（一拍的 `Retry`）按首条的 id 记一件，结局看它后面第一条代理那侧 / 人发的（不是注入、不带工具结果）用户那侧（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
+//! | `retries` | 一串相邻的上游重试（一拍的 `Retry`）按首条的 id 记一件，结局看它后面第一条代理那侧 / 人发的（不是注入、不带工具结果）用户那侧（[`RetryOutcome`]）；别的系统记录不算下文。原因与次数取一串里最后一条说了的，首末两条的时刻记下（[`RetrySeen`]，累加在 `retryLog`）；出口那一下照结局写整句（[`settle_retries`]）。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
 //! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
@@ -111,8 +111,12 @@ pub struct SessionFacts {
     pub needs: Option<Needs>,
     /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
     pub handed_back: Vec<String>,
-    /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+    /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。出口那一下照 [`SessionFacts::retry_log`] 写（[`settle_retries`]）。
     pub retries: Vec<RetryRun>,
+    /// 重试串的累加（[`note_retry`]）：不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub retry_log: Vec<RetrySeen>,
     /// 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
     pub notices: Vec<NoticeRun>,
     /// 通知组的累加（[`note_notice`]）：不上线，骨架落它（[`skel`]）。
@@ -151,6 +155,12 @@ pub struct SessionFacts {
     /// 它起的子会话（按起的先后）；不累加，每次现查。
     #[serde(default)]
     pub children: Vec<Kin>,
+    /// 由谁启动那一句（「由「X」启动」，[`set_kin`] 写）；不是谁起的 ⇒ `null`。
+    #[serde(default)]
+    pub started_by_text: Option<Words>,
+    /// 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
+    #[serde(default)]
+    pub children_text: Option<Words>,
     /// **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
     /// 不活 ⇒ `null`。不累加，每次现查。
     #[serde(default)]
@@ -529,6 +539,24 @@ pub struct RetryRun {
     /// 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
     pub id: String,
     pub outcome: RetryOutcome,
+    /// 照结局写好的那一整句（出口那一下照看的那一台的时区写，[`settle_retries`]；界面照摆）：
+    /// 还在重试 ⇒ 细条那一行（「{原因} · 重试 a/b · {首条钟面} 起」）· 接上了 / 中断了 ⇒ 变淡那一行（「… 重试 ×a 后恢复 / 中断 · {末条钟面}」）·
+    /// 没接上 ⇒ 细条收起、紧跟着的报错卡那一行下一步（「重试 a/b 后停止 · …」，没次数 ⇒ 只那半句）。
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
+    pub text: Words,
+}
+
+/// 累加着的一串重试（[`SessionFacts::retry_log`]）：首条 id · 结局 · 原因与次数（取最后一条说了的）· 首末两条的时刻（毫秒）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetrySeen {
+    pub(crate) id: String,
+    pub(crate) outcome: RetryOutcome,
+    pub(crate) reason: cmd_wire::record::ApiReason,
+    pub(crate) attempt: Option<u32>,
+    pub(crate) max: Option<u32>,
+    pub(crate) since_ms: Option<i64>,
+    pub(crate) last_ms: Option<i64>,
 }
 
 /// 一组相邻的收场通知（[`SessionFacts::notices`]）。
@@ -1443,7 +1471,7 @@ fn note_quiet(f: &mut SessionFacts, kind: &str, v: &Value) {
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
-    f.retries
+    f.retry_log
         .last()
         .is_some_and(|r| r.outcome == RetryOutcome::Retrying)
 }
@@ -1451,19 +1479,39 @@ fn open_retry(f: &SessionFacts) -> bool {
 /// 重试一串一串地记（口径见头注那张表）。
 fn note_retry(f: &mut SessionFacts, beat: &Beat) {
     let open = open_retry(f);
-    if beat.acts.contains(&Act::Retry) {
+    let said = beat.acts.iter().find_map(|a| match a {
+        Act::Retry(s) => Some(*s),
+        _ => None,
+    });
+    if let Some(said) = said {
+        let at_ms = beat
+            .at
+            .as_deref()
+            .and_then(crate::common::time::parse_iso8601_ms);
         if open {
+            // 又一次：原因取这一条的，次数说了才换（没说的那几格留前一条的），末条时刻挪到这一条。
+            if let Some(r) = f.retry_log.last_mut() {
+                r.reason = said.reason;
+                r.attempt = said.attempt.or(r.attempt);
+                r.max = said.max.or(r.max);
+                r.last_ms = at_ms.or(r.last_ms);
+            }
             return;
         }
         let Some(id) = beat.id.as_deref() else {
             return;
         };
-        f.retries.push(RetryRun {
+        f.retry_log.push(RetrySeen {
             id: id.to_string(),
             outcome: RetryOutcome::Retrying,
+            reason: said.reason,
+            attempt: said.attempt,
+            max: said.max,
+            since_ms: at_ms,
+            last_ms: at_ms,
         });
-        if f.retries.len() > RETRY_KEEP {
-            f.retries.remove(0);
+        if f.retry_log.len() > RETRY_KEEP {
+            f.retry_log.remove(0);
         }
         return;
     }
@@ -1487,9 +1535,68 @@ fn note_retry(f: &mut SessionFacts, beat: &Beat) {
 }
 
 fn settle_retry(f: &mut SessionFacts, outcome: RetryOutcome) {
-    if let Some(r) = f.retries.last_mut() {
+    if let Some(r) = f.retry_log.last_mut() {
         r.outcome = outcome;
     }
+}
+
+/// 出口那一下照累加的重试串写 [`SessionFacts::retries`]（整句的钟面照看的那一台的时区写；口径见 [`RetryRun::text`]）。
+pub fn settle_retries(f: &mut SessionFacts, tz: &crate::common::time::Tz) {
+    let hm = |ms: Option<i64>| {
+        ms.map(|m| crate::common::time::ms_hm(m, tz))
+            .unwrap_or_default()
+    };
+    f.retries = f
+        .retry_log
+        .iter()
+        .map(|r| {
+            let a = r.attempt.map_or_else(|| "?".to_string(), |n| n.to_string());
+            let reason = crate::agents::record::reason_word(r.reason);
+            let text = match r.outcome {
+                RetryOutcome::Retrying => {
+                    crate::agents::record::retry_line(r.reason, r.attempt, r.max, &hm(r.since_ms))
+                }
+                RetryOutcome::Recovered => copy_core::copy_text(
+                    "apiError.retry.recovered",
+                    &[("reason", &reason), ("a", &a), ("time", &hm(r.last_ms))],
+                ),
+                RetryOutcome::Interrupted => copy_core::copy_text(
+                    "apiError.retry.interrupted",
+                    &[("reason", &reason), ("a", &a), ("time", &hm(r.last_ms))],
+                ),
+                RetryOutcome::Failed => match (r.attempt, r.max) {
+                    (Some(n), Some(m)) => copy_core::copy_text(
+                        "apiError.card.next",
+                        &[("a", &n.to_string()), ("b", &m.to_string())],
+                    ),
+                    _ => copy_core::copy_text("apiError.card.nextBare", &[]),
+                },
+            };
+            RetryRun {
+                id: r.id.clone(),
+                outcome: r.outcome,
+                text: Words(text),
+            }
+        })
+        .collect();
+}
+
+/// 会话血缘那几格（出口那一下现查的那一份）连同写好的两句：由谁启动 ⇒「由「X」启动」· 起了几个 ⇒「子会话 N」。
+pub fn set_kin(f: &mut SessionFacts, parent: Option<Kin>, children: Vec<Kin>) {
+    f.started_by_text = parent.as_ref().map(|p| {
+        Words(copy_core::copy_text(
+            "sessionHead.kin.parent",
+            &[("title", &p.title)],
+        ))
+    });
+    f.children_text = (!children.is_empty()).then(|| {
+        Words(copy_core::copy_text(
+            "sessionHead.kin.children",
+            &[("n", &children.len().to_string())],
+        ))
+    });
+    f.started_by = parent;
+    f.children = children;
 }
 
 /// 一条**已解析**的记录（`kind` 那一家的，`beat` 是它的一拍）累加到 `f` 上。各格口径的唯一住址（见头注那张表）。
@@ -1698,9 +1805,9 @@ fn short_tokens(n: u64) -> String {
     }
 }
 
-/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] 另落一格，读回来放回去。
+/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] · [`SessionFacts::retry_log`] 另落一格，读回来放回去。
 pub(crate) mod skel {
-    use super::{LastRequest, NoticeLog, SessionFacts};
+    use super::{LastRequest, NoticeLog, RetrySeen, SessionFacts};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize)]
@@ -1708,6 +1815,7 @@ pub(crate) mod skel {
         facts: &'a SessionFacts,
         last: Option<&'a LastRequest>,
         notices: &'a NoticeLog,
+        retries: &'a [RetrySeen],
     }
 
     #[derive(Deserialize)]
@@ -1716,6 +1824,7 @@ pub(crate) mod skel {
         facts: SessionFacts,
         last: Option<LastRequest>,
         notices: NoticeLog,
+        retries: Vec<RetrySeen>,
     }
 
     pub(crate) fn serialize<S: Serializer>(f: &&SessionFacts, s: S) -> Result<S::Ok, S::Error> {
@@ -1723,6 +1832,7 @@ pub(crate) mod skel {
             facts: f,
             last: f.tokens.as_ref().and_then(|t| t.last.as_ref()),
             notices: &f.notice_log,
+            retries: &f.retry_log,
         }
         .serialize(s)
     }
@@ -1732,7 +1842,9 @@ pub(crate) mod skel {
             mut facts,
             last,
             notices,
+            retries,
         } = Owned::deserialize(d)?;
+        facts.retry_log = retries;
         if let Some(t) = facts.tokens.as_mut() {
             t.last = last;
         }

@@ -2764,6 +2764,14 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.branches.remove(key);
 }
 
+/// 记录文件被改短 / 改过、已从头重显那一句（`history-tail` 回包带它；界面照摆）。
+pub fn reread_said(why: RereadWhy) -> crate::common::cells::Words {
+    crate::common::cells::Words(match why {
+        RereadWhy::Truncated => copy_core::copy_text("sessionState.recordFile.truncated", &[]),
+        RereadWhy::Rewritten => copy_core::copy_text("sessionState.recordFile.rewritten", &[]),
+    })
+}
+
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
 fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> usize {
     let Some(session_id) = state.sid_of(path) else {

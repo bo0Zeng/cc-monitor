@@ -56,10 +56,69 @@ pub fn record(agent: cmd_wire::AgentKind, id: String, at: Option<String>, body: 
     }
 }
 
-/// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）。
+/// 报错 / 重试的原因一词（服务器过载 · 额度满 · 网络中断 · 需登录 · 上下文超长 · 原因不明）：两端照摆的那几句都经它，只住这一处。
+pub fn reason_word(reason: crate::agents::ApiReason) -> String {
+    use crate::agents::ApiReason;
+    match reason {
+        ApiReason::Overloaded => copy_core::copy_text("apiError.reason.overloaded", &[]),
+        ApiReason::Quota => copy_core::copy_text("apiError.reason.quota", &[]),
+        ApiReason::Network => copy_core::copy_text("apiError.reason.network", &[]),
+        ApiReason::Auth => copy_core::copy_text("acct.tag.login", &[]),
+        ApiReason::Context => copy_core::copy_text("apiError.reason.context", &[]),
+        ApiReason::Unknown => copy_core::copy_text("reason.io.unknown", &[]),
+    }
+}
+
+/// 报错回复那一格（两家适配层都经它）：原因 · 状态码 ＋ 写好的卡头那一句。
+pub fn reply_error(reason: crate::agents::ApiReason, status: Option<u32>) -> ReplyError {
+    ReplyError {
+        reason,
+        status,
+        title: crate::common::cells::Words(copy_core::copy_text(
+            "apiError.card.title",
+            &[("reason", &reason_word(reason))],
+        )),
+    }
+}
+
+/// 还在重试的那一行（「{原因} · 重试 a/b · {钟面} 起」；次数缺一样 ⇒ 不带那一截）：记录出口与会话事实那一串都经它。
+pub fn retry_line(
+    reason: crate::agents::ApiReason,
+    attempt: Option<u32>,
+    max: Option<u32>,
+    since: &str,
+) -> String {
+    let retry = match (attempt, max) {
+        (Some(a), Some(b)) => copy_core::copy_text(
+            "apiError.retry.count",
+            &[
+                ("retryAttempt", &a.to_string()),
+                ("maxRetries", &b.to_string()),
+            ],
+        ),
+        _ => String::new(),
+    };
+    copy_core::copy_text(
+        "apiError.retry.line",
+        &[
+            ("reason", &reason_word(reason)),
+            ("retry", &retry),
+            ("time", since),
+        ],
+    )
+}
+
+/// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）；
+/// 另一个会话的来话顺手写好抬头那一句。
 fn said_doc(mut body: Body) -> Body {
     use cmd_wire::record::Speaker;
     if let Body::Said { who, .. } = &mut body {
+        if let Speaker::PeerSession { from, title, .. } = &mut who.speaker {
+            *title = Some(crate::common::cells::Words(copy_core::copy_text(
+                "speaker.peer.title",
+                &[("from", from.as_deref().unwrap_or("?"))],
+            )));
+        }
         if let Speaker::AgentMessage {
             body: Some(text),
             doc,
@@ -189,6 +248,17 @@ impl RecordExt for Record {
             .and_then(|a| crate::common::time::iso_hm(a, tz))
             .map(crate::common::cells::Words);
         let time = self.time_text.as_ref().map_or("", |w| w.0.as_str());
+        if let Body::Retry {
+            reason,
+            attempt,
+            max,
+            text,
+        } = &mut self.body
+        {
+            *text = Some(crate::common::cells::Words(retry_line(
+                *reason, *attempt, *max, time,
+            )));
+        }
         if let Body::Said { who, .. } = &mut self.body {
             if let cmd_wire::record::Speaker::TaskNotification {
                 task_id,

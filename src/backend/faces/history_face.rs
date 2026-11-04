@@ -727,6 +727,15 @@ pub(crate) fn tail_at(
         },
         plan,
         how,
+        said: match how {
+            TailHow::Truncated => Some(crate::observe::watcher::reread_said(
+                crate::wire::RereadWhy::Truncated,
+            )),
+            TailHow::Rewritten => Some(crate::observe::watcher::reread_said(
+                crate::wire::RereadWhy::Rewritten,
+            )),
+            TailHow::Tail | TailHow::Resume | TailHow::Handoff => None,
+        },
         from,
         rows: Vec::new(),
         next: u64::MAX,
@@ -1512,10 +1521,11 @@ pub(crate) fn facts_at(
     );
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
     facts::settle_notices(&mut facts, tz);
-    // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
+    // 重试串：照结局写整句（钟面照看的那一台）。
+    facts::settle_retries(&mut facts, tz);
+    // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）连同那两句。
     let (parent, children) = kin_of(home, sid, &crate::history::session_hidden::Here::read_now());
-    facts.started_by = parent;
-    facts.children = children;
+    facts::set_kin(&mut facts, parent, children);
     let reply = FactsReply {
         path: found.then(|| path.to_string()),
         facts,
