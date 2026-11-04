@@ -62,6 +62,11 @@ writers: Array<number>,
  */
 writersLine?: Words, 
 /**
+ * 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
+ * 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
+ */
+whereLine?: Words, 
+/**
  * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
  */
 pending: Array<PendingCall>, 
