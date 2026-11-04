@@ -2,7 +2,7 @@
 import type { Words } from "./Words";
 
 /**
- * 「没人答时自动答」可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
+ * 「无人答时自动答」可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
  * 几档与字只由后端 `control::asks::auto_choices` 一处写；会话事实那一层只装它。
  */
 export type AutoChoice = { min: number, text: Words, };

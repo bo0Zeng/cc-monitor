@@ -6,7 +6,7 @@ import type { SessionFace } from "./SessionFace";
  */
 export type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
- * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ * 主会话 ⇒ 它自己；子 agent ⇒ 它所在的主会话；认不出 ⇒ `null`。
  */
 sid: string | null, 
 /**
@@ -18,7 +18,7 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
  * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };

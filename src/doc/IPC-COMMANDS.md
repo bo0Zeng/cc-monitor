@@ -467,7 +467,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
-- `needs` —— 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 进出等人 · 离开「活」，重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号要登录 · MCP 要登录 · 登录作业收了）或计划要人看的数变了，重问 `sessions-needs`）
+- `needs` —— 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「无人答时自动答」改了 · 进出等人 · 离开「活」，重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号要登录 · MCP 要登录 · 登录作业收了）或计划要人看的数变了，重问 `sessions-needs`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
@@ -4302,7 +4302,7 @@ customTitle?: string | null,
  */
 hide?: HideAsk | null, 
 /**
- * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
+ * 无人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
  */
 autoAnswer?: AutoAnswer | null, 
 /**
@@ -8766,7 +8766,7 @@ background: FactsBackground | null,
  */
 answerOff: Words | null, 
 /**
- * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ * **无人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
 autoAnswer: number | null, 
 /**
@@ -16556,7 +16556,7 @@ red?: number, acked: boolean,
  */
 title: string, 
 /**
- * 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由父会话收）；负责人那一枚由出口挂，不在这里。
+ * 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由主会话收）；负责人那一枚由出口挂，不在这里。
  */
 lines: Array<string>, 
 /**
@@ -16723,7 +16723,7 @@ type PlanUndecidable = { rule: string | null, why: string | null, };
 type PlanUnowned = { paths: Array<string> | null, why: string | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
- * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ * 主会话 ⇒ 它自己；子 agent ⇒ 它所在的主会话；认不出 ⇒ `null`。
  */
 sid: string | null, 
 /**
@@ -16735,7 +16735,7 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
  * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
@@ -17222,7 +17222,7 @@ client?: string | null,
 resume?: boolean | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
- * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ * 主会话 ⇒ 它自己；子 agent ⇒ 它所在的主会话；认不出 ⇒ `null`。
  */
 sid: string | null, 
 /**
@@ -17234,7 +17234,7 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
  * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
