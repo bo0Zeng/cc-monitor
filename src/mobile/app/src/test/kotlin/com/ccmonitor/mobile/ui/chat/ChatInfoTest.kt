@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.Wires
@@ -30,12 +31,13 @@ class ChatInfoTest {
         title: String = "proj · 订单服务重试",
         facts: Map<String, Any?> = Wires.facts("path" to "/p/s1.jsonl"),
         extra: (String, Map<String, Any?>?) -> Reply? = { _, _ -> null },
+        records: List<Map<String, Any?>> = listOf(FakeCoreLink.human("u0", "问")),
     ): Opened {
         val link = FakeCoreLink()
         link.report("s1", "/h/proj", Faces.of(face))
         val book = link.table.value
         link.table.value = book.copy(live = book.live.mapValues { (_, v) -> v.copy(title = title) })
-        val file = FakeCoreLink.File(mutableListOf(FakeCoreLink.human("u0", "问")))
+        val file = FakeCoreLink.File(records.toMutableList())
         link.answer = { cmd, args -> extra(cmd, args) ?: (if (cmd == "history-facts") Reply.Ok(facts) else null) ?: file.answer(cmd, args) ?: Reply.LinkDown }
         val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
         s.open()
@@ -111,6 +113,76 @@ class ChatInfoTest {
         }
 
     @Test
+    fun `重试细条与报错卡照会话事实 retries 那一串：没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡`() =
+        runTest {
+            val retry = mapOf("agent" to "claude", "id" to "r1", "t" to "retry", "draw" to "card", "human" to false, "reason" to "unknown", "text" to "rec-line")
+            val error =
+                mapOf(
+                    "agent" to "claude",
+                    "id" to "a-err",
+                    "t" to "reply",
+                    "autoReply" to false,
+                    "draw" to "card",
+                    "human" to false,
+                    "blocks" to listOf(FakeCoreLink.prose("raw")),
+                    "error" to mapOf("reason" to "quota", "title" to "err-title"),
+                )
+            val records = listOf(FakeCoreLink.human("u0", "问"), retry, error)
+            val calm = opened(records = records)
+            val units = calm.chat.units
+            val strip = units.filterIsInstance<RenderUnit.Retry>().single()
+            assertEquals("事实里还没有 ⇒ 记录那一行", "rec-line", calm.chat.retryOf(strip)?.text)
+            assertNull("事实里还没有 ⇒ 报错卡照通用那一句", calm.chat.errorNextOf("a-err"))
+            assertEquals(listOf("err-title"), units.filterIsInstance<RenderUnit.ApiError>().map { it.title })
+            val run = mapOf("id" to "r1", "outcome" to "failed", "text" to "run-text")
+            val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "retries" to listOf(run)), records = records)
+            assertNull("没接上 ⇒ 细条收起", o.chat.retryOf(strip))
+            assertEquals("run-text", o.chat.errorNextOf("a-err"))
+        }
+
+    private fun notice(
+        id: String,
+        row: String,
+        end: String,
+    ) = mapOf(
+        "agent" to "claude",
+        "id" to id,
+        "t" to "said",
+        "draw" to "card",
+        "human" to false,
+        "blocks" to emptyList<Any>(),
+        "who" to
+            mapOf(
+                "speaker" to mapOf("kind" to "taskNotification", "taskId" to id, "toolUseId" to null, "status" to end, "summary" to null, "end" to end, "row" to row),
+                "text" to "",
+            ),
+    )
+
+    @Test
+    fun `收场通知照会话事实 notices 那一组摆：首条那一张是组头那一句、展开露没藏的几行，余下几张不画`() =
+        runTest {
+            val records = listOf(FakeCoreLink.human("u0", "问"), notice("n1", "row-1", "done"), notice("n2", "row-2", "done"), notice("n3", "row-3", "failed"))
+            val calm = opened(records = records)
+            val ns = calm.chat.units.filterIsInstance<RenderUnit.Notice>()
+            assertEquals(3, ns.size)
+            assertEquals("事实还没到 ⇒ 各自那一行", listOf("row-1", "row-2", "row-3"), ns.map { calm.chat.noticeOf(it)?.head })
+            val run = mapOf("id" to "n1", "members" to listOf("n1", "n2", "n3"), "hidden" to listOf("n2"), "head" to "head-said", "failed" to true)
+            val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "notices" to listOf(run)), records = records)
+            val card = o.chat.noticeOf(ns[0])!!
+            assertEquals("head-said", card.head)
+            assertEquals(listOf("row-1", "row-3"), card.rows.map { it.text })
+            assertEquals(true, card.failed)
+            assertNull("并进组里的那张不画", o.chat.noticeOf(ns[1]))
+            assertNull(o.chat.noticeOf(ns[2]))
+            val one = mapOf("id" to "n1", "members" to listOf("n1", "n2"), "hidden" to listOf("n1"), "head" to null, "failed" to false)
+            val single = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "notices" to listOf(one)), records = records)
+            assertEquals("只露一条 ⇒ 那一行、不展开", listOf("row-2", null, "row-3"), ns.map { single.chat.noticeOf(it)?.head })
+            assertEquals(true, single.chat.noticeOf(ns[0])!!.single)
+            val gone = mapOf("id" to "n1", "members" to listOf("n1"), "hidden" to listOf("n1"), "head" to null, "failed" to false)
+            assertNull("整组都不露 ⇒ 不画", opened(facts = Wires.facts("path" to "/p/s1.jsonl", "notices" to listOf(gone)), records = records).chat.noticeOf(ns[0]))
+        }
+
+    @Test
     fun `信息抽屉：号与额度 · 几个进程在写 · 上下文 · 任务都照那台那几格原样摆`() =
         runTest {
             val account =
@@ -183,6 +255,8 @@ class ChatInfoTest {
                     "background" to bg,
                     "startedBy" to kin("s0", "发版前整理"),
                     "children" to listOf(kin("c1", "子一"), kin("c2", "子二")),
+                    "startedByText" to "由「发版前整理」启动",
+                    "childrenText" to "子会话 2",
                 )
             val o = opened(facts = facts, extra = quiet)
             val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
@@ -191,8 +265,10 @@ class ChatInfoTest {
             val ui = info.state.value!!
             assertEquals("~/work/orders · devbox", ui.where)
             assertEquals("后台任务运行中 · npm run dev · 18m", ui.background)
-            assertEquals("s0" to "发版前整理", ui.parent?.let { it.sid to it.title })
-            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children.map { it.sid to it.title })
+            assertEquals("抬头是那台写好的那一句", "由「发版前整理」启动", ui.parent?.head)
+            assertEquals(listOf("s0" to "发版前整理"), ui.parent?.kin?.map { it.sid to it.title })
+            assertEquals("子会话 2", ui.children?.head)
+            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children?.kin?.map { it.sid to it.title })
         }
 
     @Test
@@ -206,6 +282,6 @@ class ChatInfoTest {
             assertNull(ui.where)
             assertNull(ui.background)
             assertNull(ui.parent)
-            assertEquals(emptyList<Any>(), ui.children)
+            assertNull(ui.children)
         }
 }

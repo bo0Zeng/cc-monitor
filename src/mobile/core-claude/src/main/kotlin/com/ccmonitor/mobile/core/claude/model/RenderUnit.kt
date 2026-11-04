@@ -3,7 +3,10 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.wire.gen.Attachment
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.NoticeRun
 import com.ccmonitor.mobile.core.wire.gen.Pasted
+import com.ccmonitor.mobile.core.wire.gen.RetryOutcome
+import com.ccmonitor.mobile.core.wire.gen.RetryRun
 
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
@@ -37,14 +40,14 @@ data class SaidImage(
     val record: String,
 )
 
-/** 人说的那一句的一段：照排的字 · 折成一行「粘贴的内容 · N 行」的那一块（[lines] 是那台数好的，[body] 是点开后的正文）。 */
+/** 人说的那一句的一段：照排的字 · 折成一行的那一块（[text] 是收着时那一行，那台写好的 `foldText`；[body] 是点开后的正文）。 */
 sealed interface SaidPart {
     data class Plain(
         val text: String,
     ) : SaidPart
 
     data class Folded(
-        val lines: Int,
+        val text: String,
         val body: String,
     ) : SaidPart
 }
@@ -75,7 +78,7 @@ fun saidParts(
         val body = text.substring(p.bodyStart, p.bodyEnd).trim('\r', '\n')
         if (p.fold) {
             flush()
-            out += SaidPart.Folded(p.lines, body)
+            out += SaidPart.Folded(p.foldText.orEmpty(), body)
         } else {
             plain.append(body)
         }
@@ -205,12 +208,12 @@ sealed interface RenderUnit {
     ) : Worded
 
     /**
-     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头是谁发的（[from] 原样）＋ [timeText]，
+     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头是核心写好的那一句（[title]，「会话「X」」）＋ [timeText]，
      * 正文是核心解析好的块树 [doc]（没有正文 ⇒ `null`，只画抬头）。
      */
     data class Peer(
         override val key: String,
-        val from: String?,
+        val title: String?,
         val timeText: String?,
         val doc: Doc?,
         override val sourceUuid: String?,
@@ -226,6 +229,30 @@ sealed interface RenderUnit {
         val failed: Boolean,
         override val sourceUuid: String?,
     ) : Worded
+
+    /**
+     * 一串重试（记录 `t: retry`，相邻的几条并成一条细条）：[key] 是首条的 id（会话事实 `retries[]` 按它给那一串），
+     * [text] 是首条写好的那一行（`retry.text`）；事实到了照那一串画（[RetryLook.strip]）。
+     */
+    data class Retry(
+        override val key: String,
+        override val text: String,
+        override val sourceUuid: String?,
+    ) : Worded
+
+    /**
+     * 上游最终失败写的那一条回复（`reply.error`）：报错卡。卡头 [title] 是核心写好的（`error.title`），[raw] 是报错原文（进「原文」折叠）；
+     * 下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]），否则通用那一句。
+     */
+    data class ApiError(
+        override val key: String,
+        val title: String,
+        val timeText: String?,
+        val raw: String,
+        override val sourceUuid: String?,
+    ) : Worded {
+        override val text: String get() = "$title\n$raw"
+    }
 
     /** 「已中断本轮 · {time}」那一道细线（记录里 `speaker.interrupt` 那一条）；[timeText] 是核心写好的钟面。 */
     data class Interrupt(
@@ -245,6 +272,71 @@ sealed interface RenderUnit {
         val excerpt: String,
         override val sourceUuid: String?,
     ) : Worded
+}
+
+/** 重试细条此刻的字与淡不淡（接上了 · 人打断了 ⇒ 淡）。 */
+data class RetryStrip(
+    val text: String,
+    val faded: Boolean,
+)
+
+/**
+ * 重试细条与报错卡照会话事实 `retries[]`（首条 id ⇒ 结局与写好的整句）摆：那一串在事实里 ⇒ 照它的整句；不在 ⇒ 记录那一行、在重试。
+ * 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡。原因 · 次数 · 时刻全是核心拼好的，这里只挑哪一句放哪。
+ */
+object RetryLook {
+    /** 细条画什么；收起 ⇒ `null`。 */
+    fun strip(
+        u: RenderUnit.Retry,
+        runs: List<RetryRun>,
+    ): RetryStrip? {
+        val run = runs.firstOrNull { it.id == u.key } ?: return RetryStrip(u.text, faded = false)
+        return when (run.outcome) {
+            RetryOutcome.FAILED -> null
+            RetryOutcome.RETRYING -> RetryStrip(run.text, faded = false)
+            RetryOutcome.RECOVERED, RetryOutcome.INTERRUPTED -> RetryStrip(run.text, faded = true)
+        }
+    }
+
+    /** 报错卡 [error]（它的 key）下一步那一句：紧挨着它的上一张是一串没接上的重试 ⇒ 那一串的整句；否则 `null`（画通用那一句）。 */
+    fun next(
+        units: List<RenderUnit>,
+        error: String,
+        runs: List<RetryRun>,
+    ): String? {
+        val before = units.getOrNull(units.indexOfFirst { it.key == error } - 1) as? RenderUnit.Retry ?: return null
+        return runs.firstOrNull { it.id == before.key }?.takeIf { it.outcome == RetryOutcome.FAILED }?.text
+    }
+}
+
+/**
+ * 一张收场通知卡此刻画什么：卡头 [head]（那一组写好的组头；没有 ⇒ 露着的那一行）· 展开里露着的几行 [rows] · [failed]；
+ * [single] ⇒ 卡头就是那一行、不展开。
+ */
+data class NoticeCard(
+    val head: String,
+    val rows: List<RenderUnit.Notice>,
+    val failed: Boolean,
+    val single: Boolean,
+)
+
+/**
+ * 收场通知照会话事实 `notices[]`（后端分好的组）摆：每组首条那一张当这一组，别的成员那几行收进它的展开、它们自己那一张不画；
+ * `hidden` 里的不露，整组都不露 ⇒ 不画；不在哪一组里 ⇒ 它自己那一行。组头 · 失败都是核心写好的，这里只挑哪一句放哪。
+ */
+object NoticeLook {
+    /** 通知 [u] 那一张画什么；不画 ⇒ `null`。 */
+    fun card(
+        u: RenderUnit.Notice,
+        units: List<RenderUnit>,
+        runs: List<NoticeRun>,
+    ): NoticeCard? {
+        val run = runs.firstOrNull { u.key in it.members } ?: return NoticeCard(u.text, listOf(u), u.failed, single = true)
+        if (run.id != u.key) return null
+        val rows = run.members.filter { it !in run.hidden }.mapNotNull { id -> units.firstOrNull { it.key == id } as? RenderUnit.Notice }
+        val first = rows.firstOrNull() ?: return null
+        return NoticeCard(run.head ?: first.text, rows, run.failed, single = run.head == null)
+    }
 }
 
 /** 会话内搜索用的可搜索纯文本（工具调用含名/参数/输出，便于搜命令、文件名、输出）。 */
