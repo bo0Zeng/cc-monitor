@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { stripComments } from "../test-support/strip-comments";
+import { copyText } from "../../src/frontend/ui/copy-table";
 
 const FILE = path.resolve(__dirname, "scenes/settings.ts");
 
@@ -37,6 +38,8 @@ describe("设置那一族场景只按条件等", () => {
   });
 
   it("折叠头按结构找，不按正文", () => {
-    expect(hits(/byText\s*\(.*(machinePage\.cc\.title|machinePage\.conn\.toggle|"连接设置")/)).toEqual([]);
+    // 按文案键写的，与把那一句原文直接写进去的，两样都算。
+    const said = [copyText("machinePage.cc.title"), copyText("machinePage.conn.toggle")].map((t) => `"${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`);
+    expect(hits(new RegExp(`byText\\s*\\(.*(machinePage\\.cc\\.title|machinePage\\.conn\\.toggle|${said.join("|")})`))).toEqual([]);
   });
 });
