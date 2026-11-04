@@ -763,7 +763,8 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
     ];
     let text = jsonl(&recs);
     let whole = scan_all(&text);
-    let got: Vec<(&str, RetryOutcome)> = whole
+    let shown = settled(whole.clone());
+    let got: Vec<(&str, RetryOutcome)> = shown
         .retries
         .iter()
         .map(|r| (r.id.as_str(), r.outcome))
@@ -777,10 +778,14 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
             ("d1", RetryOutcome::Retrying),
         ]
     );
-    let wire = serde_json::to_value(&whole).unwrap();
+    let wire = serde_json::to_value(&shown).unwrap();
     assert_eq!(
-        wire["retries"][0],
-        json!({"id": "a1", "outcome": "recovered"})
+        wire["retries"][0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        ["id", "outcome", "text"]
     );
     let mut cuts = vec![0usize];
     cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
@@ -800,12 +805,134 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
             ]
         })
         .collect();
-    let f = scan_all(&jsonl(&many));
+    let f = settled(scan_all(&jsonl(&many)));
     assert_eq!(
         (f.retries.len(), f.retries[0].id.as_str()),
         (RETRY_KEEP, "r3"),
         "超了丢最早的"
     );
+}
+
+/// 出口那一下照累加的那几串写 [`SessionFacts::retries`]（钟面照 UTC）。
+fn settled(mut f: SessionFacts) -> SessionFacts {
+    settle_retries(&mut f, &crate::common::time::Tz::default());
+    f
+}
+
+/// 带时刻与原因的一次重试（结构占位）。
+fn retry_at(uuid: &str, attempt: u32, at: &str, status: u32) -> Value {
+    json!({"type": "system", "subtype": "api_error", "uuid": uuid, "timestamp": at, "retryAttempt": attempt, "maxRetries": 10, "error": {"status": status}})
+}
+
+/// ★ 每一串写好那一整句（两端照摆，不自己拼）：还在重试 ⇒「{原因} · 重试 a/b · {首条钟面} 起」（原因 · 次数取最后一条）·
+/// 接上了 / 中断了 ⇒「{原因} · 重试 ×a 后恢复 / 中断 · {末条钟面}」· 没接上 ⇒ 报错卡那一行「重试 a/b 后停止 · …」（没次数 ⇒ 只那半句）。
+#[test]
+fn each_retry_run_carries_its_written_line() {
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let api_error = json!({"type": "assistant", "uuid": "e1", "isApiErrorMessage": true, "message": {"content": []}});
+    let recs = vec![
+        retry_at("a1", 1, "2026-10-09T01:30:00.000Z", 529),
+        retry_at("a2", 3, "2026-10-09T01:32:00.000Z", 429),
+        json!({"type": "assistant", "uuid": "ok", "message": {"content": []}}),
+        retry_at("b1", 4, "2026-10-09T02:00:00.000Z", 529),
+        api_error,
+        retry_at("c1", 2, "2026-10-09T03:00:00.000Z", 529),
+        user_text("[Request interrupted by user]"),
+        retry_at("d1", 1, "2026-10-09T04:05:00.000Z", 529),
+    ];
+    let f = settled(scan_all(&jsonl(&recs)));
+    let lines: Vec<(&str, &str)> = f
+        .retries
+        .iter()
+        .map(|r| (r.id.as_str(), r.text.0.as_str()))
+        .collect();
+    let over = t("apiError.reason.overloaded", &[]);
+    let quota = t("apiError.reason.quota", &[]);
+    let want = [
+        (
+            "a1",
+            t(
+                "apiError.retry.recovered",
+                &[("reason", &quota), ("a", "3"), ("time", "01:32")],
+            ),
+        ),
+        ("b1", t("apiError.card.next", &[("a", "4"), ("b", "10")])),
+        (
+            "c1",
+            t(
+                "apiError.retry.interrupted",
+                &[("reason", &over), ("a", "2"), ("time", "03:00")],
+            ),
+        ),
+        (
+            "d1",
+            t(
+                "apiError.retry.line",
+                &[
+                    ("reason", &over),
+                    (
+                        "retry",
+                        &t(
+                            "apiError.retry.count",
+                            &[("retryAttempt", "1"), ("maxRetries", "10")],
+                        ),
+                    ),
+                    ("time", "04:05"),
+                ],
+            ),
+        ),
+    ];
+    assert_eq!(
+        lines,
+        want.iter()
+            .map(|(id, s)| (*id, s.as_str()))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// 一串没有次数 ⇒ 没接上那一句只说下一步。
+#[test]
+fn a_failed_run_without_counts_says_only_the_next_step() {
+    let recs = vec![
+        json!({"type": "system", "subtype": "api_error", "uuid": "x1", "timestamp": "2026-10-09T05:00:00.000Z"}),
+        json!({"type": "assistant", "uuid": "e2", "isApiErrorMessage": true, "message": {"content": []}}),
+    ];
+    let f = settled(scan_all(&jsonl(&recs)));
+    assert_eq!(
+        f.retries[0].text.0,
+        copy_core::copy_text("apiError.card.nextBare", &[])
+    );
+}
+
+/// ★ 血缘那两句由后端写好：由谁启动 ⇒「由「X」启动」· 起了几个子会话 ⇒「子会话 N」；没有 ⇒ 不出现。
+#[test]
+fn kin_lines_are_written_next_to_the_kin() {
+    use crate::wire::SessionFaceExt as _;
+    let face = crate::wire::SessionFace::of(crate::wire::Life::Live {
+        activity: None,
+        host: None,
+    });
+    let kin = |sid: &str, title: &str| Kin {
+        sid: sid.into(),
+        title: title.into(),
+        face: face.clone(),
+        hidden: None,
+    };
+    let mut f = SessionFacts::default();
+    set_kin(&mut f, Some(kin("p", "主")), vec![kin("c1", "甲"), kin("c2", "乙")]);
+    assert_eq!(
+        (
+            f.started_by_text.as_ref().map(|w| w.0.as_str()),
+            f.children_text.as_ref().map(|w| w.0.as_str())
+        ),
+        (
+            Some(copy_core::copy_text("sessionHead.kin.parent", &[("title", "主")]).as_str()),
+            Some(copy_core::copy_text("sessionHead.kin.children", &[("n", "2")]).as_str())
+        )
+    );
+    assert_eq!(f.children.len(), 2);
+    set_kin(&mut f, None, Vec::new());
+    assert_eq!((f.started_by_text, f.children_text), (None, None));
 }
 
 fn priced(req: &str, model: &str, usage: Value) -> Value {

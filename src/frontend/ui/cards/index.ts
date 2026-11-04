@@ -37,7 +37,8 @@ import type { StepResult } from "../generated/StepResult";
 import type { LineDiff } from "../generated/LineDiff";
 import { buildStepLine, buildThinkingLine, paintWaiting, settleStepLine } from "./step-line";
 import { waitedNow } from "../duration-format";
-import type { PendingCall, RetryOutcome } from "../session-reads";
+import type { PendingCall } from "../session-reads";
+import type { RetryRun } from "../generated/RetryRun";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
@@ -154,8 +155,8 @@ export interface RenderContext {
    */
   /** 这一步还没结果时的样子（会话事实 `pending[]` 里它那一条的 `state` · `why`）；事实里还没有它 ⇒ `undefined`（不画）。 */
   stepWait?: (call: string) => Pick<PendingCall, "state" | "text" | "whyText"> | undefined;
-  /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 `id`）；事实里还没有 ⇒ `undefined`。 */
-  retryOutcome?: (id: string) => RetryOutcome | undefined;
+  /** 一串重试（会话事实 `retries`，按首条重试记录的 `id`：结局 ＋ 写好的整句）；事实里还没有 ⇒ `undefined`。 */
+  retryRun?: (id: string) => RetryRun | undefined;
   needs?: { kind: string; call: string | null; waitedMs: number | null; receivedAt: number } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
@@ -292,7 +293,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           kind: "card",
           element: buildApiErrorCard({
             timeLabel: time,
-            reason: rec.error.reason,
+            title: rec.error.title,
             text: textOf(rec.blocks).trim(),
             status: rec.error.status ?? null,
           }),
@@ -320,12 +321,9 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
       return {
         kind: "card",
         element: buildApiRetryCard({
-          timeLabel: time,
-          reason: rec.reason,
-          retryAttempt: rec.attempt ?? null,
-          maxRetries: rec.max ?? null,
+          text: rec.text ?? "",
           id: rec.id,
-          outcome: ctx.retryOutcome?.(rec.id),
+          run: ctx.retryRun?.(rec.id),
         }),
       };
     case "unread":
@@ -347,8 +345,8 @@ export function buildStepsCard(units: HTMLElement[]): HTMLElement {
 }
 
 /**
- * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；后端标了 `fold` 的折成一行「粘贴的内容 · N 行」，点开就地展开。
- * 块的边界、正文那一截、行数与折不折都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法、不自己数行。
+ * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；后端标了 `fold` 的折成后端写好的那一行（`foldText`），点开就地展开。
+ * 块的边界、正文那一截、折不折与折起那一行都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法、不自己数行、不自己拼字。
  */
 function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
   // 露在外面的每一段记下原文（照原文排）：里面提到的格由 `plan-refs.ts` 跟回复正文同一批问；折起的粘贴块不记 ⇒ 不送。
@@ -379,7 +377,7 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
       const d = document.createElement("details");
       d.className = "paste-fold";
       const s = document.createElement("summary");
-      s.textContent = copyText("speaker.paste.fold", { n: p.lines });
+      s.textContent = p.foldText ?? "";
       const b = document.createElement("div");
       b.className = "paste-body";
       b.innerHTML = renderPlainText(inner);

@@ -78,9 +78,17 @@ pub enum Act<'a> {
     /// 这一轮停在这里。
     Stop(StopWhy),
     /// 一次要重试的上游失败（一串里的一条）。
-    Retry,
+    Retry(RetrySaid),
     /// 用户那侧这一条是谁说的。
     Said(UserText),
+}
+
+/// 一次重试那一条说了什么：原因种类 · 第几次 · 最多几次（那一家没写 ⇒ 缺）。会话事实那一串照它写整句。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetrySaid {
+    pub reason: crate::agents::ApiReason,
+    pub attempt: Option<u32>,
+    pub max: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

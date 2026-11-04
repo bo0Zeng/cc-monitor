@@ -418,37 +418,38 @@ describe("菜单：右键两项 · 批量两项", () => {
   });
 });
 
-describe("会话头：「由 X 启动」「子会话 N」读会话事实那两格", () => {
+describe("会话头：「由 X 启动」「子会话 N」读会话事实那两格与后端写好的那两句", () => {
   const facts = (extra: Record<string, unknown>): SessionFacts =>
-    ({ forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, agent: null, writers: [], needs: null, pending: [], lastSay: null, background: null, retries: [], startedBy: null, children: [], ...extra }) as unknown as SessionFacts;
+    ({ forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, agent: null, writers: [], needs: null, pending: [], lastSay: null, background: null, retries: [], startedBy: null, children: [], startedByText: null, childrenText: null, ...extra }) as unknown as SessionFacts;
 
-  it("★ 会话事实带的 `startedBy` · `children` 落到 tab 上；没带 ⇒ 没有；变了才报变", () => {
+  it("★ 会话事实带的 `startedBy` · `children` 与那两句落到 tab 上；没带 ⇒ 没有；变了才报变", () => {
     const t = tab("a");
-    const kin = { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
+    const kin = { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }], startedByText: "BY-LINE", childrenText: "KIDS-LINE" };
     const ch = applyFacts(t, facts(kin));
     expect(ch.lineage).toBe(true);
     expect(t.lineage).toEqual(kin);
     expect(applyFacts(t, facts(structuredClone(kin))).lineage).toBe(false);
+    expect(applyFacts(t, facts({ ...structuredClone(kin), childrenText: "KIDS-2" })).lineage, "那一句变了也报变").toBe(true);
     applyFacts(t, facts({}));
     expect(t.lineage).toEqual(NO_LINEAGE);
-    expect(lineageOf({ startedBy: null, children: [] })).toBe(NO_LINEAGE);
+    expect(lineageOf({ startedBy: null, children: [], startedByText: null, childrenText: null })).toBe(NO_LINEAGE);
   });
 
-  it("★ 会话头：已隐藏标（悬停是那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话、点一行切过去）", () => {
+  it("★ 会话头：已隐藏标（悬停是那一句）· 由 X 启动（照后端那一句，点了切回主会话）· 子会话 N（照后端那一句，点开列子会话、点一行切过去）", () => {
     const parent = tab("p");
     const kid = tab("k1");
-    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", face: ENDED_FACE, hidden: null }] } });
+    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", face: LIVE_FACE, hidden: null }, children: [{ sid: "k1", title: "子·一", face: LIVE_FACE, hidden: BG }, { sid: "gone", title: "子·二", face: ENDED_FACE, hidden: null }], startedByText: "BY-LINE", childrenText: "KIDS-LINE" } });
     const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
     expect(h.el.querySelector("[data-head=hidden]")?.textContent).toBe(copyText("history.row.hidden"));
     const p = h.el.querySelector<HTMLButtonElement>("[data-head=parent]")!;
-    expect(p.textContent).toBe(copyText("sessionHead.kin.parent", { title: "主·名" }));
+    expect(p.textContent).toBe("BY-LINE");
     p.click();
     expect(host.switchTo).toHaveBeenCalledWith("p");
     const c = h.el.querySelector<HTMLButtonElement>("[data-head=children]")!;
-    expect(c.textContent).toBe(copyText("sessionHead.kin.children", { n: 2 }));
+    expect(c.textContent).toBe("KIDS-LINE");
     c.click();
     const rows = [...document.body.querySelectorAll<HTMLElement>("[role^=menuitem]")];
     expect(rows.map((x) => x.querySelector("[data-part=label]")?.textContent)).toEqual(["子·一", "子·二"]);

@@ -35,17 +35,21 @@ export function hiddenPushed(c: Changed): Map<string, SessionHidden | null> {
   return got;
 }
 
-/** 会话事实里血缘那两格。 */
+/** 会话事实里血缘那两格，连同后端写好的那两句（「由「X」启动」·「子会话 N」）。 */
 export interface SessionLineage {
   startedBy: Kin | null;
   children: Kin[];
+  startedByText: string | null;
+  childrenText: string | null;
 }
 
-export const NO_LINEAGE: SessionLineage = { startedBy: null, children: [] };
+export const NO_LINEAGE: SessionLineage = { startedBy: null, children: [], startedByText: null, childrenText: null };
 
-/** 会话事实（`history-facts` 那一份）⇒ 血缘两格。 */
-export function lineageOf(facts: Pick<SessionFacts, "startedBy" | "children">): SessionLineage {
-  return facts.startedBy === null && facts.children.length === 0 ? NO_LINEAGE : { startedBy: facts.startedBy, children: facts.children };
+/** 会话事实（`history-facts` 那一份）⇒ 血缘两格与那两句。 */
+export function lineageOf(facts: Pick<SessionFacts, "startedBy" | "children" | "startedByText" | "childrenText">): SessionLineage {
+  return facts.startedBy === null && facts.children.length === 0
+    ? NO_LINEAGE
+    : { startedBy: facts.startedBy, children: facts.children, startedByText: facts.startedByText ?? null, childrenText: facts.childrenText ?? null };
 }
 
 /** 两份血缘比一比。 */

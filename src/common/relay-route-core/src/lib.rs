@@ -1098,7 +1098,7 @@ const LAUNCH_NOTE_MAX_BYTES: Cap = Cap {
 /// 一份记录的骨架（[`SKELETON_DIR_REL`] 底下一份记录一份；能照记录重扫）。
 pub const SKELETON_FILE: Decl<Cache> = Decl::<Cache>::json(
     ".cc-monitor/cache/skeleton/<digest>.json",
-    8,
+    9,
     SKELETON_MAX_BYTES,
 );
 /// 一份骨架的读上限。

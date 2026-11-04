@@ -394,10 +394,10 @@ export class SessionHead {
     const lin = tab.lineage;
     const p = lin?.startedBy ?? null;
     const kids = (lin?.children ?? []).map((c) => `${c.sid}:${c.title}:${c.face.dot}:${c.hidden?.said ?? ""}:${this.host.tabOf(c.sid) ? 1 : 0}`).join(",");
-    return [tab.hidden?.said ?? "", p ? `${p.sid}:${p.title}:${this.host.tabOf(p.sid) ? 1 : 0}` : "", kids].join("\u0001");
+    return [tab.hidden?.said ?? "", p ? `${p.sid}:${lin?.startedByText ?? ""}:${this.host.tabOf(p.sid) ? 1 : 0}` : "", lin?.childrenText ?? "", kids].join("\u0001");
   }
 
-  /** 已隐藏（悬停那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话）。 */
+  /** 已隐藏（悬停那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话）：血缘那两句照后端写好的摆（`startedByText` · `childrenText`）。 */
   private kinChips(tab: Tab): HTMLElement[] {
     const out: HTMLElement[] = [];
     if (tab.hidden) {
@@ -416,13 +416,13 @@ export class SessionHead {
       else b.setAttribute("aria-disabled", "true");
       return b;
     };
-    const parent = tab.lineage?.startedBy ?? null;
-    if (parent) {
+    const lin = tab.lineage;
+    const parent = lin?.startedBy ?? null;
+    if (parent && lin?.startedByText) {
       const there = this.host.tabOf(parent.sid) !== null;
-      out.push(chip("parent", copyText("sessionHead.kin.parent", { title: parent.title }), there ? () => this.host.switchTo(parent.sid) : null));
+      out.push(chip("parent", lin.startedByText, there ? () => this.host.switchTo(parent.sid) : null));
     }
-    const kids = tab.lineage?.children ?? [];
-    if (kids.length > 0) out.push(chip("children", copyText("sessionHead.kin.children", { n: kids.length }), (b) => this.openChildren(b, tab)));
+    if (lin?.childrenText && lin.children.length > 0) out.push(chip("children", lin.childrenText, (b) => this.openChildren(b, tab)));
     return out;
   }
 
@@ -439,7 +439,7 @@ export class SessionHead {
         onClick: () => this.host.switchTo(c.sid),
       };
     });
-    openMenu({ el: anchor, align: "start" }, items, { label: copyText("sessionHead.kin.children", { n: items.length }) });
+    openMenu({ el: anchor, align: "start" }, items, { label: tab.lineage?.childrenText ?? "" });
   }
 
   /** 「⋯」最上面一组（收进来的）与最后一组（两个流开关 ＋ 调整会话头按钮…）。 */

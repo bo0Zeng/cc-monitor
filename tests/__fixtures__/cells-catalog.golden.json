@@ -124,6 +124,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.error.title",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.model",
           "type": "string"
@@ -319,6 +325,12 @@
           "kind": "value",
           "path": "{t=retry}.reason",
           "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=retry}.text",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -574,6 +586,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.pasted[].foldText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.pasted[].id",
           "type": "string"
@@ -660,6 +678,12 @@
           "frozen": true,
           "kind": "value",
           "path": "{t=said}.who.speaker{kind=peerSession}.from",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=peerSession}.title",
           "type": "string"
         },
         {
@@ -869,6 +893,12 @@
           "frozen": false,
           "kind": "value",
           "path": "bgTasks[].task",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "childrenText",
           "type": "string"
         },
         {
@@ -1503,6 +1533,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "retries[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "startedBy.face.can.attach.can",
           "type": "string"
@@ -1679,6 +1715,12 @@
           "frozen": false,
           "kind": "value",
           "path": "startedBy.title",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedByText",
           "type": "string"
         },
         {

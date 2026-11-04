@@ -687,7 +687,7 @@ fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
             }
         }
         Side::Note => {
-            if beat.acts.contains(&Act::Retry) {
+            if beat.acts.iter().any(|a| matches!(a, Act::Retry(_))) {
                 it.retries += 1;
             }
         }

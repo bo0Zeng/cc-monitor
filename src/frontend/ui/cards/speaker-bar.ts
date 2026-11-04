@@ -82,9 +82,9 @@ export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: strin
   );
 }
 
-/** 另一个会话发来的话（左条琥珀）。 */
+/** 另一个会话发来的话（左条琥珀）：抬头照后端写好的那一句（`title`）。 */
 export function buildPeerBar(sp: Of<"peerSession">, time: string, pull?: HlPull): HTMLElement {
-  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("kit.toast.region"), time, sp.doc, true, undefined, pull);
+  return bar("peer", sp.title ?? "", copyText("kit.toast.region"), time, sp.doc, true, undefined, pull);
 }
 
 /** （agent 那一侧）主会话后来发给它的话：默认收起。 */

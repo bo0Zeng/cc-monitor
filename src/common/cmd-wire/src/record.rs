@@ -152,6 +152,11 @@ pub enum Body {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         max: Option<u32>,
+        /// 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+        /// 一串的结局与整句另在会话事实 `retries[]`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+        text: Option<Words>,
     },
     /// 会话标题（代理起的 · 人改的）。
     Title { text: String, by: TitleBy },
@@ -189,7 +194,7 @@ pub enum UnreadWhy {
 }
 
 /// 报错回复的原因。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ReplyError {
@@ -198,6 +203,9 @@ pub struct ReplyError {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub status: Option<u32>,
+    /// 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
+    pub title: Words,
 }
 
 /// 标题是谁起的。
@@ -705,6 +713,10 @@ pub enum Speaker {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         doc: Option<crate::md::Doc>,
+        /// 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+        title: Option<Words>,
     },
     /// （子 agent 那一侧）主会话后来发给它的话。
     Coordinator {
@@ -773,6 +785,10 @@ pub struct Pasted {
     pub lines: u32,
     /// 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
     pub fold: bool,
+    /// 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub fold_text: Option<Words>,
 }
 
 /// 行摘要的一条（`history-read.rows[]`；成品 `read_row`，格目录里登记、冻结）。
@@ -992,6 +1008,7 @@ mod lenient_tests {
                 reason: ApiReason::Unknown,
                 attempt: None,
                 max: None,
+                text: None,
             },
             Body::Title {
                 text: String::new(),

@@ -351,6 +351,7 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
             from: field("from").or_else(|| attr(t, "from")),
             body: origin_body(origin).or_else(|| frame_body(t, "cross-session-message")),
             doc: None,
+            title: None,
         };
     }
     Speaker::AgentMessage {
@@ -387,6 +388,7 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
             from: attr(body, "from"),
             body: frame_body(body, "cross-session-message"),
             doc: None,
+            title: None,
         }));
     }
     if t.lines().next().map(str::trim_end) == Some(COORDINATOR_LEAD) {
@@ -702,6 +704,7 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
         let end = body + j + close.len();
         let inner = text[body..body + j].trim_matches(['\n', '\r']);
         let lines = u32::try_from(inner.lines().count()).unwrap_or(u32::MAX);
+        let fold = lines > PASTE_FOLD_LINES;
         out.push(Pasted {
             id,
             start: utf16(start),
@@ -709,7 +712,13 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
             body_start: utf16(body),
             body_end: utf16(body + j),
             lines,
-            fold: lines > PASTE_FOLD_LINES,
+            fold,
+            fold_text: fold.then(|| {
+                crate::common::cells::Words(copy_core::copy_text(
+                    "speaker.paste.fold",
+                    &[("n", &lines.to_string())],
+                ))
+            }),
         });
         from = end;
     }

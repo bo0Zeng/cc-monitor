@@ -70,6 +70,11 @@ const CASES: &[(&str, &str)] = &[
         r#"{"type":"user","uuid":"u-said-pasted","timestamp":"2026-10-09T01:31:09.000Z","message":{"role":"user","content":"see <pasted_content id=\"p1\">\nA\nB\n</pasted_content id=\"p1\"> end"}}"#,
     ),
     (
+        // 超过折叠线的一块：折起、带写好的那一行。
+        "said-pasted-fold",
+        r#"{"type":"user","uuid":"u-said-pasted-fold","timestamp":"2026-10-09T01:31:09.500Z","message":{"role":"user","content":"see <pasted_content id=\"p3\">\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n</pasted_content id=\"p3\">"}}"#,
+    ),
+    (
         "said-read",
         r#"{"type":"user","uuid":"u-said-read","timestamp":"2026-10-09T01:31:10.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-4","content":[{"type":"text","text":"x"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}],"is_error":false}]},"toolUseResult":{"file":{"numLines":3},"numFiles":2}}"#,
     ),
@@ -806,5 +811,116 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
         matches!(blocks[0], Block::ToolResult { bytes: 3002, .. }),
         "{:?}",
         blocks[0]
+    );
+}
+
+/// ★ 两端只摆的几句由后端写好：重试那一条出口那一下写「{原因} · 重试 a/b · {钟面} 起」（没次数 ⇒ 不带那一截）·
+/// 报错回复带卡头那一句「本轮中断 · {原因}」· 另一个会话来话带抬头那一句。原因一词只住 `agents::record::reason_word`。
+#[test]
+fn the_retry_line_the_error_head_and_the_peer_head_are_written_here() {
+    use crate::agents::ApiReason;
+    use crate::agents::record::reason_word;
+    let case = |name: &str| {
+        let raw = CASES.iter().find(|(n, _)| *n == name).unwrap().1;
+        let mut r = one(raw).unwrap();
+        r.stamp(&crate::common::time::Tz::default());
+        r
+    };
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+
+    let full = case("retry-full");
+    let time = full.time_text.clone().unwrap().0;
+    let Body::Retry { text, .. } = &full.body else {
+        panic!("{full:?}")
+    };
+    let count = t(
+        "apiError.retry.count",
+        &[("retryAttempt", "2"), ("maxRetries", "10")],
+    );
+    assert_eq!(
+        text.as_ref().map(|w| w.0.as_str()),
+        Some(
+            t(
+                "apiError.retry.line",
+                &[
+                    ("reason", &t("apiError.reason.overloaded", &[])),
+                    ("retry", &count),
+                    ("time", &time)
+                ]
+            )
+            .as_str()
+        )
+    );
+    let min = case("retry-min");
+    let time = min.time_text.clone().unwrap().0;
+    let Body::Retry { text, .. } = &min.body else {
+        panic!("{min:?}")
+    };
+    assert_eq!(
+        text.as_ref().map(|w| w.0.as_str()),
+        Some(
+            t(
+                "apiError.retry.line",
+                &[
+                    ("reason", &t("reason.io.unknown", &[])),
+                    ("retry", ""),
+                    ("time", &time)
+                ]
+            )
+            .as_str()
+        )
+    );
+
+    let err = case("reply-error");
+    let Body::Reply {
+        error: Some(e), ..
+    } = &err.body
+    else {
+        panic!("{err:?}")
+    };
+    assert_eq!(e.reason, ApiReason::Quota);
+    assert_eq!(
+        e.title.0,
+        t(
+            "apiError.card.title",
+            &[("reason", &t("apiError.reason.quota", &[]))]
+        )
+    );
+
+    let peer = case("said-peer-session");
+    let Body::Said { who, .. } = &peer.body else {
+        panic!("{peer:?}")
+    };
+    let crate::agents::Speaker::PeerSession { title, .. } = &who.speaker else {
+        panic!("{who:?}")
+    };
+    assert_eq!(
+        title.as_ref().map(|w| w.0.as_str()),
+        Some(t("speaker.peer.title", &[("from", "s2")]).as_str())
+    );
+
+    // 原因一词：每一种一个，需登录借账号那一处的词，判不了 ⇒ 原因不明。
+    let words: Vec<String> = [
+        ApiReason::Overloaded,
+        ApiReason::Quota,
+        ApiReason::Network,
+        ApiReason::Auth,
+        ApiReason::Context,
+        ApiReason::Unknown,
+    ]
+    .into_iter()
+    .map(reason_word)
+    .collect();
+    assert_eq!(
+        words,
+        [
+            "apiError.reason.overloaded",
+            "apiError.reason.quota",
+            "apiError.reason.network",
+            "acct.tag.login",
+            "apiError.reason.context",
+            "reason.io.unknown",
+        ]
+        .map(|k| t(k, &[]))
     );
 }

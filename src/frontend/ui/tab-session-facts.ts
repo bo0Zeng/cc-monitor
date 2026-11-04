@@ -72,7 +72,7 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.backgroundWork = f.background;
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;
-  tab.retries = new Map(f.retries.map((r) => [r.id, r.outcome]));
+  tab.retries = new Map(f.retries.map((r) => [r.id, r]));
 
   const lin = lineageOf(f);
   const lineage = tab.lineage === undefined || !sameLineage(tab.lineage, lin);

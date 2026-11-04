@@ -164,12 +164,27 @@ fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     std::fs::write(&path, format!("\n{}", text(0..3))).unwrap();
     let short = ask(2, Some(held6.clone()));
     assert_eq!((short.how, seqs(&short)), (TailHow::Truncated, vec![1, 2]));
+    // 变短 · 被改写那一句由后端写好（两端照摆）；别的接法没有这一句。
+    let said = |t: &HistoryTail| t.said.as_ref().map(|w| w.0.clone());
+    assert_eq!(
+        said(&short),
+        Some(copy_core::copy_text("sessionState.recordFile.truncated", &[]))
+    );
+    assert_eq!(
+        (said(&first), said(&resumed), said(&far)),
+        (None, None, None)
+    );
 
     // 同样长、记号那一行换了内容（被改写）⇒ 尾段、说被改写。
     let same_len = format!("\n{}{}", text(0..5), user(9) + "\n");
     assert_eq!(same_len.len(), format!("\n{}", text(0..6)).len());
     std::fs::write(&path, &same_len).unwrap();
-    assert_eq!(ask(2, Some(held6.clone())).how, TailHow::Rewritten);
+    let rewritten = ask(2, Some(held6.clone()));
+    assert_eq!(rewritten.how, TailHow::Rewritten);
+    assert_eq!(
+        said(&rewritten),
+        Some(copy_core::copy_text("sessionState.recordFile.rewritten", &[]))
+    );
 
     // 换了一份、而且更长（头一行起就不同）⇒ 同上。
     std::fs::write(

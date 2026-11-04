@@ -5,7 +5,6 @@
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import * as durationFormatModule from "../../../src/frontend/ui/duration-format";
 import { owned } from "../../test-support/owned-tab-manager.ts";
-import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
 import { buildStepLine, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import * as stepLineModule from "../../../src/frontend/ui/cards/step-line";
 import { applyNotices } from "../../../src/frontend/ui/cards/speaker-bar";
@@ -498,44 +497,6 @@ describe("快捷键翻「自动跟随 / 自动切到前台」：说一句翻成�
     expect(vi.mocked(emit).mock.calls).toEqual([
       ["behavior-toggled", { autoFollowUserActive: false, bringMonitorToFrontOnUserActive: false }],
     ]);
-  });
-});
-
-// 重试细条与报错卡：原因一词是后端给的种类；相邻并条是排版；一串的结局是会话事实（`retries`，按首条的 id 读）。
-describe("重试细条：相邻并成一条 · 结局照会话事实", () => {
-  const stream = (...els: HTMLElement[]) => {
-    const root = document.createElement("div");
-    root.append(...els);
-    return root;
-  };
-  it("相邻重试并成一条：次数取后来的、起始留前一条；事实说接上了 ⇒ 重试 ×N 后恢复；后面来什么都不自己判", () => {
-    const a = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 1, maxRetries: 10, id: "r1" });
-    expect(a.textContent).toBe(copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: 1, maxRetries: 10 }), time: "02:10" }));
-    mergeRetry(a, buildApiRetryCard({ timeLabel: "02:11", reason: "overloaded", retryAttempt: 3, maxRetries: 10, id: "r2" }));
-    expect(a.textContent).toBe(copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: 3, maxRetries: 10 }), time: "02:10" }));
-    const root = stream(a, document.createElement("div"));
-    applyRetries(root, new Map([["r2", "recovered"]]));
-    expect(a.dataset.state, "按首条的 id 读，并进来的那条的 id 不算").toBe("retrying");
-    applyRetries(root, new Map([["r1", "recovered"]]));
-    expect(a.textContent).toBe(copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.overloaded"), a: "3", time: "02:11" }));
-    applyRetries(root, new Map([["r1", "interrupted"]]));
-    expect(a.textContent).toBe(copyText("apiError.retry.interrupted", { reason: copyText("apiError.reason.overloaded"), a: "3", time: "02:11" }));
-  });
-
-  it("建卡时事实已经到了 ⇒ 照它画", () => {
-    const a = buildApiRetryCard({ timeLabel: "02:10", reason: "network", retryAttempt: 2, maxRetries: 10, id: "r1", outcome: "recovered" });
-    expect(a.textContent).toBe(copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.network"), a: "2", time: "02:10" }));
-  });
-
-  it("事实说没接上 ⇒ 细条收起、次数进紧跟着的报错卡（那两颗终端按钮不被冲掉）；报错卡标题带原因、原文进折叠", () => {
-    const bar = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 10, maxRetries: 10, id: "r1" });
-    const card = buildApiErrorCard({ timeLabel: "02:12", reason: "overloaded", text: "API Error: Overloaded", status: 529 });
-    applyRetries(stream(bar, card), new Map([["r1", "failed"]]));
-    expect(bar.dataset.state).toBe("failed");
-    expect(card.querySelector(".api-error-label")?.textContent).toBe(copyText("apiError.card.title", { reason: copyText("apiError.reason.overloaded") }));
-    expect(card.querySelector(".api-error-next-text")?.textContent).toBe(copyText("apiError.card.next", { a: "10", b: "10" }));
-    expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(2);
-    expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
   });
 });
 
