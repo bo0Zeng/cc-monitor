@@ -73,20 +73,13 @@ class ChatInfoTest {
         }
 
     @Test
-    fun `第二行：会话事实那一句是照此刻那一态写的 ⇒ 用它，点照脸`() =
+    fun `第二行：点与那一句都照脸；会话事实另带的那一句不拿来比、不用`() =
         runTest {
             val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "line" to line("working", "运行中 · 改 3 个文件")))
             val h = headLine(o.chat)!!
             assertEquals(SessionDot.RUNNING, h.dot)
-            assertEquals("运行中 · 改 3 个文件", h.text)
+            assertEquals("运行中", h.text)
             assertNull("上下文没到要注意那一档 ⇒ 不接", h.context)
-        }
-
-    @Test
-    fun `第二行：会话事实那一句是别的态写的 ⇒ 用脸上那一句`() =
-        runTest {
-            val o = opened(face = "live-idle", facts = Wires.facts("path" to "/p/s1.jsonl", "line" to line("working", "运行中 · 改 3 个文件")))
-            assertEquals("空闲", headLine(o.chat)!!.text)
         }
 
     @Test

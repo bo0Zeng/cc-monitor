@@ -24,7 +24,6 @@ import com.ccmonitor.mobile.core.claude.link.SessionTasks
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
-import com.ccmonitor.mobile.core.wire.gen.Life
 import com.ccmonitor.mobile.core.wire.gen.PendingCall
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.TasksList
@@ -47,16 +46,13 @@ data class HeadLine(
 )
 
 /**
- * 顶栏第二行照哪几格：点照脸；会话事实那一句（`line`）是照此刻那一态写的（`line.for` ＝ 脸上 `life.activity`）⇒ 用它，否则脸上那一句；
+ * 顶栏第二行照哪几格：点与那一句都照脸（`dot` · `line`，那台写好的；手机不读 `life`、不拿会话事实那一句来比）；
  * 上下文那台判到 `warn` ⇒ 接那台写好的 `contextText`。簿里还没这一条 ⇒ `null`、不画第二行。
  */
 fun headLine(s: ChatUiState): HeadLine? {
     val face = s.face ?: return null
-    val now = (face.life as? Life.Live)?.activity
-    val facts = s.facts
-    val text = facts?.line?.takeIf { now != null && it.`for` == now }?.text ?: face.line
-    val context = facts?.usage?.takeIf { it.contextTone == Tone.WARN }?.contextText
-    return HeadLine(face.dot, text, context)
+    val context = s.facts?.usage?.takeIf { it.contextTone == Tone.WARN }?.contextText
+    return HeadLine(face.dot, s.facts?.line?.text ?: face.line, context)
 }
 
 /** 一次工具调用还没配上结果时那一态：会话事实 `pending[]` 里同 id 那一项；不在里面 ⇒ `null`（不画状态）。 */
