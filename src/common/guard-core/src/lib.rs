@@ -608,6 +608,13 @@ fn mask_all_literals(src: &str) -> Option<String> {
     scan_and_blank(src, true)
 }
 
+/// 只留代码：注释 · 串 · 字符字面量逐字节抹成空格（[`mask_all_literals`]），行数与偏移不变。
+/// 按名字认「代码里有没有这一形」的识别器用它：写在字面量里的名字（钉锚点 · 识别器自己的针）不是那一形。
+/// 词法收不了口 ⇒ 原样回来（宁可多认，不漏认）。
+pub fn code_only(src: &str) -> String {
+    mask_all_literals(src).unwrap_or_else(|| src.to_string())
+}
+
 /// [`try_strip_block_comments`] 与 [`mask_all_literals`] **共用的那一台状态机**
 /// （E3：一个事实恰好一个权威源 —— 两份近似的词法器是这一族最贵的病）。
 ///

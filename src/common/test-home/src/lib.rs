@@ -83,6 +83,22 @@ pub fn scratch(tag: &str) -> PathBuf {
     d
 }
 
+/// 判据要看自己铺的临时目录里有什么：都从这里列。回目录里的名字（文件与子目录都算），排好序；列不出 ⇒ panic。
+pub fn list(dir: &Path) -> Vec<String> {
+    let rd = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("test-home: 列不出 {}：{e}", dir.display()));
+    let mut names: Vec<String> = rd
+        .map(|e| {
+            e.unwrap_or_else(|e| panic!("test-home: 列 {} 时出错：{e}", dir.display()))
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 /// 本账号在账号数据库里登记的家目录（`getpwuid_r`，不看 `$HOME`）；查不到 · 非 unix ⇒ `None`。
 #[cfg(unix)]
 pub fn account_home() -> Option<PathBuf> {

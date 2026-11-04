@@ -9,10 +9,7 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 /// 守「只许变短」的是 [`the_pending_ratchet_never_turns_backwards`]：它拿 **git 历史**当权威，
 /// 断「今天的条数不许比它在历史上出现过的**最低档**还高」（不是「清单真的在变短」；挡不住把那条判据本身删掉）。
 const PENDING: &[&str] = &[
-    "tests/backend/agents/claudecode/parse_tests.rs",
-    "tests/backend/assets/aliases/block_tests.rs",
-    "tests/common/host-core/lib_tests.rs",
-    "tests/backend/observe/watcher_tests.rs",
+    // 表要一行一条（`pending_count_in` 按行数）：只剩一条时这行注释挡着 rustfmt 并成一行。
     "tests/backend/readonly_guard.rs",
 ];
 
@@ -548,11 +545,24 @@ fn the_per_guard_split_does_not_hand_every_guard_the_whole_file() {
 }
 
 /// 这段测试代码裸遍历目录。经后端只读句柄（`Ro::read_dir`）读的不算：那是测试件照适配层的写法读夹具家
-/// （最小假 agent），不是判据在扫源码树。注释先剥掉（`guard_core::strip_comment_lines`）：
-/// 注释里写到遍历的名字不是遍历。
+/// （最小假 agent），不是判据在扫源码树。注释与字面量先遮掉（`guard_core::strip_comment_lines` ·
+/// `guard_core::code_only`）：注释里写到遍历的名字、串里钉的锚点（连本文件 `RAW_WALKS` 那几根针）都不是遍历。
 fn walks_raw(code: &str) -> bool {
-    let code = guard_core::strip_comment_lines(code).replace(&format!("Ro::{}", RAW_WALKS[0]), "");
+    let code = guard_core::code_only(&guard_core::strip_comment_lines(code))
+        .replace(&format!("Ro::{}", RAW_WALKS[0]), "");
     RAW_WALKS.iter().any(|w| code.contains(w))
+}
+
+/// 串里写到遍历的名字（钉在生产代码上的锚点）不算裸遍历；同一句写成代码照算。
+#[test]
+fn walk_names_in_string_literals_are_not_raw_walks() {
+    let walk = RAW_WALKS[1];
+    assert!(!walks_raw(&format!(
+        "fn f() {{\n    assert!(body.contains(\"{walk}::new(sessions)\"));\n}}\n"
+    )));
+    assert!(walks_raw(&format!(
+        "fn f() {{\n    let s = \"x\";\n    for e in {walk}::new(s) {{}}\n}}\n"
+    )));
 }
 
 /// 后端只读句柄那一形不算裸遍历，别的形照算。
@@ -607,18 +617,9 @@ fn raw_walkers() -> Vec<String> {
     // 🔴 19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
     // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
-    for (sub, excluded) in [
-        ("src/frontend/shell/src", &[] as &[&str]),
-        ("src/backend", &[]),
-        ("tests", &["rules/scanning_guard_registry_tests.rs"]),
-    ] {
-        // 🔴 **摘除是明写名单，而且它是真承重的**：只有它挡着本文件。
-        // `file!()` 那条路在这里空转（本文件被 `#[path]` 引进来 ⇒ `file!()` 是带 `..` 的
-        // 折返路径 ⇒ 后缀比不命中）；不摘的话，本文件的测试段里写着 `RAW_WALKS` 那四个
-        // 字面量当语料，它会**把自己算进裸遍历人群**。
-        // ⇒ 排除明写成名单，`scan_tree_excluding` 摘不到就 panic ——
-        //   本文件改名/搬家会当场出声，而不是安静地把自己收进语料。
-        for (f, src) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], excluded) {
+    // 三棵树整棵扫：`RAW_WALKS` 的针与合成语料都写在字面量里，[`walks_raw`] 先遮掉字面量，扫到这份也命中不了。
+    for sub in ["src/frontend/shell/src", "src/backend", "tests"] {
+        for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)

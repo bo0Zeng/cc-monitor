@@ -53,6 +53,16 @@ fn another_spelling_of_the_real_home_is_still_the_real_home() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// `list` 回目录里的名字（文件与子目录都算），排好序。
+#[test]
+fn list_returns_the_sorted_names_in_a_dir() {
+    let d = test_home::scratch("list");
+    std::fs::write(d.join("b"), b"").unwrap();
+    std::fs::write(d.join("a"), b"").unwrap();
+    std::fs::create_dir(d.join("sub")).unwrap();
+    assert_eq!(test_home::list(&d), ["a", "b", "sub"]);
+}
+
 /// ★ 判据的临时目录只从 `scratch` 拿：两个线程同一个 tag 拿到两个目录，同一线程再拿一回也是另一个；
 /// 都在沙箱根底下、建好且是空的。
 #[test]
