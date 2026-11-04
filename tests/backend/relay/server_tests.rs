@@ -2600,6 +2600,10 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     }
 
     // ㈡ 块数对账。
+    // ⚠ 先等桩把终止块记上账再读：桩是写完终止块**之后**才 `fetch_add`，而中转读到终止块就收尾、
+    //   下游当场读到 EOF ⇒ 立刻读的话会赶在桩那条线程记账之前，读到少一块（机器快时实测 9/320 红在这里）。
+    //   「记够了」是单向条件：桩真少发一块，这里等到上限照样读到少的那个数、下面照样红。
+    wait_until(|| up.sent() > UPSTREAM_EVENTS as u64);
     let up_chunks = up.sent();
     // 非空对照：夹具自己得真发出这么多块，否则下面两条是空真。
     assert_eq!(
