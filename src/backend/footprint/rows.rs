@@ -184,8 +184,8 @@ fn project_onto_host(
         // ——唯一的 glob（`~/.local/bin/cc-*`）是 `Either`。留着这一支不是装样子：
         // 它和上一行是同一条性质的两半，删掉半边会让"远端不许本机作答"这句话
         // 在下一个 glob 型远端 touch 出现时**静默失守**。
-        // 同理 `(Client, *)` 与 `(ProjectDir, *)` 全落 `(_, other)`——这两个变体
-        // 今天**纯粹是标签**，不改变任何行为；它们的价值在 `host_label` 上屏那一侧。
+        // 同理 `(Client, *)` 与 `(ProjectDir, *)` 全落 `(_, other)`：解析不看它们
+        // （`Client` 管的是谁来答，见 `build_rows`）。
         (HostScope::Remote, PathResolution::Local(_))
         | (HostScope::Remote, PathResolution::LocalGlob { .. }) => {
             PathResolution::Remote(declared.to_string())
