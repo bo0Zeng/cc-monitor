@@ -919,7 +919,11 @@ fn kin_lines_are_written_next_to_the_kin() {
         hidden: None,
     };
     let mut f = SessionFacts::default();
-    set_kin(&mut f, Some(kin("p", "主")), vec![kin("c1", "甲"), kin("c2", "乙")]);
+    set_kin(
+        &mut f,
+        Some(kin("p", "主")),
+        vec![kin("c1", "甲"), kin("c2", "乙")],
+    );
     assert_eq!(
         (
             f.started_by_text.as_ref().map(|w| w.0.as_str()),

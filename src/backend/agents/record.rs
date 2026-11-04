@@ -91,7 +91,10 @@ pub fn retry_line(
     let retry = match (attempt, max) {
         (Some(a), Some(b)) => copy_core::copy_text(
             "apiError.retry.count",
-            &[("retryAttempt", &a.to_string()), ("maxRetries", &b.to_string())],
+            &[
+                ("retryAttempt", &a.to_string()),
+                ("maxRetries", &b.to_string()),
+            ],
         ),
         _ => String::new(),
     };

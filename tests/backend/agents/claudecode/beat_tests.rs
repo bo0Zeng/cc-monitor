@@ -116,14 +116,13 @@ fn bookkeeping_lines_say_retry_cost_and_mode_and_nothing_else() {
         max: None,
     })));
     let counted = json!({"type": "system", "subtype": "api_error", "uuid": "s2", "retryAttempt": 3, "maxRetries": 10, "error": {"status": 529}});
-    assert!(beat_of(&counted)
-        .unwrap()
-        .acts
-        .contains(&Act::Retry(crate::agents::beat::RetrySaid {
+    assert!(beat_of(&counted).unwrap().acts.contains(&Act::Retry(
+        crate::agents::beat::RetrySaid {
             reason: crate::agents::ApiReason::Overloaded,
             attempt: Some(3),
             max: Some(10),
-        })));
+        }
+    )));
     assert_eq!(said_kind(&b), None);
 
     let cost = json!({"type": "cost-state", "totalCostUSD": 1.234567, "hasUnknownModelCost": true});

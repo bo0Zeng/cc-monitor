@@ -818,8 +818,8 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
 /// 报错回复带卡头那一句「本轮中断 · {原因}」· 另一个会话来话带抬头那一句。原因一词只住 `agents::record::reason_word`。
 #[test]
 fn the_retry_line_the_error_head_and_the_peer_head_are_written_here() {
-    use crate::agents::ApiReason;
     use crate::agents::record::reason_word;
+    use crate::agents::ApiReason;
     let case = |name: &str| {
         let raw = CASES.iter().find(|(n, _)| *n == name).unwrap().1;
         let mut r = one(raw).unwrap();
@@ -872,10 +872,7 @@ fn the_retry_line_the_error_head_and_the_peer_head_are_written_here() {
     );
 
     let err = case("reply-error");
-    let Body::Reply {
-        error: Some(e), ..
-    } = &err.body
-    else {
+    let Body::Reply { error: Some(e), .. } = &err.body else {
         panic!("{err:?}")
     };
     assert_eq!(e.reason, ApiReason::Quota);

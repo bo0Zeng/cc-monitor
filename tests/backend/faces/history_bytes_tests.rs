@@ -168,7 +168,10 @@ fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     let said = |t: &HistoryTail| t.said.as_ref().map(|w| w.0.clone());
     assert_eq!(
         said(&short),
-        Some(copy_core::copy_text("sessionState.recordFile.truncated", &[]))
+        Some(copy_core::copy_text(
+            "sessionState.recordFile.truncated",
+            &[]
+        ))
     );
     assert_eq!(
         (said(&first), said(&resumed), said(&far)),
@@ -183,7 +186,10 @@ fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     assert_eq!(rewritten.how, TailHow::Rewritten);
     assert_eq!(
         said(&rewritten),
-        Some(copy_core::copy_text("sessionState.recordFile.rewritten", &[]))
+        Some(copy_core::copy_text(
+            "sessionState.recordFile.rewritten",
+            &[]
+        ))
     );
 
     // 换了一份、而且更长（头一行起就不同）⇒ 同上。
