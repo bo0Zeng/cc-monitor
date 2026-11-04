@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.wire.gen.Attachment
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.Pasted
 
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
@@ -36,6 +37,55 @@ data class SaidImage(
     val record: String,
 )
 
+/** 人说的那一句的一段：照排的字 · 折成一行「粘贴的内容 · N 行」的那一块（[lines] 是那台数好的，[body] 是点开后的正文）。 */
+sealed interface SaidPart {
+    data class Plain(
+        val text: String,
+    ) : SaidPart
+
+    data class Folded(
+        val lines: Int,
+        val body: String,
+    ) : SaidPart
+}
+
+/**
+ * 照记录成品的 `pasted[]`（UTF-16 下标，含两头的标记）把 [text] 切成几段：标记不上屏，只露正文那一截（两头的换行去掉）；
+ * 折不折照那一块的 `fold`。折起来的那一段自己占一行 ⇒ 紧挨着它的那一个换行不再另算。相邻照排的几段并成一段。
+ */
+fun saidParts(
+    text: String,
+    pasted: List<Pasted>,
+): List<SaidPart> {
+    val out = ArrayList<SaidPart>()
+    val plain = StringBuilder()
+    fun flush() {
+        if (plain.isNotEmpty()) out += SaidPart.Plain(plain.toString())
+        plain.setLength(0)
+    }
+    var at = 0
+    var afterFold = false
+    for (p in pasted.sortedBy { it.start }) {
+        var before = text.substring(at.coerceAtMost(p.start), p.start)
+        if (afterFold) before = before.removePrefix("\r\n").removePrefix("\n")
+        if (p.fold) before = before.removeSuffix("\n").removeSuffix("\r")
+        plain.append(before)
+        val body = text.substring(p.bodyStart, p.bodyEnd).trim('\r', '\n')
+        if (p.fold) {
+            flush()
+            out += SaidPart.Folded(p.lines, body)
+        } else {
+            plain.append(body)
+        }
+        afterFold = p.fold
+        at = p.end
+    }
+    val tail = text.substring(at.coerceAtMost(text.length))
+    plain.append(if (afterFold) tail.removePrefix("\r\n").removePrefix("\n") else tail)
+    flush()
+    return out
+}
+
 /**
  * 正文的渲染单元，由 [RecordUnits] 从核心的通用记录排出来；UI 把每个 unit 映射成一张卡片。
  *
@@ -62,6 +112,8 @@ sealed interface RenderUnit {
         val images: List<SaidImage> = emptyList(),
         /** 这一句带的附件（后端认出的 `attachments[]`：类别字 · 名字 · 大小 · 已清理都是那台写好的），画在气泡外上方。 */
         val attachments: List<Attachment> = emptyList(),
+        /** 正文分段（记录成品带了人粘贴的块才有：只露正文那一截，那台说要折的折成一段）；空 ⇒ 照 [text] 画。 */
+        val parts: List<SaidPart> = emptyList(),
     ) : RenderUnit
 
     /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版；`more` 是后端写好的「展开 {大小}」那一格（照放进按钮）。 */
@@ -84,7 +136,7 @@ sealed interface RenderUnit {
 
     /**
      * 一次工具调用，已把 tool_use 与其后匹配的 tool_result 合并。
-     * [resultText] 为 null 表示仍在执行（无匹配结果）。
+     * [pending] ＝ 还没配上结果（[resultText] 为 null）；此刻是在跑 · 等批准 · 说不清，由会话事实 `pending[]` 说，这里不判。
      */
     data class ToolCall(
         override val key: String,

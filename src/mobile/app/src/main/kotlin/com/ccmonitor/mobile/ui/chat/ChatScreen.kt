@@ -180,6 +180,7 @@ fun ChatTranscript(
                 onRetrySend = onRetrySend,
                 trailer = { liveCards(state.live) },
                 stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
+                stepWait = state::waitOf,
                 process = { ProcessRow(it, process) },
                 said = hooks,
             )

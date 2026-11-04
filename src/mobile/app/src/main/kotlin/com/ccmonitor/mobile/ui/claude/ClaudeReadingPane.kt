@@ -55,9 +55,12 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.SaidImage
+import com.ccmonitor.mobile.core.claude.model.SaidPart
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.codeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.PendingCall
+import com.ccmonitor.mobile.core.wire.gen.StepWait
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -84,6 +87,8 @@ fun ClaudeReadingPane(
     trailer: LazyListScope.() -> Unit = {},
     // 一次工具调用（tool_use id）此刻在等人 ⇒ 卡上那枚标的字（那台写好的）；不在等 ⇒ null。
     stepBadge: (String) -> String? = { null },
+    // 一次还没配上结果的工具调用此刻是什么样子（会话事实 `pending[]` 那一项）；事实里没有它 ⇒ null、不画状态。
+    stepWait: (String) -> PendingCall? = { null },
     // 一段过程的那一行（聊天屏画它）。
     process: @Composable (StreamItem.Process) -> Unit = {},
     // 人说的那一句的长按与就地编辑（聊天屏给）；只读阅读面不给 ⇒ 不出。
@@ -107,7 +112,7 @@ fun ClaudeReadingPane(
                 // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
                 is StreamItem.Card ->
                     Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
-                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge, said)
+                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait), said)
                     }
             }
         }
@@ -135,6 +140,12 @@ class SaidHooks(
 /** 就地编辑时它后面那几项淡到多少。 */
 private const val EDIT_FADE = 0.35f
 
+/** 工具卡读的那两样：在等人那一枚的字 · 没配上结果时那一态（都按 tool_use id）。 */
+private class Steps(
+    val badge: (String) -> String?,
+    val wait: (String) -> PendingCall?,
+)
+
 /** 一张卡（照它今天的样子）。 */
 @Composable
 private fun UnitCard(
@@ -142,14 +153,14 @@ private fun UnitCard(
     matched: Boolean,
     onCopyCode: (String) -> Unit,
     onRetrySend: (String) -> Unit,
-    stepBadge: (String) -> String?,
+    steps: Steps,
     said: SaidHooks?,
 ) {
     when (unit) {
         is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend, said)
         is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
         is RenderUnit.Thinking -> ThinkingCard(unit, matched)
-        is RenderUnit.ToolCall -> ToolCallCard(unit, matched, stepBadge(unit.toolUseId))
+        is RenderUnit.ToolCall -> ToolCallCard(unit, matched, steps.badge(unit.toolUseId), steps.wait(unit.toolUseId).takeIf { unit.pending })
         // 斜杠命令、bash 输入输出、compact 摘要各有自己的卡片。
         is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
         is RenderUnit.BashInput -> BashInputCard(unit, matched)
@@ -556,7 +567,11 @@ private fun UserBubble(
             return@Box
         }
         Column {
-            Text(unit.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            if (unit.parts.isEmpty()) {
+                Text(unit.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            } else {
+                unit.parts.forEach { SaidPartView(it, matched) }
+            }
             // 投递状态贴在这条消息下面：只有在送 · 排着（已到 · 排第 N · 已送进）· 送达未知 · 没送到才有。
             val line = unit.deliveryText
             when (unit.delivery) {
@@ -571,6 +586,25 @@ private fun UserBubble(
                     line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
                 null -> Unit
             }
+        }
+    }
+}
+
+/** 人说的那一句的一段：照排的字照排；折起来的那一块是一行「粘贴的内容 · N 行」（N 是那台数好的），点开就地展开正文（命中自动展开）。 */
+@Composable
+private fun SaidPartView(
+    part: SaidPart,
+    matched: Boolean,
+) {
+    when (part) {
+        is SaidPart.Plain -> Text(part.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+        is SaidPart.Folded -> {
+            var open by rememberExpandable(matched)
+            Row(Modifier.clickable { open = !open }.padding(vertical = LocalAppTokens.current.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                Caret(open)
+                Text(copyText("speaker.paste.fold", "n" to part.lines), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            AnimatedVisibility(open) { Text(part.body, style = monoBody, color = MaterialTheme.colorScheme.onSurface) }
         }
     }
 }
@@ -627,16 +661,25 @@ private fun ToolCallCard(
     unit: RenderUnit.ToolCall,
     matched: Boolean,
     badge: String?,
+    /** 还没配上结果时那一态（会话事实 `pending[]` 那一项）；事实里没有它 · 结果已到 ⇒ `null`。 */
+    wait: PendingCall?,
 ) {
     val tokens = LocalAppTokens.current
     // 交互卡（核心判的卡型）默认展开：在等人决定，折叠会被误以为模型还在跑。
     var expanded by rememberExpandable(matched, initial = unit.interactive)
+    // 结果到了照结果；没到照会话事实那一态（琥珀只给等批准 ＝ 需手动）；事实里没有它 ⇒ 不画状态。
     val statusColor =
         when {
-            unit.pending -> tokens.warn
-            unit.isError -> MaterialTheme.colorScheme.error
-            else -> tokens.success
+            !unit.pending -> if (unit.isError) MaterialTheme.colorScheme.error else tokens.success
+            wait == null -> tokens.borderFaint
+            else ->
+                when (wait.state) {
+                    StepWait.RUNNING -> tokens.success
+                    StepWait.AWAITING -> tokens.warn
+                    StepWait.UNCLEAR -> tokens.textFaint
+                }
         }
+    val right = if (unit.pending) wait?.text else unit.resultLine
     // 核心算好的行差（结果那一份，没有就调用那一份）有行就画；手机不判行、不数数。
     val patchDiff = unit.diff?.takeIf { it.rows.isNotEmpty() }
     val summary = unit.summary.replace("\n", " ")
@@ -670,7 +713,7 @@ private fun ToolCallCard(
                 )
             }
             Spacer(Modifier.weight(1f))
-            unit.resultLine?.let {
+            right?.let {
                 Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 Spacer(Modifier.width(tokens.spacing.sm))
             }
@@ -706,8 +749,6 @@ private fun ToolCallCard(
                     if (result.length > MAX_RESULT_CHARS) {
                         Text(copyText("mobReading.tool.truncated"), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                } else if (unit.pending) {
-                    Text(copyText("mobReading.tool.running"), style = monoSmall, color = tokens.warn)
                 }
             }
         }
