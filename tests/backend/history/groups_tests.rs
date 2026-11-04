@@ -16,6 +16,7 @@
 //! | G12 | 解散在那一片摘掉每条会话身上的那一组、记录删掉，会话别的格不动 |
 //! | G13 | ★ B 改名时 E 没连上 ⇒ `missed` 有 E、记下待补；E 再答 `groups-here` ⇒ 给 E 补发（只写 E 自己）、E 那一片合出来是新名字、那一条消掉 |
 //! | G14 | 补发没送成 ⇒ 那一条留着、合的照那台原样；到期的（那台那一片已没有那一组）不补发也消掉 |
+//! | G15 | ★ 上次所知跨重启：B 答过一次（记进这台的上次值）⇒ 进程新起、B 不答 ⇒ B 那片照盘上出、标上次所知、B 上固定的那条照出；盘上那一份不是这一版的形状 ⇒ 照没记过 |
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
@@ -98,6 +99,7 @@ async fn read_at(
         &Peers::table(table),
         peers,
         kept,
+        None,
         now_ms,
         &[],
     )
@@ -286,6 +288,7 @@ async fn g5_asking_another_machine_without_a_deadline_is_bad_args() {
         &Peers::table(&["devbox"]),
         &Peers::new(&[]),
         &Kept::default(),
+        None,
         0,
         &[],
     )
@@ -784,6 +787,7 @@ async fn g13_a_rename_that_missed_e_is_owed_and_sent_once_e_answers_again() {
         &Peers::table(&["E"]),
         &e,
         &Kept::default(),
+        None,
         1_000,
         &owed.owed,
     )
@@ -823,6 +827,7 @@ async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
         &Peers::table(&["E"]),
         &e,
         &Kept::default(),
+        None,
         1_000,
         &owed.owed,
     )
@@ -844,6 +849,7 @@ async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
         &Peers::table(&["E"]),
         &gone,
         &Kept::default(),
+        None,
         1_000,
         &owed.owed,
     )
@@ -851,4 +857,71 @@ async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
     .unwrap();
     assert!(gone.writes().is_empty(), "那台那一片已没有那一组 ⇒ 不补发");
     assert_eq!(settled, owed.owed, "到期 ⇒ 消掉");
+}
+
+/// 同 [`read_at`]，带这台的上次值那一份（`disk`）：问本机与 devbox。
+async fn read_on(
+    own: &crate::platform::fs::Own,
+    kept: &Kept,
+    peers: &Peers,
+    now_ms: i64,
+) -> GroupsRead {
+    read_with(
+        &[m(cmd_wire::LOCAL), m("devbox")],
+        std::future::ready(Ok(GroupsHere::default())),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["devbox"]),
+        peers,
+        kept,
+        Some(own),
+        now_ms,
+        &[],
+    )
+    .await
+    .expect("合得出")
+    .0
+}
+
+#[tokio::test]
+async fn g15_last_known_survives_a_restart_and_the_pinned_one_still_shows() {
+    let d = test_home::scratch("kept-disk");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let b = slice(
+        vec![rec("g1", "开发", 7, 7)],
+        vec![member("s-b", &["g1"], true, running())],
+    );
+    let _ = read_on(
+        &own,
+        &Kept::default(),
+        &Peers::new(&[("devbox", wire(&b))]),
+        1_000,
+    )
+    .await;
+    // 进程新起：内存里那一份没了，devbox 这一问不答。
+    let got = read_on(&own, &Kept::default(), &Peers::new(&[]), 61_000).await;
+    assert!(
+        matches!(machine(&got, "devbox"), Read::Stale { .. }),
+        "照盘上那一份、标上次所知：{:?}",
+        machine(&got, "devbox")
+    );
+    assert!(
+        got.pinned.iter().any(|x| x.sid == "s-b"),
+        "B 上固定的那条照出：{got:?}"
+    );
+    assert_eq!(got.groups[0].name.as_deref(), Some("开发"));
+
+    // 盘上那一份不是这一版的形状 ⇒ 照没记过（读不到），不冒充。
+    let file = d.join(".cc-monitor").join("cache").join("last-seen.json");
+    let mut v: Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).expect("记下了")).unwrap();
+    v["origins"]["devbox"]["groups"]["shape"] = Value::from("00000000");
+    std::fs::write(&file, v.to_string()).unwrap();
+    let old = read_on(&own, &Kept::default(), &Peers::new(&[]), 62_000).await;
+    assert!(
+        matches!(machine(&old, "devbox"), Read::Failed { .. }),
+        "{:?}",
+        machine(&old, "devbox")
+    );
+    assert!(old.pinned.is_empty(), "{old:?}");
 }

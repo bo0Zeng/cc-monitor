@@ -944,9 +944,9 @@ const PLAN_REVIEW_MAX_BYTES: Cap = Cap {
 /// 计划的认可与退回。
 pub const PLAN_REVIEW_FILE: Decl<State> =
     Decl::<State>::json(PLAN_REVIEW_REL, Owner::Machine, 1, 1, PLAN_REVIEW_MAX_BYTES);
-/// 上次值整份的读上限：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
+/// 上次值整份的读上限：每份封顶 × 三样（账号 · 文件与数据 · 组）× 台数封顶 ＝ 256 KiB × 3 × 64。
 const LAST_SEEN_MAX_BYTES: Cap = Cap {
-    bytes: 32 * 1024 * 1024,
+    bytes: 48 * 1024 * 1024,
     over: Over::SkipAndSay,
 };
 /// 离线那台的上次值（第 2 版：各台住 `origins` 底下，不和顶层 `version` 同一层）。

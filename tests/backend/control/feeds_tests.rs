@@ -165,7 +165,7 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
                 "code": "no_such_file", "said": "那台说：没有这个文件", "detail": "那台的原话"})
         } else {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true,
-                "data": {"cmd": asked["cmd"], "args": asked["args"], "view": asked["view"]}})
+                "data": {"cmd": asked["cmd"], "args": asked["args"], "view": asked["view"], "tz": asked["tz"]}})
         };
         let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
     }
@@ -362,6 +362,44 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
     assert_eq!(fail.code.as_deref(), Some("no_such_file"));
     assert_eq!(fail.said, "那台说：没有这个文件");
     assert_eq!(fail.raw.as_deref(), Some("那台的原话"));
+    align_in(&[], &ssh, &quiet());
+}
+
+/// 转过去的那一问带着发起方看的人的时区：那台照它写回包里的「几点」（不带 ⇒ 那台按 UTC 写，文件窗口的时间就错到 UTC）。
+/// 带出口声明的与不带的两形都带。
+#[tokio::test]
+async fn a_forwarded_call_carries_the_viewers_tz_to_that_machine() {
+    let _one = one_at_a_time().await;
+    let machine = "feeds-forward-tz";
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    align_in(&[machine.to_string()], &ssh, &quiet());
+    up_pushed(&mut changes, machine).await;
+
+    let with_tz = |view: serde_json::Value| {
+        let mut req = asked(
+            "history-tail",
+            serde_json::json!({"path": "/p/s.jsonl"}),
+            view,
+        );
+        req.tz = crate::common::time::Tz::iana("America/Los_Angeles").expect("认得的 IANA 名");
+        req
+    };
+    for view in [
+        serde_json::Value::Null,
+        serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}}),
+    ] {
+        let got = forward(machine.to_string(), with_tz(view.clone()))
+            .await
+            .expect("转过去该成")
+            .expect("那台回了体");
+        assert_eq!(got["tz"], "America/Los_Angeles", "view={view}");
+    }
     align_in(&[], &ssh, &quiet());
 }
 

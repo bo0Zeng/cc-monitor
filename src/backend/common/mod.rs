@@ -59,6 +59,9 @@ pub mod id;
 /// 一份 JSON 原文里就地设一格 / 往数组加一项，别的字节不动（＋ 行号 ＋ diff）。① 足迹（「待办」要贴的改法）与适配层（settings 里就地补中转地址那一格）都用 ·
 /// ② 纯文本 ＋ `serde_json` · ③ 只认「JSON 原文 ＋ 一条键路径」，不认那是谁的设置。
 pub mod json_patch;
+/// 离线那台的上次值那一份（`~/.cc-monitor/cache/last-seen.json`）的存储。① footprint（界面那两样：账号清单 · 「文件与数据」）与 history（组的上次所知）都记进它 ·
+/// ② 读经 `own_state`，写经 `platform::fs::Own` 的锁与写口 · ③ 只认「一台几样、一样一份应答连形状指纹」，每样怎么核归记它的那一处。
+pub mod last_seen_store;
 /// 两份文本逐行比（行差的算法 ＋ 线上那一形 `LineDiff` 的拼法）。① 适配层（写类工具那一张卡的行差）与足迹（「待办」要贴的改法，经 [`json_patch`]）都用 ·
 /// ② 纯文本 · ③ 只认「改前 ＋ 改后两段文本」，不认那是谁的文件。
 pub mod line_diff;

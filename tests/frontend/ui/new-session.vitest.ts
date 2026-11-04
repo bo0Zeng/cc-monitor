@@ -576,6 +576,15 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("machinePage.state.down"));
   });
 
+  it("★ 机器那一格只写一处名字：远端那一台不另带一枚同名的标记（框上 · 下拉里一样）", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const machine = sel(copyText("detail.label.machine"));
+    const times = (t: string): number => t.split("devbox").length - 1;
+    expect(times(machine.textContent ?? ""), "框上写了几遍").toBe(1);
+    expect(times(optionsOf(machine).find((t) => t.includes("devbox")) ?? ""), "下拉里写了几遍").toBe(1);
+  });
+
   it("那台连不上、成品还没到 ⇒ 框顶不说离线（不知道 ≠ 离线），说状态不明", async () => {
     void openNewSession({ origin: "box-no-product" });
     await flush();
@@ -780,6 +789,20 @@ describe("锁住的目录 · 第一句", () => {
 });
 
 describe("那台说不行的其余几形", () => {
+  it("★ 不行的那一格收在折起的「更多」里 ⇒ 「更多」展开，话落在那一格下、看得见", async () => {
+    refusal = { op: "session-open", code: "tmux_taken", said: "原话", data: { field: "tmuxName", unavailable: null } };
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const moreHead = (): HTMLElement => dialog().querySelector<HTMLElement>("[data-fold-head]")!;
+    expect(moreHead().getAttribute("aria-expanded"), "开框时「更多」收着").toBe("false");
+    createBtn().click();
+    await flush();
+    expect(moreHead().getAttribute("aria-expanded"), "报错那一格在折起处没展开").toBe("true");
+    const tmuxRow = rowOf(input(copyText("newSession.label.tmuxName")));
+    expect(tmuxRow.textContent).toContain(copyText("launch.tmux.taken"));
+    expect(tmuxRow.closest("[hidden]"), "那一格还在藏着的地方").toBeNull();
+  });
+
   it("哪一格不行落在哪一格下（终端名 · 启动命令）；那一格收着 ⇒ 落到框顶", async () => {
     refusal = { op: "session-open", code: "tmux_taken", said: "原话", data: { field: "tmuxName", unavailable: null } };
     void openNewSession({ origin: "devbox" });

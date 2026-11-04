@@ -18,7 +18,6 @@ import { icon } from "./kit/icon";
 import { spinner } from "./kit/progress";
 import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
-import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
@@ -145,13 +144,12 @@ function accountOption(a: AccountOpt): SelectOption {
   return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
-/** 机器那一项：远端带机器标记；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
+/** 机器那一项：只写名字（这一格本身就是选哪台，不另带同名的机器标记）；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
 function machineOption(m: MachineOpt, chosen: Machine): SelectOption {
   const name = machineName(m.origin);
   return {
     value: m.origin,
     label: accountLabel(name),
-    lead: isLocalOrigin(m.origin) ? undefined : () => tag(name),
     note: m.up ? undefined : copyText("machinePage.state.down"),
     enabled: m.up || m.origin === chosen,
     why: copyText("machinePage.state.down"),
@@ -290,6 +288,7 @@ function placeRadio(places: HTMLElement, value: Place, title: string): PlaceRadi
 /**
  * 「更多」那一折：tmux 会话名（分叉不出；只在运行于 tmux 时在）· 启动命令。
  * 标题列的就是展开后在的那几格：`paintTitle` 照 tmux 会话名那一格此刻在不在重画标题，展开着的不收起。
+ * `reveal`：那一格在折起处 ⇒ 展开（那台说这一格不行时，话要落在看得见的地方）。
  */
 function moreFields(forking: boolean): {
   tmuxInput: HTMLInputElement;
@@ -298,6 +297,7 @@ function moreFields(forking: boolean): {
   cmdRow: Row;
   moreRow: HTMLElement;
   paintTitle: () => void;
+  reveal: (r: Row) => void;
 } {
   const tmuxInput = textInput(copyText("newSession.label.tmuxName"));
   const tmuxRow = row(copyText("newSession.label.tmuxName"), tmuxInput);
@@ -311,14 +311,22 @@ function moreFields(forking: boolean): {
   moreRow.className = s.nsMoreRow;
   let open = false;
   let title: string | null = null;
+  const paintFold = (): void => {
+    moreRow.replaceChildren(fold({ title: title ?? "", open, body: more, bare: true, onToggle: (o) => (open = o) }));
+  };
   const paintTitle = (): void => {
     const next = !forking && !tmuxRow.root.hidden ? copyText("newSession.more.plain") : copyText("newSession.more.fork");
     if (next === title) return;
     title = next;
-    moreRow.replaceChildren(fold({ title, open, body: more, bare: true, onToggle: (o) => (open = o) }));
+    paintFold();
+  };
+  const reveal = (r: Row): void => {
+    if (open || !more.contains(r.root)) return;
+    open = true;
+    paintFold();
   };
   paintTitle();
-  return { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle };
+  return { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle, reveal };
 }
 
 /** 终端窗口那一张的灰字：本机 · 远端有 tmux · 远端没 tmux。 */
@@ -560,7 +568,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   if (ask) paintRuns(ask.runs);
 
   // 更多
-  const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle: paintMoreTitle } = moreFields(fork !== null);
+  const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle: paintMoreTitle, reveal: revealMore } = moreFields(fork !== null);
   moreRow.hidden = ask !== null;
   single.appendChild(moreRow);
 
@@ -889,6 +897,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     }
     const slot = fieldRow(res.field, { cwd: cwdRow, tmuxName: tmuxRow, command: cmdRow, agent: agentRow, place: placeRow, account: accountRow });
     if (slot && !slot.root.hidden) {
+      revealMore(slot);
       slot.setNote(fieldSaid(res.code, res.said, machine), "error");
       return false;
     }
