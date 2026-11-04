@@ -1107,6 +1107,8 @@ fn module_path(
     const ROOTS: &[&str] = &[
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
+        "src/comms/ssh-dial/",
+        "src/comms/egress/",
         "src/backend/platform/",
         "src/backend/common/",
         "src/backend/plugin/",
