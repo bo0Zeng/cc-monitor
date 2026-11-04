@@ -21533,7 +21533,7 @@
     "acctNew.name.example": {
       "kind": "control",
       "role": "标签",
-      "zh": "b",
+      "zh": "work",
       "args": []
     },
     "acctNew.name.commands": {
