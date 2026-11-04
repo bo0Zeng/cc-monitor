@@ -46,7 +46,7 @@ ts-rs = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows 系统时区名 → IANA 名（`local_tz::iana_name` 那一臂）。MIT OR Apache-2.0；锁里本来就有（host-core 引的同一版）。
-iana-time-zone = "0.1"
+iana-time-zone.workspace = true
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
