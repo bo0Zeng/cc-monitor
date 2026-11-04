@@ -47,7 +47,7 @@ fn a_line_with_a_shot_carries_only_a_reference_and_the_reference_fetches_the_byt
     let head = json!({"type":"user","uuid":"u-0","timestamp":"2026-10-12T00:00:00.000Z","message":{"role":"user","content":"p"}}).to_string();
     let text = format!("{head}\n{}\n", with_shot(&data));
     let path = write(&home, "s-ref", &text);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let page = lines_at(
         &home,
         HistoryLinesReq {

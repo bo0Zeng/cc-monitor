@@ -13,8 +13,7 @@ fn bad(v: Value) -> String {
 
 /// 真代码写出来的记录（跨语言金样，正文是占位）。
 fn golden_records() -> Vec<Value> {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/__fixtures__/record.golden.jsonl");
+    let p = guard_core::addr::repo_root().join("tests/__fixtures__/record.golden.jsonl");
     std::fs::read_to_string(p)
         .unwrap()
         .lines()

@@ -69,7 +69,7 @@ async fn local_put_lands_on_this_machine() {
         &req,
         move || q::put(&o, &r, 100),
         SessionQueuePutErr::ALL,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         None,
         &crate::dial::remote_ask::test_peers::named(&[]),
         &DialRemote,

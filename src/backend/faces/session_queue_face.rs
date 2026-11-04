@@ -16,7 +16,7 @@ use copy_core::copy_text;
 
 codes! {
     /// `session-queue-put` 的码。
-    pub(crate) enum SessionQueuePutErr {
+    pub enum SessionQueuePutErr {
         /// 那台的家目录解析不出来 · 建目录 · 拿锁 · 写没成。
         IoFailed = "io_failed",
         /// 盘上那一份读不懂 · 版本比这一版新（不覆盖）。
@@ -33,7 +33,7 @@ codes! {
 }
 
 /// `session-queue-put`：往一条会话投一句（序号由会话所在那台发）。
-pub(crate) struct SessionQueuePutCmd;
+pub struct SessionQueuePutCmd;
 
 impl Command for SessionQueuePutCmd {
     const NAME: &'static str = "session-queue-put";
@@ -107,7 +107,7 @@ pub(crate) fn put_here(
 
 codes! {
     /// `session-queue-cancel` 的码。
-    pub(crate) enum SessionQueueCancelErr {
+    pub enum SessionQueueCancelErr {
         /// 同 `session-queue-put`。
         IoFailed = "io_failed",
         /// 同 `session-queue-put`。
@@ -118,7 +118,7 @@ codes! {
 }
 
 /// `session-queue-cancel`：撤一条还没送的（送过的 ⇒ `cancelled: false`），回撤完的整份名单。
-pub(crate) struct SessionQueueCancelCmd;
+pub struct SessionQueueCancelCmd;
 
 impl Command for SessionQueueCancelCmd {
     const NAME: &'static str = "session-queue-cancel";
@@ -154,7 +154,7 @@ impl typed::Handle for SessionQueueCancelCmd {
 
 codes! {
     /// `session-queue-read` 的码。
-    pub(crate) enum SessionQueueReadErr {
+    pub enum SessionQueueReadErr {
         /// 同 `session-queue-put`。
         IoFailed = "io_failed",
         /// 同 `session-queue-put`。
@@ -165,7 +165,7 @@ codes! {
 }
 
 /// `session-queue-read`：一条会话此刻的名单（问会话所在那台）。
-pub(crate) struct SessionQueueReadCmd;
+pub struct SessionQueueReadCmd;
 
 impl Command for SessionQueueReadCmd {
     const NAME: &'static str = "session-queue-read";

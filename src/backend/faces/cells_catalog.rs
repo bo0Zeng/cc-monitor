@@ -594,9 +594,9 @@ fn put(
 }
 
 /// 一件成品。
-pub(crate) struct Product {
+pub struct Product {
     /// 成品名（声明里 `cells` 的键）。帧是帧的 `kind`。
-    pub(crate) name: &'static str,
+    pub name: &'static str,
     /// 判别格：（它所在那一层的最后一段 · 键）—— 这件成品里按哪几格分种类。只认这里登记的：
     /// 同叫 `kind`，`who.speaker.kind` 是判别格、`runs.*.kind` 是普通的值。根上那一层的段是空串。
     pub(crate) tags: &'static [(&'static str, &'static str)],
@@ -618,7 +618,7 @@ pub(crate) fn cells_of(p: &Product) -> (Vec<Cell>, Vec<String>) {
 }
 
 /// 全部成品（目录的次序）。
-pub(crate) const PRODUCTS: &[Product] = &[
+pub const PRODUCTS: &[Product] = &[
     Product {
         name: "record",
         tags: &[
@@ -1280,6 +1280,11 @@ mod specimens {
     }
 }
 
+// 整份目录 · 冻结格：判据与主 crate 的 `build_id_guard`（冻结格指纹）读。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/faces/cells_catalog_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/cells_catalog_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：`build_id_guard` 的冻结格指纹读整份目录 `tests::catalog`
+mod tests;

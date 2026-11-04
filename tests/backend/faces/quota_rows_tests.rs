@@ -25,7 +25,7 @@ struct SeenIn {
 
 /// 一份回包照真出口走一遍（[`crate::faces::quota_read::reply_of`]，钟按金样那一份的时区）：金样里只留原数与显示态，
 /// 语义位那一格的字由显示态那一处写（`slot_words`），其余由出口写。
-fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
+fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
     use crate::accounts::quota::show::slot_words;
     use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let now = reply["now"].as_u64().unwrap_or_default();
@@ -130,7 +130,7 @@ fn rows_text_and_warm_match_the_golden() {
     let cases = g["cases"].as_array_mut().unwrap();
     assert!(cases.len() >= 10, "金样读空了");
     for c in cases.iter_mut() {
-        let tz = crate::Tz::of(&c["tz"]);
+        let tz = crate::common::time::Tz::of(&c["tz"]);
         let v = through_the_exit(&c["reply"], &tz);
         let blocks: Vec<Value> = ["accounts", "unseen"]
             .iter()
@@ -144,7 +144,7 @@ fn rows_text_and_warm_match_the_golden() {
         c["blocks"] = got.0;
         c["text"] = got.1;
     }
-    crate::golden::assert_golden(
+    test_meters::golden::assert_golden(
         GOLDEN,
         &format!("{}\n", serde_json::to_string_pretty(&g).unwrap()),
         "每号的几行 · `--text` · 开窗那一判与金样不一致",
@@ -250,7 +250,7 @@ fn the_five_hour_cell_is_written_by_the_core() {
     let mut seen_unreadable = false;
     let mut seen_sub = false;
     for c in g["cases"].as_array().unwrap() {
-        let v = through_the_exit(&c["reply"], &crate::Tz::default());
+        let v = through_the_exit(&c["reply"], &crate::common::time::Tz::default());
         let name = c["name"].as_str().unwrap_or("");
         if v["state"] == "unreadable" {
             seen_unreadable = true;
@@ -299,7 +299,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
     let g: Value = serde_json::from_str(&raw).unwrap();
     let mut cases = Vec::new();
     for c in g["cases"].as_array().unwrap() {
-        let tz = crate::Tz::of(&c["tz"]);
+        let tz = crate::common::time::Tz::of(&c["tz"]);
         let v = through_the_exit(&c["reply"], &tz);
         cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }
@@ -307,7 +307,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
         "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。",
         "cases": cases,
     });
-    crate::golden::assert_golden(
+    test_meters::golden::assert_golden(
         "tests/__fixtures__/quota-read.golden.json",
         &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
         "quota-read 线上金样与真出口不一致",
@@ -341,7 +341,7 @@ fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
         {"account": "team", "agent": "claude-code", "kind": "sub", "login": "ok"},
     ]);
     reply["usable"] = serde_json::json!([]);
-    let v = through_the_exit(&reply, &crate::Tz::default());
+    let v = through_the_exit(&reply, &crate::common::time::Tz::default());
     let unseen = v["unseen"].as_array().unwrap();
     assert_eq!(unseen.len(), 2);
     let said = copy_text("acct.warm.unreadable", &[("why", &why)]);
@@ -362,7 +362,7 @@ fn the_verdict_says_whether_anything_can_send() {
     use crate::accounts::quota::ledger::ReadState;
     use crate::faces::quota_read::{reply_of, Base};
     let now = 1_800_000_000u64;
-    let clock = crate::common::time::TextClock::new(now, &crate::Tz::default());
+    let clock = crate::common::time::TextClock::new(now, &crate::common::time::Tz::default());
     let unseen = |id: &str| crate::faces::quota_read::UnseenHead {
         agent: crate::agents::AgentKind::new("claude"),
         account: id.into(),

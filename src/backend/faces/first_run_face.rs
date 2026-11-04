@@ -5,11 +5,11 @@ use crate::wire::typed::{codes, Command};
 
 codes! {
     /// `first-run` 自己的码（只有入参不对那一种）。
-    pub(crate) enum FirstRunErr {}
+    pub enum FirstRunErr {}
 }
 
 /// `first-run`：首次运行「开始用」三步各自打没打勾。
-pub(crate) struct FirstRunCmd;
+pub struct FirstRunCmd;
 
 impl Command for FirstRunCmd {
     const NAME: &'static str = "first-run";

@@ -7,7 +7,7 @@ use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `assets-sync` 的码。
-    pub(crate) enum AssetsSyncErr {
+    pub enum AssetsSyncErr {
         /// 开头那一次本机现扫 · 并没成。
         IoFailed = "io_failed",
         /// 只给 `origin`（界面直问）而可达表里还没有那一台。
@@ -16,7 +16,7 @@ codes! {
 }
 
 /// `assets-sync`：拉远端的目录、并进本机、把远端缺的推过去。
-pub(crate) struct AssetsSyncCmd;
+pub struct AssetsSyncCmd;
 
 impl Command for AssetsSyncCmd {
     typed::by_call!(AssetsSyncReq);

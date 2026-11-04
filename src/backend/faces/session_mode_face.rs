@@ -12,7 +12,7 @@ use crate::wire::typed::{self, Command};
 const REDRAWS_PER_PRESS: usize = 4;
 
 /// `session-permission` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
-pub(crate) use cmd_wire::session::SessionPermissionReq;
+pub use cmd_wire::session::SessionPermissionReq;
 
 /// `session-permission` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::ModeSwitched;
@@ -22,7 +22,7 @@ pub(crate) use cmd_wire::session::SwitchResult;
 
 typed::codes! {
     /// `session-permission` 的码：认会话 · 列名单 · 起看屏的客户端 · 抓屏 · 送键。在等人 · 认不出 · 不归我们不是错（`result`）。
-    pub(crate) enum SessionPermissionErr {
+    pub enum SessionPermissionErr {
         /// 那一家会话开着时切不了档。
         Unsupported = "unsupported",
         /// 认得出这一档，却只能起会话时带参数定（开着时那一圈里没有它）。
@@ -192,7 +192,7 @@ impl ModeIo for Live<'_> {
                 color: Some(false),
                 ..TerminalPreviewReq::default()
             },
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
         )?;
         let lines: Vec<String> = shot.lines.into_iter().map(|l| l.text).collect();
         Ok((self.sw.read)(&lines))
@@ -214,7 +214,7 @@ impl ModeIo for Live<'_> {
 }
 
 /// `session-permission`：切权限档（终端没了 ⇒ 记下、恢复照它起）。阻塞档（读 pidfile · 起 tmux 几发 · 等重画）。
-pub(crate) struct SessionPermission;
+pub struct SessionPermission;
 
 impl Command for SessionPermission {
     typed::by_call!(SessionPermissionReq);

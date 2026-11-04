@@ -1,0 +1,78 @@
+# 帧面宿主：每条帧命令的薄壳（入参 · 成品 · 码），本体在下面各层；格目录与通用投影 `project` 也住这里。
+# 引账号域 · agents · 资产 · 控制面 · 拨号 · 足迹 · 历史清单 · 宿主口 · 观测面 · 计划读面 · 中转宿主 · 帧面零件 · 纯工具 · 平台十四层（文件管理 · 插件 · 诊断文件不引）。
+[package]
+name = "backend-faces"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 格目录的测试档那一半（整份目录 · 冻结格）给主 crate 的 `build_id_guard`。
+test-support = []
+# 线上类型的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts", "backend-platform/ts", "backend-common/ts", "backend-agents/ts", "backend-wire/ts", "backend-dial/ts", "backend-history/ts", "backend-accounts/ts", "backend-assets/ts", "backend-control/ts", "backend-observe/ts", "backend-footprint/ts"]
+
+[dependencies]
+backend-accounts = { path = "../accounts" }
+backend-agents = { path = "../agents" }
+backend-assets = { path = "../assets" }
+backend-control = { path = "../control" }
+backend-dial = { path = "../dial" }
+backend-footprint = { path = "../footprint" }
+backend-history = { path = "../history" }
+backend-host = { path = "../host" }
+backend-observe = { path = "../observe" }
+backend-plan = { path = "../plan" }
+backend-relay = { path = "../relay" }
+backend-wire = { path = "../wire" }
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+acct-core = { path = "../../common/acct-core" }
+batch-core = { path = "../../common/batch-core" }
+# 帧的线上形（客户端按同一份解）。
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+creds-core = { path = "../../common/creds-core" }
+face-core = { path = "../../common/face-core" }
+md-core = { path = "../../common/md-core" }
+# 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 金样只比不写（住 dev 侧的量具包）。
+test-meters = { path = "../test-meters" }
+# 拨了必被拒、又不会被别人捡走的本机口（住拨号核心，经它的 `test-support`）。
+ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+comms-inward = { path = "../../comms/inward" }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+backend-platform = { path = "../platform", features = ["test-support", "ts"] }
+backend-common = { path = "../common", features = ["test-support", "ts"] }
+backend-agents = { path = "../agents", features = ["test-support", "ts"] }
+backend-wire = { path = "../wire", features = ["test-support", "ts"] }
+backend-dial = { path = "../dial", features = ["test-support", "ts"] }
+backend-host = { path = "../host", features = ["test-support"] }
+backend-relay = { path = "../relay", features = ["test-support"] }
+backend-history = { path = "../history", features = ["test-support", "ts"] }
+backend-accounts = { path = "../accounts", features = ["test-support", "ts"] }
+backend-assets = { path = "../assets", features = ["test-support", "ts"] }
+backend-control = { path = "../control", features = ["test-support", "ts"] }
+backend-observe = { path = "../observe", features = ["test-support", "ts"] }
+backend-footprint = { path = "../footprint", features = ["ts"] }
+backend-plan = { path = "../plan", features = ["test-support"] }

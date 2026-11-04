@@ -7,7 +7,7 @@ use std::path::Path;
 
 /// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少。入参 · 回包 · 码住控制面（`control::cc_bus_wire`）；
 /// 命令标记与处理器住这里：在不在问观测层那一处，控制面不引用观测面，而命令的 `Handle` 只能跟标记类型同包。
-pub(crate) struct BusListCmd;
+pub struct BusListCmd;
 impl crate::wire::typed::Command for BusListCmd {
     const NAME: &'static str = "bus-list";
     const TAKES_INPUT: bool = false;
@@ -41,18 +41,16 @@ pub(crate) fn seen_at(
 
 impl crate::wire::typed::Handle for BusListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<BusList, BusReadErr>> + Send + 'static {
-        async move {
-            let home = crate::history::listing::agent_home();
-            let annotations = match crate::history::history_annotations::load() {
-                crate::history::history_annotations::Loaded::Read(t) => t,
-                _ => Default::default(),
-            };
-            bus_list(&|sid| seen_at(&home, sid, &annotations))
-        }
+    ) -> Result<BusList, BusReadErr> {
+        let home = crate::history::listing::agent_home();
+        let annotations = match crate::history::history_annotations::load() {
+            crate::history::history_annotations::Loaded::Read(t) => t,
+            _ => Default::default(),
+        };
+        bus_list(&|sid| seen_at(&home, sid, &annotations))
     }
 }
 

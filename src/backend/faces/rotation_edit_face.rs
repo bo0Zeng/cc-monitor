@@ -66,7 +66,7 @@ fn fresh_name(ctx: &Ctx, name: &str) -> Result<String, String> {
 
 crate::wire::typed::codes! {
     /// `rotation-settings` 自己的码。
-    pub(crate) enum RotationSettingsErr {
+    pub enum RotationSettingsErr {
         NoStrategy = "no_strategy",
         Refused = "refused" => RotRefused,
         Stale = "stale" => RotStale,
@@ -75,7 +75,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-settings`：照意图改那份策略的设置、当场存成新版（只重写头，说明与代码一个字不动）。在用旧版的会话不跟，各自「载入新版」。
-pub(crate) struct RotationSettings;
+pub struct RotationSettings;
 
 impl Command for RotationSettings {
     crate::wire::typed::by_call!(RotationSettingsReq);
@@ -141,7 +141,7 @@ pub(crate) fn settings_with(
 
 crate::wire::typed::codes! {
     /// `rotation-use` 自己的码。
-    pub(crate) enum RotationUseErr {
+    pub enum RotationUseErr {
         NoSession = "no_session",
         /// 策略目录里没有那一份 · 读不懂（载入不了）。
         NoStrategy = "no_strategy",
@@ -150,7 +150,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-use`：会话载入一份策略此刻的版本（下拉选一份；选它在用的那份 ＝「载入新版」）。memo 与叫醒清掉；临时动作照留。
-pub(crate) struct RotationUse;
+pub struct RotationUse;
 
 impl Command for RotationUse {
     crate::wire::typed::by_call!(RotationUseReq);
@@ -202,14 +202,14 @@ pub(crate) fn use_with(
 
 crate::wire::typed::codes! {
     /// `rotation-reload` 自己的码。
-    pub(crate) enum RotationReloadErr {
+    pub enum RotationReloadErr {
         NoStrategy = "no_strategy",
         IoFailed = "io_failed",
     }
 }
 
 /// `rotation-reload`：在用这份旧版的活会话都载入它此刻的版本（设置页「都载入新版」）。
-pub(crate) struct RotationReload;
+pub struct RotationReload;
 
 impl Command for RotationReload {
     crate::wire::typed::by_call!(RotationReloadReq);
@@ -257,14 +257,14 @@ pub(crate) fn reload_with(
 
 crate::wire::typed::codes! {
     /// `rotation-for-new` 自己的码。
-    pub(crate) enum RotationForNewErr {
+    pub enum RotationForNewErr {
         NoStrategy = "no_strategy",
         IoFailed = "io_failed",
     }
 }
 
 /// `rotation-for-new`：新会话用哪份。
-pub(crate) struct RotationForNew;
+pub struct RotationForNew;
 
 impl Command for RotationForNew {
     crate::wire::typed::by_call!(RotationForNewReq);
@@ -306,7 +306,7 @@ pub(crate) fn for_new_with(
 
 crate::wire::typed::codes! {
     /// `rotation-strategy-add` 自己的码。
-    pub(crate) enum RotationStrategyAddErr {
+    pub enum RotationStrategyAddErr {
         /// 那份原文读不懂（头的形状 · 编不过 · 没有 `decide` · 设置不合声明）。
         BadStrategy = "bad_strategy" => RotBadStrategy,
         IoFailed = "io_failed",
@@ -314,7 +314,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-strategy-add`：新建 · 从文件添加。
-pub(crate) struct RotationStrategyAdd;
+pub struct RotationStrategyAdd;
 
 impl Command for RotationStrategyAdd {
     crate::wire::typed::by_call!(RotationStrategyAddReq);
@@ -360,14 +360,14 @@ pub(crate) fn add_with(
 
 crate::wire::typed::codes! {
     /// `rotation-strategy-copy` 自己的码。
-    pub(crate) enum RotationStrategyCopyErr {
+    pub enum RotationStrategyCopyErr {
         NoStrategy = "no_strategy",
         IoFailed = "io_failed",
     }
 }
 
 /// `rotation-strategy-copy`：复制一份（只换名字）。
-pub(crate) struct RotationStrategyCopy;
+pub struct RotationStrategyCopy;
 
 impl Command for RotationStrategyCopy {
     crate::wire::typed::by_call!(RotationStrategyCopyReq);
@@ -405,7 +405,7 @@ pub(crate) fn copy_with(
 
 crate::wire::typed::codes! {
     /// `rotation-strategy-rename` 自己的码。
-    pub(crate) enum RotationStrategyRenameErr {
+    pub enum RotationStrategyRenameErr {
         NoStrategy = "no_strategy",
         Stale = "stale" => RotStale,
         IoFailed = "io_failed",
@@ -413,7 +413,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-strategy-rename`：改名 ＝ 换文件名（内容一个字不动）；载入它的会话副本与「新会话用」一起改过去。
-pub(crate) struct RotationStrategyRename;
+pub struct RotationStrategyRename;
 
 impl Command for RotationStrategyRename {
     crate::wire::typed::by_call!(RotationStrategyRenameReq);
@@ -484,7 +484,7 @@ pub(crate) fn rename_with(
 
 crate::wire::typed::codes! {
     /// `rotation-strategy-tz` 自己的码。
-    pub(crate) enum RotationStrategyTzErr {
+    pub enum RotationStrategyTzErr {
         NoStrategy = "no_strategy",
         Stale = "stale" => RotStale,
         IoFailed = "io_failed",
@@ -492,7 +492,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-strategy-tz`：只把设置块里的 `tz` 换掉（「时区不明」那一条也清掉），说明与代码一字不动。
-pub(crate) struct RotationStrategyTz;
+pub struct RotationStrategyTz;
 
 impl Command for RotationStrategyTz {
     crate::wire::typed::by_call!(RotationStrategyTzReq);
@@ -524,7 +524,7 @@ pub(crate) fn tz_with(
     let Some(head) = head_of(&sh) else {
         return Err(RotationStrategyTzErr::NoStrategy(gone(&req.id)));
     };
-    if crate::Tz::iana(&req.tz).is_none() {
+    if crate::common::time::Tz::iana(&req.tz).is_none() {
         return Err(RotationStrategyTzErr::BadArgs(copy_text(
             "beRotation.edit.badTz",
             &[("tz", &req.tz)],
@@ -551,7 +551,7 @@ pub(crate) fn tz_with(
 
 crate::wire::typed::codes! {
     /// `rotation-strategy-delete` 自己的码。
-    pub(crate) enum RotationStrategyDeleteErr {
+    pub enum RotationStrategyDeleteErr {
         NoStrategy = "no_strategy",
         /// 有活会话在用 · 是新会话用的那份。
         InUse = "in_use" => RotInUse,
@@ -560,7 +560,7 @@ crate::wire::typed::codes! {
 }
 
 /// `rotation-strategy-delete`：删一份（读不懂的也能删）。
-pub(crate) struct RotationStrategyDelete;
+pub struct RotationStrategyDelete;
 
 impl Command for RotationStrategyDelete {
     crate::wire::typed::by_call!(RotationStrategyDeleteReq);

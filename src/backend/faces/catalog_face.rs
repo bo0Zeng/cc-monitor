@@ -8,7 +8,7 @@ use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// 资产目录那三条的码（`assets-catalog` · `-merge` · `ext-note-set`）。
-    pub(crate) enum CatalogErr {
+    pub enum CatalogErr {
         /// 盘上那一份读不懂 / 是更新的版本（不覆盖）。
         CatalogUnreadable = "catalog_unreadable",
         /// 家目录 · 建目录 · 拿锁 · 写没成。
@@ -17,7 +17,7 @@ codes! {
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
-pub(crate) struct AssetsCatalogCmd;
+pub struct AssetsCatalogCmd;
 
 impl Command for AssetsCatalogCmd {
     typed::by_call!(asset_catalog::AssetsCatalogReq);
@@ -43,7 +43,7 @@ impl crate::wire::typed::Handle for AssetsCatalogCmd {
 }
 
 /// `assets-catalog-merge`：同上，再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。
-pub(crate) struct AssetsCatalogMergeCmd;
+pub struct AssetsCatalogMergeCmd;
 
 impl Command for AssetsCatalogMergeCmd {
     typed::by_call!(asset_catalog::AssetsCatalogMergeReq);
@@ -69,7 +69,7 @@ impl crate::wire::typed::Handle for AssetsCatalogMergeCmd {
 }
 
 /// `ext-note-set`：写 / 改 / 清一个扩展的备注（记进本机目录自己那一格，随目录同步）。
-pub(crate) struct ExtNoteSetCmd;
+pub struct ExtNoteSetCmd;
 
 impl Command for ExtNoteSetCmd {
     const NAME: &'static str = "ext-note-set";
@@ -95,7 +95,7 @@ impl crate::wire::typed::Handle for ExtNoteSetCmd {
 }
 
 /// `ext-list-here`：扩展页那张表的**本机那一半**（同一个本体，目录先裁到这台自己那一格；不问可达表 ⇒ 上 CLI 面）。
-pub(crate) struct ExtListHereCmd;
+pub struct ExtListHereCmd;
 
 impl Command for ExtListHereCmd {
     const NAME: &'static str = "ext-list-here";

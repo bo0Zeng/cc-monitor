@@ -44,7 +44,7 @@ fn quota(tag: &str) -> QuotaRead {
                         .iter()
                         .map(|id| {
                             crate::accounts::upstream_select::rotate::test_support::book_row(
-                                &id.to_string(),
+                                id,
                                 Some(accts.join(id)),
                                 false,
                             )
@@ -79,7 +79,7 @@ fn quota(tag: &str) -> QuotaRead {
         },
         NOW,
     );
-    crate::faces::rotation_face::quota_read_with(&ctx, NOW, &crate::Tz::default())
+    crate::faces::rotation_face::quota_read_with(&ctx, NOW, &crate::common::time::Tz::default())
 }
 
 fn s(v: &str) -> Option<String> {

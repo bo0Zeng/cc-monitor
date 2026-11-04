@@ -27,7 +27,7 @@ pub const ALL: [Topic; 17] = [
 //
 // 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
 // （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
-// 会话三帧（`session_added` · `session_status` · `session_left`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
+// 会话三帧（`session_added` · `session_status` · `session_left`）在格目录里，冻结的格登在那边（`cells_catalog::test_support::FROZEN`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。帧的判据逐格核它，`build_id_guard` 也读它。
 pub const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
@@ -38,7 +38,7 @@ pub const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `file` …）整件冻结在格目录
-    // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
+    // （格目录冻结表 `cells_catalog::test_support::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
     ("overflow", "said", "string"),
     // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
