@@ -52,7 +52,7 @@ data class HeadLine(
 fun headLine(s: ChatUiState): HeadLine? {
     val face = s.face ?: return null
     val context = s.facts?.usage?.takeIf { it.contextTone == Tone.WARN }?.contextText
-    return HeadLine(face.dot, s.facts?.line?.text ?: face.line, context)
+    return HeadLine(face.dot, face.line, context)
 }
 
 /** 一次工具调用还没配上结果时那一态：会话事实 `pending[]` 里同 id 那一项；不在里面 ⇒ `null`（不画状态）。 */
