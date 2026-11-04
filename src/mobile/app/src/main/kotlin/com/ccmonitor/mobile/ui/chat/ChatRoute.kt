@@ -402,12 +402,7 @@ private fun ChatTopBar(
                         menu = false
                         onPlan(sid)
                     })
-                    openDir?.let { go ->
-                        DropdownMenuItem(text = { Text(copyText("tabBarView.tab.cwdHint")) }, onClick = {
-                            menu = false
-                            go()
-                        })
-                    }
+                    openDir?.let { OpenDirItem(it) { menu = false } }
                     more { menu = false }
                 }
                 if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
@@ -417,6 +412,16 @@ private fun ChatTopBar(
 }
 
 private const val MORE_GLYPH = "⋯"
+
+/** ⋯「打开工作目录」那一项（字同桌面）：先收起菜单再去。 */
+@Composable
+private fun OpenDirItem(
+    go: () -> Unit,
+    close: () -> Unit,
+) = DropdownMenuItem(text = { Text(copyText("tabBarView.tab.cwdHint")) }, onClick = {
+    close()
+    go()
+})
 
 /** ⋯「agent」那一项：字是那台写好的那一句（[agentsEntry]），点了进这条会话的 agent 列表。 */
 private data class MoreAgents(
