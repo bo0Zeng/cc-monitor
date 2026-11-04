@@ -518,7 +518,11 @@ export class SettingsPanel {
   private paintMachineNow(origin: string): void {
     this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
     const m = this.stateOf.get(origin);
-    if (m) this.paintMachine(origin, m);
+    if (!m) return;
+    // 卡上刚关了「连接该机」：已到的那份还是关之前的，等那台的下一份，不拿旧的盖回去。
+    const pageId = isLocalOrigin(origin) ? null : this.remoteSection?.pageIdOfMachine(origin);
+    if (pageId && this.remoteSection?.isDisabledPage(pageId) && m.state !== "disabled") return;
+    this.paintMachine(origin, m);
   }
 
   /** 每台都照已到的重画一遍（列表重建完 · 机器表改完）。 */
