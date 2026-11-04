@@ -10,8 +10,8 @@ use copy_core::said::Said;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// 数据目录底下那一层。
-pub(crate) const HOSTS: &str = "hosts";
+/// 数据目录底下那一层（名字住声明表 [`relay_route_core::HOSTS_DIR_REL`]）。
+pub(crate) const HOSTS: &str = relay_route_core::file_name_of(relay_route_core::HOSTS_DIR_REL);
 pub(crate) const SOCK: &str = "sock";
 pub const FACTS: &str = "facts.json";
 /// Unix 套接字路径的上限（`sun_path` 108 字节含结尾的 0）。超过 ⇒ 起不来并说清，不偷偷换地方。
