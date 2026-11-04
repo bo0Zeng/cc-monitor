@@ -11,9 +11,9 @@ export type BackendStatus = {
  */
 local: LocalBackend | null, origin: string, 
 /**
- * 那台的通道在不在（本机 ⇒ 本机那条连接；别台 ⇒ 本机后端转来的那台此刻那一条）。
+ * 本机那条连接在不在；远端 ⇒ `null`（那台在不在只看本机后端推来的那台成品 `MachineState`，壳不另答一份）。
  */
-channel: boolean, pid: number | null, attempts: number | null, 
+channel: boolean | null, pid: number | null, attempts: number | null, 
 /**
  * 走没走过脱离那条路；远端 ⇒ `null`。
  */

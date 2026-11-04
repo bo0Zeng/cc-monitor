@@ -2028,7 +2028,7 @@ data class BackendLogReq(
 data class BackendStatus(
     val local: LocalBackend?,
     val origin: String,
-    val channel: Boolean,
+    val channel: Boolean?,
     val pid: Long?,
     val attempts: Long?,
     val detached: Boolean?,
@@ -2041,13 +2041,13 @@ data class BackendStatus(
             listOf(
             Field("local", { opt(LocalBackend.ADAPTER) }, optional = false, nullable = true),
             Field("origin", { Str }, optional = false, nullable = false),
-            Field("channel", { Bool }, optional = false, nullable = false),
+            Field("channel", { opt(Bool) }, optional = false, nullable = true),
             Field("pid", { opt(Lng) }, optional = false, nullable = true),
             Field("attempts", { opt(Lng) }, optional = false, nullable = true),
             Field("detached", { opt(Bool) }, optional = false, nullable = true),
             Field("health", { HealthFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> BackendStatus(a[0] as LocalBackend?, a[1] as String, a[2] as Boolean, a[3] as Long?, a[4] as Long?, a[5] as Boolean?, a[6] as HealthFace) },
+            { a -> BackendStatus(a[0] as LocalBackend?, a[1] as String, a[2] as Boolean?, a[3] as Long?, a[4] as Long?, a[5] as Boolean?, a[6] as HealthFace) },
             { v -> arrayOf(v.local, v.origin, v.channel, v.pid, v.attempts, v.detached, v.health) },
         )
     }
