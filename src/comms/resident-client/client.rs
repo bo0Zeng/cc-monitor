@@ -810,7 +810,15 @@ pub fn encode_request(
     tz: Option<&str>,
     view: Option<&Value>,
 ) -> String {
-    encode_line(id, cmd, args, within, tz, view, Asked::Itself { called: None })
+    encode_line(
+        id,
+        cmd,
+        args,
+        within,
+        tz,
+        view,
+        Asked::Itself { called: None },
+    )
 }
 
 /// [`encode_request`] 外加问的是谁（[`Asked`]：它自己带称呼 `called`，或它持有的哪一台 `machine`，[`InboundClient::call_at`]）。

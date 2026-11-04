@@ -13,7 +13,9 @@ fn record(tag: &str, cwd: Option<&str>) -> (PathBuf, PathBuf) {
         Some(c) => format!(
             r#"{{"type":"user","uuid":"u-1","timestamp":"t0","cwd":"{c}","message":{{"content":"q"}}}}"#
         ),
-        None => r#"{"type":"user","uuid":"u-1","timestamp":"t0","message":{"content":"q"}}"#.to_string(),
+        None => {
+            r#"{"type":"user","uuid":"u-1","timestamp":"t0","message":{"content":"q"}}"#.to_string()
+        }
     };
     std::fs::write(&p, format!("{head}\n")).unwrap();
     (home, p)
@@ -24,20 +26,32 @@ fn where_line(home: &Path, path: &Path, called: Option<&str>) -> serde_json::Val
     let req = HistoryFactsReq::Path(FactsByPath {
         path: path.to_string_lossy().into_owned(),
     });
-    let reply = facts_at(home, req, &limits, &crate::common::time::Tz::default(), called)
-        .expect("事实该答得出");
+    let reply = facts_at(
+        home,
+        req,
+        &limits,
+        &crate::common::time::Tz::default(),
+        called,
+    )
+    .expect("事实该答得出");
     serde_json::to_value(reply).unwrap()["whereLine"].clone()
 }
 
 #[test]
 fn the_line_names_the_machine_the_way_the_viewer_calls_it() {
     let (home, p) = record("named", Some("/w/proj"));
+    let got = where_line(&home, &p, Some("devbox"));
     assert_eq!(
-        where_line(&home, &p, Some("devbox")),
+        got,
         serde_json::json!(copy_core::copy_text(
             "beFacts.where.line",
             &[("machine", "devbox"), ("dir", "/w/proj")]
         ))
+    );
+    let s = got.as_str().unwrap_or_default();
+    assert!(
+        s.contains("devbox") && s.contains("/w/proj"),
+        "那一句里有那台的称呼与目录：{got}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -52,7 +66,10 @@ fn without_a_name_the_line_is_the_directory_alone() {
 #[test]
 fn without_a_directory_the_line_is_the_name_alone_and_with_neither_there_is_none() {
     let (home, p) = record("nodir", None);
-    assert_eq!(where_line(&home, &p, Some("devbox")), serde_json::json!("devbox"));
+    assert_eq!(
+        where_line(&home, &p, Some("devbox")),
+        serde_json::json!("devbox")
+    );
     assert!(where_line(&home, &p, None).is_null());
     let _ = std::fs::remove_dir_all(&home);
 }
