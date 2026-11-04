@@ -16,7 +16,6 @@ const PENDING: &[&str] = &[
     "tests/common/guard-core/rules/session_name_registry_tests.rs",
     "tests/common/guard-core/rules/shared_crate_registry_tests.rs",
     "tests/common/host-core/lib_tests.rs",
-    "src/backend/observe/watcher.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/platform/fallback_guard.rs",
     "tests/backend/readonly_guard.rs",
@@ -125,33 +124,19 @@ fn repo_root() -> PathBuf {
     guard_core::addr::repo_root()
 }
 
-/// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
-/// 🔴 **住 `tests/` 的文件整份就是测试段。**
+/// 一份文件的测试段。🔴 **住 `tests/` 的文件整份就是测试段。**
 ///
-/// [`test_regions`] 与 `guard_core::test_source` 都靠 `#[cfg(test)]` 这个**标记**
-/// 切出测试段 —— 那个标记是「生产段与测试段同住一份文件」那个年代的产物。
-/// 剖分之后 `<repo>/tests/` 那棵树**整棵不进 `cargo build`**，里面的文件
-/// 一个 `#[cfg(test)]` 都不需要写 ⇒ 两个切法对它们一律交回**空串**，
+/// 生产文件交给 `guard_core::test_source`：它只认带花括号体的测试模块，挂在 `use` 这类单个
+/// item 上的 `#[cfg(test)]` 不成区间，后面的生产代码不会被切进来。
+/// `test_source` 靠 `#[cfg(test)]` 这个**标记**切；`<repo>/tests/` 那棵树整棵不进 `cargo build`，
+/// 里面的文件一个 `#[cfg(test)]` 都不需要写 ⇒ 对它们一律交回**空串**，
 /// 而空串会让本模块两层判据（文件级 · 判据级）对那棵树**恒真地绿**
 /// —— 本模块从头到尾治的正是「没红与没看在输出上一模一样」这个形状。
 fn test_side_of(rel: &str, src: &str) -> String {
     if rel.starts_with("tests/") {
         return src.to_string();
     }
-    test_regions(src)
-}
-
-fn test_regions(src: &str) -> String {
-    let mut out = String::new();
-    let mut i = 0usize;
-    while let Some(j) = src[i..].find("#[cfg(test)]") {
-        let at = i + j;
-        let end = src[at..].find("\n}\n").map_or(src.len(), |e| at + e);
-        out.push_str(&src[at..end]);
-        out.push('\n');
-        i = at + "#[cfg(test)]".len();
-    }
-    out
+    guard_core::test_source(src)
 }
 
 /// # 横扫结论：「多条判据一起瞎」这一族**全仓已清**
@@ -568,9 +553,10 @@ fn the_per_guard_split_does_not_hand_every_guard_the_whole_file() {
 }
 
 /// 这段测试代码裸遍历目录。经后端只读句柄（`Ro::read_dir`）读的不算：那是测试件照适配层的写法读夹具家
-/// （最小假 agent），不是判据在扫源码树。
+/// （最小假 agent），不是判据在扫源码树。注释先剥掉（`guard_core::strip_comment_lines`）：
+/// 注释里写到遍历的名字不是遍历。
 fn walks_raw(code: &str) -> bool {
-    let code = code.replace(&format!("Ro::{}", RAW_WALKS[0]), "");
+    let code = guard_core::strip_comment_lines(code).replace(&format!("Ro::{}", RAW_WALKS[0]), "");
     RAW_WALKS.iter().any(|w| code.contains(w))
 }
 
@@ -581,6 +567,42 @@ fn reads_through_the_backend_handle_are_not_raw_walks() {
     assert!(!walks_raw(&format!("let rd = Ro::{walk}&home)?;")));
     assert!(walks_raw(&format!("let rd = std::fs::{walk}&root)?;")));
     assert!(walks_raw(&format!("Ro::{walk}&home)?; fs::{walk}&root)?;")));
+}
+
+/// 注释里写到遍历的名字不算裸遍历；同一句写成代码照算。
+#[test]
+fn walk_names_in_comments_are_not_raw_walks() {
+    let walk = RAW_WALKS[1];
+    assert!(!walks_raw(&format!(
+        "/// 锚在 `{walk}::new(&sessions)`。\nfn f() {{\n    // {walk}::new(x)\n    /* {walk} */\n}}\n"
+    )));
+    assert!(walks_raw(&format!(
+        "fn f() {{\n    // 注释\n    for e in {walk}::new(x) {{}}\n}}\n"
+    )));
+}
+
+/// 生产文件的测试段只取带花括号体的测试模块：一句 `#[cfg(test)] use …;` 后面的生产代码不进测试段；
+/// 真测试模块里的遍历照进。
+#[test]
+fn a_cfg_test_use_line_does_not_pull_production_code_into_the_test_side() {
+    let walk = RAW_WALKS[1];
+    let prod = format!(
+        "#[cfg(test)]\nuse a::b;\nuse walkdir::{walk};\nfn f() {{\n    {walk}::new(x);\n}}\n"
+    );
+    let side = test_side_of("src/x.rs", &prod);
+    assert!(!side.contains(walk), "测试段吞进了生产代码：\n{side}");
+    let with_mod = format!(
+        "{prod}\n#[cfg(test)]\nmod tests {{\n    fn g() {{\n        {walk}::new(y);\n    }}\n}}\n"
+    );
+    let side = test_side_of("src/x.rs", &with_mod);
+    assert!(
+        side.contains(&format!("{walk}::new(y)")),
+        "真测试模块没进测试段：\n{side}"
+    );
+    assert!(
+        !side.contains(&format!("{walk}::new(x)")),
+        "测试段吞进了生产代码：\n{side}"
+    );
 }
 
 /// 今天仍在裸遍历的文件（相对仓根）。
