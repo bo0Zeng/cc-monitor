@@ -149,6 +149,7 @@
       "promptTokens": 6,
       "promptTokensText": "6"
     },
+    "whereLine": "/g/proj",
     "writers": []
   },
   "history-find": {

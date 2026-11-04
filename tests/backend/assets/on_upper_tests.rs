@@ -20,10 +20,7 @@ fn run_on_frame_path(
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     match invoke(spec.run, &crate::stream::inbound::hands(own)) {
         Some(Prepared::Blocking(run)) => run(req),

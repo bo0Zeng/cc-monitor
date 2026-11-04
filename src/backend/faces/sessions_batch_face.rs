@@ -160,6 +160,7 @@ async fn note_here(
                         .map_err(|e| Said::from(e.to_string()))?;
                 let cx = crate::wire::typed::Cx {
                     tz: tz.clone(),
+                    called: None,
                     until,
                     needs: own.clone(),
                 };
@@ -299,7 +300,7 @@ async fn stop_here(
     let cx = crate::wire::typed::Cx {
         tz,
         until,
-        needs: (),
+        ..Default::default()
     };
     let rt = tokio::runtime::Handle::current();
     let done = tokio::task::spawn_blocking(move || {
@@ -360,6 +361,7 @@ async fn start_here(
                 };
                 let cx = crate::wire::typed::Cx {
                     tz: tz.clone(),
+                    called: None,
                     until,
                     needs: hands.clone(),
                 };

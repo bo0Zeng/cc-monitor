@@ -57,6 +57,8 @@ export interface Tab {
   forkedFromSessionId: string | null;
   /** 不止一个进程在同时写这条会话时那一句（后端会话事实的 `writersLine`，界面照摆）；没有 ⇒ `null`。 */
   writersLine: string | null;
+  /** 这条会话在哪：「机器 · 目录」那一句（后端会话事实的 `whereLine`，那台照看的这一端对它的称呼写好，界面照摆）；没有 ⇒ `null`。 */
+  whereLine: string | null;
   /**
    * 数据来源：本机 = `LOCAL`；远端 = 那台的键（标签页 · 会话头另画那台的标签）。
    * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。

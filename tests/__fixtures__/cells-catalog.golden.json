@@ -1798,6 +1798,12 @@
         {
           "frozen": false,
           "kind": "text",
+          "path": "whereLine",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
           "path": "writersLine",
           "type": "string"
         },

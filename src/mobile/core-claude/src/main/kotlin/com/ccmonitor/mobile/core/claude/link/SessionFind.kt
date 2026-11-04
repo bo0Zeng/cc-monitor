@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.wire.gen.Batched
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.HistoryFindReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryLinesReq
+import com.ccmonitor.mobile.core.wire.gen.SearchScope
 import com.ccmonitor.mobile.core.wire.gen.SidsReq
 import com.ccmonitor.mobile.core.wire.gen.UserInputs
 import com.ccmonitor.mobile.core.wire.gen.UserInputsReq
@@ -18,12 +19,14 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryFind as FoundWire
 object InSessionFind {
     const val COMMAND: String = Commands.HistoryFind.NAME
 
+    /** [user] ⇒ 只搜人说的（`scope: user`）；否则不带范围（全部）。 */
     fun args(
         path: String,
         query: String,
-    ): Map<String, Any?> = Commands.HistoryFind.args(HistoryFindReq(path = path, query = query))
+        user: Boolean = false,
+    ): Map<String, Any?> = Commands.HistoryFind.args(HistoryFindReq(path = path, query = query, scope = SearchScope.USER.takeIf { user }))
 
-    /** 全量命中数 ＋ 这一页的命中（文件序）。 */
+    /** 这一页的命中（文件序）＋ 结果头那一句（`head`）＋ 能不能放宽到全部（`widen`）。 */
     fun of(data: Any?): FoundWire? = Commands.HistoryFind.reply(data)
 }
 

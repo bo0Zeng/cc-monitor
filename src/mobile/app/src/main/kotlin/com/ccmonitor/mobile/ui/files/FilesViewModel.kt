@@ -71,6 +71,15 @@ class FilesViewModel(
     private val ops = FileOps(feed, ::machine)
     private val previews = FilePreview(feed, ::machine)
 
+    /** 工具条［搜索］那一面（名字 · 内容，那台搜）。 */
+    val search = FileSearch(feed, ::machine, viewModelScope)
+
+    /** 点一条命中：那台说是目录 ⇒ 进去；别的 ⇒ 照打开别处点名的路径那样（进它所在的目录、开预览）。收起那一面。 */
+    fun reveal(row: FileSearch.Row) {
+        search.close()
+        if (row is FileSearch.Row.Name && row.dir) navigateTo(row.path) else open(row.path.shown)
+    }
+
     private val _ui = MutableStateFlow<FilesUi>(FilesUi.Connecting)
     val ui: StateFlow<FilesUi> = _ui.asStateFlow()
 

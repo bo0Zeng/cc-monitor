@@ -23,12 +23,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** ⋯「会话里找」那一张：查询串 · 在问 · 命中（那台的先后）· 全量命中数 · 没问成那一句。 */
+/**
+ * ⋯「会话里找」那一张：查询串 · 范围（[user] 只搜人说的）· 在问 · 命中（那台的先后）· 结果头那一句（那台写好的 `head`）·
+ * 能不能放宽到全部（那台的 `widen`）· 没问成那一句。
+ */
 data class FindUi(
     val query: String = "",
+    val user: Boolean = false,
     val busy: Boolean = false,
     val hits: List<FindHit> = emptyList(),
-    val total: Long = 0L,
+    val head: String? = null,
+    val widen: Boolean = false,
     val failed: String? = null,
 )
 
@@ -111,25 +116,41 @@ class ChatMore(
         put { it.copy(find = null) }
     }
 
-    /** 找 [query]（空 ⇒ 清掉命中，不问）；上一问还没回 ⇒ 撤掉，只认这一问。 */
-    fun find(query: String) {
+    /** 找 [query]（空 ⇒ 清掉命中，不问），范围照此刻那一张；上一问还没回 ⇒ 撤掉，只认这一问。 */
+    fun find(query: String) = ask(query, _state.value.find?.user == true)
+
+    /** 换范围（「全部 | 用户」）：词（缺省是上一问那个）不变、马上再找。 */
+    fun scope(
+        user: Boolean,
+        query: String? = null,
+    ) = ask(query ?: lastQuery(), user)
+
+    /** 结果头旁那颗［搜全部］（那台说可以放宽才有）：回「全部」再找。 */
+    fun widen() = scope(user = false)
+
+    private fun lastQuery(): String = _state.value.find?.query ?: ""
+
+    private fun ask(
+        query: String,
+        user: Boolean,
+    ) {
         val s = sid() ?: return
         finding?.cancel()
-        if (query.isBlank()) return put { it.copy(find = FindUi(query)) }
-        put { it.copy(find = FindUi(query, busy = true)) }
+        if (query.isBlank()) return put { it.copy(find = FindUi(query, user)) }
+        put { it.copy(find = FindUi(query, user, busy = true)) }
         finding =
             scope.launch {
                 val (p, why) = pathOf(s)
                 val ui =
                     if (p == null) {
-                        FindUi(query, failed = why)
+                        FindUi(query, user, failed = why)
                     } else {
-                        val r = link.call(InSessionFind.COMMAND, InSessionFind.args(p, query), READ_MS)
+                        val r = link.call(InSessionFind.COMMAND, InSessionFind.args(p, query, user), READ_MS)
                         when (r) {
                             is Reply.Ok ->
-                                InSessionFind.of(r.data)?.let { FindUi(query, hits = it.hits, total = it.total) }
-                                    ?: FindUi(query, failed = unreadableReply(machine, InSessionFind.COMMAND, r.data.toString()).text)
-                            else -> FindUi(query, failed = r.problem(machine, InSessionFind.COMMAND, link.offline.value)?.text)
+                                InSessionFind.of(r.data)?.let { FindUi(query, user, hits = it.hits, head = it.head, widen = it.widen) }
+                                    ?: FindUi(query, user, failed = unreadableReply(machine, InSessionFind.COMMAND, r.data.toString()).text)
+                            else -> FindUi(query, user, failed = r.problem(machine, InSessionFind.COMMAND, link.offline.value)?.text)
                         }
                     }
                 put { it.copy(find = ui) }

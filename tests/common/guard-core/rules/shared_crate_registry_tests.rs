@@ -36,15 +36,13 @@ fn member_prefix() -> String {
 /// `src/common/*/Cargo.toml` 里的包名。
 fn shared_crate_names() -> Vec<String> {
     let dir = common_dir();
-    let mut names: Vec<String> = fs::read_dir(&dir)
-        .expect("src/common/ 读不到")
-        .filter_map(|e| {
-            let p = e.ok()?.path();
-            let toml = p.join("Cargo.toml");
-            if !toml.is_file() {
+    // 只认 `src/common/` 下一层的包：更深处的 `Cargo.toml` 不是共享 crate。
+    let mut names: Vec<String> = guard_core::scan_tree!(&dir, &["toml"])
+        .into_iter()
+        .filter_map(|(toml, text)| {
+            if toml.file_name()? != "Cargo.toml" || toml.parent()?.parent()? != dir.as_path() {
                 return None;
             }
-            let text = fs::read_to_string(&toml).ok()?;
             text.lines()
                 .find_map(|l| l.strip_prefix("name = \""))
                 .map(|v| v.trim_end_matches('"').to_string())

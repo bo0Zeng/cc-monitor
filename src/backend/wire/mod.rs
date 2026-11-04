@@ -800,7 +800,8 @@ pub use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
 /// backend 自己发号的话，重连后号段会撞（会变的东西不当持久键）。
-#[derive(Debug, Clone, Deserialize)]
+/// 进程内造一条（CLI 面 · 枢纽 · 判据）写要的那几格、其余 `..Default::default()`：信封加格只改这里。
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Request {
     /// 客户端发号的不透明串，应答原样回显；同一时刻在跑的命令里不许重复。
     pub id: String,
@@ -818,9 +819,21 @@ pub struct Request {
     /// 看的那一台的时区（IANA 名）：回包里「几点」「今天 / 昨天」按它写。可缺；缺 · 认不得 ⇒ UTC（不拒）。
     #[serde(default, deserialize_with = "lenient_tz")]
     pub tz: crate::common::time::Tz,
+    /// 看的那一端怎么称呼本台（连本台的客户端登记的名字：远端是机器表里那台的名字，本机是「本机」那个词）：
+    /// 「<目录> · <机器>」这类句子照它写。可缺；不是非空串 ⇒ 当没带（不拒），没带就不编名字。
+    #[serde(default, deserialize_with = "lenient_called")]
+    pub called: Option<String>,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
     #[serde(skip)]
     pub until: Option<crate::platform::child::Until>,
+}
+
+/// `called` 的宽读：只认非空白的串，别的一律当没带。
+fn lenient_called<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_str()
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_string))
 }
 
 /// `within_ms` 的宽读：只认正整数，别的（字符串 · 负数 · 小数 · 零 · null）一律当没带。

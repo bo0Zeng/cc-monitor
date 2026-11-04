@@ -31,6 +31,24 @@ class RecordUnitsTest {
     }
 
     @Test
+    fun `人粘贴的块：不折的只露正文那一截（标记不上屏），整句并成一段`() {
+        val u = units("said-pasted").single() as RenderUnit.UserText
+        assertEquals(listOf(SaidPart.Plain("see A\nB end")), u.parts)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `人粘贴的块：那台说要折 ⇒ 折成一段，带那台数好的行数与正文那一截`() {
+        val r = Json.obj(File(repoRoot(), "tests/__fixtures__/record.golden.jsonl").readLines().first { it.contains("\"case\":\"said-pasted\"") })!!
+        val rec = (r["record"] as Map<String, Any?>).toMutableMap()
+        val who = (rec["who"] as Map<String, Any?>).toMutableMap()
+        who["pasted"] = (who["pasted"] as List<Map<String, Any?>>).map { it + ("fold" to true) + ("lines" to 248) }
+        rec["who"] = who
+        val u = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(rec)))).single() as RenderUnit.UserText
+        assertEquals(listOf(SaidPart.Plain("see "), SaidPart.Folded(248, "A\nB"), SaidPart.Plain(" end")), u.parts)
+    }
+
+    @Test
     fun `工具头那一行照核心写好的：左边是这一步的参数（认不出的那一家照核心那句），右边是结果那一句`() {
         val calls = units("reply-full", "said-read").filterIsInstance<RenderUnit.ToolCall>().associateBy { it.toolUseId }
         assertEquals("认得的那一步：参数", "/w/a.txt", calls.getValue("call-3").summary)
@@ -53,7 +71,7 @@ class RecordUnitsTest {
         assertEquals("done", u[1].searchableText())
         val edit = u[3] as RenderUnit.ToolCall
         assertEquals("Edit", edit.name)
-        assertTrue("没有结果 ⇒ 还在跑", edit.pending)
+        assertTrue("没有结果 ⇒ 还没配上结果（是什么态由会话事实说）", edit.pending)
         assertEquals("认不出的工具也是一张调用卡", "mcp__x__y", (u[4] as RenderUnit.ToolCall).name)
     }
 

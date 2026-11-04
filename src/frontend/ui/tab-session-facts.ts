@@ -1,7 +1,7 @@
 /**
  * **把后端给的会话事实落到 tab 上** —— 纯函数，零 DOM、零 IPC。
  *
- * 分叉血缘 · 改动文件集 · 最新 usage · 项目目录 · 在写它的进程：判定与累加都在后端
+ * 分叉血缘 · 改动文件集 · 最新 usage · 项目目录 · 「机器 · 目录」那一句 · 在写它的进程：判定与累加都在后端
  * （`observe/recognize/facts.rs`，帧命令 `history-facts`），界面不从 JSONL 记录里抽事实，本文件只做**投影**：成品里的数组落成 tab 上的
  * `Map` / `Set`、`usage` 拆成两格，并回「这次哪几样变了」—— 变了之后刷哪块界面是调用方（`TabManager`）的事。
  *
@@ -20,6 +20,8 @@ export interface FactsChange {
   /** 是哪一家那一格到了 / 变了（卡头那一家的名字要补上）。 */
   agent: boolean;
   writers: boolean;
+  /** 「机器 · 目录」那一句变了。 */
+  where: boolean;
   /** 需手动那一格变了。 */
   needs: boolean;
   /** 悬停卡与状态一句那几样（没结果的调用 · 最后一句 · 状态一句）变了。 */
@@ -52,6 +54,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const writers = tab.writersLine !== writersLine;
   tab.writersLine = writersLine;
 
+  const whereLine = f.whereLine ?? null;
+  const where = tab.whereLine !== whereLine;
+  tab.whereLine = whereLine;
+
   const needs =
     JSON.stringify(tab.needs) !== JSON.stringify(f.needs) ||
     tab.autoAnswer !== f.autoAnswer ||
@@ -79,5 +85,5 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.permissionMode = f.permissionMode;
   tab.permissionModeText = f.permissionModeText;
 
-  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek, lineage, switchable };
+  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, where, needs, peek, lineage, switchable };
 }

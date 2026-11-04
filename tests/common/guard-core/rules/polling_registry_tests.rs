@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// 周期唤醒的**登记表**：`(相对仓根的路径, 类别, 为什么 + 谁退役它)`。
 ///
@@ -92,27 +92,17 @@ fn repo_root() -> PathBuf {
 /// 一行里有没有周期唤醒的形态。
 /// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-bus send`/`cc-bus recv`
 /// 这些没有后缀）。**按内容认，不按后缀认** —— 后缀是可选的，shebang 才是「它是脚本」的证据。
-fn collect_shell(dir: &std::path::Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Ok(rd) = fs::read_dir(dir) else {
-        return out;
-    };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            out.extend(collect_shell(&p));
-            continue;
-        }
-        let is_sh = p.extension().and_then(|x| x.to_str()) == Some("sh");
-        let has_shebang = fs::read_to_string(&p)
-            .ok()
-            .and_then(|t| t.lines().next().map(|l| l.starts_with("#!")))
-            .unwrap_or(false);
-        if is_sh || has_shebang {
-            out.push(p);
-        }
-    }
-    out
+///
+/// 认法是「`.sh` 或首行 `#!`」，比 `guard_core::shell_scripts`（shebang 里要带 `sh`）宽：
+/// `src/shared` 里那份 python 脚本也在人群里，它要是醒着轮询一样要登记。
+fn shared_scripts() -> Vec<PathBuf> {
+    guard_core::scan_tree!(&repo_root().join("src/shared"), &[])
+        .into_iter()
+        .filter(|(p, text)| {
+            p.extension().and_then(|x| x.to_str()) == Some("sh") || text.starts_with("#!")
+        })
+        .map(|(p, _)| p)
+        .collect()
 }
 
 fn is_periodic(line: &str, is_shell: bool) -> bool {
@@ -134,12 +124,8 @@ fn is_periodic(line: &str, is_shell: bool) -> bool {
 /// `session_name_registry` 也是同一个人群 ⇒ 加一个脚本自动进人群，不用谁记得回来 push 一行。
 fn scan() -> Vec<(String, usize)> {
     let root = repo_root();
-    let mut files: Vec<PathBuf> = Vec::new();
-    collect_ts(&root.join("src"), &mut files);
-    files.sort();
-    let mut shells = collect_shell(&root.join("src/shared"));
-    shells.sort();
-    files.extend(shells);
+    let mut files = frontend_ts();
+    files.extend(shared_scripts());
     // 🔴 **容器路那段 shell 由 Rust 渲出来**（`shared/ccm` 删了，产出方换了）⇒ 收进人群，
     //    渲出去的 shell 里再长出 `sleep` 就当场要登记。
     //    ⚠ 它按 `is_shell` 那条针认（`contains("sleep ")`）—— 那正对：
@@ -162,35 +148,23 @@ fn scan() -> Vec<(String, usize)> {
     out
 }
 
-fn collect_ts(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            collect_ts(&p, out);
-            continue;
-        }
-        let name = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        if name.ends_with(".ts")
-            && !name.contains(".vitest.")
-            && !name.contains(".test.")
-            && !name.ends_with(".d.ts")
-        {
-            out.push(p);
-        }
-    }
+/// `src/**/*.ts`，测试与声明文件除外（已排序）。
+fn frontend_ts() -> Vec<PathBuf> {
+    guard_core::scan_tree!(&repo_root().join("src"), &["ts"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|p| {
+            let name = p.file_name().unwrap_or_default().to_string_lossy();
+            !name.contains(".vitest.") && !name.contains(".test.") && !name.ends_with(".d.ts")
+        })
+        .collect()
 }
 
 /// ★ 抽取器自检：扫不到东西时下面几条会零命中变绿。
 #[test]
 fn the_scan_actually_reads_the_frontend_and_ccm() {
     let root = repo_root();
-    let mut ts = Vec::new();
-    collect_ts(&root.join("src"), &mut ts);
+    let ts = frontend_ts();
     // 采集面与 git 跟踪着的前端 `.ts` 对拍（测试与声明文件不在人群里）。
     let seen: Vec<String> = ts.iter().map(|p| guard_core::addr::rel_of(p)).collect();
     let skip: Vec<String> = guard_core::addr::tracked_under("src", "ts")
@@ -413,9 +387,7 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
         "标记认法认错了"
     );
     let root = repo_root();
-    let mut files: Vec<PathBuf> = Vec::new();
-    collect_ts(&root.join("src"), &mut files);
-    files.sort();
+    let files = frontend_ts();
     let (mut sites, mut bad, mut clocks) = (0usize, Vec::new(), std::collections::BTreeSet::new());
     for f in files {
         let rel = f
@@ -576,34 +548,24 @@ fn production(raw: &str) -> String {
 /// 递归遍历 `src/`，**不是硬编码文件名单**。
 fn rust_files() -> Vec<(String, String)> {
     let src = root().join("src");
-    let mut out = Vec::new();
-    // 人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
-    //   `guard_core::population_trees`）—— monitor 的代码搬进去了，人群不变；兄弟包的键带包名。
-    let trees =
-        std::iter::once(("src".to_string(), src.clone())).chain(guard_core::population_trees(&src));
-    for (label, tree) in trees {
-        let mut stack = vec![tree.clone()];
-        while let Some(d) = stack.pop() {
-            let Ok(rd) = fs::read_dir(&d) else { continue };
-            for e in rd.flatten() {
-                let p: PathBuf = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                    continue;
-                }
-                if p.extension().is_some_and(|x| x == "rs") {
-                    let rel = format!(
-                        "{label}/{}",
-                        p.strip_prefix(&tree)
-                            .unwrap_or(&p)
-                            .to_string_lossy()
-                            .replace('\\', "/")
-                    );
-                    out.push((rel, fs::read_to_string(&p).unwrap_or_default()));
-                }
-            }
-        }
-    }
+    // 人群 ＝ 本 crate 的 `src/` ＋ manifest 明写的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约）：
+    //   `scan_tree!` 自己收兄弟包；键照住在哪棵树拼，兄弟包的键带包名。
+    let trees: Vec<(String, PathBuf)> = std::iter::once(("src".to_string(), src.clone()))
+        .chain(guard_core::population_trees(&src))
+        .collect();
+    let mut out: Vec<(String, String)> = guard_core::scan_tree!(&src, &["rs"])
+        .into_iter()
+        .map(|(p, raw)| {
+            let (label, rest) = trees
+                .iter()
+                .find_map(|(label, tree)| p.strip_prefix(tree).ok().map(|r| (label, r)))
+                .unwrap_or_else(|| panic!("{} 不在任何一棵人群树里", p.display()));
+            (
+                format!("{label}/{}", rest.to_string_lossy().replace('\\', "/")),
+                raw,
+            )
+        })
+        .collect();
     out.sort();
     out
 }

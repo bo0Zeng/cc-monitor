@@ -212,11 +212,7 @@ fn a_computed_body_is_the_reask_reply() {
                 body: crate::wire::spec::finish(
                     crate::faces::rotation_view_face::RotationStrategies::run(
                         Default::default(),
-                        crate::wire::typed::Cx {
-                            tz: crate::common::time::Tz::default(),
-                            until: None,
-                            needs: (),
-                        },
+                        crate::wire::typed::Cx::default(),
                     ),
                 )
                 .ok(),
@@ -238,11 +234,7 @@ fn a_computed_body_is_the_reask_reply() {
                     crate::faces::feature_face::TasksListReq {
                         sid: "no-such-sid".to_string(),
                     },
-                    crate::wire::typed::Cx {
-                        tz: crate::common::time::Tz::default(),
-                        until: None,
-                        needs: (),
-                    },
+                    crate::wire::typed::Cx::default(),
                 ))
                 .ok(),
             })

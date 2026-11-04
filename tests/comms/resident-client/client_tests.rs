@@ -34,6 +34,62 @@ async fn the_viewer_tz_rides_on_every_request() {
     assert_eq!(call.await.unwrap().unwrap(), None);
 }
 
+/// 这一端怎么称呼这条连接通往的那台（登记时记下的名字）进每条信封的 `called`：远端照名字，本机照「本机」那个词；
+/// 没登记 ⇒ 不带（那台不编名字）。问的是它持有的别台（`call_at`）⇒ 不带：那一问的称呼归转过去那一跳的客户端。
+#[tokio::test(start_paused = true)]
+async fn the_name_this_side_calls_the_peer_rides_on_its_own_requests_only() {
+    async fn first_line(
+        client: &Arc<InboundClient>,
+        theirs: tokio::io::DuplexStream,
+        at: Option<&'static str>,
+    ) -> Value {
+        let mut peer = tokio::io::BufReader::new(theirs);
+        let c = client.clone();
+        let call = tokio::spawn(async move {
+            let until = tokio::time::Instant::now() + Duration::from_secs(5);
+            match at {
+                Some(m) => {
+                    c.call_at(m, "ping", serde_json::json!({}), None, until)
+                        .await
+                }
+                None => c.call_until("ping", serde_json::json!({}), until).await,
+            }
+        });
+        let mut line = String::new();
+        peer.read_line(&mut line).await.unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert!(client.route_reply(v["id"].as_str().unwrap(), true, None, None, None, None));
+        call.await.unwrap().unwrap();
+        v
+    }
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let remote = park(mine).into_client(hello());
+    remote.name_machine("devbox");
+    assert_eq!(first_line(&remote, theirs, None).await["called"], "devbox");
+
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let local = park(mine).into_client(hello());
+    local.name_machine(cmd_wire::LOCAL);
+    assert_eq!(
+        first_line(&local, theirs, None).await["called"],
+        copy_core::local_machine()
+    );
+
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let local = park(mine).into_client(hello());
+    local.name_machine(cmd_wire::LOCAL);
+    let v = first_line(&local, theirs, Some("devbox")).await;
+    assert!(
+        v.get("called").is_none(),
+        "问别台那一问不带这一端对本机的称呼：{v}"
+    );
+
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let unnamed = park(mine).into_client(hello());
+    let v = first_line(&unnamed, theirs, None).await;
+    assert!(v.get("called").is_none(), "没登记名字 ⇒ 不带：{v}");
+}
+
 /// ② 问那台的一问经本机后端转：信封多一格 `machine`，`view` 照带；这一端连的是本机后端，
 /// 那台认不认这条 · 形状对不对由本机后端连那台的客户端判 ⇒ 这里不拿本机后端的命令表拦（它不认的照发）。
 #[tokio::test(start_paused = true)]

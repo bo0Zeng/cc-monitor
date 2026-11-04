@@ -198,6 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
       },
       agent: "claude",
       projectDir: "/g/proj",
+      whereLine: "/g/proj",
       writers: [],
       pending: [
         { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", atMs: null, state: "unclear", why: "noWriter", text: copyText("runs.state.unknown"), whyText: copyText("stream.step.unclearNoWriter") },

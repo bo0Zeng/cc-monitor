@@ -271,11 +271,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
     fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
         use crate::wire::typed::{Codes as _, Handle as _};
         let req = crate::wire::typed::take(args).map_err(|f| f.code_or_fallback().to_string())?;
-        let cx = crate::wire::typed::Cx {
-            tz: Default::default(),
-            until: None,
-            needs: (),
-        };
+        let cx = crate::wire::typed::Cx::default();
         let got = crate::wire::spec::finish(crate::stream::resync_face::ResyncCmd::run(req, cx))
             .map_err(|e| e.into_said().code_or_fallback().to_string())?;
         Ok(serde_json::to_value(got).expect("回包总能序列化"))
