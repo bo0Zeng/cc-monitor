@@ -63,7 +63,7 @@
     "tests/backend/plugin_walk_fixture.rs": [
       { "text": "失败", "use": "词义" }
     ],
-    "tests/backend/ratchet_guard.rs": [
+    "tests/backend/no_timer_guard.rs": [
       { "text": "退回", "use": "词义" },
       { "text": "刷新", "use": "非文案" }
     ],
