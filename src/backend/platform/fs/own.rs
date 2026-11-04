@@ -1,7 +1,7 @@
 //! 后端**自己的**状态（数据目录 `~/.cc-monitor` 底下）的写：[`Own`] · [`OwnPath`] · [`OwnLock`]。
 //!
 //! - [`Own`] 在后端启动时造一次（[`Own::issue`]，根取 `platform::paths::data_home`），顺着入口递给写自家状态的那几处；
-//!   别处拿不到这个值，也就写不出来。谁许造它由 `readonly_guard` 的构造判据钉（只许启动入口）。
+//!   别处拿不到这个值，也就写不出来。谁许造它由后端 `clippy.toml` 那份名单管（只在启动入口放行）。
 //! - [`OwnPath`] 只能由 [`Own`] 从根往下拼（相对名、不许 `..`、不许绝对路径）⇒ 方法收的路径落不到根外。
 //! - 方法只有这几件：建一层目录（0700，已在不动）· 拿目录的跨进程锁 · 原子写（要那个目录的锁）· 删文件 ·
 //!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）· 删落点那一份（[`Own::clear_landing`]，卸载那一趟）·
@@ -75,11 +75,15 @@ impl OwnPath {
 
 impl Own {
     /// 启动时造一次：两个根取这台的家目录与数据目录（照进程环境）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "照进程环境那一形转给注入环境那一形：同一个造口，只许启动入口调"
+    )]
     pub fn issue() -> Own {
         Own::issue_with(&|k| std::env::var(k).ok())
     }
 
-    /// 同 [`Own::issue`]，环境由 `get` 答（启动入口的判据喂注入的环境；只许启动入口调，同一条构造判据管）。
+    /// 同 [`Own::issue`]，环境由 `get` 答（启动入口的判据喂注入的环境；只许启动入口调，同一份名单管）。
     pub fn issue_with(get: &dyn Fn(&str) -> Option<String>) -> Own {
         let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
         Own {
@@ -436,7 +440,7 @@ impl AccountCreds {
 
 /// **诊断文件的窄句柄**：宿主交的那一份（`CCM_BACKEND_STDERR_LOG`，或一次性模式落的家里那一份）＋ 旁边那份旧的。
 /// 能做的只有三件：`O_EXCL` 新建当前那份 · 把当前那份原子挪成旧的（盖掉上一份旧的）· 只追加一整行（不在就新建、只给本人）。
-/// 不建目录、不截断、别的文件一个都碰不到。造只经 [`DiagLog::issue`]（只许启动入口，同一条构造判据管）。
+/// 不建目录、不截断、别的文件一个都碰不到。造只经 [`DiagLog::issue`]（只许启动入口，同一份名单管）。
 #[derive(Clone, Debug)]
 pub struct DiagLog {
     cur: PathBuf,
@@ -611,6 +615,10 @@ pub fn inside_own_dir(at: &Path) -> bool {
 }
 
 /// 拿一个目录的跨进程锁（阻塞到拿到为止）：本文件里两种句柄（[`Own::lock`] · [`AccountCreds::lock`]）都经这一处。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "自家状态写句柄 `Own::lock` 与凭据窄句柄 `AccountCreds::lock` 的本体（同一处拿）：原子写的签名要这把锁的守卫 ⇒ 写自家状态的每一份都在锁里写；它自己不读—改—写任何一份"
+)]
 fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, Said> {
     crate::platform::lock::hold(dir)
 }

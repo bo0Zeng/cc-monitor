@@ -18,7 +18,7 @@
 //! - 写要拿到句柄，句柄只在该造的那几处造：`Own` · `DiagLog` 只在启动入口 · `Face` 只在分派那一层 · `NewFile` 只在分叉那两条命令 ·
 //!   `Resolved` 只由路径解析与删会话那一道担保；跨进程锁只在写自家状态的句柄与账号库那两趟读—改—写里拿。
 //!   这几个口列在后端 `clippy.toml`（deny），每一处在调用点 `expect` 写理由；
-//!   `Face` 只递给文件管理那一族（[`tests::only_the_file_manager_commands_are_handed_the_face`]），写方法不收 `&Path`（[`tests::the_face_writes_take_only_resolved_paths`]）。
+//!   `Face` 只递给文件管理那一族（`needs::Face` 进同一份名单的 `disallowed-types`，那两扇门的挂载行放行），写方法不收 `&Path`（[`tests::the_face_writes_take_only_resolved_paths`]）。
 //!
 //! 今后加一处读，不用改护栏；加一处写，只要拿到对的句柄。只有新开一种写能力、或者多一个造句柄的地方，才回来改这里。
 //!
@@ -404,43 +404,9 @@ mod tests {
     // 谁能调碰盘的标准库与系统调用，不在这里扫文本：后端 `clippy.toml` 碰盘那一组（deny）按解析后的路径认，
     // 只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行（理由写在那个函数上：读那一份是「只读」）。
     // 谁能造写句柄、谁能拿跨进程锁，也由同一份 `clippy.toml` 那一组认（`Own` · `DiagLog` · `Face` · `NewFile` 的 `issue`、
-    // `Resolved::walk` · `vouch`、`platform::lock::hold`），每一处在调用点 `expect` 写理由。
-    // 下面几条只管 clippy 名单管不到的：谁拿得到 `Face` · `Face` 的签名 · `RoFile` 不能写。
-
-    /// 递 [`crate::platform::fs::Face`] 的那一种能力（处理器写 `type Needs = needs::Face`）只有文件管理那一族用：
-    /// 这样声明的处理器只住文件管理的两扇门（写面 · 上传提交 · 解压那一份，删会话那一份）。别处的处理器要了它，就是多了一个写用户文件的口。
-    #[test]
-    fn only_the_file_manager_commands_are_handed_the_face() {
-        let root = guard_core::addr::backend_src_root();
-        let needle = format!("needs::{};", "Face");
-        let got: std::collections::BTreeSet<String> = core_files()
-            .into_iter()
-            .filter(|p| p.file_name().and_then(|n| n.to_str()) != Some("readonly_guard.rs"))
-            .filter(|p| {
-                guard_core::production_code(&std::fs::read_to_string(p).expect("读后端源码"))
-                    .contains(needle.as_str())
-            })
-            .map(|p| {
-                p.strip_prefix(&root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
-            .collect();
-        assert_eq!(
-            got.into_iter().collect::<Vec<_>>(),
-            vec![
-                "stream/inbound/files_session_face.rs".to_string(),
-                "stream/inbound/files_write_face.rs".to_string(),
-            ],
-            "要文件管理写句柄的处理器住到了文件管理那两扇门以外"
-        );
-        // 正控：针认得出处理器里那一句声明。
-        assert!(guard_core::production_code(&format!(
-            "impl Handle for X {{ type Needs = crate::wire::typed::{needle} }}"
-        ))
-        .contains(needle.as_str()));
-    }
+    // `Resolved::walk` · `vouch`、`platform::lock::hold`），每一处在调用点 `expect` 写理由；
+    // 要文件管理写句柄的处理器（`type Needs = needs::Face`）由同一份的 `disallowed-types` 认，只在文件管理那两扇门的挂载行放行。
+    // 下面几条只管 clippy 名单管不到的：`Face` 的签名 · `RoFile` 不能写。
 
     /// `Face` 的写方法只收 [`crate::platform::fs::Resolved`]：`impl Face` 里每个方法的参数表都不点名 `Path`
     /// （建链接那一处的链接内容是原样写的文本，不是落点 ⇒ 登记的唯一例外）。拿 `&Path` 调它编不过 —— 本条钉的是签名没被放宽。
