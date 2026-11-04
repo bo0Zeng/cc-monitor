@@ -245,12 +245,11 @@ where
         .await
         .map_err(failed)?
         .ok_or_else(|| failed(copy_text("beForwards.start.unconfirmed", &[])))?;
-    let ack: Value = serde_json::from_str(&ack).map_err(|e| failed(e.to_string()))?;
-    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
+    // 照拨号核心写的那一形读（`DialAck`），不手写键名。
+    let ack: ssh_dial::DialAck = serde_json::from_str(&ack).map_err(|e| failed(e.to_string()))?;
+    if !ack.ok {
         let why = ack
-            .get("error")
-            .and_then(Value::as_str)
-            .map(str::to_string)
+            .said
             .unwrap_or_else(|| copy_text("beForwards.start.unconfirmed", &[]));
         return Err(failed(why));
     }
