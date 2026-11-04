@@ -69,7 +69,7 @@ const SUPPORT: &[&str] = &[
     "tests/backend/cross/observe.rs",       // 只挂观测面那几条上层判据，自己没有测试
     "tests/backend/cross/control.rs",       // 只挂控制面那几条上层判据，自己没有测试
     "tests/backend/cross/footprint.rs",     // 只挂足迹那几条上层判据，自己没有测试
-    "tests/backend/cross/faces.rs",          // 只挂帧面宿主那几条上层判据，自己没有测试
+    "tests/backend/cross/faces.rs",         // 只挂帧面宿主那几条上层判据，自己没有测试
     "tests/backend/faces/cells_catalog_support.rs", // 格目录的整份目录 · 冻结格：本包判据与主 crate 的 build_id_guard 经 test-support 共用
     "tests/backend/faces/read_face_support.rs", // 只读查询宿主按命令名问 · 点名表：本包与上层判据经 test-support 共用
     "tests/backend/faces/accounts_face_support.rs", // 账号库那几条按名字跑：本包与别族判据经 test-support 共用
