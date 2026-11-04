@@ -23,10 +23,10 @@
 //! | `the_generic_port_does_not_translate_exit_codes` | 形状：`Some(<整数字面量>)` / 裸整数 `match` 臂 | 具名常量写的表 · 非 `i32` 的码 · 运行期从数据里读的表 · `mod.rs` 本身 |
 //! | `the_only_exit_code_constants_here_are_the_registered_generic_ones` | 登记：本层的 `i32` 常量恰好是登记的那几个（今天只有 `TIMED_OUT_CODE`） | 非 `i32` 类型的码常量 · `mod.rs` 本身 |
 //!
-//! # 方向（`layering_guard` 里有对应的判据）
+//! # 方向（Cargo 的依赖图管：引了没列进依赖的就编不过）
 //!
-//! - `plugin → control` · `plugin → observe`：一条都不许（通用调用口一旦认识它们，就成了 control 的私有助手）。
-//! - `plan → plugin`（扫 control · observe · accounts · plan 四层）：逐条登记（`tests/backend/layering_guard.rs` 的 `ALLOWED_INTO_PLUGIN`），让每一条边都被人看见一次。
+//! - `plugin → control` · `plugin → observe`：一条都没有（本包只依赖平台层；通用调用口一旦认识它们，就成了 control 的私有助手）。
+//! - 谁引 plugin：生产段只有计划读面（`backend-plan` 把它列进依赖）；主 crate 只在测试档引。
 //!
 //! # 边界
 //!

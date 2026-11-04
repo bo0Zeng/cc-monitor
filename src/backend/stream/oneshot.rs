@@ -6,7 +6,7 @@
 /// 一次性子命令拿到的：剥完流旗标的 argv（打头是子命令本身）· 看的那一台的时区 · 启动入口造的那一份写句柄。
 pub struct Call<'a> {
     pub args: &'a [String],
-    pub tz: &'a crate::Tz,
+    pub tz: &'a crate::common::time::Tz,
     pub own: &'a crate::platform::Own,
 }
 

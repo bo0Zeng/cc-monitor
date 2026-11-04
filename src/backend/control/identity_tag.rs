@@ -102,7 +102,7 @@ impl Outcome {
     /// **不知道就不报**（`None`）：「不在 tmux 里」是一句会改变界面措辞的话，没有正面证据不许说。
     ///
     /// 为什么是 `Outcome` 的方法、而不是观测侧的一个自由函数：判定要逐个认这个类型的变体，
-    /// 放在观测侧就得让 `observe → control` 多一条跨层边（`layering_guard` 的登记表）；
+    /// 放在观测侧就得让 `observe → control` 多一条跨层边（两个包互不依赖，那条边编不过）；
     /// 调用方（`observe/watcher.rs::process_session_added`）今天只经 `tag(..)` 的返回值用它。
     pub(crate) fn container(&self) -> Option<crate::wire::SessionContainer> {
         use crate::wire::SessionContainer;

@@ -56,7 +56,7 @@ pub const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_cur
 /// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**。
 pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 
-// ★★ 这两个口径的家在 `crate::common::tmux_utf8`：`layering_guard` 钉死 `control/` 不许引用 `observe/`
+// ★★ 这两个口径的家在 `crate::common::tmux_utf8`：控制面那个包不依赖观测面
 // ⇒ 共用的家只能是 `common/`，两层各自 `use` 同一个家。
 //
 // 口径本身、两种表示为什么是**一个**口径、以及「什么形态的调用点该用哪种表示」

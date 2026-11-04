@@ -1,6 +1,6 @@
 /// ★ 本文件**不许出现任何 `observe::`**。
 ///
-/// 头注宣称了这条，但 D 审计指出它**没有机检** —— `layering_guard::layer_sources`
+/// 头注宣称了这条，但 D 审计指出它**没有机检** —— 当时的分层判据
 /// 只遍历 `src/observe` 与 `src/control`，顶层的入方向（今天是 `stream/inbound/` 这个目录）不在采集面内。
 /// 变异 `use crate::observe::watcher as _;` 之后全量 211 passed。
 ///

@@ -23,7 +23,7 @@
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
-//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
+//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::common::time::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
 //! · 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
@@ -136,18 +136,22 @@ pub fn handles(flag: &str) -> bool {
 }
 
 /// 失败那一份投到 CLI 面（[`crate::wire::detail::emit_to`]：与别的 CLI 出口同一处）。
-fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
+fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::common::time::Tz) -> i32 {
     crate::wire::detail::emit_to(f, err, text, tz)
 }
 
 /// 一次性那一形里不认识的子命令（打头那一词不是任何一条子命令，或带着裸参数敲了一条删掉的）：
 /// stderr 一行 `unknown_command` 失败信封（与别的 CLI 出口同一处出）、退出 2。
-pub fn refuse_unknown(args: &[String], tz: &crate::Tz) -> i32 {
+pub fn refuse_unknown(args: &[String], tz: &crate::common::time::Tz) -> i32 {
     refuse_unknown_to(args, &mut std::io::stderr(), tz)
 }
 
 /// [`refuse_unknown`] 的本体（stderr 是入参，测试喂替身）。`--text` 照收（那一句 ＋ 复制详情）。
-pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate::Tz) -> i32 {
+pub(crate) fn refuse_unknown_to(
+    args: &[String],
+    err: &mut dyn Write,
+    tz: &crate::common::time::Tz,
+) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
     let text = args
         .iter()
@@ -164,7 +168,7 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
 }
 
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
-pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
+pub fn refuse_stream_view(why: Option<&str>, tz: &crate::common::time::Tz) -> i32 {
     let detail = why.unwrap_or_default().to_string();
     let f = crate::wire::spec::fail(
         "bad_args",
@@ -178,7 +182,7 @@ pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
 ///
 /// `tz` ＝ 看的那一台的时区（[`crate::wire::cli_words::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
 /// `own` ＝ 启动入口造的那一份写句柄（只递给写自家状态的那几条，同帧面分派）。
-pub async fn run(args: &[String], tz: &crate::Tz, own: &crate::platform::Own) -> i32 {
+pub async fn run(args: &[String], tz: &crate::common::time::Tz, own: &crate::platform::Own) -> i32 {
     // 一次性那一形没有看守：托管名单的家在这里装（`--terminals-list` 一次性问也列得出托管终端）。
     crate::host::managed::install(own);
     run_io(
@@ -196,7 +200,7 @@ pub async fn run(args: &[String], tz: &crate::Tz, own: &crate::platform::Own) ->
 /// [`run`] 的本体：stdin / stdout / stderr 是入参（测试喂替身，逐字比两个口的应答）。
 pub(crate) async fn run_io<R: Read + Send + 'static>(
     args: &[String],
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     own: &crate::platform::Own,
     stdin: R,
     quiet: Duration,
@@ -365,7 +369,10 @@ pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamW
     {
         let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
         args.drain(i..i + 1 + usize::from(v.is_some()));
-        wants.tz = v.as_deref().and_then(crate::Tz::named).unwrap_or_default();
+        wants.tz = v
+            .as_deref()
+            .and_then(crate::common::time::Tz::named)
+            .unwrap_or_default();
     }
     let subcommand = args.first().is_some_and(|a| is_subcommand(a));
     if !subcommand && args.iter().any(|a| a == crate::wire::cli_words::VIEW_FLAG) {

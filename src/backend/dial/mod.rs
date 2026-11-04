@@ -167,7 +167,7 @@ use crate::common::said::Said;
 
 // ───────────── 这一端的机器表：拨号层只读，读法由 faces 装 ─────────────
 
-/// 这一端的机器表怎么读（`control::machines` 那一份）：起来那一下装一次（拨号层不认控制面，`layering_guard` 的 dial ↛ control）。
+/// 这一端的机器表怎么读（`control::machines` 那一份）：起来那一下装一次（拨号层不认控制面：拨号那个包不依赖控制面）。
 static MACHINES: std::sync::OnceLock<fn() -> Vec<Host>> = std::sync::OnceLock::new();
 
 /// 装上「这一端的机器表怎么读」。装过再装 ⇒ 不换（一个进程一张表），记一行。

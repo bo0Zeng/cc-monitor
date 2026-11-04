@@ -178,8 +178,8 @@ mod tests;
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamWants {
     /// [`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
-    /// 一次性 CLI 面的回包同样按它写。没写 ⇒ 这一台（[`crate::Tz::here`]）；写了却缺值 · 认不得 ⇒ UTC。
-    pub tz: crate::Tz,
+    /// 一次性 CLI 面的回包同样按它写。没写 ⇒ 这一台（[`crate::common::time::Tz::here`]）；写了却缺值 · 认不得 ⇒ UTC。
+    pub tz: crate::common::time::Tz,
     /// 这条流的出口声明（attach 行的 `view` · 流模式起参的 [`crate::wire::cli_words::VIEW_FLAG`]，与请求信封的 `view` 同一套词）：推出去的帧照它裁格
     /// （[`StreamView`]）。缺 ＝ 全量。
     pub view: Option<StreamView>,
@@ -189,7 +189,7 @@ pub struct StreamWants {
 impl Default for StreamWants {
     fn default() -> Self {
         Self {
-            tz: crate::Tz::here(),
+            tz: crate::common::time::Tz::here(),
             view: None,
         }
     }

@@ -3,7 +3,7 @@
 //!
 //! 为什么住适配层：每家 agent 用这套词申报落在自己布局里的那几条（`agents/<家>/footprint.rs`，经 [`super::FootprintFace`] 汇总）；
 //! 足迹那边（`footprint/registry.rs` 两张表 ＋ 档的派生、`footprint/rows.rs` 的判定）读它。词放在足迹那边的话，适配层就得反过来引足迹
-//! （`layering_guard::ONE_WAY`：适配层在功能之下）。
+//! （适配层在功能之下：agents 那个包不依赖任何功能包）。
 //! 下面的文档里没写全路径的 `environment` · `EnvTier` · `TOOLS` · `UNMANAGED_ENV` 都住主 crate 的 `footprint::registry`。
 
 use copy_core::copy_text;

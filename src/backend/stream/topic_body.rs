@@ -11,7 +11,7 @@ use crate::wire::Changed;
 /// 不现算的主题 · 要 `key` 却没给 ⇒ `None`（发端自己造那一臂）；那条命令答不成 ⇒ 那一臂不带体（客户端重问；上限在 [`crate::wire::Frame::changed`] 判）。
 /// 同步跑（读那台自己的盘，毫秒级）：发端在一阵变化之后调一次。
 /// `tz` ＝ 这条连接看的那一台的时区（attach 带来的）：成品里的时刻字按它写，与客户端带同一个 `tz` 重问拿到的是同一份。
-pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<Changed> {
+pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::common::time::Tz) -> Option<Changed> {
     let cx = || Cx {
         tz: tz.clone(),
         until: None,
