@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::plan::fixture::{dump, fake_pb, runs, workspace};
-use test_home::scratch;
 use crate::plan::locate::Missing;
+use test_home::scratch;
 
 fn names(f: &PlanNewForm) -> Vec<String> {
     f.domains.iter().filter_map(|d| d.name.clone()).collect()
