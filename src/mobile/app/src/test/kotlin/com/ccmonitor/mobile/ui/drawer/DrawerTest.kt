@@ -149,7 +149,7 @@ class DrawerTest {
                 .findAll(route)
                 .map { it.groupValues[1].ifEmpty { "agents" } }
                 .toList()
-        assertEquals("聊天屏 ⋯ 菜单只放对这条会话本身做的事：在终端里打开 · agent · 改标题 · 轮换 · 计划", listOf("sessionHead.act.openTerm", "agents", "history.menu.rename", "machinePage.tab.rot", "plan.page.title"), items)
+        assertEquals("聊天屏 ⋯ 菜单只放对这条会话本身做的事：在终端里打开 · agent · 改标题 · 轮换 · 计划 · 打开工作目录", listOf("sessionHead.act.openTerm", "agents", "history.menu.rename", "machinePage.tab.rot", "plan.page.title", "tabBarView.tab.cwdHint"), items)
         assertEquals(items.size, Regex("DropdownMenuItem\\(").findAll(route).count())
         for (gone in listOf("onOpenConversations", "onNewConversation", "onSwitchHost", "onOpenSettings")) {
             assertFalse("聊天屏不再有 $gone 这个入口", route.contains(gone))
