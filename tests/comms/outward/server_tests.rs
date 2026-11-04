@@ -248,7 +248,12 @@ impl super::super::TapPort for NoTap {
 fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
     let base = Base::parse(&format!("https://localhost:{stub_port}")).expect("base");
     let open: Arc<OpenFor> =
-        Arc::new(move |_from, _h, _p, _d| TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port)));
+        Arc::new(move |_from, _h, _p, _d| {
+            TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port)).map(|tcp| upstream::Opened {
+                tcp,
+                via_proxy: false,
+            })
+        });
     let relay = Arc::new(Relay::new(
         Arc::new(ToStub(base)),
         door::Keys {

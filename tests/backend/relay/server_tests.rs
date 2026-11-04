@@ -2903,23 +2903,27 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &crate::relay::open_here)
-        .expect("connect upstream")
-    {
-        upstream::Conn::Plain(s) => {
-            assert!(
-                s.nodelay().expect("getsockopt"),
-                "上游方向：`upstream::connect()` 必须在上游 socket 上真的关掉 Nagle"
-            );
-            // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须是开着的。
-            let raw = TcpStream::connect(a).expect("connect 对照");
-            assert!(
-                !raw.nodelay().expect("getsockopt"),
-                "非空对照：没经生产段的 socket 默认该是开着 Nagle 的"
-            );
-        }
-        upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
-    }
+    let up = upstream::connect(
+        &base2,
+        UPSTREAM_DEADLINE,
+        &crate::relay::open_here,
+        &Default::default(),
+    )
+    .expect("connect upstream");
+    assert!(
+        matches!(up, upstream::Conn::Plain(_)),
+        "`http://` 该走明文那一支"
+    );
+    assert!(
+        up.tcp().nodelay().expect("getsockopt"),
+        "上游方向：`upstream::connect()` 必须在上游 socket 上真的关掉 Nagle"
+    );
+    // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须是开着的。
+    let raw = TcpStream::connect(a).expect("connect 对照");
+    assert!(
+        !raw.nodelay().expect("getsockopt"),
+        "非空对照：没经生产段的 socket 默认该是开着 Nagle 的"
+    );
 }
 
 /// ★★ 读写期限的行为格㈠：
@@ -3011,36 +3015,41 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &crate::relay::open_here)
-        .expect("connect upstream")
-    {
-        upstream::Conn::Plain(s) => {
-            assert_eq!(
-                s.read_timeout().expect("getsockopt"),
-                Some(UPSTREAM_DEADLINE),
-                "上游方向：`upstream::connect()` 必须装上**读**期限"
-            );
-            assert_eq!(
-                s.write_timeout().expect("getsockopt"),
-                Some(UPSTREAM_DEADLINE),
-                "上游方向：`upstream::connect()` 必须装上**写**期限 ——\
-                     写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB）"
-            );
-            // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须两个方向都没期限。
-            let raw = TcpStream::connect(a).expect("connect 对照");
-            assert_eq!(
-                raw.read_timeout().expect("getsockopt"),
-                None,
-                "非空对照：没经生产段的 socket 默认该是**没有**读期限的"
-            );
-            assert_eq!(
-                raw.write_timeout().expect("getsockopt"),
-                None,
-                "非空对照：没经生产段的 socket 默认该是**没有**写期限的"
-            );
-        }
-        upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
-    }
+    let up = upstream::connect(
+        &base2,
+        UPSTREAM_DEADLINE,
+        &crate::relay::open_here,
+        &Default::default(),
+    )
+    .expect("connect upstream");
+    assert!(
+        matches!(up, upstream::Conn::Plain(_)),
+        "`http://` 该走明文那一支"
+    );
+    let s = up.tcp();
+    assert_eq!(
+        s.read_timeout().expect("getsockopt"),
+        Some(UPSTREAM_DEADLINE),
+        "上游方向：`upstream::connect()` 必须装上**读**期限"
+    );
+    assert_eq!(
+        s.write_timeout().expect("getsockopt"),
+        Some(UPSTREAM_DEADLINE),
+        "上游方向：`upstream::connect()` 必须装上**写**期限 ——\
+             写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB）"
+    );
+    // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须两个方向都没期限。
+    let raw = TcpStream::connect(a).expect("connect 对照");
+    assert_eq!(
+        raw.read_timeout().expect("getsockopt"),
+        None,
+        "非空对照：没经生产段的 socket 默认该是**没有**读期限的"
+    );
+    assert_eq!(
+        raw.write_timeout().expect("getsockopt"),
+        None,
+        "非空对照：没经生产段的 socket 默认该是**没有**写期限的"
+    );
 }
 
 /// ★ 两个期限的**方向**：上游那条必须比下游那条**宽**。

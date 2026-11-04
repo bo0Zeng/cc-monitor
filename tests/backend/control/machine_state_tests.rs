@@ -321,6 +321,31 @@ fn the_product_carries_how_that_machine_is_reached() {
     );
 }
 
+/// ★ 中转去上游那一跳归本机（连接表里键 `<local>` 那一项）：本机那一行的复制详情末尾带「连接：」那一段，
+/// `machine-read` 与首屏那一句算的是同一份本机成品；连接表里没有它 ⇒ 本机没有这一段。
+#[test]
+fn the_local_row_carries_the_relay_hop_in_its_detail() {
+    let way = ssh_dial::pool::Way {
+        route: None,
+        hops: vec!["中转那一句（夹具）".into()],
+    };
+    let links: Links = [(cmd_wire::machine::LOCAL.to_string(), way)]
+        .into_iter()
+        .collect();
+    let read = read_in(&[], &links);
+    let local = &read[cmd_wire::machine::LOCAL];
+    assert!(
+        local
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("中转那一句（夹具）")),
+        "中转那一跳没进本机那一行的复制详情：{:?}",
+        local.detail
+    );
+    assert_eq!(local.route, None, "本机不另起「怎么连过去的」");
+    assert_eq!(read_in(&[], &Links::new())[cmd_wire::machine::LOCAL].detail, None);
+}
+
 /// ★ 池里成员动了一笔 ⇒ 推一遍；发端收了 ⇒ 跟的那一路收工（不空转）。
 #[tokio::test]
 async fn a_pool_move_repushes_and_the_follower_ends_with_the_pool() {

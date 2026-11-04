@@ -52,7 +52,10 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
         TeeSink::to_port(Arc::new(Taps::default())),
         Arc::new(move |_: Option<&str>, h: &str, p: u16, d| {
             egress::open(&via, h, p, Some(d))
-                .map(|o| o.tcp)
+                .map(|o| comms_outward::Opened {
+                    tcp: o.tcp,
+                    via_proxy: o.via_proxy,
+                })
                 .map_err(Into::into)
         }),
         DOWNSTREAM_DEADLINE,
@@ -122,6 +125,7 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
         UPSTREAM_DEADLINE,
         INFLIGHT_BODY_CAP,
     ));
+    let hop = relay.hop();
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
     std::thread::spawn(move || serve(listener, relay, Default::default()));
@@ -145,6 +149,14 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
     assert!(
         head.starts_with("CONNECT api.anthropic.com:443 HTTP/1.1\r\n"),
         "{head:?}"
+    );
+    // 出网口说这一条经了代理 ⇒ 中转那一跳的读数里也经代理（开上游那一口不把它丢掉）；代理之后 TLS 不成 ⇒ 上次没连上。
+    let f = hop.facts();
+    assert!(f.via_proxy, "出网口给的经代理丢了：{f:?}");
+    assert_eq!(f.endpoint.as_deref(), Some("api.anthropic.com:443"), "{f:?}");
+    assert!(
+        matches!(f.last, Some(comms_outward::Last::Failed(_))),
+        "{f:?}"
     );
     std::fs::remove_dir_all(&data).ok();
 }
