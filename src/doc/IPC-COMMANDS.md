@@ -6180,7 +6180,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -6217,7 +6222,11 @@ lines: number,
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
-fold: boolean, };
+fold: boolean, 
+/**
+ * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+ */
+foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6235,7 +6244,11 @@ type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
 type ResultKind = "launched" | "handback";
 type RunRow = { 
 /**
@@ -6262,7 +6275,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
@@ -6656,7 +6673,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -6693,7 +6715,11 @@ lines: number,
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
-fold: boolean, };
+fold: boolean, 
+/**
+ * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+ */
+foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6736,7 +6762,11 @@ type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
 type ResultKind = "launched" | "handback";
 type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
@@ -6754,7 +6784,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
@@ -7164,7 +7198,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -7201,7 +7240,11 @@ lines: number,
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
-fold: boolean, };
+fold: boolean, 
+/**
+ * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+ */
+foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7236,7 +7279,11 @@ type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
 type ResultKind = "launched" | "handback";
 type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
@@ -7254,7 +7301,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
@@ -7617,7 +7668,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -7654,7 +7710,11 @@ lines: number,
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
-fold: boolean, };
+fold: boolean, 
+/**
+ * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+ */
+foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7697,7 +7757,11 @@ type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
 type ResultKind = "launched" | "handback";
 type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
@@ -7715,7 +7779,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
@@ -8754,7 +8822,7 @@ needs: Needs | null,
  */
 handedBack: Array<string>, 
 /**
- * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+ * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。出口那一下照 [`SessionFacts::retry_log`] 写（[`settle_retries`]）。
  */
 retries: Array<RetryRun>, 
 /**
@@ -8816,6 +8884,14 @@ startedBy: Kin | null,
  * 它起的子会话（按起的先后）；不累加，每次现查。
  */
 children: Array<Kin>, 
+/**
+ * 由谁启动那一句（「由「X」启动」，[`set_kin`] 写）；不是谁起的 ⇒ `null`。
+ */
+startedByText: Words | null, 
+/**
+ * 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
+ */
+childrenText: Words | null, 
 /**
  * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
  * 不活 ⇒ `null`。不累加，每次现查。
@@ -9070,7 +9146,13 @@ type RetryRun = {
 /**
  * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
  */
-id: string, outcome: RetryOutcome, };
+id: string, outcome: RetryOutcome, 
+/**
+ * 照结局写好的那一整句（出口那一下照看的那一台的时区写，[`settle_retries`]；界面照摆）：
+ * 还在重试 ⇒ 细条那一行（「{原因} · 重试 a/b · {首条钟面} 起」）· 接上了 / 中断了 ⇒ 变淡那一行（「… 重试 ×a 后恢复 / 中断 · {末条钟面}」）·
+ * 没接上 ⇒ 细条收起、紧跟着的报错卡那一行下一步（「重试 a/b 后停止 · …」，没次数 ⇒ 只那半句）。
+ */
+text: string, };
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**
@@ -9584,6 +9666,10 @@ type HistoryTail = {
  */
 how: TailHow, 
 /**
+ * 手上那一份作废的那两种（变短 · 被改写）写好的那一句（界面照摆）；别的接法 ⇒ 缺。
+ */
+said?: string, 
+/**
  * `rows` 第一行的行号（续传 ＝ 交来的 `held.next`；`handoff` ＝ `total`；其余 ＝ `tail_from`）。
  */
 from: number, 
@@ -9733,7 +9819,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */
@@ -9770,7 +9861,11 @@ lines: number,
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
-fold: boolean, };
+fold: boolean, 
+/**
+ * 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。
+ */
+foldText?: string, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -9805,7 +9900,11 @@ type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
 type ResultKind = "launched" | "handback";
 type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
 /**
@@ -9823,7 +9922,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */

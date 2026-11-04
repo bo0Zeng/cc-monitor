@@ -8,4 +8,10 @@ export type RetryRun = {
 /**
  * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
  */
-id: string, outcome: RetryOutcome, };
+id: string, outcome: RetryOutcome, 
+/**
+ * 照结局写好的那一整句（出口那一下照看的那一台的时区写，[`settle_retries`]；界面照摆）：
+ * 还在重试 ⇒ 细条那一行（「{原因} · 重试 a/b · {首条钟面} 起」）· 接上了 / 中断了 ⇒ 变淡那一行（「… 重试 ×a 后恢复 / 中断 · {末条钟面}」）·
+ * 没接上 ⇒ 细条收起、紧跟着的报错卡那一行下一步（「重试 a/b 后停止 · …」，没次数 ⇒ 只那半句）。
+ */
+text: string, };

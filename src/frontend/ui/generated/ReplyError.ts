@@ -8,4 +8,8 @@ export type ReplyError = { reason: ApiReason,
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
-status?: number, };
+status?: number, 
+/**
+ * 报错卡头那一句（「本轮中断 · {原因}」，造记录那一下写；界面照摆）。
+ */
+title: string, };
