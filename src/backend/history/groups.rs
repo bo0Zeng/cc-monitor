@@ -17,7 +17,8 @@
 //! ```
 //!
 //! - 组 id 全局不重（起它的那一台随机起），所以注解上只记 id，不记别的台（机器名是相对问的那一端的，记了也对不上）。
-//! - 上次所知那一份只在本进程内存里（缓存，按机器名），本机后端重启后第一问之前没有。
+//! - 上次所知那一份按机器名记：本进程内存里一份，别的台答的那几份也记进这台的上次值（`common/last_seen_store.rs`，一样 `groups`），
+//!   本机后端新起、那台没答 ⇒ 照盘上那一份出（离线那台上固定的会话开机照样出）；删机器时那台的一起清。
 //! - 等多久只归发起方（请求信封 `within_ms`）；问到别的台而它缺 ⇒ `bad_args`。
 
 use std::collections::BTreeMap;
@@ -36,6 +37,7 @@ use super::groups_owed as owed;
 use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Named, Table};
 use crate::common::said::Said;
 use crate::dial::remote_ask::Remote;
+use crate::platform::fs::Own;
 use crate::wire::typed::{codes, Command};
 use crate::wire::SessionFaceExt as _;
 
@@ -188,14 +190,90 @@ codes! {
     pub enum GroupsReadErr {}
 }
 
-/// 各台上一次答的那一半 ＋ 那一刻（毫秒）：缓存，只在本进程。
+/// 各台上一次答的那一半 ＋ 那一刻（毫秒）：本进程里这一份，盘上那一份（这台的上次值，`common/last_seen_store.rs`）在头一回有台没答时读进来一次。
 #[derive(Default)]
-pub(crate) struct Kept(Mutex<BTreeMap<Machine, (GroupsHere, i64)>>);
+pub(crate) struct Kept {
+    mem: Mutex<BTreeMap<Machine, (GroupsHere, i64)>>,
+    /// 盘上那一份读进来过没有（本进程只读一次；读进来的不盖这一进程里已有的）。
+    from_disk: std::sync::atomic::AtomicBool,
+}
 
 impl Kept {
     fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<Machine, (GroupsHere, i64)>> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.mem.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// 有台这一问没答、本进程里又没有它 ⇒ 把盘上那一份读进来（只一次）。
+    async fn fill_from(&self, disk: &Own, missing: bool) {
+        use std::sync::atomic::Ordering;
+        if !missing || self.from_disk.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let own = disk.clone();
+        let Ok(rows) = tokio::task::spawn_blocking(move || kept_on_disk(&own)).await else {
+            return;
+        };
+        let mut k = self.lock();
+        for (origin, here, at_ms) in rows {
+            k.entry(origin).or_insert((here, at_ms as i64));
+        }
+    }
+}
+
+/// 组的上次所知在上次值那一份里那一样的键（`groups-here` 的应答；界面那条 `last-seen-write` 的种类里没有它）。
+const KEPT_KIND: &str = "groups";
+/// 上次值那一份里机器名最长多少字节（同 `footprint/last_seen.rs` 收的）。
+const KEPT_ORIGIN_MAX: usize = 256;
+
+/// 这一问答了的那几台（只记远端：本机每一问都答）记进盘上那一份；记不成只留一行日志（它只是缓存）。
+async fn keep_on(disk: &Own, answered: Vec<(Machine, GroupsHere)>, now_ms: i64) {
+    if answered.is_empty() {
+        return;
+    }
+    let own = disk.clone();
+    let done = tokio::task::spawn_blocking(move || keep_on_disk(&own, &answered, now_ms.max(0) as u64)).await;
+    if let Ok(Err(e)) = done {
+        tracing::warn!(target: "groups", reason = %e.said, "last-known groups not kept");
+    }
+}
+
+/// 一次锁里记完各台那一样；序列化后超过一样的封顶的那台不记。
+fn keep_on_disk(own: &Own, answered: &[(Machine, GroupsHere)], now_ms: u64) -> Result<(), Said> {
+    use crate::common::last_seen_store as store;
+    let shape = cmd_wire::shapes::shape_of(GroupsHereCmd::NAME);
+    let rows: Vec<(String, serde_json::Value)> = answered
+        .iter()
+        .filter(|(m, _)| m.is_remote() && m.to_string().len() <= KEPT_ORIGIN_MAX)
+        .filter_map(|(m, h)| Some((m.to_string(), serde_json::to_value(h).ok()?)))
+        .filter(|(_, v)| v.to_string().len() <= store::MAX_VALUE_BYTES.as_len())
+        .collect();
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let (dir, file) = store::made_place(own)?;
+    store::edit(own, &dir, &file, |all| {
+        for (origin, value) in rows {
+            store::record(all, origin, KEPT_KIND, &value, shape, now_ms);
+        }
+        true
+    })
+}
+
+/// 盘上记着的各台那一样 ＋ 记下的时刻（毫秒）：只收这一版的形状、解得回 `GroupsHere` 的，别的照没记过。
+fn kept_on_disk(own: &Own) -> Vec<(Machine, GroupsHere, u64)> {
+    use crate::common::last_seen_store as store;
+    let Ok((_, file)) = store::place(own) else {
+        return Vec::new();
+    };
+    let shape = cmd_wire::shapes::shape_of(GroupsHereCmd::NAME);
+    store::load(file.as_path())
+        .iter()
+        .filter_map(|(origin, mine)| {
+            let e = store::entry(Some(mine), KEPT_KIND)?;
+            let here = store::this_version::<GroupsHere>(&e, shape)?;
+            Some((Machine::named(origin.clone()), here, e.at_ms))
+        })
+        .collect()
 }
 
 static KEPT: std::sync::LazyLock<Kept> = std::sync::LazyLock::new(Kept::default);
@@ -235,6 +313,7 @@ impl crate::wire::typed::Handle for GroupsReadCmd {
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
                 &KEPT,
+                Some(&own),
                 crate::common::time::now_ms() as i64,
                 &owed.owed,
             )
@@ -266,6 +345,7 @@ pub async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String
         &crate::dial::remote_ask::REACH,
         &crate::dial::remote_ask::DialRemote,
         &KEPT,
+        None,
         crate::common::time::now_ms() as i64,
         &[],
     )
@@ -274,11 +354,12 @@ pub async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String
     .map_err(|e| format!("{e:?}"))
 }
 
-/// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻 · 这一端欠各台的那几句由调用方给）。
+/// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 盘上的上次所知 · 此刻 · 这一端欠各台的那几句由调用方给）。
+/// `disk` 是 `None` ⇒ 上次所知只看本进程那一份（不读不写盘）。
 /// 回并好的一份 ＋ 这一问了结了的那几条待补（补成了 · 到期了；调用方从盘上那一份里消掉）。
 #[expect(
     clippy::too_many_arguments,
-    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 期限 · 此刻 · 待补都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
+    reason = "本机那一台怎么答 · 可达表 · 对面 · 缓存 · 盘 · 期限 · 此刻 · 待补都由调用方注入（判据换替身），并成一个结构只是换个地方摆"
 )]
 pub(crate) async fn read_with(
     machines: &[Machine],
@@ -288,6 +369,7 @@ pub(crate) async fn read_with(
     table: &crate::dial::remote_ask::Table,
     remote: &dyn Remote,
     kept: &Kept,
+    disk: Option<&Own>,
     now_ms: i64,
     owed: &[owed::Debt],
 ) -> Result<(GroupsRead, Vec<owed::Debt>), GroupsReadErr> {
@@ -324,6 +406,18 @@ pub(crate) async fn read_with(
     }
     let mut halves: Vec<(Machine, Half)> = Vec::new();
     let mut heads = Vec::new();
+    if let Some(disk) = disk {
+        let missing = {
+            let k = kept.lock();
+            got.iter().any(|(o, r)| r.is_err() && !k.contains_key(o))
+        };
+        kept.fill_from(disk, missing).await;
+        let answered = got
+            .iter()
+            .filter_map(|(o, r)| Some((o.clone(), r.as_ref().ok()?.clone())))
+            .collect();
+        keep_on(disk, answered, now_ms).await;
+    }
     {
         let mut k = kept.lock();
         for (origin, r) in got {

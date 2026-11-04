@@ -1,16 +1,19 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份（账号清单 · 「文件与数据」那一份），断开时界面照它画「上次的」，跨重启还在。
-//! 住 `~/.cc-monitor/cache/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），别台那几份的副本，按缓存记（再连上一次就有）。
+//! 住 `~/.cc-monitor/cache/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），别台那几份的副本，按缓存记（再连上一次就有）；存储在 `common/last_seen_store.rs`
+//! （同一份里还记着组的上次所知，`history/groups.rs` 记、读，这两条命令不碰它，删机器时整台一起清）。
 //! 缓存目录之前它住 `~/.cc-monitor/last-seen.json`（[`OLD_LAST_SEEN_REL`]）：写的那一下删掉，不搬内容。
-//! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
+//! 界面那两样唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! 每一样按它那条命令的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`Seen`]）。
-//! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
+//! 种类闭集 [`SeenKind`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
+use crate::common::last_seen_store::{self as store, strict};
+pub(crate) use crate::common::last_seen_store::{MAX_ORIGINS, MAX_VALUE_BYTES};
 use crate::common::said::Said;
-use crate::platform::fs::{Own, OwnPath};
+use crate::platform::fs::Own;
 use cmd_wire::cells::SeenAt;
 use copy_core::copy_text;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
 /// 记哪一样。
@@ -126,32 +129,6 @@ pub struct LastSeenWritten {
     pub(crate) at_ms: u64,
 }
 
-/// 一份应答按回包类型严格收：解成类型、再写回去跟原样逐值比（多一格 · 缺一格 · 类型不对都不收）。
-fn strict<T: DeserializeOwned + Serialize>(v: &Value) -> Option<T> {
-    let r: T = serde_json::from_value(v.clone()).ok()?;
-    (serde_json::to_value(&r).ok()? == *v).then_some(r)
-}
-
-/// 记哪几样（闭集，同 [`SeenKind`]）：`accounts` ＝ `accounts-list` 的应答 · `data` ＝ `data-report` 的应答。
-pub(crate) const KINDS: [&str; 2] = ["accounts", "data"];
-/// 一份最大多少字节（序列化后）。
-pub(crate) const MAX_VALUE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
-    bytes: 256 * 1024,
-    over: relay_route_core::Over::Reject,
-};
-/// 最多记几台。
-pub(crate) const MAX_ORIGINS: usize = 64;
-/// 那一份：缓存（再连上一次就有；落点 · 版本 · 读上限照表，读上限 ＝ 每份封顶 × 两样 × 台数封顶）。
-const DOC: crate::common::own_state::Doc<Store> =
-    crate::common::own_state::Doc::of(&relay_route_core::LAST_SEEN_FILE);
-
-/// 盘上那一份：各台住 `origins` 底下（顶层还有读写口带的 `version`，台名不和它同一层）。
-#[derive(Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Store {
-    #[serde(default)]
-    origins: Map<String, Value>,
-}
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
@@ -163,21 +140,13 @@ fn bad(d: &str) -> Said {
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
 pub(crate) fn store_path() -> Option<PathBuf> {
-    Some(crate::platform::paths::home_dir()?.join(DOC.rel))
+    store::store_path()
 }
 
 fn origin_arg(m: &cmd_wire::Machine) -> Result<String, Said> {
     Some(m.to_string())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
-}
-
-/// 各台那一层（读不懂 / 不在 / 旧版 ⇒ 空：缓存，下一次记的时候整份重来）。形状：`{<origin>: {<kind>: {atMs, shape, value}}}`。
-fn load(path: &Path) -> Map<String, Value> {
-    match DOC.read(path) {
-        crate::common::own_state::Read::Present(s) => s.origins,
-        _ => Map::new(),
-    }
 }
 
 /// `{origin}` ⇒ `{accounts: … | null, data: … | null}`（盘上那一项没有时刻 ⇒ 照没记过）。
@@ -187,7 +156,7 @@ pub(crate) fn read_at(
     clock: &crate::common::time::TextClock,
 ) -> Answer<LastSeen> {
     let origin = origin_arg(&req.origin)?;
-    let all = load(path);
+    let all = store::load(path);
     let mine = all.get(&origin);
     Ok(LastSeen {
         accounts: seen_of(mine, SeenKind::Accounts, clock),
@@ -201,16 +170,10 @@ fn seen_of<T: DeserializeOwned + Serialize>(
     kind: SeenKind,
     clock: &crate::common::time::TextClock,
 ) -> Option<Seen<T>> {
-    let e = mine?.get(kind.key())?;
-    let seen = seen_at(e.get("atMs")?.as_u64()?, clock);
-    let this_version =
-        e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(kind.cmd());
+    let e = store::entry(mine, kind.key())?;
+    let seen = seen_at(e.at_ms, clock);
     Some(
-        match e
-            .get("value")
-            .filter(|_| this_version)
-            .and_then(strict::<T>)
-        {
+        match store::this_version::<T>(&e, cmd_wire::shapes::shape_of(kind.cmd())) {
             Some(value) => Seen::Kept { seen, value },
             None => Seen::Unreadable { seen },
         },
@@ -249,63 +212,23 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
         return Err(bad("`value` is not a reply of this version to its command"));
     }
     let shape = cmd_wire::shapes::shape_of(kind.cmd());
-    let (dir, file) = place(own)?;
-    // 先 `~/.cc-monitor` 再它底下的缓存目录（建目录只建一层）。
-    let home = own.home_dir().ok();
-    for d in home.iter().chain(std::iter::once(&dir)) {
-        own.ensure_dir(d).map_err(|e| {
-            Said::new(
-                "io_failed",
-                crate::common::said::IntoNote::into_note(Said::with_raw(
-                    copy_text(
-                        "beChore.marks.mkdirFailed",
-                        &[
-                            ("dir", &d.as_path().display().to_string()),
-                            ("why", &copy_core::io_reason(e.kind())),
-                        ],
-                    ),
-                    e,
-                )),
-            )
-        })?;
-    }
-    locked_edit(own, &dir, &file, |all| {
-        record(all, origin, kind.key(), &value, shape, now_ms);
+    let (dir, file) = store::made_place(own).map_err(io)?;
+    store::edit(own, &dir, &file, |all| {
+        store::record(all, origin, kind.key(), &value, shape, now_ms);
         true
-    })?;
+    })
+    .map_err(io)?;
     drop_old_last_seen(own);
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
-/// 锁里读—改—写那一份（本文件唯一拿跨进程锁的地方）；`edit` 回 `false` ⇒ 没改、不写。
-fn locked_edit(
-    own: &Own,
-    dir: &OwnPath,
-    file: &OwnPath,
-    edit: impl FnOnce(&mut Map<String, Value>) -> bool,
-) -> Result<(), Said> {
-    let io = |e| crate::wire::spec::fail("io_failed", e);
-    let held = own.lock(dir).map_err(io)?;
-    let mut origins = load(file.as_path());
-    if edit(&mut origins) {
-        DOC.write(own, dir, &held, &Store { origins }).map_err(io)?;
-    }
-    Ok(())
+/// 存储那一层的失败照 `io_failed` 交出去。
+fn io(e: Said) -> Said {
+    crate::wire::spec::fail("io_failed", e)
 }
 
 /// 缓存目录之前的落点（缓存：写的那一下删掉，不搬；这一步挂到期那一版，见 retired-names）。
 pub(crate) const OLD_LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
-
-/// 那份文件所在的那一层（`~/.cc-monitor/cache`）与它本身。没有家目录 ⇒ `io_failed`。
-fn place(own: &Own) -> Result<(OwnPath, OwnPath), Said> {
-    let no_home =
-        |_| crate::wire::spec::fail("io_failed", copy_text("beLastSeen.store.noHome", &[]));
-    let dir = DOC.rel.rsplit_once('/').map_or(DOC.rel, |(d, _)| d);
-    Ok((
-        own.at_home(dir).map_err(no_home)?,
-        own.at_home(DOC.rel).map_err(no_home)?,
-    ))
-}
 
 /// 旧位置那一份还在 ⇒ 删掉（删不掉只留一行日志：它只是缓存）。
 fn drop_old_last_seen(own: &Own) {
@@ -319,42 +242,7 @@ fn drop_old_last_seen(own: &Own) {
     }
 }
 
-/// 记下一份；台数超了先丢最久没更新的那台。
-fn record(
-    all: &mut Map<String, Value>,
-    origin: String,
-    kind: &str,
-    value: &Value,
-    shape: Option<&str>,
-    now_ms: u64,
-) {
-    let entry = all
-        .entry(origin)
-        .or_insert_with(|| Value::Object(Map::new()));
-    if !entry.is_object() {
-        *entry = Value::Object(Map::new());
-    }
-    entry[kind] = json!({"atMs": now_ms, "shape": shape, "value": value});
-    while all.len() > MAX_ORIGINS {
-        let newest = |m: &Value| {
-            KINDS
-                .iter()
-                .filter_map(|k| m.get(*k)?.get("atMs")?.as_u64())
-                .max()
-                .unwrap_or(0)
-        };
-        let Some(oldest) = all
-            .iter()
-            .min_by_key(|(_, m)| newest(m))
-            .map(|(k, _)| k.clone())
-        else {
-            break;
-        };
-        all.remove(&oldest);
-    }
-}
-
-/// 清掉一台的上次值（两样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
+/// 清掉一台的上次值（每一样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
 fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenWritten> {
     let origin = origin_arg(&req.origin)?;
     if req.forget != Some(true) || req.kind.is_some() || req.value.is_some() {
@@ -362,11 +250,11 @@ fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenW
             "`forget` must be `true` and come without `kind` / `value`",
         ));
     }
-    let (dir, file) = place(own)?;
+    let (dir, file) = store::place(own).map_err(io)?;
     if !dir.as_path().is_dir() {
         return Ok(LastSeenWritten { at_ms: now_ms });
     }
-    locked_edit(own, &dir, &file, |all| all.remove(&origin).is_some())?;
+    store::edit(own, &dir, &file, |all| all.remove(&origin).is_some()).map_err(io)?;
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
