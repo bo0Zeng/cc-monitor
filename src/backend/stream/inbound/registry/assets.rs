@@ -1,15 +1,11 @@
-//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `chores-*` · `cc-bus-*`。
+//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `data-report` · `chores-*` · `cc-bus-*`。
 
 use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // 「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
-    //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。只读，阻塞档。
-    super::typed::blocking::<crate::faces::footprint_report_face::FootprintCmd>(
-        "「足迹」由这台后端出整份成品",
-    ),
-    // 「文件与数据」那一份成品：同一份足迹按「改过你的文件 · 要装 · 有没有 tmux · 进角标几件」重排（`footprint/data.rs`）。
-    //   入参同 `footprint-report`（本机那一栏带 `client`）。只读，阻塞档；别名块的候选经文件管理面读。
+    // 「文件与数据」那一份成品：这台的足迹（申报表 ＋ 判定都在 `footprint/`）按「改过你的文件 · 要装 · 有没有 tmux · 进角标几件」重排（`footprint/data.rs`）。
+    //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。
+    //   只读，阻塞档；别名块的候选经文件管理面读。
     super::typed::blocking::<crate::faces::footprint_report_face::DataReportCmd>(
         "「文件与数据」那一份成品",
     ),

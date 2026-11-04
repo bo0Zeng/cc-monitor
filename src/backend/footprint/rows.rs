@@ -1,17 +1,8 @@
-//! T02：**配置面审计视图**的判定——「cc-monitor 到底动过你哪些文件」。
+//! 足迹的判定——「cc-monitor 到底动过这台哪些文件、要的东西齐没齐」。
 //!
-//! 〔一处后端〕从 monitor
-//! `config_surface.rs` 搬进后端：那台后端对它自己那台出整份成品（帧命令 `footprint-report`，face 在 [`super`]）；
+//! 那台后端对它自己那台出整份足迹，`data-report` 照它重排（[`super::data`]）；
 //! `HostScope::Client` 那一族（monitor 自己那台的东西）的**事实**仍由 monitor 答，判定只在这里。
-//! Claude 布局（`~/.claude/…` 以哪个 agent 家为基准 · settings 两个作用域）住 `agents/claudecode/footprint.rs`。
-//!
-//! ## 它同时是 T01 那笔债的清算
-//!
-//! T01 收工时 `tool_registry::TOOLS` **零生产消费者**，我当时明写了处置条件：
-//! T02 收工若仍无消费者就删掉注册表（同一轮我以「只有测试在用」为由删过
-//! `WriteVerdict::is_ok`，尺子得一致）。本模块把 `ToolSpec` 的**七个字段全部用上**：
-//! `id`/`display_name` 分组，`source` 进「从哪来」列，`destination` **决定这条路径
-//! 在本机还是远端**，`installable`/`uninstallable` 进「能否装/撤」列，`touches` 是表格主体。
+//! Claude 布局（`~/.claude/…` 以哪个 agent 家为基准）住 `agents/claudecode/footprint.rs`。
 //!
 //! ## 一条硬纪律：**解析不了就说解析不了，绝不显示成"缺失"**
 //!
@@ -29,8 +20,7 @@
 
 use super::registry::{EnvBacking, EnvEntry, EnvTier};
 use crate::agents::footprint_decl::{
-    Carrier, EnvProbe, HostScope, ShellProfile, ToolDestination, ToolSource, ToolSpec, TouchEffect,
-    TouchedFile,
+    Carrier, EnvProbe, HostScope, ShellProfile, ToolDestination, ToolSpec, TouchedFile,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -76,10 +66,7 @@ pub(crate) enum PathResolution {
 }
 
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SurfaceState {
     Present {
         detail: String,
@@ -465,75 +452,15 @@ pub(crate) fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
     }
 }
 
-/// 「这东西从哪来」。用上 `ToolSpec::source`。
-pub(crate) fn source_label(s: &ToolSource) -> String {
-    match s {
-        ToolSource::EmbeddedText { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
-        ToolSource::RepoDir { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
-        ToolSource::EmbeddedBinary { .. } => {
-            copy_text("rsConfigSurface.source.embeddedBinary", &[])
-        }
-        ToolSource::Generated => copy_text("rsConfigSurface.source.generated", &[]),
-        // 装不了的那一档：措辞必须**先说清不是我们的**，
-        // 否则用户会以为这一行也是 cc-monitor 放上去的。
-        ToolSource::NotOurs { who } => {
-            copy_text("rsConfigSurface.source.notOurs", &[("who", &who.get())])
-        }
-    }
-}
-
-/// 「在哪台机器上」。**必须上屏**——否则用户看 `$PROFILE` 与 `~/.local/bin/ccm`
-/// 分不出说的是哪台机器，而这一页的全部价值是可信告知。
-pub(crate) fn host_label(h: HostScope) -> String {
-    // **短标签，挂在路径行上当徽章**（T04 审计重要 8）。原先是独立一行长句，
-    // 而审计核实 10 行里 9 行是**冗余**的——「现状」那一列早就写着
-    // 「远端路径（…）——本页不连 SSH」/「装在 Claude Code 跑的那台上」/「相对项目目录」。
-    // 真正新增信息的只有 Windows 上的 `$PROFILE` 那行（它的 why 只说"路径由 PowerShell 决定"）。
-    // 所以：信息保留，但收成一个词，省掉 10 行灰字。
-    // 也顺便更正我 commit 里那句"用户看 $PROFILE 与 ~/.local/bin/ccm 分不出哪台"
-    // ——只有一半成立，ccm 那行的 why 早就写着"远端"。
-    match h {
-        HostScope::Client => copy_text("detail.label.local", &[]),
-        HostScope::Remote => copy_text("rsConfigSurface.host.remote", &[]),
-        HostScope::Either => copy_text("rsConfigSurface.host.either", &[]),
-        HostScope::ProjectDir => copy_text("rsConfigSurface.host.projectDir", &[]),
-    }
-}
-
-/// 「我们对它做什么」。措辞直接决定用户的危险感知，所以定在后端、UI 不再各写一遍。
-pub(crate) fn effect_label(e: TouchEffect) -> String {
-    match e {
-        TouchEffect::ReadOnly => copy_text("rsConfigSurface.effect.readOnly", &[]),
-        TouchEffect::FencedBlock => copy_text("rsConfigSurface.effect.fencedBlock", &[]),
-        TouchEffect::OwnedFile => copy_text("rsConfigSurface.effect.ownedFile", &[]),
-        TouchEffect::GenerateOnly => copy_text("rsConfigSurface.effect.generateOnly", &[]),
-    }
-}
-
-/// 表格里的一行。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+/// 足迹里的一行：`data-report` 照它重排（改过你的文件 · 要装），不上线。
+#[derive(Debug, Clone)]
 pub struct SurfaceRow {
     pub tool_id: &'static str,
     pub tool_name: String,
-    /// 🔴 **档进线上形状了。**
-    ///
-    /// 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
-    /// 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
-    /// 于是「不该由我们装」与「该我们装而还没写」在前端只能靠一句和稀泥的措辞盖过去。
-    /// 今天档在行上，前端按**值**分档，不按措辞猜。
+    /// 档：「不该由我们装」与「该我们装而还没写」按**值**分，不按措辞猜。
     pub tier: EnvTier,
-    pub source_label: String,
     pub path_declared: &'static str,
-    /// 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
-    pub path_resolved: Option<String>,
-    pub note: Option<String>,
-    pub host_label: String,
-    pub effect_label: String,
     pub state: SurfaceState,
-    pub installable: bool,
-    pub uninstallable: bool,
 }
 
 /// 🔴 **多收一个 `c`（载体），而那正是这一格买到的东西。**
@@ -557,52 +484,20 @@ fn row(
         vantage,
         ..
     } = *env;
-    let resolved = resolve_touched_path(vantage, f.path, &c.destination, f.host, home, agent_home);
-    let (path_resolved, state) = match &resolved {
-        Ok(r) => {
-            let shown = match r {
-                PathResolution::Local(p) => Some(p.to_string_lossy().into_owned()),
-                PathResolution::LocalGlob {
-                    dir,
-                    prefix,
-                    suffix,
-                } => Some(format!("{}/{prefix}*{suffix}", dir.display())),
-                PathResolution::EitherHost(_) => Some(describe_target(r)),
-                // **兜底臂换成四条显式臂**（零行为变更）。
-                // 原来是 `_ => None`：新增一种解析形态会**静默显示为空**，
-                // 而这一页是「配置面审计」——「显示为空」与「这一项不存在」
-                // 在界面上长得一模一样，用户读不出区别。
-                // 写成具名臂之后，第 8 个变体会**编译失败**，逼人回答它该显示什么。
-                PathResolution::Remote(_) => None,
-                PathResolution::NeedsProjectDir(_) => None,
-                PathResolution::WindowsProfile => None,
-                PathResolution::NeedsUserConfig { .. } => None,
-            };
-            (shown, observe(r, fs))
-        }
-        // **声明自相矛盾也要如实显示**，不能静默跳过一行——那会让表格看着很干净而实际漏了东西
-        Err(e) => (
-            None,
-            SurfaceState::Undetermined {
-                why: copy_text("rsConfigSurface.row.declMismatch", &[("why", e)]),
+    let state =
+        match resolve_touched_path(vantage, f.path, &c.destination, f.host, home, agent_home) {
+            Ok(r) => observe(&r, fs),
+            // **声明自相矛盾也要如实报**，不能静默跳过一行——那会让表看着很干净而实际漏了东西
+            Err(e) => SurfaceState::Undetermined {
+                why: copy_text("rsConfigSurface.row.declMismatch", &[("why", &e)]),
             },
-        ),
-    };
+        };
     SurfaceRow {
         tool_id: t.id,
         tool_name: t.display_name.get(),
         tier: e.tier,
-        // 🔴 读的是**这一份载体**的来源，不是「这个工具的来源」——
-        //    `ccm` 本机那一份与远端那一份来源不同，按工具填只能填对一个。
-        source_label: source_label(&c.source),
         path_declared: f.path,
-        path_resolved,
-        note: f.note.map(|n| n.get()),
-        host_label: host_label(f.host),
-        effect_label: effect_label(f.effect),
         state,
-        installable: t.installable,
-        uninstallable: t.uninstallable,
     }
 }
 
@@ -648,59 +543,21 @@ pub(crate) struct SurfaceEnv<'a> {
 fn unmanaged_row(
     e: &EnvEntry,
     named: &'static str,
-    host: HostScope,
     probe: EnvProbe,
     env: &SurfaceEnv,
 ) -> SurfaceRow {
-    // **措辞按档分**，且**没有兜底臂**：`EnvTier` 加一档会编译失败，
-    // 逼人回答它在这一页上该显示什么（同本模块 `PathResolution` 那条既定做法）。
-    let (source_label, effect_label) = match e.tier {
-        EnvTier::AppInstalls => (
-            copy_text("rsConfigSurface.unmanaged.appInstallsSource", &[]),
-            copy_text("rsConfigSurface.unmanaged.appInstallsEffect", &[]),
-        ),
-        // 🔴 用户裁的那一档：**我们不装，但我们看；缺了我们说。**
-        EnvTier::UserInstallsWePrompt => (
-            copy_text("rsConfigSurface.unmanaged.promptSource", &[]),
-            copy_text("rsConfigSurface.unmanaged.promptEffect", &[]),
-        ),
-        // 🔴 **该我们装，而装口还欠着。** 措辞必须两半都说 ——
-        // 只说「装不了」会被读成「不该我们装」，那正是用户反对的那句话。
-        EnvTier::AppShipsNoInstallerYet => (
-            copy_text("rsConfigSurface.unmanaged.owedSource", &[]),
-            copy_text("rsConfigSurface.unmanaged.owedEffect", &[]),
-        ),
-        EnvTier::AppOnlyChecks => (
-            copy_text("rsConfigSurface.unmanaged.checkOnlySource", &[]),
-            copy_text("rsConfigSurface.unmanaged.checkOnlyEffect", &[]),
-        ),
-    };
-    let (path_resolved, state) = observe_unmanaged(named, probe, env);
     SurfaceRow {
         tool_id: e.id,
         tool_name: e.display_name.clone(),
         tier: e.tier,
-        source_label,
         path_declared: named,
-        path_resolved,
-        note: Some(e.why.clone()),
-        host_label: host_label(host),
-        effect_label,
-        state,
-        installable: false,
-        uninstallable: false,
+        state: observe_unmanaged(named, probe, env),
     }
 }
 
 /// 手写那一半**真去查**的那一步。抽出来是因为它是死值验的落点：
 /// 同一个名字换一种 [`EnvProbe`]，出来的必须是不同的一格。
-///
-/// 返回 `(解析出来的东西, 现状)`。
-fn observe_unmanaged(
-    named: &'static str,
-    probe: EnvProbe,
-    env: &SurfaceEnv,
-) -> (Option<String>, SurfaceState) {
+fn observe_unmanaged(named: &'static str, probe: EnvProbe, env: &SurfaceEnv) -> SurfaceState {
     match probe {
         // `PATH` 上的裸命令：与起新会话框、`ccm` 起它那一下同一个找法（`platform::shell::find_session_command`，
         // Windows 上 `.exe` / `.cmd` / `.ps1` … 的规矩只住那里）；两族只差按哪一份 `PATH` 找。
@@ -727,18 +584,12 @@ fn observe_unmanaged(
             match found {
                 // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
                 // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。
-                None => (None, SurfaceState::Undetermined { why: blind }),
-                // **查了、确认没有** —— 这一格才是「缺」，前端据此劝人去装。
-                Some(false) => (None, SurfaceState::Absent),
-                Some(true) => (
-                    Some(copy_text(
-                        "rsConfigSurface.onPath.resolved",
-                        &[("named", named)],
-                    )),
-                    SurfaceState::Present {
-                        detail: copy_text("rsConfigSurface.onPath.present", &[("named", named)]),
-                    },
-                ),
+                None => SurfaceState::Undetermined { why: blind },
+                // **查了、确认没有** —— 这一格才是「缺」，「待办」据此劝人去装。
+                Some(false) => SurfaceState::Absent,
+                Some(true) => SurfaceState::Present {
+                    detail: copy_text("rsConfigSurface.onPath.present", &[("named", named)]),
+                },
             }
         }
         // ssh 客户端：与开远端终端同一个找法，查文件那一下用本页注入的探针。
@@ -750,25 +601,20 @@ fn observe_unmanaged(
                 env.path_env.map(std::ffi::OsStr::new),
                 &probe,
             ) {
-                crate::platform::ssh_client::SshClient::At(p) => {
-                    let detail = copy_text("rsConfigSurface.ssh.found", &[("path", &p)]);
-                    (Some(p), SurfaceState::Present { detail })
-                }
-                crate::platform::ssh_client::SshClient::Missing => (None, SurfaceState::Absent),
-                crate::platform::ssh_client::SshClient::Unknown(why) => (
-                    None,
+                crate::platform::ssh_client::SshClient::At(p) => SurfaceState::Present {
+                    detail: copy_text("rsConfigSurface.ssh.found", &[("path", &p)]),
+                },
+                crate::platform::ssh_client::SshClient::Missing => SurfaceState::Absent,
+                crate::platform::ssh_client::SshClient::Unknown(why) => {
                     SurfaceState::Undetermined {
                         why: copy_text("beTerminal.ssh.unknown", &[("why", &why)]),
-                    },
-                ),
+                    }
+                }
             }
         }
-        EnvProbe::CannotProbe { why } => (
-            None,
-            SurfaceState::Undetermined {
-                why: copy_text("rsConfigSurface.probe.cannot", &[("why", &why.get())]),
-            },
-        ),
+        EnvProbe::CannotProbe { why } => SurfaceState::Undetermined {
+            why: copy_text("rsConfigSurface.probe.cannot", &[("why", &why.get())]),
+        },
     }
 }
 
@@ -802,106 +648,18 @@ pub(crate) fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<S
                 .filter_map(|(c, f)| pick(f.host).map(|env| row(e, t, c, f, env)))
                 .collect::<Vec<_>>(),
             EnvBacking::Named { named, host, probe } => pick(host)
-                .map(|env| unmanaged_row(e, named, host, probe, env))
+                .map(|env| unmanaged_row(e, named, probe, env))
                 .into_iter()
                 .collect(),
         })
         .collect()
 }
 
-/// `settings.json` 的一个作用域。**这不是"我们碰的文件"**，而是「会影响钩子诊断结论」的文件
-/// ——B04 登记项：那时只看 `<cfg>/settings.json` 一处，而钩子可以定义在别的作用域里，
-/// 于是"没装"的结论可能是错的。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct SettingsScope {
-    pub scope: String,
-    pub path: String,
-    pub state: SurfaceState,
-    /// 文件里有没有 cc-bus 钩子程序的字样。读不到 → `None`（**不猜**）。
-    pub has_cc_bus_hooks: Option<bool>,
-    pub precedence_note: String,
-}
-
-/// cc-bus 钩子在 settings 里的程序名 —— 住址是 `observe/cc_bus_hooks.rs::PROGRAM`（钩子诊断那一份），这里只用。
-/// **这是全文粗匹配，不是解析**：`permissions.allow` 里一条 `Bash(cc-bus stop-hook)` 也会命中 ⇒ 本页只答「文件里有没有这个字样」，
-/// 装没装是 `hooks-diag` 的事（两页对同一文件给出不同话是设计如此）。
-pub(crate) const HOOK_PROGRAMS: [&str; 1] = [crate::observe::cc_bus_hooks::PROGRAM];
-
-fn scope_row(
-    scope: &str,
-    path: PathBuf,
-    precedence_note: &str,
-    has_hooks: &dyn Fn(&Path) -> Option<bool>,
-    fs: &FsProbe,
-) -> SettingsScope {
-    let has = has_hooks(&path);
-    SettingsScope {
-        scope: scope.to_string(),
-        path: path.to_string_lossy().into_owned(),
-        state: observe(&PathResolution::Local(path.clone()), fs),
-        has_cc_bus_hooks: has,
-        precedence_note: precedence_note.to_string(),
-    }
-}
-
-/// 列出**用户级**的两个 settings 作用域，并把「项目级没查」如实写成一行。
-///
-/// 第三个参数是「有没有钩子字样」（[`HOOK_PROGRAMS`]；原文不出这台）。
-/// 两个作用域的文件名是那一家的布局（注册表里的足迹面答，`agents/claudecode/footprint.rs::user_settings_files`）。
-pub(crate) fn build_settings_scopes(
-    agent_home: &Path,
-    has_hooks: &dyn Fn(&Path) -> Option<bool>,
-    fs: &FsProbe,
-) -> Vec<SettingsScope> {
-    // 没有哪一家登记了 settings 的住址 ⇒ 用户级那两格不出（不猜文件名），只剩「项目级没查」那一行。
-    let mut out: Vec<SettingsScope> = crate::agents::footprint_faces()
-        .next()
-        .map(|f| {
-            let [user, user_local] = (f.user_settings)(agent_home);
-            vec![
-                scope_row(
-                    &copy_text("beSessionCommands.scope.user", &[]),
-                    user,
-                    &copy_text("rsConfigSurface.scope.userNote", &[]),
-                    has_hooks,
-                    fs,
-                ),
-                scope_row(
-                    &copy_text("rsConfigSurface.scope.userLocal", &[]),
-                    user_local,
-                    &copy_text("rsConfigSurface.scope.userLocalNote", &[]),
-                    has_hooks,
-                    fs,
-                ),
-            ]
-        })
-        .unwrap_or_default();
-    out.push(SettingsScope {
-        scope: copy_text("rsConfigSurface.scope.project", &[]),
-        path: copy_text("rsConfigSurface.scope.projectPath", &[]),
-        // **明说没查**，不假装查过（B04 登记项）
-        state: SurfaceState::Undetermined {
-            why: copy_text("rsConfigSurface.scope.projectNotChecked", &[]),
-        },
-        has_cc_bus_hooks: None,
-        precedence_note: copy_text("rsConfigSurface.scope.projectNote", &[]),
-    });
-    out
-}
-
-/// 一次审计的完整回报。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+/// 这台的整份足迹（`data-report` 的原料，不上线）：各行 ＋ 这台的家目录（「改过你的文件」照它写 `~/…`）。
+#[derive(Debug, Clone)]
 pub struct ConfigSurfaceReport {
     pub rows: Vec<SurfaceRow>,
-    pub settings_scopes: Vec<SettingsScope>,
-    /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
-    pub agent_home: String,
     pub home: String,
-    // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上。
 }
 
 #[cfg(test)]

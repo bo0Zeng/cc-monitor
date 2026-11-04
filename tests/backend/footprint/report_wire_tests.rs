@@ -1,9 +1,7 @@
-//! 足迹那两条大命令（`footprint-report` · `data-report`）是界面 / 别的台读的线上形：换形之前用旧代码跑出回包字节、钉住；
+//! 足迹那条大命令（`data-report`）是界面 / 别的台读的线上形：换形之前用旧代码跑出回包字节、钉住；
 //! 换形之后逐字节比（经 `serde_json::Value` 那一跳，同帧面：键按字典序）。临时目录换成 `<D>`。
 //! 没有重写开关：对不上就是线上形变了。
 //!
-//! - `footprint-report` 远端那一栏有跨语言金样（`face_tests::the_report_wire_matches_the_cross_language_golden`）；
-//!   这里钉本机那一栏（带 `client`）。
 //! - 钉住的字节都住 `tests/__fixtures__/footprint-wire.pin.txt`（一份一行：`名字<TAB>帧面那一份`；整份太长，不写进源码）。
 //! - `data-report`：成品那一层（[`super::data::shape`]）· 「待办」各件（[`super::chores::chores`]，各分支都走一遍）·
 //!   自己家里那几样（[`super::data::own_rows`]）分开钉（整份那一问要问这台的 tmux 与登录 shell，判据不碰）。
@@ -32,25 +30,6 @@ fn check(name: &str, got: String) {
     assert_eq!(got, pinned(name), "`{name}` 的线上形变了");
 }
 
-fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String> {
-    move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())
-}
-
-#[cfg(not(windows))]
-#[test]
-fn footprint_report_local_column_keeps_its_wire_bytes() {
-    let home = "/nonexistent-footprint-pin";
-    let req = crate::wire::typed::take(&json!({"client": {"home": "/nonexistent-footprint-pin-client", "path": "/nonexistent-footprint-pin-client/bin"}})).unwrap();
-    let got = super::answer_with(
-        &env_of(vec![("HOME", home.to_string())]),
-        &|| None,
-        &std::path::Path::new(home).join(".claude"),
-        &req,
-    )
-    .unwrap();
-    check("footprint-report.local", wire(&got));
-}
-
 fn row(
     tool_id: &'static str,
     tier: EnvTier,
@@ -61,15 +40,8 @@ fn row(
         tool_id,
         tool_name: format!("{tool_id}-name"),
         tier,
-        source_label: String::new(),
         path_declared: path,
-        path_resolved: None,
-        note: None,
-        host_label: String::new(),
-        effect_label: String::new(),
         state,
-        installable: true,
-        uninstallable: true,
     }
 }
 
@@ -111,8 +83,6 @@ fn report() -> ConfigSurfaceReport {
                 SurfaceState::Undetermined { why: "w".into() },
             ),
         ],
-        settings_scopes: vec![],
-        agent_home: "/h/.claude".into(),
         home: "/h".into(),
     }
 }

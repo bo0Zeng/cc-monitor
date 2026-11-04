@@ -522,7 +522,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端回码 `{state}`（`src/backend/footprint/agent_home_check.rs`）；前端 `src/frontend/ui/settings/claude-dir-check.ts::claudeDirProblem` 问、按码取那一句；\
          monitor 这一侧零发送点（界面不再自己问两次 `files-stat` 去判）",
     ),
-    // `footprint-report` 那一行退役：界面那份读口（`footprint-reads.ts`）没人用、随死代码删了；帧命令本身还在后端。
     // 生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

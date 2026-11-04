@@ -1,7 +1,7 @@
-//! 「足迹」由那台后端出整份成品：帧面 `footprint-report` —— 只读。申报表（[`registry`]）与判定（[`rows`]：哪一行属于哪个工具、
-//! 存在 / 缺失 / 查不动怎么分）都住后端，这台 stat 这台自己的盘。
+//! 「足迹」由那台后端算整份（申报表 [`registry`] ＋ 判定 [`rows`]：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分），
+//! 这台 stat 这台自己的盘；上线的是它重排成的那一份：帧面 `data-report`（[`data`] · [`chores`]）—— 只读。
 //!
-//! # 两种问法（一问出整份报告）
+//! # 两种问法（一问出整份）
 //!
 //! - 远端那一栏（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
 //! - 本机那一栏（`{client: {home, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒ `HostScope::Client` 那一族也由这里 stat；
@@ -9,8 +9,7 @@
 //!
 //! # 上限
 //!
-//! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，不截断：截断的清单会被当成完整的去数 glob）·
-//! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
+//! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，不截断：截断的清单会被当成完整的去数 glob）。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
 // 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
@@ -57,17 +56,12 @@ use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};
+use rows::{build_rows, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};
 
 /// 一个目录最多交几个名字。
 pub(crate) const MAX_ENTRIES: usize = 4096;
-/// 查字样的文件最大多少字节（`settings.json` 那一类，远小于它）；超了不读、日志里说是哪一份，钩子字样按「不知道」报。
-pub(crate) const MAX_HOOK_FILE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
-    bytes: 1 << 20,
-    over: relay_route_core::Over::SkipAndSay,
-};
 
-/// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
+/// `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -90,8 +84,8 @@ pub struct FootprintClient {
     pub(crate) path: Option<String>,
 }
 
-/// 帧面入口（`footprint-report`）。
-pub fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
+/// 这台的整份足迹（[`data_answer`] 的原料）。
+fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
     let get = |k: &str| std::env::var(k).ok();
     answer_with(
         &get,
@@ -167,13 +161,8 @@ pub(crate) fn answer_with(
         windows: cfg!(windows),
         vantage: Vantage::Monitor,
     });
-    let rows = build_rows(&own, c_env.as_ref());
-    let hooks = |p: &Path| hooks_in(p);
-    let settings_scopes = build_settings_scopes(agent_home, &hooks, &own_fs);
     Ok(ConfigSurfaceReport {
-        rows,
-        settings_scopes,
-        agent_home: agent_home.display().to_string(),
+        rows: build_rows(&own, c_env.as_ref()),
         home: home.display().to_string(),
     })
 }
@@ -200,23 +189,6 @@ fn list_of(p: &Path) -> Option<Vec<String>> {
         return None;
     }
     Some(names)
-}
-
-/// 一份文件里有没有 cc-bus 钩子那两个字样。读不动 / 太大 / 不是文件 ⇒ `None`（**不猜**）。
-fn hooks_in(p: &Path) -> Option<bool> {
-    Ro::metadata(p).ok()?;
-    let s = match Ro::read_string_capped(p, MAX_HOOK_FILE_BYTES) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(
-                "足迹：{} 没读（{}），钩子字样按「不知道」报",
-                p.display(),
-                e.logged()
-            );
-            return None;
-        }
-    };
-    Some(rows::HOOK_PROGRAMS.iter().any(|n| s.contains(n)))
 }
 
 /// `client` 入参：家目录要是绝对路径（解码器判不了的那一样）。

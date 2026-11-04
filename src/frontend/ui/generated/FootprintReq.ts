@@ -2,6 +2,6 @@
 import type { FootprintClient } from "./FootprintClient";
 
 /**
- * `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
+ * `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
  */
 export type FootprintReq = { client?: FootprintClient | null, };

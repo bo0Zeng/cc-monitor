@@ -258,7 +258,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "audit.monitor-own",
         Side::Local,
         Own::Footprint,
-        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
+        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `data-report`）",
     ),
     (
         "open_file_window",
@@ -359,7 +359,7 @@ const ASYMMETRY_REASONS: &[(&str, &str)] = &[
     ("backend.deploy", "本机也要后端（入方向通道、每台机开关、tmux 帧都靠它），而且会自部署 —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。不对称只在一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。天然不对称说的是「不需要一条命令」，不是「不需要后端」。"),
     ("mcp.list-origins", "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`cmd_wire::LOCAL`），因为它答的是「哪几台有后端」而本机也有。"),
     ("sftp.file-panel", "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
-    ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`footprint-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
+    ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`data-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
 ];
 
 /// 读 `lib.rs` 的 `generate_handler!`，取出前端真能调到的命令名。

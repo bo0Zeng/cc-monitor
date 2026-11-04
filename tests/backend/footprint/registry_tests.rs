@@ -256,6 +256,32 @@ fn parser_actually_sees_the_real_source() {
     );
 }
 
+/// 落点 · 载体 · 手写环境项只带有人读的格：给人看的说明那几格（`note` · `what` · `why`）没有读者，不进声明。
+#[test]
+fn declarations_carry_no_unread_prose() {
+    let code = tools_code();
+    let names = |s: &str| -> Vec<String> {
+        declared_fields_of(&code, s)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect()
+    };
+    assert_eq!(names("TouchedFile"), vec!["path", "host", "effect"]);
+    assert_eq!(names("Carrier"), vec!["source", "destination", "touches"]);
+    assert_eq!(
+        names("UnmanagedEnv"),
+        vec![
+            "id",
+            "display_name",
+            "who",
+            "probe",
+            "named",
+            "host",
+            "site"
+        ]
+    );
+}
+
 /// **文档里提到 `#[cfg(test)]` 不许把切点提前**（这是真踩过的：5 条测试当场全红）。
 #[test]
 fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
@@ -296,11 +322,6 @@ fn every_declared_field_has_at_least_two_instantiations() {
 /// 审计给 `TouchedFile` 加 `pub needs_sudo: bool`（10 个字面量里 1 真 9 假）→
 /// **492 全绿、零 warning**。`pub` 字段在 lib crate 里连 `dead_code` 都不报，
 /// 所以连 T01 依赖的"clippy 存根"这条兜底都没有。
-///
-/// 顺带**更正我自己文档里说反的一句**：`TouchedFile` 的文档写着「`note` 的 ≥2 判据是
-/// 人工数的，不谎称有门禁」——低估了。`note` 其实有一条机器门禁
-/// （`config_surface` 的 `rows_cover_…` 里 `with_note.len() >= 2`），
-/// 真正一条门禁都没有的是 `path` / `effect` 和**将来新增的字段**。现在这条补上了。
 #[test]
 fn touched_file_fields_follow_the_same_discipline() {
     let code = tools_code();
@@ -621,16 +642,15 @@ fn installable_tools_declare_where_they_land() {
             // 跨字段：「这不是我们的落点」与「装得了」不许同时成立。
             let Some(want) = landing_path_of(&c.destination) else {
                 panic!(
-                    "{} 声明 installable: true，而载体「{}」的落点写着「不是我们装的」——\
+                    "{} 声明 installable: true，而载体的落点写着「不是我们装的」（{:?}）——\
                          两句话有一句是假的",
-                    t.id, c.what
+                    t.id, c.destination
                 )
             };
             assert!(
                 c.touches.iter().any(|f| f.path == want),
-                "{} 的载体「{}」可安装，但它自己的 touches 里没有它的落点 {want:?}（实得 {:?}）",
+                "{} 的载体可安装，但它自己的 touches 里没有它的落点 {want:?}（实得 {:?}）",
                 t.id,
-                c.what,
                 c.touches.iter().map(|f| f.path).collect::<Vec<_>>()
             );
         }
@@ -735,12 +755,12 @@ fn the_backend_is_one_thing_landing_in_several_places() {
                 ),
             };
             let dst = landing_path_of(&c.destination)
-                .unwrap_or_else(|| panic!("后端的载体「{}」没有落点", c.what));
+                .unwrap_or_else(|| panic!("后端的载体（{:?}）没有落点", c.destination));
             let host = c
                 .touches
                 .iter()
                 .find(|f| f.path == dst)
-                .unwrap_or_else(|| panic!("载体「{}」的落点不在它自己的 touches 里", c.what))
+                .unwrap_or_else(|| panic!("载体的落点 {dst:?} 不在它自己的 touches 里"))
                 .host;
             (src, dst, host)
         })
@@ -841,13 +861,11 @@ fn carriers_do_not_mix_ours_and_not_ours() {
     // 反向自检：混合的那一形真的判得出来（合成一条，不动真表）。
     const MIXED: &[Carrier] = &[
         Carrier {
-            what: Text(|| "自检：我们装的那一份".to_string()),
             source: ToolSource::Generated,
             destination: ToolDestination::LocalHomeRelative(".x/y"),
             touches: &[],
         },
         Carrier {
-            what: Text(|| "自检：别人的那一份".to_string()),
             source: ToolSource::NotOurs {
                 who: Text(|| "自检".to_string()),
             },
@@ -867,27 +885,22 @@ fn carriers_do_not_mix_ours_and_not_ours() {
     );
 }
 
-/// **每个载体都说得出自己是哪一份**，而同一个工具里两份不许说同一句话。
+/// **同一个工具的几个载体，落点各不相同** —— 落点就是它是哪一份。
 ///
-/// 没有这一格，多载体的工具在配置面上就是几行长得一样的字 ——
-/// 「说得出几个落点」于是退化成「表里多了几行」。
+/// 两份落在同一处，「说得出几个落点」就退化成「表里多了几行」。
 #[test]
-fn every_carrier_says_which_one_it_is() {
+fn every_carrier_lands_somewhere_else() {
     let mut n_multi = 0;
     for t in TOOLS.iter() {
-        let mut seen: HashSet<String> = HashSet::new();
+        let mut seen: Vec<&ToolDestination> = Vec::new();
         for c in t.carriers {
             assert!(
-                !c.what.get().trim().is_empty(),
-                "`{}` 有一个载体没说自己是哪一份",
-                t.id
-            );
-            assert!(
-                seen.insert(c.what.get()),
-                "`{}` 有两个载体说着同一句话（{:?}）—— 那就分不出是哪一份了",
+                !seen.contains(&&c.destination),
+                "`{}` 有两个载体落在同一处（{:?}）—— 那就分不出是哪一份了",
                 t.id,
-                c.what
+                c.destination
             );
+            seen.push(&c.destination);
         }
         if t.carriers.len() > 1 {
             n_multi += 1;
@@ -979,7 +992,7 @@ const SITES: &[(&str, Why, usize)] = &[
     // `src/skill_host.rs` / `tests/frontend/shell/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
     // `src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
     ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
-    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 2),
+    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 1),
     // `tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
         "tests/backend/footprint/registry_environment_tests.rs",
@@ -1315,7 +1328,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
 fn carrier_fields_follow_the_same_discipline() {
     let code = tools_code();
     field_discipline_of(&code, "Carrier", "Carrier")
-        .require(4, "Carrier 字段纪律")
+        .require(3, "Carrier 字段纪律")
         .unwrap();
 }
 

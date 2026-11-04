@@ -180,7 +180,7 @@ export const commands = {
 
   /**
    * 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）要的、只有 monitor 知道的事实（`footprint_client.rs`）：
-   * 它自己进程的 `{home, path}`。成品由那台后端的帧命令 `footprint-report` 出（这一份原样带过去），
+   * 它自己进程的 `{home, path}`。成品由那台后端的帧命令 `data-report` 出（这一份原样带过去），
    * 本侧不认识它的形状 ⇒ **桶②**。
    */
   footprint_client_facts: () =>
