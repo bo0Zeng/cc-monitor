@@ -49,7 +49,7 @@ pub mod ext_list_face; // 设置「扩展」页那几条（typed）：ext-list �
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod first_run_face; // 帧面 `first-run`（typed）：「开始用」三步，本体在 footprint/readiness.rs
 pub mod footprint_face; // 足迹那一族四条小命令（typed）：agent-home-check · chores-mark · last-seen-read / -write
-pub mod footprint_report_face; // 「足迹」那两条成品（typed）：footprint-report · data-report（单住：data-report 问 tmux）
+pub mod footprint_report_face; // 「足迹」那两条成品（typed）：data-report · chores-merge（单住：data-report 问 tmux）
 pub mod fork_face;
 pub mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub mod launch_account_face; // 起会话挑号要的事实（账号库 · 上次的号）与起之前预标信任：`session-open` · 换号重启 · 会话里切号同一份

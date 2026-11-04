@@ -112,7 +112,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.ccmRemoteWhat", &[])),
                 // 远端 `ccm` 就是推过去的那一份后端字节（三行 shim 与它的生成器删了）。
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
@@ -123,15 +122,11 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 touches: &[
                     TouchedFile {
                         path: "~/.cc-monitor/bin/ccm",
-                        note: None,
                         host: HostScope::Remote,
                         effect: TouchEffect::OwnedFile,
                     },
                     TouchedFile {
                         path: "~/.bashrc",
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.ccmRemoteProfileNote", &[])
-                        })),
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
                     },
@@ -142,7 +137,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的所在，
             //    用户逐字「原本的配置**要手动删除**」。
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
                 // 本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
@@ -156,7 +150,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     // 头注禁的「对能用的安装报假警报」。两边由
                     // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
                     path: "~/.cc-monitor/bin/ccm*",
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
                     host: HostScope::Client,
                     effect: TouchEffect::OwnedFile,
                 }],
@@ -184,7 +177,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             // 内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
             //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
@@ -193,9 +185,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 touches: &[TouchedFile {
                     path: "~/.cc-monitor/bin/ccm",
                     host: HostScope::Remote,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.backendRemoteNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -203,7 +192,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     },
     // ═══ **从第三档升上来的第一项** ═══
     //
-    // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
+    // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），那一条的说明逐字写着
     // 「加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫」。
     // 载体这一层把那句话变成了假的：`profile_installer::plan_install` 的 `PosixRc` 臂把那个
     // 别名块装进用户**选定**的 rc（内容与远端那个口来自同一个常量 `profile_installer::CCM_WRAPPER_SNIPPET`，
@@ -219,7 +208,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.posixAliasesWhat", &[])),
             // 装进去的内容**就是仓里那份文件**（`profile_installer::CCM_WRAPPER_SNIPPET` 是它的
             // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是这里不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
@@ -234,9 +222,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             touches: &[TouchedFile {
                 path: "$POSIX_RC",
                 host: HostScope::Client,
-                note: Some(Text(|| {
-                    copy_text("rsToolRegistry.tools.posixAliasesNote", &[])
-                })),
                 effect: TouchEffect::FencedBlock,
             }],
         }],
@@ -247,15 +232,11 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.powershellWhat", &[])),
             source: ToolSource::Generated,
             destination: ToolDestination::UserShellProfile(ShellProfile::PowerShell),
             touches: &[TouchedFile {
                 path: "$PROFILE",
                 host: HostScope::Client,
-                note: Some(Text(|| {
-                    copy_text("rsToolRegistry.tools.powershellNote", &[])
-                })),
                 effect: TouchEffect::FencedBlock,
             }],
         }],
@@ -335,7 +316,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "tmux",
             host: HostScope::Either,
-            why: Text(|| copy_text("rsToolRegistry.env.tmuxWhy", &[])),
             site: "backend/control/launch_render/ccm_invocation.rs::Refusal",
         },
     ),
@@ -349,7 +329,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "xdg-terminal-exec",
             host: HostScope::Client,
-            why: Text(|| copy_text("rsToolRegistry.env.terminalExitWhy", &[])),
             site: "platform/terminal.rs::EMULATORS",
         },
     ),
@@ -362,7 +341,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "git",
             host: HostScope::Client,
-            why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
             site: "scanning_guard_registry_tests.rs::git_read",
         },
     ),
@@ -375,7 +353,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::SshClient,
             named: "ssh",
             host: HostScope::Client,
-            why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
             site: "platform/ssh_client.rs::locate",
         },
     ),
@@ -390,7 +367,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "xdg-open",
             host: HostScope::Client,
-            why: Text(|| copy_text("rsToolRegistry.env.xdgOpenWhy", &[])),
             site: "lib.rs::open_with_os",
         },
     ),
@@ -404,7 +380,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             probe: EnvProbe::OnPath,
             named: "bash",
             host: HostScope::Either,
-            why: Text(|| copy_text("rsToolRegistry.env.loginShellWhy", &[])),
             site: "platform/shell/mod.rs::fresh_terminal_path",
         },
     ),
@@ -423,7 +398,6 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             },
             named: "$MCP_COMMAND",
             host: HostScope::ProjectDir,
-            why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
             site: "mcp_edit.rs::upsert_mcp_server_value",
         },
     ),
@@ -476,8 +450,6 @@ pub(crate) struct EnvEntry {
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
-    /// 给人看的那一句（取过文的）。
-    pub why: String,
     pub backing: EnvBacking,
 }
 
@@ -540,7 +512,6 @@ pub(crate) fn environment_on(windows: bool) -> Vec<EnvEntry> {
                 display_name: t.display_name.get(),
                 who,
                 tier: EnvTier::of(who, t.installable),
-                why: copy_text("rsToolRegistry.environment.managedWhy", &[]),
                 backing: EnvBacking::Managed(t),
             }
         })
@@ -553,7 +524,6 @@ pub(crate) fn environment_on(windows: bool) -> Vec<EnvEntry> {
         // 也就没有落点、没有 `touches`、没有装 / 卸实现可对拍 ⇒ 「今天有没有装口」
         // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
         tier: EnvTier::of(u.who, false),
-        why: u.why.get(),
         backing: EnvBacking::Named {
             named: u.named,
             host: u.host,

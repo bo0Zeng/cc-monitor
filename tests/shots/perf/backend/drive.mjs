@@ -246,7 +246,6 @@ await bench("machine-interrupts", "machine-interrupts", {});
 await bench("assets-catalog", "assets-catalog", {});
 await bench("ext-list", "ext-list", {});
 await bench("profiles-read", "profiles-read", {});
-await bench("footprint-report", "footprint-report", {}, 2);
 await bench("data-report", "data-report", {}, 2);
 await bench("resync", "resync", {});
 await bench("files-home", "files-home", {});

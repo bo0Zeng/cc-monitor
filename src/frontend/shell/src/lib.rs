@@ -617,7 +617,7 @@ pub fn run() {
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-list` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
-            // 足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
+            // 足迹成品由那台后端出（界面经通道问 `data-report`）；这里只答 monitor 自己那台那几行的事实。
             footprint_client::footprint_client_facts,
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,

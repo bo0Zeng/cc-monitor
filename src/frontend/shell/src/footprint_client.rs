@@ -2,7 +2,7 @@
 //!
 //! 申报表与判定都进了后端（`src/backend/footprint/`）。本机后端与 monitor 同一台、同一用户 ⇒ stat 由本机后端自己做；
 //! monitor 只交它自己进程的那几条（家目录 · `PATH`，「足迹里 monitor 自己那几行」；agent 家由本机后端自己解析），
-//! 界面原样带给本机后端 `footprint-report {client}`，一问出整份报告。
+//! 界面原样带给本机后端 `data-report {client}`，一问出整份。
 
 use crate::detail::Shell as _;
 use copy_core::said::Said;

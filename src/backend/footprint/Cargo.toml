@@ -1,4 +1,4 @@
-# 足迹：申报表 · 判定 · 这台的 stat，出整份成品（`footprint-report` · `data-report` · 最近见到）。只读。只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层。
+# 足迹：申报表 · 判定 · 这台的 stat，出整份成品（`data-report` · 最近见到）。只读。只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层。
 [package]
 name = "backend-footprint"
 version = "0.0.0"

@@ -151,28 +151,12 @@ impl ShellProfile {
 /// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
 /// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
 /// **这正是 T02 专门要防的那类假警报，出现在那一页上格外讽刺。**
-/// ## Phase G 用 ≥2 尺子重新论证 `Client` / `ProjectDir`（本会话第 12 次用这把尺子）
+/// ## 四个变体各管什么
 ///
-/// 事实先摆清，两条都不利于保留：
-/// - `Client` **1 个使用者**（`$PROFILE`）· `ProjectDir` **1 个**（`.mcp.json`）
-/// - 两者在 `config_surface::project_onto_host` 里都落 `(_, other)`，**零行为影响**；
-///   而且它们的 `destination` 臂（`UserShellProfile → WindowsProfile`、
-///   `ProjectRelative → NeedsProjectDir`）已经独立于 host 决定了解析结果
-///   ——**连合并进 `Either` 都不会改变任何解析行为**。
-///
-/// **结论仍是保留，但理由不是"用了 ≥2 次"（它们没有）。** 理由是：
-/// **合并会让屏幕上的话变成假的。** `host_label` 是用户可见事实：
-/// `$PROFILE` **确定在客户端**、`.mcp.json` **确定在项目目录**。合进 `Either` 后标签变成
-/// 「本机或远端」——对这两条都是**错的**。而这一页的全部价值就是可信告知
-/// （T02 立项时那个「Windows 上说不存在而驾驶舱正从远端读」的假警报就是同一件事）。
-///
-/// **≥2 那把尺子量的是「字段与抽象」，不是「描述型 enum 的变体」** —— T01 已经立过这条界：
-/// `ToolSource` 5 个变体里 4 个单用户、`TouchEffect` 的门禁只要求 ≥3 种被用到，
-/// 都保留了，因为**变体差异是数据的本性**。把 `HostScope` 按前一把尺子砍掉，
-/// 反而是尺子用错了地方。
-///
-/// 下面 `host_labels_are_distinct_and_truthful` 把这条钉住：四个标签必须互不相同，
-/// 且 `Client`/`ProjectDir` 的标签不许含「远端」二字（含了就是在说假话）。
+/// - `Client`：住 monitor 那台 ⇒ 由带着 monitor 那几条事实的那一问答，远端那一栏不进人群（`rows::build_rows`）。
+/// - `Remote`：从 monitor 那台看不进本机 stat（「查不动」），由那台自己的后端答。
+/// - `Either`：本机没找到 ≠ 不存在。
+/// - `ProjectDir`：解析结果由 `destination`（`ProjectRelative → NeedsProjectDir`）决定，这一格今天只是申报。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum HostScope {
     /// cc-monitor 自己跑的那台（Windows 客户端）。
@@ -194,13 +178,6 @@ pub enum HostScope {
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
 /// 本结构是 T02 审计视图的直接输入（使用者数现算，不写死在这里）。
 ///
-/// ## `path` 与 `note` 为什么拆开（T02 一上手就撞到的计划≠现实）
-///
-/// 第一版把两件事写在同一个字符串里：`"~/.bashrc（或所选 profile）"`、
-/// `"~/.claude/settings.json 的 hooks 段"`、`"~/.local/bin/cc-*（12 条软链）"`、
-/// `"远端 ~/.local/bin/ccm-backend"`。作为展示文本没问题，但 T02 要**真去查这些文件的现状**，
-/// 那些散文进不了 `Path`——于是拆成机器可解析的 `path` + 给人看的 `note`。
-///
 /// 「本机还是远端」**没有新增字段**：从 [`ToolSpec::destination`] 推导
 /// （`RemoteHomeRelative` → 远端）。
 ///
@@ -213,18 +190,9 @@ pub enum HostScope {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TouchedFile {
     /// **机器可解析**的路径：可含 `~/` 前缀、可含**最后一段**的 glob（`cc-*`）、
-    /// 可以是 `$PROFILE` 这种由外部决定的占位。**不放散文**——那是 `note` 的事。
+    /// 可以是 `$PROFILE` 这种由外部决定的占位。**不放散文**。
+    /// `TouchedFile` 与 `ToolSpec` 走同一条字段纪律（`touched_file_fields_follow_the_same_discipline`）。
     pub path: &'static str,
-    /// 给人看的补充说明（"或用户所选的其它 profile"、"11 条软链"）。没有就 `None`。
-    ///
-    /// **更正上一版这段话**（T02 审计重要 3）：原文写「字段纪律扫描不覆盖 `TouchedFile`，
-    /// 所以 `note` 的 ≥2 判据是人工数的」——说反了两头。`note` 当时**已经有**一条机器门禁
-    /// （`config_surface` 的 `rows_cover_…` 里 `with_note.len() >= 2`）；
-    /// 真正一条门禁都没有的是 `path` / `effect` 和**将来新增的字段**，
-    /// 而审计正是从那个口子进来的（塞 `pub needs_sudo: bool`，492 全绿零 warning）。
-    /// 现在 `declared_fields_of` 参数化了，`TouchedFile` 与 `ToolSpec` 走同一条纪律
-    /// （`touched_file_fields_follow_the_same_discipline`）。
-    pub note: Option<Text>,
     /// 这个文件在哪台机器上。见 [`HostScope`]——**不加它，审计页在 Windows 上会说假话**。
     pub host: HostScope,
     /// 我们对它做什么。**这决定了 T02 审计页里那一行的措辞与危险程度。**
@@ -273,11 +241,6 @@ pub enum TouchEffect {
 /// 本机那个 `LocalHomeRelative`，各自带各自的 touch（**闭集里本机侧真有一条 `ccm` 落点**，有判据钉着）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Carrier {
-    /// 这一份**是哪一份** —— 给人读的一句话，同一个工具的几个载体靠它区分。
-    ///
-    /// ⚠ 它不是 `note`：`note` 说的是「这个**文件**是怎么回事」，
-    /// 这一格说的是「这**一份产物**是怎么回事」。
-    pub what: Text,
     pub source: ToolSource,
     pub destination: ToolDestination,
     pub touches: &'static [TouchedFile],
@@ -421,7 +384,7 @@ impl Provisioning {
 /// ⇒ 判断必须有住址，这张表就是它的住址。
 ///
 /// ⚠ **别把「今天这台机器上恰好有」写成一个 `who`** —— 前者是读数，
-/// 后者是设计判断。本表只收后者，所以每一条的 `why` 要给**代码里的住址**，不是一句形容。
+/// 后者是设计判断。本表只收后者，所以每一条的 `site` 要给**代码里的住址**，不是一句形容。
 #[derive(Clone)]
 pub struct UnmanagedEnv {
     pub id: &'static str,
@@ -435,16 +398,9 @@ pub struct UnmanagedEnv {
     pub named: &'static str,
     /// 它在哪台机器上（与 [`TouchedFile::host`] 同一套语义）。
     pub host: HostScope,
-    /// **app 在哪儿用到它** —— 给人看的那一句（住文案表，这里放取它的函数）。
-    ///
-    /// 它原先一格装两件事：给人看的话 ＋ 结尾一个 `<相对 src 的路径>.rs::<符号>` 代码住址。
-    /// 这一格会上配置面（`config_surface` 的 `note`），而界面文字不露源码住址
-    /// ⇒ 拆成两格：话在这里，住址在 [`Self::site`]。
-    pub why: Text,
-    /// **那个判断长在哪段代码上** —— 必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
+    /// **app 在哪儿用到它** —— 必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
     /// 判据只判「**有没有**住址」；那个住址今天解析不解析得到，由 `structural_scan` 里
-    /// 那条扫全仓代码住址的判据管（它会报「找不到这个符号 / 符号搬家了」）。
-    /// 从 `why` 的结尾拆出来的那一半 —— 不上界面。
+    /// 那条扫全仓代码住址的判据管（它会报「找不到这个符号 / 符号搬家了」）。不上界面。
     pub site: &'static str,
 }
 

@@ -85,7 +85,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
         // 这里一条 `Carrier` 就够；载体这一维只在真有几份的那几条上才多。
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.ccBusWhat", &[])),
             source: ToolSource::RepoDir {
                 repo_path: "src/shared/cc-bus",
             },
@@ -98,21 +97,16 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     // 这个目录在这一页上一行都没有 ⇒ 一处假申报盖住的不止它自己那一格。
                     path: CC_BUS_SKILL_DIR,
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusDirNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 TouchedFile {
                     path: USER_SETTINGS,
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.ccBusHooksNote", &[])
-                    })),
                     effect: TouchEffect::GenerateOnly,
                 },
                 TouchedFile {
                     path: "~/.local/bin/cc-*",
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusBinNote", &[]))),
                     effect: TouchEffect::ReadOnly,
                 },
             ],
@@ -126,72 +120,53 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: false,
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.accountsWhat", &[])),
             source: ToolSource::Generated,
             destination: ToolDestination::LocalHomeRelative(ACCOUNTS_ROOT_REL),
             touches: &[
                 TouchedFile {
                     path: ACCOUNTS_ROOT,
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.accountsVaultNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 各号共用的用户级 MCP：共享集合 ＋ 上次同步时各号的样子（这台后端自己的状态，里面有 MCP 的密钥 ⇒ 0600）。
                 TouchedFile {
                     path: "~/.cc-monitor/accounts-mcp.json",
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.accountsMcpStoreNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 额度账：各号最近一次从回包头看到的用量（中转那一路记，这台后端自己的状态）。
                 TouchedFile {
                     path: "~/.cc-monitor/quota.json",
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.quotaNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 账号轮换：每个会话在用的号与载入的策略 · 拖出来的先后 · 换号记录 · 新会话默认用哪份。
                 TouchedFile {
                     path: "~/.cc-monitor/rotation.json",
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsDataPaths.backend.rotation", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。
                 TouchedFile {
                     path: "~/.cc-monitor/launch-accounts.json",
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsDataPaths.backend.launchAccounts", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 },
                 TouchedFile {
                     path: "~/.cc-monitor/launch-pending",
                     host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsDataPaths.backend.launchNotes", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 换了启动器起会话时交给 claude 的答题插件（清单 ＋ 答题那一组 hook）。
                 TouchedFile {
                     path: "~/.cc-monitor/answer-plugin",
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.answerPluginNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 },
                 // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
                 TouchedFile {
                     path: "~/.cc-monitor/backups/accounts-mcp",
                     host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.accountsMcpBackupNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 },
             ],
@@ -209,7 +184,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.skillInstallWhat", &[])),
                 source: ToolSource::Generated,
                 // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
                 destination: ToolDestination::LocalHomeRelative(SKILLS_DIR_REL),
@@ -217,41 +191,28 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     TouchedFile {
                         path: SKILLS_DIR,
                         host: HostScope::Either,
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.skillInstallNote", &[])
-                        })),
                         effect: TouchEffect::OwnedFile,
                     },
                     TouchedFile {
                         path: "~/.cc-monitor/skill-installs.json",
                         host: HostScope::Either,
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.skillInstallsLedgerNote", &[])
-                        })),
                         effect: TouchEffect::OwnedFile,
                     },
                     // 卸掉不是 cc-monitor 装的 skill / MCP 之前，原样挪 / 抄到这里（要找回就从这里拿）。
                     TouchedFile {
                         path: "~/.cc-monitor/backups",
                         host: HostScope::Either,
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.extBackupsNote", &[])
-                        })),
                         effect: TouchEffect::OwnedFile,
                     },
                 ],
             },
             // 装到某个项目里的那一份：`<项目>/.claude/skills/<名>/`（项目由你在确认卡上选）⇒ 项目相对，同 `.mcp.json` 那一格。
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.projectSkillInstallWhat", &[])),
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(".claude/skills"),
                 touches: &[TouchedFile {
                     path: ".claude/skills",
                     host: HostScope::ProjectDir,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.projectSkillsNote", &[])
-                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -274,7 +235,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: false,
         uninstallable: false,
         carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhat", &[])),
             source: ToolSource::NotOurs {
                 who: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWho", &[])),
             },
@@ -284,9 +244,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             touches: &[TouchedFile {
                 path: PROJECTS_DIR,
                 host: HostScope::Either,
-                note: Some(Text(|| {
-                    copy_text("rsToolRegistry.tools.sessionRecordsNote", &[])
-                })),
                 effect: TouchEffect::ReadOnly,
             }],
         }],
@@ -300,14 +257,12 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             // **推 / 拉**（B）：这份文件唯一的写入来源 —— 条目是从另一台机器那份里**原样**拷来的（`mcp_sync.rs`），
             //   写经那台后端 `Door::put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是项目目录。
             Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.mcpSyncWhat", &[])),
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(PROJECT_MCP_FILE),
                 touches: &[TouchedFile {
                     path: PROJECT_MCP_FILE,
                     host: HostScope::ProjectDir,
                     // 资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.mcpSyncNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -323,7 +278,6 @@ pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[UnmanagedEnv {
     probe: EnvProbe::InSessionShell,
     named: "claude",
     host: HostScope::Either,
-    why: Text(|| copy_text("rsToolRegistry.env.agentCliWhy", &[])),
     site: "agents/claudecode/resume.rs::DEFAULT_COMMAND",
 }];
 

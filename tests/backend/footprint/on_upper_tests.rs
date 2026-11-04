@@ -59,15 +59,21 @@ fn an_extra_key_is_bad_args_on_the_frame_path_for_the_small_commands() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 两条大命令：入参多一个键 ⇒ `bad_args`，`client` 那一层也拒（一份事实都不读）。
+/// 足迹整张表不上线：命令表里只有它重排成的那一份（`data-report`），没有 `footprint-report`。
 #[test]
-fn an_extra_key_is_bad_args_on_the_frame_path_for_the_reports() {
+fn the_raw_footprint_table_is_not_a_frame_command() {
+    let names: Vec<&str> = crate::stream::inbound::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .collect();
+    assert!(names.contains(&"data-report"), "{names:?}");
+    assert!(!names.contains(&"footprint-report"), "{names:?}");
+}
+
+/// 大命令：入参多一个键 ⇒ `bad_args`，`client` 那一层也拒（一份事实都不读）。
+#[test]
+fn an_extra_key_is_bad_args_on_the_frame_path_for_the_report() {
     let cases = [
-        ("footprint-report", json!({ "bogus": 1 })),
-        (
-            "footprint-report",
-            json!({ "client": { "home": "/nonexistent-footprint-pin", "bogus": 1 } }),
-        ),
         ("data-report", json!({ "bogus": 1 })),
         (
             "data-report",

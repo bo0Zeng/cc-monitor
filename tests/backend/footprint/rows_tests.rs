@@ -71,22 +71,23 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
     let mut env = env_with(&h, &fs, Some("/usr/bin"));
     env.windows = true;
     env.system_root = Some("/sr");
-    let (at, found) = observe_unmanaged("ssh", EnvProbe::SshClient, &env);
-    assert_eq!(at.as_deref(), Some(sys_s.as_str()));
-    assert!(matches!(found, SurfaceState::Present { .. }), "{found:?}");
+    match observe_unmanaged("ssh", EnvProbe::SshClient, &env) {
+        SurfaceState::Present { detail } => assert!(detail.contains(&sys_s), "{detail}"),
+        other => panic!("{other:?}"),
+    }
 
     let none = empty_probe();
     let mut env = env_with(&h, &none, Some("/usr/bin"));
     env.windows = true;
     env.system_root = Some("/sr");
     assert_eq!(
-        observe_unmanaged("ssh", EnvProbe::SshClient, &env).1,
+        observe_unmanaged("ssh", EnvProbe::SshClient, &env),
         SurfaceState::Absent
     );
 
     let blind = env_with(&h, &none, None);
     assert!(matches!(
-        observe_unmanaged("ssh", EnvProbe::SshClient, &blind).1,
+        observe_unmanaged("ssh", EnvProbe::SshClient, &blind),
         SurfaceState::Undetermined { .. }
     ));
     // 登记表里 ssh 那一行用的就是这个查法。
@@ -780,38 +781,6 @@ fn host_is_not_a_function_of_destination() {
     );
 }
 
-/// **Phase G：保留 `Client`/`ProjectDir` 的理由是"合并会说假话"，这条把它钉住。**
-///
-/// 它们各只有 1 个使用者、零行为影响（都落 `project_onto_host` 的 `(_, other)`）
-/// ——按 ≥2 尺子本该砍掉。保留的唯一理由是 `host_label` 是**用户可见事实**：
-/// `$PROFILE` 确定在客户端、`.mcp.json` 确定在项目目录，合进 `Either` 后标签变成
-/// 「本机或远端」，对这两条都是**假的**。
-#[test]
-fn host_labels_are_distinct_and_truthful() {
-    use HostScope::*;
-    let all = [Client, Remote, Either, ProjectDir];
-    let labels: Vec<String> = all.iter().map(|h| host_label(*h)).collect();
-    // 四个标签互不相同——相同就说明该合并了
-    let uniq: std::collections::HashSet<_> = labels.iter().collect();
-    assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
-    // **确定在客户端 / 确定在项目目录的，标签里不许出现"远端"**
-    assert!(
-        !host_label(Client).contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
-        "$PROFILE 确定在客户端，标签不许含「远端」：{}",
-        host_label(Client)
-    );
-    assert!(
-        !host_label(ProjectDir).contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
-        ".mcp.json 确定在项目目录，标签不许含「远端」：{}",
-        host_label(ProjectDir)
-    );
-    // 而 Either 必须**明说**两端皆可（那是它存在的理由）
-    assert!(
-        host_label(Either).contains(copy_core::copy_static!("detail.label.local"))
-            && host_label(Either).contains(copy_core::copy_static!("rsConfigSurface.host.remote"))
-    );
-}
-
 /// `host` 的四个变体都得有真实使用者。
 ///
 /// **如实登记一处尺子不一致**（T04 审计重要 4）：这条用 **≥1**，而同文件
@@ -996,9 +965,9 @@ fn shell_profile_destinations_declare_their_own_placeholder() {
                 assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
                     c.touches.iter().any(|f| f.path == token),
-                    "{}: 载体「{}」的 touches 里没有 {token:?}",
+                    "{}: 载体（落点 {:?}）的 touches 里没有 {token:?}",
                     t.id,
-                    c.what
+                    c.destination
                 );
             }
         }
@@ -1076,16 +1045,15 @@ fn machine_with<'a>(
 
 /// 🔴 正题：**这一档真去查，而且「缺了」与「查不动」是两回事。**
 ///
-/// 一律 `Undetermined`、`path_resolved` 不解析的话，一台缺了 `tmux` 的机器和一台查不动的机器，
-/// 在这一页上**长得一模一样**。
+/// 一律 `Undetermined` 的话，一台缺了 `tmux` 的机器和一台查不动的机器**长得一模一样**。
 ///
 /// 本条三格一起断（缺一格都能装样子）：
-///   ① 装着的 ⇒ `Present`，而且 `path_resolved` **真解析出来了**（不再是 `None`）；
+///   ① 装着的 ⇒ `Present`；
 ///   ② 没装的 ⇒ `Absent` —— **查了、确认没有**，前端据此劝人去装；
 ///   ③ 读不到 `PATH` ⇒ `Undetermined { why }` —— **查不动**，绝不说成「不存在」。
 ///
 /// **失效方向**（件计划逐字）：「把 9 项的 `tier` 改个名就收工」⇒ ①②③ 全红。
-/// **死值验**：把 `observe_unmanaged` 的 `OnPath` 那一支退回 `(None, Undetermined{..})`
+/// **死值验**：把 `observe_unmanaged` 的 `OnPath` 那一支退回 `Undetermined{..}`
 /// ⇒ ①② 红；把 `Some(false)` 那一臂也答成 `Undetermined` ⇒ ② 红（而 ③ 仍绿，
 /// 那正说明 ② 与 ③ 是分开的两格）。
 #[test]
@@ -1117,17 +1085,12 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
         );
     }
 
-    // ① 装着的：真解析出来了 + Present
+    // ① 装着的：Present
     let ok = pick("git");
     assert!(
         matches!(ok.state, SurfaceState::Present { .. }),
         "PATH 上有它，这一行却不是 Present —— 实得 {:?}",
         ok.state
-    );
-    assert!(
-        ok.path_resolved.is_some(),
-        "这一档上一版**故意不解析**（「解析了就等于查了」）—— \
-             今天它必须解析，否则「真去查」这句话是假的"
     );
 
     // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是这里买到的东西
@@ -1174,11 +1137,11 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let env = env_with(&h, &fs, Some("/usr/bin"));
 
     // 查得动、确认没有 ⇒ 缺
-    let (_, missing) = observe_unmanaged("tmux", EnvProbe::OnPath, &env);
+    let missing = observe_unmanaged("tmux", EnvProbe::OnPath, &env);
     assert_eq!(missing, SurfaceState::Absent);
 
     // 探测掐掉 ⇒ 查不动（**同一个名字、同一台机器**，只换了查法）
-    let (_, blind) = observe_unmanaged(
+    let blind = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
             why: crate::agents::footprint_decl::Text(|| {
@@ -1194,14 +1157,11 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     );
 }
 
-/// 🔴 上屏那一半：**「档」进了线上形状，而且欠装口那一档不许被读成
-/// 「不该我们装」。**
+/// 🔴 **「档」在行上**：`data-report` 按档分「改过你的文件」与「要装」，档错了两样一起错。
 ///
-/// **死值验**：把 `SurfaceRow::tier` 摘掉 ⇒ 编译不过；
-/// 把 `unmanaged_row` 里 `AppShipsNoInstallerYet` 那一支的措辞换成
-/// 「不由 cc-monitor 提供」（也就是与「你自己装」那一支同文）⇒ 本条红。
+/// **死值验**：把 `SurfaceRow::tier` 摘掉 ⇒ 编译不过。
 #[test]
-fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
+fn every_row_carries_its_tier() {
     use crate::footprint::registry::{environment, EnvTier};
     use std::collections::BTreeSet;
     let h = home();
@@ -1226,64 +1186,12 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         "这一页上只出现了 {} 档（{seen:?}）",
         seen.len(),
     );
-
-    // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、需手动装），
-    //   不带「暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
-    //   也**不许**说成「不由 cc-monitor 提供」（不会被读成「不该我们装」）。
-    //   闭集里今天没有这一档的成员 ⇒ 造一项喂同一个出行函数（`unmanaged_row`），判它的措辞。
-    let synthetic = crate::footprint::registry::EnvEntry {
-        id: "owed-sample",
-        display_name: "owed".into(),
-        who: crate::agents::footprint_decl::Provisioning::AppShips,
-        tier: EnvTier::AppShipsNoInstallerYet,
-        why: String::new(),
-        backing: crate::footprint::registry::EnvBacking::Named {
-            named: "owed-sample",
-            host: HostScope::Client,
-            probe: crate::agents::footprint_decl::EnvProbe::OnPath,
-        },
-    };
-    let owed_row = unmanaged_row(
-        &synthetic,
-        "owed-sample",
-        HostScope::Client,
-        crate::agents::footprint_decl::EnvProbe::OnPath,
-        &env_with(&h, &fs, Some("/usr/bin")),
-    );
-    let owed: Vec<&SurfaceRow> = std::iter::once(&owed_row)
-        .chain(
-            rows.iter()
-                .filter(|r| r.tier == EnvTier::AppShipsNoInstallerYet),
-        )
-        .collect();
-    for r in &owed {
-        assert_eq!(
-            r.source_label,
-            copy_core::copy_text("rsConfigSurface.unmanaged.owedSource", &[]),
-            "`{}` 的「从哪来」不是欠装口那一档的那句",
-            r.tool_id
-        );
-        assert!(
-            !r.source_label.contains(copy_core::copy_static!(
-                "rsConfigSurface.unmanaged.checkOnlySource"
-            )),
-            "`{}` 的措辞把「欠的实现」说成了「不是我们提供的」—— \
-                 那与用户的裁定矛盾（不会被读成「不该我们装」）",
-            r.tool_id
-        );
-        assert_eq!(
-            r.effect_label,
-            copy_core::copy_text("rsConfigSurface.unmanaged.owedEffect", &[]),
-            "`{}` 的「我们做什么」不是欠装口那一档的那句",
-            r.tool_id
-        );
-    }
 }
 
-// ===== 建表：七个字段都真被用上（T01 审计 I2 的验收点） =====
+// ===== 建表：人群 = 闭集 =====
 
 #[test]
-fn rows_cover_every_touched_file_and_use_all_spec_fields() {
+fn rows_cover_every_touched_file() {
     let f = empty_probe();
     let h = home();
     let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
@@ -1301,146 +1209,20 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     );
     for r in &rows {
         assert!(!r.tool_id.is_empty() && !r.tool_name.is_empty()); // id / display_name
-        assert!(!r.source_label.is_empty()); // source
-        assert!(!r.effect_label.is_empty()); // touches[].effect
         assert!(!r.path_declared.is_empty()); // touches[].path
     }
-    // destination：远端那条必须解析不出本机路径
-    // 🔴 `remote-daemon` → `backend`，而它今天有三行 ⇒ 点名远端那一行。
-    let backend = rows
+    // destination：远端那条从这台看不进本机 stat ⇒ 查不动，不说「在」也不说「缺」
+    let backend: Vec<&SurfaceState> = rows
         .iter()
-        .find(|r| r.tool_id == "backend" && r.host_label == host_label(HostScope::Remote))
-        .unwrap();
-    assert!(backend.path_resolved.is_none());
-    // installable / uninstallable：三种组合都真出现在表里 —— 两个字段都得有区分力
-    // 「两者都 false」的样本是 `claude-code` —— 它是真的装不了（Claude Code 不该由 cc-monitor 装）。
-    let ccbus = rows.iter().find(|r| r.tool_id == "cc-bus").unwrap();
-    assert!(ccbus.installable && !ccbus.uninstallable, "装得了、卸不了");
-    let ccm = rows.iter().find(|r| r.tool_id == "ccm").unwrap();
-    assert!(ccm.installable && ccm.uninstallable);
-    let cc = rows.iter().find(|r| r.tool_id == "claude-code").unwrap();
-    assert!(!cc.installable && !cc.uninstallable, "装不了、也就无所谓卸");
-    // note：至少两个工具用上了
-    let with_note: std::collections::HashSet<_> = rows
-        .iter()
-        .filter(|r| r.note.is_some())
-        .map(|r| r.tool_id)
+        .filter(|r| r.tool_id == "backend")
+        .map(|r| &r.state)
         .collect();
     assert!(
-        with_note.len() >= 2,
-        "note 至少两个工具用上，实得 {with_note:?}"
+        backend
+            .iter()
+            .any(|s| matches!(s, SurfaceState::Undetermined { .. })),
+        "{backend:?}"
     );
-}
-
-/// `host` 必须进到行里（T04）——不上屏的话用户分不出说的是哪台机器。
-#[test]
-fn rows_carry_the_host_label() {
-    let h = home();
-    let fs = empty_probe();
-    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
-    for r in &rows {
-        assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
-    }
-    // 四档措辞各不相同，且能看出"哪台"
-    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label.as_str()).collect();
-    assert!(
-        labels.len() >= 3,
-        "至少三种 host 出现在表里，实得 {labels:?}"
-    );
-    let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
-    assert_eq!(ps.host_label, copy_core::copy_static!("detail.label.local"));
-    let ccm = rows
-        .iter()
-        .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")
-        .unwrap();
-    assert_eq!(
-        ccm.host_label,
-        copy_core::copy_static!("rsConfigSurface.host.remote")
-    );
-}
-
-/// `GenerateOnly` 的措辞必须**明确说我们不写**——这是用户定的调，写错了就是失信。
-#[test]
-fn generate_only_wording_says_we_do_not_write() {
-    let l = effect_label(TouchEffect::GenerateOnly);
-    assert_eq!(
-        l,
-        copy_core::copy_text("rsConfigSurface.effect.generateOnly", &[]),
-        "实得 {l:?}"
-    );
-    assert_eq!(
-        effect_label(TouchEffect::ReadOnly),
-        copy_core::copy_text("rsConfigSurface.effect.readOnly", &[])
-    );
-}
-
-// ===== B04 登记项：settings 的多个作用域 =====
-
-#[test]
-fn settings_scopes_include_local_and_admit_project_is_unchecked() {
-    let f = FsProbe {
-        meta: &|p| {
-            if p.to_string_lossy().ends_with("settings.json") {
-                Some((false, 10))
-            } else {
-                None
-            }
-        },
-        list: &|_| None,
-    };
-    let read = |p: &Path| {
-        if p.to_string_lossy().ends_with("settings.local.json") {
-            Some("{\"hooks\":{\"Stop\":\"cc-bus-stop-hook\"}}".to_string())
-        } else {
-            Some("{}".to_string())
-        }
-    };
-    // 第四个参数是「有没有钩子字样」（生产两臂都交后端判；这里按同一张字样表现判）。
-    let has = |p: &Path| read(p).map(|s| HOOK_PROGRAMS.iter().any(|n| s.contains(n)));
-    let s = build_settings_scopes(&home().join(".claude"), &has, &f);
-    assert_eq!(s.len(), 3);
-    // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
-    // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
-    // `PathBuf::from("/h").join(".claude")` 产出的是 `/h\.claude`（`join` 用平台分隔符），
-    // 于是这条测试**在主平台上从来没绿过**（CI 连红两个版本的那一条）。
-    // `Path::ends_with` 比的是完整分量，跨平台成立，而且比字符串后缀更严
-    // （`xx.claude/settings.json` 这种半个分量的巧合匹配不上）。
-    assert!(Path::new(&s[0].path).ends_with(Path::new(".claude").join("settings.json")));
-    assert!(Path::new(&s[1].path).ends_with(Path::new(".claude").join("settings.local.json")));
-    // local 里有钩子字样 → 必须报 true（B04 的病：只看第一份会说"没装"）
-    assert_eq!(s[1].has_cc_bus_hooks, Some(true));
-    assert_eq!(s[0].has_cc_bus_hooks, Some(false));
-    // 项目级：**明说没查**，且不给 has_cc_bus_hooks 一个假答案
-    assert_eq!(
-        s[2].scope,
-        copy_core::copy_static!("rsConfigSurface.scope.project")
-    );
-    assert_eq!(s[2].has_cc_bus_hooks, None);
-    match &s[2].state {
-        SurfaceState::Undetermined { why } => {
-            assert!(
-                why.contains(copy_core::copy_static!(
-                    "rsConfigSurface.scope.projectNotChecked"
-                )),
-                "实得 {why}"
-            );
-            assert!(
-                why.contains(copy_core::copy_static!(
-                    "rsConfigSurface.scope.projectNotChecked"
-                )),
-                "要点明结论可能错，实得 {why}"
-            );
-        }
-        other => panic!("项目级不该有确定结论，实得 {other:?}"),
-    }
-}
-
-/// 读不到文件时 `has_cc_bus_hooks` 必须是 `None`（**不猜 false**）。
-#[test]
-fn unreadable_settings_does_not_claim_absence_of_hooks() {
-    let s = build_settings_scopes(&home().join(".claude"), &|_| None, &empty_probe());
-    assert_eq!(s[0].has_cc_bus_hooks, None);
-    assert_eq!(s[1].has_cc_bus_hooks, None);
 }
 
 /// **本模块只准读，不准写**（红线）。守法是**白名单**而不是"不许出现哪些写法"
@@ -1545,14 +1327,8 @@ fn this_module_only_reads() {
     assert!(rows_fs.is_empty(), "判定那一层碰了 fs：{rows_fs:?}");
     assert_eq!(
         face_fs,
-        [
-            "Ro",
-            "metadata",
-            "metadata",
-            "read_dir",
-            "read_string_capped"
-        ],
-        "face 的 fs:: 用法变了（只准只读的 stat / 列目录 / 读钩子字样）"
+        ["Ro", "metadata", "read_dir"],
+        "face 的 fs:: 用法变了（只准只读的 stat / 列目录）"
     );
     assert_eq!(
         rows_use,
@@ -1581,7 +1357,7 @@ fn this_module_only_reads() {
             "use crate::platform::fs::Ro;",
             "use copy_core::copy_text;",
             "use std::path::{Path, PathBuf};",
-            "use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};"
+            "use rows::{build_rows, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};"
         ],
         "face 的 use 列表被改了——它是上面那条 fs:: 白名单的前提"
     );
@@ -1684,7 +1460,7 @@ fn the_session_shell_finds_each_windows_install_form() {
         };
         let mut env = env_with(&h, &fs, Some(dir));
         env.windows = windows;
-        let (_, state) = observe_unmanaged("claude", EnvProbe::InSessionShell, &env);
+        let state = observe_unmanaged("claude", EnvProbe::InSessionShell, &env);
         let want = if found {
             matches!(state, SurfaceState::Present { .. })
         } else {
@@ -1750,7 +1526,7 @@ fn every_path_row_finds_each_windows_install_form() {
         // 这一族看的是后端进程自己的 PATH，不是起会话那个 shell 的
         env.session_path = None;
         env.windows = windows;
-        let (_, state) = observe_unmanaged(named, EnvProbe::OnPath, &env);
+        let state = observe_unmanaged(named, EnvProbe::OnPath, &env);
         let want = if found {
             matches!(state, SurfaceState::Present { .. })
         } else {

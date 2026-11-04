@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::footprint::chores::{Chore, ChoreAction, ChoreKind, ChoreState};
-use crate::footprint::rows::SettingsScope;
 use serde_json::{json, Value};
 
 /// 自己家里那几样写成线上那一份（下面几条按格读）。
@@ -23,15 +22,8 @@ fn row(
         tool_id,
         tool_name: format!("{tool_id} 的名字"),
         tier,
-        source_label: String::new(),
         path_declared: path,
-        path_resolved: None,
-        note: None,
-        host_label: String::new(),
-        effect_label: String::new(),
         state,
-        installable: true,
-        uninstallable: true,
     }
 }
 
@@ -42,11 +34,8 @@ fn present() -> SurfaceState {
 }
 
 fn report(rows: Vec<SurfaceRow>) -> ConfigSurfaceReport {
-    let scopes: Vec<SettingsScope> = Vec::new();
     ConfigSurfaceReport {
         rows,
-        settings_scopes: scopes,
-        agent_home: "/h/.claude".into(),
         home: "/h".into(),
     }
 }
