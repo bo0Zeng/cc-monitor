@@ -46,7 +46,7 @@ fn row(
 }
 
 fn report() -> ConfigSurfaceReport {
-    let present = || SurfaceState::Present { detail: "d".into() };
+    let present = || SurfaceState::Present;
     ConfigSurfaceReport {
         rows: vec![
             row("ccm", EnvTier::AppInstalls, "~/.local/bin/ccm", present()),
@@ -80,7 +80,7 @@ fn report() -> ConfigSurfaceReport {
                 "odd",
                 EnvTier::UserInstallsWePrompt,
                 "odd",
-                SurfaceState::Undetermined { why: "w".into() },
+                SurfaceState::Undetermined,
             ),
         ],
         home: "/h".into(),

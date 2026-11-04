@@ -393,11 +393,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
             // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
             // （`project-mcp` 的落点是 `ProjectRelative`）⇒ 名字本身就是个占位符，
             // 拿 `$MCP_COMMAND` 去 `PATH` 上找只会恒答「没有」，那是一句**自信的错答案**。
-            probe: EnvProbe::CannotProbe {
-                why: Text(|| copy_text("rsToolRegistry.env.mcpServerCannotProbe", &[])),
-            },
+            probe: EnvProbe::CannotProbe,
             named: "$MCP_COMMAND",
-            host: HostScope::ProjectDir,
+            host: HostScope::Either,
             site: "mcp_edit.rs::upsert_mcp_server_value",
         },
     ),
@@ -459,11 +457,6 @@ pub(crate) fn tools() -> Vec<&'static ToolSpec> {
         .iter()
         .chain(crate::agents::footprint_faces().flat_map(|f| f.tools.iter()))
         .collect()
-}
-
-/// 环境清单手写那一半的**全集**（各平台合起来）：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
-pub(crate) fn unmanaged() -> Vec<&'static UnmanagedEnv> {
-    unmanaged_on(false)
 }
 
 /// 手写那一半里在这一种平台的那台上有意义的几条（[`OnPlatform::holds`]；各家足迹面带来的每台都要）。

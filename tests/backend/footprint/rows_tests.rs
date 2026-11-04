@@ -1,8 +1,8 @@
-//! # （足迹：查不了就说「未确定 ＋ 为什么」，而且只读）
+//! # （足迹：查不了就说「未确定」，而且只读）
 //!
-//! 核原文：红线格逐字「① 只读、按需读一次、不轮询」·「② 查不了的显示成「未确定 ＋ 为什么」，
+//! 核原文：红线格逐字「① 只读、按需读一次、不轮询」·「② 查不了的显示成「未确定」，
 //! 绝不显示成「缺失」」；同节「数据从哪来」格：表的人群是 `tool_registry.rs` 的环境清单闭集。
-//! 本族大头判 ②（Either 形态 · 列不出的目录 · 读不了的 settings · 分派不许有兜底臂 —— 一律 `Undetermined` 带理由），
+//! 本族大头判 ②（Either 形态 · 列不出的目录 · 读不了的 settings · 分派不许有兜底臂 —— 一律 `Undetermined`），
 //! `this_module_only_reads` 判 ①，`the_view_population_is_exactly_the_closed_set` 判闭集。
 //! 生成待贴文本那一档的措辞另住（「措辞定在后端，界面不各写一遍」）。
 //! ⚠ host / destination 那几条钉的是 `tool_registry` 今天的申报自洽，挂在本节「位置徽章要真实」底下，偏弱。〔JA1 点址 2026-09-24〕
@@ -14,14 +14,6 @@ use guard_core::ScanReport;
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
-            .into_iter()
-            .cloned()
-            .collect()
-    });
-#[allow(dead_code)]
-static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
-    std::sync::LazyLock::new(|| {
-        crate::footprint::registry::unmanaged()
             .into_iter()
             .cloned()
             .collect()
@@ -62,7 +54,6 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
     use crate::platform::ssh_client::WINDOWS_OPENSSH_REL;
     let h = home();
     let sys = Path::new("/sr").join(WINDOWS_OPENSSH_REL);
-    let sys_s = sys.to_string_lossy().into_owned();
     let meta = move |p: &Path| (p == sys.as_path()).then_some((false, 1u64));
     let fs = FsProbe {
         meta: &meta,
@@ -71,10 +62,10 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
     let mut env = env_with(&h, &fs, Some("/usr/bin"));
     env.windows = true;
     env.system_root = Some("/sr");
-    match observe_unmanaged("ssh", EnvProbe::SshClient, &env) {
-        SurfaceState::Present { detail } => assert!(detail.contains(&sys_s), "{detail}"),
-        other => panic!("{other:?}"),
-    }
+    assert_eq!(
+        observe_unmanaged("ssh", EnvProbe::SshClient, &env),
+        SurfaceState::Present
+    );
 
     let none = empty_probe();
     let mut env = env_with(&h, &none, Some("/usr/bin"));
@@ -86,16 +77,22 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
     );
 
     let blind = env_with(&h, &none, None);
-    assert!(matches!(
+    assert_eq!(
         observe_unmanaged("ssh", EnvProbe::SshClient, &blind),
-        SurfaceState::Undetermined { .. }
-    ));
+        SurfaceState::Undetermined
+    );
     // 登记表里 ssh 那一行用的就是这个查法。
-    let row = crate::footprint::registry::unmanaged()
+    let row = crate::footprint::registry::environment()
         .into_iter()
-        .find(|u| u.id == "ssh")
+        .find(|e| e.id == "ssh")
         .expect("ssh 那一行");
-    assert_eq!(row.probe, EnvProbe::SshClient);
+    assert!(matches!(
+        row.backing,
+        crate::footprint::registry::EnvBacking::Named {
+            probe: EnvProbe::SshClient,
+            ..
+        }
+    ));
 }
 
 // ===== 解析：五种结果各一条 =====
@@ -175,19 +172,19 @@ fn remote_project_and_profile_are_not_local() {
             &home().join(".claude")
         )
         .unwrap(),
-        PathResolution::Remote("~/.local/bin/ccm-backend".into())
+        PathResolution::Remote
     );
     assert_eq!(
         resolve_touched_path(
             Vantage::Monitor,
             ".mcp.json",
             &ToolDestination::ProjectRelative("x"),
-            HostScope::ProjectDir,
+            HostScope::Either,
             &home(),
             &home().join(".claude")
         )
         .unwrap(),
-        PathResolution::NeedsProjectDir(".mcp.json".into())
+        PathResolution::NeedsProjectDir
     );
     assert_eq!(
         resolve_touched_path(
@@ -238,27 +235,27 @@ fn declaration_inconsistency_is_an_error_not_a_guess() {
                 &home(),
                 &home().join(".claude")
             )
-            .is_err(),
+            .is_none(),
             "{declared:?} 配 {dest:?} 应判不自洽"
         );
     }
 }
 
-// ===== 观测：不确定必须带理由，且绝不冒充"缺失" =====
+// ===== 观测：查不动绝不冒充"缺失" =====
 
 #[test]
-fn undetermined_always_carries_a_reason() {
+fn unresolvable_here_is_undetermined_not_absent() {
     for res in [
-        PathResolution::Remote("~/x".into()),
-        PathResolution::NeedsProjectDir(".mcp.json".into()),
+        PathResolution::Remote,
+        PathResolution::NeedsProjectDir,
+        PathResolution::NeedsUserConfig,
         PathResolution::WindowsProfile,
     ] {
-        match observe(&res, &empty_probe()) {
-            SurfaceState::Undetermined { why } => {
-                assert!(!why.trim().is_empty(), "{res:?} 的理由不能是空的");
-            }
-            other => panic!("{res:?} 不该被判成 {other:?}——那是对能用的安装报假警报"),
-        }
+        assert_eq!(
+            observe(&res, &empty_probe()),
+            SurfaceState::Undetermined,
+            "{res:?} 不该被判成别的——那是对能用的安装报假警报"
+        );
     }
 }
 
@@ -280,15 +277,11 @@ fn present_absent_and_dir_listing() {
     };
     assert_eq!(
         observe(&PathResolution::Local("/h/f".into()), &f),
-        SurfaceState::Present {
-            detail: copy_core::copy_text("rsConfigSurface.observe.fileSize", &[("bytes", "42")])
-        }
+        SurfaceState::Present
     );
     assert_eq!(
         observe(&PathResolution::Local("/h/d".into()), &f),
-        SurfaceState::Present {
-            detail: copy_core::copy_text("rsConfigSurface.observe.dirCount", &[("count", "2")])
-        }
+        SurfaceState::Present
     );
     assert_eq!(
         observe(&PathResolution::Local("/h/nope".into()), &f),
@@ -303,15 +296,10 @@ fn unlistable_dir_is_undetermined_not_empty() {
         meta: &|_| Some((true, 0)),
         list: &|_| None,
     };
-    match observe(&PathResolution::Local("/h/d".into()), &f) {
-        SurfaceState::Undetermined { why } => {
-            assert!(
-                copy_core::copy_matches("rsConfigSurface.observe.dirUnlistable", &why),
-                "{why}"
-            )
-        }
-        other => panic!("实得 {other:?}"),
-    }
+    assert_eq!(
+        observe(&PathResolution::Local("/h/d".into()), &f),
+        SurfaceState::Undetermined
+    );
 }
 
 #[test]
@@ -332,29 +320,21 @@ fn glob_counts_only_real_matches() {
         prefix: "cc-".into(),
         suffix: String::new(),
     };
-    assert_eq!(
-        observe(&g, &f),
-        SurfaceState::Present {
-            detail: copy_core::copy_text("rsConfigSurface.observe.globCount", &[("count", "2")])
-        }
-    );
-    // 一个都不匹配 → 是真的没有，可以说 Absent
+    assert_eq!(observe(&g, &f), SurfaceState::Present);
+    // 一个都不匹配（`ccm` 缺连字符）→ 是真的没有，可以说 Absent
     let none = FsProbe {
         meta: &|_| None,
-        list: &|_| Some(vec!["x".into()]),
+        list: &|_| Some(vec!["ccm".into(), "x".into()]),
     };
     assert_eq!(observe(&g, &none), SurfaceState::Absent);
     // 目录列不出来 → **不能说 Absent**
-    assert!(matches!(
-        observe(&g, &empty_probe()),
-        SurfaceState::Undetermined { .. }
-    ));
+    assert_eq!(observe(&g, &empty_probe()), SurfaceState::Undetermined);
 }
 
 // ===== 结构性守卫：注册表里**每一条**申报路径都必须可解析 =====
 
 /// 要件 1+2+3：枚举 `TOOLS` 里每一条 `touches[].path`，逐条要求它能被解析成五种之一，
-/// 落进 `Err` 就是违规；`require` 拿计数自检。
+/// 落进 `None` 就是违规；`require` 拿计数自检。
 ///
 /// 这条守的是一个具体的退化：有人图省事把散文写回 `path`
 /// （第一版 6 个工具里就有 4 条是散文），于是审计页那一行永远显示"申报路径与落点不自洽"。
@@ -366,15 +346,18 @@ fn every_declared_path_resolves() -> ScanReport {
     for t in TOOLS.iter() {
         for (c, f) in t.carrier_touches() {
             r.checked += 1;
-            if let Err(e) = resolve_touched_path(
+            if resolve_touched_path(
                 Vantage::Monitor,
                 f.path,
                 &c.destination,
                 f.host,
                 &home(),
                 &home().join(".claude"),
-            ) {
-                r.violations.push(format!("{}/{:?}：{e}", t.id, f.path));
+            )
+            .is_none()
+            {
+                r.violations
+                    .push(format!("{}/{:?}：申报路径与落点不自洽", t.id, f.path));
             }
         }
     }
@@ -411,13 +394,13 @@ fn prose_paths_are_rejected() {
             &home(),
             &home().join(".claude"),
         );
-        // **必须直接 Err。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
+        // **必须直接判不自洽（`None`）。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
         // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
         // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`，`dir` 干干净净，
         // 我的谓词只看了 `dir`。测试当场红，才补上 `resolve_touched_path` 开头那道
         // ASCII-graphic 白名单。**断言要打在"解析必须失败"上，不是打在结果长相上。**
         assert!(
-            r.is_err(),
+            r.is_none(),
             "散文路径 {declared:?} 必须被判不自洽，实得 {r:?}"
         );
     }
@@ -479,23 +462,19 @@ fn either_never_absent_with(probe: &FsProbe) {
             .unwrap()
         })
     {
+        // 项目目录里的那几条也是 `Either`：解析由落点 `ProjectRelative` 定（「查不动」）。
         assert!(
-            matches!(f, PathResolution::EitherHost { .. }),
-            "Either 的路径必须解析成 EitherHost，实得 {f:?}"
+            matches!(
+                f,
+                PathResolution::EitherHost { .. } | PathResolution::NeedsProjectDir
+            ),
+            "Either 的路径必须解析成 EitherHost（或项目目录相对），实得 {f:?}"
         );
-        match observe(&f, nothing) {
-            SurfaceState::Undetermined { why } => {
-                assert!(
-                    copy_core::copy_matches("rsConfigSurface.observe.eitherAbsent", &why)
-                        || copy_core::copy_matches(
-                            "rsConfigSurface.observe.eitherUndetermined",
-                            &why
-                        ),
-                    "理由要说清为什么：{why}"
-                );
-            }
-            other => panic!("本机没找到不等于不存在，不许判 {other:?}"),
-        }
+        assert_eq!(
+            observe(&f, nothing),
+            SurfaceState::Undetermined,
+            "本机没找到不等于不存在：{f:?}"
+        );
     }
 }
 
@@ -507,33 +486,17 @@ fn either_host_reports_present_when_found_locally() {
         list: &|_| None,
     };
     let r = PathResolution::EitherHost(Box::new(PathResolution::Local("/h/.cc-bus".into())));
-    match observe(&r, &f) {
-        SurfaceState::Present { detail } => {
-            assert!(
-                copy_core::copy_matches("rsConfigSurface.observe.eitherPresent", &detail),
-                "实得 {detail}"
-            );
-            assert!(
-                detail.contains(&copy_core::copy_text(
-                    "rsConfigSurface.observe.fileSize",
-                    &[("bytes", "7")]
-                )),
-                "内层细节要保住：{detail}"
-            );
-        }
-        other => panic!("实得 {other:?}"),
-    }
+    assert_eq!(observe(&r, &f), SurfaceState::Present);
 }
 
-/// **`Either` + glob 必须保住计数**（T04 审计阻塞 1）。
+/// **`Either` + glob 必须照 glob 去匹配**（T04 审计阻塞 1）。
 ///
 /// 第一版 `EitherHost { local: PathBuf }` 把 glob 拍成 `dir.join("cc-*")`，
-/// 于是 `observe` 去 stat 一个**字面含 `*` 的文件名**、计数分支永远走不到，
-/// 那一行从 T04 之前正确的「12 项匹配」退化成「未确定 —— 本机 …/cc-* 不存在」
-/// ——`why` 里陈述了一个**假事实**（实测 `ls -d ~/.local/bin/'cc-*'` 报不存在，
+/// 于是 `observe` 去 stat 一个**字面含 `*` 的文件名**、匹配分支永远走不到，
+/// 那一行从 T04 之前正确的「在」退化成「未确定」（实测 `ls -d ~/.local/bin/'cc-*'` 报不存在，
 /// 而那个目录下真有 12 条 `cc-*`）。
 #[test]
-fn either_host_keeps_the_glob_count() {
+fn either_host_keeps_the_glob_match() {
     // 真实盘面：`~/.local/bin` 下 12 条 cc-*（其中一条属于 cc-acct-iso）
     let names: Vec<String> = (0..11)
         .map(|i| format!("cc-{i}"))
@@ -558,22 +521,11 @@ fn either_host_keeps_the_glob_count() {
         &home().join(".claude"),
     )
     .unwrap();
-    match observe(&r, &f) {
-        SurfaceState::Present { detail } => {
-            assert!(
-                detail.contains(&copy_core::copy_text(
-                    "rsConfigSurface.observe.globCount",
-                    &[("count", "12")]
-                )),
-                "计数丢了：{detail}"
-            );
-            assert!(
-                copy_core::copy_matches("rsConfigSurface.observe.eitherPresent", &detail),
-                "要标明是本机：{detail}"
-            );
-        }
-        other => panic!("有 12 条匹配却报 {other:?}——这正是阻塞 1 的形态"),
-    }
+    assert_eq!(
+        observe(&r, &f),
+        SurfaceState::Present,
+        "有 12 条匹配却不报在——这正是阻塞 1 的形态"
+    );
 }
 
 /// **跨字段一致性**：`host == Remote` ⇔ 解析结果不含任何本机路径。
@@ -686,12 +638,12 @@ fn every_host_declaration_is_pinned() {
         // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
         // 同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
-        //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
-        ("project-mcp", ".mcp.json", ProjectDir),
+        //    `Either`：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
+        ("project-mcp", ".mcp.json", Either),
         // 资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
         ("skill-install", "~/.claude/skills", Either),
-        // 装到某个项目里的那一份：写在你在确认卡上选的那个项目目录里 ⇒ 同 `.mcp.json` 那两行，`ProjectDir`。
-        ("skill-install", ".claude/skills", ProjectDir),
+        // 装到某个项目里的那一份：写在你在确认卡上选的那个项目目录里 ⇒ 同 `.mcp.json` 那一行，`Either`。
+        ("skill-install", ".claude/skills", Either),
         // 同一格的第二个文件：那台后端自己的装记录（装到哪台就记在哪台）⇒ `Either`。
         ("skill-install", "~/.cc-monitor/skill-installs.json", Either),
         // 卸掉不是 cc-monitor 装的之前放一份的地方：在被卸的那台 ⇒ `Either`。
@@ -746,7 +698,7 @@ fn host_is_not_a_function_of_destination() {
                 ToolDestination::LocalHomeRelative(_) => "LocalHomeRelative",
                 ToolDestination::UserShellProfile(_) => "UserShellProfile",
                 ToolDestination::ProjectRelative(_) => "ProjectRelative",
-                ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
+                ToolDestination::NotInstalledByUs => "NotInstalledByUs",
             };
             for f in c.touches {
                 by_dest.entry(key.to_string()).or_default().insert(f.host);
@@ -781,11 +733,11 @@ fn host_is_not_a_function_of_destination() {
     );
 }
 
-/// `host` 的四个变体都得有真实使用者。
+/// `host` 的三个变体都得有真实使用者。
 ///
 /// **如实登记一处尺子不一致**（T04 审计重要 4）：这条用 **≥1**，而同文件
 /// `shell_profile_destinations_declare_their_own_placeholder` 用 **≥2**。
-/// 变体真实用户数：`Client` 1 条/1 工具、`ProjectDir` 1/1、`Either` 4 条/2 工具、`Remote` 4/3。
+/// 变体真实用户数现算（上面那张钉死的表）。
 ///
 /// 为什么**不**统一到 ≥2：同文件的 `ToolSource` 5 个变体里 4 个是单用户（T01 保留了它），
 /// `TouchEffect` 的门禁也只要求 `>= 3` 种被用到。**描述数据的 enum 允许变体各自单用户**
@@ -799,12 +751,7 @@ fn all_host_scopes_are_really_used() {
         .iter()
         .flat_map(|t| t.touches().map(|f| f.host))
         .collect();
-    for want in [
-        HostScope::Client,
-        HostScope::Remote,
-        HostScope::Either,
-        HostScope::ProjectDir,
-    ] {
+    for want in [HostScope::Client, HostScope::Remote, HostScope::Either] {
         assert!(
             used.contains(&want),
             "{want:?} 没有任何使用者，那它不该存在"
@@ -812,13 +759,11 @@ fn all_host_scopes_are_really_used() {
     }
 }
 
-/// **`host` 投影不许吞掉 `NeedsUserConfig`**：那个结果比 `Remote` 信息更多
-/// （它告诉用户去哪儿看那个值），覆盖掉是降级。
+/// **`host` 投影只改写本机可解析的那两种**：`NeedsUserConfig` 原样留下，不被改写成 `Remote`。
 #[test]
 fn host_projection_preserves_the_richer_resolution() {
     // 今天闭集里没有「远端 × 用户选的 profile」那一格的真成员 ⇒ 造一个落点喂同一个解析函数。
     let dest = ToolDestination::UserShellProfile(ShellProfile::PosixRc);
-    let want = ShellProfile::PosixRc.what();
     let r = resolve_touched_path(
         Vantage::Monitor,
         ShellProfile::PosixRc.token(),
@@ -828,10 +773,11 @@ fn host_projection_preserves_the_richer_resolution() {
         &home().join(".claude"),
     )
     .unwrap();
-    match r {
-        PathResolution::NeedsUserConfig { what } => assert_eq!(what, want, "实得 {what}"),
-        other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
-    }
+    assert_eq!(
+        r,
+        PathResolution::NeedsUserConfig,
+        "远端投影把 NeedsUserConfig 吞成了 {r:?}"
+    );
 }
 
 /// **destination 的校验不许被 host 短路。**
@@ -841,12 +787,7 @@ fn host_projection_preserves_the_richer_resolution() {
 /// **完全不再执行**——而 10 条 touches 里 7 条是这两种 host。
 #[test]
 fn destination_checks_still_run_under_every_host() {
-    for host in [
-        HostScope::Client,
-        HostScope::Remote,
-        HostScope::Either,
-        HostScope::ProjectDir,
-    ] {
+    for host in [HostScope::Client, HostScope::Remote, HostScope::Either] {
         for bad in ["/etc/passwd", "~/.local/*/bin", "~/.local/bin/*-*"] {
             let e = resolve_touched_path(
                 Vantage::Monitor,
@@ -857,7 +798,7 @@ fn destination_checks_still_run_under_every_host() {
                 &home().join(".claude"),
             );
             assert!(
-                e.is_err(),
+                e.is_none(),
                 "host={host:?} 时 {bad:?} 仍该判不自洽，实得 {e:?}"
             );
         }
@@ -948,7 +889,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 
 /// **用户选的 shell profile 不许冒充常量**：`UserShellProfile` 的每一个载体，申报路径里都有它那种 profile 的占位符
 /// （`$PROFILE` / `$POSIX_RC`，[`ShellProfile::token`]），否则就是又一次"凭印象写个常量"；
-/// 用户自己选的那一种（POSIX rc）解析成「去哪儿看」那一句（[`PathResolution::NeedsUserConfig`]），不是一条假路径。
+/// 用户自己选的那一种（POSIX rc）解析成「查不动」（[`PathResolution::NeedsUserConfig`]），不是一条假路径。
 ///
 /// 「路径由用户配置决定」不单设一个变体：它只有 POSIX rc 一个使用者，按 ≥2 规矩归在 `UserShellProfile`
 /// （它说的本来就是同一件事：用户选的 shell profile）。
@@ -986,12 +927,11 @@ fn shell_profile_destinations_declare_their_own_placeholder() {
         &home().join(".claude"),
     )
     .unwrap();
-    match r {
-        PathResolution::NeedsUserConfig { what } => {
-            assert!(!what.trim().is_empty(), "POSIX rc 没告诉用户去哪儿看")
-        }
-        other => panic!("用户自己选的 POSIX rc 解析成了 {other:?}"),
-    }
+    assert_eq!(
+        r,
+        PathResolution::NeedsUserConfig,
+        "用户自己选的 POSIX rc 解析成了 {r:?}"
+    );
 }
 
 /// 🔴 **这个视图的人群 = 环境清单的闭集**，一项不多、一项不少。
@@ -1050,7 +990,7 @@ fn machine_with<'a>(
 /// 本条三格一起断（缺一格都能装样子）：
 ///   ① 装着的 ⇒ `Present`；
 ///   ② 没装的 ⇒ `Absent` —— **查了、确认没有**，前端据此劝人去装；
-///   ③ 读不到 `PATH` ⇒ `Undetermined { why }` —— **查不动**，绝不说成「不存在」。
+///   ③ 读不到 `PATH` ⇒ `Undetermined` —— **查不动**，绝不说成「不存在」。
 ///
 /// **失效方向**（件计划逐字）：「把 9 项的 `tier` 改个名就收工」⇒ ①②③ 全红。
 /// **死值验**：把 `observe_unmanaged` 的 `OnPath` 那一支退回 `Undetermined{..}`
@@ -1088,7 +1028,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
     // ① 装着的：Present
     let ok = pick("git");
     assert!(
-        matches!(ok.state, SurfaceState::Present { .. }),
+        ok.state == SurfaceState::Present,
         "PATH 上有它，这一行却不是 Present —— 实得 {:?}",
         ok.state
     );
@@ -1105,13 +1045,11 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
     // ③ 读不到 PATH：查不动 —— 与 ② **必须是两回事**
     let blind_rows = build_rows(&env_with(&h, &fs, None), None);
     let blind = blind_rows.iter().find(|r| r.tool_id == "tmux").unwrap();
-    match &blind.state {
-        SurfaceState::Undetermined { why } => assert!(
-            !why.is_empty(),
-            "「查不动」必须带理由，否则它和「缺失」在观感上没区别"
-        ),
-        other => panic!("读不到 PATH 时必须是「查不动」，实得 {other:?}"),
-    }
+    assert_eq!(
+        blind.state,
+        SurfaceState::Undetermined,
+        "读不到 PATH 时必须是「查不动」"
+    );
     assert_ne!(
         gone.state, blind.state,
         "「查了、确认没有」与「查不动」显示成了同一格 —— \
@@ -1141,16 +1079,8 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     assert_eq!(missing, SurfaceState::Absent);
 
     // 探测掐掉 ⇒ 查不动（**同一个名字、同一台机器**，只换了查法）
-    let blind = observe_unmanaged(
-        "tmux",
-        EnvProbe::CannotProbe {
-            why: crate::agents::footprint_decl::Text(|| {
-                "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
-            }),
-        },
-        &env,
-    );
-    assert!(matches!(blind, SurfaceState::Undetermined { .. }));
+    let blind = observe_unmanaged("tmux", EnvProbe::CannotProbe, &env);
+    assert_eq!(blind, SurfaceState::Undetermined);
     assert_ne!(
         missing, blind,
         "掐掉探测之后这一行仍然说「缺」—— 那是替用户下了一个他没做过的结论"
@@ -1218,9 +1148,7 @@ fn rows_cover_every_touched_file() {
         .map(|r| &r.state)
         .collect();
     assert!(
-        backend
-            .iter()
-            .any(|s| matches!(s, SurfaceState::Undetermined { .. })),
+        backend.iter().any(|s| **s == SurfaceState::Undetermined),
         "{backend:?}"
     );
 }
@@ -1281,9 +1209,10 @@ fn the_path_resolution_dispatch_has_no_catch_all_arm() {
             }
         }
     }
+    // 分派今天只剩 `observe` 那一处（展示用的 `describe_target` 随「查不动的理由」一起删了），七个变体各一臂。
     assert!(
-        arms >= 8,
-        "只扫到 {arms} 条 `PathResolution::` 臂（08-06 实测 10+）—— 抽取坏了，本条此刻是空转的"
+        arms >= 7,
+        "只扫到 {arms} 条 `PathResolution::` 臂（11-04 实测 7）—— 抽取坏了，本条此刻是空转的"
     );
     assert!(
         offenders.is_empty(),
@@ -1335,7 +1264,6 @@ fn this_module_only_reads() {
         [
             "use super::registry::{EnvBacking, EnvEntry, EnvTier};",
             "use crate::agents::footprint_decl::{",
-            "use copy_core::copy_text;",
             "use std::path::{Path, PathBuf};"
         ],
         "判定那一层的 use 列表被改了——它是上面那条「零 fs::」的前提"
@@ -1384,26 +1312,9 @@ fn this_module_only_reads() {
 fn a_local_footprint_path_uses_one_separator_throughout() {
     assert_eq!(native_rel(".cc-monitor/bin", '\\'), ".cc-monitor\\bin");
     assert_eq!(native_rel(".cc-monitor/bin", '/'), ".cc-monitor/bin");
-    let glob = PathResolution::LocalGlob {
-        dir: std::path::PathBuf::from(format!(
-            "C:\\Users\\user\\{}",
-            native_rel(".cc-monitor/bin", '\\')
-        )),
-        prefix: "ccm".into(),
-        suffix: String::new(),
-    };
-    assert_eq!(
-        describe_target_with(&glob, '\\'),
-        "C:\\Users\\user\\.cc-monitor\\bin\\ccm*"
-    );
-    let unix = PathResolution::LocalGlob {
-        dir: std::path::PathBuf::from("/home/u/.cc-monitor/bin"),
-        prefix: "ccm".into(),
-        suffix: String::new(),
-    };
-    assert_eq!(
-        describe_target_with(&unix, '/'),
-        "/home/u/.cc-monitor/bin/ccm*"
+    assert!(
+        !native_rel(".cc-monitor/bin/ccm", '\\').contains('/'),
+        "Windows 那一臂整串不许留 `/`"
     );
 }
 
@@ -1462,7 +1373,7 @@ fn the_session_shell_finds_each_windows_install_form() {
         env.windows = windows;
         let state = observe_unmanaged("claude", EnvProbe::InSessionShell, &env);
         let want = if found {
-            matches!(state, SurfaceState::Present { .. })
+            state == SurfaceState::Present
         } else {
             state == SurfaceState::Absent
         };
@@ -1528,7 +1439,7 @@ fn every_path_row_finds_each_windows_install_form() {
         env.windows = windows;
         let state = observe_unmanaged(named, EnvProbe::OnPath, &env);
         let want = if found {
-            matches!(state, SurfaceState::Present { .. })
+            state == SurfaceState::Present
         } else {
             state == SurfaceState::Absent
         };

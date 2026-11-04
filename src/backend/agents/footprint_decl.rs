@@ -6,8 +6,6 @@
 //! （适配层在功能之下：agents 那个包不依赖任何功能包）。
 //! 下面的文档里没写全路径的 `environment` · `EnvTier` · `TOOLS` · `UNMANAGED_ENV` 都住主 crate 的 `footprint::registry`。
 
-use copy_core::copy_text;
-
 /// 表里给人看的那一句 —— **取文函数**，不是字面量。
 ///
 /// 常量表里调不了函数 ⇒ 放一个不捕获的闭包（`Text(|| copy_text("key", &[]))`），用到时才取文；
@@ -67,12 +65,12 @@ pub enum ToolSource {
     EmbeddedBinary { repo_path: &'static str },
     /// 由 cc-monitor 现场生成的文本片段（PowerShell profile 块、shell 别名块、钩子片段）。
     Generated,
-    /// **不是我们提供的** —— 内容由别人放在那儿，我们只读它。`who` 说清是谁放的。
+    /// **不是我们提供的** —— 内容由别人放在那儿，我们只读它。
     ///
     /// 上面四个变体都预设「这东西的内容出自本仓」，
     /// 而 app 最吃重的那一项（Claude Code 自己写的会话记录）根本不出自本仓。
     /// 没有这一格，它就只能靠**不进表**来表示 —— 而那正是这一层在治的病。
-    NotOurs { who: Text },
+    NotOurs,
 }
 
 /// 装到哪。**变体数与使用者数现算**，不写死在这里。
@@ -108,7 +106,7 @@ pub enum ToolDestination {
     /// 而「声明一个不存在的落点比不声明更坏」这句话本模块自己写过。
     /// ⇒ 显式承认「这不是我们的落点」。
     /// 判据 `installable_tools_declare_where_they_land` 钉住：用了这一格就不许 `installable: true`。
-    NotInstalledByUs { whose: Text },
+    NotInstalledByUs,
 }
 
 /// [`ToolDestination::UserShellProfile`] 是哪一种 shell profile。
@@ -117,7 +115,7 @@ pub enum ShellProfile {
     /// PowerShell 的 `$PROFILE`：路径由 PowerShell 自己定，这台问得出来（`PathResolution::WindowsProfile`）。
     PowerShell,
     /// 用户在确认卡上选的那一份 POSIX rc（`.bashrc` / `.zshrc` / `config.fish` 写法不同，产品不替人选）：
-    /// 路径是配置项，不是常量 ⇒ 解析成「去哪儿看」那一句（[`ShellProfile::what`]）。
+    /// 路径是配置项，不是常量 ⇒ 解析成「查不动」（`PathResolution::NeedsUserConfig`）。
     PosixRc,
 }
 
@@ -127,14 +125,6 @@ impl ShellProfile {
         match self {
             ShellProfile::PowerShell => "$PROFILE",
             ShellProfile::PosixRc => "$POSIX_RC",
-        }
-    }
-
-    /// 用户选的那一份去哪儿看（只有 [`ShellProfile::PosixRc`] 要说；`$PROFILE` 这台问得出来）。
-    pub fn what(self) -> String {
-        match self {
-            ShellProfile::PowerShell => "$PROFILE".to_string(),
-            ShellProfile::PosixRc => copy_text("rsToolRegistry.tools.posixAliasesRcWhat", &[]),
         }
     }
 }
@@ -151,12 +141,12 @@ impl ShellProfile {
 /// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
 /// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
 /// **这正是 T02 专门要防的那类假警报，出现在那一页上格外讽刺。**
-/// ## 四个变体各管什么
+/// ## 三个变体各管什么
 ///
 /// - `Client`：住 monitor 那台 ⇒ 由带着 monitor 那几条事实的那一问答，远端那一栏不进人群（`rows::build_rows`）。
 /// - `Remote`：从 monitor 那台看不进本机 stat（「查不动」），由那台自己的后端答。
-/// - `Either`：本机没找到 ≠ 不存在。
-/// - `ProjectDir`：解析结果由 `destination`（`ProjectRelative → NeedsProjectDir`）决定，这一格今天只是申报。
+/// - `Either`：本机没找到 ≠ 不存在。项目目录里的那几条也归这里（项目在哪台它就在哪台；
+///   解析由落点 `ProjectRelative` 定，答「查不动」）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum HostScope {
     /// cc-monitor 自己跑的那台（Windows 客户端）。
@@ -171,8 +161,6 @@ pub enum HostScope {
     ///
     /// 关键语义：**「本机没找到」≠「不存在」**。这一条就是上面那个假警报的解药。
     Either,
-    /// 项目目录内（在哪台机器上取决于那个项目是本地还是远端）。
-    ProjectDir,
 }
 
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
@@ -322,25 +310,12 @@ pub enum Provisioning {
 }
 
 impl Provisioning {
-    /// 三值的**闭集**本身。现算用〔报一个基数也是复述〕。今天只有判据用它与 [`Self::label`]。
+    /// 三值的**闭集**本身。现算用〔报一个基数也是复述〕。今天只有判据用它。
     pub const ALL: &'static [Provisioning] = &[
         Provisioning::AppShips,
         Provisioning::UserProvides,
         Provisioning::NotAnInstall,
     ];
-
-    /// 给人看的措辞。定在这里，UI 与诊断文本不再各写一遍。
-    pub fn label(self) -> String {
-        match self {
-            Provisioning::AppShips => copy_text("rsToolRegistry.provisioning.appShips", &[]),
-            Provisioning::UserProvides => {
-                copy_text("rsToolRegistry.provisioning.userProvides", &[])
-            }
-            Provisioning::NotAnInstall => {
-                copy_text("rsToolRegistry.provisioning.notAnInstall", &[])
-            }
-        }
-    }
 
     /// `TOOLS` 那一半 —— **派生，不手填**：落点是 [`ToolDestination::NotInstalledByUs`]
     /// 就是「不是装出来的」，其余一律「app 自带」（`TOOLS` 收的本来就是
@@ -364,7 +339,7 @@ impl Provisioning {
         let all_not_ours = t
             .carriers
             .iter()
-            .all(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }));
+            .all(|c| matches!(c.destination, ToolDestination::NotInstalledByUs));
         if all_not_ours {
             Provisioning::NotAnInstall
         } else {
@@ -413,7 +388,7 @@ pub struct UnmanagedEnv {
 /// # ⚠ [`EnvProbe::CannotProbe`] **不是「不查」**
 ///
 /// 它是「**查了，查不动**」。两者在这一页上显示成两回事：
-/// 「查了、确认没有」= `SurfaceState::Absent`；「查不动」= `SurfaceState::Undetermined { why }`。
+/// 「查了、确认没有」= `SurfaceState::Absent`；「查不动」= `SurfaceState::Undetermined`。
 /// 这条分法**是现成的** —— 前端 `readiness.ts` 的 `missing` / `unknown` 就是它，
 /// **不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -427,9 +402,9 @@ pub enum EnvProbe {
     InSessionShell,
     /// ssh 客户端：走开远端终端用的同一个找法（`platform::ssh_client::locate_with`：Windows 先查 System32\OpenSSH，再按 PATH 找 `ssh.exe`；别处按 PATH 找 `ssh`）。
     SshClient,
-    /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
+    /// 查不动：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
-    /// 拿「查不动」当「不查」的遮羞布 —— 那正是这一层在治的病。
-    CannotProbe { why: Text },
+    /// 拿「查不动」当「不查」的遮羞布 —— 那正是这一层在治的病。理由写在登记那一条的注释里。
+    CannotProbe,
 }

@@ -280,6 +280,63 @@ fn declarations_carry_no_unread_prose() {
             "site"
         ]
     );
+    // 判定的输出：`data-report` 只看在 / 缺 / 查不动这一档，不读带着的那句话。
+    let rows = production_code(ROWS_SRC);
+    assert_eq!(
+        variants_of(&rows, "SurfaceState"),
+        vec!["Present", "Absent", "Undetermined"]
+    );
+    // 「在项目目录里」没有行为看它（解析由落点 `ProjectRelative` 定）⇒ 不另设一档。
+    assert_eq!(
+        variants_of(&code, "HostScope"),
+        vec!["Client", "Remote", "Either"]
+    );
+    assert_eq!(
+        variants_of(&code, "EnvProbe"),
+        vec!["OnPath", "InSessionShell", "SshClient", "CannotProbe"]
+    );
+    // 手写那一半的全集没人调（人群只走 `environment`）。
+    assert!(
+        !code.contains("fn unmanaged()"),
+        "`registry::unmanaged()` 生产里没人调"
+    );
+}
+
+/// 判定那一份的源码（`SurfaceState` 住这里）。
+const ROWS_SRC: &str = include_str!("../../../src/backend/footprint/rows.rs");
+
+/// 某个枚举的各个变体，**连它带的东西原样**（`Present { detail: String }` ⇒ 那一整段）：属性与空白去掉。
+fn variants_of(code: &str, enum_name: &str) -> Vec<String> {
+    let (a, b) = matched_span(code, &format!("pub enum {enum_name} {{"), 0)
+        .unwrap_or_else(|| panic!("取不到 {enum_name} 的声明体——扫描器失效了"));
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut depth = 0i32;
+    for c in code[a..b].chars() {
+        match c {
+            '{' | '(' | '[' => depth += 1,
+            '}' | ')' | ']' => depth -= 1,
+            _ => {}
+        }
+        if c == ',' && depth == 0 {
+            out.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(c);
+        }
+    }
+    out.push(cur);
+    out.into_iter()
+        .map(|v| {
+            v.lines()
+                .map(str::trim)
+                .filter(|l| !l.starts_with('#'))
+                .collect::<Vec<_>>()
+                .join(" ")
+                .trim()
+                .to_string()
+        })
+        .filter(|v| !v.is_empty())
+        .collect()
 }
 
 /// **文档里提到 `#[cfg(test)]` 不许把切点提前**（这是真踩过的：5 条测试当场全红）。
@@ -612,7 +669,7 @@ fn landing_path_of(d: &ToolDestination) -> Option<String> {
         }
         ToolDestination::ProjectRelative(p) => Some((*p).to_string()),
         ToolDestination::UserShellProfile(p) => Some(p.token().to_string()),
-        ToolDestination::NotInstalledByUs { .. } => None,
+        ToolDestination::NotInstalledByUs => None,
     }
 }
 
@@ -847,7 +904,7 @@ fn carriers_do_not_mix_ours_and_not_ours() {
         let n = t
             .carriers
             .iter()
-            .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }))
+            .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs))
             .count();
         assert!(
             n == 0 || n == t.carriers.len(),
@@ -866,18 +923,14 @@ fn carriers_do_not_mix_ours_and_not_ours() {
             touches: &[],
         },
         Carrier {
-            source: ToolSource::NotOurs {
-                who: Text(|| "自检".to_string()),
-            },
-            destination: ToolDestination::NotInstalledByUs {
-                whose: Text(|| "自检".to_string()),
-            },
+            source: ToolSource::NotOurs,
+            destination: ToolDestination::NotInstalledByUs,
             touches: &[],
         },
     ];
     let n = MIXED
         .iter()
-        .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }))
+        .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs))
         .count();
     assert!(
         n != 0 && n != MIXED.len(),

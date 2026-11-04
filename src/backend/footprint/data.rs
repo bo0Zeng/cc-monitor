@@ -152,7 +152,7 @@ fn how_url(tool_id: &str) -> Option<&'static str> {
 }
 
 fn changed(r: &SurfaceRow) -> Option<ChangedFile> {
-    if r.tier != EnvTier::AppInstalls || !matches!(r.state, SurfaceState::Present { .. }) {
+    if r.tier != EnvTier::AppInstalls || r.state != SurfaceState::Present {
         return None;
     }
     let p = r.path_declared;

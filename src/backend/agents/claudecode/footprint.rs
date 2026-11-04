@@ -212,7 +212,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                 destination: ToolDestination::ProjectRelative(".claude/skills"),
                 touches: &[TouchedFile {
                     path: ".claude/skills",
-                    host: HostScope::ProjectDir,
+                    host: HostScope::Either,
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -235,12 +235,8 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: false,
         uninstallable: false,
         carriers: &[Carrier {
-            source: ToolSource::NotOurs {
-                who: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWho", &[])),
-            },
-            destination: ToolDestination::NotInstalledByUs {
-                whose: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhose", &[])),
-            },
+            source: ToolSource::NotOurs,
+            destination: ToolDestination::NotInstalledByUs,
             touches: &[TouchedFile {
                 path: PROJECTS_DIR,
                 host: HostScope::Either,
@@ -255,13 +251,13 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[
             // **推 / 拉**（B）：这份文件唯一的写入来源 —— 条目是从另一台机器那份里**原样**拷来的（`mcp_sync.rs`），
-            //   写经那台后端 `Door::put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是项目目录。
+            //   写经那台后端 `Door::put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是两端皆可（项目在哪台它就在哪台）。
             Carrier {
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(PROJECT_MCP_FILE),
                 touches: &[TouchedFile {
                     path: PROJECT_MCP_FILE,
-                    host: HostScope::ProjectDir,
+                    host: HostScope::Either,
                     // 资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
                     effect: TouchEffect::OwnedFile,
                 }],

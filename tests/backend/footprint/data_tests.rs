@@ -28,9 +28,7 @@ fn row(
 }
 
 fn present() -> SurfaceState {
-    SurfaceState::Present {
-        detail: "在".into(),
-    }
+    SurfaceState::Present
 }
 
 fn report(rows: Vec<SurfaceRow>) -> ConfigSurfaceReport {
@@ -102,9 +100,7 @@ fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进
             "login-shell",
             EnvTier::UserInstallsWePrompt,
             "bash",
-            SurfaceState::Undetermined {
-                why: "查不动".into(),
-            },
+            SurfaceState::Undetermined,
         ),
         row(
             "mcp-server",
