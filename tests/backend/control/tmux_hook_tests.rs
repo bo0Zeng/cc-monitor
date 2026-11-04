@@ -95,43 +95,44 @@ fn never_uses_ccm_sid_format_in_hooks() {
 }
 
 /// ★ 本模块**零文件系统写**（红线 I7；P4 原设计就是栽在这）。
-/// `readonly_guard` 已经全局扫一遍，这里再钉一次是因为**本文件是最可能复发的地方**。
+/// 后端 `clippy.toml` 碰盘那一组已经全局挡着，这里再钉一次是因为**本文件是最可能复发的地方**。
 #[test]
 fn no_filesystem_writes_in_this_module() {
     // ★ **前提触发器**：下面那张表是**黑名单**（列出已知的写 API），
     // 它天然漏掉没列的那些 —— 实测把 `std::fs::remove_file` 放进本模块生产段，
     // 本条**不红**（删除/改名/复制都不在表里）。
     //
-    // 真正的保障是 `readonly_guard::only_the_fs_platform_module_names_the_filesystem`：
-    // 那条是**默认拒绝**（`platform/fs/` 之外一处都不许点名文件系统命名空间），上面那一刀正是它逮住的。
-    // 两层失效模式相反（黑名单漏新写法 / 白名单误伤新读法）⇒ 留着这层是纵深，不是重复；
-    // 但**别把这张黑名单读成保障**。它一旦成了唯一的一层，本模块就没人守了。
-    // ⚠⚠ **08-08 订正：光查名字挡不住「掏空」**。实测把 `readonly_guard` 那条白名单的
-    // 函数体清空、名字原样留着 ⇒ 本触发器**照样绿**，而本模块就只剩下面那张黑名单了。
-    // 「符号在 ≠ 它还在做那件事」——本区 08-08 在两条前提触发器上连撞两次。
-    // ⇒ 三条腿：名字在 · 它还在堵**分组导入那条逃生口**（`FS_GROUP_ROOTS`）· 它还对违规集合下断言。
-    let guard = include_str!("../readonly_guard.rs");
-    for (needle, why) in [
+    // 真正的保障是后端 `clippy.toml` 碰盘那一组（deny）：`platform/fs/` 之外一处都不许调碰盘的标准库与系统调用，
+    // 按解析后的路径认（起别名 · 分组导入照认）。两层失效模式相反（黑名单漏新写法 / 名单误伤新读法）⇒ 留着这层是纵深；
+    // 但**别把这张黑名单读成保障**。下面三条腿钉那份名单还在：删 · 改名 · 覆盖写各有一行，lint 定成 deny。
+    let toml = include_str!("../../../src/backend/clippy.toml");
+    let manifest = include_str!("../../../src/backend/Cargo.toml");
+    for (text, needle, why) in [
         (
-            "fn only_the_fs_platform_module_names_the_filesystem",
-            "那条默认拒绝整个不见了",
+            toml,
+            "path = \"std::fs::remove_file\"",
+            "碰盘名单里删文件那一行不见了",
         ),
         (
-            "const FS_GROUP_ROOTS",
-            "默认拒绝还在，但**堵分组导入那一段没了** —— `use std::{fs, …}` 之后调用点不带前缀，\
-                 它会整个瞎掉（08-06 实测：那样一次真写盘，六条判据全绿）",
+            toml,
+            "path = \"std::fs::rename\"",
+            "碰盘名单里改名那一行不见了",
         ),
         (
-            "bad.is_empty()",
-            "默认拒绝还在，但**不再对违规集合下断言** —— 大概率被掏空了",
+            toml,
+            "path = \"std::fs::write\"",
+            "碰盘名单里覆盖写那一行不见了",
+        ),
+        (
+            manifest,
+            "disallowed_methods = \"deny\"",
+            "名单那条 lint 不再是 deny",
         ),
     ] {
         assert!(
-            guard.contains(needle),
-            "`readonly_guard` 那条白名单：{why}（找 `{needle}`）。\n\
-                 ★ 本模块只剩下面那张**黑名单**，而它挡不住没列进去的写 API\n\
-                 （08-07 实测：`fs::remove_file` 在本条下是绿的）。\n\
-                 要么把那条白名单找回来/补全，要么本条改成默认拒绝，别让它绿着。"
+            text.contains(needle),
+            "后端碰盘名单：{why}（找 `{needle}`）。\n\
+                 ★ 本模块只剩下面那张**黑名单**，而它挡不住没列进去的写 API。"
         );
     }
     let src = prod_code();

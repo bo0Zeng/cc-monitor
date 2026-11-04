@@ -410,4 +410,8 @@ static TEST_HOME: fn() = test_home::linked;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/deploy/install_tests.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试段在沙箱目录里摆 · 读装出来的那几份（同各包测试段放开碰盘）"
+)]
 mod install_tests;
