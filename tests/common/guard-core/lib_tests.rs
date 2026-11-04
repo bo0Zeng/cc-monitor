@@ -1128,6 +1128,50 @@ fn code_only_keeps_code_and_blanks_literals_and_comments() {
     assert_eq!(code_only(broken), broken, "收不了口时没原样回来");
 }
 
+/// 按语言认的那一形：TS 的单引号串 · 模板串（连 `${}`）· 正则字面量 · 注释抹成空格，引号与正则的两道 `/` 留着；
+/// 一个字符换一个空格（逐字符等长，按列回原文取字面量靠这一点）。同一段按 Rust 认：`'x//y'` 不是串，`//` 起是注释。
+#[test]
+fn code_only_quoted_reads_ts_literals_and_keeps_quotes() {
+    let src = concat!(
+        "const a = 'x//y'; // 注释\n",
+        "const b = `t ${c}`; const r = /\"/; /* 块 */ f(\"中\");\n",
+        "x = y / 2; z = w / 3;\n",
+    );
+    let ts = code_only_quoted(src, Lang::Ts);
+    assert_eq!(
+        ts,
+        concat!(
+            "const a = '    ';      \n",
+            "const b = `      `; const r = / /;         f(\" \");\n",
+            "x = y / 2; z = w / 3;\n",
+        ),
+        "TS 那一形认错了"
+    );
+    assert_eq!(ts.chars().count(), src.chars().count(), "不是逐字符等长");
+    let rs = code_only_quoted(src, Lang::Rust);
+    assert_eq!(
+        rs.lines().next(),
+        Some(format!("const a = 'x{}", " ".repeat(11)).as_str()),
+        "Rust 那一形把单引号当了串：\n{rs}"
+    );
+    // 收不了口照样抹到文件尾（不回原样）。
+    assert_eq!(code_only_quoted("a('b\n", Lang::Ts), "a(' \n");
+}
+
+/// 只抹注释、串原样留着（引用常写在串里）；正则字面量的内容照样抹掉。
+#[test]
+fn code_and_strings_blanks_comments_only() {
+    let src = "f('a//b'); // 注释\nconst r = /x\"/; /* c */ g(`t`);\n";
+    assert_eq!(
+        code_and_strings(src, Lang::Ts),
+        "f('a//b');      \nconst r = /  /;         g(`t`);\n"
+    );
+    assert_eq!(
+        code_and_strings("let s = \"a//b\"; // c\n", Lang::Rust),
+        "let s = \"a//b\";     \n"
+    );
+}
+
 // ── 区间收尾的自检 ──
 /// 新判据**真的会咬人**：切出来的区间花括号不配平就红，配平就不红。
 #[test]
