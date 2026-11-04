@@ -107,11 +107,7 @@ async fn the_frame_face_projects_a_successful_reply() {
     let mut req = crate::wire::Request {
         id: "p1".into(),
         cmd: "history-read".into(),
-        args: serde_json::Value::Null,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     req.args = json!({});
     super::super::spawn_handler(

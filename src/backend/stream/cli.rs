@@ -271,6 +271,8 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         tz: tz.clone(),
         // 与帧面同一处换算：发起方期限从收到起算、减余量换成截止时刻。
         until: crate::stream::inbound::until_of(within_ms),
+        // CLI 面没有「看的那一端」那份称呼（命令行就在这台上）。
+        ..Default::default()
     };
     // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限与发起方期限里早的那个装；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);

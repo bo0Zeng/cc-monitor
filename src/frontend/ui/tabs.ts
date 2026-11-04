@@ -719,6 +719,7 @@ export class TabManager {
       forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writersLine: null, // 同上
+      whereLine: null, // 同上
       origin,
       // 脸早于建 Tab 到 ⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
       face: this.store.pendingFace.get(sessionId) ?? null,
@@ -1252,7 +1253,7 @@ export class TabManager {
     const ch = applyFacts(tab, f);
     // 消息流里跟着事实补画的那几样（交回 · 重试 · 卡头名字 · 等批准那几行 · 刻度 · 过程行）是流视图的事。
     this.view.factsLanded(tab, f, ch);
-    if (ch.forkedFrom || ch.projectDir || ch.writers || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
+    if (ch.forkedFrom || ch.projectDir || ch.writers || ch.where || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
     if ((ch.usage || ch.projectDir || ch.forkedFrom || ch.switchable) && sid === this.store.activeId) this.publishActive();
   }
 

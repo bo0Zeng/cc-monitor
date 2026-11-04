@@ -230,11 +230,18 @@ impl InboundClient {
 
     /// 一句话里怎么称呼这条连接通往的那台：本机说「本机」，远端说它的名字；没登记过（判据里直接造的客户端）⇒「该机」。
     fn machine_said(&self) -> String {
-        match self.machine.get() {
-            Some(m) if m == cmd_wire::LOCAL => copy_core::local_machine(),
-            Some(m) => m.clone(),
-            None => copy_core::peer_machine(),
-        }
+        self.called().unwrap_or_else(copy_core::peer_machine)
+    }
+
+    /// 这一端怎么称呼这条连接通往的那台（登记时记下的名字；本机 ⇒「本机」）：报错里那一句与请求信封的 `called` 都照它。没登记 ⇒ `None`。
+    fn called(&self) -> Option<String> {
+        self.machine.get().map(|m| {
+            if m == cmd_wire::LOCAL {
+                copy_core::local_machine()
+            } else {
+                m.clone()
+            }
+        })
     }
 
     /// 那台机器的能力事实（拷贝一份给 webview / 外部前端）。
@@ -396,6 +403,13 @@ impl InboundClient {
             .register_waiter(&id, None)
             .ok_or(CallError::TooManyPending)?;
         // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
+        let called = self.called();
+        let asked = match at {
+            Some(m) => Asked::At(m),
+            None => Asked::Itself {
+                called: called.as_deref(),
+            },
+        };
         let line = WriteJob::Line(encode_line(
             &id,
             cmd,
@@ -403,7 +417,7 @@ impl InboundClient {
             Some(timeout),
             self.tz.get().map(String::as_str),
             view,
-            at,
+            asked,
         ));
         self.settle(id, cmd, rx, line, timeout, deadline).await
     }
@@ -764,6 +778,17 @@ struct RequestLine<'a> {
     /// 问的是这条连接通往的后端持有的哪一台（[`InboundClient::call_at`]）；缺 ＝ 问它自己。
     #[serde(skip_serializing_if = "Option::is_none")]
     machine: Option<&'a str>,
+    /// 这一端怎么称呼这条连接通往的那台（[`InboundClient::name_machine`] 记下的）：那台写「<名字> · <目录>」这类句子照它。
+    /// 问它持有的别台（`machine` 那一格在）⇒ 不带：那一问的称呼归转过去那一跳的客户端。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    called: Option<&'a str>,
+}
+
+/// 一条请求问的是谁：这条连接通往的那台自己（带不带这一端对它的称呼），或它持有的哪一台。
+#[derive(Clone, Copy)]
+enum Asked<'a> {
+    Itself { called: Option<&'a str> },
+    At(&'a str),
 }
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
@@ -785,10 +810,10 @@ pub fn encode_request(
     tz: Option<&str>,
     view: Option<&Value>,
 ) -> String {
-    encode_line(id, cmd, args, within, tz, view, None)
+    encode_line(id, cmd, args, within, tz, view, Asked::Itself { called: None })
 }
 
-/// [`encode_request`] 外加问的是哪一台（`machine`，[`InboundClient::call_at`]）。
+/// [`encode_request`] 外加问的是谁（[`Asked`]：它自己带称呼 `called`，或它持有的哪一台 `machine`，[`InboundClient::call_at`]）。
 fn encode_line(
     id: &str,
     cmd: &str,
@@ -796,9 +821,13 @@ fn encode_line(
     within: Option<Duration>,
     tz: Option<&str>,
     view: Option<&Value>,
-    machine: Option<&str>,
+    asked: Asked<'_>,
 ) -> String {
     let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
+    let (machine, called) = match asked {
+        Asked::Itself { called } => (None, called),
+        Asked::At(m) => (Some(m), None),
+    };
     let mut s = serde_json::to_string(&RequestLine {
         id,
         cmd,
@@ -807,6 +836,7 @@ fn encode_line(
         tz,
         view,
         machine,
+        called,
     })
     .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
     s.push('\n');

@@ -98,6 +98,11 @@ pub struct SessionFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub writers_line: Option<Words>,
+    /// 这条会话在哪：「<机器> · <目录>」那一句（[`where_line`]：机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
+    /// 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub where_line: Option<Words>,
     /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
     pub pending: Vec<PendingCall>,
     /// 最后一段正文的头一行（悬停卡「它最后一句」）。
@@ -1744,6 +1749,18 @@ pub fn writers_line(writers: &[u32]) -> Option<Words> {
             &[("n", &writers.len().to_string())],
         ))
     })
+}
+
+/// [`SessionFacts::where_line`]：`called` ＝ 看的这一端对这台的称呼（没交 ⇒ `None`，不编名字），`dir` ＝ 会话的项目目录。
+pub fn where_line(called: Option<&str>, dir: Option<&str>) -> Option<Words> {
+    match (called, dir) {
+        (Some(machine), Some(dir)) => Some(Words(copy_core::copy_text(
+            "beFacts.where.line",
+            &[("machine", machine), ("dir", dir)],
+        ))),
+        (Some(one), None) | (None, Some(one)) => Some(Words(one.to_string())),
+        (None, None) => None,
+    }
 }
 
 #[cfg(test)]

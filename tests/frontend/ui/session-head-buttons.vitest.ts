@@ -46,7 +46,7 @@ dispatcher.start(); // Esc 走弹层栈（window 上那一个监听）
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, projectDir: `/w/${sid}`, face: liveFace("working"), line: null, pinned: false, group: null,
-    origin: LOCAL, activity: null, forkedFromSessionId: null, writersLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, activity: null, forkedFromSessionId: null, writersLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 

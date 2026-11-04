@@ -444,11 +444,7 @@ fn req(id: &str, cmd: &str) -> Request {
     Request {
         id: id.into(),
         cmd: cmd.into(),
-        args: serde_json::Value::Null,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     }
 }
 
@@ -1067,10 +1063,7 @@ fn run_registered(cmd: &str, args: serde_json::Value) -> Outcome {
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     match invoke(
         spec.run,
@@ -1088,10 +1081,7 @@ fn run_any(cmd: &str, args: serde_json::Value) -> Outcome {
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     match invoke(
         spec.run,

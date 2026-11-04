@@ -14,8 +14,7 @@ use crate::wire::Changed;
 pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::common::time::Tz) -> Option<Changed> {
     let cx = || Cx {
         tz: tz.clone(),
-        until: None,
-        needs: (),
+        ..Default::default()
     };
     Some(match topic {
         Topic::Quota => Changed::Quota {

@@ -1401,21 +1401,23 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<FactsReply, HistoryFactsErr>> + Send + 'static
     {
-        let tz = cx.tz;
+        let crate::wire::typed::Cx { tz, called, .. } = cx;
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
             let limits = crate::common::machine_prefs::read_now().prefs().limits();
-            facts_at(&home(), req, &limits, &tz)
+            facts_at(&home(), req, &limits, &tz, called.as_deref())
         }
     }
 }
 
-/// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）。
+/// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）；
+/// `called` ＝ 看的那一端怎么称呼这台（「机器 · 目录」那一句照它写，没交 ⇒ 不编名字）。
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
     tz: &crate::common::time::Tz,
+    called: Option<&str>,
 ) -> Result<FactsReply, HistoryFactsErr> {
     use crate::observe::recognize::facts;
     let (path, found) = match req {
@@ -1441,6 +1443,7 @@ pub(crate) fn facts_at(
     if facts.project_dir.is_none() {
         facts.project_dir = locate::facts_project_dir(home, path);
     }
+    facts.where_line = facts::where_line(called, facts.project_dir.as_deref());
     if facts.agent.is_none() {
         facts.agent = locate::facts_agent(home, path).map(Into::into);
     }
@@ -1595,6 +1598,10 @@ mod read_cap_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/history/facts_by_sid_tests.rs"]
 mod facts_by_sid_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/facts_where_tests.rs"]
+mod facts_where_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_image_tests.rs"]
