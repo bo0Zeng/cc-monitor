@@ -9021,168 +9021,6 @@
       "zh": "待处理命令已达上限 · 未执行 · 稍后重试",
       "args": []
     },
-    "rsConfigSurface.probe.cannot": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "无法查 · {why}",
-      "args": ["why"]
-    },
-    "rsConfigSurface.ssh.found": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "找到 {path}",
-      "args": ["path"]
-    },
-    "rsConfigSurface.onPath.present": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "PATH 上有 {named}",
-      "args": ["named"]
-    },
-    "rsConfigSurface.onPath.noPath": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无法读取 PATH 或它为空 · 无法判断 {named} 是否存在 · 不代表不存在",
-      "args": ["named"]
-    },
-    "rsConfigSurface.onPath.noSessionPath": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无法获取起会话的 shell 的 PATH · 无法判断 {named} 是否已装",
-      "args": ["named"]
-    },
-    "rsConfigSurface.row.declMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "登记的路径与安装位置不一致 · {why}",
-      "args": ["why"]
-    },
-    "rsConfigSurface.observe.profileNotWindows": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "不适用 · 本机不是 Windows · 无 PowerShell $PROFILE",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsConfigSurface.observe.profileWindows": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "路径由 PowerShell 决定 · 准确状态见「本机 → 终端 → 别名」\n该页读 $PROFILE 并查 cc-monitor 加的段",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsConfigSurface.observe.projectDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "相对项目目录（{path}） · 先选定项目才知道查哪里",
-      "args": ["path"]
-    },
-    "rsConfigSurface.observe.remote": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端路径（{path}） · 本页不连 SSH · 到该机页面查",
-      "args": ["path"],
-      "limited": ["SSH"]
-    },
-    "rsConfigSurface.observe.needsConfig": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "路径由配置决定（{what}） · 本页不猜它的当前值",
-      "args": ["what"]
-    },
-    "rsConfigSurface.observe.eitherUndetermined": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{why}\n它装在运行 Claude Code 的机器上 · 在远端时本页不查",
-      "args": ["why"],
-      "limited": ["Claude Code"]
-    },
-    "rsConfigSurface.observe.eitherPresent": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机存在（{what}）",
-      "args": ["what"]
-    },
-    "rsConfigSurface.observe.eitherAbsent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机未找到 {target}\n它装在运行 Claude Code 的机器上 · 远端状态到该机页面查",
-      "args": ["target"],
-      "limited": ["Claude Code"]
-    },
-    "rsConfigSurface.observe.globCount": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{count} 项匹配",
-      "args": ["count"]
-    },
-    "rsConfigSurface.observe.globDirUnlistable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无法列出目录 {dir}（不存在或无权限）",
-      "args": ["dir"]
-    },
-    "rsConfigSurface.observe.fileSize": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "文件 · {bytes} 字节",
-      "args": ["bytes"]
-    },
-    "rsConfigSurface.observe.dirUnlistable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "目录存在 · 无法列出内容",
-      "args": []
-    },
-    "rsConfigSurface.observe.dirCount": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "目录 · {count} 项",
-      "args": ["count"]
-    },
-    "rsConfigSurface.home.multiStar": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "只支持一个 * · 实得 {declared}",
-      "args": ["declared"]
-    },
-    "rsConfigSurface.home.globNotLast": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "glob 只允许在最后一段 · 实得 {declared}",
-      "args": ["declared"]
-    },
-    "rsConfigSurface.home.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "登记的路径解析后为空 · {declared}",
-      "args": ["declared"]
-    },
-    "rsConfigSurface.home.notTilde": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机路径必须以 ~/ 开头 · 实得 {declared}",
-      "args": ["declared"]
-    },
-    "rsConfigSurface.declared.projectMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "应在项目目录下 · 登记的路径 {declared} 不是相对路径",
-      "args": ["declared"]
-    },
-    "rsConfigSurface.declared.profileMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "安装位置是 PowerShell 配置文件 · 登记的路径是 {declared} · 应为 \"$PROFILE\"",
-      "args": ["declared"],
-      "limited": ["PowerShell"]
-    },
-    "rsConfigSurface.declared.badChar": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）\n说明写在备注里 · 路径栏只放路径",
-      "args": ["bad", "declared"]
-    },
     "beMcp.mark.login": {
       "kind": "body",
       "role": "说明",
@@ -11485,12 +11323,6 @@
       "zh": "账号功能不可用",
       "args": []
     },
-    "rsToolRegistry.env.mcpServerCannotProbe": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "名字由项目 .mcp.json 里的 command 决定 · 本页不猜是哪个项目\n要查先选定项目再看该配置",
-      "args": []
-    },
     "rsToolRegistry.env.mcpServerName": {
       "kind": "title",
       "role": "标题",
@@ -11523,38 +11355,6 @@
       "args": [],
       "limited": ["Claude Code"]
     },
-    "rsToolRegistry.provisioning.notAnInstall": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "不是装出来的",
-      "args": []
-    },
-    "rsToolRegistry.provisioning.userProvides": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "自行安装",
-      "args": []
-    },
-    "rsToolRegistry.provisioning.appShips": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "app 自带",
-      "args": []
-    },
-    "rsToolRegistry.tools.sessionRecordsWhose": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Claude Code 的数据目录",
-      "args": [],
-      "limited": ["Claude Code"]
-    },
-    "rsToolRegistry.tools.sessionRecordsWho": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Claude Code 自己建、自己写",
-      "args": [],
-      "limited": ["Claude Code"]
-    },
     "rsToolRegistry.tools.sessionRecordsName": {
       "kind": "title",
       "role": "标题",
@@ -11568,12 +11368,6 @@
       "zh": "PowerShell 集成",
       "args": [],
       "limited": ["PowerShell"]
-    },
-    "rsToolRegistry.tools.posixAliasesRcWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "接上终端时选的 rc 文件 · .bashrc / .zshrc / .bash_profile / .profile",
-      "args": []
     },
     "rsToolRegistry.tools.posixAliasesName": {
       "kind": "title",
