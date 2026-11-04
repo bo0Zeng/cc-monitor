@@ -7894,7 +7894,6 @@ enum class ForwardRowState(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class ForwardSpec(
-    val localPort: Int,
     val remoteHost: String,
     val remotePort: Int,
 ) : Ordered {
@@ -7903,12 +7902,11 @@ data class ForwardSpec(
     companion object {
         val ADAPTER: JsonAdapter<ForwardSpec> = obj(
             listOf(
-            Field("local_port", { Int32 }, optional = false, nullable = false),
             Field("remote_host", { Str }, optional = false, nullable = false),
             Field("remote_port", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> ForwardSpec(a[0] as Int, a[1] as String, a[2] as Int) },
-            { v -> arrayOf(v.localPort, v.remoteHost, v.remotePort) },
+            { a -> ForwardSpec(a[0] as String, a[1] as Int) },
+            { v -> arrayOf(v.remoteHost, v.remotePort) },
         )
     }
 }
