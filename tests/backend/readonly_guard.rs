@@ -47,25 +47,25 @@
 
 #[cfg(test)]
 mod tests {
-    ///
-    /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
-    /// [`guard_core::production_source`]（`src/common/guard-core`），
-    /// 本 crate 直接用它。`guard_core` 的模块头注逐字记着搬家的理由：
-    /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
-    /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
-    /// 那一族近似都是启发式（括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
-    ///
-    /// 🔴 **退役的理由不是「它变成恒等函数了」** —— 当初那条预言
-    /// **今天还不成立**，现打读数进了：`src/backend` 上它剥掉 1 081 538 字节
-    /// （64 份里 51 份被它动过），`src/frontend/shell/src` 上 1 429 612 字节。
-    /// 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
-    /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是
-    /// **一条形状只许有一个住址**，不是「它没用了」。
-    ///
-    /// 两者的差别现打过（表）：换成 `production_source` 之后，
-    /// `src/frontend/shell/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
-    /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
-    /// 两个 workspace 的用例数与红绿**一格没动**。
+    //
+    // 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
+    // [`guard_core::production_source`]（`src/common/guard-core`），
+    // 本 crate 直接用它。`guard_core` 的模块头注逐字记着搬家的理由：
+    // 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
+    // （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
+    // 那一族近似都是启发式（括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
+    //
+    // 🔴 **退役的理由不是「它变成恒等函数了」** —— 当初那条预言
+    // **今天还不成立**，现打读数进了：`src/backend` 上它剥掉 1 081 538 字节
+    // （64 份里 51 份被它动过），`src/frontend/shell/src` 上 1 429 612 字节。
+    // 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
+    // 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是
+    // **一条形状只许有一个住址**，不是「它没用了」。
+    //
+    // 两者的差别现打过（表）：换成 `production_source` 之后，
+    // `src/frontend/shell/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
+    // 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
+    // 两个 workspace 的用例数与红绿**一格没动**。
 
     /// 文件系统**变更**模式的词表（`fs::`/`File::`/`OpenOptions` 锚定）。本机那一半今天挡在类型上、不再拿它扫；
     /// 留着是给依赖签字与远端那一层量**别的树**用的（[`g6_dependency_signoff`] · [`remote_write_layer`]）。
@@ -871,6 +871,10 @@ mod tests {
 
     /// `Ro::open` 交回的那一份没有 `Write`：拿着它写不出来（现打，不是读源码）。
     #[test]
+    #[expect(
+        clippy::assertions_on_constants,
+        reason = "探针答的就是一个编译期常量：判据要红在这一条上，不是整个测试档编不过"
+    )]
     fn the_read_only_file_has_no_write() {
         use std::marker::PhantomData;
         trait NoWrite {
@@ -1300,9 +1304,9 @@ mod spawn_registry {
                 // ① 记下来的"程序名"是假的；② 更坏的是它**可能与某条已登记的 pair 撞上**
                 //   （同文件里已登记 `tmux`，而后面某处正好有 `"tmux"` 字面量）⇒ 静默放行。
                 // ⇒ 认准紧跟其后的那个字符：是引号才当字面量，否则记成 `<非字面量>`，逼它单独登记。
-                let prog = if tail.starts_with('"') {
-                    match tail[1..].find('"') {
-                        Some(e) => tail[1..1 + e].to_string(),
+                let prog = if let Some(lit) = tail.strip_prefix('"') {
+                    match lit.find('"') {
+                        Some(e) => lit[..e].to_string(),
                         None => "<未闭合的字面量>".to_string(),
                     }
                 } else {
@@ -1412,9 +1416,9 @@ mod spawn_registry {
                 while let Some(at) = prod[from..].find("Child::new(") {
                     let i = from + at + "Child::new(".len();
                     let tail = &prod[i..];
-                    let prog = if tail.starts_with('"') {
-                        match tail[1..].find('"') {
-                            Some(e) => tail[1..1 + e].to_string(),
+                    let prog = if let Some(lit) = tail.strip_prefix('"') {
+                        match lit.find('"') {
+                            Some(e) => lit[..e].to_string(),
                             None => "<未闭合的字面量>".to_string(),
                         }
                     } else {
@@ -2425,14 +2429,14 @@ mod g6_dependency_signoff {
         let (key, value) = line.split_once('=').unwrap_or((line, ""));
         key.trim().ends_with(".workspace")
             || value
-                .split(|c: char| c == '{' || c == ',' || c == '}')
+                .split(['{', ',', '}'])
                 .any(|kv| kv.split_whitespace().collect::<String>() == "workspace=true")
     }
 
     /// 一条依赖那一行是仓内 crate（`path = "…"`）。
     fn is_path_dep(line: &str) -> bool {
         line.split_once('=').is_some_and(|(_, v)| {
-            v.split(|c: char| c == '{' || c == ',' || c == '}')
+            v.split(['{', ',', '}'])
                 .any(|kv| kv.trim_start().starts_with("path"))
         })
     }

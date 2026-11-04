@@ -565,6 +565,10 @@ struct Won {
 /// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
 /// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
 /// 回胜者（[`Won`]）。TCP 经 `out` 那一份出网描述开。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 async fn race(
     probe: bool,
     apply: bool,
@@ -1025,6 +1029,10 @@ fn hop_dial_failed(hop: &str) -> String {
 /// 里面是已加密的字节，压不动）；其余逐台经上一台的 direct-tcpip 握手 ＋ 鉴权。
 /// 回 `(隧道, 跨本机那一跳远不远（判准的答案）, 各台跳板的句柄（外在先）, 各台跳板那一条（外在先）)`；句柄**必须与目标连接同生命周期**。
 /// 最外一台的 TCP 经 `out` 开（经没经代理记在它那一条上）；里头那几台在上一台的隧道里开，不经。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 async fn through_hops(
     req: &DialRequest,
     stages: &StageSink,
@@ -1165,6 +1173,10 @@ fn unreadable(stages: &StageSink, e: Said) -> (Said, Option<String>) {
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板链（[`through_hops`]）、经最后一台开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
 /// （fail-closed：跳板任一步失败就报错，**绝不**回落直连目标）。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 pub async fn establish(
     req: &DialRequest,
     stages: &StageSink,
@@ -1173,6 +1185,10 @@ pub async fn establish(
 }
 
 /// [`establish`] 的本体：TCP 经 `out` 那一份出网描述开（生产是这台的 `egress::here()`；判据递假代理）。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 pub async fn establish_via(
     req: &DialRequest,
     stages: &StageSink,

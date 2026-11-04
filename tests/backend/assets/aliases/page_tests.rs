@@ -540,7 +540,7 @@ fn every_form_round_trips_through_the_file() {
     for p in r["profiles"].as_array().unwrap() {
         let f: ProfileForm = serde_json::from_value(p["form"].clone()).unwrap();
         let e = edit_of_form(&f).unwrap();
-        let back = profile::parse_book(&BOOK.to_string());
+        let back = profile::parse_book(BOOK);
         let orig = profile::edit_of(back.find(&f.name).unwrap());
         assert_eq!(e, orig, "{}", f.name);
     }

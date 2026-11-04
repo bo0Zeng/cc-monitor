@@ -153,17 +153,15 @@ impl russh_sftp::server::Handler for Server {
         StatusCode::OpUnsupported
     }
 
-    fn init(
+    async fn init(
         &mut self,
         _version: u32,
         _extensions: HashMap<String, String>,
-    ) -> impl std::future::Future<Output = Result<Version, Self::Error>> + Send {
-        async move {
-            Ok(Version {
-                version: 3,
-                extensions: HashMap::new(),
-            })
-        }
+    ) -> Result<Version, Self::Error> {
+        Ok(Version {
+            version: 3,
+            extensions: HashMap::new(),
+        })
     }
 
     fn realpath(

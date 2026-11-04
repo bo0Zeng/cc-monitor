@@ -1787,6 +1787,10 @@ pub fn put_text(
 }
 
 /// [`put_text`] 的本体；`between` 交给 [`replace_contents`]（CAS 判完、旁名写满之后，换名上位之前）。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "写面那几支各传各的开关（CAS 期望 · 备份 · 建父目录 · 竞争插口），收成一个结构只是换个地方摊开"
+)]
 fn put_text_racing(
     face: &Face,
     root: &Path,
@@ -2054,6 +2058,7 @@ static SWAP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// - 不在：权限位取 `fresh`，缺 ⇒ 落在后端自家目录里的收紧、别处按 umask。上位走不覆盖改名。
 /// - 原子那一支：同目录 `O_EXCL` 旁名 → 先定权限位 → 写满 → 落盘 → 上位 → 目录落盘；失败删掉自己的旁名，目标不动。
 ///   暂存件同盘时省掉旁名（定权限位 ＋ 落盘之后它自己上位）。
+///
 /// `between`：写满之后、上位之前（判据插竞争用；生产传空）。
 pub(crate) fn replace_contents(
     face: &Face,

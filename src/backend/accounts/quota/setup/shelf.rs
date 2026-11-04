@@ -7,8 +7,8 @@ use crate::accounts::quota::strategy::{Fail, FailKind};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 策略目录的名字（同 `rotation.json` 一层）。
-pub const DIR_NAME: &str = "strategies";
+/// 策略目录的名字（同 `rotation.json` 一层；名字住声明表 [`relay_route_core::STRATEGIES_DIR_REL`]）。
+pub const DIR_NAME: &str = relay_route_core::file_name_of(relay_route_core::STRATEGIES_DIR_REL);
 /// 第三版脚本挪去的子目录。
 pub(crate) const OLD_DIR: &str = "v3";
 /// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖；上限照声明表）。

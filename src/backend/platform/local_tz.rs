@@ -5,6 +5,13 @@
 
 /// 时刻 `t`（unix 秒）那一刻的本地偏移。
 #[cfg(unix)]
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::useless_conversion,
+        reason = "`tm_gmtoff` 是 `c_long`：64 位上就是 `i64`，32 位上不是；转换照写、两边都对"
+    )
+)]
 pub fn offset_secs(t: u64) -> Option<i64> {
     let tt = libc::time_t::try_from(t).ok()?;
     // SAFETY: `tm` 是纯数据（全零是合法值）；`localtime_r` 只写进我们给的那一份、不留指针。
