@@ -967,6 +967,10 @@ pub fn session_accounts_here(agent_home: &Path) -> Vec<SessionAccount> {
 // 照类型造清单成品 · 盘上一份账号库的夹具住测试树：起会话挑号 · 需手动清单几份判据共用（本包与上层判据经 `test-support`）。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/accounts_list_support.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档夹具在沙箱目录里摆一份账号库（同各包测试段放开碰盘）"
+)]
 pub mod test_support;
 
 #[cfg(test)]

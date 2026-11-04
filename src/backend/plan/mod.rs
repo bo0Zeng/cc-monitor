@@ -141,4 +141,8 @@ pub(crate) type WhoPort<'a> = &'a dyn Fn(&str) -> Whose;
 /// 计划读面判据共用的夹具（合成 dump · 假 pb 插件；本包与上层判据经 `test-support`）。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/plan/fixture.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档夹具在沙箱目录里写合成 dump 与假插件（同各包测试段放开碰盘）"
+)]
 pub mod fixture;

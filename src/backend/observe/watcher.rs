@@ -5453,6 +5453,10 @@ fn file_stem_str(p: &Path) -> Option<String> {
 // 判据夹具（不等地取一帧 · 夹具那一份发帧口 · 读者 · 在跑名单的耳朵）：本包的判据与上层判据经 `test-support` 共用。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/watcher_support.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档夹具在沙箱目录里写记录与事实文件（同各包测试段放开碰盘）"
+)]
 pub mod test_support;
 
 #[cfg(test)]
