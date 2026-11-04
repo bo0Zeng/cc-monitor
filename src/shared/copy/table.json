@@ -26512,12 +26512,6 @@
       "zh": "分组（可选）",
       "args": []
     },
-    "mobHostEdit.switch.workspace": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "打开时进入工作区",
-      "args": []
-    },
     "mobHostEdit.switch.reconnect": {
       "kind": "control",
       "role": "标签",

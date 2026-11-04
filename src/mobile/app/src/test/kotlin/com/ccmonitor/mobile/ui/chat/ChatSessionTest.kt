@@ -23,7 +23,7 @@ import org.junit.Test
 
 /**
  * 聊天屏的会话：起会话 · 送字 · 正文全走那台核心。
- * 判据：手机起的会话是那台 tmux 里的（`session-open` 的 `run: tmux`，桌面那一侧看得到、接得上）；手机打的字投进那条会话的输入队（`session-queue-put`）。
+ * 判据：手机起会话不带宿主（`session-open` 不交 `run`，放在哪由那台定）；手机打的字投进那条会话的输入队（`session-queue-put`）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
@@ -55,7 +55,7 @@ class ChatSessionTest {
     private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
 
     @Test
-    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字投进那条会话的输入队`() =
+    fun `新建会话：第一句 ⇒ 请那台起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字投进那条会话的输入队`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -73,7 +73,6 @@ class ChatSessionTest {
                 listOf(
                     mapOf(
                         "what" to mapOf("kind" to "new", "agent" to "claude", "cwd" to "~/proj", "prompt" to "你好"),
-                        "run" to "tmux",
                         "local" to false,
                         "ticket" to "t-1",
                         "client" to "mobile",
