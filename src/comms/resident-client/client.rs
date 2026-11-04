@@ -435,15 +435,7 @@ impl InboundClient {
                 called: called.as_deref(),
             },
         };
-        let line = WriteJob::Line(encode_line(
-            &id,
-            cmd,
-            &args,
-            Some(timeout),
-            tz,
-            view,
-            asked,
-        ));
+        let line = WriteJob::Line(encode_line(&id, cmd, &args, Some(timeout), tz, view, asked));
         self.settle(id, cmd, rx, line, timeout, deadline).await
     }
 

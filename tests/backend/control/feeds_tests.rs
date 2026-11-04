@@ -382,7 +382,11 @@ async fn a_forwarded_call_carries_the_viewers_tz_to_that_machine() {
     up_pushed(&mut changes, machine).await;
 
     let with_tz = |view: serde_json::Value| {
-        let mut req = asked("history-tail", serde_json::json!({"path": "/p/s.jsonl"}), view);
+        let mut req = asked(
+            "history-tail",
+            serde_json::json!({"path": "/p/s.jsonl"}),
+            view,
+        );
         req.tz = crate::common::time::Tz::iana("America/Los_Angeles").expect("认得的 IANA 名");
         req
     };

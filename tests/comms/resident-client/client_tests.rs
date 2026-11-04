@@ -38,7 +38,10 @@ async fn the_viewer_tz_rides_on_every_request() {
 /// 带不带出口声明都一样带。
 #[tokio::test(start_paused = true)]
 async fn a_relayed_request_carries_the_askers_tz() {
-    for view in [None, Some(serde_json::json!({"omit": {"entries": ["size"]}}))] {
+    for view in [
+        None,
+        Some(serde_json::json!({"omit": {"entries": ["size"]}})),
+    ] {
         let (mine, theirs) = tokio::io::duplex(64 * 1024);
         let client = park(mine).into_client(hello());
         client.set_viewer_tz(Some("Asia/Shanghai".into()));
