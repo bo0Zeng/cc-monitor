@@ -10,11 +10,8 @@ import com.ccmonitor.mobile.core.claude.link.SaidList
 import com.ccmonitor.mobile.core.claude.link.SessionsStop
 import com.ccmonitor.mobile.core.claude.link.blocked
 import com.ccmonitor.mobile.core.claude.link.face
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AutoChoice
-import com.ccmonitor.mobile.core.wire.gen.CanTerm
 import com.ccmonitor.mobile.core.wire.gen.FindHit
-import com.ccmonitor.mobile.core.wire.gen.Life
 import com.ccmonitor.mobile.core.wire.gen.SessionState
 import com.ccmonitor.mobile.core.wire.gen.UserInputRow
 import com.ccmonitor.mobile.link.problem
@@ -144,12 +141,12 @@ class ChatMore(
         val s = sid() ?: return
         scope.launch {
             val (p, why) = pathOf(s)
-            if (p == null) return@launch put { it.copy(find = it.find?.copy(failed = jumpFailed(why))) }
+            if (p == null) return@launch put { it.copy(find = it.find?.copy(failed = why)) }
             val r = link.call(LineStart.COMMAND, LineStart.args(p, hit.line), READ_MS)
             val at = (r as? Reply.Ok)?.let { LineStart.of(it.data) }
             if (at == null) {
                 val said = if (r is Reply.Ok) unreadableReply(machine, LineStart.COMMAND, r.data.toString()).text else r.problem(machine, LineStart.COMMAND, link.offline.value)?.text
-                return@launch put { it.copy(find = it.find?.copy(failed = jumpFailed(said))) }
+                return@launch put { it.copy(find = it.find?.copy(failed = said)) }
             }
             put { it.copy(find = null) }
             jump(at, hit.tool)
@@ -190,8 +187,11 @@ class ChatMore(
     // ── 结束会话 ──
 
     /** ⋯ 里那一项的样子（照脸上的 `can.end`）；簿里还没这一条 ⇒ `null`、不出这一项。 */
-    fun endEntry(): EndEntry? =
-        sid()?.let { link.table.value.face(it) }?.can?.end?.let { e -> e.blocked()?.let { EndEntry.Blocked(it) } ?: EndEntry.Ready }
+    fun endEntry(): EndEntry? {
+        val face = sid()?.let { link.table.value.face(it) } ?: return null
+        val why = face.can.end.blocked() ?: return EndEntry.Ready
+        return EndEntry.Blocked(why)
+    }
 
     /** 点「结束会话…」：那台说能结束才开确认框（框里列 [title]）。 */
     fun askEnd(title: String) {
@@ -203,7 +203,7 @@ class ChatMore(
 
     /** 确认框答了「结束」：交 `sessions-stop`；变已结束由会话流兜（不主动改状态）；没成 ⇒ 那台写好的那一句。 */
     fun confirmEnd() {
-        val asked = _state.value.ending ?: return
+        _state.value.ending ?: return
         put { it.copy(ending = null) }
         val s = sid() ?: return
         if (endEntry() != EndEntry.Ready) return
@@ -216,10 +216,11 @@ class ChatMore(
                         if (b == null) {
                             unreadableReply(machine, SessionsStop.COMMAND, r.data.toString()).text
                         } else {
-                            b.results.firstOrNull { it.sid == s }?.takeIf { it.outcome != SessionState.DONE }?.let { it.said ?: killFailed(asked) }
+                            val one = b.results.firstOrNull { it.sid == s }
+                            if (one == null || one.outcome == SessionState.DONE) null else one.said
                         }
                     }
-                    else -> r.problem(machine, SessionsStop.COMMAND, link.offline.value)?.text ?: killFailed(asked)
+                    else -> r.problem(machine, SessionsStop.COMMAND, link.offline.value)?.text
                 }
             put { it.copy(note = note) }
         }
@@ -227,9 +228,8 @@ class ChatMore(
 
     // ── 无人答时自动答 ──
 
-    /** ⋯ 里出不出这一项：活着或住在终端里（同桌面会话菜单那一道）。 */
-    fun autoShown(): Boolean =
-        sid()?.let { link.table.value.face(it) }?.let { f -> f.life is Life.Live || f.can.term is CanTerm.Yes } == true
+    /** ⋯ 里出不出这一项：簿里有这一条就出（那一格是会话注解，交不交得成由那台答）。 */
+    fun autoShown(): Boolean = sid()?.let { link.table.value.face(it) } != null
 
     /** 开那一组：问一次会话事实，照它列几档、勾在此刻那一档（没设 ⇒ 关）。 */
     fun openAuto() {
@@ -256,14 +256,10 @@ class ChatMore(
             if (r is Reply.Ok) {
                 put { it.copy(auto = null) }
             } else {
-                put { it.copy(note = r.problem(machine, AutoAnswerSet.COMMAND, link.offline.value)?.text ?: copyText("tabMenu.autoAnswer.failed")) }
+                put { it.copy(note = r.problem(machine, AutoAnswerSet.COMMAND, link.offline.value)?.text) }
             }
         }
     }
-
-    private fun jumpFailed(why: String?): String = copyText("sessionFind.fetchFailed.line", "reason" to (why ?: copyText("runs.state.unknown")))
-
-    private fun killFailed(asked: EndAsk): String = copyText("tabSessionActions.kill.failed", "title" to asked.titles.joinToString(" · "))
 
     private companion object {
         const val READ_MS = 15_000L

@@ -37,11 +37,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
-import com.ccmonitor.mobile.core.wire.gen.FindHit
 
 /**
- * ⋯ 里那几项：会话里找 · 大纲 · 无人答时自动答（活着或住在终端里才出）· 结束会话…（照 `can.end`：不能 ⇒ 灰着、第二行写那台那一句）。
- * [close] 收起 ⋯；[title] 是这条会话的名字（确认框里列它）。
+ * ⋯ 里那几项：会话里找 · 大纲 · 无人答时自动答 · 结束会话…（照 `can.end`：不能 ⇒ 灰着、第二行写那台那一句）。
+ * [close] 收起 ⋯；[title] 是这条会话的名字（确认框里列它）。字只取骨架那几档；结局的字都是那台写好的。
  */
 @Composable
 fun ChatMoreItems(
@@ -63,25 +62,23 @@ fun ChatMoreItems(
             more.openAuto()
         })
     }
-    when (val end = more.endEntry()) {
-        null -> Unit
-        EndEntry.Ready ->
-            DropdownMenuItem(text = { Text(copyText("tabMenu.kill.label"), color = LocalAppTokens.current.errorText) }, onClick = {
-                close()
-                more.askEnd(title)
-            })
-        is EndEntry.Blocked ->
-            DropdownMenuItem(
-                text = {
-                    Column {
-                        Text(copyText("tabMenu.kill.label"))
-                        Text(end.why, style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                enabled = false,
-                onClick = {},
-            )
-    }
+    val end = more.endEntry() ?: return
+    val kill = copyText("tabMenu.kill.label")
+    val why = (end as? EndEntry.Blocked)?.why
+    val tokens = LocalAppTokens.current
+    DropdownMenuItem(
+        text = {
+            Column {
+                Text(kill, color = if (why == null) tokens.errorText else tokens.textFaint)
+                why?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
+            }
+        },
+        enabled = why == null,
+        onClick = {
+            close()
+            more.askEnd(title)
+        },
+    )
 }
 
 /** ⋯ 点开的那几面（底部抽屉 · 确认框）与没做成时那一句；挂在顶栏下。 */
@@ -107,24 +104,7 @@ private fun MoreNote(
     }
 }
 
-/** 命中行头一行：谁 · 第几轮 · 时刻（同桌面 `hitMeta`；种类是那台给的 `kind`）。 */
-internal fun hitMeta(h: FindHit): String {
-    val who =
-        when (h.kind) {
-            "user" -> copyText("machineForm.field.user")
-            "report" -> copyText("sessionFind.who.report")
-            "tool" -> copyText("sessionFind.who.tool")
-            else -> copyText("history.searchHit.agent")
-        }
-    return when {
-        h.turn > 0 && h.tsText.isNotEmpty() -> copyText("sessionFind.hit.meta", "who" to who, "n" to h.turn, "time" to h.tsText)
-        h.turn > 0 -> copyText("sessionFind.hit.metaNoTime", "who" to who, "n" to h.turn)
-        h.tsText.isNotEmpty() -> copyText("sessionFind.hit.metaNoTurn", "who" to who, "time" to h.tsText)
-        else -> who
-    }
-}
-
-/** 会话里找：框里敲、按回车问那台；命中照那台的先后，点一条跳过去。 */
+/** 会话里找：框里敲、按回车问那台；命中照那台的先后（头一行是那台写好的时刻），点一条跳过去。没问成 ⇒ 那台那一句。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FindSheet(
@@ -133,6 +113,7 @@ private fun FindSheet(
 ) {
     val tokens = LocalAppTokens.current
     var q by remember { mutableStateOf(ui.query) }
+    val busy = copyText("findStrip.status.busy")
     ModalBottomSheet(onDismissRequest = more::closeFind) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
             OutlinedTextField(
@@ -144,20 +125,11 @@ private fun FindSheet(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { more.find(q) }),
             )
-            val status =
-                when {
-                    ui.busy -> copyText("findStrip.status.busy")
-                    ui.failed != null -> ui.failed
-                    ui.query.isBlank() -> null
-                    ui.hits.isEmpty() -> copyText("kit.menu.noMatch", "q" to ui.query)
-                    ui.total > ui.hits.size -> copyText("findStrip.status.truncated", "n" to ui.hits.size, "total" to ui.total)
-                    else -> copyText("findStrip.status.count", "n" to ui.hits.size)
-                }
-            status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
+            (if (ui.busy) busy else ui.failed)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                items(ui.hits, key = { "${it.uuid}/${it.line}/${it.tool}" }) { h ->
+                items(ui.hits) { h ->
                     Column(Modifier.fillMaxWidth().clickable { more.pickHit(h) }.padding(vertical = tokens.spacing.xs)) {
-                        Text(hitMeta(h), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
+                        if (h.tsText.isNotEmpty()) Text(h.tsText, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
                         Text(
                             buildAnnotatedString {
                                 append(h.before)
@@ -182,14 +154,12 @@ private fun OutlineSheet(
     more: ChatMore,
 ) {
     val tokens = LocalAppTokens.current
+    val busy = copyText("findStrip.status.busy")
+    val hint = copyText("userInputPanel.outline.hint")
     ModalBottomSheet(onDismissRequest = more::closeOutline) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
             Text(copyText("userInputPanel.outline.label"), style = MaterialTheme.typography.titleMedium)
-            when {
-                ui.busy -> Text(copyText("findStrip.status.busy"), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
-                ui.failed != null -> Text(copyText("userInputPanel.setUnavailable.withReason", "reason" to ui.failed), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
-                else -> Text(copyText("userInputPanel.outline.hint"), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
-            }
+            Text(if (ui.busy) busy else ui.failed ?: hint, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(ui.rows, key = { it.uuid }) { r ->
                     Text(
@@ -212,11 +182,12 @@ private fun AutoSheet(
     more: ChatMore,
 ) {
     val tokens = LocalAppTokens.current
+    val busy = copyText("findStrip.status.busy")
     ModalBottomSheet(onDismissRequest = more::closeAuto) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg)) {
             Text(copyText("tabMenu.autoAnswer.label"), style = MaterialTheme.typography.titleMedium)
             Text(copyText("tabMenu.autoAnswer.tip"), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
-            if (ui.busy) Text(copyText("findStrip.status.busy"), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
+            if (ui.busy) Text(busy, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
             ui.choices.forEach { c ->
                 Row(Modifier.fillMaxWidth().clickable { more.setAuto(c.min) }, verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = c.min == ui.now, onClick = { more.setAuto(c.min) })
@@ -245,10 +216,9 @@ private fun EndDialog(
     ask: EndAsk,
     more: ChatMore,
 ) {
-    val n = ask.titles.size
     AlertDialog(
         onDismissRequest = more::cancelEnd,
-        title = { Text(copyText("tabBatch.menu.stop", "n" to n)) },
+        title = { Text(copyText("tabMenu.kill.label")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.xs)) {
                 ask.titles.forEach { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
@@ -256,7 +226,7 @@ private fun EndDialog(
                 EndRow(copyText("kit.interrupts.keep"), copyText("tabSessionActions.kill.keeps"))
             }
         },
-        confirmButton = { SecondaryButton(onClick = more::confirmEnd, danger = true) { Text(copyText("tabBatch.stop.action", "n" to n)) } },
+        confirmButton = { SecondaryButton(onClick = more::confirmEnd, danger = true) { Text(copyText("tabBatch.verb.stop")) } },
         dismissButton = { SecondaryButton(onClick = more::cancelEnd) { Text(copyText("kit.dialog.cancel")) } },
     )
 }

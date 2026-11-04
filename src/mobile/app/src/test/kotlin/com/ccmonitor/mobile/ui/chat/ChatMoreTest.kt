@@ -28,7 +28,18 @@ class ChatMoreTest {
         val link: FakeCoreLink,
         val session: ChatSession,
         val more: ChatMore,
-    )
+    ) {
+        val ui: MoreUi get() = more.state.value
+        val found: FindUi get() = ui.find!!
+        val outline: OutlineUi get() = ui.outline!!
+        val auto: AutoUi get() = ui.auto!!
+        val chat: ChatUiState get() = session.state.value
+
+        fun readAt(): Any? = link.calls("history-read").first()!!["offset"]
+    }
+
+    /** 那台怎么答：命中那条命令 ⇒ 那一份；别的照替身记录答。 */
+    private fun answers(vararg by: Pair<String, Reply>): (String, Map<String, Any?>?) -> Reply? = { cmd, _ -> by.toMap()[cmd] }
 
     private fun TestScope.opened(
         face: String = "live-idle",
@@ -65,12 +76,13 @@ class ChatMoreTest {
             o.more.find("问")
             runCurrent()
             o.link.calls.clear()
-            o.more.pickHit(o.more.state.value.find!!.hits.single())
+            o.more.pickHit(o.found.hits.single())
             runCurrent()
             assertEquals("问的是一行都不交的那一段", listOf(mapOf("path" to "/p/s1.jsonl", "from" to 100L, "until" to 100L)), o.link.calls("history-lines").take(1))
-            assertEquals("从那一行的起点读", 1000L, o.link.calls("history-read").first()!!["offset"])
-            assertEquals("落点是那一行那张卡", o.session.state.value.units.first().key, o.session.state.value.landing)
-            assertNull("点了就收起", o.more.state.value.find)
+            assertEquals("从那一行的起点读", 1000L, o.readAt())
+            val first = o.chat.units.first()
+            assertEquals("落点是那一行那张卡", first.key, o.chat.landing)
+            assertNull("点了就收起", o.ui.find)
         }
 
     @Test
@@ -81,12 +93,12 @@ class ChatMoreTest {
             o.more.openOutline()
             runCurrent()
             assertEquals(listOf(mapOf("path" to "/p/s1.jsonl")), o.link.calls("history-user-inputs"))
-            assertEquals(listOf("问 0", "问 200"), o.more.state.value.outline!!.rows.map { it.excerpt })
+            assertEquals(listOf("问 0", "问 200"), o.outline.rows.map { it.excerpt })
             o.link.calls.clear()
-            o.more.pickSaid(o.more.state.value.outline!!.rows[1])
+            o.more.pickSaid(o.outline.rows[1])
             runCurrent()
-            assertEquals(2000L, o.link.calls("history-read").first()!!["offset"])
-            assertNull(o.more.state.value.outline)
+            assertEquals(2000L, o.readAt())
+            assertNull(o.ui.outline)
         }
 
     @Test
@@ -107,7 +119,7 @@ class ChatMoreTest {
             val o = opened(extra = { cmd, _ -> if (cmd == "sessions-stop") Reply.Ok(mapOf("results" to listOf(outcome("done", null)))) else null })
             assertEquals(EndEntry.Ready, o.more.endEntry())
             o.more.askEnd("proj · t")
-            assertEquals(listOf("proj · t"), o.more.state.value.ending!!.titles)
+            assertEquals(EndAsk(listOf("proj · t")), o.ui.ending)
             o.more.confirmEnd()
             runCurrent()
             assertEquals(listOf(mapOf("sids" to listOf("s1"), "client" to "mobile")), o.link.calls(SessionsStop.COMMAND))
@@ -129,10 +141,10 @@ class ChatMoreTest {
     fun `自动答：开时照会话事实列几档、勾在此刻那一档；设了 ⇒ 交的那一份与拼入参的口同形`() =
         runTest {
             val facts = Wires.facts("path" to "/p/s1.jsonl", "autoAnswer" to 5, "autoAnswerChoices" to listOf(mapOf("min" to 0, "text" to "关"), mapOf("min" to 5, "text" to "5 分钟")))
-            val o = opened(extra = { cmd, _ -> if (cmd == "history-facts") Reply.Ok(facts) else if (cmd == "history-annotate") Reply.Ok(mapOf("prev" to emptyMap<String, Any?>())) else null })
+            val o = opened(extra = answers("history-facts" to Reply.Ok(facts), "history-annotate" to Reply.Ok(mapOf("prev" to emptyMap<String, Any?>()))))
             o.more.openAuto()
             runCurrent()
-            val a = o.more.state.value.auto!!
+            val a = o.auto
             assertEquals(listOf("关", "5 分钟"), a.choices.map { it.text })
             assertEquals(5, a.now)
             o.more.setAuto(0)
@@ -145,14 +157,14 @@ class ChatMoreTest {
     fun `自动答没交成 ⇒ 那一句，几档照旧摆着`() =
         runTest {
             val facts = Wires.facts("path" to "/p/s1.jsonl", "autoAnswer" to null, "autoAnswerChoices" to listOf(mapOf("min" to 0, "text" to "关"), mapOf("min" to 5, "text" to "5 分钟")))
-            val o = opened(extra = { cmd, _ -> if (cmd == "history-facts") Reply.Ok(facts) else if (cmd == "history-annotate") FakeCoreLink.failed("那台不认") else null })
+            val o = opened(extra = answers("history-facts" to Reply.Ok(facts), "history-annotate" to FakeCoreLink.failed("那台不认")))
             o.more.openAuto()
             runCurrent()
-            assertEquals("没设 ⇒ 勾在关", 0, o.more.state.value.auto!!.now)
+            assertEquals("没设 ⇒ 勾在关", 0, o.auto.now)
             o.more.setAuto(5)
             runCurrent()
-            assertEquals("那台不认", o.more.state.value.note)
-            assertEquals(2, o.more.state.value.auto!!.choices.size)
+            assertEquals("那台不认", o.ui.note)
+            assertEquals(2, o.auto.choices.size)
         }
 
     private fun outcome(
