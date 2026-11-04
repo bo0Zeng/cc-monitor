@@ -708,7 +708,10 @@ fn detach_helper_inner() {
     std::fs::write(&tmp, pid.to_string()).expect("写 pid");
     std::fs::rename(&tmp, &f).expect("改名");
     if std::env::var_os("CCM_T_DETACH_LINGER").is_some() {
-        std::thread::sleep(4 * guard_core::wall::CEILING);
+        // 不等任何事：一直停在这里，直到起它的那一方到点杀组（`park` 可能空醒 ⇒ 再停）。
+        loop {
+            std::thread::park();
+        }
     }
 }
 
