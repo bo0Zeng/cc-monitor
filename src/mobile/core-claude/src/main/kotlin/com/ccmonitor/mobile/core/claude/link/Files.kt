@@ -138,8 +138,8 @@ object FilesLs {
         val sizeText: String?,
         /** 那台按它的钟写好的短写法。 */
         val mtime: String?,
-        /** 预览那道门（那台判的）；目录 · 手机不画的那几种（图）⇒ `null`。 */
-        val preview: Open? = null,
+        /** 预览那道门（那台判的：当文本读 · 当图读 · 不预览那一句），原样；目录 ⇒ `null`。 */
+        val preview: PreviewGate? = null,
         /** 编辑那道门（那台判的）；目录 ⇒ `null`。 */
         val edit: Open? = null,
         /** 那台交来的这一行原样（「能做什么」交核心认：[CoreLink.picks]）。 */
@@ -200,12 +200,6 @@ object FilesLs {
         val path = RemotePath.of(e.path) ?: return null
         val rel = RemotePath.of(e.name) ?: return null
         val g = e.gates
-        val preview =
-            when (val p = g?.preview) {
-                is PreviewGate.Text -> Open(cap = p.value.cap)
-                is PreviewGate.No -> Open(said = p.value)
-                is PreviewGate.Image, null -> null
-            }
         val edit =
             when (val x = g?.edit) {
                 is Gate.Cap -> Open(cap = x.value)
@@ -213,7 +207,7 @@ object FilesLs {
                 null -> null
             }
         // 点不点得进去：那台画成文件夹的那几行（目录 · 指向目录的链接，`files/class.rs::class_of_entry`）。
-        return Entry(path, rel, e.`class` == FileClass.FOLDER, e.size, e.sizeText, e.mtimeText, preview, edit)
+        return Entry(path, rel, e.`class` == FileClass.FOLDER, e.size, e.sizeText, e.mtimeText, g?.preview, edit)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径，或 `~` 开头的（那台展开）。 */

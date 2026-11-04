@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector
@@ -68,6 +69,7 @@ class FilesViewModel(
     private val feed = backends.of(hostId)
     private val saves = backends.saves
     private val ops = FileOps(feed, ::machine)
+    private val previews = FilePreview(feed, ::machine)
 
     private val _ui = MutableStateFlow<FilesUi>(FilesUi.Connecting)
     val ui: StateFlow<FilesUi> = _ui.asStateFlow()
@@ -176,9 +178,9 @@ class FilesViewModel(
         }
     }
 
-    /** 别处点名的那一份打开成了预览（名字 · 全文）。 */
-    private val _opened = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 1)
-    val opened: SharedFlow<Pair<String, String>> = _opened.asSharedFlow()
+    /** 别处点名的那一份打开成了预览（名字 · 读到的那一份）。 */
+    private val _opened = MutableSharedFlow<Pair<String, FilePreview.Text>>(extraBufferCapacity = 1)
+    val opened: SharedFlow<Pair<String, FilePreview.Text>> = _opened.asSharedFlow()
 
     /**
      * 打开别处点名的一个路径（轮换屏的［看代码］…）：连上以后问那台它是什么，目录 ⇒ 进去；文件 ⇒ 进它所在的目录、开预览。
@@ -193,7 +195,7 @@ class FilesViewModel(
                     // 名字与预览那道门都在它那一行上；不在这一屏（截了）⇒ 门不明，读那一步说那一句。
                     val e = enter(at.dir)?.entries?.firstOrNull { it.path == at.file }
                     if (e != null && e.preview == null) return@launch
-                    readText(at.file, e?.preview).onSuccess { _opened.tryEmit((e?.name ?: at.file.shown) to it.text) }
+                    preview(at.file, e?.preview).onSuccess { _opened.tryEmit((e?.name ?: at.file.shown) to it) }
                 }
             }
         }
@@ -423,7 +425,32 @@ class FilesViewModel(
         _progress.value = if (total > 0) (got.toFloat() / total).coerceIn(0f, 1f) else null
     }
 
-    /** 照那道门读那一份文本（预览 · 编辑）：门不许 ⇒ 说那台写好的那一句、不读；没成 ⇒ 已说那一句。 */
+    /**
+     * 照那一行的预览门预览（[FilePreview.text]：当文本读，带语言的由那台上色）：不预览 ⇒ 那台那一句；当图读的手机还不读 ⇒ 说不是文本、可下载；
+     * 门不明（那一行不在这一屏）⇒ 说未列出。没成 ⇒ 已说那一句。
+     */
+    suspend fun preview(
+        path: RemotePath,
+        gate: PreviewGate?,
+    ): Result<FilePreview.Text> {
+        if (gate !is PreviewGate.Text) {
+            val said =
+                when (gate) {
+                    is PreviewGate.No -> gate.value
+                    is PreviewGate.Image -> copyText("beFilesOpen.preview.binaryKind")
+                    else -> copyText("rsFilewinSource.gates.unlisted")
+                }
+            _events.tryEmit(Notice(said))
+            return Result.failure(IllegalStateException(said))
+        }
+        _busy.value = true
+        return previews.text(path, gate.value).also {
+            _busy.value = false
+            it.onFailure(::say)
+        }
+    }
+
+    /** 照那道门读那一份文本来编辑：门不许 ⇒ 说那台写好的那一句、不读；没成 ⇒ 已说那一句。 */
     suspend fun readText(
         path: RemotePath,
         gate: FilesLs.Open?,

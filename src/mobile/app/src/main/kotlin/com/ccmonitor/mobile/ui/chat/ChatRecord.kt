@@ -133,7 +133,7 @@ internal class ChatRecord(
     }
 
     /**
-     * 这条会话的记录文件（＋ 为认它已经问到的会话事实）。会话表里有 ⇒ 用它（目录也照它）；上次读过的那份（续点里记着）⇒ 照它接：
+     * 这条会话的记录文件（＋ 为认它已经问到的会话事实）。会话表里有 ⇒ 用它（目录取它的项目目录 `projectDir`，不取进程目录 `cwd`）；上次读过的那份（续点里记着）⇒ 照它接：
      * 离线时也挂得上，网回来（换了一条流）就整份对齐，目录等读 chip 那一趟事实时取；都没有 ⇒ [byId]。[fresh]：刚起的那条（见 [freshPath]）。
      */
     suspend fun recordOf(
@@ -142,7 +142,7 @@ internal class ChatRecord(
     ): Pair<String, FactsReply?>? {
         if (fresh) return freshPath(s) to null
         link.table.value.live[s]?.let { live ->
-            if (state.value.cwd == null) live.cwd?.let { state.value = state.value.copy(cwd = it) }
+            if (state.value.cwd == null) live.projectDir?.let { state.value = state.value.copy(cwd = it) }
             live.path?.let { return it to null }
         }
         anchorPath?.let { return it to null }
