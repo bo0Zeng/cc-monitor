@@ -88,14 +88,18 @@ fn half_of(rel: &str) -> &'static str {
     if rel.starts_with("src/frontend/shell/")
         || rel.starts_with("tests/frontend/shell/")
         || rel.starts_with("tests/frontend/filewin/")
-        || MONITOR_POPULATION.iter().any(|p| rel.starts_with(p.as_str()))
+        || MONITOR_POPULATION
+            .iter()
+            .any(|p| rel.starts_with(p.as_str()))
         || rel.starts_with("src/comms/inward/")
         || rel.starts_with("tests/comms/inward/")
     {
         "monitor"
     } else if rel.starts_with("src/backend/")
         || rel.starts_with("tests/backend/")
-        || BACKEND_POPULATION.iter().any(|p| rel.starts_with(p.as_str()))
+        || BACKEND_POPULATION
+            .iter()
+            .any(|p| rel.starts_with(p.as_str()))
         || rel.starts_with("tests/comms/outward/")
     {
         "backend"
