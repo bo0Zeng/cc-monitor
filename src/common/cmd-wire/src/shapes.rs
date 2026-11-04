@@ -188,7 +188,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-fork", "734a9809"),
     ("session-interrupt", "b9bb9774"),
     ("session-model", "8c5bd248"),
-    ("session-open", "dce397c9"),
+    ("session-open", "0f6c7f65"),
     ("session-open-dir", "95184b96"),
     ("session-open-facts", "a64cba35"),
     ("session-permission", "2f99d87e"),

@@ -14249,7 +14249,8 @@ what: OpenWhat,
  */
 account?: AccountAsk, 
 /**
- * 放在哪；缺 ＝ 这台定（新起：有 tmux 就 tmux、分叉照源会话那一种；恢复：照这台的偏好）。接回不收。
+ * 放在哪；缺 ＝ 这台定（`control/session_open::default_run`：新起 ⇒ 能托管就托管、不能才 tmux，分叉照源会话那一种；
+ * 恢复 ⇒ 照这台「恢复时放在哪」的偏好）。接回不收。
  */
 run?: Launch, 
 /**
