@@ -491,7 +491,7 @@ impl Home {
                     .iter()
                     .map(|id| {
                         crate::accounts::upstream_select::rotate::test_support::book_row(
-                            &id.to_string(),
+                            id,
                             Some(accts.join(id)),
                             false,
                         )

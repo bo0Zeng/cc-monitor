@@ -66,8 +66,11 @@ impl Taps {
 impl comms_outward::TapPort for Taps {
     fn offer(&self, ev: crate::relay::TapEvent) -> bool {
         let g = self.0.lock().unwrap();
+        // 每一路都要交一份（不在第一路收下时停）⇒ 数收下的，不用会短路的 `any`。
         g.iter()
-            .fold(false, |took, tx| tx.try_send(ev.clone()).is_ok() || took)
+            .filter(|tx| tx.try_send(ev.clone()).is_ok())
+            .count()
+            > 0
     }
 }
 

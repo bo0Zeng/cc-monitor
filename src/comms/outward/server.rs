@@ -13,6 +13,7 @@
 //! **不透明段**，拿回来的是一个 `Destination`，**照做，不做任何判断**。
 
 use super::door;
+use super::hop::HopMeter;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
@@ -185,6 +186,8 @@ pub struct Relay {
     pool: upstream::Pool,
     /// 在途请求体合计的账（[`BodyBudget`]）：上限由后端交下来。
     bodies: BodyBudget,
+    /// 去上游那一跳的读数（[`crate::hop`]）：各条上游连接共用这一份。
+    hop: Arc<HopMeter>,
 }
 
 /// 同时在途的下游请求体字节合计的账：上限由后端交下来（`C4`：值归后端 · 执行归本层），此刻记着多少。
@@ -276,7 +279,13 @@ impl Relay {
             upstream_deadline,
             open,
             bodies: BodyBudget::within(in_flight_bodies.as_len()),
+            hop: Arc::default(),
         }
+    }
+
+    /// 去上游那一跳的那一份记账（宿主留着它，出成品时读 [`HopMeter::facts`]）。
+    pub fn hop(&self) -> Arc<HopMeter> {
+        Arc::clone(&self.hop)
     }
 }
 
@@ -285,7 +294,13 @@ pub fn respond_status(down: &mut TcpStream, status: &str, reason: &str) -> std::
 }
 
 /// 中转传输失败那一格：状态行（502 / 504，[`UpstreamFailure::status`]）＋ 原因头 ＋ **一句说得清是谁、卡在哪的话**。
-fn respond_upstream_failed(down: &mut TcpStream, why: &UpstreamFailure) -> std::io::Result<()> {
+/// 四种传输失败都经这里 ⇒ 那一跳读数里「上次卡在哪一步」只在这里记。
+fn respond_upstream_failed(
+    down: &mut TcpStream,
+    why: &UpstreamFailure,
+    hop: &HopMeter,
+) -> std::io::Result<()> {
+    hop.failed(why.who.endpoint(), why.at);
     // ⚠ 只印上游的主机与端口 ＋ 一句固定文案，**永不印请求头**（`K9` 裁定四第 1 条）。
     let upstream_failure = why.for_log();
     eprintln!("[relay] upstream failed: {upstream_failure}");
@@ -451,6 +466,11 @@ impl Who {
             port: base.port,
         }
     }
+
+    /// `主机:口`（那一跳读数里的上游）。
+    fn endpoint(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
 }
 
 /// 传输失败卡在哪一跳。**每一支一句固定文案**，先说结果、再说卡在哪。
@@ -565,12 +585,13 @@ impl UpstreamFailure {
     }
 }
 
-/// 这一发怎么够到上游：期限 · 开 TCP 的那一口（已带上这一发的来处）· 连接池 · 来处本身（池分格要用）。
+/// 这一发怎么够到上游：期限 · 开 TCP 的那一口（已带上这一发的来处）· 连接池 · 来处本身（池分格要用）· 那一跳的记账。
 struct UpLeg<'a> {
     deadline: std::time::Duration,
     open: &'a Open<'a>,
     pool: &'a upstream::Pool,
     origin: Option<&'a str>,
+    hop: &'a Arc<HopMeter>,
 }
 
 /// 把一个**成立**的目的地兑现成一条「已连上、请求已写完」的上游连接。
@@ -598,18 +619,20 @@ fn send_upstream(
 ) -> Answered {
     let lane = upstream::Lane::new(reach.origin, tag, base);
     let pooled = reach.pool.take(&lane, reach.deadline);
-    let mut up =
-        match pooled.map_or_else(|| upstream::connect(base, reach.deadline, reach.open), Ok) {
-            Ok(c) => c,
-            Err(e) => {
-                let who = Who::of(base);
-                return Answered::UpstreamFailed(UpstreamFailure::new(
-                    &who,
-                    FailedAt::Connect,
-                    Some(e),
-                ));
-            }
-        };
+    let mut up = match pooled.map_or_else(
+        || upstream::connect(base, reach.deadline, reach.open, reach.hop),
+        Ok,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            let who = Who::of(base);
+            return Answered::UpstreamFailed(UpstreamFailure::new(
+                &who,
+                FailedAt::Connect,
+                Some(e),
+            ));
+        }
+    };
     let wrote = (|| -> std::io::Result<()> {
         up.write_all(&render_upstream_request(head, rest, base, auth, body.len()))?;
         if !body.is_empty() {
@@ -747,6 +770,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         open: &open,
         pool: &relay.pool,
         origin: token,
+        hop: &relay.hop,
     };
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
@@ -774,7 +798,9 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             )
         }
         Answered::Replied(bytes) => return reply_and_drain(&mut down_w, &bytes),
-        Answered::UpstreamFailed(why) => return respond_upstream_failed(&mut down_w, &why),
+        Answered::UpstreamFailed(why) => {
+            return respond_upstream_failed(&mut down_w, &why, &relay.hop)
+        }
     };
 
     // ★★ **1xx 是中间响应，不是最终响应**。
@@ -798,10 +824,11 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）也回「504（超时）或 502 ＋ why」，不是静默 FIN：
     // 「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
-    let (mut status_line, mut headers, mut raw_resp) = match read_final_head(&mut up, &who) {
-        Ok(h) => h,
-        Err(why) => return respond_upstream_failed(&mut down_w, &why),
-    };
+    let (mut status_line, mut headers, mut raw_resp) =
+        match read_final_head(&mut up, &who, &relay.hop) {
+            Ok(h) => h,
+            Err(why) => return respond_upstream_failed(&mut down_w, &why, &relay.hop),
+        };
     // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读），再问要不要换去处、用同一份请求体重发。
     //   要 ⇒ 发新的那一发、读它的头，手上这个回包整个丢掉（下游一个字节都没收到过，对 agent 透明）；
     //   新的那一发没发出去 ⇒ 不再换，把手上这个原样往下游送；发出去了、头读不出来 ⇒ 回中转自己的 502/504
@@ -835,10 +862,10 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             break;
         };
         tried.push(next_tag.clone());
-        let (s2, h2, raw2) = match read_final_head(&mut up2, &who2) {
+        let (s2, h2, raw2) = match read_final_head(&mut up2, &who2, &relay.hop) {
             Ok(h) => h,
             // 手上那条（体没读）不还池，随 `up` 一起丢。
-            Err(why) => return respond_upstream_failed(&mut down_w, &why),
+            Err(why) => return respond_upstream_failed(&mut down_w, &why, &relay.hop),
         };
         (up, tag, lane) = (up2, next_tag, lane2);
         (status_line, headers, raw_resp) = (s2, h2, raw2);
@@ -949,9 +976,11 @@ fn dispatch(
 }
 
 /// 读上游的**最终**回包头：1xx 丢掉再读，至多 [`INTERIM_RESPONSES_ALLOWED`] 条。回 `(状态行, 头表, 原始字节)`。
+/// 读到了 ⇒ 那一跳读数记「连上了」（只在这里记；没读到的那几形经 [`respond_upstream_failed`] 记）。
 fn read_final_head(
     up: &mut Conn,
     who: &Who,
+    hop: &HopMeter,
 ) -> Result<(String, Vec<(String, String)>, Vec<u8>), UpstreamFailure> {
     let fail = |at, cause| UpstreamFailure::new(who, at, cause);
     let mut interim = 0usize;
@@ -971,6 +1000,7 @@ fn read_final_head(
             }
             continue;
         }
+        hop.answered(who.endpoint(), up.via_proxy());
         return Ok((status, headers, raw));
     }
 }
