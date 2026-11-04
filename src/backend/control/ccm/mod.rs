@@ -665,9 +665,9 @@ fn taken_here(
 ) -> Result<crate::common::session_snapshot::TakenNames, crate::common::said::Said> {
     match tmux {
         Ok(t) => Ok(t.with_hosted(hosted)),
-        Err(e) if e.code.as_deref() == Some("no_tmux") => {
-            Ok(crate::common::session_snapshot::TakenNames::hosted_only(hosted))
-        }
+        Err(e) if e.code.as_deref() == Some("no_tmux") => Ok(
+            crate::common::session_snapshot::TakenNames::hosted_only(hosted),
+        ),
         Err(e) => Err(e),
     }
 }
