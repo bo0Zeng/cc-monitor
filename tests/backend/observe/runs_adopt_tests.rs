@@ -8,13 +8,6 @@ use std::path::{Path, PathBuf};
 
 const SID: &str = "s-adopt";
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("runs-adopt-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn append(p: &Path, lines: &[String]) {
     use std::io::Write;
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -97,7 +90,7 @@ fn old() -> Duration {
 
 #[test]
 fn adopting_reads_only_the_children_that_have_not_ended() {
-    let dir = scratch("only-live");
+    let dir = test_home::scratch("only-live");
     let parent = dir.join(format!("{SID}.jsonl"));
     let mut lines = Vec::new();
     for i in 0..5 {
@@ -135,7 +128,7 @@ fn adopting_reads_only_the_children_that_have_not_ended() {
 
 #[test]
 fn an_ended_child_still_being_written_is_read() {
-    let dir = scratch("fresh");
+    let dir = test_home::scratch("fresh");
     let parent = dir.join(format!("{SID}.jsonl"));
     append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
     let n = child(&parent, "w1", "t1", Duration::from_secs(5));
@@ -151,7 +144,7 @@ fn an_ended_child_still_being_written_is_read() {
 
 #[test]
 fn a_skipped_child_written_again_is_read_from_the_start() {
-    let dir = scratch("again");
+    let dir = test_home::scratch("again");
     let parent = dir.join(format!("{SID}.jsonl"));
     append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
     child(&parent, "w1", "t1", old());
@@ -175,7 +168,7 @@ fn a_skipped_child_written_again_is_read_from_the_start() {
 
 #[test]
 fn skipped_children_keep_the_table_in_write_order() {
-    let dir = scratch("order");
+    let dir = test_home::scratch("order");
     let parent = dir.join(format!("{SID}.jsonl"));
     // 父记录里先派的那个，记录反而写得晚：运行表照最近动静（记录的写入时刻）排，不照父记录的先后。
     append(
@@ -202,7 +195,7 @@ fn skipped_children_keep_the_table_in_write_order() {
 /// 标签 · 类别 · 谁派的 · 后台派出照孙运行旁边派出那一刻落的那一份来，不靠读它的上一层。
 #[test]
 fn a_grandchild_keeps_its_label_when_its_spawner_is_not_read() {
-    let dir = scratch("nested");
+    let dir = test_home::scratch("nested");
     let parent = dir.join(format!("{SID}.jsonl"));
     append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
     child(&parent, "w1", "t1", old());
@@ -258,7 +251,7 @@ fn a_grandchild_keeps_its_label_when_its_spawner_is_not_read() {
 /// 不因为那一行写在它自己的记录里就成了它自己。
 #[test]
 fn a_forked_grandchild_is_not_its_own_spawner() {
-    let dir = scratch("fork");
+    let dir = test_home::scratch("fork");
     let parent = dir.join(format!("{SID}.jsonl"));
     append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
     child(&parent, "w1", "t1", old());

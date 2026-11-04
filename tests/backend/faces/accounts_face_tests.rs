@@ -40,15 +40,7 @@ fn sv(a: &[&str]) -> Vec<String> {
 }
 
 fn tmp(tag: &str) -> Tmp {
-    let h = std::env::temp_dir().join(format!(
-        "acct-face-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&h).unwrap();
+    let h = test_home::scratch(tag);
     // 别名的链接指向这台的 ccm：放一个占位，链接才不是断的。
     let bin = h.join(crate::assets::aliases::links::bin_rel());
     std::fs::create_dir_all(&bin).unwrap();

@@ -42,17 +42,6 @@ impl RecordScans {
     }
 }
 
-fn sandbox(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-record-scan-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&d).ok();
-    std::fs::create_dir_all(&d).expect("sandbox");
-    d
-}
-
 /// 合成一份记录：两轮 · 工具调用与出错的结果 · 收尾 · 空行 · 坏行 · 分叉血缘 · 用量 ＋ 末尾一截残行。
 fn fixture(turns: usize) -> String {
     let mut s = String::new();
@@ -177,7 +166,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
 
 #[test]
 fn r2_unchanged_is_a_hit_changed_is_a_rescan() {
-    let d = sandbox("r2");
+    let d = test_home::scratch("r2");
     let p = d.join("s.jsonl");
     std::fs::write(&p, fixture(2)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
@@ -197,7 +186,7 @@ fn r2_unchanged_is_a_hit_changed_is_a_rescan() {
 
 #[test]
 fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_kept_alone() {
-    let d = sandbox("r3");
+    let d = test_home::scratch("r3");
     let paths: Vec<PathBuf> = (0..3)
         .map(|i| {
             let p = d.join(format!("s{i}.jsonl"));
@@ -249,7 +238,7 @@ fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_kept_alone() {
 
 #[test]
 fn r4_concurrent_cold_opens_scan_once() {
-    let d = sandbox("r4");
+    let d = test_home::scratch("r4");
     let p = d.join("s.jsonl");
     std::fs::write(&p, fixture(4000)).unwrap();
     let scans = RecordScans::new(4, 256 << 20);
@@ -267,7 +256,7 @@ fn r4_concurrent_cold_opens_scan_once() {
 /// R5：只看不扫 —— 没留着 / 变了 ⇒ `None`（调用方走自己那条便宜的路，不等整遍扫描）；留着且没变 ⇒ 那一张。
 #[test]
 fn r5_peek_never_scans() {
-    let d = sandbox("r5");
+    let d = test_home::scratch("r5");
     let p = d.join("s.jsonl");
     std::fs::write(&p, fixture(1)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
@@ -547,7 +536,7 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
 /// （读 k ＋ 见证），出的轮次与整份扫的一样。
 #[test]
 fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
-    let d = sandbox("r9");
+    let d = test_home::scratch("r9");
     let p = d.join("s.jsonl");
     std::fs::write(&p, branched(4)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
@@ -578,7 +567,7 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
 /// 尾巴对不上（截断重写）⇒ 整份重扫，答的是新内容。
 #[test]
 fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
-    let d = sandbox("r10");
+    let d = test_home::scratch("r10");
     let probe = crate::observe::skeleton::WITNESS;
     let limits = crate::observe::recognize::facts::ContextLimits::default();
     let cold = |p: &std::path::Path| {
@@ -784,7 +773,7 @@ fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
 /// （之后问事实只读追加的那一截）；界面问过、留着的那一张，预读照用、不挤掉；预读与界面同时冷开同一份 ⇒ 照界面的留。
 #[test]
 fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
-    let d = sandbox("r12");
+    let d = test_home::scratch("r12");
     let probe = crate::observe::skeleton::WITNESS;
     let limits = crate::observe::recognize::facts::ContextLimits::default();
     let p = d.join("p.jsonl");
@@ -944,7 +933,7 @@ fn r13_the_skeleton_keeps_what_the_prime_takes_not_the_child_run_lines() {
 /// 末端是最后一个完整行之后（残尾不计），也不为它留一张整图；`take` 回 false ⇒ 停在那一行的起点；图留着 ⇒ 照图切、不再读盘。
 #[test]
 fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
-    let d = sandbox("r14");
+    let d = test_home::scratch("r14");
     let p = d.join("s.jsonl");
     let text = fixture(6);
     std::fs::write(&p, &text).unwrap();

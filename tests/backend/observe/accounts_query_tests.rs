@@ -4,20 +4,6 @@ use crate::agents::claudecode::accounts as cc_accounts;
 use crate::platform::proc::proc_starttime;
 use std::fs;
 
-fn tmpdir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "ccm-acct-{tag}-{}-{:?}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&p);
-    fs::create_dir_all(&p).unwrap();
-    p
-}
-
 /// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
 fn list_accounts(accts: &Path) -> Vec<String> {
     let (meta, rows) = scan_accounts(accts, &|_| false);
@@ -55,7 +41,7 @@ fn meta(lines: &[String]) -> serde_json::Value {
 // ---- 1. 正常 manifest ----
 #[test]
 fn list_accounts_happy_path() {
-    let root = tmpdir("happy");
+    let root = test_home::scratch("happy");
     let accts = root.join("accts");
     let z = accts.join("z");
     fs::create_dir_all(&z).unwrap();
@@ -96,7 +82,7 @@ fn list_accounts_happy_path() {
 // ---- 2. manifest 缺失 / 畸形 / 版本不支持 → enabled:false 且不失败 ----
 #[test]
 fn list_accounts_degrades_gracefully() {
-    let root = tmpdir("degrade");
+    let root = test_home::scratch("degrade");
     // 缺文件
     let m = meta(&list_accounts(&root.join("nope")));
     assert_eq!(m["enabled"], false);
@@ -134,7 +120,7 @@ fn list_accounts_degrades_gracefully() {
 /// 要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形。
 #[test]
 fn unsafe_config_dirs_are_dropped() {
-    let root = tmpdir("unsafe");
+    let root = test_home::scratch("unsafe");
     let accts = root.join("accts");
     write_manifest(
         &accts,
@@ -287,7 +273,7 @@ fn windows_shaped_config_dirs_are_accepted_and_dangerous_ones_still_are_not() {
 /// 而账号**仍然要在列表里** —— 「探不到目录」与「不安全被丢掉」是两回事。
 #[test]
 fn a_windows_shaped_account_survives_the_listing() {
-    let root = tmpdir("winshape");
+    let root = test_home::scratch("winshape");
     let accts = root.join("accts");
     write_manifest(
         &accts,
@@ -335,7 +321,7 @@ fn a_windows_shaped_account_survives_the_listing() {
 
 #[test]
 fn session_accounts_marks_dead_and_bare() {
-    let root = tmpdir("sess");
+    let root = test_home::scratch("sess");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -379,7 +365,7 @@ fn session_accounts_marks_dead_and_bare() {
 #[cfg(target_os = "linux")]
 #[test]
 fn session_accounts_rejects_pid_reuse() {
-    let root = tmpdir("reuse");
+    let root = test_home::scratch("reuse");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -428,7 +414,7 @@ fn sid_map(rows: &[SessionAccount]) -> std::collections::HashMap<String, serde_j
 
 #[test]
 fn session_accounts_without_sessions_dir_is_empty() {
-    let root = tmpdir("nosess");
+    let root = test_home::scratch("nosess");
     assert!(session_accounts(&root, &root).is_empty());
     let _ = fs::remove_dir_all(&root);
 }
@@ -446,7 +432,7 @@ fn trailing_slash_normalized() {
 #[test]
 fn special_files_are_rejected_not_read() {
     use std::os::unix::fs::symlink;
-    let root = tmpdir("special");
+    let root = test_home::scratch("special");
     // symlink → /dev/zero：metadata().len() 报 0 会骗过大小检查,read 无上限会 OOM。
     // read_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
     let link = root.join("evil.json");
@@ -475,7 +461,7 @@ fn special_files_are_rejected_not_read() {
 // ---- 10. 建议1：单个坏账号被跳过而非拖垮整份 manifest ----
 #[test]
 fn one_bad_account_does_not_kill_the_list() {
-    let root = tmpdir("badacct");
+    let root = test_home::scratch("badacct");
     let accts = root.join("accts");
     write_manifest(
         &accts,
@@ -526,7 +512,7 @@ fn deceptive_unicode_rejected() {
 /// 帧里 `configDir` 出 **null**（下游据此「不注入 CLAUDE_CONFIG_DIR」）。
 #[test]
 fn account_zero_is_kept_and_probes_shared_store() {
-    let root = tmpdir("acct0");
+    let root = test_home::scratch("acct0");
     let shared = root.join("claude");
     fs::create_dir_all(&shared).unwrap();
     let accts = root.join("accts");
@@ -565,7 +551,7 @@ fn account_zero_is_kept_and_probes_shared_store() {
 /// **不能**退化成账号 0。
 #[test]
 fn empty_config_dir_is_not_account_zero() {
-    let root = tmpdir("acct0empty");
+    let root = test_home::scratch("acct0empty");
     let accts = root.join("accts");
     write_manifest(
         &accts,
@@ -585,7 +571,7 @@ fn empty_config_dir_is_not_account_zero() {
 /// **不得假装已登录**，也不得因此把账号 0 丢掉。
 #[test]
 fn account_zero_without_shared_store_is_not_logged_in() {
-    let root = tmpdir("acct0nostore");
+    let root = test_home::scratch("acct0nostore");
     let accts = root.join("accts");
     write_manifest(
         &accts,
@@ -642,7 +628,7 @@ fn wait_exec_done(pid: u32, prog: &str) {
 #[test]
 fn bare_session_is_attributed_to_account_zero() {
     let mut child = bare_child();
-    let root = tmpdir("acct0sess");
+    let root = test_home::scratch("acct0sess");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -708,7 +694,7 @@ fn bare_session_is_attributed_to_account_zero() {
 #[cfg(target_os = "linux")]
 #[test]
 fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
-    let root = tmpdir("envhole");
+    let root = test_home::scratch("envhole");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -884,7 +870,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
 #[test]
 fn bare_session_without_account_zero_stays_unattributed() {
     let mut child = bare_child();
-    let root = tmpdir("acct0none");
+    let root = test_home::scratch("acct0none");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -920,7 +906,7 @@ fn bare_session_without_account_zero_stays_unattributed() {
 /// 两份实现各写一遍，这条对拍看不见它们漂。
 #[test]
 fn auth_kind_parity_backend_side() {
-    let root = tmpdir("authkind-parity");
+    let root = test_home::scratch("authkind-parity");
     for c in &acct_core::AUTH_KIND_PARITY_CASES {
         let d = root.join(c.name);
         fs::create_dir_all(&d).unwrap();
@@ -1156,7 +1142,7 @@ fn the_header_names_both_env_keys_we_read() {
 
 /// 夹具：账号库（一个账号 0 ＋ 两个隔离号，`acct-a` 有订阅凭据、`acct-b` 没有）。回 `(root, accts)`。
 fn c4c_fixture(tag: &str, with_zero: bool) -> (PathBuf, PathBuf) {
-    let root = tmpdir(tag);
+    let root = test_home::scratch(tag);
     let accts = root.join("accts");
     let a = accts.join("acct-a");
     fs::create_dir_all(&a).unwrap();
@@ -1615,7 +1601,7 @@ fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
     let delta = |at: &str, name: &str, err: &str| serde_json::json!({"type": "attachment", "timestamp": at, "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": err}]}});
     let title = |t: &str| serde_json::json!({"type": "ai-title", "aiTitle": t, "sessionId": "s"});
     let home_with = |tag: &str, pid: u32, sid: &str, recs: &[serde_json::Value]| {
-        let home = tmpdir(tag);
+        let home = test_home::scratch(tag);
         fs::create_dir_all(home.join("sessions")).unwrap();
         fs::write(
             home.join("sessions").join(format!("{pid}.json")),
@@ -1680,7 +1666,7 @@ fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
     let names = |v: &[crate::observe::recognize::facts::McpTrouble]| -> Vec<String> {
         v.iter().map(|m| m.name.clone()).collect()
     };
-    let dir = tmpdir("mcp-tail");
+    let dir = test_home::scratch("mcp-tail");
     let rec = dir.join("s.jsonl");
     let mut book = McpBook::default();
     fs::write(&rec, delta("m-a")).unwrap();
@@ -1719,7 +1705,7 @@ fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
 #[test]
 #[cfg(target_os = "linux")]
 fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_leaks_the_url() {
-    let root = tmpdir("viarelay");
+    let root = test_home::scratch("viarelay");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
@@ -1811,7 +1797,7 @@ fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
     let (root, accts) = c4c_fixture("next-default", false);
     let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     assert_eq!(product["meta"]["nextDefault"], serde_json::json!("b"));
-    let empty = tmpdir("next-default-none");
+    let empty = test_home::scratch("next-default-none");
     let none = list_product_with(&empty, None, &[], &[], "claude-code", "claude-code", false);
     assert!(
         none["meta"]["nextDefault"].is_null(),
@@ -1846,7 +1832,7 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
 fn live_doing_reads_activity_and_what_it_waits_for() {
     use crate::agents::SessionActivity as A;
     use crate::observe::recognize::facts::NeedsKind as K;
-    let home = tmpdir("doing");
+    let home = test_home::scratch("doing");
     let dir = home.join("projects").join("-n");
     fs::create_dir_all(&dir).unwrap();
     let ask = "dddddddd-1111-2222-3333-444444444444";
@@ -1945,7 +1931,7 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
 /// 没有配置目录（账号 0）⇒ 不进；原地模式 ⇒ 不进；隔离、有目录 ⇒ 进（哪怕还需登录：选不选得了另看 `selectable`）。
 #[test]
 fn the_list_product_says_who_goes_into_the_new_session_picker() {
-    let root = tmpdir("newsession");
+    let root = test_home::scratch("newsession");
     let accts = root.join("accts");
     let iso = accts.join("iso");
     let inplace = accts.join("inplace");
@@ -2064,7 +2050,7 @@ fn the_badge_is_written_by_the_core() {
 #[test]
 fn who_holds_a_session_is_judged_the_way_its_adapter_declares() {
     use crate::agents::LiveBy;
-    let home = tmpdir("holders");
+    let home = test_home::scratch("holders");
     let rec = home.join("hold-sid.jsonl");
     fs::write(&rec, "{}\n").unwrap();
     let open = || fs::OpenOptions::new().append(true).open(&rec).unwrap();
@@ -2107,7 +2093,7 @@ fn each_adapter_declares_how_its_sessions_are_judged_alive() {
 /// 与常驻那一个补完写回去的一样 —— 名字哈希同格的 team / lab 读出来也不同色；读这一下不写盘。
 #[test]
 fn the_listing_hands_over_each_accounts_color() {
-    let root = tmpdir("colors");
+    let root = test_home::scratch("colors");
     let accts = root.join("accts");
     for n in ["team", "lab", "old"] {
         fs::create_dir_all(accts.join(n)).unwrap();
@@ -2149,7 +2135,7 @@ fn the_listing_hands_over_each_accounts_color() {
 /// 行的格就是原来那几格加这一格（别的不动）。
 #[test]
 fn each_row_carries_the_label_people_see() {
-    let root = tmpdir("label");
+    let root = test_home::scratch("label");
     let accts = root.join("accts");
     write_manifest(
         &accts,

@@ -3,16 +3,8 @@
 //! 不碰用户的 tmux：socket 一律是本趟临时目录里的 `-S` 路径；被问的进程的 `TMUX` 也指向它。
 
 use super::*;
-use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
-
-fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-st-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
 
 /// 等到 `f` 成立（最多兜底的那一个数）；夹具用，生产段零处。
 fn wait_until(mut f: impl FnMut() -> bool) -> bool {
@@ -85,7 +77,7 @@ fn clients(sock: &std::path::Path) -> usize {
 /// ★ 在 tmux 里：问的是**此刻连着**那个会话的客户端，读它们的环境；没人连 ⇒ `detached`；两个 ⇒ 最近动静在前。
 #[test]
 fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
-    let dir = tmpdir("tmux");
+    let dir = test_home::scratch("tmux");
     let sock = dir.join("s");
     let out = Command::new("tmux")
         .arg("-S")
@@ -205,7 +197,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
 /// ★ 不在 tmux 里：读那个进程自己的环境；它有控制终端（pty 里起的）⇒ 那一个终端。没有控制终端 ⇒ `no-terminal`。
 #[test]
 fn outside_tmux_the_process_own_environment_is_the_answer() {
-    let dir = tmpdir("direct");
+    let dir = test_home::scratch("direct");
     let pidfile = dir.join("pid");
     let mut kid = Command::new("script")
         .args([
@@ -319,7 +311,7 @@ fn ssh_connection_is_four_fields_or_nothing() {
 /// 找不到那个会话 ⇒ `no_such_session`；sid 形状不对 ⇒ `bad_args`（不往下读）。
 #[test]
 fn an_unknown_or_malformed_sid_is_said_not_guessed() {
-    let home = tmpdir("home");
+    let home = test_home::scratch("home");
     assert_eq!(
         answer_at(
             &home,

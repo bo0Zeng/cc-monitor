@@ -6,23 +6,10 @@
 
 use std::io::{BufRead as _, Write as _};
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "own-chan-any-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("夹具目录");
-    d
-}
-
 /// 第一个拿到，第二个拿不到；第一个放了之后又拿得到（进程没了也一样：放是系统替它放的）。
 #[test]
 fn the_listen_lock_is_exclusive_and_released_on_drop() {
-    let d = scratch("lock");
+    let d = test_home::scratch("lock");
     let first = own_chan::try_hold(&d).expect("锁").expect("第一个该拿到");
     assert!(
         own_chan::try_hold(&d).expect("锁").is_none(),
@@ -39,7 +26,7 @@ fn the_listen_lock_is_exclusive_and_released_on_drop() {
 /// 没人在听 ⇒ 同步连回 `NotFound`（壳据此判「没有常驻那一位」，起一个新的）。
 #[test]
 fn nobody_listening_reads_as_not_found() {
-    let d = scratch("absent");
+    let d = test_home::scratch("absent");
     let e = own_chan::connect_blocking(&d.join("listen.sock"))
         .err()
         .expect("没人在听却连上了");
@@ -52,7 +39,7 @@ fn nobody_listening_reads_as_not_found() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bound_channel_serves_the_host_side_end_to_end() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let d = scratch("serve");
+    let d = test_home::scratch("serve");
     let path = d.join("listen.sock");
     let l = own_chan::bind(&path).expect("绑");
     let p = path.clone();
@@ -135,7 +122,7 @@ fn e2e_the_local_backend_outlives_the_monitor() {
         let _ = std::io::stdout().flush();
         std::process::exit(if ok { 0 } else { 3 });
     }
-    let home = scratch("e2e-home");
+    let home = test_home::scratch("e2e-home");
     let me = std::env::current_exe().expect("本判据二进制");
     // 那个子进程的输出落文件、不接管道：它起的后端会继承它的标准句柄（Windows 起进程时可继承的句柄都带过去），
     // 接管道的话后端活着一天，这一头就等不到管道关。

@@ -295,7 +295,7 @@ fn answer_without_a_slice_never_asks_pb() {
 /// 真起一次（假 pb 插件）：`dump --refs <片> <工作区>`、正文从标准输入进去，回的那一份原样交回。
 #[test]
 fn run_refs_feeds_the_text_on_stdin_and_hands_back_pbs_answer() {
-    let d = fixture::scratch("refs-run");
+    let d = test_home::scratch("refs-run");
     let entry = fixture::fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
     let ws = fixture::workspace(&d.join("ws"), &fixture::dump("/synthetic"));
     let reply = pb_reply(json!([{"start": 2, "end": 4, "ids": ["A1"]}]));

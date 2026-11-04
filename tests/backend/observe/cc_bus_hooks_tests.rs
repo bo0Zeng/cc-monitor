@@ -188,7 +188,7 @@ fn put_scripts(skills: &std::path::Path) {
 /// 那个脚本不在（cc-bus 没装）⇒ 不给。
 #[test]
 fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
-    let home = scratch("snippet");
+    let home = test_home::scratch("snippet");
     let skills = home.join(".claude").join("skills");
     assert_eq!(snippet(&skills, Some(&home)), None, "cc-bus 没装 ⇒ 不给");
     put_scripts(&skills);
@@ -213,7 +213,7 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
         d.stop
     );
     // skills 根不在家目录底下 ⇒ 绝对路径（POSIX 单引号）。
-    let other = scratch("snippet-elsewhere");
+    let other = test_home::scratch("snippet-elsewhere");
     let text = snippet(&skills, Some(&other)).unwrap();
     let abs = skills.join("cc-bus/scripts/cc-bus");
     assert!(
@@ -317,13 +317,6 @@ fn brace_home_form_is_not_a_false_alarm() {
     }
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("mig3b-hooks-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 /// 金样里那台机器的家目录占位（夹具建在临时目录，出金样前把它换成这个）。
 const HOME_MARK: &str = "/HOME";
 
@@ -331,7 +324,7 @@ const HOME_MARK: &str = "/HOME";
 /// 金样同时是界面解码器（`src/frontend/ui/cc-bus-hooks-reads.ts::decodeHooksReport`）的输入。
 #[test]
 fn the_product_is_the_golden_the_ui_decodes() {
-    let home = scratch("golden");
+    let home = test_home::scratch("golden");
     let agent = home.join(".claude");
     let bin = home.join(".local").join("bin");
     std::fs::create_dir_all(&agent).unwrap();
@@ -361,7 +354,7 @@ fn the_product_is_the_golden_the_ui_decodes() {
 /// 读不到那份文件 ⇒ `note` 说出来、「未装」，来源照报（不装作读过）。
 #[test]
 fn a_machine_without_settings_says_so() {
-    let home = scratch("none");
+    let home = test_home::scratch("none");
     let agent = home.join(".claude");
     let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")), true);
     assert!(
@@ -380,7 +373,7 @@ fn a_machine_without_settings_says_so() {
 /// 跑不了 cc-bus 的那台（没有原生 tmux）：成品说「不支持」、不给要加的内容 —— 哪怕 skill 目录里那个脚本在。
 #[test]
 fn a_machine_without_tmux_says_it_cannot_receive() {
-    let home = scratch("no-tmux");
+    let home = test_home::scratch("no-tmux");
     let agent = home.join(".claude");
     let skills = agent.join("skills");
     put_scripts(&skills);

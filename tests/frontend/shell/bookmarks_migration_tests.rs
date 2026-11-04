@@ -6,9 +6,7 @@ use std::path::PathBuf;
 
 /// 这一条判据自己的数据目录与写它的句柄。
 fn scratch(tag: &str) -> (OwnState, PathBuf) {
-    let d = std::env::temp_dir().join(format!("ccm-bm-migrate-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    let d = test_home::scratch(tag);
     let own = OwnState::issue_with(&|k| {
         (k == crate::config::DATA_DIR_ENV).then(|| d.clone().into_os_string())
     })

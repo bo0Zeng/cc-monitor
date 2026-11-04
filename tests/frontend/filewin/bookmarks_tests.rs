@@ -258,18 +258,11 @@ async fn settle_listing(w: &FileWindow, who: &str) {
     until(who, || !w.listing.is_loading()).await;
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-fw-bm-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 🔴 **真点一下**：☆ 加进去（那台后端真有）→ 换目录 → 点那条书签跳回来 → × 删掉（那台后端真没了）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_bar_is_really_clickable_and_the_backend_follows() {
     // 垫两段很长的名字：路径长到盖过地址栏右端那颗星时星照样点得到；收藏的目录名很长时左栏那一条截断显示、它和 × 都点得到。
-    let base = scratch("ui");
+    let base = test_home::scratch("ui");
     let root = base.join("x".repeat(160));
     let (a, b) = (root.join(format!("a{}", "y".repeat(120))), root.join("b"));
     std::fs::create_dir_all(&a).unwrap();
@@ -338,7 +331,7 @@ async fn the_bar_is_really_clickable_and_the_backend_follows() {
 /// 一栏删了自己那条 ⇒ 另一栏照它自己的答变（下标跟着挪），删掉的那一栏灭。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_sides_in_two_bookmarked_dirs_each_read_their_own_answer() {
-    let base = scratch("two");
+    let base = test_home::scratch("two");
     let (a, b) = (base.join("a"), base.join("b"));
     std::fs::create_dir_all(&a).unwrap();
     std::fs::create_dir_all(&b).unwrap();
@@ -412,7 +405,7 @@ async fn an_unasked_dir_is_asked_once_then_answered() {
 /// 别的写者（另一个窗口 · 手机）刚加的书签，本窗口**换一次目录**就看得见；之前看不见（不是定时去问）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn another_writers_bookmark_shows_up_after_a_navigation() {
-    let root = scratch("other");
+    let root = test_home::scratch("other");
     let a = root.join("a");
     std::fs::create_dir_all(&a).unwrap();
     let a = a.to_string_lossy().to_string();

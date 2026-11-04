@@ -11,13 +11,6 @@ use super::*;
 use serde_json::json;
 use std::sync::{Arc, Barrier};
 
-fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-cfg1-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn set(path: &[&str], value: Value) -> ConfigEdit {
     ConfigEdit::Set {
         path: path.iter().map(|s| s.to_string()).collect(),
@@ -60,7 +53,7 @@ fn read(p: &Path) -> Value {
 fn concurrent_patches_to_different_keys_all_survive() {
     const THREADS: usize = 12;
     const ROUNDS: usize = 20;
-    let dir = tmpdir("race");
+    let dir = test_home::scratch("race");
     let file = dir.join("config.json");
     std::fs::write(&file, r#"{"userWrote":"手写的那一格"}"#).unwrap();
     let file = Arc::new(file);
@@ -106,7 +99,7 @@ fn concurrent_patches_to_different_keys_all_survive() {
 /// J3：补丁语义逐格对手写期望。
 #[test]
 fn set_and_remove_touch_only_their_path() {
-    let dir = tmpdir("sem");
+    let dir = test_home::scratch("sem");
     let file = dir.join("config.json");
     std::fs::write(
         &file,
@@ -159,7 +152,7 @@ fn set_and_remove_touch_only_their_path() {
 /// J3：文件不在 ⇒ 从空对象起（连目录一起建）。
 #[test]
 fn a_missing_file_starts_from_an_empty_object() {
-    let dir = tmpdir("missing");
+    let dir = test_home::scratch("missing");
     let file = dir.join("sub").join("config.json");
     patch_config_at(&own_of(&file), &[set(&["theme"], json!({"bg": "#000"}))]).unwrap();
     assert_eq!(read(&file), json!({"theme": {"bg": "#000"}}));
@@ -171,7 +164,7 @@ fn a_missing_file_starts_from_an_empty_object() {
 #[test]
 fn the_config_file_and_its_new_directory_are_only_for_the_owner() {
     use std::os::unix::fs::PermissionsExt as _;
-    let dir = tmpdir("private");
+    let dir = test_home::scratch("private");
     let file = dir.join("data").join("config.json");
     patch_config_at(&own_of(&file), &[set(&["a"], json!(1))]).unwrap();
     let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
@@ -185,7 +178,7 @@ fn the_config_file_and_its_new_directory_are_only_for_the_owner() {
 /// J3：空路径（= 整份替换换了个名字）⇒ 整批拒，同批里成形的那条也不落，盘上字节不变。
 #[test]
 fn an_empty_path_refuses_the_whole_batch() {
-    let dir = tmpdir("empty");
+    let dir = test_home::scratch("empty");
     let file = dir.join("config.json");
     let original = r#"{"keep":1}"#;
     std::fs::write(&file, original).unwrap();
@@ -203,7 +196,7 @@ fn an_empty_path_refuses_the_whole_batch() {
 #[test]
 fn an_unreadable_file_is_left_alone() {
     for (tag, original) in [("bad", r#"{"a":1 "b":2}"#), ("arr", "[1,2]")] {
-        let dir = tmpdir(tag);
+        let dir = test_home::scratch(tag);
         let file = dir.join("config.json");
         std::fs::write(&file, original).unwrap();
         let err =
@@ -253,7 +246,7 @@ fn the_golden_cases_hold() {
     assert!(!cases.is_empty(), "金样是空的（空集上的逐条相等恒真）");
     for (i, c) in cases.iter().enumerate() {
         let name = c["name"].as_str().unwrap();
-        let dir = tmpdir(&format!("golden{i}"));
+        let dir = test_home::scratch(&format!("golden{i}"));
         let file = dir.join("config.json");
         let before = c["before"].as_str().unwrap();
         std::fs::write(&file, before).unwrap();
@@ -293,7 +286,7 @@ fn the_golden_cases_hold() {
 /// 那人在锁里写下自己的键再放锁 ⇒ 这一趟现读到它、两键都在（刀：`patch_config_at` 不拿跨进程锁 ⇒ 先写完，随后被那人整份盖掉）。
 #[test]
 fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
-    let dir = tmpdir("hx2-xproc");
+    let dir = test_home::scratch("hx2-xproc");
     let file = dir.join("config.json");
     std::fs::write(&file, r#"{"userWrote":"手写的那一格"}"#).unwrap();
     let held = crate::platform::fs::hold_dir_lock(&dir).expect("拿不到锁");
@@ -373,7 +366,7 @@ fn the_config_writer_syncs_the_temp_file_before_it_renames() {
 /// 路径超过 260 字符照样写得上（Windows 上换名要带长路径前缀；标准库自己补）。
 #[test]
 fn a_config_path_longer_than_260_characters_is_written() {
-    let base = tmpdir("long");
+    let base = test_home::scratch("long");
     let mut dir = base.clone();
     while dir.as_os_str().len() < 300 {
         dir.push("abcdefghijklmnopqrstuvwxyz0123456789");
@@ -408,9 +401,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
 /// 盘上那一步没成（这里：数据目录的位置被一个普通文件占着）⇒ 句子是「写入失败 · 那个目录 · 原因词」，系统原话进复制详情、不上句子。
 #[test]
 fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
-    let base = std::env::temp_dir().join(format!("ccm-cfg-io-{}-{}", std::process::id(), line!()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
+    let base = test_home::scratch("io");
     let blocker = base.join("occupied");
     std::fs::write(&blocker, b"x").unwrap();
     let path = blocker.join("sub").join("config.json");
@@ -459,7 +450,7 @@ fn the_config_read_cap_comes_from_the_declaration_table() {
         let shell = r#"{"pad":""}"#.len();
         format!(r#"{{"pad":"{}"}}"#, "x".repeat(n - shell))
     };
-    let dir = tmpdir("cap");
+    let dir = test_home::scratch("cap");
     let file = dir.join("config.json");
 
     std::fs::write(&file, sized(cap)).unwrap();

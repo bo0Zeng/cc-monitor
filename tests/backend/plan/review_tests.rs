@@ -1,7 +1,8 @@
 //! 认可 · 退回记录那份后端自有文件：写完读回 · 认可只留此刻还在的键 · 读不懂不覆盖 · 照它给成品标认可与退回的状态。
 
 use super::*;
-use crate::plan::fixture::{dump, dump_top_signed, scratch, who, MAIN};
+use crate::plan::fixture::{dump, dump_top_signed, who, MAIN};
+use test_home::scratch;
 
 fn file(tag: &str) -> PathBuf {
     scratch(tag).join(".cc-monitor").join("plan-review.json")

@@ -1,7 +1,8 @@
 //! 跑 `pb dump`：退出码与形状版本怎么认；真起一次假 pb，看当前目录、argv、不带 `PB_ID`。
 
 use super::*;
-use crate::plan::fixture::{dump as fixture_dump, fake_pb, scratch, workspace};
+use crate::plan::fixture::{dump as fixture_dump, fake_pb, workspace};
+use test_home::scratch;
 
 #[test]
 fn rc0_with_the_known_shape_is_a_dump() {
