@@ -1,4 +1,7 @@
-//! 后端零定时器（判活由内核事件驱动：pidfile inotify ＋ pidfd · socket 目录 inotify · tmux hook → SIGUSR1）里**编译器看不见的那两格**。
+//! 后端零定时器（判活由内核事件驱动：pidfile inotify ＋ pidfd · socket 目录 inotify · tmux hook → SIGUSR1），两面：
+//! 代码那一面里**编译器看不见的那两格**，与措辞那一面 —— 散文不许许诺一条定时 / 轮询兜底。
+//!
+//! # 代码那一面
 //!
 //! 「会让线程 / 任务自己醒来的构件」（sleep · 带期限的等待 · interval · 掐表 · 造 `Duration`）由 clippy 挡：
 //! `src/backend/clippy.toml` 的 `disallowed-methods`，后端与拨号核心两个包的 `[lints.clippy]` 都定成 deny；
@@ -11,6 +14,13 @@
 //!
 //! 买不到：特性 `shots` 下才编的那一段（截图台架的拨钟）clippy 默认不看；依赖 crate 里的线程（如某个依赖带超时的内部等待）。
 //! 什么时候删：Windows 那一臂进了 clippy 的射程 ⇒ 删 [`windows_arm`]；后端不再产出交给 shell 的串 ⇒ 删 [`f09_external_beat`]。
+//! Windows 那一臂唯一带期限的等待住 `platform/win_proc.rs`。
+//!
+//! # 措辞那一面
+//!
+//! - [`stale_fallback_prose`]：后端生产段里（会到日志 / 用户眼前的串）承诺「退回定时探测」「由 ticker 兜」这一族退路的话只许变少。
+//!   零定时器之下那条退路不存在；「不可用但有兜底」与「不可用而且没兜底」是两件事，写着前者的那句话会骗下一个读者。
+//!   今天还剩的两处登在只许变短的存量清单上：`control/tmux_hook.rs` · `observe/watcher.rs` 各一句 warn。
 
 #[cfg(test)]
 mod f09_external_beat {
@@ -214,36 +224,18 @@ mod f09_external_beat {
 
     /// 后端生产段里**产出给别人执行的 shell 串** —— 逐条 `(文件, 那一行逐字, 串的内容)`。
     fn shell_string_literals() -> Vec<(String, String, String)> {
+        // 本文件住 `tests/backend/`、扫的是 `src/backend` ⇒ 自己逐字写着的那三根针不在人群里。
         let dir = guard_core::addr::backend_src_root();
         let mut out = Vec::new();
-        let mut stack = vec![dir.clone()];
-        while let Some(d) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&d) else {
-                continue;
-            };
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                    continue;
-                }
-                if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                    continue;
-                }
-                let rel = p
-                    .strip_prefix(&dir)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                // 本模块自己的说明里逐字写着那三根针 —— 排除掉（同族坑记过四次）。
-                if rel == "no_timer_guard.rs" {
-                    continue;
-                }
-                let prod =
-                    guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
-                for (a, z) in shell_strings_in(&prod) {
-                    out.push((rel.clone(), line_at(&prod, a), prod[a..z].to_string()));
-                }
+        for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
+            let rel = p
+                .strip_prefix(&dir)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let prod = guard_core::production_code(&src);
+            for (a, z) in shell_strings_in(&prod) {
+                out.push((rel.clone(), line_at(&prod, a), prod[a..z].to_string()));
             }
         }
         out
@@ -466,5 +458,197 @@ mod windows_arm {
             vec![format!("{HOME}: WaitForSingleObject")],
             "Windows 那一臂里带期限的内核等待只许是 `{HOME}` 那一处（一次性子命令的宽限）；常驻后端不许有会自己醒来的等待"
         );
+    }
+}
+
+#[cfg(test)]
+mod stale_fallback_prose {
+    //! **措辞那一面：后端生产段里承诺「周期性退路」的话只许变少。**
+    //!
+    //! 一句「⇒ tmux hook 通路不可用，退回定时探测」的 warn，而后端零定时器（本文件代码那一面钉着），**那条退路不存在**。
+    //! 删掉一个构件，替它说话的散文散在别处没人回去改，就继续以权威口吻骗下一个读者。
+    //!
+    //! # 人群：生产段
+    //!
+    //! 扫的是会到日志 / 用户眼前的那些话（`guard_core::production_code`：字符串留下，`//` 注释与测试段剥掉）。
+    //! **注释里的同一句谎不管**（08-27 现打：派生集 × 后端含注释命中 6 处，生产段 2 处、注释 4 处）。不扩到注释的理由：
+    //! ① 有自解释注释逐字引用被禁短语（记的是「这句话当时逐字是…」），连注释扫就得给它开口子；
+    //! ② 有历史叙述（「P5 之前 ticker 还在」），而「带没带历史限定词」是自然语言判断，把限定词表调到全绿就是曲线拟合。
+    //! 本模块不在自己的语料里靠的是**住址**：它住 `tests/backend/`，扫的是 `src/backend`。
+    //!
+    //! # 射程
+    //!
+    //! - 管**措辞面**：派生集 [`stale_fallback_phrases`]（退向哪 × 靠什么节拍 × 干什么）连同连接词（`回落到` / `回落成` …）。
+    //!   手写几条字面量的话，把那句 warn 改两个字（「退回**定时**探测」→「退回**周期**探测」）一条都不红 ——
+    //!   字面量钉住的是那几个字符串，不是「承诺一条不存在的周期性退路」这条性质。
+    //!   不带连接词的三段式（264 条）被「回落**到**心跳刷新」整句绕过；加上连接词（984 条）同一句就红。
+    //!   换一句完全不同措辞的话它仍然看不见 ⇒ 比没有强，别读成证明。
+    //! - 「周期性**推送**」那一族（「…周期性推给 monitor」）讲的不是退路，三段式够不着它。
+    //!
+    //! # 计数口径
+    //!
+    //! `n` 是**命中次数**逐条累加，不是句数：派生集里有互相包含的短语（`轮询兜` ⊂ `轮询兜住`），一句同时命中两条记 2。
+    //! 这个方向偏紧（清单只许变短，多记只会更早红）。
+
+    /// 「承诺一条周期性退路」的派生集（退向哪 × 靠什么 × 干什么的笛卡尔积，另加「兜」那一形）。
+    fn stale_fallback_phrases() -> Vec<String> {
+        let retreats: Vec<String> = ["退回", "回落", "退化", "回退"]
+            .iter()
+            .flat_map(|r| {
+                ["", "到", "成", "为"]
+                    .iter()
+                    .map(move |j| format!("{r}{j}"))
+            })
+            .collect();
+        let cadences = ["定时", "周期性", "周期", "轮询", "ticker", "心跳", "定期"];
+        let means = ["探测", "轮询", "兜底", "兜住", "刷新", "扫描"];
+        // 中英之间本仓惯例带一个空格（`ticker 兜`），带与不带都收。
+        let join = |a: &str, b: &str| -> Vec<String> {
+            let mut v = vec![format!("{a}{b}")];
+            if a.ends_with(|c: char| c.is_ascii()) || b.starts_with(|c: char| c.is_ascii()) {
+                v.push(format!("{a} {b}"));
+            }
+            v
+        };
+        let mut out: Vec<String> = Vec::new();
+        for r in &retreats {
+            for c in cadences {
+                for mid in join(r, c) {
+                    for m in means {
+                        out.extend(join(&mid, m));
+                    }
+                }
+            }
+        }
+        // 「兜」那一形没有「退回」前缀（`ticker 兜` / `轮询兜`）。
+        for c in cadences {
+            for m in ["兜", "兜底", "兜住"] {
+                out.extend(join(c, m));
+            }
+        }
+        out.sort();
+        out.dedup();
+        // 反向自检①：派生塌了（某张表被掏空）⇒ 本条静默变成「什么都不禁」，而它会照常绿。
+        assert!(
+            out.len() >= 700,
+            "只派生出 {} 条说法 —— 四张表里有一张被掏了（08-27 实测 984 条）",
+            out.len()
+        );
+        // 反向自检②：只加不减 —— 手写字面量那一版的三条今天必须仍在集里。
+        for old in ["退回定时探测", "ticker 兜", "轮询兜"] {
+            assert!(
+                out.iter().any(|p| p == old),
+                "派生集里没有 `{old}` —— 换派生法把旧人群丢掉了一格，那是放宽"
+            );
+        }
+        out
+    }
+
+    /// **存量清单：只许变短。**`(相对 src/backend 的路径, 还剩几处, 是哪一句)`
+    ///
+    /// 这不是豁免清单：每一条都是今天仍在说谎的一句话。修掉一处就把数改小；改大 = 又新增了一句，那正是本条要拦的。
+    const STALE_FALLBACK_BACKLOG: &[(&str, usize, &str)] = &[
+        (
+            "control/tmux_hook.rs",
+            1,
+            "warn 串「拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）」：承诺一条已经删掉的退路。",
+        ),
+        (
+            "observe/watcher.rs",
+            1,
+            "warn 串「监视 tmux socket 目录失败 …（复活仍由 ticker 兜）」：承诺一条已经删掉的退路。",
+        ),
+    ];
+
+    /// 全后端生产段 `(相对 src/backend 的路径, 生产段)`。
+    fn crate_production_sources() -> Vec<(String, String)> {
+        let root = guard_core::addr::backend_src_root();
+        guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(path, src)| {
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, guard_core::production_code(&src))
+            })
+            .collect()
+    }
+
+    /// ★★ 正题：生产段里承诺「周期性退路」的话，每份不超过存量清单登记的数。
+    ///
+    /// 反向锚点在 [`every_stale_fallback_entry_is_still_real`]：没有它，把清单里的数改大就能绿着过。
+    #[test]
+    fn no_new_prose_promises_a_fallback_that_no_longer_exists() {
+        let corpus = crate_production_sources();
+        // 反空真①：语料塌了 ⇒ 下面全是 0 <= N 的空真。
+        assert!(
+            corpus.len() >= 30,
+            "语料只有 {} 个文件（下限 30）—— 遍历坏了",
+            corpus.len()
+        );
+        let bytes: usize = corpus.iter().map(|(_, c)| c.len()).sum();
+        assert!(
+            bytes >= 150_000,
+            "语料只有 {bytes} 字节（下限 150_000）—— 剥过头了，本条此刻在空转"
+        );
+        // 反空真②：派生集今天真的还有命中（全 0 = 派生塌了或语料坏了，本条恒绿）。
+        let phrases = stale_fallback_phrases();
+        let total: usize = corpus
+            .iter()
+            .map(|(_, c)| phrases.iter().map(|p| c.matches(p).count()).sum::<usize>())
+            .sum();
+        assert!(
+            total > 0,
+            "全后端生产段一句都没命中那 {} 条派生说法 —— 派生塌了（或者真的清干净了：\
+             那就把 `STALE_FALLBACK_BACKLOG` 清空并删掉本条这半个断言）",
+            phrases.len()
+        );
+
+        let total_phrases = phrases.len();
+        for (rel, code) in &corpus {
+            // 诊断印命中了哪几条，不把近千条派生说法整张倒出来。
+            let hits: Vec<(&str, usize)> = phrases
+                .iter()
+                .map(|p| (p.as_str(), code.matches(p.as_str()).count()))
+                .filter(|(_, k)| *k > 0)
+                .collect();
+            let n: usize = hits.iter().map(|(_, k)| k).sum();
+            let allowed = STALE_FALLBACK_BACKLOG
+                .iter()
+                .find(|(f, _, _)| f == rel)
+                .map(|(_, k, _)| *k)
+                .unwrap_or(0);
+            assert!(
+                n <= allowed,
+                "\n`{rel}` 的生产段里命中 {n} 次「承诺一条周期性退路」（存量清单登记 {allowed} 次）。\n\
+                 命中的说法：{hits:?}（派生集共 {total_phrases} 条；按短语累加，一句同时命中两条记 2）\n\
+                 后端零定时器：「不可用但有兜底」与「不可用而且没兜底」是两件事，写着前者的那句话会骗下一个读者。\n\
+                 ⇒ 要么把那句话改成真话（说清什么事会变得发现不了 + 下一步能做什么），\n\
+                 要么先真的把那条退路做回来。这张清单只许变短。"
+            );
+        }
+    }
+
+    /// ★ 反向锚点：存量清单上的每一条今天真的还在（数写大就能永远绿着，那正是要拦的方向）。
+    #[test]
+    fn every_stale_fallback_entry_is_still_real() {
+        let corpus = crate_production_sources();
+        let phrases = stale_fallback_phrases();
+        for (rel, want, why) in STALE_FALLBACK_BACKLOG {
+            let code = corpus
+                .iter()
+                .find(|(f, _)| f == rel)
+                .map(|(_, c)| c.as_str())
+                .unwrap_or_else(|| panic!("存量清单指着 `{rel}`，而语料里没有它 —— 它搬家了"));
+            let n: usize = phrases.iter().map(|p| code.matches(p).count()).sum();
+            assert_eq!(
+                n, *want,
+                "`{rel}` 实测命中 {n} 次、清单登记 {want} 次。\n说法：{why}\n\
+                 少了 ⇒ 有人修好了，把这个数改小（清单只许变短）；\n\
+                 多了 ⇒ 上面那条会先红。别把数改大让今天好过。"
+            );
+        }
     }
 }

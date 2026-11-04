@@ -113,7 +113,7 @@ fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
 
 // 拒绝理由闭集那一条要问控制面的小中继（`control/resident.rs`）⇒ 挂在 `control` 底下：`listen_on_control_tests.rs`。
 
-/// ★★ **`listen.rs` · `single_stream_guard.rs` · `ratchet_guard.rs` 三份头注里，每一个住址今天都真的在。**
+/// ★★ **`listen.rs` · `single_stream_guard.rs` · `no_timer_guard.rs` 三份头注里，每一个住址今天都真的在。**
 ///
 /// 一条承重头注把读者指向一个不存在的住址，是「**指了住址，但住址是假的**」。
 /// 人群是这三份文件的头注，逐个文件、逐个住址；全 crate 的 `//!` 头注不在本条射程里。
@@ -128,7 +128,7 @@ fn every_file_this_head_note_points_at_really_exists() {
             "single_stream_guard.rs",
             include_str!("../single_stream_guard.rs"),
         ),
-        ("ratchet_guard.rs", include_str!("../ratchet_guard.rs")),
+        ("no_timer_guard.rs", include_str!("../no_timer_guard.rs")),
     ];
     let head: String = heads
         .iter()
@@ -188,8 +188,8 @@ fn every_file_this_head_note_points_at_really_exists() {
     // 第一版正是死在这一格：人群画在了错的文件上，循环跑零圈而读起来完全正常）。
     assert!(
         checked >= 9,
-        "三份头注里只扫到 {checked} 个文件式住址（下限 9；08-27 实测 **11** = \
-             `listen.rs` 4 + `single_stream_guard.rs` 4 + `ratchet_guard.rs` 3，留两格余量）\
+        "三份头注里只扫到 {checked} 个文件式住址（下限 9；11-04 实测 **14** = \
+             `listen.rs` 5 + `single_stream_guard.rs` 6 + `no_timer_guard.rs` 3，留余量）\
              —— 抽取坏了或某一份头注被搬空了"
     );
     // ★ 那条触发器**按名字**指得住：`single_stream_guard.rs` 必须被头注点到。
