@@ -126,7 +126,7 @@ subscribe(origin, kind)    → 流
 ### 2.1 三层
 
 - **前端**：把后端给的东西排版成像素、收手势，并在用户面前开终端窗口。不做判定、不拼命令串、不缓存业务数据。桌面界面状态只有一份 pub-sub：`app-store.ts` 的 `Slice`（当前机器 · 账号快照 · 当前 tab），tab 那一层是 `tab-store.ts` ＋ `tab-router.ts`，overlay 视图的开关收在 `overlay-router.ts`。
-- **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。同住这一层的还有两个包，都是后端那棵 workspace 的成员、后端只是它们的一个用户：拨号核心 `src/comms/ssh-dial/`（竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；手机 `mobcore` 链同一份，后端的 `dial/` 在它上面）与出网口 `src/comms/egress/`（这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理：HTTP CONNECT · SOCKS5；中转与拨号核心链同一份）。拨号核心今天还有两处没守住上面那三条：桌面那一形按路径读钥匙文件（`env.rs` 的 `KeyFiles`），端口转发在本机自己绑口（`uses.rs` 的 `Use::Forward`）。
+- **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。同住这一层的还有两个包，都是后端那棵 workspace 的成员、后端只是它们的一个用户：拨号核心 `src/comms/ssh-dial/`（竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；手机 `mobcore` 链同一份，后端的 `dial/` 在它上面）与出网口 `src/comms/egress/`（这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理：HTTP CONNECT · SOCKS5；中转与拨号核心链同一份）。拨号核心同守上面那三条：钥匙由宿主读好 PEM 文本交进来（`env::key_from_pem`，后端与手机共用），端口转发的本机口由宿主绑好交进来（`uses::run_forward`）。
 - **后端**：其余一切干活的——读会话、起进程、动 tmux、拨 SSH、管资产、管账号、写用户的文件。
 
 ### 2.2 后端：一份代码、两种承载

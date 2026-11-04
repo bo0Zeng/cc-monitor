@@ -12,7 +12,7 @@ async fn start_with<F, Fut>(
     serve: F,
 ) -> Result<Value, crate::common::said::Said>
 where
-    F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
+    F: FnOnce(DialRequest, tokio::net::TcpListener, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
     let req: ForwardStartReq = crate::wire::typed::take(args)?;
@@ -40,6 +40,12 @@ fn table_with(origin: &str) -> remote_ask::Table {
         &json!({"label": origin, "host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}),
     )
     .unwrap()])
+}
+
+/// 此刻空着的一个回环口（现绑现放：起转发那一下要真绑它）。
+fn free_port() -> u16 {
+    let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    l.local_addr().unwrap().port()
 }
 
 /// 两个端口照界面交的那一形：用户敲进去的原文（数字也写成字）。
@@ -86,7 +92,7 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
         (args("", 15432, "localhost", 5432), &origin),
     ] {
         let c = Arc::clone(&calls);
-        let err = start_with(&bad, &empty, &ledger, move |_req, _up, _down| {
+        let err = start_with(&bad, &empty, &ledger, move |_req, _port, _up, _down| {
             c.fetch_add(1, Ordering::SeqCst);
             async {}
         })
@@ -122,7 +128,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
         &args("nope", 15432, "localhost", 5432),
         &table_with("dev"),
         &ledger,
-        move |_r, _u, _d| {
+        move |_r, _port, _u, _d| {
             c.fetch_add(1, Ordering::SeqCst);
             async {}
         },
@@ -141,8 +147,8 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     assert_eq!(req.use_, crate::dial::Use::Forward);
     let f = req.forward.expect("没带转发规格");
     assert_eq!(
-        (f.local_port, f.remote_host.as_str(), f.remote_port),
-        (15432, "db.internal", 5432)
+        (f.remote_host.as_str(), f.remote_port),
+        ("db.internal", 5432)
     );
     assert_eq!(
         (req.host.as_str(), req.key_path.as_deref()),
@@ -158,10 +164,10 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     let ledger = Ledger::new();
 
     let err = start_with(
-        &args("dev", 15432, "localhost", 5432),
+        &args("dev", free_port(), "localhost", 5432),
         &reach,
         &ledger,
-        |_r, _u, mut down| async move {
+        |_r, _port, _u, mut down| async move {
             let _ = down
                 .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"port 15432 in use\",\"uses\":[]}\n")
                 .await;
@@ -180,12 +186,14 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     let dropped = Arc::new(AtomicUsize::new(0));
     let mark = DropMark(Arc::clone(&dropped));
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let local = free_port();
     let got = start_with(
-        &args("dev", 15432, "localhost", 5432),
+        &args("dev", local, "localhost", 5432),
         &reach,
         &ledger,
-        move |_r, _up, mut down| async move {
+        move |_r, port, _up, mut down| async move {
             let _mark = mark;
+            let _port = port;
             let _ = down
                 .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"forward\"]}\n")
                 .await;
@@ -208,8 +216,10 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
         tokio::task::yield_now().await;
     }
     // 跨语言金样：界面那一侧（`src/frontend/ui/port-forward-reads.ts::decodeForwards`）严格收的就是这一份。
-    let golden: Value =
+    let mut golden: Value =
         serde_json::from_str(include_str!("../__fixtures__/forward-list.golden.json")).unwrap();
+    // 本机口是这一趟现找的空口（真绑）：金样里那一格换成它，别的照比。
+    golden["forwards"][0]["localPort"] = json!(local);
     assert_eq!(id, "fwd-1");
     assert_eq!(list_with(&ledger), golden);
     assert_eq!(dropped.load(Ordering::SeqCst), 0);
@@ -236,16 +246,91 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     );
 }
 
+/// 本机口被占 ⇒ 当场回绑口失败那一句（`failed`），**链路那一侧一次都没被叫到**（不拨号）、不进账：
+/// 口由本后端先绑好再交给拨号核心，绑不上就不去拨。
+#[tokio::test]
+async fn a_taken_local_port_fails_before_any_dial() {
+    let taken = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let ledger = Ledger::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let c = Arc::clone(&calls);
+    let err = start_with(
+        &args("dev", port, "localhost", 5432),
+        &table_with("dev"),
+        &ledger,
+        move |_r, _port, _u, _d| {
+            c.fetch_add(1, Ordering::SeqCst);
+            async {}
+        },
+    )
+    .await
+    .expect_err("口被占着也起来了");
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "口被占着还去拨了");
+    assert_eq!(err.code.as_deref(), Some("failed"));
+    let why = copy_text(
+        "beForwards.start.bindFailed",
+        &[
+            ("port", &port.to_string()),
+            ("why", &copy_core::io_reason(std::io::ErrorKind::AddrInUse)),
+        ],
+    );
+    assert_eq!(
+        err.said,
+        copy_text(
+            "beForwards.start.failed",
+            &[("machine", "dev"), ("why", &why)]
+        )
+    );
+    assert_eq!(list_with(&ledger)["forwards"], json!([]));
+    drop(taken);
+}
+
+/// 拨号核心不绑口：`use: forward` 不带宿主绑好的口（走 `open`）、或别的用法带了口（走 `run_forward`）⇒ 请求格式不对，不拨。
+/// 那台指着本机一个没人听的口：真去拨了就是「连接被拒」那一句，不是格式不对。
+#[tokio::test]
+async fn the_dial_core_takes_the_port_only_from_the_host_and_only_for_forward() {
+    let malformed = copy_text("beContract.malformed.say", &[]);
+    let dial = json!({"host": "127.0.0.1", "port": 1, "user": "u", "use": "stream"});
+    let spec = parse_spec(&args("dev", 1, "localhost", 5432)).unwrap();
+    let fwd = forward_request(&dial, &spec).unwrap();
+    let said =
+        match crate::dial::uses::open(&fwd, &crate::dial::StageSink::new(false), |_| {}).await {
+            Err(f) => f.said,
+            Ok(_) => panic!("没交口的转发开起来了"),
+        };
+    assert!(said.starts_with(&malformed), "没交口的转发去拨了：{said}");
+
+    let stream = crate::dial::read_request(&dial).unwrap();
+    let port = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let (_up_w, up_r) = tokio::io::duplex(64);
+    let mut down = Vec::new();
+    ssh_dial::uses::run_forward(
+        &stream,
+        port,
+        &crate::dial::StageSink::new(false),
+        up_r,
+        &mut down,
+    )
+    .await;
+    let ack: Value = serde_json::from_slice(&down).unwrap();
+    assert_eq!(ack["ok"], json!(false));
+    let said = ack["said"].as_str().unwrap();
+    assert!(said.starts_with(&malformed), "不是转发也收了口：{said}");
+}
+
 /// 链路那一侧自己收工（远端断了 / accept 失败）⇒ 那一条留在账上、状态读成 `error`（用户看得见、自己停掉）。
 #[tokio::test]
 async fn a_link_that_ends_on_its_own_reads_as_error() {
     let reach = table_with("dev");
     let ledger = Ledger::new();
     start_with(
-        &args("dev", 15433, "localhost", 22),
+        &args("dev", free_port(), "localhost", 22),
         &reach,
         &ledger,
-        |_r, _up, mut down| async move {
+        |_r, _port, _up, mut down| async move {
             let _ = down
                 .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"forward\"]}\n")
                 .await;
@@ -268,8 +353,9 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
 async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
     let empty = crate::dial::remote_ask::test_peers::empty();
     let ledger = Ledger::new();
-    let a = args("dev", 15434, "localhost", 5432);
-    let e = start_with(&a, &empty, &ledger, |_req, _up, _down| async {})
+    let local = free_port();
+    let a = args("dev", local, "localhost", 5432);
+    let e = start_with(&a, &empty, &ledger, |_req, _port, _up, _down| async {})
         .await
         .expect_err("表里没有那台也拨了");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
@@ -278,10 +364,14 @@ async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
     )
     .unwrap()]);
     let seen = Arc::new(Mutex::new(None::<(String, u16, crate::dial::Use)>));
+    let bound = Arc::new(Mutex::new(None::<std::net::SocketAddr>));
     let s = Arc::clone(&seen);
-    start_with(&a, &table, &ledger, move |req, _up, mut down| {
+    let b = Arc::clone(&bound);
+    start_with(&a, &table, &ledger, move |req, port, _up, mut down| {
         *s.lock().unwrap() = Some((req.host.clone(), req.port, req.use_));
+        *b.lock().unwrap() = port.local_addr().ok();
         async move {
+            let _port = port;
             let _ = down
                 .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"forward\"]}\n")
                 .await;
@@ -293,6 +383,11 @@ async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
     assert_eq!(
         seen.lock().unwrap().clone(),
         Some(("198.51.100.9".to_string(), 2201, crate::dial::Use::Forward))
+    );
+    // 交进链路那一侧的口是本后端绑好的：回环 · 界面要的那个号。
+    assert_eq!(
+        *bound.lock().unwrap(),
+        Some(std::net::SocketAddr::from(([127, 0, 0, 1], local)))
     );
     assert_eq!(list_with(&ledger)["forwards"][0]["origin"], "dev");
 }

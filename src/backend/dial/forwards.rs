@@ -8,9 +8,10 @@
 //!           ① 规格先过围栏（任何查表 / 拨号之前）
 //!           ② 查可达表（`remote_ask::REACH`：monitor 在每台远端流握手那一刻登记的「怎么够到那台」）；
 //! 表里没有（那台的流没起来）⇒ 按界面一并交来的那台配置自己组请求（`ssh-dial/machine.rs`），不拒
-//!           ③ 把那份拨号请求改成 `use: forward` ⇒ `dial::uses::run`（池里那条 SSH 连接；绑本机回环口是它的事）
-//!           ④ 等 ack：口绑好了、连上了才算起来；不成 ⇒ 原话回、不进账
-//!           ⑤ 进账：一个任务读「接进了第 n 条连接」那几行，计数照抄
+//!           ③ 绑本机回环口 `127.0.0.1:localPort`（本后端绑，拨号核心不绑端口）：绑不上 ⇒ 当场回那一句、不拨
+//!           ④ 把那份拨号请求改成 `use: forward`，连同绑好的口 ⇒ `ssh_dial::uses::run_forward`（池里那条 SSH 连接）
+//!           ⑤ 等 ack：连上了才算起来；不成 ⇒ 原话回、不进账（口随链路那一侧一起放掉）
+//!           ⑥ 进账：一个任务读「接进了第 n 条连接」那几行，计数照抄
 //!  界面 ── forward-stop {id} ──▶ 从账上摘掉 ⇒ 那个任务被收 ⇒ 链路被丢 ⇒ 放掉本地口、收掉在飞隧道
 //!  界面 ── forward-list ──▶ {forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}
 //! ```
@@ -123,7 +124,7 @@ pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, Said> {
     })
 }
 
-/// 把照机器表组好的那份拨号请求改成「绑这个本机口、隧道到那个远端口」（纯；抽出来是为了判据）。
+/// 把照机器表组好的那份拨号请求改成「隧道到那个远端口」（纯；抽出来是为了判据）。本机口不进请求：本后端绑好另交（[`start_with`]）。
 pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, String> {
     let mut v = dial.clone();
     let obj = v
@@ -133,7 +134,6 @@ pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, 
     obj.insert(
         "forward".into(),
         json!({
-            "local_port": spec.local_port,
             "remote_host": spec.remote_host,
             "remote_port": spec.remote_port,
         }),
@@ -180,8 +180,8 @@ fn id_num(id: &str) -> Option<u64> {
     id.strip_prefix("fwd-")?.parse().ok()
 }
 
-/// `forward-start` 的本体：账与那几台由调用方给，`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身）。
-/// `serve` 拿到的是：改好的拨号请求 · 上行读端（本侧一个字节都不写，丢了 = 界面走了）· 下行写端（ack ＋ 计数行）。
+/// `forward-start` 的本体：账与那几台由调用方给，`serve` 是链路那一侧（生产 = `ssh_dial::uses::run_forward`；判据用替身）。
+/// `serve` 拿到的是：改好的拨号请求 · 绑好的本机口（绑不上就不叫它）· 上行读端（本侧一个字节都不写，丢了 = 界面走了）· 下行写端（ack ＋ 计数行）。
 pub(crate) async fn start_with<F, Fut>(
     req: &ForwardStartReq,
     reach: &remote_ask::Table,
@@ -189,7 +189,7 @@ pub(crate) async fn start_with<F, Fut>(
     serve: F,
 ) -> Result<ForwardStarted, Said>
 where
-    F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
+    F: FnOnce(DialRequest, tokio::net::TcpListener, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
     let spec = spec_of(req)?;
@@ -212,11 +212,6 @@ where
         ));
     }
     let req = forward_request(&dial, &spec).map_err(|e| Said::new("failed", e))?;
-    let (up_w, up_r) = tokio::io::duplex(64);
-    let (down_w, down_r) = tokio::io::duplex(16 * 1024);
-    // 本函数（的 future）被丢 ⇒ 链路那一侧一起收（帧期限到点 / `cancel`）。
-    let link = AbortOnDrop(tokio::spawn(serve(req, up_r, down_w)));
-    let mut rd = BufReader::new(down_r);
     let failed = |said: String| {
         Said::new(
             "failed",
@@ -226,6 +221,26 @@ where
             ),
         )
     };
+    // 先绑口、再拨：口被占 ⇒ 当场回那一句，不白拨一趟。只绑回环（不对外暴露）。
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port))
+        .await
+        .map_err(|e| {
+            failed(crate::common::said::IntoNote::into_note(Said::with_raw(
+                copy_text(
+                    "beForwards.start.bindFailed",
+                    &[
+                        ("port", &spec.local_port.to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                e,
+            )))
+        })?;
+    let (up_w, up_r) = tokio::io::duplex(64);
+    let (down_w, down_r) = tokio::io::duplex(16 * 1024);
+    // 本函数（的 future）被丢 ⇒ 链路那一侧一起收（帧期限到点 / `cancel`）。
+    let link = AbortOnDrop(tokio::spawn(serve(req, listener, up_r, down_w)));
+    let mut rd = BufReader::new(down_r);
     let ack = line(&mut rd, ACK_CAP)
         .await
         .map_err(failed)?
@@ -422,9 +437,10 @@ impl crate::wire::typed::Handle for ForwardStart {
             &req,
             &remote_ask::REACH,
             &LEDGER,
-            |req, up_r, mut down_w| async move {
+            |req, listener, up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
-                crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+                crate::dial::host();
+                ssh_dial::uses::run_forward(&req, listener, &stages, up_r, &mut down_w).await;
             },
         )
         .await
