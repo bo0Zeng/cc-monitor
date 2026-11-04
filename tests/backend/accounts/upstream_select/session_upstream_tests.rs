@@ -1,18 +1,6 @@
 //! 上游描述落盘与读回（出网那两格）：落下的读得回 · 读回的照那个代理走 · 来处不过段闸不写 · 写的那一下清掉进程已不在的那几份。
 
 use super::*;
-use std::path::PathBuf;
-
-fn sandbox(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-upstream-desc-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&d).ok();
-    std::fs::create_dir_all(&d).expect("sandbox");
-    d
-}
 
 fn desc(pid: u32, vars: &[(&str, &str)]) -> UpstreamDesc {
     UpstreamDesc {
@@ -29,7 +17,7 @@ fn desc(pid: u32, vars: &[(&str, &str)]) -> UpstreamDesc {
 /// 用户自己的上游地址那一格落盘读回一致。
 #[test]
 fn the_users_own_upstream_reads_back() {
-    let data = sandbox("base");
+    let data = test_home::scratch("base");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     let mut d = desc(7, &[]);
     d.base = Some("https://gw.example/anthropic".into());
@@ -43,7 +31,7 @@ fn the_users_own_upstream_reads_back() {
 
 #[test]
 fn a_left_description_reads_back_and_routes_through_its_proxy() {
-    let data = sandbox("back");
+    let data = test_home::scratch("back");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     let d = desc(
         7,
@@ -67,7 +55,7 @@ fn a_left_description_reads_back_and_routes_through_its_proxy() {
 
 #[test]
 fn an_origin_that_fails_the_segment_gate_is_not_written() {
-    let data = sandbox("gate");
+    let data = test_home::scratch("gate");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     let d = desc(7, &[("HTTPS_PROXY", "http://127.0.0.1:3128")]);
     assert!(leave(&own, "../x", &d, &|_| true).is_err());
@@ -77,7 +65,7 @@ fn an_origin_that_fails_the_segment_gate_is_not_written() {
 
 #[test]
 fn leaving_one_clears_those_whose_process_is_gone() {
-    let data = sandbox("prune");
+    let data = test_home::scratch("prune");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     let p = [("HTTPS_PROXY", "http://127.0.0.1:3128")];
     leave(&own, "aaaa", &desc(10, &p), &|_| true).unwrap();
@@ -113,7 +101,7 @@ fn bind(data: &std::path::Path, token: &str, sid: &str) {
 /// ★ 上游是不是用户自己的：绑给这条会话的来处、那份描述有用户的地址 ⇒ 是；描述只有出网那两格 · 来处没绑给它 · 没有血缘 ⇒ 不是。
 #[test]
 fn a_session_is_own_upstream_only_when_its_bound_origin_carries_a_base() {
-    let data = sandbox("own-of");
+    let data = test_home::scratch("own-of");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     assert!(!own_upstream_of(&data, "s-own"), "没有血缘也说成自设");
     let mut d = desc(7, &[]);
@@ -135,7 +123,7 @@ fn a_session_is_own_upstream_only_when_its_bound_origin_carries_a_base() {
 /// 落盘那一份顶层带声明的版本，读回照常。
 #[test]
 fn a_left_description_carries_its_version() {
-    let data = sandbox("ver");
+    let data = test_home::scratch("ver");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     leave(&own, "0123abcd", &desc(7, &[]), &|_| true).expect("写得下");
     let file = data

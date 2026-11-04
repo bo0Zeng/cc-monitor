@@ -1,14 +1,6 @@
 //! 起子进程原语的行为：期限到点杀整组（孙进程也没了、直接子进程已收尸）· 自有环境无条件摘 · 显式交自有格只有一个口。
 
 use super::*;
-use std::path::PathBuf;
-
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-child-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
 
 /// `/proc/<pid>` 还在且不是僵尸 ⇒ 活着；僵尸单独报（没被收尸）。
 #[cfg(target_os = "linux")]
@@ -45,7 +37,7 @@ fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_child_past_its_deadline_is_killed_with_its_whole_group_and_reaped() {
-    let d = scratch("timeout");
+    let d = test_home::scratch("timeout");
     let script = format!(
         "sleep {s} & echo $! > {g}; echo $$ > {c}; wait",
         s = 2 * guard_core::wall::CEILING_SECS,
@@ -180,7 +172,7 @@ fn a_real_child_sees_only_the_own_env_passed_on_purpose() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_detached_child_leads_its_own_group() {
-    let d = scratch("detach");
+    let d = test_home::scratch("detach");
     let f = d.join("pgid");
     let pid = Child::new("sh")
         .args([
@@ -230,7 +222,7 @@ fn pass_own_has_exactly_one_production_caller_and_it_starts_the_resident() {
 #[cfg(unix)]
 #[test]
 fn a_command_budget_cuts_the_stuck_child_short_and_spawns_nothing_after_it_is_spent() {
-    let d = scratch("budget");
+    let d = test_home::scratch("budget");
     let mark = d.join("second-ran");
     let t0 = std::time::Instant::now();
     let _b = Budget::start(Deadline::millis(400));
@@ -395,7 +387,7 @@ fn heard_until_exit(rx: &mpsc::Receiver<Heard>) -> (Vec<String>, Option<Option<i
 #[test]
 fn a_terminal_conversation_runs_on_a_tty_and_hands_back_plain_lines() {
     use std::os::unix::fs::PermissionsExt;
-    let d = scratch("pty-talk");
+    let d = test_home::scratch("pty-talk");
     std::fs::create_dir_all(d.join("bin")).unwrap();
     let prog = d.join("bin").join("talker");
     std::fs::write(
@@ -462,7 +454,7 @@ fn a_terminal_conversation_runs_on_a_tty_and_hands_back_plain_lines() {
 #[cfg(target_os = "linux")]
 #[test]
 fn dropping_a_terminal_conversation_kills_its_whole_group() {
-    let d = scratch("pty-drop");
+    let d = test_home::scratch("pty-drop");
     let script = format!(
         "sleep {s} & echo $! > {g}; echo $$ > {c}; echo ready; wait",
         s = 2 * guard_core::wall::CEILING_SECS,
@@ -558,7 +550,7 @@ fn a_conversation_is_released_with_its_whole_tree_on_windows_too() {
 #[cfg(windows)]
 #[test]
 fn dropping_a_terminal_conversation_on_windows_takes_its_grandchild_too() {
-    let d = scratch("pty-drop-win");
+    let d = test_home::scratch("pty-drop-win");
     let grand = d.join("grand");
     let script = format!(
         "$p = Start-Process -PassThru -NoNewWindow -FilePath ping.exe -ArgumentList '-n','{n}','127.0.0.1'; \
@@ -722,7 +714,7 @@ fn detach_helper_inner() {
 #[test]
 fn a_detached_child_on_windows_outlives_the_job_that_started_it() {
     for (breakaway_ok, survives) in [(true, true), (false, false)] {
-        let d = scratch(&format!("detach-win-{breakaway_ok}"));
+        let d = test_home::scratch(&format!("detach-win-{breakaway_ok}"));
         let f = d.join("pid");
         let job = TestJob::new(breakaway_ok);
         let mut inner = std::process::Command::new(std::env::current_exe().expect("本测试程序"))

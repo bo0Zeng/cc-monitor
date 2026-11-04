@@ -16,14 +16,6 @@
 
 use super::*;
 use serde_json::json;
-use std::path::PathBuf;
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-mcp-sync-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
 
 fn map(v: Value) -> Map<String, Value> {
     v.as_object().expect("夹具是对象").clone()
@@ -239,7 +231,7 @@ fn judge_marks_found_commands_as_fine_and_everything_else_as_suspect() {
 
 #[test]
 fn the_live_facts_really_look_at_this_machine() {
-    let d = temp_dir("live");
+    let d = test_home::scratch("live");
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::write(bin.join("hastool"), "").unwrap();

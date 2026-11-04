@@ -27,13 +27,6 @@ fn answer_with(
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-footprint-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String> {
     move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())
 }
@@ -93,7 +86,7 @@ fn monitor_vantage_population(home: &Path, with_client: bool) -> Vec<(String, St
 /// 「本机或远端」那一行没找到 ⇒ 未确定（不说「缺」）；settings 两格按这台的 agent 家解、钩子字样真被读到、内容一个字节不出线。
 #[test]
 fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
-    let h = temp_dir("remote");
+    let h = test_home::scratch("remote");
     std::fs::create_dir_all(h.join(".cc-monitor/bin")).unwrap();
     std::fs::write(h.join(".cc-monitor/bin/ccm"), "x").unwrap();
     let agent = h.join(".claude");
@@ -161,9 +154,9 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
 /// 那一族按 **monitor 交来的**家目录解、由这台 stat（同一台、同一用户）—— 放在那个家目录下的文件答「在」，这台自己的家目录不掺进来。
 #[test]
 fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
-    let h = temp_dir("local");
+    let h = test_home::scratch("local");
     let agent = h.join(".claude");
-    let m = temp_dir("local-monitor");
+    let m = test_home::scratch("local-monitor");
     std::fs::create_dir_all(m.join(".cc-monitor/bin")).unwrap();
     std::fs::write(m.join(".cc-monitor/bin/ccm"), "x").unwrap();
     let client = json!({ "home": m.display().to_string(), "path": "/m/bin" });
@@ -207,7 +200,7 @@ fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
 
 #[test]
 fn a_directory_over_the_cap_is_unlistable_not_truncated() {
-    let d = temp_dir("cap");
+    let d = test_home::scratch("cap");
     for i in 0..=MAX_ENTRIES {
         std::fs::write(d.join(format!("n{i}")), "").unwrap();
     }
@@ -224,7 +217,7 @@ fn a_directory_over_the_cap_is_unlistable_not_truncated() {
 
 #[test]
 fn hooks_answer_yes_no_or_unknown() {
-    let d = temp_dir("hooks");
+    let d = test_home::scratch("hooks");
     std::fs::write(d.join("with.json"), "{\"cmd\":\"cc-bus-stop-hook\"}").unwrap();
     std::fs::write(d.join("without.json"), "{}").unwrap();
     assert_eq!(hooks_in(&d.join("with.json")), Some(true));
@@ -236,7 +229,7 @@ fn hooks_answer_yes_no_or_unknown() {
 
 #[test]
 fn bad_arguments_are_refused() {
-    let d = temp_dir("args");
+    let d = test_home::scratch("args");
     let get = env_of(vec![("HOME", d.display().to_string())]);
     let cases = [
         json!({ "client": [] }),
@@ -256,7 +249,7 @@ fn bad_arguments_are_refused() {
 
 #[test]
 fn home_falls_back_to_userprofile_and_is_required() {
-    let d = temp_dir("home");
+    let d = test_home::scratch("home");
     let got = answer_with(
         &env_of(vec![("USERPROFILE", d.display().to_string())]),
         &no_session,
@@ -318,7 +311,7 @@ fn kind_of_tool(rows: &[Value], tool: &str) -> String {
 /// 后端进程的 `PATH` 里没有、起会话的 shell 里有 ⇒ 在；那个 shell 问不出来 ⇒ 判不了（不说缺）；那里也确实没有 ⇒ 缺。
 #[test]
 fn the_agent_cli_is_judged_in_the_session_shell_not_the_backend_process() {
-    let h = temp_dir("session-shell");
+    let h = test_home::scratch("session-shell");
     let user_bin = h.join("user-bin");
     let sys_bin = h.join("sys-bin");
     std::fs::create_dir_all(&user_bin).unwrap();

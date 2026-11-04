@@ -118,13 +118,6 @@ pub(super) fn sse_200(extra: &str) -> String {
     )
 }
 
-pub(super) fn temp_dir(tag: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-relay-acct-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("mkdir");
-    p
-}
-
 /// ★ 用量：回包头 → 上游选择按那一家的读法 → 额度账记在**答这一发的那个号**名下；下游拿到的回包一个字节没少。
 #[test]
 fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answered() {
@@ -137,7 +130,7 @@ fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answ
         )
     }
     let (up, got) = spawn_judging_upstream(answer);
-    let d = temp_dir("observe");
+    let d = test_home::scratch("observe");
     let book = Arc::new(Ledger::at(Some(d.join(ledger::FILE_NAME))));
     let accounts = Accounts::new(
         RoutingTable::build(std::iter::empty()),
@@ -462,7 +455,7 @@ struct Home {
 
 impl Home {
     fn new(tag: &str) -> Self {
-        let root = temp_dir(&format!("rot-{tag}"));
+        let root = test_home::scratch(&format!("rot-{tag}"));
         for (id, uuid, token) in [("a", UUID_A, "fake-access-of-a"), ("b", UUID_B, B_TOKEN)] {
             let dir = root.join("accts").join(id);
             std::fs::create_dir_all(&dir).expect("mkdir");

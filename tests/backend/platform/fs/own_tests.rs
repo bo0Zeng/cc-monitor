@@ -10,22 +10,11 @@
 //! | D1 | 自家目录（`own_dir`）：新建 0700；已在且是本人的 0700 真目录 ⇒ 过；组 / 他人有权 ⇒ 收回 0700；链接 · 不是目录 ⇒ 拒、出声、一个字节不改 | 真目录 |
 
 use super::*;
-use std::path::{Path, PathBuf};
-
-fn sandbox(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!(
-        "ccm-own-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(&base).expect("sandbox");
-    base
-}
+use std::path::Path;
 
 #[test]
 fn w1_paths_only_go_down_from_the_root() {
-    let base = sandbox("w1");
+    let base = test_home::scratch("w1");
     let own = Own::issue_data_at(&base);
     let root = own.root().expect("根");
     assert_eq!(root.as_path(), base.as_path());
@@ -44,7 +33,7 @@ fn w2_dirs_are_born_private_and_existing_ones_are_left_alone() {
     use std::os::unix::fs::PermissionsExt as _;
     let mode =
         |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
-    let base = sandbox("w2");
+    let base = test_home::scratch("w2");
     let own = Own::issue_data_at(&base);
     let fresh = own.path("fresh").expect("名");
     own.ensure_dir(&fresh).expect("建");
@@ -64,7 +53,7 @@ fn w2_dirs_are_born_private_and_existing_ones_are_left_alone() {
 
 #[test]
 fn w3_atomic_write_needs_the_lock_of_that_very_dir() {
-    let base = sandbox("w3");
+    let base = test_home::scratch("w3");
     let own = Own::issue_data_at(&base);
     let dir = own.root().expect("根");
     let sub = own.path("sub").expect("名");
@@ -100,7 +89,7 @@ fn w3_atomic_write_needs_the_lock_of_that_very_dir() {
 
 #[test]
 fn w4_remove_stays_under_the_root() {
-    let base = sandbox("w4");
+    let base = test_home::scratch("w4");
     let own = Own::issue_data_at(&base);
     let b = own.path("b").expect("名");
     std::fs::write(b.as_path(), b"1").expect("夹具");
@@ -112,7 +101,7 @@ fn w4_remove_stays_under_the_root() {
 
 #[test]
 fn w5_the_home_root_only_hands_out_the_backend_dir() {
-    let base = sandbox("w5");
+    let base = test_home::scratch("w5");
     let own = Own::issue_at(&base);
     assert_eq!(
         own.at_home(".cc-monitor/chores.json")
@@ -148,7 +137,7 @@ fn w5_the_home_root_only_hands_out_the_backend_dir() {
 /// 订阅号凭据的窄句柄：只认「一段名字」的文件名与锁名（带分隔符 · `..` · 空的都拒）；写只落那一份文件、锁只建删那两把目录。
 #[test]
 fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
-    let base = sandbox("w6");
+    let base = test_home::scratch("w6");
     let acct = base.join("acct");
     std::fs::create_dir_all(&acct).unwrap();
     let own = Own::for_tests();
@@ -231,7 +220,7 @@ fn side_files(dir: &std::path::Path) -> Vec<String> {
 
 #[test]
 fn a2_round_trip_newline_and_private() {
-    let base = sandbox("a2");
+    let base = test_home::scratch("a2");
     let p = base.join("x.json");
     // 编码那一半（一行 JSON ＋ 结尾换行）住上层，它的判据在后端库根的 `platform/cross_tests.rs`。
     atomic_write(&p, b"{\"a\":1}\n").expect("write");
@@ -251,7 +240,7 @@ fn a2_round_trip_newline_and_private() {
 
 #[test]
 fn a3_concurrent_writers_never_collide_on_the_side_name() {
-    let base = sandbox("a3");
+    let base = test_home::scratch("a3");
     let p = base.join("x.json");
     let fails: Vec<String> = std::thread::scope(|s| {
         let hs: Vec<_> = (0..16)
@@ -285,7 +274,7 @@ fn a3_concurrent_writers_never_collide_on_the_side_name() {
 
 #[test]
 fn a4_failed_rename_removes_only_its_own_side_file() {
-    let base = sandbox("a4");
+    let base = test_home::scratch("a4");
     let target = base.join("x.json");
     std::fs::create_dir(&target).expect("target is a dir");
     std::fs::write(target.join("keep"), b"k").expect("non-empty");
@@ -306,7 +295,7 @@ fn a4_failed_rename_removes_only_its_own_side_file() {
 /// 写不进的那一句只带路径与原因词，系统原话进 `raw`（复制详情）。
 #[test]
 fn a5_a_failed_write_carries_the_reason_word_and_the_raw_words_go_to_the_detail() {
-    let base = sandbox("a5");
+    let base = test_home::scratch("a5");
     let gone = base.join("no-such-dir").join("y.json");
     let e = atomic_write(&gone, b"x").expect_err("父目录不在也写成了");
     assert!(
@@ -323,9 +312,7 @@ fn a5_a_failed_write_carries_the_reason_word_and_the_raw_words_go_to_the_detail(
 fn o1_born_private_existing_left_alone_missing_parent_refused() {
     use std::os::unix::fs::PermissionsExt as _;
     let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
-    let base = std::env::temp_dir().join(format!("ccm-hx1-owndir-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(&base).expect("base");
+    let base = test_home::scratch("owndir");
     let fresh = base.join(".cc-monitor");
     create_dir_private(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
@@ -347,7 +334,7 @@ fn o1_born_private_existing_left_alone_missing_parent_refused() {
 fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
     use std::os::unix::fs::PermissionsExt as _;
     let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
-    let base = sandbox("d1");
+    let base = test_home::scratch("d1");
     let fresh = base.join("fresh");
     own_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
@@ -391,7 +378,7 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
 fn diag_log_created_file_is_born_owner_only() {
     use std::os::unix::fs::PermissionsExt as _;
     let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
-    let base = sandbox("diag-perm");
+    let base = test_home::scratch("diag-perm");
     let log_path = base.join("stderr.log");
     let diag = DiagLog::issue(log_path.clone());
     let file = diag.create().expect("create");

@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::history::launch_book::{last_of, FILE_NAME};
-use std::path::PathBuf;
 
 // ───────── 记录 ─────────
 
@@ -11,20 +10,13 @@ fn own_at(h: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_data_at(h)
 }
 
-fn temp_home(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-launchacct-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 fn none_alive(_: u32) -> Option<Option<u64>> {
     None
 }
 
 #[test]
 fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
-    let h = temp_home("adopt");
+    let h = test_home::scratch("adopt");
     leave_note(&own_at(&h), 4242, Some("x"), false, None, 1_000).unwrap();
     assert!(adopt(&own_at(&h), 4242, "s1", Some(990), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1").as_deref(), Some("x"));
@@ -40,7 +32,7 @@ fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
 /// 台账与便条都带声明的版本落盘；没有版本的旧台账照第 1 版读。
 #[test]
 fn the_ledger_and_the_note_carry_their_version() {
-    let h = temp_home("ver");
+    let h = test_home::scratch("ver");
     std::fs::write(h.join(FILE_NAME), r#"{"sessions":{"s0":"old"}}"#).unwrap();
     leave_note(&own_at(&h), 4343, Some("x"), false, None, 1_000).unwrap();
     let note: serde_json::Value =
@@ -67,7 +59,7 @@ fn the_ledger_and_the_note_carry_their_version() {
 /// 起会话时给了 `--tab`（别名里写的带别名名）⇒ 便条带着它，认便条时记进启动台账的 `tabs`；没有号也照记（只为这一格留的便条）。
 #[test]
 fn a_note_carries_the_tab_into_the_launch_ledger() {
-    let h = temp_home("tab");
+    let h = test_home::scratch("tab");
     let tab = LaunchTab {
         tab: cmd_wire::session::Tab::Hide,
         alias: Some("cct".into()),
@@ -88,7 +80,7 @@ fn a_note_carries_the_tab_into_the_launch_ledger() {
 
 #[test]
 fn no_note_no_record() {
-    let h = temp_home("nonote");
+    let h = test_home::scratch("nonote");
     assert!(!adopt(&own_at(&h), 7, "s1", None, &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1"), None);
     assert!(!h.join(FILE_NAME).exists());
@@ -97,7 +89,7 @@ fn no_note_no_record() {
 
 #[test]
 fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
-    let h = temp_home("reused");
+    let h = test_home::scratch("reused");
     leave_note(&own_at(&h), 9, Some("x"), false, None, 1_000).unwrap();
     assert!(!adopt(&own_at(&h), 9, "s1", Some(1_001), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1"), None);
@@ -106,7 +98,7 @@ fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
 
 #[test]
 fn stale_notes_of_other_processes_are_swept() {
-    let h = temp_home("sweep");
+    let h = test_home::scratch("sweep");
     leave_note(&own_at(&h), 11, Some("x"), false, None, 1_000).unwrap(); // 进程不在了
     leave_note(&own_at(&h), 12, Some("x"), false, None, 1_000).unwrap(); // 在，但比便条晚起（pid 被复用）
     leave_note(&own_at(&h), 13, Some("x"), false, None, 1_000).unwrap(); // 在、对得上
@@ -128,7 +120,7 @@ fn stale_notes_of_other_processes_are_swept() {
 
 #[test]
 fn an_unreadable_record_is_never_overwritten() {
-    let h = temp_home("unreadable");
+    let h = test_home::scratch("unreadable");
     std::fs::write(h.join(FILE_NAME), "{坏").unwrap();
     leave_note(&own_at(&h), 5, Some("x"), false, None, 1_000).unwrap();
     assert!(adopt(&own_at(&h), 5, "s1", None, &none_alive).is_err());
@@ -139,7 +131,7 @@ fn an_unreadable_record_is_never_overwritten() {
 /// 两个进程同时记（这里用线程，锁是跨进程那一把、线程间同样互斥）⇒ 一条都不丢。
 #[test]
 fn concurrent_records_all_land() {
-    let h = temp_home("concurrent");
+    let h = test_home::scratch("concurrent");
     const N: u32 = 24;
     std::thread::scope(|s| {
         for i in 0..N {
@@ -201,7 +193,7 @@ fn each_unavailable_shape_has_its_own_sentence() {
 /// 经别名起的那一发：便条带别名名字，认便条时记进启动台账的 `aliases`（没有号、没写 `--tab` 也照记）。
 #[test]
 fn a_note_carries_the_alias_into_the_launch_ledger() {
-    let h = temp_home("alias");
+    let h = test_home::scratch("alias");
     leave(
         &own_at(&h),
         81,
@@ -239,7 +231,7 @@ fn host_note(account: &str, host: Option<cmd_wire::frame::TerminalHost>) -> Note
 #[test]
 fn a_note_carries_the_host_into_the_launch_ledger_and_a_direct_launch_drops_it() {
     use cmd_wire::frame::TerminalHost;
-    let h = temp_home("host");
+    let h = test_home::scratch("host");
     leave(&own_at(&h), 91, &host_note("", Some(TerminalHost::Tmux))).unwrap();
     assert!(adopt(&own_at(&h), 91, "s-host", Some(990), &none_alive).unwrap());
     assert_eq!(

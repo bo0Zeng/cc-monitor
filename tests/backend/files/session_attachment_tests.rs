@@ -7,16 +7,9 @@ use crate::files::commit::STAGING_DIR;
 use crate::platform::fs::Face;
 use cmd_wire::files::{Sha256Expect, Sha256Hex};
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-att-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&p).ok();
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 /// 假 home（带暂存区）＋ 会话工作目录。
 fn rig(tag: &str) -> (PathBuf, PathBuf) {
-    let base = temp_dir(tag);
+    let base = test_home::scratch(tag);
     let home = base.join("home");
     let cwd = base.join("work");
     std::fs::create_dir_all(home.join(STAGING_DIR)).expect("建暂存区");

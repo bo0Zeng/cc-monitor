@@ -40,13 +40,6 @@ fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     )
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-assetcat-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 fn snap(gen: u64, names: &[&str]) -> Snapshot {
     Snapshot {
         label: format!("m@{gen}"),
@@ -305,7 +298,7 @@ fn mcp_secrets_never_enter_the_catalog_but_the_digest_sees_them() {
 
 #[test]
 fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
-    let d = temp_dir("skill");
+    let d = test_home::scratch("skill");
     let s = d.join("demo");
     std::fs::create_dir_all(s.join("scripts")).unwrap();
     std::fs::write(
@@ -360,7 +353,7 @@ fn scan_of(names: &[&str]) -> Scanned {
 
 #[test]
 fn update_writes_only_when_changed_and_keeps_its_id() {
-    let d = temp_dir("update");
+    let d = test_home::scratch("update");
     let f = d.join(".cc-monitor").join(FILE_NAME);
     let first =
         serde_json::to_value(update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect("第一次"))
@@ -407,7 +400,7 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
 
 #[test]
 fn an_unreadable_or_newer_catalog_is_never_overwritten() {
-    let d = temp_dir("unreadable");
+    let d = test_home::scratch("unreadable");
     let f = d.join(".cc-monitor").join(FILE_NAME);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     for body in [
@@ -429,7 +422,7 @@ fn an_unreadable_or_newer_catalog_is_never_overwritten() {
 /// 版本照声明表写在顶层 `version`：旧文件里的 `"v":1` 读得懂、id 照旧；落盘之后是 `version: 1`、没有 `"v"`。
 #[test]
 fn the_catalog_carries_the_declared_version_and_drops_the_old_v() {
-    let d = temp_dir("version");
+    let d = test_home::scratch("version");
     let f = d.join(".cc-monitor").join(FILE_NAME);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(
@@ -536,7 +529,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
 /// （刀：`update_at` 不拿锁 ⇒ 它先读到「没有」、生一个新 id 回来。）
 #[test]
 fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
-    let dir = temp_dir("hx2-race").join(".cc-monitor");
+    let dir = test_home::scratch("hx2-race").join(".cc-monitor");
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(FILE_NAME);
     let held = crate::platform::lock::hold(&dir).expect("拿不到锁");

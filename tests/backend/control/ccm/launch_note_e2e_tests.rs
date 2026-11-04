@@ -12,8 +12,7 @@ const CHILD_TEST_NAME: &str = "cross_control::launch_note_e2e::launch_note_child
 const SID: &str = "0000a11c-0000-4000-8000-000000000003";
 
 fn sandbox(tag: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("lne-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
+    let root = test_home::scratch(tag);
     let home = root.join("home");
     let accts = home.join(".cc-monitor/accounts");
     for n in ["x", "y"] {

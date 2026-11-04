@@ -31,13 +31,6 @@ fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     )
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-skill-ledger-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 fn rec(digest: &str, created: bool) -> Value {
     json!({ "digest": digest, "created": created })
 }
@@ -55,7 +48,7 @@ fn read_ok(path: &Path) -> Ledger {
 
 #[test]
 fn add_merges_new_paths_updates_digests_and_keeps_the_first_created() {
-    let d = temp_dir("add");
+    let d = test_home::scratch("add");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     let first = record_at(
@@ -101,7 +94,7 @@ fn add_merges_new_paths_updates_digests_and_keeps_the_first_created() {
 
 #[test]
 fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
-    let d = temp_dir("dir");
+    let d = test_home::scratch("dir");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     // 调用方给的 `dir` 不收：`add` 里没有这一格 ⇒ `bad_args`、一个字节不写。
@@ -130,7 +123,7 @@ fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
 
 #[test]
 fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
-    let d = temp_dir("drop");
+    let d = test_home::scratch("drop");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     record_at(
@@ -189,7 +182,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
 
 #[test]
 fn bad_input_is_refused_and_the_file_is_untouched() {
-    let d = temp_dir("bad");
+    let d = test_home::scratch("bad");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     record_at(
@@ -225,7 +218,7 @@ fn bad_input_is_refused_and_the_file_is_untouched() {
 
 #[test]
 fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
-    let d = temp_dir("unreadable");
+    let d = test_home::scratch("unreadable");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     let root = d.join("skills");
@@ -255,7 +248,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
 
 #[test]
 fn nothing_changed_nothing_written() {
-    let d = temp_dir("same");
+    let d = test_home::scratch("same");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     let args = json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}});
@@ -370,7 +363,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
 /// （刀：`record_at` 不拿锁 ⇒ 它先读到空、写下只含 `beta` 的那一份，`alpha` 被盖掉。）
 #[test]
 fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
-    let d = temp_dir("hx2-race");
+    let d = test_home::scratch("hx2-race");
     let state = d.join(".cc-monitor");
     std::fs::create_dir_all(&state).unwrap();
     let file = state.join("skill-installs.json");
@@ -423,7 +416,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
 /// 第 1 版（版本写在 `"v"` 里）读得出、记一笔之后盘上是第 2 版（顶层 `version`，没有 `"v"`），第 1 版的原文逐字节留在 `.v1`。
 #[test]
 fn a_format_one_ledger_is_upgraded_and_its_original_kept_beside() {
-    let d = temp_dir("v1");
+    let d = test_home::scratch("v1");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     let root = d.join("skills");

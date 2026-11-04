@@ -9,19 +9,11 @@ fn own_of(env: &dyn Fn(&str) -> Option<String>) -> crate::platform::Own {
     crate::platform::Own::issue_with(env)
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    // 名字短：下面绑 `data/run/backend.sock`，整条路径要压在 Unix 套接字的 108 字节里（临时目录已经是本进程独有的）。
-    let d = std::env::temp_dir().join(format!("claim-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("夹具目录");
-    d
-}
-
 /// 锁被攥着 ⇒ 交回「已有人在听」、日志一下都没接、套接字文件原样；配置不成立 ⇒ 也不接；
 /// 正控：锁放了 ⇒ 抢到、接了、套接字在听；不走常驻的那条载体不用抢 ⇒ 接。
 #[tokio::test]
 async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() {
-    let home = scratch("late");
+    let home = test_home::scratch("late");
     let data = home.join("data");
     let data_s = data.to_string_lossy().into_owned();
     let home_s = home.to_string_lossy().into_owned();
@@ -108,8 +100,8 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
 /// 正控：同样的沙箱跑，家在沙箱里 ⇒ 起。真家目录这里用夹具目录扮（`account_home` 是入参）。
 #[tokio::test]
 async fn a_sandboxed_start_refuses_the_real_home() {
-    let real = scratch("real");
-    let fake_home = scratch("fake");
+    let real = test_home::scratch("real");
+    let fake_home = test_home::scratch("fake");
     let real_s = real.to_string_lossy().into_owned();
     let fake_s = fake_home.to_string_lossy().into_owned();
     let installs = std::cell::Cell::new(0);

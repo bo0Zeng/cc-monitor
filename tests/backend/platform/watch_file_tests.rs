@@ -3,19 +3,6 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-watch-file-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 有界等：每 20 毫秒看一眼，最多 5 秒。
 fn eventually(mut ok: impl FnMut() -> bool) -> bool {
     for _ in guard_core::wall::rounds() {
@@ -40,7 +27,7 @@ fn recorder() -> (Seen, impl FnMut(&[PathBuf]) + Send + 'static) {
 /// 过了过滤的那条路径随回调交出来（调用方要按路径分派的，如浏览目录的重列）。
 #[test]
 fn the_callback_gets_the_paths_that_moved() {
-    let d = scratch("paths");
+    let d = test_home::scratch("paths");
     let (seen, cb) = recorder();
     let _w = watch(
         &[(d.clone(), false)],
@@ -75,8 +62,8 @@ fn the_callback_gets_the_paths_that_moved() {
 /// 名单换得动：起的时候没盯的目录，`rearm` 之后有动静就回调；卸掉的目录不再回调。
 #[test]
 fn rearm_follows_the_list() {
-    let a = scratch("rearm-a");
-    let b = scratch("rearm-b");
+    let a = test_home::scratch("rearm-a");
+    let b = test_home::scratch("rearm-b");
     let (seen, cb) = recorder();
     let mut w = watch(&[(a.clone(), false)], |_| true, "wf-rearm", cb).unwrap();
     let failed = w.rearm(&[(b.clone(), false)]);
@@ -120,7 +107,7 @@ fn rearm_follows_the_list() {
 /// 踢一下：没有文件动静也回调一次（路径为空），给「自己做完了一件事、要同步一趟」的调用方。
 #[test]
 fn kick_runs_the_callback_once_without_paths() {
-    let d = scratch("kick");
+    let d = test_home::scratch("kick");
     let (seen, cb) = recorder();
     let w = watch(&[(d, false)], |_| true, "wf-kick", cb).unwrap();
     w.kick();

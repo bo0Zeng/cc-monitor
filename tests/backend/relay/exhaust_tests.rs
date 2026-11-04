@@ -2,7 +2,7 @@
 //! 要把整个进程的 fd 占满、要数中转往 stderr 说了几句 ⇒ 在自己起的子进程里跑，父进程看它的 stdout 与 stderr。
 
 use super::observe_retry_tests::{
-    shoot, spawn_judging_upstream, spawn_relay_over, sse_200, temp_dir, upstreams_at,
+    shoot, spawn_judging_upstream, spawn_relay_over, sse_200, upstreams_at,
 };
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts};
 use crate::relay::test_support::INFLIGHT_CONNECTIONS;
@@ -120,7 +120,7 @@ fn hog_the_rest(hogs: &mut Vec<std::fs::File>) {
 fn as_child_out_of_fds() {
     on_one_cpu();
     let (up, _got) = spawn_judging_upstream(|_| sse_200(""));
-    let d = temp_dir("exhaust");
+    let d = test_home::scratch("exhaust");
     let relay = spawn_relay_over(Accounts::new(
         RoutingTable::build(std::iter::empty()),
         upstreams_at(up),
@@ -149,7 +149,7 @@ fn as_child_out_of_fds() {
 /// 子进程那一半：在途数顶到上限连打三发，在上限边上放进一条又顶满，放回 0 再打一发。
 fn as_child_over_the_cap() {
     let (up, _got) = spawn_judging_upstream(|_| sse_200(""));
-    let d = temp_dir("over-cap");
+    let d = test_home::scratch("over-cap");
     let accounts = Accounts::new(
         RoutingTable::build(std::iter::empty()),
         upstreams_at(up),

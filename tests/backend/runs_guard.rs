@@ -336,13 +336,6 @@ fn fake() -> Shape {
 
 const SID: &str = "s-1";
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("runs-guard-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn append(p: &Path, lines: &[String]) {
     use std::io::Write;
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -424,7 +417,7 @@ fn states(book: &RunBook) -> Vec<(String, Option<String>, Option<String>, RunSta
 
 fn run_the_scenario(shape: &Shape) {
     let w = |s: &str| Some(s.to_string());
-    let dir = scratch(shape.name);
+    let dir = test_home::scratch(shape.name);
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
@@ -666,7 +659,7 @@ fn child_wrote(shape: &Shape, parent: &Path, run: &str, ago: Option<std::time::D
 }
 
 fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)> {
-    let dir = scratch(&format!("{}-end-{via_prime}", shape.name));
+    let dir = test_home::scratch(&format!("{}-end-{via_prime}", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
@@ -790,7 +783,7 @@ fn claude_code_ends_its_runs_by_what_the_dispatcher_says() {
 /// 前台派出 f1（父侧结果要等它跑完才回）：派出那一刻落盘的那一份在、子记录在写 ⇒ 卡（父侧工具调用 id）已经对上运行、在跑；
 /// 那一份比子记录晚落盘也一样（下一次读到子记录时对上）；结果回来 ⇒ 完成。冷接（adopt）与文件事件（on_path）两条路各一遍。
 fn foreground_scenario(shape: &Shape, cold: bool) {
-    let dir = scratch(&format!("{}-fg-{cold}", shape.name));
+    let dir = test_home::scratch(&format!("{}-fg-{cold}", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
@@ -908,7 +901,7 @@ fn running_set(book: &RunBook) -> std::collections::BTreeSet<String> {
 /// 被一串别的挤出表，最后才读到发射器 X 那条「派出 Y」—— 已收场的不许被重新立成在跑；只在旧记录里被派出、
 /// 自己没有记录的 Y2 立起来就是久未动静。在跑的集合 ＝ 真在跑的那一个。
 fn cold_crowded_scenario(shape: &Shape) {
-    let dir = scratch(&format!("{}-cold", shape.name));
+    let dir = test_home::scratch(&format!("{}-cold", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let day = Duration::from_secs(86_400);
     let (y, y2, x, w) = ("a0", "a1", "c0", "d0");
@@ -1041,7 +1034,7 @@ fn claude_code_cold_connect_past_the_cap_raises_no_dead_runs() {
 /// 收场只粘同一轮：收场之后同一个子运行又写出一次**别的**应答（被续跑）⇒ 回到在跑；同一次应答的余下几条、
 /// 收场通知之前就写好的记录，不翻。实时与冷接各一格。
 fn resume_scenario(shape: &Shape) {
-    let dir = scratch(&format!("{}-resume", shape.name));
+    let dir = test_home::scratch(&format!("{}-resume", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
@@ -1158,7 +1151,7 @@ fn claude_code_run_resumed_after_it_ended_is_running_again() {
 #[test]
 fn a_frame_judges_quiet_runs_without_waiting_for_another_record() {
     let shape = claude_code();
-    let dir = scratch("idle-frame");
+    let dir = test_home::scratch("idle-frame");
     let parent = (shape.parent_of)(&dir, SID);
     append(
         &parent,
@@ -1297,7 +1290,7 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
 /// 一个文件事件只在它自己那份父记录底下找新的子运行记录：别的会话那份不扫；不是子运行记录形状的（旁边的元数据之类）一份都不扫。
 /// 两套形状各跑一遍。
 fn discovery_scenario(shape: &Shape) -> (Vec<String>, Vec<String>) {
-    let dir = scratch(&format!("{}-discover", shape.name));
+    let dir = test_home::scratch(&format!("{}-discover", shape.name));
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
     let parents: Vec<PathBuf> = ["s-1", "s-2"]
@@ -1375,7 +1368,7 @@ fn at(secs: u64) -> Option<u64> {
 /// g4 自己写出失败终局；g5 久未再写；会话退休时 g1 还在跑。每条记录都写着自己的时刻（与读到它的时刻无关）。
 fn extra_cells_scenario(shape: &Shape) {
     use crate::wire::RunWhy;
-    let dir = scratch(&format!("{}-cells", shape.name));
+    let dir = test_home::scratch(&format!("{}-cells", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
@@ -1595,7 +1588,7 @@ fn claude_code_gives_the_extra_run_cells() {
 fn a_first_child_read_holds_about_a_block_not_the_file() {
     use crate::common::append_read::test_support::{big_record, BIG, HELD_BOUND};
     let shape = claude_code();
-    let dir = scratch("held");
+    let dir = test_home::scratch("held");
     let parent = (shape.parent_of)(&dir, SID);
     append(
         &parent,

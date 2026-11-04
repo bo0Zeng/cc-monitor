@@ -18,7 +18,7 @@
 //! 进程退出时（判据红了也一样）整个删掉 —— 判据各自建的临时目录、它起的子进程留下的套接字目录都随它走，不在系统临时目录里攒着。
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// 沙箱根已经建好的标记（值 ＝ 沙箱根）：判据起的子进程继承它 ⇒ 子进程里不再建、不再换家。
 pub const SANDBOX_MARK: &str = "RUST_TEST_SANDBOX_ROOT";
@@ -62,6 +62,25 @@ pub fn sandbox_root() -> PathBuf {
     std::env::var_os(SANDBOX_MARK)
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join(format!("ccm-{}", std::process::id())))
+}
+
+/// 判据要一个自己的临时目录：都从这里拿。在 [`sandbox_root`] 底下，名字是 `tag` ＋ 本进程里第几次拿（沙箱根是父判据传下来的
+/// ⇒ 再带上进程号）；先清再建，回来的是空目录。每拿一次是一个新的：并行的判据、同一条判据拿两回、继承了沙箱根的子测试进程
+/// 都撞不到一起。名字短：判据在它下面绑 Unix 套接字，整条路径要压在 108 字节里，`tag` 也写短。
+pub fn scratch(tag: &str) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let name = if OWNED.load(Ordering::Relaxed) {
+        format!("{tag}-{n}")
+    } else {
+        format!("{tag}-{}-{n}", std::process::id())
+    };
+    let d = sandbox_root().join(name);
+    let _ = std::fs::remove_dir_all(&d);
+    if let Err(e) = std::fs::create_dir_all(&d) {
+        panic!("test-home: 建不出 {}：{e}", d.display());
+    }
+    d
 }
 
 /// 本账号在账号数据库里登记的家目录（`getpwuid_r`，不看 `$HOME`）；查不到 · 非 unix ⇒ `None`。

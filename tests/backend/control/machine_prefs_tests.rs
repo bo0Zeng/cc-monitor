@@ -1,13 +1,6 @@
 //! 这台的偏好（`prefs.json`）：读的三态 · 补丁只动点到的那几格 · 值域 · 读不懂不盖。家目录在临时目录里。
 use super::*;
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-prefs-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn set(home: &Path, req: serde_json::Value) -> Result<PrefsReply, PrefsSetErr> {
     let own = crate::platform::fs::Own::issue_at(home);
     let req: PrefsSet = serde_json::from_value(req).unwrap();
@@ -17,7 +10,7 @@ fn set(home: &Path, req: serde_json::Value) -> Result<PrefsReply, PrefsSetErr> {
 /// 没设过 ⇒ `absent`、缺省那一份；写一回 ⇒ `ok`、读回的就是写进去的；补丁只动点到的那几格（别的号 · 别的家不动，`null` 删掉那一条）。
 #[test]
 fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
-    let home = scratch("patch");
+    let home = test_home::scratch("patch");
     let r = answer_read_in(Some(&home));
     assert_eq!(
         (r.state, r.prefs.clone()),
@@ -63,7 +56,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
 /// 值域在写口拒（`bad_args`，一个字节不落）：启动命令带壳元字符 · 模型名不像模型 · 上限为 0 · 数据目录 / pb 路径不是绝对路径。
 #[test]
 fn prefs_set_refuses_values_a_launch_could_not_use() {
-    let home = scratch("check");
+    let home = test_home::scratch("check");
     for bad in [
         serde_json::json!({"launchers": {"claude": "cc; rm -rf /"}}),
         serde_json::json!({"models": {"a": "op us"}}),
@@ -85,7 +78,7 @@ fn prefs_set_refuses_values_a_launch_could_not_use() {
 /// 盘上那份读不懂（不是 JSON · 版本不认 · 多一格）⇒ 读报 `unreadable`、照缺省用；写拒 `unreadable`、原文一个字节不动。
 #[test]
 fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
-    let home = scratch("unreadable");
+    let home = test_home::scratch("unreadable");
     let path = path_in(&home);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     for body in [
@@ -112,7 +105,7 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
 #[test]
 fn a_first_version_prefs_file_reads_as_the_second_and_is_kept_beside_on_write() {
     use cmd_wire::session::ResumeWhere;
-    let home = scratch("v1");
+    let home = test_home::scratch("v1");
     let path = path_in(&home);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let v1 = r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{"work":"opus"},"contextLimits":{},"childTab":"show"}"#;
@@ -237,7 +230,7 @@ fn the_agent_homes_become_each_familys_dir_env() {
 /// pb 路径：设了读回的就是它（两头空白去掉）；空串 ⇒ 删掉；补丁里没提 ⇒ 不动。
 #[test]
 fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
-    let home = scratch("pbdir");
+    let home = test_home::scratch("pbdir");
     let r = set(&home, serde_json::json!({"pbDir": "  /opt/pb  "})).unwrap();
     assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
     let r = set(&home, serde_json::json!({"resumeWhere": "tmux"})).unwrap();
@@ -250,7 +243,7 @@ fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
 /// ★ **P2** 新会话的权限档按「哪一家」存：收那一家清单里的档（`null` 删那一条）；不在清单里的 ⇒ `bad_args`、盘上那份逐字节不变。
 #[test]
 fn a_permission_mode_default_is_kept_per_agent_and_only_one_that_agent_offers() {
-    let home = scratch("perm");
+    let home = test_home::scratch("perm");
     let got = set(
         &home,
         serde_json::json!({"permissionModes": {"claude": "plan"}}),

@@ -156,22 +156,6 @@ fn two_accounts_no_key(base: &Base) -> RoutingTable {
     ])
 }
 
-/// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
-/// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
-/// （隔壁 `creds.rs` 的同名助手记着那次真事故）。
-fn tmpdir(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-rl-{}-{}-{tag}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 下游打过去的请求体。**期望值是手写字面量**，判据不许拿被测代码算它（那样自证、恒绿）。
 const REQUEST_BODY: &str = "{\"m\":1}";
 
@@ -1498,7 +1482,7 @@ impl Drop for RelayChild {
 /// —— keyless、用默认上游（`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 指着假上游），**是显式的一条路**。
 fn spawn_relay_child(up: SocketAddr) -> RelayChild {
     // 判据绝不许去碰用户真实的那份凭据文件 ⇒ 自己造一份临时的。
-    let dir = tmpdir(&format!("child-{}", up.port()));
+    let dir = test_home::scratch(&format!("child-{}", up.port()));
     let p = dir.join("apikey-credentials.json");
     std::fs::write(&p, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
         .expect("写子进程的凭据夹具");
@@ -1511,8 +1495,10 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
     // 中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
     //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
-    let home =
-        crate::relay::test_support::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
+    let home = crate::relay::test_support::seed_test_home(&test_home::scratch(&format!(
+        "child-home-{}",
+        up.port()
+    )));
     spawn_relay_child_at(up, creds_path, home)
 }
 
@@ -1737,7 +1723,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     //（诊断常把路径原样印进输出 ⇒ 那时「输出里含某句话」会靠路径恒真）。
     const CANARY: &str = "sk-ant-CANARY-MUST-NEVER-LEAVE-THIS-PROCESS";
 
-    let dir = tmpdir("canary");
+    let dir = test_home::scratch("canary");
     let creds_path = dir.join("apikey-credentials.json");
     // ← 这一行就是「人拿编辑器写了一份 JSON 放进去」。没有界面、没有 IPC、没有迁移步骤。
     std::fs::write(
@@ -2021,7 +2007,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     const CANARY_DEAD: &str = "sk-ant-CANARY-ACCOUNT-DEAD-MUST-NEVER-LEAK";
 
     let dead_port = a_port_nobody_listens_on();
-    let dir = tmpdir("canary-multi");
+    let dir = test_home::scratch("canary-multi");
     let creds_path = dir.join("apikey-credentials.json");
 
     // ★★★ **两个不同的活上游**。
@@ -3185,7 +3171,7 @@ fn rendered_export(url: &str) -> String {
 #[test]
 fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key() {
     let up = spawn_fake_upstream(None);
-    let dir = tmpdir("kh2b1");
+    let dir = test_home::scratch("kh2b1");
     let creds = dir.join("apikey-credentials.json");
     // 两条**各自带 key** 的行 —— 「拿 A 的 key 发 B 的请求」是本族最坏的失效形态，
     // 一行是量不出来的。
@@ -3339,7 +3325,7 @@ fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
 #[test]
 fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upstream() {
     let up = spawn_fake_upstream(None);
-    let dir = tmpdir("kh2c2");
+    let dir = test_home::scratch("kh2c2");
     let creds = dir.join("apikey-credentials.json");
 
     // ★ 两条 —— 一条量不出「拿 A 的 key 发 B 的请求」，那是本族最坏的失效形态。
@@ -3467,7 +3453,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
 #[test]
 fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     let up = spawn_fake_upstream(None);
-    let dir = tmpdir("reload");
+    let dir = test_home::scratch("reload");
     let creds = dir.join("apikey-credentials.json");
     // 起手只有一条空账号（等价于 `spawn_relay_child` 那份夹具）。
     std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
@@ -3525,7 +3511,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
 #[test]
 fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() {
     let up = spawn_fake_upstream(None);
-    let dir = tmpdir("reload-bad");
+    let dir = test_home::scratch("reload-bad");
     let creds = dir.join("apikey-credentials.json");
     std::fs::write(
         &creds,
@@ -4237,7 +4223,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
             );
         }
     });
-    let dir = tmpdir("rk1-leak");
+    let dir = test_home::scratch("rk1-leak");
     let creds = dir.join("apikey-credentials.json");
     std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n").expect("凭据夹具");
     let home = dir.join("home");

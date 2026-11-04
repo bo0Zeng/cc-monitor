@@ -49,13 +49,6 @@ mod tests {
         guard_core::addr::repo_root()
     }
 
-    fn scratch(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("flow-scripts-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
-    }
-
     fn bash(script: &Path, args: &[&str], dir: &Path) -> Output {
         Command::new("bash")
             .arg(script)
@@ -84,7 +77,7 @@ mod tests {
 
     #[test]
     fn each_flow_entry_answers_help() {
-        let d = scratch("help");
+        let d = test_home::scratch("help");
         for rel in HELPFUL {
             let out = bash(&root().join(rel), &["--help"], &d);
             let said = String::from_utf8_lossy(&out.stdout);
@@ -108,7 +101,7 @@ mod tests {
             ("tests/scripts/push-candidate.sh", &["x"][..]),
         ] {
             for on_path in [false, true] {
-                let d = scratch("pscan");
+                let d = test_home::scratch("pscan");
                 let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
                 if on_path {
                     use std::os::unix::fs::PermissionsExt;
@@ -148,7 +141,7 @@ mod tests {
     /// 全量只有一个入口：`gate-affected.sh --full` 不挑格（不找起点、计划就是「全量」），与 `--trust-ci` 二选一。
     #[test]
     fn the_full_gate_is_gate_affected_with_full() {
-        let d = scratch("full");
+        let d = test_home::scratch("full");
         git(&d, &["init", "-q", "-b", "lone"]);
         write(&d, "README", "x\n");
         git(&d, &["add", "-A"]);
@@ -332,7 +325,7 @@ mod tests {
     /// PATH 里没有 `systemd-run` ⇒ 直接跑，并在 stderr 说一声；命令的退出码照传。
     #[test]
     fn heavy_runs_directly_where_there_is_no_systemd_run() {
-        let d = scratch("heavy");
+        let d = test_home::scratch("heavy");
         let bin = d.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         // 只放脚本要的几样，故意不放 systemd-run / systemctl。
@@ -422,7 +415,7 @@ mod tests {
             ("noflock", BASE.to_vec(), None),
             ("slot", [BASE, &["flock"]].concat(), None),
         ] {
-            let d = scratch(&format!("heavy-scrub-{tag}"));
+            let d = test_home::scratch(&format!("heavy-scrub-{tag}"));
             let bin = tool_bin(&d, &tools);
             let mut c = Command::new(bin.join("bash"));
             c.arg(root().join("tests/scripts/heavy.sh"))
@@ -465,7 +458,7 @@ mod tests {
     #[test]
     fn the_e2e_sandbox_env_hides_the_outer_session_by_the_same_table() {
         let (outer, kept) = outer_session();
-        let d = scratch("sandbox-env-scrub");
+        let d = test_home::scratch("sandbox-env-scrub");
         let mut c = Command::new("bash");
         c.args(["-c", ". tests/e2e/sandbox-env.sh && compgen -e"])
             .current_dir(root())
@@ -672,7 +665,7 @@ mod tests {
     fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
         use std::io::{BufRead, BufReader};
         use std::process::{Child, Stdio};
-        let d = scratch("heavy-fifo");
+        let d = test_home::scratch("heavy-fifo");
         let bin = tool_bin(
             &d,
             &[
@@ -770,7 +763,7 @@ mod tests {
         const BASE: &[&str] = &[
             "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false", "cut",
         ];
-        let d = scratch("heavy-nice");
+        let d = test_home::scratch("heavy-nice");
         let bin = tool_bin(&d, &[BASE, &["nice", "ionice"]].concat());
         assert!(
             bin.join("nice").exists() && bin.join("ionice").exists(),
@@ -794,7 +787,7 @@ mod tests {
         assert_eq!(lines.next(), Some("idle"), "重活的 io 类不是 idle：{said}");
         let _ = std::fs::remove_dir_all(&d);
 
-        let d = scratch("heavy-nonice");
+        let d = test_home::scratch("heavy-nonice");
         let bin = tool_bin(&d, BASE);
         let out = heavy_with_path(&d, &bin, &["echo", "still-ran"]);
         let note = String::from_utf8_lossy(&out.stderr);
@@ -815,7 +808,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn heavy_puts_the_scope_into_a_low_weight_slice() {
-        let d = scratch("heavy-slice");
+        let d = test_home::scratch("heavy-slice");
         let bin = tool_bin(
             &d,
             &[
@@ -880,7 +873,7 @@ mod tests {
     /// 不随 scope 一起无声退出。
     #[test]
     fn heavy_runs_without_a_scope_when_the_user_manager_cannot_start_one() {
-        let d = scratch("heavy-noscope");
+        let d = test_home::scratch("heavy-noscope");
         let bin = tool_bin(
             &d,
             &[
@@ -949,7 +942,7 @@ mod tests {
     /// 一棵假仓：main 上有一份假 gradlew（记下参数 · 它看得见的变量名 · 并行数变量，写一份三条的 test-results），工作分支上只改 `changed` 那一条。
     /// `envs`：跑 quick-check 时另设（`Some`）或清掉（`None`）的变量；`nproc` 另给一个假的、说 24（判据不随跑它的机器变）。
     fn quick_mobile(tag: &str, changed: &str, envs: &[(&str, Option<&str>)]) -> QuickMobile {
-        let d = scratch(tag);
+        let d = test_home::scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(
             &d,
@@ -1087,7 +1080,7 @@ mod tests {
     /// 收尾那一行印最慢三条。假仓 ＋ 假 cargo（照 libtest 的样子印两个测试程序、五条），只跑后端那一段。
     #[test]
     fn quick_check_keeps_cargo_test_times_slowest_first() {
-        let d = scratch("cargo-times");
+        let d = test_home::scratch("cargo-times");
         git(&d, &["init", "-q", "-b", "main"]);
         write(&d, "src/backend/lib.rs", "\n");
         write(
@@ -1173,7 +1166,7 @@ mod tests {
     /// 一棵假仓：main 之上的工作分支改了后端 · 手机各一份；`bin/cargo`、`node_modules/.bin/{tsc,vitest}`、`src/mobile/gradlew`
     /// 都是假的，每被调一次往 `calls` 记一行「谁 · 首个参数 · 在不在锁里」（锁里 = 假锁脚本设的 `FAKE_LOCK_HELD=1`）。
     fn fake_quick_repo(tag: &str) -> PathBuf {
-        let d = scratch(tag);
+        let d = test_home::scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(&d, "src/backend/lib.rs", "\n");
         // 壳那棵只要目录在（几步先 cd 进去）
@@ -1844,7 +1837,7 @@ mod tests {
     /// 两个都给了 ⇒ `env` 照给的口印。拿假的工具链与 adb 在临时目录里跑那份脚本。
     #[test]
     fn the_emulator_rig_refuses_without_its_ports() {
-        let d = scratch("emu-ports");
+        let d = test_home::scratch("emu-ports");
         let rig = d.join("tests/mobile-smoke");
         std::fs::create_dir_all(&rig).unwrap();
         std::fs::create_dir_all(d.join("src/mobile/scripts")).unwrap();
@@ -1943,7 +1936,7 @@ mod tests {
         use guard_core::contains_word;
         let src = root().join("src/mobile/scripts/android-test.sh");
         let run = |clear_says: &str, clear_rc: i32| -> (bool, Vec<String>) {
-            let d = scratch(&format!("android-test-{clear_says}-{clear_rc}"));
+            let d = test_home::scratch(&format!("android-test-{clear_says}-{clear_rc}"));
             std::fs::create_dir_all(d.join("scripts")).unwrap();
             std::fs::create_dir_all(d.join("bin")).unwrap();
             std::fs::copy(&src, d.join("scripts/android-test.sh")).unwrap();
@@ -2032,7 +2025,7 @@ mod tests {
     /// 一棵三层的假仓：main 上一个提交 → 合并用的分支 `merge` 再改一份手机读的文件 → 干活的分支 `work` 从 `merge` 开、只改界面。
     /// 返回 (仓, main 那一个, mg 那一个)。
     fn three_tier_repo(tag: &str) -> (PathBuf, String, String) {
-        let d = scratch(tag);
+        let d = test_home::scratch(tag);
         let head = |d: &Path| {
             let o = Command::new("git")
                 .args(["rev-parse", "HEAD"])
@@ -2096,7 +2089,7 @@ mod tests {
     /// 改过的 · 删掉的 · 没跟踪的逐份印出、退 1；生成物目录外的改动不算；干净 ⇒ 退 0 不出声；不在 git 仓里 ⇒ 退 2。
     #[test]
     fn generated_drift_names_every_uncommitted_file_in_each_generated_dir() {
-        let d = scratch("gen-drift");
+        let d = test_home::scratch("gen-drift");
         let drift = |d: &Path| bash(&root().join("tests/scripts/generated-drift.sh"), &[], d);
         let o = drift(&d);
         assert_eq!(o.status.code(), Some(2), "不在 git 仓里却没说判不了");
@@ -2136,7 +2129,7 @@ mod tests {
     /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
     #[test]
     fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
-        let d = scratch("bless");
+        let d = test_home::scratch("bless");
         git(&d, &["init", "-q", "-b", "main"]);
         let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
         write(&d, "tests/g/a.json", "old\n");
@@ -2266,7 +2259,7 @@ esac
         const NAME: &str = "x";
         let br = format!("w8/{NAME}");
         use std::os::unix::fs::PermissionsExt;
-        let d = scratch(&format!("push-{dep}-{next}-{main}"));
+        let d = test_home::scratch(&format!("push-{dep}-{next}-{main}"));
         let git = |dir: &Path, args: &[&str]| -> String {
             let out = Command::new("git")
                 .args([

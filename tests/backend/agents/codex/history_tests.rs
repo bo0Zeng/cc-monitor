@@ -9,13 +9,6 @@
 
 use super::*;
 
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-codexhist-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 const SID_A: &str = "0199aaaa-0000-7000-8000-000000000001";
 const SID_B: &str = "0199aaaa-0000-7000-8000-000000000002";
 
@@ -31,7 +24,7 @@ fn user(text_json: &str) -> String {
 
 #[test]
 fn only_rollout_files_are_sessions_and_cwd_comes_from_the_first_line() {
-    let home = tmp("enum");
+    let home = test_home::scratch("enum");
     let day = home.join("sessions/2026/09/25");
     std::fs::create_dir_all(&day).unwrap();
     std::fs::write(
@@ -77,7 +70,7 @@ fn only_rollout_files_are_sessions_and_cwd_comes_from_the_first_line() {
 
 #[test]
 fn the_first_real_user_line_skips_injected_context_and_is_capped() {
-    let d = tmp("excerpt");
+    let d = test_home::scratch("excerpt");
     let p = d.join("r.jsonl");
     let long = "问".repeat(250);
     std::fs::write(
@@ -111,7 +104,7 @@ fn the_first_real_user_line_skips_injected_context_and_is_capped() {
 /// 文件名末尾不是这个 sid 的不算 · 符号链接不算命中 · 找不到照实拒。
 #[test]
 fn a_session_is_found_by_sid_under_the_dated_tree() {
-    let home = tmp("find");
+    let home = test_home::scratch("find");
     let root = parse::sessions_root(&home);
     let day = root.join("2026/10/02");
     std::fs::create_dir_all(&day).unwrap();

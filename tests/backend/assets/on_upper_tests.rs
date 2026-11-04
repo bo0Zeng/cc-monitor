@@ -6,13 +6,6 @@ use crate::wire::spec::{invoke, Prepared};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("assets-on-upper-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 /// 按命令名找那一行登记、照它的档跑一问（阻塞档就地跑；异步档照它的未来跑完），只留码。
 fn run_on_frame_path(
     cmd: &str,
@@ -50,7 +43,7 @@ fn run_on_frame_path(
 /// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
 #[test]
 fn an_extra_key_is_bad_args_on_the_frame_path() {
-    let d = tmp("extra");
+    let d = test_home::scratch("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let cases = [
         ("assets-catalog", json!({ "bogus": 1 })),
@@ -147,7 +140,7 @@ fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
 /// `assets-sync` 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，一次都不拨、可达表不动。
 #[test]
 fn an_extra_sync_key_is_bad_args_on_the_frame_path() {
-    let d = tmp("sync-extra");
+    let d = test_home::scratch("sync-extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let reach = &crate::dial::remote_ask::REACH;
     let before = crate::dial::remote_ask::reach_rows(reach).len();

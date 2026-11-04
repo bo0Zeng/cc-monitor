@@ -4,20 +4,6 @@ use super::*;
 use crate::relay::{Ask, Mode, RouteKey};
 use std::sync::mpsc;
 
-/// 只属于本判据的临时目录。
-fn tmpdir(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-us-{}-{}-{tag}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 fn ask(body: &[u8]) -> Ask<'_> {
     Ask {
         label: "",
@@ -34,7 +20,7 @@ fn ask(body: &[u8]) -> Ask<'_> {
 /// 而 std 的 `RwLock` 有写者在等时新读者也进不来 ⇒ 所有中转请求一起卡住。
 #[test]
 fn a_request_stuck_inside_act_does_not_hold_up_a_reload_or_the_next_request() {
-    let dir = tmpdir("reload");
+    let dir = test_home::scratch("reload");
     let path = dir.join("creds.json");
     let upstreams = Upstreams::from_env(&|_| None).expect("内置默认必须解析得了");
     let (empty, _, _) = table::build(

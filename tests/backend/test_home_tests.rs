@@ -20,8 +20,7 @@ fn only_the_real_home_is_moved() {
 #[cfg(unix)]
 #[test]
 fn another_spelling_of_the_real_home_is_still_the_real_home() {
-    let d = std::env::temp_dir().join(format!("home-spelling-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch("home-spelling");
     let real = d.join("real");
     std::fs::create_dir_all(&real).unwrap();
     let link = d.join("link");
@@ -52,6 +51,36 @@ fn another_spelling_of_the_real_home_is_still_the_real_home() {
         "别的家照用"
     );
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 判据的临时目录只从 `scratch` 拿：两个线程同一个 tag 拿到两个目录，同一线程再拿一回也是另一个；
+/// 都在沙箱根底下、建好且是空的。
+#[test]
+fn two_threads_asking_for_the_same_tag_get_two_empty_dirs_under_the_sandbox() {
+    let root = test_home::sandbox_root();
+    let a = test_home::scratch("same-tag");
+    std::fs::write(a.join("f"), b"x").unwrap();
+    let b = std::thread::spawn(|| test_home::scratch("same-tag"))
+        .join()
+        .unwrap();
+    let c = test_home::scratch("same-tag");
+    assert_ne!(a, b, "两个线程同一个 tag 撞进了同一个目录");
+    assert_ne!(a, c, "同一线程再拿一回撞进了上一回的目录");
+    assert!(a.join("f").exists(), "再拿一回动了上一回的目录");
+    for d in [&a, &b, &c] {
+        assert!(
+            d.starts_with(&root),
+            "{} 不在沙箱根 {} 底下",
+            d.display(),
+            root.display()
+        );
+        assert!(d.is_dir(), "{} 没建", d.display());
+    }
+    // `remove_dir` 只删得掉空目录：删得掉 ⇒ 拿到时是空的。
+    for d in [&b, &c] {
+        assert!(std::fs::remove_dir(d).is_ok(), "{} 不是空的", d.display());
+    }
+    let _ = std::fs::remove_dir_all(&a);
 }
 
 /// 外面那个会话漏进来、子测试进程里要看见「都不在」的那几样（名字 ＝ 值随便；真值是什么不要紧，要紧的是进不来）。
@@ -106,8 +135,7 @@ fn child_sees_no_outer_session() {
 #[test]
 fn a_test_process_never_sees_the_outer_session() {
     let exe = std::env::current_exe().expect("拿不到测试二进制自己的路径");
-    let scratch = std::env::temp_dir().join(format!("outer-session-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
+    let scratch = test_home::scratch("outer-session");
     let account = scratch.join("fake-account");
     let given = scratch.join("given-home");
     std::fs::create_dir_all(&account).unwrap();
@@ -216,9 +244,7 @@ fn child_litters_the_temp_dir() {
 fn a_test_process_leaves_the_temp_dir_as_it_found_it() {
     let exe = std::env::current_exe().expect("拿不到测试二进制自己的路径");
     for (mode, verdict) in [("pass", "1 passed"), ("fail", "1 failed")] {
-        let empty = std::env::temp_dir().join(format!("tmp-before-{mode}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&empty);
-        std::fs::create_dir_all(&empty).unwrap();
+        let empty = test_home::scratch(&format!("tmp-before-{mode}"));
         let mut cmd = std::process::Command::new(&exe);
         cmd.args([
             "--exact",

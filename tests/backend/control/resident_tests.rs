@@ -3,16 +3,6 @@
 
 use super::*;
 
-/// 名字压短、不带进程号：临时目录已是这个测试进程自己的沙箱根（test-home），几条判据在 `<这里>/run/backend.sock` 绑 Unix 套接字，
-/// 整条路径要压在 107 字节里 —— 原来的 `ccm-resident-<tag>-<pid>` 在临时目录深一点的快检里把 `call-absent` 那一条顶过了线，
-/// 连接回 `InvalidInput`（不是「没人在听」），读成了 `failed`。
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("res-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 /// 子进程的环境：常驻开关 ＋ 宿主层那几格（中转口要交给它；`~/` 换成家目录），没有别的。
 #[test]
 fn the_child_env_is_the_switch_plus_the_hosted_slots() {
@@ -130,7 +120,7 @@ fn the_relay_says_absent_only_when_nobody_listens() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_socket_path_over_the_cap_is_refused_out_loud() {
-    let base = scratch("long");
+    let base = test_home::scratch("long");
     let deep = base.join("d".repeat(SOCKET_PATH_MAX));
     std::fs::create_dir_all(&deep).unwrap();
     match claim(&crate::platform::fs::Own::issue_data_at(&deep)) {
@@ -146,9 +136,7 @@ async fn a_socket_path_over_the_cap_is_refused_out_loud() {
 #[test]
 fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
     assert_eq!(STDERR_LOG_REL, ".cc-monitor/logs/backend/stderr.log");
-    let home = std::env::temp_dir().join(format!("ccm-gap1-logdir-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).unwrap();
+    let home = test_home::scratch("logdir");
     log_dir_chain(&crate::platform::fs::Own::issue_at(&home)).expect("逐层建");
     for rel in [
         ".cc-monitor",
@@ -300,7 +288,7 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
 #[cfg(target_os = "linux")]
 fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     use std::io::BufRead as _;
-    let dh = scratch("legacy");
+    let dh = test_home::scratch("legacy");
     assert_eq!(
         retire_legacy(&crate::platform::fs::Own::issue_data_at(&dh)),
         None,
@@ -393,7 +381,7 @@ fn fake_resident(dh: &Path, build: &str) -> Reap {
 #[test]
 #[cfg(target_os = "linux")]
 fn stopping_asks_the_socket_not_a_recorded_pid() {
-    let dh = scratch("peerstop");
+    let dh = test_home::scratch("peerstop");
     let mut listening = fake_resident(&dh, "p9a-old");
     let decoy = Reap(sh_child(
         "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
@@ -429,7 +417,7 @@ fn replacing_never_downgrades_the_one_that_listens() {
         ("p9b-mine", true),
         ("p9a-older", false),
     ] {
-        let dh = scratch("swap");
+        let dh = test_home::scratch("swap");
         let mut listening = fake_resident(&dh, theirs);
         let own = crate::platform::fs::Own::issue_data_at(&dh);
         let got = swap_out(&own, mine, 5_000).expect("换");
@@ -452,7 +440,7 @@ fn replacing_never_downgrades_the_one_that_listens() {
 /// 旧版常驻后端的进程记录照名字的形状找：`listen-<口>.pid` 才算，别的同前缀文件（钥匙 · 不是口号的）不算。
 #[test]
 fn legacy_listen_record_is_found_by_its_name_shape() {
-    let dh = scratch("legacy-shape");
+    let dh = test_home::scratch("legacy-shape");
     std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
     std::fs::write(dh.join("listen-x.pid"), "").unwrap();
     assert_eq!(legacy_listen_pid_in(&dh), None);
@@ -507,7 +495,7 @@ fn asked(cmd: &str) -> crate::wire::listen::ResidentCall {
 #[tokio::test]
 #[cfg(unix)]
 async fn a_resident_call_asks_the_one_that_listens() {
-    let dh = scratch("call-ok");
+    let dh = test_home::scratch("call-ok");
     let peer = one_resident(&dh, |req| {
         vec![
             r#"{"kind":"changed","topic":"machines"}"#.into(),
@@ -538,7 +526,7 @@ async fn a_resident_call_asks_the_one_that_listens() {
 #[tokio::test]
 #[cfg(unix)]
 async fn a_resident_call_carries_the_askers_deadline_and_zone() {
-    let dh = scratch("call-shape");
+    let dh = test_home::scratch("call-shape");
     let peer = one_resident(&dh, |req| {
         vec![format!(
             r#"{{"kind":"reply","id":{},"ok":true}}"#,
@@ -569,7 +557,7 @@ async fn a_resident_call_carries_the_askers_deadline_and_zone() {
 #[cfg(unix)]
 async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     let tz = crate::common::time::Tz::default();
-    let dh = scratch("call-fail");
+    let dh = test_home::scratch("call-fail");
     let peer = one_resident(&dh, |req| {
         assert_eq!(req["cmd"], "history-listing");
         assert_eq!(req["args"], serde_json::json!({"held": "h1"}));
@@ -602,7 +590,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     );
     let _ = std::fs::remove_dir_all(&dh);
 
-    let nobody = scratch("call-absent");
+    let nobody = test_home::scratch("call-absent");
     let f = call_at(
         &nobody,
         &asked("history-listing"),
@@ -619,7 +607,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     );
     let _ = std::fs::remove_dir_all(&nobody);
 
-    let mute = scratch("call-mute");
+    let mute = test_home::scratch("call-mute");
     let peer = one_resident(&mute, |_| Vec::new()).await;
     let f = call_at(
         &mute,

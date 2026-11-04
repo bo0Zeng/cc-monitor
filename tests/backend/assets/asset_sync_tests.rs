@@ -47,13 +47,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-assetsync-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 fn skills(names: &[&str]) -> cat::Scanned {
     cat::Scanned {
         assets: names
@@ -189,7 +182,7 @@ fn sync_args(host: &str) -> Value {
 
 #[tokio::test]
 async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
-    let d = temp_dir("one");
+    let d = test_home::scratch("one");
     let local = Machine::new(&d, "local", vec!["a"]);
     let remote = Machine::new(&d, "remote", vec!["b"]);
     let lid = local.update(None).unwrap()["self"]
@@ -257,7 +250,7 @@ async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
 
 #[tokio::test]
 async fn a_change_fans_out_once_to_every_other_reachable_machine() {
-    let d = temp_dir("fan");
+    let d = test_home::scratch("fan");
     let local = Machine::new(&d, "local", vec!["a"]);
     let r1 = Machine::new(&d, "r1", vec!["one"]);
     let r2 = Machine::new(&d, "r2", vec!["two"]);
@@ -329,7 +322,7 @@ async fn a_change_fans_out_once_to_every_other_reachable_machine() {
 
 #[tokio::test]
 async fn a_failing_remote_is_said_and_nothing_is_pushed_to_it() {
-    let d = temp_dir("fail");
+    let d = test_home::scratch("fail");
     let local = Machine::new(&d, "local", vec!["a"]);
     let fakes = FakeRemotes {
         by_host: BTreeMap::new(),
@@ -348,7 +341,7 @@ async fn a_failing_remote_is_said_and_nothing_is_pushed_to_it() {
 
 #[tokio::test]
 async fn half_given_arguments_are_refused() {
-    let d = temp_dir("args");
+    let d = test_home::scratch("args");
     let local = Machine::new(&d, "local", vec![]);
     let fakes = FakeRemotes {
         by_host: BTreeMap::new(),
@@ -499,7 +492,7 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
 /// 目录 id 换成 `<L>` / `<R>`，`seenAt`（现扫那一刻）换成 `<T>`。
 #[tokio::test]
 async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
-    let d = temp_dir("pin");
+    let d = test_home::scratch("pin");
     let local = Machine::new(&d, "local", vec!["a"]);
     let remote = Machine::new(&d, "remote", vec!["b"]);
     let lid = local.update(None).unwrap()["self"]

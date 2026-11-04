@@ -26,7 +26,7 @@ fn ask(
 }
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-fork-{tag}-{}", std::process::id()));
+    let p = test_home::scratch(tag);
     std::fs::create_dir_all(p.join("projects").join("proj")).unwrap();
     p
 }

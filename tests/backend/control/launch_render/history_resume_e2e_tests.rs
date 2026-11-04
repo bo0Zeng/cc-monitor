@@ -33,8 +33,7 @@ fn fake_launcher(bin: &Path, name: &str) {
 
 /// 隔离的家目录：Claude 记录树里一份、Codex 日期树里一份（结构照各自的格式，文字是编的）。
 fn sandbox(tag: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("hre-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
+    let root = test_home::scratch(tag);
     let home = root.join("home");
     let proj = home.join(".claude/projects/-w-proj");
     std::fs::create_dir_all(&proj).unwrap();

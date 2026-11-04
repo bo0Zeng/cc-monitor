@@ -7,7 +7,6 @@
 //! | S7 | 流式读：读得懂 ⇒ `Present`；不在 ⇒ `Absent` | 真文件 |
 
 use super::*;
-use std::path::PathBuf;
 
 /// 这几条判据用的读上限：64 字节，超了当读不出来。
 const CAP: Cap = Cap {
@@ -15,21 +14,10 @@ const CAP: Cap = Cap {
     over: relay_route_core::Over::Reject,
 };
 
-fn sandbox(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!(
-        "ccm-own-state-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(&base).expect("sandbox");
-    base
-}
-
 /// 目录底下留着的旁名（`.tmp` 结尾）。
 #[test]
 fn s1_three_states() {
-    let base = sandbox("s1");
+    let base = test_home::scratch("s1");
     let p = base.join("x.json");
     assert!(matches!(read_bytes(&p, CAP), Read::Absent));
     std::fs::create_dir(&p).expect("dir in place");
@@ -56,7 +44,7 @@ fn s1_three_states() {
 /// S5：读不出的那一句只带路径与原因词，下层原话（解析器 · 系统）进 `raw`（复制详情）。
 #[test]
 fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() {
-    let base = sandbox("s5");
+    let base = test_home::scratch("s5");
     let p = base.join("x.json");
     std::fs::write(&p, b"{").expect("seed");
     let Read::Unreadable(s) = read_json::<serde_json::Value>(&p, CAP) else {
@@ -120,7 +108,7 @@ fn read_three(d: &Doc<serde_json::Value>, p: &Path) -> [Read<serde_json::Value>;
 
 #[test]
 fn s6_state_unreadable_stays_unreadable_and_cache_unreadable_is_absent() {
-    let base = sandbox("s6");
+    let base = test_home::scratch("s6");
     let p = base.join("x.json");
     let seeds: [(&str, Box<dyn Fn()>); 3] = [
         (
@@ -157,7 +145,7 @@ fn s6_state_unreadable_stays_unreadable_and_cache_unreadable_is_absent() {
 
 #[test]
 fn s7_streamed_read_reads_and_absent_is_absent() {
-    let base = sandbox("s7");
+    let base = test_home::scratch("s7");
     let p = base.join("x.json");
     for d in [&STATE, &CACHE] {
         assert!(matches!(d.read_stream(&p, stream_json), Read::Absent));
@@ -236,7 +224,7 @@ fn own_in(base: &Path) -> (crate::platform::fs::Own, crate::platform::fs::OwnPat
 /// V1：状态文件的 `version` 比声明的新 ⇒ `Unreadable`、盘上字节不变；缓存同一份 ⇒ 当没有。
 #[test]
 fn v1_a_newer_state_is_unreadable_and_untouched_and_a_newer_cache_is_absent() {
-    let base = sandbox("v1");
+    let base = test_home::scratch("v1");
     let p = base.join("v.json");
     let seed = b"{\"version\":3,\"a\":1}\n";
     std::fs::write(&p, seed).expect("seed");
@@ -256,7 +244,7 @@ fn v1_a_newer_state_is_unreadable_and_untouched_and_a_newer_cache_is_absent() {
 /// V2：缺 `version` 当 1；读出时 `version` 那一格摘掉再解（`deny_unknown_fields` 的形也读得进）。
 #[test]
 fn v2_a_missing_version_is_one_and_the_version_cell_is_not_handed_to_the_shape() {
-    let base = sandbox("v2");
+    let base = test_home::scratch("v2");
     let p = base.join("v.json");
     let one: Doc<Shape> = Doc::of(&relay_route_core::Decl::<relay_route_core::State>::json(
         "x",
@@ -280,7 +268,7 @@ fn v2_a_missing_version_is_one_and_the_version_cell_is_not_handed_to_the_shape()
 /// V3：在下限与版本之间 ⇒ 依次过升级步（从盘上那一版起）。
 #[test]
 fn v3_upgrades_run_in_order_from_the_version_on_disk() {
-    let base = sandbox("v3");
+    let base = test_home::scratch("v3");
     let p = base.join("v.json");
     std::fs::write(&p, b"{\"x\":5}").expect("seed");
     assert!(
@@ -303,7 +291,7 @@ fn v3_upgrades_run_in_order_from_the_version_on_disk() {
 /// V4：比下限老 ⇒ 当没有（状态缓存都是），盘上字节不变。
 #[test]
 fn v4_older_than_the_floor_is_absent() {
-    let base = sandbox("v4");
+    let base = test_home::scratch("v4");
     let p = base.join("v.json");
     std::fs::write(&p, b"{\"version\":1,\"a\":1}").expect("seed");
     assert!(matches!(STATE_V.read(&p), Read::Absent));
@@ -318,7 +306,7 @@ fn v4_older_than_the_floor_is_absent() {
 /// V5：写那一口自动带 `version`；盖新版状态 ⇒ 拒、字节不变；盖旧版 ⇒ 原文先留成 `<名>.v<N>`（已有不动）。
 #[test]
 fn v5_writes_carry_the_version_refuse_a_newer_state_and_keep_an_older_one() {
-    let base = sandbox("v5");
+    let base = test_home::scratch("v5");
     let (own, dir) = own_in(&base);
     let held = own.lock(&dir).expect("lock");
     let p = dir.as_path().join("v.json");
@@ -374,7 +362,7 @@ fn v6_an_unreadable_state_on_disk_refuses_the_write_with_the_read_sentence() {
         relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 1, skip(64));
     let state: Doc<Shape> = Doc::of(&SMALL_STATE);
     let cache: Doc<Shape> = Doc::of(&SMALL_CACHE);
-    let base = sandbox("v6");
+    let base = test_home::scratch("v6");
     let (own, dir) = own_in(&base);
     let held = own.lock(&dir).expect("lock");
     let p = dir.as_path().join("v.json");

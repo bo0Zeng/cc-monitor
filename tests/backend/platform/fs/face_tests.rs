@@ -1,20 +1,9 @@
 use super::*;
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-face-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// `O_EXCL` 新建：已在 ⇒ 拒、原样不动；最后一段是链接 ⇒ 也拒（不穿过链接去建）。
 #[test]
 fn create_new_refuses_an_existing_name_and_a_link() {
-    let d = scratch("create");
+    let d = test_home::scratch("create");
     let face = Face::issue();
     let at = Resolved::vouch(d.join("a.txt")).unwrap();
     face.create_new(&at)
@@ -37,7 +26,7 @@ fn create_new_refuses_an_existing_name_and_a_link() {
 #[cfg(unix)]
 #[test]
 fn overwrite_does_not_follow_a_link() {
-    let d = scratch("over");
+    let d = test_home::scratch("over");
     std::fs::write(d.join("real"), b"keep").unwrap();
     std::os::unix::fs::symlink(d.join("real"), d.join("l")).unwrap();
     Face::issue()
@@ -50,7 +39,7 @@ fn overwrite_does_not_follow_a_link() {
 /// 分叉那只手：只会新建；已在 ⇒ 拒在建那一步、旧的一个字节不动。
 #[test]
 fn new_file_only_creates() {
-    let d = scratch("newfile");
+    let d = test_home::scratch("newfile");
     let nf = NewFile::issue();
     nf.create(&d.join("s.jsonl"), b"{}\n").expect("新建");
     match nf.create(&d.join("s.jsonl"), b"other") {
