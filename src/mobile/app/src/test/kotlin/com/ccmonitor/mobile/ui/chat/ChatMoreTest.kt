@@ -55,24 +55,52 @@ class ChatMoreTest {
         return Opened(link, s, more)
     }
 
+    private fun found(
+        total: Long,
+        hits: List<Map<String, Any?>>,
+        head: String,
+        widen: Boolean = false,
+    ) = Reply.Ok(mapOf("total" to total, "hits" to hits, "head" to head, "widen" to widen))
+
     private fun hit(line: Long) = mapOf("uuid" to "u$line", "line" to line, "kind" to "user", "before" to "", "matched" to "问", "after" to " $line", "turn" to 1L, "tsMs" to 0L, "tsText" to "", "tool" to null)
 
     @Test
     fun `找：交那条记录的路径与查询串；命中照那台的先后摆，总数照那台`() =
         runTest {
-            val o = opened(extra = { cmd, _ -> if (cmd == "history-find") Reply.Ok(mapOf("total" to 9L, "hits" to listOf(hit(100), hit(120)))) else null })
+            val o = opened(extra = { cmd, _ -> if (cmd == "history-find") found(9L, listOf(hit(100), hit(120)), "前 2 · 共 9") else null })
             o.more.find("问")
             runCurrent()
             assertEquals(listOf(mapOf("path" to "/p/s1.jsonl", "query" to "问")), o.link.calls("history-find"))
             val f = o.more.state.value.find!!
             assertEquals(listOf(100L, 120L), f.hits.map { it.line })
-            assertEquals(9L, f.total)
+            assertEquals("结果头是那台写好的那一句", "前 2 · 共 9", f.head)
+            assertEquals(false, f.widen)
+        }
+
+    @Test
+    fun `范围选用户 ⇒ 交 scope user；那台说可放宽 ⇒ 给搜全部，点了回全部、词不变、再问一次`() =
+        runTest {
+            val o = opened(extra = { cmd, args -> if (cmd == "history-find") (if (args?.get("scope") == "user") found(0L, emptyList(), "无匹配「问」 · 仅用户", widen = true) else found(1L, listOf(hit(100)), "匹配 1")) else null })
+            o.more.find("问")
+            runCurrent()
+            o.more.scope(user = true)
+            runCurrent()
+            assertEquals(mapOf("path" to "/p/s1.jsonl", "query" to "问", "scope" to "user"), o.link.calls("history-find").last())
+            assertEquals("无匹配「问」 · 仅用户", o.found.head)
+            assertTrue("那台说可放宽 ⇒ 给［搜全部］", o.found.widen)
+            assertTrue(o.found.user)
+            o.more.widen()
+            runCurrent()
+            assertEquals(mapOf("path" to "/p/s1.jsonl", "query" to "问"), o.link.calls("history-find").last())
+            assertEquals("匹配 1", o.found.head)
+            assertEquals(false, o.found.user)
+            assertEquals(false, o.found.widen)
         }
 
     @Test
     fun `找到 ⇒ 点一条跳到那一行：先问那一行的起点，再从那里读`() =
         runTest {
-            val o = opened(extra = { cmd, _ -> if (cmd == "history-find") Reply.Ok(mapOf("total" to 1L, "hits" to listOf(hit(100)))) else null })
+            val o = opened(extra = { cmd, _ -> if (cmd == "history-find") found(1L, listOf(hit(100)), "匹配 1") else null })
             o.more.find("问")
             runCurrent()
             o.link.calls.clear()

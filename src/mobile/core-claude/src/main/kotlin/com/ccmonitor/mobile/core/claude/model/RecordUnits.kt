@@ -142,7 +142,15 @@ class RecordUnits {
         val id = r.id
         val text = r.who.text
         return when (val s = r.who.speaker) {
-            Speaker.Human -> RenderUnit.UserText(id, text, id, images = imagesOf(r.blocks, id), attachments = r.attachments.orEmpty())
+            Speaker.Human ->
+                RenderUnit.UserText(
+                    id,
+                    text,
+                    id,
+                    images = imagesOf(r.blocks, id),
+                    attachments = r.attachments.orEmpty(),
+                    parts = saidParts(text, r.who.pasted.orEmpty()),
+                )
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)
             is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id)
