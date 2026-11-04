@@ -69,7 +69,6 @@ import type { ChoresMarkReq } from "./ChoresMarkReq";
 import type { ChoresMarks } from "./ChoresMarks";
 import type { ChoresMergeReq } from "./ChoresMergeReq";
 import type { ChoresMerged } from "./ChoresMerged";
-import type { ConfigSurfaceReport } from "./ConfigSurfaceReport";
 import type { Conflicts } from "./Conflicts";
 import type { DataReport } from "./DataReport";
 import type { DeployInstallReq } from "./DeployInstallReq";
@@ -489,7 +488,6 @@ export interface TypedCommands {
   "files-stat": { req: StatReq; reply: StatReply; code: "bad_args" | "bad_path" | "unreadable" };
   "files-write-text": { req: FilesWriteTextReq; reply: FilesWrittenReply; code: "bad_args" | "bad_path" | "io_failed" | "refused" | "stale" };
   "first-run": { req: FirstRunReq; reply: FirstRun; code: "bad_args" };
-  "footprint-report": { req: FootprintReq; reply: ConfigSurfaceReport; code: "bad_args" | "failed" };
   "forward-list": { req: NoArgs; reply: Forwards; code: "bad_args" };
   "forward-start": { req: ForwardStartReq; reply: ForwardStarted; code: "bad_args" | "bad_spec" | "unreachable" | "bad_jump" | "full" | "failed" };
   "forward-stop": { req: ForwardId; reply: ForwardId; code: "bad_args" | "not_found" };

@@ -10249,47 +10249,6 @@ sid: string, };
 
 ### 4.5 资产
 
-#### `footprint-report`
-
-「足迹」由这台后端出整份成品。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --footprint-report`
-
-入参 `FootprintReq` · 回包 `ConfigSurfaceReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type ConfigSurfaceReport = { rows: Array<SurfaceRow>, settings_scopes: Array<SettingsScope>, 
-/**
- * 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
- */
-agent_home: string, home: string, };
-type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
-type FootprintClient = { home: string, path?: string | null, };
-type FootprintReq = { client?: FootprintClient | null, };
-type SettingsScope = { scope: string, path: string, state: SurfaceState, 
-/**
- * 文件里有没有 cc-bus 钩子程序的字样。读不到 → `None`（**不猜**）。
- */
-has_cc_bus_hooks: boolean | null, precedence_note: string, };
-type SurfaceRow = { tool_id: string, tool_name: string, 
-/**
- * 🔴 **档进线上形状了。**
- *
- * 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
- * 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
- * 于是「不该由我们装」与「该我们装而还没写」在前端只能靠一句和稀泥的措辞盖过去。
- * 今天档在行上，前端按**值**分档，不按措辞猜。
- */
-tier: EnvTier, source_label: string, path_declared: string, 
-/**
- * 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
- */
-path_resolved: string | null, note: string | null, host_label: string, effect_label: string, state: SurfaceState, installable: boolean, uninstallable: boolean, };
-type SurfaceState = { "kind": "present", detail: string, } | { "kind": "absent" } | { "kind": "undetermined", why: string, };
-```
-
-码：`bad_args` · `failed`
-
 #### `data-report`
 
 「文件与数据」那一份成品。
@@ -17628,7 +17587,6 @@ alias?: string | null, };
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
-| `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--groups-here` | ＝ 帧命令 `groups-here`：这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话 |
 | `--groups-read` | ＝ 帧命令 `groups-read`：问到各台的组那一半、并成一份 |
 | `--groups-write` | ＝ 帧命令 `groups-write`：建组 · 进出组 · 改名与解散扇出给各片 |

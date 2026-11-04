@@ -490,11 +490,6 @@ object Commands {
         const val NAME: String = "first-run"
     }
 
-    /** `footprint-report`。 */
-    object FootprintReport : Command<com.ccmonitor.mobile.core.wire.gen.FootprintReq, com.ccmonitor.mobile.core.wire.gen.ConfigSurfaceReport>("footprint-report", { com.ccmonitor.mobile.core.wire.gen.FootprintReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.ConfigSurfaceReport.ADAPTER }) {
-        const val NAME: String = "footprint-report"
-    }
-
     /** `forward-list`。 */
     object ForwardList : Command<com.ccmonitor.mobile.core.wire.gen.NoArgs, com.ccmonitor.mobile.core.wire.gen.Forwards>("forward-list", { com.ccmonitor.mobile.core.wire.gen.NoArgs.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.Forwards.ADAPTER }) {
         const val NAME: String = "forward-list"
@@ -1317,7 +1312,6 @@ object Commands {
             FilesStat,
             FilesWriteText,
             FirstRun,
-            FootprintReport,
             ForwardList,
             ForwardStart,
             ForwardStop,
