@@ -52,9 +52,9 @@ class TerminalManagerPlanTest {
     @Test
     fun `照 session_sid 分两组：会话所在的终端在前，终端会话在后；空的那组不画`() {
         val plan = terminalPlan(rows(terminal("scratch", null), terminal("cc", "s1"), terminal("docs", "s2")))
-        assertEquals(listOf(copyText("mobTerms.group.session", "n" to 2), copyText("mobTerms.group.plain", "n" to 1)), plan.map { it.head })
+        assertEquals(listOf(copyText("mobTerms.group.session"), copyText("mobTerms.group.plain")), plan.map { it.head })
         assertEquals(listOf(listOf("cc", "docs"), listOf("scratch")), plan.map { g -> g.lines.map { it.row.name } })
-        assertEquals(listOf(copyText("mobTerms.group.plain", "n" to 1)), terminalPlan(rows(terminal("scratch", null))).map { it.head })
+        assertEquals(listOf(copyText("mobTerms.group.plain")), terminalPlan(rows(terminal("scratch", null))).map { it.head })
         assertTrue(terminalPlan(emptyList()).isEmpty())
     }
 

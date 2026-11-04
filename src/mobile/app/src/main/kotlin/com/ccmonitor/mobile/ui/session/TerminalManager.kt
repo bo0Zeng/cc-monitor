@@ -34,7 +34,7 @@ import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.launch
 
-/** 管理窗里的一组：小标题（带个数）与这一组的几行。 */
+/** 管理窗里的一组：小标题与这一组的几行。 */
 internal data class TermGroup(
     val head: String,
     val lines: List<TermLine>,
@@ -56,8 +56,8 @@ internal fun terminalPlan(rows: List<TerminalsList.Row>): List<TermGroup> {
 
     fun lines(rs: List<TerminalsList.Row>) = rs.map { TermLine(it, endable = it.endRefused == null, note = it.endRefused?.takeIf { s -> s.isNotBlank() }) }
     return listOfNotNull(
-        withSession.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.session", "n" to it.size), lines(it)) },
-        plain.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.plain", "n" to it.size), lines(it)) },
+        withSession.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.session"), lines(it)) },
+        plain.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.plain"), lines(it)) },
     )
 }
 

@@ -35,10 +35,10 @@ class TermEntryTest {
     }
 
     @Test
-    fun `不止一个在跑 ⇒ 附着第一个，第二行写几个`() {
+    fun `不止一个在跑 ⇒ 附着那台排第一的`() {
         val e = TermEntry.of(at(StandingWord.AMBIGUOUS, "a", "b"))
-        assertEquals(TermEntry.Attach("a", many = 2), e)
-        assertEquals(copyText("tabMenu.attach.dupesWhy", "n" to 2, "name" to "a"), e.second)
+        assertEquals(TermEntry.Attach("a"), e)
+        assertEquals("a", e.second)
     }
 
     @Test

@@ -446,12 +446,11 @@ internal sealed interface TermEntry {
 
     fun target(sid: String): SessionTabManager.TabTarget.Terminal
 
-    /** 附着名叫 [name] 的终端；[many] ＝ 那台数出带着它的终端有几个（不止一个 ⇒ 第二行写个数，附着第一个）。 */
+    /** 附着名叫 [name] 的终端（第二行是它的名字）。 */
     data class Attach(
         val name: String,
-        val many: Int = 1,
     ) : TermEntry {
-        override val second: String get() = if (many > 1) copyText("tabMenu.attach.dupesWhy", "n" to many, "name" to name) else name
+        override val second: String get() = name
 
         override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(tmuxSession = name)
     }
@@ -466,7 +465,7 @@ internal sealed interface TermEntry {
         /** 那台的答 ⇒ 这一项：在跑 · 空着 · 不止一个 ⇒ 附着那台排第一的；没有终端带着它 · 那台没 tmux ⇒ 恢复。 */
         fun of(w: Whereabout): TermEntry =
             when (w.standing) {
-                StandingWord.RUNNING, StandingWord.IDLE, StandingWord.AMBIGUOUS -> w.names.firstOrNull()?.let { Attach(it, w.names.size) } ?: Resume
+                StandingWord.RUNNING, StandingWord.IDLE, StandingWord.AMBIGUOUS -> w.names.firstOrNull()?.let(::Attach) ?: Resume
                 StandingWord.NONE, StandingWord.NO_TMUX -> Resume
             }
     }
