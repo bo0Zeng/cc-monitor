@@ -202,13 +202,6 @@ fn slot(dir: &std::path::Path, id: &str, bytes: &[u8]) -> Slot {
     }
 }
 
-fn scratch(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("deploy-install-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 /// 宿主读一格的样子：读不了 ⇒ 原因词那一句、下层原话进 `raw`。
 fn read(p: &std::path::Path) -> Result<Vec<u8>, Said> {
     std::fs::read(p).map_err(|e| Said::with_raw(copy_core::io_reason(e.kind()), e))
@@ -234,7 +227,7 @@ async fn run_with(
 /// 那台没有后端 ⇒ 装上（落点上逐字节是那一格、目录收成只给本人）；进度先「问」后「装」（不是「更新」）。
 #[tokio::test]
 async fn a_machine_without_a_backend_gets_this_one() {
-    let d = scratch("absent");
+    let d = test_home::scratch("absent");
     let bytes = backend("p9b-mine");
     let r = Rig::linux(None).await;
     let (got, steps) = run(&r, &[slot(&d, "p9b-mine", &bytes)]).await;
@@ -259,7 +252,7 @@ async fn a_machine_without_a_backend_gets_this_one() {
 /// 台架的改名不覆盖 ⇒ 谁要是经 SFTP 先挪走旧的再放新的，改动表里就会有落点。
 #[tokio::test]
 async fn the_landing_is_never_touched_over_sftp() {
-    let d = scratch("landing");
+    let d = test_home::scratch("landing");
     let mine = backend("p9b-mine");
     let r = Rig::linux(Some(&backend("p9a-old"))).await;
     let (got, _) = run(&r, &[slot(&d, "p9b-mine", &mine)]).await;
@@ -287,7 +280,7 @@ async fn the_landing_is_never_touched_over_sftp() {
 /// 那台是旧版 ⇒ 换成这一版（进度说「更新」）；同版 ⇒ 一个字节不写；那台更新 ⇒ 不动它、回它自报的身份。
 #[tokio::test]
 async fn an_older_backend_is_upgraded_and_nothing_else_is_touched() {
-    let d = scratch("older");
+    let d = test_home::scratch("older");
     let mine = backend("p9b-mine");
     let r = Rig::linux(Some(&backend("p9a-old"))).await;
     let (got, steps) = run(&r, &[slot(&d, "p9b-mine", &mine)]).await;
@@ -315,7 +308,7 @@ async fn an_older_backend_is_upgraded_and_nothing_else_is_touched() {
 /// 自检：那一格的字节自报的身份与计划要的不同（解错了文件 · 包里那份被换过）⇒ 不推，一个字节不写。
 #[tokio::test]
 async fn bytes_that_do_not_say_the_planned_identity_are_not_pushed() {
-    let d = scratch("selfcheck");
+    let d = test_home::scratch("selfcheck");
     let r = Rig::linux(None).await;
     let (got, _) = run(&r, &[slot(&d, "p9b-mine", &backend("p9a-other"))]).await;
     let e = got.unwrap_err();
@@ -337,7 +330,7 @@ async fn bytes_that_do_not_say_the_planned_identity_are_not_pushed() {
 /// 宿主读那一格超上限 ⇒ 不推、一个字节不写；屏上那一句的原因就是宿主读回的那一句（「超出上限」，不是「原因不明」）。
 #[tokio::test]
 async fn a_slot_over_the_read_cap_says_over_the_cap_not_unknown() {
-    let d = scratch("overcap");
+    let d = test_home::scratch("overcap");
     let r = Rig::linux(Some(&backend("p9a-old"))).await;
     let over = copy_core::copy_text("beFs.readRegularCapped.tooBig", &[("cap", "64")]);
     let said = over.clone();
@@ -362,7 +355,7 @@ async fn a_slot_over_the_read_cap_says_over_the_cap_not_unknown() {
 /// 读回不对 ⇒ 失败、传坏的那一份当场删掉（下次判成「没装」再来）。
 #[tokio::test]
 async fn a_bad_readback_fails_the_install_and_leaves_nothing_at_the_landing() {
-    let d = scratch("readback");
+    let d = test_home::scratch("readback");
     let r = Rig::linux(None).await;
     r.fs.lock().unwrap().corrupt_reads = true;
     let (got, _) = run(&r, &[slot(&d, "p9b-mine", &backend("p9b-mine"))]).await;
@@ -378,7 +371,7 @@ async fn a_bad_readback_fails_the_install_and_leaves_nothing_at_the_landing() {
 /// 下一趟（隔了一个多小时）计划认出它、装上这一版、把它删掉。
 #[tokio::test]
 async fn a_trip_cut_midway_leaves_a_leftover_that_the_next_trip_sweeps() {
-    let d = scratch("cut");
+    let d = test_home::scratch("cut");
     let mine = backend("p9b-mine");
     let r = Rig::linux(Some(&backend("p9a-old"))).await;
     {
@@ -423,7 +416,7 @@ async fn a_trip_cut_midway_leaves_a_leftover_that_the_next_trip_sweeps() {
 /// 卸载就是明确授权）；本来就不在 ⇒ 说「本来就不在」。
 #[tokio::test]
 async fn uninstall_removes_the_landing_through_a_staged_copy() {
-    let d = scratch("uninstall");
+    let d = test_home::scratch("uninstall");
     let mine = backend("p9b-mine");
     let r = Rig::linux(Some(b"not ours, no stamp")).await;
     let load = read;

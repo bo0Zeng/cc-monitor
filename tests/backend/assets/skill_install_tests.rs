@@ -47,13 +47,6 @@ fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     )
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-skillinst-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 /// 替身事实：路径 → 事实，名字 → 找不找得到。
 struct FakeFacts {
     paths: BTreeMap<String, There>,
@@ -84,7 +77,7 @@ fn write(root: &Path, rel: &str, body: &[u8]) {
 
 #[test]
 fn read_hands_over_every_file_with_its_text_or_a_reason() {
-    let d = temp_dir("read");
+    let d = test_home::scratch("read");
     write(&d, "demo/SKILL.md", b"---\ndescription: x\n---\n");
     write(&d, "demo/scripts/run.sh", b"#!/bin/sh\necho hi\n");
     write(&d, "demo/bin/blob", &[0u8, 1, 2]);
@@ -132,7 +125,7 @@ fn src(files: &[(&str, Option<&str>, bool)]) -> Value {
 
 #[test]
 fn the_four_states_and_the_consent_gate_are_as1s_own() {
-    let d = temp_dir("plan");
+    let d = test_home::scratch("plan");
     write(&d, "demo/same.md", b"same\n");
     write(&d, "demo/diff.md", b"theirs\n");
     write(&d, "demo/only-here.md", b"keep\n");
@@ -214,7 +207,7 @@ fn the_four_states_and_the_consent_gate_are_as1s_own() {
 
 #[test]
 fn what_cannot_travel_as_text_cannot_be_taken() {
-    let d = temp_dir("blocked");
+    let d = test_home::scratch("blocked");
     write(&d, "demo/blob", &[0u8, 9]);
     let source = src(&[("blob", Some("text now\n"), false), ("bin", None, false)]);
     let base = json!({"name": "demo", "source": source});
@@ -333,7 +326,7 @@ fn suspects_follow_the_written_rules_and_the_closed_set_both_ways() {
 
 #[test]
 fn paths_in_the_source_are_fenced() {
-    let d = temp_dir("fence");
+    let d = test_home::scratch("fence");
     for bad in ["/etc/passwd", "../up", "a/../b", "a//b", "a\\b", "C:x", ""] {
         let e = answer_plan_with(
             &no_facts(),
@@ -374,7 +367,7 @@ fn dg(t: &str) -> String {
 
 #[test]
 fn the_install_plan_hands_back_what_to_record_for_every_file_that_ends_up_as_the_source() {
-    let d = temp_dir("ledger-plan");
+    let d = test_home::scratch("ledger-plan");
     write(&d, "demo/diff.md", b"theirs\n");
     write(&d, "demo/same.md", b"same\n");
     let source = src(&[
@@ -422,7 +415,7 @@ fn the_install_plan_hands_back_what_to_record_for_every_file_that_ends_up_as_the
 
 /// 盘上摆出四态各一（外加「装之前就在」与「装完用户自己加的」各一），逐行相等。
 fn uninstall_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
-    let d = temp_dir(tag);
+    let d = test_home::scratch(tag);
     let (ledger, dir) = ledger_with(
         &d,
         "demo",
@@ -585,7 +578,7 @@ fn the_uninstall_gate_refuses_the_whole_trip() {
 /// 一趟串起来：装判定答的 `ledger` 原样记下 → 盘上就是装写进去的那一份 → 卸判定说「原样」、`created` 与四态一致。
 #[test]
 fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() {
-    let d = temp_dir("roundtrip");
+    let d = test_home::scratch("roundtrip");
     let root = d.join("skills");
     write(&d, "skills/demo/old.md", b"before the install\n");
     let source = src(&[

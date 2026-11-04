@@ -12,22 +12,9 @@ fn mark_at(
     super::mark_at(own, &req).map(|x| serde_json::to_value(x).unwrap())
 }
 
-fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "st8-marks-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
-
 #[test]
 fn 记下_撤回_读回() {
-    let d = tmp("rw");
+    let d = test_home::scratch("rw");
     let own = crate::platform::fs::Own::issue_at(&d);
     let f = d.join(relay_route_core::CHORES_REL);
     assert_eq!(current(Some(&f)), Marks::default());
@@ -50,7 +37,7 @@ fn 记下_撤回_读回() {
 
 #[test]
 fn 读不懂的那份_不覆盖_回错() {
-    let d = tmp("bad");
+    let d = test_home::scratch("bad");
     let own = crate::platform::fs::Own::issue_at(&d);
     std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
     let f = d.join(relay_route_core::CHORES_REL);
@@ -69,7 +56,7 @@ fn 读不懂的那份_不覆盖_回错() {
 
 #[test]
 fn 不认的_op_或缺参数_拒() {
-    let d = tmp("args");
+    let d = test_home::scratch("args");
     let own = crate::platform::fs::Own::issue_at(&d);
     for a in [
         json!({}),
@@ -89,9 +76,7 @@ fn 不认的_op_或缺参数_拒() {
 /// 「开始用」那一块点过「跳过」：记在同一份文件里，读回来带着；撤回就没了。
 #[test]
 fn skipping_the_start_block_is_remembered_and_can_be_undone() {
-    let d = std::env::temp_dir().join(format!("ccm-marks-skip-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    let d = test_home::scratch("marks-skip");
     let path = d.join(".cc-monitor").join("chores.json");
     let own = crate::platform::fs::Own::issue_at(&d);
     let got = mark_at(&own, &serde_json::json!({"op": "skipStart"})).unwrap();
@@ -107,7 +92,7 @@ fn skipping_the_start_block_is_remembered_and_can_be_undone() {
 fn 读不出来的那份_原话进详情不上句子() {
     // 那份文件谁都读不了（权限 000）⇒ 读不出来（不是读不懂）：句子只带路径与原因词，下层原话跟着失败走、进复制详情。
     use std::os::unix::fs::PermissionsExt;
-    let d = tmp("noread");
+    let d = test_home::scratch("noread");
     let own = crate::platform::fs::Own::issue_at(&d);
     std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
     let f = d.join(relay_route_core::CHORES_REL);
@@ -122,7 +107,7 @@ fn 读不出来的那份_原话进详情不上句子() {
 
 #[test]
 fn 写回带版本_没有版本的旧份照第1版读() {
-    let d = tmp("ver");
+    let d = test_home::scratch("ver");
     let own = crate::platform::fs::Own::issue_at(&d);
     std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
     let f = d.join(relay_route_core::CHORES_REL);

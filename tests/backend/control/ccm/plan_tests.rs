@@ -628,9 +628,7 @@ fn attach_uses_the_exact_match_target() {
 #[cfg(unix)]
 #[test]
 fn naming_a_session_from_inside_tmux_switches_the_client() {
-    let dir = std::env::temp_dir().join(format!("ccm-w5-join-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = test_home::scratch("w5-join");
     let log = dir.join("said");
     let fake = dir.join("tmux");
     std::fs::write(
@@ -778,16 +776,7 @@ fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
 
 // ── 夹具 ────────────────────────────────────────────────────────────
 fn tempdir() -> String {
-    let p = std::env::temp_dir().join(format!(
-        "ccm-plan-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("时钟")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).expect("造夹具目录");
-    p.to_string_lossy().to_string()
+    test_home::scratch("plan").to_string_lossy().to_string()
 }
 
 /// 一个号在成品里的样子（夹具一律当已登录的订阅号）：号目录在盘上 ⇒ 选得了；没写号目录 ＝ 账号 0（`bare`，恒不经选号）。

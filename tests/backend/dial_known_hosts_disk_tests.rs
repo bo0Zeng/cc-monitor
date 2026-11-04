@@ -3,17 +3,10 @@
 
 use super::*;
 
-fn sandbox(tag: &str) -> std::path::PathBuf {
-    let home = std::env::temp_dir().join(format!("ccm-kh-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).expect("建夹具家目录");
-    home
-}
-
 /// 改写：落在家目录那一根底下的 `.cc-monitor/known_hosts`（建那一层）；改写交来的是现有全文；`None` ⇒ 盘上不动。
 #[test]
 fn rewriting_lands_under_the_handles_home_and_only_writes_on_change() {
-    let home = sandbox("rw");
+    let home = test_home::scratch("rw");
     let w = Writer(crate::platform::fs::Own::issue_at(&home));
     let file = home.join(".cc-monitor").join("known_hosts");
     w.rewrite(&mut |t| Some(format!("{t}a ssh-ed25519 AAAA1\n")))
@@ -38,7 +31,7 @@ fn rewriting_lands_under_the_handles_home_and_only_writes_on_change() {
 #[cfg(unix)]
 #[test]
 fn ssh_reads_our_known_hosts_and_still_reads_both_user_and_system_configs() {
-    let home = sandbox("cfg");
+    let home = test_home::scratch("cfg");
     let w = Writer(crate::platform::fs::Own::issue_at(&home));
     let cfg = w.terminal_config().unwrap();
     assert_eq!(cfg, home.join(".cc-monitor").join("ssh_config"));

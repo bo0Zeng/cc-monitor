@@ -26,13 +26,6 @@ fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
     super::answer_set_at(own, &req).map(|v| serde_json::to_value(v).unwrap())
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-apikey-face-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 /// 那份文件在临时「家目录」下的位置（与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
 fn file_in(home: &Path) -> PathBuf {
     home.join(".cc-monitor").join(store::FILE_NAME)
@@ -43,7 +36,7 @@ const PLAIN: &str = "sk-FIXTURE-0123456789abcdef-NOT-A-REAL-KEY";
 
 #[test]
 fn a_written_row_is_really_loaded_by_upstream_selection() {
-    let home = temp_dir("load");
+    let home = test_home::scratch("load");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     let got = answer_set_at(
@@ -86,7 +79,7 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
 
 #[test]
 fn other_rows_and_unknown_keys_survive_and_the_disk_is_read_at_write_time() {
-    let home = temp_dir("merge");
+    let home = test_home::scratch("merge");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     // 人手编过的一份：顶层未知键 · 另一条账号（带 base_url 与它自己的未知键）。
@@ -135,7 +128,7 @@ fn other_rows_and_unknown_keys_survive_and_the_disk_is_read_at_write_time() {
 
 #[test]
 fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
-    let home = temp_dir("badfile");
+    let home = test_home::scratch("badfile");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     let broken = "{ \"accounts\": { \"work\": { \"api_key\": \"sk-x\" } ";
@@ -163,7 +156,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
 
 #[test]
 fn bad_arguments_are_refused_before_a_single_byte_is_written() {
-    let home = temp_dir("args");
+    let home = test_home::scratch("args");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     // 入参从 `account` 换成 `configDir`（账号 id 由后端推）：坏形按新入参重写；还给 `account` 那一形也拒。
@@ -218,7 +211,7 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
 
 #[test]
 fn the_plaintext_never_leaves_in_the_answer() {
-    let home = temp_dir("plain");
+    let home = test_home::scratch("plain");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     let set = answer_set_at(
@@ -257,7 +250,7 @@ fn the_plaintext_never_leaves_in_the_answer() {
 /// 文件 0600；它那一层目录（`~/.cc-monitor`，也是后端的家）由这一下建出来时是 0700。
 #[test]
 fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
-    let home = temp_dir("perm");
+    let home = test_home::scratch("perm");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     answer_set_at(
@@ -283,7 +276,7 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
 
 #[test]
 fn a_missing_home_is_said_and_not_created_for_you() {
-    let home = temp_dir("nohome");
+    let home = test_home::scratch("nohome");
     // 家目录本身不在：只许建数据目录这一层，不替人建家目录。
     let f = file_in(&home.join("not-there"));
     let err = answer_set_at(
@@ -298,7 +291,7 @@ fn a_missing_home_is_said_and_not_created_for_you() {
 
 #[test]
 fn rows_that_cannot_be_a_route_segment_are_not_reported() {
-    let home = temp_dir("rows");
+    let home = test_home::scratch("rows");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(
@@ -320,7 +313,7 @@ fn assert_no_residue(dir: &Path) {
 /// 只配 key（缺席 / null / 空串）⇒ **已有端点原样留着**；形状不对 ⇒ 整次不写（key 也不落，文件逐字节不动）。
 #[test]
 fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
-    let home = temp_dir("baseurl");
+    let home = test_home::scratch("baseurl");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
     let got = answer_set_at(&crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
@@ -386,7 +379,7 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
 /// 新的那一把落在 `accounts.<id>`；落盘按键名排序（`KS10②`）。期望全是手写字面量。
 #[test]
 fn gp1_a_program_write_keeps_everything_the_human_put_there() {
-    let home = temp_dir("gp1-interleave");
+    let home = test_home::scratch("gp1-interleave");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(
@@ -431,7 +424,7 @@ fn gp1_a_program_write_keeps_everything_the_human_put_there() {
 /// 也不许凭空给别的行加 `auth_style`。并且装回上游选择那一层之后那两格真的读得出来（不只是「JSON 里还在」）。
 #[test]
 fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
-    let home = temp_dir("gp1-keep-row");
+    let home = test_home::scratch("gp1-keep-row");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(
@@ -499,7 +492,7 @@ fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
         "写侧还有一处在写顶层那一格（`{}` 那一行谁的会话都命中得了）",
         store::LEGACY_ACCOUNT_ID
     );
-    let home = temp_dir("gp1-legacy-slot");
+    let home = test_home::scratch("gp1-legacy-slot");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     answer_set_at(
@@ -526,7 +519,7 @@ fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
 /// 正控：`store::read_accounts` 读得到全部五行（旧口径下前三行都算「有行」）。
 #[test]
 fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
-    let dir = temp_dir("us1-rows");
+    let dir = test_home::scratch("us1-rows");
     let path = dir.join("apikey-credentials.json");
     std::fs::write(
         &path,
@@ -558,7 +551,7 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
 #[test]
 fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     use super::super::endpoint::{relay_with, LaunchAccount};
-    let dir = temp_dir("us1-same-source");
+    let dir = test_home::scratch("us1-same-source");
     let p = dir.join("apikey-credentials.json");
     let ask = |d: &str| LaunchAccount::Named {
         config_dir: d.to_string(),
@@ -626,7 +619,7 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
 /// （`creds.apikey` 经 `chan.call`）。期望的 id 由规则那一份现算（异源：不是本模块自己再写一个 basename）。
 #[test]
 fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
-    let home = temp_dir("hx2-derive");
+    let home = test_home::scratch("hx2-derive");
     let f = file_in(&home);
     let dir = "/home/u/.claude-alt/team-work";
     let want = acct_core::apikey_account_id_of_dir(dir).expect("规则推得出");
@@ -673,7 +666,7 @@ fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
 fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
     // 那份表谁都读不了（权限 000）⇒ 读不出来：`io_failed`，下层原话跟着失败走（进复制详情），不上句子。
     use std::os::unix::fs::PermissionsExt;
-    let home = temp_dir("noread");
+    let home = test_home::scratch("noread");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(&f, "{}").unwrap();
@@ -692,7 +685,7 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
 /// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key（端点照留）。
 #[test]
 fn the_key_set_reply_keeps_its_wire_bytes() {
-    let home = temp_dir("bytes");
+    let home = test_home::scratch("bytes");
     let own = crate::platform::fs::Own::issue_data_at(&home);
     let bytes = |v: &dyn Fn() -> serde_json::Value| {
         serde_json::to_string(&v())

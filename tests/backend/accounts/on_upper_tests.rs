@@ -6,13 +6,6 @@ use std::path::{Path, PathBuf};
 
 // ── 登录盯防（`quota::nodes`）接上 `faces::rotation_face::account_dirs` ─────────────────────────
 
-fn temp_home(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-nodes-up-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("mkdir");
-    p
-}
-
 /// 等一件这个来源的节点（别的来源的跳过）；到期没来 ⇒ `None`。
 fn wait_for(rx: &mut tokio::sync::broadcast::Receiver<Node>, want: Source) -> Option<Node> {
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
@@ -28,7 +21,7 @@ fn wait_for(rx: &mut tokio::sync::broadcast::Receiver<Node>, want: Source) -> Op
 
 /// 一个号 z 的账号库：清单 ＋ z 的配置目录（带登录文件）。
 fn library_home(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
-    let home = temp_home(tag);
+    let home = test_home::scratch(tag);
     let accts = home.join(relay_route_core::ACCOUNTS_DIR_REL);
     let z = home.join("acct-z");
     std::fs::create_dir_all(&accts).expect("mkdir");

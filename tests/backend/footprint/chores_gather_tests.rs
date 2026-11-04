@@ -1,24 +1,10 @@
 //! 收事实那几样里能离线判的：PATH 上的 ccm 是不是我们那一份 · 启动文件里确证失效的行。
 
 use super::*;
-use std::path::PathBuf;
-
-fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "st8-gather-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
 
 #[test]
 fn path_上先找到的是我们那一份_不报_别的那一份_报() {
-    let h = tmp("ccm");
+    let h = test_home::scratch("ccm");
     let ours = h.join(".cc-monitor/bin");
     let other = h.join("other");
     std::fs::create_dir_all(&ours).unwrap();
@@ -36,7 +22,7 @@ fn path_上先找到的是我们那一份_不报_别的那一份_报() {
 
 #[test]
 fn 失效行_只报_source_的文件不在的_围栏里与注释与说不清的不报() {
-    let h = tmp("dead");
+    let h = test_home::scratch("dead");
     std::fs::write(h.join("here.sh"), "").unwrap();
     let text = "source ~/here.sh\nsource ~/gone.sh\n. $HOME/gone2\n# source ~/gone3\nsource $FOO/x\n# === cc-monitor BEGIN ===\nsource ~/gone4\n# === cc-monitor END ===\nsource \"/nope/abs\"\n";
     let got = crate::platform::shell::posix::dead_source_lines(text, Some(&h));
@@ -49,7 +35,7 @@ fn 失效行_只报_source_的文件不在的_围栏里与注释与说不清的�
 /// 文件不在是正常的，不是失效；守的是别的文件、或裸 source 一个不在的文件 ⇒ 照报。
 #[test]
 fn 失效行_文件在才读的不报_守着别的文件的与裸的照报() {
-    let h = tmp("guarded");
+    let h = test_home::scratch("guarded");
     let text = [
         "if [ -f ~/.extra_aliases ]; then",                   // 1
         "    . ~/.extra_aliases",                             // 2 守着
@@ -105,7 +91,7 @@ fn 待办里的钥匙只有只许直通那一把() {
         "{{\n  \"model\": \"x\",\n  \"env\": {{\n    \"ANTHROPIC_BASE_URL\": \"http://127.0.0.1:8788/{root}/t/claude-code/_\"\n  }}\n}}\n"
     );
     for settings in [None, Some(old)] {
-        let h = tmp("relay-key");
+        let h = test_home::scratch("relay-key");
         std::fs::create_dir_all(h.join(".cc-monitor")).unwrap();
         std::fs::create_dir_all(h.join(".claude")).unwrap();
         std::fs::write(h.join(".cc-monitor/relay-key"), &root).unwrap();
@@ -147,7 +133,7 @@ fn 待办里的钥匙只有只许直通那一把() {
 /// 假的那台（临时目录里的 sshd 配置 ＋ 一个 Include 目录）拒端口转发 ⇒ 收到「关了」那一行；没那份配置（没装 sshd）⇒ 不收。
 #[test]
 fn sshd_配置读真文件_include_目录照展开() {
-    let h = tmp("sshd");
+    let h = test_home::scratch("sshd");
     std::fs::create_dir_all(h.join("sshd_config.d")).unwrap();
     let main = h.join("sshd_config");
     std::fs::write(&main, "Include sshd_config.d/*.conf\nPort 22\n").unwrap();
@@ -169,7 +155,7 @@ fn sshd_配置读真文件_include_目录照展开() {
 /// 贴好了的那一家：活着的会话所在的项目里有一份自己写了上游地址 ⇒ 记下那个项目与那份文件；别的项目没写 ⇒ 不记。
 #[test]
 fn 中转_项目里自己写了地址_记下盖住它的那一份() {
-    let h = tmp("covered");
+    let h = test_home::scratch("covered");
     let root = "0123456789abcdef".repeat(4);
     std::fs::create_dir_all(h.join(".cc-monitor")).unwrap();
     std::fs::write(h.join(".cc-monitor/relay-key"), &root).unwrap();

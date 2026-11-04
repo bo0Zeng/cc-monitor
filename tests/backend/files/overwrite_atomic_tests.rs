@@ -22,19 +22,6 @@ const CHILD_TEST_NAME: &str = "write::overwrite_atomic_tests::w1_child";
 /// 新内容：远大于 `ulimit -f` 放行的那几 KiB。
 const NEW_LEN: usize = 1 << 20;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "ccm-hx1-ow-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&p).expect("临时目录");
-    p
-}
-
 /// 子进程那一半：按 `CCM_HX1_OW_CHILD` 选一种写法，把 1 MiB 写进 `<root>/t.txt`。
 /// 父进程用 `ulimit -f` 起它 ⇒ 写过线那一刻内核发 `SIGXFSZ`，进程死在写的中间（与「写到一半被 SIGKILL」同一形）。
 #[test]
@@ -83,7 +70,7 @@ fn w1_a_write_killed_halfway_leaves_the_old_whole_file() {
     let old: Vec<u8> = (0..64 * 1024).map(|i| (i % 251) as u8).collect();
 
     // 正控：就地写被收在半路 ⇒ 目标变成半份（台架真能看见「不原子」）。
-    let d = temp_dir("inplace");
+    let d = test_home::scratch("inplace");
     std::fs::write(d.join("t.txt"), &old).expect("铺旧内容");
     let (got, st) = run_child("inplace", &d);
     assert_eq!(
@@ -99,7 +86,7 @@ fn w1_a_write_killed_halfway_leaves_the_old_whole_file() {
     std::fs::remove_dir_all(&d).ok();
 
     // 生产原语：同一台架 ⇒ 目标原封不动（逐字节）。
-    let d = temp_dir("atomic");
+    let d = test_home::scratch("atomic");
     std::fs::write(d.join("t.txt"), &old).expect("铺旧内容");
     let (got, st) = run_child("atomic", &d);
     assert_eq!(st.signal(), Some(libc::SIGXFSZ), "{st:?}");
@@ -114,7 +101,7 @@ fn w1_a_write_killed_halfway_leaves_the_old_whole_file() {
 #[cfg(unix)]
 fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-    let root = temp_dir("w2");
+    let root = test_home::scratch("w2");
     let real = root.join("real.txt");
     std::fs::write(&real, b"old").expect("铺");
     std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).expect("chmod");
@@ -240,7 +227,7 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
 #[cfg(unix)]
 fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
     use std::os::unix::fs::MetadataExt as _;
-    let root = temp_dir("h1");
+    let root = test_home::scratch("h1");
     std::fs::write(root.join("a.txt"), b"old").expect("铺");
     std::fs::hard_link(root.join("a.txt"), root.join("b.txt")).expect("硬链接");
     std::fs::write(root.join("solo.txt"), b"old").expect("铺");

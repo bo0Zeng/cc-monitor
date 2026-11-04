@@ -5,13 +5,6 @@ use std::path::{Path, PathBuf};
 const A: &str = "0f3c2a1e-1111-2222-3333-444455556666";
 const B: &str = "9a8b7c6d-aaaa-bbbb-cccc-ddddeeeeffff";
 
-fn tmp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-bus-store-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn own(d: &Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_data_at(d)
 }
@@ -41,7 +34,7 @@ fn token_of(d: &Path, sid: &str, max: Option<usize>) -> String {
 
 #[test]
 fn a_delivered_letter_is_peeked_then_committed_and_unread_drops_to_zero() {
-    let d = tmp("cycle");
+    let d = test_home::scratch("cycle");
     assert_eq!(deliver(&own(&d), &env(B, "t1", "m1"), 1_000), Ok(false));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1);
     let p = peek(&bus(&d), B, None).unwrap().expect("有一封");
@@ -58,7 +51,7 @@ fn a_delivered_letter_is_peeked_then_committed_and_unread_drops_to_zero() {
 
 #[test]
 fn a_duplicate_is_refused_and_not_written() {
-    let d = tmp("dup");
+    let d = test_home::scratch("dup");
     deliver(&own(&d), &env(B, "same", "m1"), 1_000).unwrap();
     let c = deliver(&own(&d), &env(B, "same", "m2"), 1_500)
         .unwrap_err()
@@ -69,7 +62,7 @@ fn a_duplicate_is_refused_and_not_written() {
 
 #[test]
 fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
-    let d = tmp("cas");
+    let d = test_home::scratch("cas");
     deliver(&own(&d), &env(B, "t1", "m1"), 1_000).unwrap();
     let tok = token_of(&d, B, None);
     assert_eq!(commit(&own(&d), B, &tok), Ok(1));
@@ -106,7 +99,7 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
 
 #[test]
 fn max_lines_reads_a_backlog_in_slices() {
-    let d = tmp("slices");
+    let d = test_home::scratch("slices");
     for i in 0..5 {
         deliver(
             &own(&d),
@@ -125,7 +118,7 @@ fn max_lines_reads_a_backlog_in_slices() {
 
 #[test]
 fn a_truncated_inbox_is_read_from_the_top_and_the_position_heals() {
-    let d = tmp("trunc");
+    let d = test_home::scratch("trunc");
     for i in 0..3 {
         deliver(
             &own(&d),
@@ -151,7 +144,7 @@ fn a_truncated_inbox_is_read_from_the_top_and_the_position_heals() {
 
 #[test]
 fn the_roster_lists_session_shaped_inboxes_with_their_unread() {
-    let d = tmp("roster");
+    let d = test_home::scratch("roster");
     deliver(&own(&d), &env(B, "t", "m1"), 1_000).unwrap();
     deliver(&own(&d), &env(A, "t", "m2"), 1_000).unwrap();
     commit(&own(&d), A, &token_of(&d, A, None)).unwrap();
@@ -170,7 +163,7 @@ fn the_roster_lists_session_shaped_inboxes_with_their_unread() {
 
 #[test]
 fn reading_never_writes() {
-    let d = tmp("ro");
+    let d = test_home::scratch("ro");
     deliver(&own(&d), &env(B, "t", "m1"), 1_000).unwrap();
     // 这个目录里写得出的只有那两份（收件箱 · 状态文件）：逐份比字节与修改时刻。
     let snap = || {
@@ -211,7 +204,7 @@ fn tier1(to: &str, title: &str, id: &str) -> BusEnvelope {
 
 #[test]
 fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
-    let h = tmp("knock");
+    let h = test_home::scratch("knock");
     let own = crate::platform::fs::Own::issue_at(&h);
     assert_eq!(deliver(&own, &tier1(B, "合一下", "m1"), 1_000), Ok(true));
     let q = queue_of(&h, B);
@@ -235,7 +228,7 @@ fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
 
 #[test]
 fn a_tier_two_letter_never_touches_the_input_queue() {
-    let h = tmp("noknock");
+    let h = test_home::scratch("noknock");
     let own = crate::platform::fs::Own::issue_at(&h);
     assert_eq!(deliver(&own, &env(B, "t", "m1"), 1_000), Ok(false));
     assert!(queue_of(&h, B).is_empty());
@@ -244,14 +237,14 @@ fn a_tier_two_letter_never_touches_the_input_queue() {
 #[test]
 fn a_knock_that_cannot_be_queued_still_keeps_the_letter() {
     // 只有数据目录、没有家目录 ⇒ 输入队那一处写不了：信照收，回「没敲」。
-    let d = tmp("knockfail");
+    let d = test_home::scratch("knockfail");
     assert_eq!(deliver(&own(&d), &tier1(B, "t", "m1"), 1_000), Ok(false));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1);
 }
 
 #[test]
 fn the_state_file_version_is_kept_by_the_declaration() {
-    let d = tmp("version");
+    let d = test_home::scratch("version");
     std::fs::create_dir_all(bus(&d)).unwrap();
     let state = bus(&d).join("state.json");
     // 没写 `version` 的一份当第 1 版读。

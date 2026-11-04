@@ -4,13 +4,6 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-fn temp_home(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-nodes-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("mkdir");
-    p
-}
-
 /// 等一件这个来源的节点（别的来源的跳过）；到期没来 ⇒ `None`。
 fn wait_for(
     rx: &mut tokio::sync::broadcast::Receiver<Node>,
@@ -31,7 +24,7 @@ fn wait_for(
 /// ★ `quota.json` 被别的进程写了 ⇒ 一件 `QuotaFile`（本进程的额度账只在用的时候比戳，自己不会响）。
 #[test]
 fn a_foreign_write_of_the_quota_file_sends_a_quota_file_node() {
-    let home = temp_home("qf");
+    let home = test_home::scratch("qf");
     let own = crate::platform::fs::Own::issue_data_at(&home);
     let mut rx = bus().subscribe();
     let _w = super::super::setup::uses::watch(&own).expect("watch");

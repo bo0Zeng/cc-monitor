@@ -3,26 +3,13 @@
 use super::*;
 use std::path::PathBuf;
 
-fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "ccm-on-path-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
-
 fn file(p: &std::path::Path) -> bool {
     p.is_file()
 }
 
 #[test]
 fn reach_tells_ours_other_absent_and_unknown_apart() {
-    let h = tmp("reach");
+    let h = test_home::scratch("reach");
     let ours = h.join(".cc-monitor/bin");
     let other = h.join("other");
     std::fs::create_dir_all(&ours).unwrap();

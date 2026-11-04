@@ -7,10 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 
 fn tmp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-writers-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    std::fs::canonicalize(&d).unwrap()
+    std::fs::canonicalize(test_home::scratch(tag)).unwrap()
 }
 
 /// 一个开着 `file` 的假进程：`redir` 是 `>>`（追加写）或 `<`（只读）。读到第一行 ⇒ 关掉那个 fd；读到第二行 ⇒ 退出。

@@ -30,13 +30,6 @@ fn old_of(cur: &Path) -> PathBuf {
     DiagLog::issue(cur.to_path_buf()).old().to_path_buf()
 }
 
-fn tmp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("nt2-stderr-log-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 目录里的 `.log` 文件名（经共用遍历原语，不裸 `read_dir`）。
 fn log_names(d: &Path) -> Vec<String> {
     let mut names: Vec<String> = guard_core::scan_tree_excluding(d, &["log"], &[])
@@ -97,7 +90,7 @@ fn put(r: &mut Roller<FakeFd2>, bytes: &[u8]) {
 /// 当前那份第一行说清旧的挪去了哪、再早的丢了。期望不照实现的切法算（异源）：只判这几条性质。
 #[test]
 fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
-    let d = tmp_dir("roll");
+    let d = test_home::scratch("roll");
     let cur = d.join("stderr.log");
     let cap = 200u64;
     let mut r =
@@ -142,7 +135,7 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
 /// 另一向：起来时没有上一份 ⇒ 没什么可说，当前那份从第一个字节就是这一次的。
 #[test]
 fn a_restart_moves_the_last_run_aside() {
-    let d = tmp_dir("restart");
+    let d = test_home::scratch("restart");
     let cur = d.join("stderr.log");
     std::fs::write(old_of(&cur), b"older").unwrap();
     std::fs::write(&cur, b"last run").unwrap();
@@ -154,7 +147,7 @@ fn a_restart_moves_the_last_run_aside() {
     assert_eq!(body, b"this run");
     assert_eq!(std::fs::read(old_of(&cur)).unwrap(), b"last run");
     assert_eq!(log_names(&d).len(), 2);
-    let d2 = tmp_dir("fresh");
+    let d2 = test_home::scratch("fresh");
     let cur2 = d2.join("stderr.log");
     let mut r2 =
         Roller::start(DiagLog::issue(cur2.clone()), 1000, FakeFd2::default()).expect("起不来");
@@ -168,7 +161,7 @@ fn a_restart_moves_the_last_run_aside() {
 /// L1 另一向：建不了（目录不在）⇒ `Err`，「fd 2」一次都没被指走（输出原样，不指向一个不存在的东西）。
 #[test]
 fn an_unwritable_target_fails_without_touching_the_output() {
-    let d = tmp_dir("gone");
+    let d = test_home::scratch("gone");
     let cur = d.join("no-such-dir").join("stderr.log");
     let got = Roller::start(DiagLog::issue(cur.clone()), 1 << 20, FakeFd2::default());
     assert!(got.is_err(), "目录不在却起来了");
@@ -259,7 +252,7 @@ fn run_child(env_path: Option<&Path>) -> (std::process::ExitStatus, String) {
 /// 而子进程原来那根 stderr 管子上这几行一行都没有（fd 2 真被换走了，不是「写了两份」）。
 #[test]
 fn the_production_wiring_lands_every_stderr_writer_in_the_file() {
-    let d = tmp_dir("child");
+    let d = test_home::scratch("child");
     let cur = d.join("stderr.log");
     let (st, pipe) = run_child(Some(&cur));
     assert_eq!(
@@ -296,7 +289,7 @@ fn the_production_wiring_lands_every_stderr_writer_in_the_file() {
 /// L2 另一向：没交路径 ⇒ 子进程入口当场报「没装上」（它的 panic 话出现在原来那根 stderr 上 —— 那根管子是活的），且零文件。
 #[test]
 fn without_the_env_the_child_installs_nothing_and_writes_no_file() {
-    let d = tmp_dir("child-none");
+    let d = test_home::scratch("child-none");
     let (st, pipe) = run_child(None);
     assert!(!st.success(), "没交路径子进程却装上了");
     assert!(
@@ -334,8 +327,7 @@ fn oneshot_lines_land_in_the_backend_log() {
         assert!(p.ends_with(super::STDERR_LOG_REL), "{}", p.display());
     }
     // 追加一整行、不截断；目录不在 ⇒ Err、不替它建。
-    let d = std::env::temp_dir().join(format!("ccm-oneshot-{}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
+    let d = test_home::scratch("oneshot");
     let f = d.join("stderr.log");
     append_line(&DiagLog::issue(f.to_path_buf()), b"a\n").unwrap();
     append_line(&DiagLog::issue(f.to_path_buf()), b"b\n").unwrap();

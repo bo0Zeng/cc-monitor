@@ -142,16 +142,7 @@ impl Drop for TmpDir {
     }
 }
 fn tmpdir(tag: &str) -> TmpDir {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-fence-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建 tempdir");
-    TmpDir(d)
+    TmpDir(test_home::scratch(tag))
 }
 
 /// profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
@@ -541,13 +532,7 @@ fn lf_only_file_stays_lf() {
 // === v1.7.10：install / uninstall end-to-end 落地保护测试 ===
 
 fn tmp_profile() -> PathBuf {
-    let mut p = std::env::temp_dir();
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    p.push(format!("ccm-test-{ms}-{}.ps1", std::process::id()));
-    p
+    test_home::scratch("ps-profile").join("profile.ps1")
 }
 
 #[test]

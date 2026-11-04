@@ -14,16 +14,9 @@ fn wire(v: &impl serde::Serialize) -> String {
     serde_json::to_string(&serde_json::to_value(v).unwrap()).unwrap()
 }
 
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("fp-small-wire-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 #[test]
 fn agent_home_check_keeps_its_wire_bytes() {
-    let d = tmp("home");
+    let d = test_home::scratch("home");
     let check = |p: &std::path::Path| {
         wire(&super::agent_home_check::answer_check(&take(json!({ "path": p }))).unwrap())
     };
@@ -50,7 +43,7 @@ fn first_run_keeps_its_wire_bytes() {
 
 #[test]
 fn chores_mark_keeps_its_wire_bytes() {
-    let d = tmp("marks");
+    let d = test_home::scratch("marks");
     let own = crate::platform::fs::Own::issue_at(&d);
     let mark = |a: Value| wire(&super::chores::marks::answer_mark(&take(a), &own).unwrap());
     assert_eq!(
@@ -82,7 +75,7 @@ fn chores_mark_keeps_its_wire_bytes() {
 
 #[test]
 fn last_seen_pair_keeps_its_wire_bytes() {
-    let d = tmp("seen");
+    let d = test_home::scratch("seen");
     let own = crate::platform::fs::Own::issue_at(&d);
     let file = d.join(relay_route_core::LAST_SEEN_REL);
     let ls = |own: &crate::platform::fs::Own, a: &Value, now: u64| {

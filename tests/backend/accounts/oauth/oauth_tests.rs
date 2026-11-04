@@ -11,8 +11,7 @@ const FACE: LoginFace = crate::agents::claudecode::LOGIN;
 const NOW_MS: u64 = 1_800_000_000_000;
 
 fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-oauth-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
+    let p = test_home::scratch(tag);
     std::fs::create_dir_all(p.join("acct")).expect("mkdir");
     p
 }

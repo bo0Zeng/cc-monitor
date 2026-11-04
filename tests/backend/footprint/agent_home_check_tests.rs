@@ -27,16 +27,7 @@ impl Drop for TmpDir {
     }
 }
 fn tmp() -> TmpDir {
-    let p = std::env::temp_dir().join(format!(
-        "st8-agenthome-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    TmpDir(p)
+    TmpDir(test_home::scratch("agent-home"))
 }
 
 #[test]

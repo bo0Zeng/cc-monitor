@@ -38,16 +38,9 @@ fn answer_set(
     super::answer_set(&req, own).map(|r| serde_json::to_value(r).unwrap())
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-exitpol-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 #[test]
 fn three_states_are_told_apart() {
-    let d = temp_dir("states");
+    let d = test_home::scratch("states");
     let f = d.join(DIR_NAME).join(FILE_NAME);
     assert_eq!(read_at(&f), Read::Absent, "没文件应当是「没人选过」");
     assert!(!Read::Absent.kill_on_exit(), "没人选过 ⇒ 缺省不结束");
@@ -80,7 +73,7 @@ fn three_states_are_told_apart() {
 /// 必须读到新值。任何一种记忆（`OnceLock` / 读一次存下 / 按 mtime 缓存而 mtime 粒度不够）都会在这里红。
 #[test]
 fn every_read_goes_to_disk() {
-    let d = temp_dir("fresh");
+    let d = test_home::scratch("fresh");
     let f = d.join(DIR_NAME).join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_at(&d);
     write_at(&own, false).expect("写 false");
@@ -98,7 +91,7 @@ fn every_read_goes_to_disk() {
 
 #[test]
 fn the_writer_is_atomic_creates_its_own_dir_and_leaves_nothing_behind() {
-    let d = temp_dir("write");
+    let d = test_home::scratch("write");
     let f = d.join(DIR_NAME).join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_at(&d);
     assert!(!f.parent().unwrap().exists(), "前提：家目录下还没有那一层");
@@ -120,7 +113,7 @@ fn the_writer_is_atomic_creates_its_own_dir_and_leaves_nothing_behind() {
 
 #[test]
 fn the_written_file_carries_the_declared_version_and_a_newer_one_reads_unreadable() {
-    let d = temp_dir("version");
+    let d = test_home::scratch("version");
     let f = d.join(DIR_NAME).join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_at(&d);
     write_at(&own, true).expect("写");
@@ -137,7 +130,7 @@ fn the_written_file_carries_the_declared_version_and_a_newer_one_reads_unreadabl
 /// 盘上那份读不懂 ⇒ 设的时候拒，原字节不动（删掉或改好那份再设）。
 #[test]
 fn setting_over_an_unreadable_file_is_refused_and_keeps_its_bytes() {
-    let d = temp_dir("over-bad");
+    let d = test_home::scratch("over-bad");
     let f = d.join(DIR_NAME).join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_at(&d);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
@@ -154,7 +147,7 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
         serde_json::json!({ "killOnExit": "true" }),
         serde_json::json!({ "killOnExit": 1 }),
     ] {
-        let d = temp_dir("set-bad");
+        let d = test_home::scratch("set-bad");
         let own = crate::platform::fs::Own::issue_at(&d);
         let err = answer_set(&bad, &own).expect_err("非布尔应当被拒");
         assert!(!d.join(DIR_NAME).exists(), "拒了却建了目录");
@@ -184,7 +177,7 @@ fn the_wire_shape_carries_the_three_states() {
 /// 读不出来那一句带上原因（读的哪份 · 原因词），不再只说「读不出」；盘上的原值不上句子，只进复制详情。
 #[test]
 fn the_unreadable_said_names_the_reason_and_keeps_the_raw_value_off_the_line() {
-    let dir = temp_dir("why");
+    let dir = test_home::scratch("why");
     let path = dir.join(FILE_NAME);
     std::fs::write(&path, "{\"killOnExit\":\"zz-raw-value\"}").unwrap();
     let r = read_at(&path);
@@ -323,7 +316,7 @@ fn wire_child() {
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     use crate::wire::listen::ENV_RESIDENT;
-    let home = temp_dir("wire-child");
+    let home = test_home::scratch("wire-child");
     let said = |env: &[(&str, &str)]| -> serde_json::Value {
         let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
             .args([

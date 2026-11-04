@@ -31,17 +31,9 @@ fn staged_sha(home: &Path, key: &str) -> String {
         .unwrap_or_else(|| "0".repeat(crate::files::SHA256_HEX_LEN))
 }
 
-/// 一个这次运行独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-fc-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&p).ok();
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 /// 一个假 home（带好暂存区）＋ 一个目标根。回 `(home, root)`。
 fn rig(tag: &str) -> (PathBuf, PathBuf) {
-    let base = temp_dir(tag);
+    let base = test_home::scratch(tag);
     let home = base.join("home");
     let root = base.join("root");
     std::fs::create_dir_all(home.join(STAGING_DIR)).expect("建暂存区");
@@ -473,7 +465,7 @@ fn a_successful_commit_is_the_event_that_sweeps() {
 
 /// 一台还**没有**暂存区的 home ＋ 一个目标根（块那一条要自己建暂存区）。
 fn bare_rig(tag: &str) -> (PathBuf, PathBuf) {
-    let base = temp_dir(tag);
+    let base = test_home::scratch(tag);
     let home = base.join("home");
     let root = base.join("root");
     std::fs::create_dir_all(&home).expect("建 home");
@@ -946,9 +938,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
         |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
     let key = "0123456789abcdef0123456789abcdef";
 
-    let home = std::env::temp_dir().join(format!("ccm-hx1-stg-new-{}", std::process::id()));
-    std::fs::remove_dir_all(&home).ok();
-    std::fs::create_dir_all(&home).expect("家");
+    let home = test_home::scratch("stg-new");
     stage_chunk(&Face::issue(), &home, key, 0, b"x").expect("写一块");
     assert_eq!(
         mode(&home.join(".cc-monitor")),
@@ -960,8 +950,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
     );
     std::fs::remove_dir_all(&home).ok();
 
-    let home = std::env::temp_dir().join(format!("ccm-hx1-stg-old-{}", std::process::id()));
-    std::fs::remove_dir_all(&home).ok();
+    let home = test_home::scratch("stg-old");
     std::fs::create_dir_all(home.join(".cc-monitor")).expect("预置");
     std::fs::set_permissions(
         home.join(".cc-monitor"),
@@ -981,8 +970,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
     std::fs::remove_dir_all(&home).ok();
 
     // `~/.cc-monitor` 是一条链接（哪怕指向本人的 0700 目录）⇒ 拒、出声，那头一个字节不落。
-    let home = std::env::temp_dir().join(format!("ccm-hx1-stg-link-{}", std::process::id()));
-    std::fs::remove_dir_all(&home).ok();
+    let home = test_home::scratch("stg-link");
     let elsewhere = home.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).expect("预置");
     std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o700)).expect("chmod");
@@ -1000,8 +988,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
 /// 摘要对不上 ⇒ `stale`、目标不在（块形与 SFTP 那条路同一道 CAS）。。
 #[test]
 fn the_commit_face_assembles_chunks_when_asked() {
-    let h = std::env::temp_dir().join(format!("ccm-fc-chunks-{}", std::process::id()));
-    std::fs::remove_dir_all(&h).ok();
+    let h = test_home::scratch("chunks");
     std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
     std::fs::create_dir_all(h.join("dst")).expect("铺目标");
     let key = "c".repeat(32);
@@ -1041,8 +1028,7 @@ fn the_commit_face_assembles_chunks_when_asked() {
 #[cfg(unix)]
 fn the_commit_face_lands_under_a_byte_named_rel() {
     use std::os::unix::ffi::OsStrExt as _;
-    let h = std::env::temp_dir().join(format!("ccm-fc-b16-{}", std::process::id()));
-    std::fs::remove_dir_all(&h).ok();
+    let h = test_home::scratch("b16");
     std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
     std::fs::create_dir_all(h.join("dst")).expect("铺目标");
     let key = "d".repeat(32);
@@ -1061,8 +1047,7 @@ fn the_commit_face_lands_under_a_byte_named_rel() {
 /// 拼块之前就回 ⇒ 块一个没收、目标一个字节没动；同一份入参改答 `overwrite` 再交 ⇒ 盖掉；`keep_both` ⇒ 另起名落下。
 #[test]
 fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands() {
-    let h = std::env::temp_dir().join(format!("ccm-fc-ask-{}", std::process::id()));
-    std::fs::remove_dir_all(&h).ok();
+    let h = test_home::scratch("ask");
     std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
     std::fs::create_dir_all(h.join("dst")).expect("铺目标");
     std::fs::write(h.join("dst/a.txt"), b"old!").unwrap();
@@ -1125,8 +1110,7 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
 /// 拼好之后上位那一步才撞同名（探的时候还不在）⇒ 也回同名清单；块已收、暂存件在 ⇒ 同一份入参改答再交不重拼、照那一份提交。
 #[test]
 fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file() {
-    let h = std::env::temp_dir().join(format!("ccm-fc-race-{}", std::process::id()));
-    std::fs::remove_dir_all(&h).ok();
+    let h = test_home::scratch("race");
     std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
     std::fs::create_dir_all(h.join("dst")).expect("铺目标");
     let key = "f".repeat(32);

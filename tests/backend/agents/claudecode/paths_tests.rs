@@ -7,8 +7,7 @@
 use super::*;
 
 fn tmp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-e2-base-url-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch(tag);
     std::fs::create_dir_all(d.join("root")).unwrap();
     std::fs::create_dir_all(d.join("proj/.claude")).unwrap();
     d

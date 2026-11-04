@@ -17,22 +17,6 @@ fn announce_all(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
     announce(loaded, loaded.accounts.len(), &[], &[], out)
 }
 
-/// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
-/// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
-/// （点名过的那一形）。
-fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-rc-{}-{}-{tag}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 这个临时「家」下那份文件的默认落点（数据目录 `~/.cc-monitor` 根上；期望手写，不借生产那一份）。
 fn default_file(home: &Path) -> PathBuf {
     home.join(".cc-monitor").join(store::FILE_NAME)
@@ -53,7 +37,7 @@ fn env_with(home: &Path) -> impl Fn(&str) -> Option<String> {
 /// 文件是用**裸 `fs::write` 写的**（不是本仓的写入器）—— 那正是「人拿编辑器写了一份」。
 #[test]
 fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
-    let home = tmpdir("only-file");
+    let home = test_home::scratch("only-file");
     let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     // ← 这一行就是「人手写了一份 JSON 放进去」。没有任何界面、没有任何 IPC。
@@ -83,7 +67,7 @@ fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
 /// 不认 agent 家（`CLAUDE_CONFIG_DIR`），也没有另指它的变量（`CCM_APIKEY_CREDENTIALS` 给了也不认）。期望手写。
 #[test]
 fn the_location_only_follows_the_home() {
-    let home = tmpdir("home-only");
+    let home = test_home::scratch("home-only");
     let with = |extra: &'static [(&'static str, &'static str)]| {
         let base = env_with(&home);
         move |k: &str| {
@@ -118,7 +102,7 @@ fn the_location_only_follows_the_home() {
 /// **「读坏了」不许退化成「没配」**（人手编打错一个逗号时的症状差一个量级）。
 #[test]
 fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
-    let home = tmpdir("broken");
+    let home = test_home::scratch("broken");
     let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\": }").expect("写夹具");
@@ -142,7 +126,7 @@ fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
 #[test]
 fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
     use std::os::unix::fs::PermissionsExt;
-    let home = tmpdir("too-wide");
+    let home = test_home::scratch("too-wide");
     let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\":\"sk-ant-WIDE\"}").expect("写夹具");
@@ -180,7 +164,7 @@ fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
 /// ★ **日志里一个字节的 key 都不许有**（行为那一半，日志出口）。
 #[test]
 fn nothing_that_gets_announced_ever_carries_the_key() {
-    let home = tmpdir("announce-clean");
+    let home = test_home::scratch("announce-clean");
     let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\":\"sk-ant-CANARY-IN-ANNOUNCE\"}").expect("写夹具");
@@ -208,7 +192,7 @@ fn nothing_that_gets_announced_ever_carries_the_key() {
 /// 文件不在时要给模板 —— 否则「导入」这条要靠猜。
 #[test]
 fn a_missing_file_prints_the_template_so_import_does_not_need_guessing() {
-    let home = tmpdir("missing");
+    let home = test_home::scratch("missing");
     let loaded = load(&default_file(&home));
     let mut buf: Vec<u8> = Vec::new();
     announce_all(&loaded, &mut buf);

@@ -104,15 +104,7 @@ fn run<T>(x: T) -> T {
     x
 }
 fn tmp_home(tag: &str) -> TmpHome {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-alias-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建 tempdir");
+    let d = test_home::scratch(tag);
     // 链接指向的那个 ccm（生产上就是这台的后端本身）：不在的话链接是断的，认不出是我们放的。
     std::fs::create_dir_all(d.join(links::bin_rel())).expect("建 bin");
     std::fs::write(d.join(links::bin_rel()).join("ccm"), "").expect("放 ccm");

@@ -4,13 +4,6 @@ use super::*;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::path::PathBuf;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-quota-ledger-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("mkdir");
-    p
-}
-
 fn reading(used_5h: f64, refused: bool) -> QuotaReading {
     QuotaReading {
         status: Some(if refused {
@@ -71,7 +64,7 @@ fn on_disk(path: &std::path::Path) -> Book {
 
 #[test]
 fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
-    let d = temp_dir("land");
+    let d = test_home::scratch("land");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -131,7 +124,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
 
 #[test]
 fn only_a_change_you_could_see_pushes_and_quiet_repeats_reach_disk_at_most_once_a_minute() {
-    let d = temp_dir("quiet");
+    let d = test_home::scratch("quiet");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -191,7 +184,7 @@ fn only_a_change_you_could_see_pushes_and_quiet_repeats_reach_disk_at_most_once_
 
 #[test]
 fn two_accounts_keep_two_rows_and_a_restart_remembers_both() {
-    let d = temp_dir("two");
+    let d = test_home::scratch("two");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -212,7 +205,7 @@ fn two_accounts_keep_two_rows_and_a_restart_remembers_both() {
 
 #[test]
 fn a_file_it_cannot_read_is_left_alone_and_said_so() {
-    let d = temp_dir("bad");
+    let d = test_home::scratch("bad");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -229,7 +222,7 @@ fn a_file_it_cannot_read_is_left_alone_and_said_so() {
 /// 版本照声明表：落一笔之后盘上顶层是 `version: 1`；盘上那份比这一版新 ⇒ 读不出来、这一笔不落、一个字节不动。
 #[test]
 fn the_book_carries_its_version_and_a_newer_one_is_left_alone() {
-    let d = temp_dir("version");
+    let d = test_home::scratch("version");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let (l, _rx) = ringing(Some(path.clone()));
@@ -277,7 +270,7 @@ fn names(o: &Observed) -> Vec<&str> {
 /// 每个窗口记自己几点、从哪看到的；下一份回包头只盖它带着的窗口，报用量那一档留着。
 #[test]
 fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out() {
-    let d = temp_dir("probe-merge");
+    let d = test_home::scratch("probe-merge");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -335,7 +328,7 @@ fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out()
 /// 常驻那份在用的那一刻比盘上的戳，别人写过就并进来（不定时）。
 #[test]
 fn two_writers_interleaving_never_lose_a_window() {
-    let d = temp_dir("two-writers");
+    let d = test_home::scratch("two-writers");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -406,7 +399,7 @@ fn two_writers_interleaving_never_lose_a_window() {
 /// 只经报用量见过的号：回包头那几格是空的（没被拒 · 没说状态），窗口照报的。家推不出 ⇒ 报用量那一路照实失败（不只记在内存）。
 #[test]
 fn a_probe_on_a_fresh_account_and_without_a_home() {
-    let d = temp_dir("probe-fresh");
+    let d = test_home::scratch("probe-fresh");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -438,8 +431,7 @@ fn a_probe_on_a_fresh_account_and_without_a_home() {
 /// 读不懂的那份是成功应答里的一格：`reason` 只是那一句（路径 ＋ 原因词，不带解析器原话），原话进 `detail`（复制详情，命令 `quota-read` · 码 `unreadable`）。
 #[test]
 fn an_unreadable_book_answers_a_sentence_and_a_detail() {
-    let dir = std::env::temp_dir().join(format!("ccm-ledger-unreadable-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = test_home::scratch("ledger-unreadable");
     let p = dir.join("quota.json");
     std::fs::write(&p, b"{not json").unwrap();
     let v = answered(Some(&p), 1);
@@ -487,7 +479,7 @@ fn reading_until(used_5h: f64, resets_at: u64) -> QuotaReading {
 /// 窗口重置了（重置时刻换了）⇒ 清掉。落盘的那份同样带着；quota-read 不往外给这一格。
 #[test]
 fn a_window_keeps_its_last_different_sample_until_it_resets() {
-    let d = temp_dir("trend");
+    let d = test_home::scratch("trend");
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
@@ -574,7 +566,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
 /// 量到之前账上没有这一格（不猜）；量出来超过 7 天就不作数。
 #[test]
 fn the_size_of_one_percent_is_measured_kept_and_aged() {
-    let d = temp_dir("perpct");
+    let d = test_home::scratch("perpct");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let l = Ledger::open(
@@ -745,7 +737,7 @@ fn wins(windows: Vec<QuotaWindow>) -> QuotaReading {
 /// 10 分钟格 ⇒ 开窗往哪边取整。盘上那份带着、重开读得回来；同一次换窗内存与落盘两处各并一次也只记一笔；quota-read 不往外给。
 #[test]
 fn a_turnover_keeps_what_the_week_left_and_which_way_the_5h_grid_rounds() {
-    let d = temp_dir("history");
+    let d = test_home::scratch("history");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let l = Ledger::at(Some(path.clone()));
@@ -798,7 +790,7 @@ fn a_turnover_keeps_what_the_week_left_and_which_way_the_5h_grid_rounds() {
 #[test]
 fn the_grid_says_down_only_after_three_close_opens_and_up_on_one_early_one() {
     let l = Ledger::at(None);
-    let own = crate::platform::fs::Own::issue_data_at(&temp_dir("grid"));
+    let own = crate::platform::fs::Own::issue_data_at(&test_home::scratch("grid"));
     let base = 1_792_861_800;
     let at = |k: u64| base + k * 36_000;
     let see = |k: u64, late: i64| {

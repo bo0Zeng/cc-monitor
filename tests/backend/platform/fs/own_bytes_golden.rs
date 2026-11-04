@@ -10,13 +10,6 @@ use std::path::Path;
 
 const GOLDEN: &str = "tests/__fixtures__/own-files.golden.txt";
 
-fn sandbox() -> std::path::PathBuf {
-    let base = std::env::temp_dir().join(format!("ccm-own-bytes-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(&base).expect("sandbox");
-    base
-}
-
 /// 家目录底下每一份文件：（相对家目录的路径, 内容），路径排好序。
 fn files_under(root: &Path) -> Vec<(String, Vec<u8>)> {
     let mut out = vec![];
@@ -77,7 +70,7 @@ fn write_all(own: &Own, home: &Path) {
 
 #[test]
 fn own_files_are_written_byte_for_byte_as_before() {
-    let home = sandbox();
+    let home = test_home::scratch("own-bytes");
     let own = Own::issue_at(&home);
     write_all(&own, &home);
     let shown = home.display().to_string();

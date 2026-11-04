@@ -24,16 +24,7 @@ impl Drop for TmpDir {
     }
 }
 fn tmpdir(tag: &str) -> TmpDir {
-    let p = std::env::temp_dir().join(format!(
-        "mig3a-ccbus-{tag}-{}-{:?}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    TmpDir(p)
+    TmpDir(test_home::scratch(tag))
 }
 /// 装到 `<p>/skills/cc-bus`（装记录的写口是个不记事的替身）。
 fn install(p: &Path) -> Result<Value, crate::common::said::Said> {

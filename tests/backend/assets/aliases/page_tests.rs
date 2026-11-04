@@ -61,14 +61,7 @@ impl Drop for Tmp {
 }
 
 fn tmp(tag: &str, profiles: Option<&str>) -> Tmp {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-page-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
+    let d = test_home::scratch(tag);
     std::fs::create_dir_all(d.join(aliases::links::bin_rel())).unwrap();
     std::fs::write(d.join(aliases::links::bin_rel()).join("ccm"), "").unwrap();
     if let Some(t) = profiles {

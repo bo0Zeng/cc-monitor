@@ -10,16 +10,9 @@
 use super::*;
 use crate::agents::{McpSeen, Sightings};
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("ccm-ccassets-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("建临时目录");
-    p
-}
-
 #[test]
 fn skills_are_the_directories_under_the_root_with_their_description() {
-    let d = temp_dir("skills");
+    let d = test_home::scratch("skills");
     let root = d.join("skills");
     std::fs::create_dir_all(root.join("alpha")).unwrap();
     std::fs::write(
@@ -67,7 +60,7 @@ fn skills_are_the_directories_under_the_root_with_their_description() {
 
 #[test]
 fn mcp_is_the_user_level_table_plus_each_given_projects_mcp_json_and_broken_ones_are_said() {
-    let d = temp_dir("mcp");
+    let d = test_home::scratch("mcp");
     let (p1, p2, p3) = (d.join("p1"), d.join("p2"), d.join("p3"));
     for p in [&p1, &p2, &p3] {
         std::fs::create_dir_all(p).unwrap();
@@ -137,7 +130,7 @@ fn mcp_is_the_user_level_table_plus_each_given_projects_mcp_json_and_broken_ones
 /// 装着的插件：`skills/<名>/`（含指向别处的链接）与插件缓存里每个版本各一个，名字取清单；没清单的目录不算。
 #[test]
 fn plugins_come_from_skills_and_the_plugin_cache_named_by_their_manifest() {
-    let root = temp_dir("plugins");
+    let root = test_home::scratch("plugins");
     let manifest = |d: &Path, name: &str| {
         std::fs::create_dir_all(d.join(".claude-plugin")).unwrap();
         std::fs::write(
@@ -174,8 +167,7 @@ fn put(root: &std::path::Path, rel: &str, body: &str) {
 /// 或正文有 `$ARGUMENTS` / `$1`。Skill 同扫两处。不是 `.md` 的不算。
 #[test]
 fn a_session_sees_its_project_and_account_commands_and_skills() {
-    let d = std::env::temp_dir().join(format!("ccm-session-assets-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch("session-assets");
     let proj = d.join("proj");
     let cfg = d.join("acct");
     put(
@@ -247,7 +239,7 @@ fn a_session_sees_its_project_and_account_commands_and_skills() {
 #[test]
 fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings_merged() {
     use crate::agents::{PluginFrom, PluginParts, PluginSeen};
-    let d = temp_dir("plugin-scan");
+    let d = test_home::scratch("plugin-scan");
     let cfg = d.join(".claude");
     let proj = d.join("proj");
     let proj_b = d.join("proj_b");
@@ -432,7 +424,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
 #[test]
 fn an_unmentioned_plugin_follows_its_manifest_and_an_unknown_record_is_said() {
     use crate::agents::PluginFrom;
-    let d = temp_dir("plugin-default");
+    let d = test_home::scratch("plugin-default");
     let cfg = d.join(".claude");
     put(
         &cfg,

@@ -16,12 +16,7 @@ use super::*;
 use std::path::{Path, PathBuf};
 
 fn sandbox(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!(
-        "ccm-place-self-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&base).ok();
+    let base = test_home::scratch(tag);
     std::fs::create_dir_all(base.join(relay_route_core::STAGING_DIR_REL)).expect("sandbox");
     base
 }

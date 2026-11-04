@@ -22,16 +22,7 @@ impl Drop for Tmp {
 }
 
 fn tmp(tag: &str) -> Tmp {
-    let h = std::env::temp_dir().join(format!(
-        "acct-mcp-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&h).unwrap();
-    Tmp(h)
+    Tmp(test_home::scratch(tag))
 }
 
 impl Tmp {

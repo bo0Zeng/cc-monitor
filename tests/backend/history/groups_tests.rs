@@ -23,7 +23,7 @@ use crate::wire::WireLife;
 use cmd_wire::groups::GroupKnown;
 use cmd_wire::Machine;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn m(name: &str) -> Machine {
     Machine::named(name)
@@ -356,13 +356,6 @@ fn g6_this_machines_slice_is_its_groups_and_its_grouped_or_pinned_sessions() {
     assert_eq!(got.members[1].facts, facts("s2"), "复活那几格跟着走");
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-groups-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 fn own_at(d: &Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_data_at(d)
 }
@@ -390,7 +383,7 @@ fn mv(sid: &str, join: Option<HereGroup>, leave: Option<&str>) -> GroupsWriteReq
 
 #[test]
 fn g7_make_only_mints_and_move_keeps_the_slice_to_the_groups_with_members_here() {
-    let d = temp_dir("move");
+    let d = test_home::scratch("move");
     let own = own_at(&d);
     let made = match write(
         &own,
@@ -464,7 +457,7 @@ fn g7_make_only_mints_and_move_keeps_the_slice_to_the_groups_with_members_here()
 
 #[test]
 fn g8_unknown_keys_in_the_groups_section_survive_and_an_unreadable_file_is_never_written() {
-    let d = temp_dir("keys");
+    let d = test_home::scratch("keys");
     let p = d.join("history-metadata.json");
     std::fs::write(
         &p,
@@ -582,7 +575,7 @@ fn g10_this_machines_facts_come_from_its_listing_row() {
 
 #[tokio::test]
 async fn g11_rename_goes_to_every_slice_and_says_which_were_missed() {
-    let d = temp_dir("send");
+    let d = test_home::scratch("send");
     let own = own_at(&d);
     write(&own, mv("s1", Some(rec("g1", "甲", 1, 1)), None), 2).unwrap();
     let sent_ok = serde_json::to_string(&GroupsWritten::Sent {
@@ -650,7 +643,7 @@ async fn g11_rename_goes_to_every_slice_and_says_which_were_missed() {
 
 #[tokio::test]
 async fn g12_dissolve_takes_the_group_off_every_session_in_the_slice() {
-    let d = temp_dir("dissolve");
+    let d = test_home::scratch("dissolve");
     let own = own_at(&d);
     let g = rec("g1", "甲", 1, 1);
     write(&own, mv("s1", Some(g.clone()), None), 2).unwrap();
@@ -769,7 +762,7 @@ fn e_slice() -> String {
 
 #[tokio::test]
 async fn g13_a_rename_that_missed_e_is_owed_and_sent_once_e_answers_again() {
-    let d = temp_dir("owed");
+    let d = test_home::scratch("owed");
     let own = own_at(&d);
     let owed = rename_missing_e(&own).await;
     assert_eq!(owed.owed.len(), 1, "E 那一组记一条：{owed:?}");
@@ -814,7 +807,7 @@ async fn g13_a_rename_that_missed_e_is_owed_and_sent_once_e_answers_again() {
 
 #[tokio::test]
 async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
-    let d = temp_dir("owed-miss");
+    let d = test_home::scratch("owed-miss");
     let own = own_at(&d);
     let owed = rename_missing_e(&own).await;
     let e = ByCommand {

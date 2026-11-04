@@ -84,23 +84,9 @@ fn no_egress() -> crate::relay::EgressOf {
     std::sync::Arc::new(|_| None)
 }
 
-/// 一次性目录（判据绝不碰用户真实的凭据文件）。
-fn tmpdir(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-rl1-host-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 /// 一份只有一条 keyless 账号的凭据文件（走默认上游 —— 与 `server_tests::spawn_relay_child` 同一形）。
 fn creds_fixture(tag: &str) -> std::path::PathBuf {
-    let p = tmpdir(tag).join("apikey-credentials.json");
+    let p = test_home::scratch(tag).join("apikey-credentials.json");
     std::fs::write(&p, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n").expect("写凭据夹具");
     p
 }
