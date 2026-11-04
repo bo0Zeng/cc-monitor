@@ -1115,6 +1115,19 @@ fn the_lexical_mask_blanks_only_non_code_bytes_and_keeps_the_length() {
     );
 }
 
+/// `code_only` 只留代码：串里 · 注释里写到的名字不在，同一个名字写成代码照在；词法收不了口 ⇒ 原样。
+#[test]
+fn code_only_keeps_code_and_blanks_literals_and_comments() {
+    let lit =
+        code_only("let s = \"Needle::new(x)\";\n// Needle::new(y)\n/* Needle */\nlet c = 'N';\n");
+    assert!(!lit.contains("Needle"), "字面量 · 注释没遮掉：\n{lit}");
+    assert!(!lit.contains('N'), "字符字面量没遮掉：\n{lit}");
+    let code = code_only("for e in Needle::new(x) {}\n");
+    assert!(code.contains("Needle::new(x)"), "把代码也遮掉了：\n{code}");
+    let broken = "let x = r#\"never closed Needle\n";
+    assert_eq!(code_only(broken), broken, "收不了口时没原样回来");
+}
+
 // ── 区间收尾的自检 ──
 /// 新判据**真的会咬人**：切出来的区间花括号不配平就红，配平就不红。
 #[test]

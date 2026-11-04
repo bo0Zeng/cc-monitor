@@ -43,18 +43,11 @@ fn atomic_write_json_replace_keeps_content() {
 
 #[test]
 fn atomic_write_json_no_stray_tmp() {
-    // 写完 dst 父目录里不应该有任何 ccm-tmp-* 残留
-    let dir = std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // 写完 dst 父目录里只有 dst，没有 ccm-tmp-* 残留
+    let dir = test_home::scratch("tmpcheck");
     let dst = dir.join("a.json");
-    let _ = std::fs::remove_file(&dst);
     atomic_write_json(&dst, &serde_json::json!({ "k": 1 })).unwrap();
-    let stray = std::fs::read_dir(&dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .any(|e| e.file_name().to_string_lossy().contains(".ccm-tmp-"));
-    assert!(!stray, "ccm-tmp- 残留未清理");
-    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(test_home::list(&dir), ["a.json"], "ccm-tmp- 残留未清理");
 }
 
 // ── 要求：「窗口初始高 780 > 工作区 712 …… 结果最后一行被任务栏压住」──
