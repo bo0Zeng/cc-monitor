@@ -185,7 +185,7 @@ use crate::wire::detail::failed_of;
 /// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
 /// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收帧面硬臂与占了 ccm 的词那几条）。
 ///
-/// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
+/// 把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
     // 两台之间复制一组：要拨两台、写本机暂存，进度走发起它的那条流连接（`files_batch` 帧）。
@@ -426,8 +426,8 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 /// tmux 调用，集合照样对得上。所以这里钉**数据流**：本模块的生产段
 /// 不许出现任何一个具体处理器的路径，唯一的出口是 `REGISTRY` 上那条 `spec.run`。
 ///
-/// ⚠ 与它互补的是 `readonly_guard::spawn_registry` 那条 `SPAWN_SITES_TODAY == 6`：
-/// 真去起了进程，那边会红。两条各挡一种绕法。
+/// ⚠ 与它互补的是后端 clippy 起进程那一组：
+/// 真去起了进程而没在调用点放行，clippy 会红。两条各挡一种绕法。
 #[test]
 fn the_cli_entry_never_names_a_concrete_handler() {
     let raw = include_str!("../../../src/backend/stream/cli.rs");

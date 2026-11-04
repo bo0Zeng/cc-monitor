@@ -31,7 +31,7 @@
 
 **为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
 
-**谁在守**：`src/frontend/clippy.toml` 写盘那一组（壳往盘上写只经 `platform/own_fs.rs`，按落点各一组函数，没有「用户文件」一组）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
+**谁在守**：`src/frontend/clippy.toml` 写盘那一组（壳往盘上写只经 `platform/own_fs.rs`，按落点各一组函数，没有「用户文件」一组）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · 后端 `src/backend/clippy.toml` 起进程那一组（`Child::new` · `host::tmux::child` 逐处在调用点放行、写清起什么） · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
 ---
 

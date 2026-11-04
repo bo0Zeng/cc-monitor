@@ -3,7 +3,7 @@
 //! # 它不实现任何一条命令
 //!
 //! 把 `--<name>` 还原成 `<name>`，去 `REGISTRY` 查那条 `CommandSpec`，跑它自己的 `run` —— 两个入口在类型上落到同一个闭包。
-//! 由此：`readonly_guard::spawn_registry` 的起进程点一处不增（本模块零 `Child::new`）；
+//! 由此：后端 clippy 起进程那一组的放行点一处不增（本模块零 `Child::new`）；
 //! `launch.rs` 那条「argv 直传，不过 shell」原样继承 —— CLI 面收 stdin JSON，不把参数摊进 argv。
 //!
 //! # §安全边界：理由与帧入口不是同一条
