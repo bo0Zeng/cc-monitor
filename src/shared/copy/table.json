@@ -13384,6 +13384,12 @@
       "zh": "转发已达上限 {max} · 先停止几条",
       "args": ["max"]
     },
+    "beForwards.start.bindFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {why}",
+      "args": ["port", "why"]
+    },
     "beForwards.start.failed": {
       "kind": "error",
       "role": "报错",
@@ -16016,12 +16022,6 @@
       "role": "报错",
       "zh": "远端命令已启动 · 输入未送达",
       "args": []
-    },
-    "beUses.forward.bindFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {why}",
-      "args": ["port", "why"]
     },
     "beHistory.dir.denied": {
       "kind": "error",
