@@ -34,16 +34,42 @@ import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.launch
 
+/** 管理窗里的一组：小标题与这一组的几行。 */
+internal data class TermGroup(
+    val head: String,
+    val lines: List<TermLine>,
+)
+
+/** 管理窗里的一行：名单那一行、能不能结束（`can.end`）、结束不了时那台那一句。 */
+internal data class TermLine(
+    val row: TerminalsList.Row,
+    val endable: Boolean,
+    val note: String?,
+)
+
+/**
+ * 名单 ⇒ 管理窗的排法：带 `session.sid` 的进「会话所在的终端」、别的进「终端会话」（各照那台的次序，空的那组不画）；
+ * 每行能不能结束照那台的 `can.end`（[TerminalsList.Row.endRefused]），手机不自己判。
+ */
+internal fun terminalPlan(rows: List<TerminalsList.Row>): List<TermGroup> {
+    val (withSession, plain) = rows.partition { it.sid != null }
+
+    fun lines(rs: List<TerminalsList.Row>) = rs.map { TermLine(it, endable = it.endRefused == null, note = it.endRefused?.takeIf { s -> s.isNotBlank() }) }
+    return listOfNotNull(
+        withSession.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.session"), lines(it)) },
+        plain.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.plain"), lines(it)) },
+    )
+}
+
 /**
  * 终端管理弹窗：列出、附着、结束、新建，不用手输命令。
- * 列 · 结束 · 新建 · 后台起 cc 都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
+ * 列 · 结束 · 新建都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
  * （新 tab 敲那台渲出的那一行）。状态与 scope 都在本函数，子块只收参数。
- * 名单照那台列（tmux 与托管两种都在）；新建那一排是在那台 tmux 里建，[noTmux] ＝ 那台没 tmux 时那一句 ⇒ 那一排灰着、上面写它。
+ * 名单照那台列（tmux 与托管两种都在），照 [terminalPlan] 分两组；新建那一排只交名字，建在托管还是 tmux 里由那台定。
  */
 @Composable
 fun TerminalManagerDialog(
     terminals: TerminalOps,
-    noTmux: String?,
     onAttach: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -80,7 +106,6 @@ fun TerminalManagerDialog(
         text = {
             TerminalManagerBody(
                 terminals = terminals,
-                noTmux = noTmux,
                 loading = loading,
                 failed = failed,
                 sessions = sessions,
@@ -118,7 +143,6 @@ fun TerminalManagerDialog(
 @Composable
 private fun TerminalManagerBody(
     terminals: TerminalOps,
-    noTmux: String?,
     loading: Boolean,
     failed: String?,
     sessions: List<TerminalsList.Row>,
@@ -141,18 +165,11 @@ private fun TerminalManagerBody(
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
-            noTmux = noTmux,
             newName = newName,
             onNameChange = onNameChange,
             onNewDetached = { n ->
                 scope.launch {
                     terminals.create(n)?.let(onFailed)
-                    onCreated()
-                }
-            },
-            onNewDetachedCc = { n ->
-                scope.launch {
-                    terminals.startAgent(n)?.let(onFailed)
                     onCreated()
                 }
             },
@@ -190,7 +207,7 @@ private fun KillConfirmDialog(
 }
 
 /**
- * 会话列表段（加载 / 读不出 / 空态 / 各行）。读不出 ⇒ 那台那一句（［刷新］在弹窗底下），不画成「无终端」。
+ * 会话列表段（加载 / 读不出 / 空态 / 两组各行）。读不出 ⇒ 那台那一句（［刷新］在弹窗底下），不画成「无终端」。
  * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。
  * 托管终端谁在输入照接入协议（`host/managed/attach.rs`）：终端 tab 接上即持有，只看时回车接管，别的端接上即交出；
  * 手机不另调 `terminal-take-input` · `terminal-release-input`（聊天走队，不靠持有输入）。
@@ -203,29 +220,39 @@ private fun TerminalList(
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
 ) {
+    val tokens = LocalAppTokens.current
     when {
         loading -> Text(copyText("kit.state.reading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         failed != null -> Text(failed, color = MaterialTheme.colorScheme.error)
         sessions.isEmpty() -> Text(copyText("mobTerms.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else ->
-            sessions.forEach { s ->
-                TerminalRow(
-                    s = s,
-                    onAttach = { onAttach(s.name) },
-                    onKill = { onKillRequested(s) },
+            terminalPlan(sessions).forEach { g ->
+                Text(
+                    g.head,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = tokens.spacing.sm),
                 )
+                g.lines.forEach { l ->
+                    TerminalRow(
+                        line = l,
+                        onAttach = { onAttach(l.row.name) },
+                        onKill = { onKillRequested(l.row) },
+                    )
+                }
             }
     }
 }
 
-/** 单个终端行：名称、运行中命令（tmux 那一形带「tmux」）、托管那一形谁在输入（那台那一句），以及附着 / 结束。 */
+/** 单个终端行：名称、运行中命令（tmux 那一形带「tmux」）、托管那一形谁在输入、结束不了时那台那一句，以及附着 / 结束（那台许才有）。 */
 @Composable
 private fun TerminalRow(
-    s: TerminalsList.Row,
+    line: TermLine,
     onAttach: () -> Unit,
     onKill: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
+    val s = line.row
     Row(
         Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).padding(vertical = tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
@@ -239,6 +266,7 @@ private fun TerminalRow(
                     s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTerms.row.running", "command" to it) },
                     copyText("mobTerms.row.attached").takeIf { s.attached },
                     s.holder,
+                    line.note,
                 ).joinToString(copyText("kit.text.sep")),
                 style = monoSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -247,31 +275,27 @@ private fun TerminalRow(
             )
         }
         SecondaryButton(onClick = onAttach) { Text(copyText("mobTerms.row.attach")) }
-        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("tabBatch.verb.stop")) }
+        if (line.endable) SecondaryButton(danger = true, onClick = onKill) { Text(copyText("tabBatch.verb.stop")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** 底部新建那一段：名字框一行，下面新建 / 后台 agent / 新建并附着；那台没 tmux（[noTmux] 那一句）⇒ 上面写它、框与按钮灰着。 */
+/** 底部新建那一段：名字框一行，下面新建 / 新建并附着（建在哪由那台定；建不成 ⇒ 那台那一句）。 */
 @Composable
 private fun TmuxNewSessionRow(
-    noTmux: String?,
     newName: String,
     onNameChange: (String) -> Unit,
     onNewDetached: (String) -> Unit,
-    onNewDetachedCc: (String) -> Unit,
     onNewAttach: (String) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
-    val can = noTmux == null && newName.isNotBlank()
-    noTmux?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    // 名字框独占一行：与三颗按钮同挤一行时窄屏上按钮先量，框只剩一个字宽（标签竖排、敲不进字）。按钮一排靠右，放不下换行。
+    val can = newName.isNotBlank()
+    // 名字框独占一行：与按钮同挤一行时窄屏上按钮先量，框只剩一个字宽（标签竖排、敲不进字）。按钮一排靠右，放不下换行。
     OutlinedTextField(
         value = newName,
         onValueChange = onNameChange,
-        label = { Text(copyText("newSession.label.tmuxName")) },
+        label = { Text(copyText("mobTerms.new.name")) },
         singleLine = true,
-        enabled = noTmux == null,
         modifier = Modifier.fillMaxWidth(),
     )
     FlowRow(
@@ -280,8 +304,6 @@ private fun TmuxNewSessionRow(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         SecondaryButton(enabled = can, onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTerms.new.detached")) }
-        // 后台起一个跑着 agent 的 tmux 会话，不进入，之后可打开。
-        SecondaryButton(enabled = can, onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTerms.new.detachedCc")) }
         SecondaryButton(enabled = can, onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTerms.new.attach")) }
     }
 }

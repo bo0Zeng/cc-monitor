@@ -125,12 +125,25 @@ class TerminalOpsAgentTest {
             assertEquals(listOf("authorized-keys-add" to mapOf("key" to "ssh-ed25519 AAAA k")), l.calls)
         }
 
+    /** 那台只能托管、没 tmux ⇒ 新建那一排照样能用：交 `shell {session}`、不带宿主（放在哪由那台定），手机不另说「没 tmux」。 */
+    @Test
+    fun creatingOnAMachineWithoutTmuxIsStillOneShellAsk() =
+        runTest {
+            val l = link(tmux = false)
+            val ops = TerminalOps(l, { "box" })
+            assertEquals("没 tmux 不灰掉新建那一排", Reach(), ops.reach())
+            assertNull(ops.create("n1"))
+            val sent = l.calls("session-open").single()
+            assertEquals(mapOf("kind" to "shell", "session" to "n1"), sent.what())
+            assertNull("不指定宿主", sent?.get("run"))
+        }
+
     /** 那台说没有 tmux ⇒ 名单 · 抓屏 · 换模型照出（托管终端也在名单上）；后端问不到 ⇒ 这几样不出、推公钥灰着写那一句。 */
     @Test
     fun whatTheMachineCanDoComesFromTheMachine() =
         runTest {
             val none = TerminalOps(link(tmux = false), { "box" }).reach()
-            assertEquals(Reach(noBackend = null, noTmux = copyText("mobTerm.tmux.none", "host" to "box")), none)
+            assertEquals(Reach(), none)
             val palette = terminalPaletteActions(none, listOf(AgentPick("opus", "Opus")), {}, {}, {}, {})
             assertEquals(
                 "没 tmux ⇒ 模型 · 抓屏 · 终端名单照出，推公钥能点",
@@ -142,20 +155,27 @@ class TerminalOpsAgentTest {
 
             val down = TerminalOps(FakeCoreLink(), { "box" }).reach()
             assertNotNull(down.noBackend)
-            assertEquals(down.noBackend, down.noTmux)
             val key = terminalPaletteActions(down, emptyList(), {}, {}, {}, {}).single()
             assertNull("后端没连上 ⇒ 推公钥灰着", key.run)
             assertEquals("灰着写原因", down.noBackend, key.subtitle)
         }
 
+    /** 一条会话在哪个终端里：一问 `sessions-where`，不拿名单自己找。 */
     @Test
-    fun theFirstAgentTheMachineListsIsUsed() =
+    fun whereASessionIsOneSessionsWhereAsk() =
         runTest {
-            val l = link()
-            val ops = TerminalOps(l, { "box" })
-            ops.startAgent("w")
-            val what = l.calls("session-open").single().what()
-            assertEquals(mapOf("kind" to "new", "agent" to "claude", "cwd" to "~", "tmuxName" to "w"), what)
+            val l =
+                FakeCoreLink().apply {
+                    answer = { cmd, _ ->
+                        when (cmd) {
+                            "sessions-where" -> Reply.Ok(mapOf("results" to listOf(mapOf("sid" to "s1", "standing" to "running", "names" to listOf("w"), "terminals" to listOf(mapOf("host" to "tmux", "terminal" to "h-w")), "run" to "tmux"))))
+                            else -> Reply.LinkDown
+                        }
+                    }
+                }
+            val w = TerminalOps(l, { "box" }).where("s1").getOrThrow()
+            assertEquals(listOf("w"), w.names)
+            assertEquals(listOf("sessions-where" to mapOf("sids" to listOf("s1"), "client" to "mobile")), l.calls)
         }
 
     @Test

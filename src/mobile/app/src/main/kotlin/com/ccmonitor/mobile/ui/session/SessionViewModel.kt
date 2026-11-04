@@ -84,12 +84,11 @@ sealed interface SessionUiState {
 }
 
 /**
- * 那台此刻能做的（连上时问一次那台的 `session-open-facts`）：[noBackend] ＝ 问不到时那一句（后端没连上 ⇒ 终端名单 · 抓屏 · 切模型不出、推公钥灰着）；
- * [noTmux] ＝ 用不了 tmux 时那一句（那台说没有 · 问不到都算；只管终端名单里在 tmux 里新建那一排）。还没问到 ⇒ 都是 `null`。
+ * 那台此刻能做的（连上时问一次那台的 `session-open-facts`）：[noBackend] ＝ 问不到时那一句（后端没连上 ⇒ 终端名单 · 抓屏 · 切模型不出、推公钥灰着）。
+ * 还没问到 ⇒ `null`。终端名单里新建那一排放在哪由那台定（托管 · tmux），手机不另判有没有 tmux。
  */
 data class Reach(
     val noBackend: String? = null,
-    val noTmux: String? = null,
 )
 
 /**

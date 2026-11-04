@@ -34,13 +34,14 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
-import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.StandingWord
+import com.ccmonitor.mobile.core.wire.gen.Whereabout
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
@@ -433,15 +434,11 @@ fun chatKey(
  */
 fun newConversationId(): String = UUID.randomUUID().toString()
 
-/** 那条会话在终端里的样子（问那台的终端名单）：有终端握着它 ⇒ 附着那个；没有 ⇒ 恢复；问不到 ⇒ `null`。 */
+/** 那条会话在终端里的样子（问那台 `sessions-where`，那台判）；问不到 ⇒ `null`。 */
 private suspend fun termEntry(
     terminals: TerminalOps,
     sid: String,
-): TermEntry? =
-    terminals
-        .list()
-        .getOrNull()
-        ?.let { rows -> TerminalsList.holding(rows, sid)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
+): TermEntry? = terminals.where(sid).getOrNull()?.let(TermEntry::of)
 
 /** ⋯「在终端里打开」那一项：它所在的终端还在 ⇒ 附着那个；已经不在 ⇒ 先让那台恢复再附着。 */
 internal sealed interface TermEntry {
@@ -449,6 +446,7 @@ internal sealed interface TermEntry {
 
     fun target(sid: String): SessionTabManager.TabTarget.Terminal
 
+    /** 附着名叫 [name] 的终端（第二行是它的名字）。 */
     data class Attach(
         val name: String,
     ) : TermEntry {
@@ -461,5 +459,14 @@ internal sealed interface TermEntry {
         override val second: String get() = copyText("terminal.empty.endedHint")
 
         override fun target(sid: String) = SessionTabManager.TabTarget.Terminal(resume = sid)
+    }
+
+    companion object {
+        /** 那台的答 ⇒ 这一项：在跑 · 空着 · 不止一个 ⇒ 附着那台排第一的；没有终端带着它 · 那台没 tmux ⇒ 恢复。 */
+        fun of(w: Whereabout): TermEntry =
+            when (w.standing) {
+                StandingWord.RUNNING, StandingWord.IDLE, StandingWord.AMBIGUOUS -> w.names.firstOrNull()?.let(::Attach) ?: Resume
+                StandingWord.NONE, StandingWord.NO_TMUX -> Resume
+            }
     }
 }

@@ -830,65 +830,18 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
     }
 }
 
-/// 托管容器真跑，各平台同一条、不经 shell：脱离起托管进程（[`plan::Container::host_run`]，stdio 全空、自成一组、不继承 `TMUX`、
-/// 摘 [`plan::Container::unset`]）→ 等它的家出现 → `--detach` ⇒ 报名字 → 自检（[`plan::Container::self_check_argv`] 原生跑一次）→
+/// 托管容器真跑，各平台同一条、不经 shell：起托管进程并等它起好（[`spawn_hosted`]，[`plan::Container::host_run`] ·
+/// [`plan::Container::unset`]）→ `--detach` ⇒ 报名字 → 自检（[`plan::Container::self_check_argv`] 原生跑一次）→
 /// 不带 `--detach` ⇒ 瘦客户端接上（同 `--attach`）。`--ccm-print` 那一行是这几步的 POSIX 等价写法。
-/// 起不来 · 期限内没起来 · 自检没过 ⇒ 退 4。名字是计划里铸好的那一个（同 tmux 那一形：这里一个字都不改它）。
-/// 托管进程与里面那一跳要一直跑着：跑着的程序文件盖不掉的平台上从按版本的副本跑（[`crate::host::managed::bin::host_program`]）。
+/// 那一串不成形 · 找不到程序 ⇒ 退 2；起不来 · 期限内没起来 · 自检没过 ⇒ 退 4。名字是计划里铸好的那一个（同 tmux 那一形：这里一个字都不改它）。
 fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
-    let Some((called, rest)) = c.host_run.split_first() else {
-        return die(&copy_text(
-            "beCcm.execute.hostSpawnFailed",
-            &[("name", &c.name), ("why", "argv")],
-        ));
-    };
-    let me = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from(called));
-    let program = match crate::host::managed::bin::host_program(own, called, &me) {
-        Ok(p) => p,
-        Err(s) => {
-            return die(&copy_text(
-                "beCcm.execute.hostSpawnFailed",
-                &[("name", &c.name), ("why", &s.logged())],
-            ))
-        }
-    };
-    // 里面那一跳（`--host-run` 那几格之后、第二个 `--` 之后）打头的也是自己 ⇒ 同一个程序。
-    let mut rest = rest.to_vec();
-    if let Some(i) = rest.iter().skip(1).position(|a| a == argv::flag::END) {
-        if rest.get(i + 2).is_some_and(|w| w == called) {
-            rest[i + 2] = program.clone();
-        }
-    }
-    let mut spawn = Child::new(&program)
-        .args(&rest)
-        .env_remove("TMUX")
-        .env_remove("TMUX_PANE");
-    for k in &c.unset {
-        spawn = spawn.env_remove(k);
-    }
-    let spawned = spawn.detach();
-    let pid = match spawned {
-        Ok(pid) => pid,
-        Err(e) => {
-            eprintln!(
-                "{}",
-                copy_text(
-                    "beCcm.execute.hostSpawnFailed",
-                    &[("name", &c.name), ("why", &e.to_string())]
-                )
-            );
+    match spawn_hosted(&c.host_run, &c.unset, &c.name, own) {
+        Ok(()) => {}
+        Err(HostSpawn::Refused(m)) => return die(&m),
+        Err(HostSpawn::Failed(m)) => {
+            eprintln!("{m}");
             return 4;
         }
-    };
-    if !hosted_up(own, &c.name, pid) {
-        eprintln!(
-            "{}",
-            copy_text(
-                "beCcm.execute.hostNotUp",
-                &[("name", &c.name), ("secs", &HOST_UP_SECS.to_string())]
-            )
-        );
-        return 4;
     }
     if c.detach {
         println!("{SESSION_SAID}{}", c.name);
@@ -911,6 +864,102 @@ fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
     let id =
         crate::host::managed::home::find(own, &c.name).map_or_else(|| c.name.clone(), |f| f.id);
     attach_managed(own, &id)
+}
+
+/// 起托管进程没成：[`HostSpawn::Refused`] ＝ 那一串不成形 · 找不到要跑的那一份程序（`ccm` 照 [`die`] 退 2）；
+/// [`HostSpawn::Failed`] ＝ 起不来 · 期限内没起好（退 4）。都带写好的那一句。
+pub(crate) enum HostSpawn {
+    Refused(String),
+    Failed(String),
+}
+
+/// **起一个托管终端的唯一一处**：脱离起托管进程（`host_run` 打头是自己、后面是 `--host-run` 那一串；stdio 全空、自成一组、
+/// 不继承 `TMUX`、摘 `unset` 那几个）→ 等名叫 `name` 的那个家出现（[`hosted_up`]）。起会话（[`execute_hosted`]）与
+/// 开空 shell（[`open_hosted_shell`]）都经它。托管进程与里面那一跳要一直跑着：跑着的程序文件盖不掉的平台上从按版本的副本跑
+/// （[`crate::host::managed::bin::host_program`]）。
+pub(crate) fn spawn_hosted(
+    host_run: &[String],
+    unset: &[String],
+    name: &str,
+    own: &crate::platform::fs::Own,
+) -> Result<(), HostSpawn> {
+    let failed = |why: &str| {
+        copy_text(
+            "beCcm.execute.hostSpawnFailed",
+            &[("name", name), ("why", why)],
+        )
+    };
+    let Some((called, rest)) = host_run.split_first() else {
+        return Err(HostSpawn::Refused(failed("argv")));
+    };
+    let me = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from(called));
+    let program = crate::host::managed::bin::host_program(own, called, &me)
+        .map_err(|s| HostSpawn::Refused(failed(&s.logged())))?;
+    // 里面那一跳（`--host-run` 那几格之后、第二个 `--` 之后）打头的也是自己 ⇒ 同一个程序。
+    let mut rest = rest.to_vec();
+    if let Some(i) = rest.iter().skip(1).position(|a| a == argv::flag::END) {
+        if rest.get(i + 2).is_some_and(|w| w == called) {
+            rest[i + 2] = program.clone();
+        }
+    }
+    let mut spawn = Child::new(&program)
+        .args(&rest)
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE");
+    for k in unset {
+        spawn = spawn.env_remove(k);
+    }
+    let pid = spawn
+        .detach()
+        .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?;
+    if !hosted_up(own, name, pid) {
+        return Err(HostSpawn::Failed(copy_text(
+            "beCcm.execute.hostNotUp",
+            &[("name", name), ("secs", &HOST_UP_SECS.to_string())],
+        )));
+    }
+    Ok(())
+}
+
+/// 开一个空 shell 的托管终端（`session-open` 的 `shell {session}` 落在托管里那一形）：名字即句柄；已在 ⇒ 不动它（回 `false`）。
+/// 里面跑这台用户的登录 shell（[`crate::platform::shell::bare_terminal_argv`]），工作目录 `cwd`（缺 ⇒ 家目录），记下是哪个前端建的。
+/// 这台不能托管 · 起不来 ⇒ `start_failed`（那一句 ＋ 原因）。
+pub fn open_hosted_shell(
+    name: &str,
+    cwd: Option<&str>,
+    client: Option<&str>,
+) -> Result<bool, crate::common::said::Said> {
+    let fail = |m: String| crate::common::said::Said::new("start_failed", m);
+    let own = crate::host::managed::installed()
+        .ok_or_else(|| fail(copy_text("beSessionNew.place.noManaged", &[])))?;
+    if crate::host::managed::home::find(own, name).is_some() {
+        return Ok(false);
+    }
+    let me = std::env::current_exe()
+        .map_err(|e| fail(e.to_string()))?
+        .to_string_lossy()
+        .into_owned();
+    let dir = cwd.map_or_else(
+        || {
+            crate::platform::paths::home_dir()
+                .map(|h| h.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        },
+        str::to_string,
+    );
+    let run = plan::host_run_argv(
+        &[me],
+        name,
+        &dir,
+        "",
+        client.unwrap_or(crate::control::gate_rules::CLIENT_TERMINAL),
+        None,
+        &crate::platform::shell::bare_terminal_argv(),
+    );
+    match spawn_hosted(&run, &[], name, own) {
+        Ok(()) => Ok(true),
+        Err(HostSpawn::Refused(m) | HostSpawn::Failed(m)) => Err(fail(m)),
+    }
 }
 
 /// 托管那一形自检那一趟的期限（`--ccm-print` 只算计划；到点算没过）。

@@ -525,7 +525,8 @@ fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Re
     })
 }
 
-/// 开一个 shell：给了会话名 ⇒ 不在就在 `cwd` 里建一个空的（`idle`）、已在 ⇒ 照它此刻的样子，回接进去那一行；
+/// 开一个 shell：给了名字 ⇒ 不在（两种宿主的名单都查）就在 `cwd` 里建一个空的（`idle`；宿主同新起照 [`default_run`]：
+/// 能托管 ⇒ 托管终端，只有 tmux ⇒ tmux 会话）、已在 ⇒ 照它此刻的样子，回接进去那一行（托管那一行接句柄）；
 /// 只给目录 ⇒ 这台 shell 里进那个目录那一行（`window`）。目录先展开 `~`、核在不在。
 fn shell(
     session: Option<&str>,
@@ -561,23 +562,54 @@ fn shell(
             ..opened(Landed::Window, None, Some(line))
         });
     };
-    let rows = tmux_rows(deps)?;
-    let (landed, cwd) = match rows.iter().find(|r| r.name == name) {
-        Some(r) if r.agent => (Landed::Running, None),
-        Some(_) => (Landed::Idle, None),
+    let listed = listed(deps).map_err(lower)?;
+    let (landed, cwd, target) = match listed.rows.iter().find(|r| r.name == name) {
+        Some(r) => (
+            if r.agent {
+                Landed::Running
+            } else {
+                Landed::Idle
+            },
+            None,
+            match r.host {
+                crate::wire::TerminalHost::Tmux => r.name.clone(),
+                crate::wire::TerminalHost::Managed => r.terminal.clone(),
+            },
+        ),
         None => {
-            if crate::control::gate_rules::new_tmux_name_issue(name).is_some() {
+            // 放在哪同新起（[`default_run`]）：能托管 ⇒ 托管；只有 tmux ⇒ tmux；都没有 ⇒ 建不了。
+            let host = match default_run(
+                Intent::New { fork_tmux: None },
+                false,
+                listed.tmux,
+                listed.managed,
+            ) {
+                Launch::Tmux => crate::wire::TerminalHost::Tmux,
+                Launch::Managed => crate::wire::TerminalHost::Managed,
+                Launch::Direct => {
+                    return Err(fail(
+                        "place_unavailable",
+                        copy_core::copy_text("beSessionNew.place.noTmux", &[]),
+                        Some(Field::Place),
+                    ))
+                }
+            };
+            let bad_name = crate::control::gate_rules::new_tmux_name_issue(name).is_some()
+                || (host == crate::wire::TerminalHost::Managed
+                    && !crate::host::managed::home::id_ok(name));
+            if bad_name {
                 return Err(fail(
                     "bad_tmux_name",
                     copy_core::copy_text("beSessionNew.tmux.badName", &[("name", name)]),
                     Some(Field::TmuxName),
                 ));
             }
-            (deps.open_shell)(name, dir.as_deref()).map_err(lower)?;
-            (Landed::Idle, dir)
+            (deps.open_shell)(name, dir.as_deref(), host).map_err(lower)?;
+            // 托管终端的句柄就是名字。
+            (Landed::Idle, dir, name.to_string())
         }
     };
-    let line = attach_line(name, here, deps)?;
+    let line = attach_line(&target, here, deps)?;
     Ok(Opened {
         cwd,
         ..opened(landed, Some(name.to_string()), Some(line))
