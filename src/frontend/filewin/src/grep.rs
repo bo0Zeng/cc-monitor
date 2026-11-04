@@ -317,10 +317,6 @@ impl GrepBoard {
         self.inflight.load(Ordering::SeqCst) > 0
     }
 
-    pub fn rounds(&self) -> u64 {
-        self.rounds.load(Ordering::SeqCst)
-    }
-
     pub fn shown(&self) -> GrepShown {
         self.inner.lock().unwrap().clone()
     }

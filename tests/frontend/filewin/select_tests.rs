@@ -9,6 +9,14 @@
 use super::*;
 use crate::source::{Listed, Row};
 
+/// 判据读选中态用的那一件（生产那一份里没有它；本模块挂在 `select` 底下，读得到私有字段）。
+impl Selection {
+    /// 光标那一行的名字（`None` = 还没有光标）。
+    pub(crate) fn cursor(&self) -> Option<&str> {
+        self.cursor.as_deref()
+    }
+}
+
 fn row(name: &str, is_dir: bool, size: u64, lossy: bool) -> Listed {
     crate::find::testing::gated(Listed::plain(Row {
         name: name.to_string(),

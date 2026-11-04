@@ -28,7 +28,6 @@ src/backend/wire/cli_words.rs	1
 src/common/creds-core/Cargo.toml	1
 src/common/creds-core/src/lib.rs	10
 src/common/creds-core/src/store.rs	1
-src/common/guard-core/src/lib.rs	3
 src/comms/outward/http1.rs	1
 src/comms/outward/lib.rs	1
 src/comms/outward/server.rs	3
@@ -135,7 +134,6 @@ tests/common/creds-core/perm_tests.rs	4
 tests/common/creds-core/store_tests.rs	9
 tests/common/guard-core/lib_tests.rs	6
 tests/common/guard-core/no_outside_refs_tests.rs	3
-tests/common/guard-core/rules/capability_registry_tests.rs	23
 tests/common/guard-core/rules/cross_half_edge_registry.rs	1
 tests/common/guard-core/rules/doc_claim_registry.rs	2
 tests/common/guard-core/rules/doc_claim_registry_daemon_wording_registry.rs	1

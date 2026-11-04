@@ -1,5 +1,5 @@
 //! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
-//! 住这里的：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
+//! 住这里的：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] ·
 //! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs::split_dest` 用）。
 //! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）；挑哪块显卡的纯规则住子模块 `render`
 //! （只 Windows 的生产路径用它，判据各平台都照跑 ⇒ 声明带 `any(windows, test)`）。
@@ -72,19 +72,6 @@ pub const BACKSLASH_IS_SEP: bool = cfg!(windows);
 
 /// 本机文件名按 Windows 的规矩判（非法字符 · 保留的设备名 · 结尾的点与空格）—— 下载落点的缺省名用它（`download.rs`）。
 pub const WINDOWS_NAMES: bool = cfg!(windows);
-
-/// 线上那一形解出来的字节 → 本机路径：unix 按字节原样；别处按 UTF-8 有损转。
-pub fn path_from_bytes(b: &[u8]) -> std::path::PathBuf {
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt as _;
-        std::path::PathBuf::from(std::ffi::OsStr::from_bytes(b))
-    }
-    #[cfg(not(unix))]
-    {
-        std::path::PathBuf::from(String::from_utf8_lossy(b).to_string())
-    }
-}
 
 /// 系统自带的 CJK 字体候选，按优先级（`fonts::candidates` 把它接在 `CCM_CJK_FONT` 之后）。
 #[cfg(target_os = "windows")]

@@ -28,6 +28,11 @@ use crate::source::{Row, Source};
 
 /// 判据读工作区状态用的那几件（生产那一份里没有它们；本模块挂在 `workspace` 底下，读得到私有字段）。
 impl Workspace {
+    /// 上一件做不了时那句话（窗口上经命令栏摆）。
+    pub(crate) fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+
     /// 第 `side` 栏有几个标签页。
     pub(crate) fn tabs_on(&self, side: usize) -> usize {
         self.sides[side].tabs.len()
