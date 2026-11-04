@@ -422,7 +422,7 @@ fn a_hook_that_came_by_the_environment_answers_only_for_the_session_ccm_started(
     assert!(!hook::admitted(via, ours, false, EnvRead::Unreadable));
 }
 
-// ───────────────────────── 没人答时自动答 ─────────────────────────
+// ───────────────────────── 无人答时自动答 ─────────────────────────
 // 假时钟（tokio 停着的钟，`advance` 才走）；hook 那一份照那一家的形状编（不起真的会话）。
 
 /// 那一家（claude）的 hook 交来的那一份：`tool` 是工具名，提问那一种带一道题。

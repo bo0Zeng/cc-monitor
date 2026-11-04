@@ -126,7 +126,7 @@ pub struct SessionFacts {
     /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
     /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
     pub answer_off: Option<Words>,
-    /// **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+    /// **无人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
     pub auto_answer: Option<u32>,
     /// 那一格可选的几档（档位与字一起，`control::asks::auto_choices` 写；此刻那一格不在几档里 ⇒ 多列一项）。菜单照列，勾在 `min == autoAnswer` 那一项。
     /// 不累加，每次现给。

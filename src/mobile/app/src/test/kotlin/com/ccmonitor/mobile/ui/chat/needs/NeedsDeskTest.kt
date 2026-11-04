@@ -148,13 +148,13 @@ class NeedsDeskTest {
             r.desk.open()
             assertNull(r.desk.state.value.answered)
             r.board.mine = null
-            r.board.answered = "10 分钟没人答，已自动答：继续"
+            r.board.answered = "10m 无人答 · 已自动答：继续"
             r.pushes.emit(Changed.Needs("s1"))
             settle()
             val ui = r.desk.state.value
             assertNull(ui.bar)
-            assertEquals("10 分钟没人答，已自动答：继续", ui.answered)
-            assertEquals("10 分钟没人答，已自动答：继续", ui.sheet?.gone)
+            assertEquals("10m 无人答 · 已自动答：继续", ui.answered)
+            assertEquals("10m 无人答 · 已自动答：继续", ui.sheet?.gone)
             r.desk.dismiss()
             r.board.mine = needs("approve")
             r.board.answered = null

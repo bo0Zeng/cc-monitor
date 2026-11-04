@@ -123,7 +123,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-groups-migrate.ts", // 旧分组三格迁进各台（同上，随迁移一起删）
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
-    "src/frontend/ui/session-hidden-cmds.ts", // 「没人答时自动答」那一格（`history-annotate`）
+    "src/frontend/ui/session-hidden-cmds.ts", // 「无人答时自动答」那一格（`history-annotate`）
     "src/frontend/ui/session-face.ts", // 会话事实投影里在等什么（`needsOf`）
     "src/frontend/ui/face-can.ts", // 那台的脸上能做什么（关 / 拉前 · 说不清那一张）
     "src/frontend/ui/tab-store.ts",

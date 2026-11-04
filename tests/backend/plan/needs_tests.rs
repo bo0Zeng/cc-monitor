@@ -149,7 +149,7 @@ fn an_ended_owner_of_an_unsigned_scope_is_a_need_and_a_subagent_counts_by_its_pa
     let sl = slice_with(&dump("/w"), &all_ended);
     let n = ofs(&sl, None);
     let ended: Vec<_> = n.iter().filter(|x| x["kind"] == "ended").collect();
-    // project（主会话停了、顶层没全签收）· A2（子 agent 负责，父会话也停了）。
+    // project（主会话停了、顶层没全签收）· A2（agent 负责，主会话也已结束）。
     assert_eq!(ended.len(), 2, "{n:?}");
     let b = ended.iter().find(|x| x["block"] == "A2").unwrap();
     assert_eq!(b["key"], format!("ended:A2@{SUB}"));
@@ -419,7 +419,7 @@ fn each_need_carries_its_written_title_lines_and_position() {
         );
     }
     assert_eq!(n.iter().find(|x| x.kind == "top").unwrap().pos, None);
-    // 负责人的会话停了：子 agent 那一块多一句「子 agent 由父会话收」。
+    // 负责人的会话停了：agent 负责的那一块多一句「负责人是 agent · 主会话也已结束」。
     let mut d = dump("/w");
     d["repos"][0]["check"]["failures"] = json!([]);
     let sl = slice_with(&d, &all_ended);

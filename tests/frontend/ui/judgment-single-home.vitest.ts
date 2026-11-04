@@ -1480,6 +1480,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     LISTING_CACHE_REL: NONE,
     // 远端那几台的会话清单副本目录（后端 `history/remote_listing.rs` 落的缓存；数据位置页按它列）。
     REMOTE_LISTING_DIR_REL: NONE,
+    // 家里另四样的落点（后端写；「文件与数据」按它列）。
+    SET_GROUPS_REL: NONE,
+    GROUPS_OWED_REL: NONE,
+    STRATEGIES_DIR_REL: NONE,
+    HOSTS_DIR_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

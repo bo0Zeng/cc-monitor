@@ -125,7 +125,7 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
-  /** 「没人答时自动答」那一格（`history-annotate {autoAnswer}`；`0` ＝ 关）：只交命令（那台推帧、会话事实跟着重读），没交成说一句。 */
+  /** 「无人答时自动答」那一格（`history-annotate {autoAnswer}`；`0` ＝ 关）：只交命令（那台推帧、会话事实跟着重读），没交成说一句。 */
   autoAnswer(sid: string, min: number): void;
   /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
   hide(sids: readonly string[]): void;
@@ -140,7 +140,7 @@ export interface TabMenuHost {
   accountPanelWired?: () => boolean;
 }
 
-/** 「没人答时自动答 ▸」那一组单选：照会话事实 `autoAnswerChoices` 列（几档与字都是核心给的），勾在 `min == autoAnswer`（关 ＝ `0`）那一项上。 */
+/** 「无人答时自动答 ▸」那一组单选：照会话事实 `autoAnswerChoices` 列（几档与字都是核心给的），勾在 `min == autoAnswer`（关 ＝ `0`）那一项上。 */
 export function autoAnswerItems(t: Pick<Tab, "autoAnswer" | "autoAnswerChoices">, set: (min: number) => void): MenuItem[] {
   const now = t.autoAnswer ?? 0;
   return t.autoAnswerChoices.map(({ min, text }) => ({

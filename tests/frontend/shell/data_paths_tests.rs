@@ -147,6 +147,105 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
     );
 }
 
+/// 落盘声明表里故意不在「文件与数据」那一页列的：`(声明的落点, 为什么)`。
+const NOT_LISTED: &[(&str, &str)] = &[(
+    "<account-config-dir>/<credentials-file>",
+    "住每个号自己的配置目录（落点随号）· 不在 cc-monitor 的家里 · 号由账号页管",
+)];
+
+/// 落盘声明表（`relay_route_core` 的 `OWN_FILES`，只在那个 crate 的测试档里有）每一行的落点：读那份源码原文，
+/// 照 `OWN_FILES` 列的名字找各自的 `Decl` 声明，取第一个参数（字面量，或 `&str` 常量 ⇒ 再取那个常量的字面量）。
+fn declared_rels(src: &str) -> Vec<String> {
+    let lit_of = |name: &str| -> Option<String> {
+        let at = src.find(&format!("pub const {name}: &str = \""))?;
+        let rest = &src[at..];
+        let q = rest.find('"')? + 1;
+        Some(rest[q..q + rest[q..].find('"')?].to_string())
+    };
+    let start = src
+        .find("const OWN_FILES: &[Row] = &[")
+        .expect("声明表 `OWN_FILES` 不在了 —— 改了名就来改这条");
+    let body = &src[start..start + src[start..].find("];").unwrap()];
+    body.lines()
+        .filter_map(|l| l.trim().strip_suffix(".row,"))
+        .map(|name| {
+            let at = src
+                .find(&format!("pub const {name}: Decl<"))
+                .unwrap_or_else(|| panic!("{name}：找不到它的 Decl 声明"));
+            let rest = &src[at..];
+            // 头一个构造口（`::json(` · `::foreign(` 里先出现的那个，免得跨到下一份声明）。
+            let open = ["::json(", "::foreign("]
+                .iter()
+                .filter_map(|k| rest.find(k).map(|i| i + k.len()))
+                .min();
+            let open = open.unwrap_or_else(|| panic!("{name}：认不出 Decl 的写法"));
+            let arg = rest[open..rest[open..].find(',').unwrap() + open].trim();
+            match arg.strip_prefix('"') {
+                Some(q) => q.trim_end_matches('"').to_string(),
+                None => lit_of(arg).unwrap_or_else(|| panic!("{name}：落点常量 {arg} 取不到字面量")),
+            }
+        })
+        .collect()
+}
+
+/// ★★ 「文件与数据」那一页列全落盘声明表（`relay_route_core` 的 `OWN_FILES`）：每一份声明要么被界面这一侧（`monitor_entries`）或
+/// 本机后端家里那几样（`OWN_HOME_ENTRIES`）列着 —— 同名，或落在列着的那个目录底下 —— 要么在 [`NOT_LISTED`] 里写明为什么。
+/// 名单里的每一行都得真在声明表里、又真没被列（死名单红）。
+#[test]
+fn every_declared_file_is_listed_on_the_data_page() {
+    const HOME: &str = ".cc-monitor/";
+    let own_files = declared_rels(include_str!(
+        "../../../src/common/relay-route-core/src/lib.rs"
+    ));
+    let d = TestDir::new("listed");
+    let listed: Vec<String> = monitor_entries(d.path())
+        .into_iter()
+        .map(|e| e.label)
+        .chain(
+            relay_route_core::OWN_HOME_ENTRIES
+                .iter()
+                .map(|&(_, rel, dir, _)| {
+                    let tail = rel.trim_start_matches(HOME);
+                    if dir {
+                        format!("{tail}/")
+                    } else {
+                        tail.to_string()
+                    }
+                }),
+        )
+        .collect();
+    let covered = |rel: &str| {
+        rel.strip_prefix(HOME).is_some_and(|tail| {
+            listed
+                .iter()
+                .any(|n| n == tail || (n.ends_with('/') && tail.starts_with(n.as_str())))
+        })
+    };
+    assert!(
+        own_files.len() >= 20 && own_files.iter().all(|r| !r.is_empty()),
+        "声明表只抽出 {} 份：抽取器坏了，下面的比较是空真",
+        own_files.len()
+    );
+    let missing: Vec<&str> = own_files
+        .iter()
+        .map(String::as_str)
+        .filter(|rel| !covered(rel) && !NOT_LISTED.iter().any(|(n, _)| n == rel))
+        .collect();
+    assert_eq!(
+        missing,
+        Vec::<&str>::new(),
+        "这几份声明了却不在「文件与数据」那一页 ⇒ 列进 `OWN_HOME_ENTRIES` 或 `monitor_entries`，或写进 NOT_LISTED 并写明为什么"
+    );
+    for (rel, why) in NOT_LISTED {
+        assert!(!why.is_empty(), "{rel}：名单里没写为什么");
+        assert!(
+            own_files.iter().any(|r| r == rel),
+            "{rel}：名单里这一行不在声明表里（死名单）"
+        );
+        assert!(!covered(rel), "{rel}：已经列着了，名单里这一行是死的");
+    }
+}
+
 /// ★ 线上形状：`class` 是**必有**的一格，值只有 `truth` / `cache` 两种（TS 那侧按这两个值分档）。
 #[test]
 fn the_class_goes_over_the_wire_as_two_lowercase_words() {

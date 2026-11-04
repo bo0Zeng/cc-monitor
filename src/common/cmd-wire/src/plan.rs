@@ -125,13 +125,13 @@ pub struct PlanWho {
         ts(type = "\"session\" | \"subagent\" | \"unknown\"")
     )]
     pub kind: String,
-    /// 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+    /// 主会话 ⇒ 它自己；子 agent ⇒ 它所在的主会话；认不出 ⇒ `null`。
     pub sid: Option<String>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
     pub needs: Option<String>,
     /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
     pub face: crate::frame::SessionFace,
-    /// 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+    /// 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
     /// 会话本身 ⇒ `null`（两端写那条会话的名字）。
     pub label: Option<String>,
 }
@@ -451,7 +451,7 @@ pub struct PlanNeed {
     pub acked: bool,
     /// 那一条的标题（后端照种类写好）。
     pub title: String,
-    /// 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由父会话收）；负责人那一枚由出口挂，不在这里。
+    /// 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由主会话收）；负责人那一枚由出口挂，不在这里。
     pub lines: Vec<String>,
     /// 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
     pub pos: Option<String>,

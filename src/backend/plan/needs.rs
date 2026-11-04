@@ -6,7 +6,7 @@
 //! |---|---|---|
 //! | `top` | 顶层算活的节点全签收了（顶层进度 done ＝ of ＞ 0） | `top:<全签收那一次的 rev>` |
 //! | `red` | `check.red`（校验不通过）每条一项 | `red:<规则>@<权力范围>` |
-//! | `ended` | 某个权力范围的负责人对到的会话已结束、它的根节点没签收（子 agent 看父会话：父会话也停了才算） | `ended:<权力范围>@<负责人 id>` |
+//! | `ended` | 某个权力范围的负责人对到的会话已结束、它的根节点没签收（子 agent 看主会话：主会话也已结束才算） | `ended:<权力范围>@<负责人 id>` |
 //! | `ask` | 某个权力范围的负责人对到的会话此刻在等你 | `ask:<权力范围>@<负责人 id>`（不收认可：答了自己消失；计数由会话那一侧算） |
 //!
 //! 另有「另开会话接手」那一格（[`takeover`]，与 `ended` 读同一处 [`owner_now`]）· 「退回」落地的判法（[`landing`]）·
@@ -32,7 +32,7 @@ pub fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActivity>> 
 pub(crate) enum OwnerNow {
     /// 活着：在干什么（说不清 ⇒ `None`）。
     Live(Option<crate::agents::SessionActivity>),
-    /// 对到这台的一个会话，它停了（子 agent 看父会话）。
+    /// 对到这台的一个会话，它停了（子 agent 看主会话）。
     Stopped,
     /// 对不上这台的任何会话：说不清停没停。
     Unsure,
@@ -128,7 +128,7 @@ fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) ->
 }
 
 /// 一条的标题与底下那几行（两端照摆）：顶层全签收 ⇒ 阶段与签了几格；校验不通过 ⇒ 规则 ＋ 那一块，pb 那一句与修法；
-/// 问人 ⇒ 只有标题；负责人停了 ⇒ 底下签了几格（不是「底下」那一种原因 ⇒ 还没签），子 agent 那一块再说由父会话收。负责人那一枚由出口挂。
+/// 问人 ⇒ 只有标题；负责人停了 ⇒ 底下签了几格（不是「底下」那一种原因 ⇒ 还没签），子 agent 那一块再说由主会话收。负责人那一枚由出口挂。
 fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
     let blk = n.block.as_deref().and_then(|b| block(sl, b));
     let root = n.cell.as_deref().and_then(|c| cell(sl, c));
