@@ -191,7 +191,7 @@ export async function sessionReadReply(which: SessionRead, res: unknown): Promis
     case "list_user_inputs":
       return chanReply({ from: r.from, end: r.end, entries: r.entries });
     case "find_in_session":
-      return chanReply({ total: r.total, hits: r.hits });
+      return chanReply({ total: r.total, hits: r.hits, head: r.head, widen: r.widen });
   }
   return undefined;
 }

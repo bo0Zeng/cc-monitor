@@ -348,6 +348,8 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
       available: true,
       total: 1,
       hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "", turn: 1, tsMs: 0, tsText: "" }],
+      head: "那台写的头",
+      widen: false,
     };
     const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
     expect(strip, "查看器里没有命中清单那一条").toBeTruthy();
@@ -363,7 +365,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session")).toEqual([
       { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", includeTools: false },
     ]);
-    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("findStrip.status.count", { n: "1" }));
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent, "结果头照摆那台写好的那一句").toBe("那台写的头");
     const hits = [...strip.querySelectorAll<HTMLButtonElement>('[data-role="find-hit"]')];
     expect(hits.map((h) => h.dataset.hitUuid)).toEqual(["a1"]);
     hits[0].click();
@@ -383,6 +385,8 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
         { uuid: "a1", kind: "assistant", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；", turn: 0, tsMs: 0, tsText: "" },
         { uuid: "a1", kind: "assistant", before: "## > ", matched: "**重试**", after: "", turn: 0, tsMs: 0, tsText: "" },
       ],
+      head: "",
+      widen: false,
     };
     v.openFind();
     const input = v.element.querySelector<HTMLInputElement>('[data-role="find-input"]')!;
@@ -396,16 +400,16 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     expect(hits.map((h) => h.querySelector("mark")!.textContent)).toEqual(["重试", "重试"]);
   });
 
-  it("勾「含工具输出与思考」⇒ 带着它再问一次；没命中写「无匹配「词」」", async () => {
+  it("勾「含工具输出与思考」⇒ 带着它再问一次；没命中照摆那台的那一句", async () => {
     const v = await mount([userLine(1, "u1", "第一句")]);
-    viewerRig.find = { available: true, total: 0, hits: [] };
+    viewerRig.find = { available: true, total: 0, hits: [], head: "那台说没有", widen: false };
     v.openFind();
     const input = v.element.querySelector<HTMLInputElement>("[data-role=\"find-input\"]")!;
     input.value = "nothing";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
-    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("kit.menu.noMatch", { q: "nothing" }));
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe("那台说没有");
     const box = strip.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     box.click();
     await settleOutline();

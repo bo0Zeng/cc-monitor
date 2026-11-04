@@ -1226,7 +1226,10 @@ pub struct HistoryFind {
 /// [`HistoryFind::head`] · [`HistoryFind::widen`]：`shown` 是这一页之后已交的条数（跳过的 ＋ 这一页的）。
 fn find_head(shown: u64, total: u64, user_only: bool, q: &str) -> (String, bool) {
     if shown == 0 && user_only {
-        return (copy_core::copy_text("sessionFind.status.noneScoped", &[("q", q)]), true);
+        return (
+            copy_core::copy_text("sessionFind.status.noneScoped", &[("q", q)]),
+            true,
+        );
     }
     let head = if shown == 0 {
         copy_core::copy_text("kit.menu.noMatch", &[("q", q)])
