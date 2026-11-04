@@ -242,16 +242,6 @@ impl Pictures {
     pub fn keep_only(&self, keep: &HashSet<PicKey>) {
         self.slots.lock().unwrap().retain(|k, _| keep.contains(k));
     }
-
-    /// 此刻留着几张（判据看）。
-    pub fn len(&self) -> usize {
-        self.slots.lock().unwrap().len()
-    }
-
-    /// 一张都没留着。
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
 }
 
 /// 解不开：句子只说解不开，解码器的原话记一行日志。

@@ -45,9 +45,11 @@ pub trait Picker: Send + Sync {
     fn pick(&self, kind: PickKind) -> PickFuture;
 }
 
-/// 生产那一份：操作系统自己的选择框（`rfd` 的异步口；GTK 那一支自己起线程）。
+/// 生产那一份：操作系统自己的选择框（`rfd` 的异步口；GTK 那一支自己起线程）。测试构建里不编：缺省换成 [`native`] 里那个答「没选」的。
+#[cfg(not(test))]
 pub struct NativePicker;
 
+#[cfg(not(test))]
 impl Picker for NativePicker {
     fn pick(&self, kind: PickKind) -> PickFuture {
         Box::pin(async move {
@@ -96,15 +98,16 @@ pub fn save_type(suggested: &str, windows: bool) -> Option<String> {
 }
 
 /// `user-dirs.dirs` 的读上限：十来行 `XDG_*_DIR=` 赋值，几百字节。超了跳过（照主目录底下的 `Downloads` 走）、日志说是哪一份。
+#[cfg(not(test))]
 const USER_DIRS_CAP: host_core::Cap = host_core::Cap {
     bytes: 64 * 1024,
     over: host_core::Over::SkipAndSay,
 };
 
-/// 进程里那一份生产选择框。
 /// 系统的「下载」文件夹（存盘框缺省落在这儿）：Linux 读 `user-dirs.dirs` 的 `XDG_DOWNLOAD_DIR`（中文环境是「下载」），
-/// 别的平台 ⇒ 主目录底下的 `Downloads`；不在盘上 ⇒ `None`（由系统框自己定）。
-pub fn downloads_dir() -> Option<PathBuf> {
+/// 别的平台 ⇒ 主目录底下的 `Downloads`；不在盘上 ⇒ `None`（由系统框自己定）。只有 [`NativePicker`] 读它。
+#[cfg(not(test))]
+fn downloads_dir() -> Option<PathBuf> {
     let home = PathBuf::from(super::shell::local_home());
     let dirs = home.join(".config/user-dirs.dirs");
     let text = match host_core::read_capped(&dirs, USER_DIRS_CAP) {
@@ -134,6 +137,7 @@ pub fn downloads_dir() -> Option<PathBuf> {
         .find(|d| d.is_dir())
 }
 
+/// 进程里那一份生产选择框。
 #[cfg(not(test))]
 pub fn native() -> Arc<dyn Picker> {
     Arc::new(NativePicker)

@@ -96,11 +96,6 @@ impl Selection {
         self.picked.is_empty()
     }
 
-    /// 光标那一行的名字（`None` = 还没有光标）。
-    pub fn cursor(&self) -> Option<&str> {
-        self.cursor.as_deref()
-    }
-
     /// 选中那几项的名字（字典序；判据与状态行用）。
     pub fn names(&self) -> Vec<String> {
         self.picked.iter().cloned().collect()
@@ -500,7 +495,7 @@ fn starts_with_ignoring_case(name: &str, prefix: &str) -> bool {
 
 use pick_core::Outlet;
 /// 能做什么那一套（种类 · 两个出口的表 · 做不了的为什么）住共用的 `pick-core`（手机嵌的核心同一份）；这里只接上窗口那一行与图标 · 快捷键 · 字。
-pub use pick_core::{Action, Item, Picked, PLAN_GROUP};
+pub use pick_core::{Action, Item, Picked};
 
 /// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
 /// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
@@ -579,7 +574,7 @@ pub fn picked_kind(picked: &[&Listed]) -> Picked {
     pick_core::picked_kind(&picks(picked))
 }
 
-/// 这一种选中的菜单：桌面那张表里那几组；`planned` ⇒ 危险那一组之前多 [`PLAN_GROUP`]。
+/// 这一种选中的菜单：桌面那张表里那几组；`planned` ⇒ 危险那一组之前多 [`pick_core::PLAN_GROUP`]。
 pub fn menu_groups(kind: Picked, planned: bool) -> Vec<Vec<Item>> {
     pick_core::menu_groups(Outlet::Desk, kind, planned)
 }

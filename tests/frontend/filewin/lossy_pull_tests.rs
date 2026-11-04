@@ -12,12 +12,6 @@
 use super::*;
 use cmd_wire::files::{from_hex, to_hex};
 
-/// 线上那一形 → 本机路径（落点字节照本机规矩换回路径）。
-fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
-    let b = crate::find::decode_path(v)?;
-    Some(crate::platform::path_from_bytes(&b))
-}
-
 #[test]
 #[cfg(unix)]
 fn a_kept_lossy_name_lands_as_its_raw_bytes_on_unix_and_a_renamed_one_as_typed() {
@@ -32,10 +26,9 @@ fn a_kept_lossy_name_lands_as_its_raw_bytes_on_unix_and_a_renamed_one_as_typed()
     assert_eq!(v, serde_json::json!("/home/u/dl/renamed.bin"));
     assert_eq!(note, None);
     assert_eq!(
-        local_path_of(&crate::source::wire_bytes(b"/a/f\xfe")),
-        Some(std::path::PathBuf::from(
-            <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"/a/f\xfe")
-        ))
+        crate::find::decode_path(&crate::source::wire_bytes(b"/a/f\xfe")),
+        Some(b"/a/f\xfe".to_vec()),
+        "线上那一形解不回原始字节"
     );
 }
 

@@ -11,6 +11,14 @@
 use super::*;
 use crate::find::testing::{wire_up, Declared, FakeBackend, Wired};
 
+/// 判据看缓存用的那一件（生产那一份里没有它；本模块挂在 `picture` 底下，读得到私有字段）。
+impl Pictures {
+    /// 一张都没留着。
+    pub(crate) fn is_empty(&self) -> bool {
+        self.slots.lock().unwrap().is_empty()
+    }
+}
+
 fn png(w: u32, h: u32) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
     image::RgbaImage::from_fn(w, h, |x, y| {

@@ -780,25 +780,25 @@ run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑�
 # ── `deadcode` / `deadcode-backend`：死代码，零容忍 ───────────────────────────────────
 # `cargo test` 看不见它（test 构建里测试就是调用方）⇒ 单开一趟 `cargo check`：`dead_code` 诊断一条都不许有，有就逐条列。
 # 只在别的平台上才有调用方的项，用 `#[cfg(…)]` 和调用方放在同一个平台上；只有测试读的，删掉或收进 `#[cfg(test)]`。
-# 反空真：JSON 里必须有那个包的 lib artifact。射程：monitor 那一格 = `-p monitor` 编到的包的生产段 ＋ test 档
+# 反空真：JSON 里必须有每一个点名包的 lib artifact。射程：monitor 那一格 = `-p monitor` · `-p cc-monitor-filewin` 两个包的生产段 ＋ test 档
 #   （test 档里没人调的函数 —— 测试段的孤儿、掉了 `#[test]` 的判据 —— 也红）；
 #   后端那一格 = `src/backend` 一个包的 lib ＋ bin 非 test 段（它在后端那条道里，同一把 target 锁），test 档盖不到。
-# `gate_deadcode <格名> <目录> <lib artifact 名> <cargo check 的参数…>`
+# `gate_deadcode <格名> <目录> "<lib artifact 名…>" <cargo check 的参数…>`：第三个参数是一串 lib 产物名（空格隔开），每一个都要在 JSON 里见到才算数。
 gate_deadcode() {
-  local label="$1" dir="$2" lib="$3" out rc
+  local label="$1" dir="$2" libs="$3" out rc
   shift 3
   out="$(cd "$dir" && cargo check "$@" --message-format=json 2>&1)"; rc=$?
   printf '%s\n' "$out" | python3 -c '
 import json, sys
-rc, label, lib = int(sys.argv[1]), sys.argv[2], sys.argv[3]
-seen_lib, dead, errs = False, [], []
+rc, label, libs = int(sys.argv[1]), sys.argv[2], sys.argv[3].split()
+seen, dead, errs = set(), [], []
 for line in sys.stdin:
     try:
         m = json.loads(line)
     except ValueError:
         continue
-    if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") == lib:
-        seen_lib = True
+    if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") in libs:
+        seen.add(m["target"]["name"])
     if m.get("reason") != "compiler-message":
         continue
     msg = m["message"]
@@ -811,19 +811,20 @@ if rc != 0:
     print("".join(errs)[-4000:])
     print("%s: cargo check 退出码 %d —— 判不了" % (label, rc))
     sys.exit(rc)
-if not seen_lib:
-    print("%s: 输出里没有 %s 的 artifact —— 这一趟没走到那个包，「零条死代码」不算数" % (label, lib))
+missing = [l for l in libs if l not in seen]
+if missing:
+    print("%s: 输出里没有 %s 的 artifact —— 这一趟没走到那个包，「零条死代码」不算数" % (label, " · ".join(missing)))
     sys.exit(1)
 if dead:
     for d in sorted(set(dead)):
         print("  dead_code  " + d)
     print("%s: 这一趟 cargo check 里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % (label, len(set(dead))))
     sys.exit(1)
-print("%s: 1 passed（%s 这一趟零条 dead_code）" % (label, lib))
-' "$rc" "$label" "$lib"
+print("%s: 1 passed（%s 这一趟零条 dead_code）" % (label, " · ".join(libs)))
+' "$rc" "$label" "$libs"
 }
-run_gate deadcode '不是数出来的数：`cargo check -p monitor --lib --bins --tests`（生产段 ＋ test 档）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
-         gate_deadcode deadcode src/frontend/shell monitor_lib -p monitor --lib --bins --tests
+run_gate deadcode '不是数出来的数：`cargo check -p monitor -p cc-monitor-filewin --lib --bins --tests`（壳与文件窗口两个包的生产段 ＋ test 档）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
+         gate_deadcode deadcode src/frontend/shell "monitor_lib cc_monitor_filewin" -p monitor -p cc-monitor-filewin --lib --bins --tests
 
 # ── `clippy` / `appbuild`：`ci.yml` 里 `rust` job 的 `cargo clippy --workspace --all-targets` 与 `linux-app-build` job 的 `cargo build` ──
 # clippy 不带 `-D warnings`（deny 档的 lint 与编译错照样红）；appbuild 真编真链 Linux 上的两个二进制（`cargo` 那格带 `--lib`、`deadcode` 只 check）。
