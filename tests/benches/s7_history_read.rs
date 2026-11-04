@@ -24,7 +24,10 @@
 //! | 进程地板 `S` | `--history-tail`（一行的会话） |
 //! | **数行那一趟 `K`** | `--history-tail`（那一份大会话）− `S`（含尾段第一页那 N 行，与文件大小无关） |
 //!
+//! | **一页带解析 `P`** | `--history-tail`（那一份大会话）− `--history-tail`（它不带正文的孪生：行数、每行字节数都一样，助手正文换成等长空白） |
+//!
 //! `K` 就是「`(size, mtime)` 缓存能省掉的那一块」。**判断值不值得做，看的是 K，不是总数。**
+//! `P` 是尾段那一页里助手正文解析成块树（连同写出那棵树）的那一截：两边数行那一趟一样，减掉就只剩它。
 //!
 //! # 两档：`cargo bench` 出读数，`cargo test` 只证明「跑得起来」
 //!
@@ -34,7 +37,8 @@
 //!   🔴 墙钟**不当判据**：这一档从不进门禁。
 //! - **`cargo test`**（`Cargo.toml` 里本目标标了 `test = true`，cargo 不传 `--bench`）⇒ [`smoke`]：
 //!   自造一份小语料、取尾与地板两格各经本秤自己的 [`measure`] / [`measure_piped`] 跑一次，
-//!   断言**那张图与从语料独立算出的期望相等**（异源：一边是真二进制的输出，
+//!   断言**那张图与从语料独立算出的期望相等**；带解析那一格（语料与它不带正文的孪生各一页）断言**页形**
+//!   （行数 · 正文块数 · 解析出了树的几块）与从语料独立算出的相等（异源：一边是真二进制的输出，
 //!   一边是本文件按行切原文算出来的）；一个耗时都不看。
 //!   ⇒ 门禁 `backend` 那一格的 `cargo test` 顺带跑它：秤坏了（被测 CLI 改了参数 / 输出形状、
 //!   `measure` 读不到字节、反空真自检不再拒空输入）当场红，而不是等下一次有人想量的时候才发现。
@@ -168,6 +172,31 @@ fn main() {
         &tail_args(big_path, SNAPSHOT_TAIL_LINES),
         REPS_BIG,
     ));
+    // ④ 一页带解析：最大那一份与它不带正文的孪生（同行数、同每行字节数，助手正文换成等长空白）各取一页尾段。
+    //    两边数行那一趟一样 ⇒ 差值就是那一页里助手正文的解析（连同写出那棵树）。
+    let bare_path = sess.join("s7-main-bare.jsonl");
+    let big = std::fs::read(big_path).expect("读最大那一份夹具");
+    std::fs::write(&bare_path, bare_twin(&big)).expect("写不带正文的孪生");
+    drop(big);
+    let bare_label = format!("tail  N={SNAPSHOT_TAIL_LINES}  max 15.1 MiB〔不带正文〕");
+    rows.push(measure(
+        &bare_label,
+        &home,
+        &tail_args(&bare_path, SNAPSHOT_TAIL_LINES),
+        REPS_BIG,
+    ));
+    let shape_of = |p: &Path| {
+        let out = Command::new(BIN)
+            .env("CLAUDE_CONFIG_DIR", &home)
+            .arg("--")
+            .args(tail_args(p, SNAPSHOT_TAIL_LINES))
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .expect("spawn 被测二进制");
+        page_shape(&out.stdout)
+    };
+    let (shape_full, shape_bare) = (shape_of(big_path), shape_of(&bare_path));
 
     println!(
         "{:<38} {:>3} {:>9} {:>9} {:>9} {:>9}  {:>12}",
@@ -217,6 +246,22 @@ fn main() {
             tp - floor,
         );
         println!("            ⇒ 两种 sink 下的 K 对得上 ⇒ K 量的是扫描本身。");
+    }
+    if let (Some(t), Some(tb)) = (
+        pick(
+            &rows,
+            &format!("tail  N={SNAPSHOT_TAIL_LINES}  max 15.1 MiB"),
+        ),
+        pick(&rows, &bare_label),
+    ) {
+        println!(
+            "〔一页带解析〕max 15.1 MiB  带正文 {t:7.3} ms − 不带正文 {tb:7.3} ms ⇒ **解析 P = {:7.3} ms**",
+            t - tb,
+        );
+        println!("            页形：带正文 {shape_full} · 不带正文 {shape_bare}");
+        if shape_full["rows"] != shape_bare["rows"] {
+            println!("            ⚠ 两页行数不同（带正文那一页先撞上一页的字节上限）⇒ P 偏小，照行数折算着看。");
+        }
     }
 }
 
@@ -342,10 +387,153 @@ fn smoke() {
         "秤 7 冒烟：管道那一支取到的字节数不对"
     );
 
+    // 「一页带解析」那一格：同一份语料与它不带正文的孪生各取一页尾段。
+    // 孪生的行数、每一行的字节数都与原文相等（数行那一趟一样），只是助手正文换成等长的空白（解析无事可做）。
+    // 语料里助手正文都在前半，取整份当一页（一页装得下：期望里 `eof` 是 true）。
+    let n_parse = total;
+    let bare = sess.join("s7-smoke-bare.jsonl");
+    let bare_bytes = bare_twin(&corpus);
+    let bare_lines: Vec<&[u8]> = bare_bytes.split_inclusive(|b| *b == b'\n').collect();
+    assert!(
+        bare_lines.len() == total
+            && bare_lines
+                .iter()
+                .zip(&lines)
+                .all(|(a, b)| a.len() == b.len()),
+        "秤 7 冒烟：孪生的行数或某一行的字节数与原文不等"
+    );
+    std::fs::write(&bare, &bare_bytes).expect("放不带正文的孪生");
+    let from = total - n_parse;
+    let want_full = corpus_page_shape(&lines[from..], true);
+    let want_bare = corpus_page_shape(&lines[from..], false);
+    assert!(
+        want_full["prose_with_tree"].as_u64() > Some(0),
+        "秤 7 冒烟：语料最后 {n_parse} 行里没有一段助手正文 —— 带解析那一格量不到解析"
+    );
+    for (label, path, want) in [
+        ("parse", &f, &want_full),
+        ("parse〔不带正文〕", &bare, &want_bare),
+    ] {
+        let args = tail_args(path, n_parse);
+        let out = Command::new(BIN)
+            .env("CLAUDE_CONFIG_DIR", &home)
+            .arg("--")
+            .args(&args)
+            .stdin(Stdio::null())
+            .output()
+            .expect("spawn 被测二进制");
+        assert!(
+            out.status.success(),
+            "秤 7 冒烟：`{label}` 退出码 {:?}：{}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let got = page_shape(&out.stdout);
+        assert_eq!(
+            &got, want,
+            "秤 7 冒烟：`{label}` 那一页的页形与从语料独立算出的不等"
+        );
+        let row = measure(label, &home, &args, 1);
+        assert_eq!(
+            row.out_bytes,
+            out.stdout.len(),
+            "秤 7 冒烟：`{label}` 那一格经 measure() 取到的字节数不对"
+        );
+    }
+
     std::fs::remove_dir_all(&home).expect("收一次性 agent home");
     println!(
-        "秤 7 冒烟：2 格 × 真二进制 {total} 行语料，那张图与期望相等（N={N}，tail_from={tail_from}）—— 不计时"
+        "秤 7 冒烟：3 格 × 真二进制 {total} 行语料，那张图与页形都与期望相等（N={N}，tail_from={tail_from}；带解析那一格 N={n_parse}）—— 不计时"
     );
+}
+
+/// 不带正文的孪生：每一行字节数不变，助手那几行的正文块（`text`）换成等长的空白 —— 解析出来一块都没有。
+/// 别的行原样。那一行重写出来比原文长（不该有）⇒ 当场停。
+fn bare_twin(corpus: &[u8]) -> Vec<u8> {
+    fn texts(v: &mut serde_json::Value) -> Vec<&mut serde_json::Value> {
+        if v["type"] != "assistant" {
+            return Vec::new();
+        }
+        v.get_mut("message")
+            .and_then(|m| m.get_mut("content"))
+            .and_then(serde_json::Value::as_array_mut)
+            .map(|c| c.iter_mut().filter(|b| b["type"] == "text").collect())
+            .unwrap_or_default()
+    }
+    let mut out = Vec::with_capacity(corpus.len());
+    for line in corpus.split_inclusive(|b| *b == b'\n') {
+        let body = line.strip_suffix(b"\n").unwrap_or(line);
+        let mut v: serde_json::Value = match serde_json::from_slice(body) {
+            Ok(v) => v,
+            Err(_) => {
+                out.extend_from_slice(line);
+                continue;
+            }
+        };
+        let mut blocks = texts(&mut v);
+        if blocks.is_empty() {
+            out.extend_from_slice(line);
+            continue;
+        }
+        for b in &mut blocks {
+            b["text"] = serde_json::Value::from("");
+        }
+        let short = serde_json::to_vec(&v).expect("重写一行").len();
+        let pad = body
+            .len()
+            .checked_sub(short)
+            .expect("秤 7：不带正文的那一行重写出来比原文长");
+        texts(&mut v)[0]["text"] = serde_json::Value::from(" ".repeat(pad));
+        out.extend(serde_json::to_vec(&v).expect("重写一行"));
+        out.extend_from_slice(&line[body.len()..]);
+    }
+    out
+}
+
+/// 一页尾段的页形（从被测二进制的应答里数）：行数 · 正文块数 · 其中解析出了树的几块 · 到头了没有。
+fn page_shape(stdout: &[u8]) -> serde_json::Value {
+    let v: serde_json::Value = serde_json::from_slice(stdout).expect("秤 7：应答不是一行 JSON");
+    let rows = v["rows"].as_array().cloned().unwrap_or_default();
+    let blocks = || {
+        rows.iter()
+            .filter(|r| r["record"]["t"] == "reply")
+            .flat_map(|r| {
+                r["record"]["blocks"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .filter(|b| b["type"] == "prose")
+    };
+    let with_tree = blocks()
+        .filter(|b| b["doc"]["blocks"].as_array().is_some_and(|a| !a.is_empty()))
+        .count();
+    serde_json::json!({
+        "rows": rows.len(),
+        "prose": blocks().count(),
+        "prose_with_tree": with_tree,
+        "eof": v["eof"],
+    })
+}
+
+/// 同一页的页形，按原文的行独立算：助手那几行的每个 `text` 块是一块正文；`full` ⇒ 不全是空白的那几块解析出了树。
+fn corpus_page_shape(lines: &[&[u8]], full: bool) -> serde_json::Value {
+    let (mut prose, mut with_tree) = (0usize, 0usize);
+    for l in lines {
+        let v: serde_json::Value = serde_json::from_slice(l).expect("语料每一行是 JSON");
+        if v["type"] != "assistant" {
+            continue;
+        }
+        for b in v["message"]["content"].as_array().into_iter().flatten() {
+            if b["type"] == "text" {
+                prose += 1;
+                if full && b["text"].as_str().is_some_and(|t| !t.trim().is_empty()) {
+                    with_tree += 1;
+                }
+            }
+        }
+    }
+    serde_json::json!({ "rows": lines.len(), "prose": prose, "prose_with_tree": with_tree, "eof": true })
 }
 
 /// 一格读数。

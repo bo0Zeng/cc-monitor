@@ -182,7 +182,9 @@ fn declared_rels(src: &str) -> Vec<String> {
             let arg = rest[open..rest[open..].find(',').unwrap() + open].trim();
             match arg.strip_prefix('"') {
                 Some(q) => q.trim_end_matches('"').to_string(),
-                None => lit_of(arg).unwrap_or_else(|| panic!("{name}：落点常量 {arg} 取不到字面量")),
+                None => {
+                    lit_of(arg).unwrap_or_else(|| panic!("{name}：落点常量 {arg} 取不到字面量"))
+                }
             }
         })
         .collect()

@@ -112,7 +112,7 @@ background: FactsBackground | null,
  */
 answerOff: Words | null, 
 /**
- * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ * **无人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
 autoAnswer: number | null, 
 /**
