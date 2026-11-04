@@ -11,6 +11,14 @@
 use super::*;
 use crate::find::testing::{self, Declared, FakeBackend};
 
+/// 判据读看板用的那一件（生产那一份里没有它；本模块挂在 `grep` 底下，读得到私有字段）。
+impl GrepBoard {
+    /// 回过几趟（等「这一趟回来了」用）。
+    pub(crate) fn rounds(&self) -> u64 {
+        self.rounds.load(Ordering::SeqCst)
+    }
+}
+
 fn golden() -> Value {
     serde_json::from_str(include_str!("../../__fixtures__/files-grep.golden.json")).unwrap()
 }

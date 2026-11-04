@@ -433,11 +433,6 @@ impl Workspace {
         (k, i)
     }
 
-    /// 上一件做不了时那句话。
-    pub fn notice(&self) -> Option<&str> {
-        self.notice.as_deref()
-    }
-
     /// 在命令栏上说一句（下一次点工具条 / 标签栏就清）。
     pub(super) fn set_notice(&mut self, n: String) {
         self.notice = Some(n);

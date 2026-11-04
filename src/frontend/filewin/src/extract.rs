@@ -148,10 +148,6 @@ impl ExtractBoard {
         self.lane.begin(name);
     }
 
-    pub fn running(&self) -> Option<String> {
-        self.lane.running()
-    }
-
     /// 摆出撞名那一问；回的收端落地 ＝ 人答了（`true` ＝ 另起一个名字）。
     pub fn ask(&self, said: String) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();

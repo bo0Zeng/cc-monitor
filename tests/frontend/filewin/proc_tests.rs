@@ -69,52 +69,6 @@ fn the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes(
     }
 }
 
-/// 把 `find::testing::FakeBackend` 挂成宿主句柄的最小包装（`wire_up` 那一份不交出句柄本身）。
-struct FakeBackendHost(std::sync::Mutex<crate::find::testing::FakeBackend>);
-
-impl FakeBackendHost {
-    fn new(be: crate::find::testing::FakeBackend) -> Self {
-        Self(std::sync::Mutex::new(be))
-    }
-}
-
-impl comms_inward::chan::router::Backends for FakeBackendHost {
-    fn call(
-        &self,
-        _origin: comms_inward::chan::wire::Origin,
-        op: comms_inward::chan::wire::Op,
-        _payload: comms_inward::chan::wire::Body,
-        _view: Option<serde_json::Value>,
-        _left: std::time::Duration,
-        _cancel: comms_inward::chan::wire::CancelToken,
-    ) -> futures::future::BoxFuture<
-        'static,
-        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
-    > {
-        let known = self.0.lock().unwrap().offered.iter().any(|c| c == &op.0);
-        Box::pin(async move {
-            if known {
-                Ok(comms_inward::chan::wire::Body(
-                    b"{\"kind\":\"dir\"}".to_vec(),
-                ))
-            } else {
-                Err(comms_inward::chan::wire::CallError::Peer {
-                    why: comms_inward::chan::wire::PeerFault::Unsupported,
-                })
-            }
-        })
-    }
-
-    fn subscribe(
-        &self,
-        _origin: comms_inward::chan::wire::Origin,
-        _kind: comms_inward::chan::wire::Kind,
-        _from: Option<comms_inward::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
-        Box::pin(futures::stream::empty())
-    }
-}
-
 /// 〔09-28 裁 3〕答 `files-home` / `files-ls` 的替身后端：记下问了哪几条；`refuse` 里的那条回「不行 + 原话」。
 struct ScreenHost {
     asked: std::sync::Mutex<Vec<String>>,
