@@ -186,7 +186,7 @@ private fun Modifier.branchRail(): Modifier {
         }.padding(start = tokens.spacing.md)
 }
 
-/** 回退框框头至少这么高 · 框里那几张卡淡到多少（同设计稿 `.bfold` · `.bbody`）。 */
+/** 回退框框头至少这么高（一行可点的高度）· 框里那几张卡淡到多少（看得出已作废、字还读得清）。 */
 private val BRANCH_HEAD_MIN = 40.dp
 private const val BRANCH_FADE = 0.6f
 

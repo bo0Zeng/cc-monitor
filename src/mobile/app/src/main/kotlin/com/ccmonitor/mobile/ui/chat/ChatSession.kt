@@ -663,14 +663,7 @@ class ChatSession(
         val (p, facts) = record.recordOf(s, fresh) ?: return@coroutineScope
         record.path = p
         followTurns(s, p)
-        branch.follow(this, s, p) { block ->
-            lock.withLock {
-                if (record.path == p) {
-                    block()
-                    publishLocked()
-                }
-            }
-        }
+        followBranch(s, p)
         if (facts != null) chips.take(facts) else launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { record.loadLocked(p, at) }
@@ -695,6 +688,19 @@ class ChatSession(
     ) = folds.follow(this, p, link.table.map { it.live[s]?.face }, { record.head }) { block ->
         lock.withLock {
             if (record.path == p && block()) publishLocked()
+        }
+    }
+
+    /** 主线外清单跟着这份记录读（见 [ChatBranch.follow]）：每一下在锁里改账、上屏；换了一份记录 ⇒ 不收。 */
+    private fun CoroutineScope.followBranch(
+        s: String,
+        p: String,
+    ) = branch.follow(this, s, p) { block ->
+        lock.withLock {
+            if (record.path == p) {
+                block()
+                publishLocked()
+            }
         }
     }
 
