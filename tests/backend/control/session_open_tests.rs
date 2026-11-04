@@ -1414,13 +1414,23 @@ fn what_was_started_comes_back_with_its_arrival_and_nothing_else_does() {
             sid: None,
             cwd: Some("/w".into()),
             agent: Some(crate::agents::AgentKind::new("codex")),
-            ..opened(Landed::Started, Some("w".into()), None)
+            ..opened(
+                Landed::Started,
+                Some(("w".into(), crate::wire::TerminalHost::Managed)),
+                None
+            )
         },
         3,
     );
     assert_eq!(
-        by_cwd.arrival.map(|a| (a.by, a.since)),
-        Some((ArriveBy::Cwd { cwd: "/w".into() }, 3))
+        by_cwd.arrival.map(|a| (a.by, a.since, a.session, a.host)),
+        Some((
+            ArriveBy::Cwd { cwd: "/w".into() },
+            3,
+            Some("w".into()),
+            Some(crate::wire::TerminalHost::Managed)
+        )),
+        "等报到那一问照抄落在的终端与宿主"
     );
     let shell = with_arrival(
         Opened {

@@ -16,6 +16,7 @@ use crate::common::said::Said;
 pub mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
+use crate::wire::TerminalHost;
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
 pub use new::{ForkWrite, PreRotation};
 
@@ -257,6 +258,7 @@ pub fn with_arrival(o: Opened, since: u64) -> Opened {
         by,
         since,
         session: o.session.clone(),
+        host: o.host,
     });
     Opened { arrival, ..o }
 }
@@ -382,27 +384,27 @@ fn start_in_hosted(
     live: &[u32],
     deps: &Deps,
 ) -> Result<Opened, Said> {
-    let (landed, name, note) = match carriers(rows, &it.sid) {
-        Standing::Running(e) => (Landed::Running, e.name.clone(), None),
+    let (landed, (name, host), note) = match carriers(rows, &it.sid) {
+        Standing::Running(e) => (Landed::Running, (e.name.clone(), e.host), None),
         Standing::Ambiguous(es) => {
             let first = es[0].name.clone();
             let note = copy_core::copy_text(
                 "beSessionOpen.look.many",
                 &[("n", &es.len().to_string()), ("name", &first)],
             );
-            (Landed::Running, first, Some(note))
+            (Landed::Running, (first, es[0].host), Some(note))
         }
         _ if !live.is_empty() => return Err(already_live(live)),
         Standing::Idle(_) | Standing::None => {
             pretrust(account, &it.cwd, deps);
             let name = start_hosted(&resume_launch(it, b, None), account, here, deps)?;
-            (Landed::Started, name, None)
+            (Landed::Started, (name, TerminalHost::Managed), None)
         }
     };
     let line = attach_line(&name, here, deps)?;
     Ok(Opened {
         note,
-        ..opened(landed, Some(name), Some(line))
+        ..opened(landed, Some((name, host)), Some(line))
     })
 }
 
@@ -438,10 +440,13 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
     lr::line_of(&l, &Settled::Unsaid, here, deps.caps, &entry).map_err(|m| fail("refused", m, None))
 }
 
-pub fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Opened {
+/// 落成的样子：`at` ＝ 落在的那个终端（名字 ＋ 住在哪种宿主里；`window` ⇒ `None`）。
+pub fn opened(landed: Landed, at: Option<(String, TerminalHost)>, line: Option<String>) -> Opened {
+    let (session, host) = at.map_or((None, None), |(n, h)| (Some(n), Some(h)));
     Opened {
         landed,
         session,
+        host,
         line,
         sid: None,
         agent: None,
@@ -521,7 +526,7 @@ fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Re
     Ok(Opened {
         sid: sid.map(str::to_string),
         note,
-        ..opened(landed, Some(name), Some(line))
+        ..opened(landed, Some((name, at.host)), Some(line))
     })
 }
 
@@ -563,7 +568,7 @@ fn shell(
         });
     };
     let listed = listed(deps).map_err(lower)?;
-    let (landed, cwd, target) = match listed.rows.iter().find(|r| r.name == name) {
+    let (landed, cwd, target, host) = match listed.rows.iter().find(|r| r.name == name) {
         Some(r) => (
             if r.agent {
                 Landed::Running
@@ -575,6 +580,7 @@ fn shell(
                 crate::wire::TerminalHost::Tmux => r.name.clone(),
                 crate::wire::TerminalHost::Managed => r.terminal.clone(),
             },
+            r.host,
         ),
         None => {
             // 放在哪同新起（[`default_run`]）：能托管 ⇒ 托管；只有 tmux ⇒ tmux；都没有 ⇒ 建不了。
@@ -606,13 +612,13 @@ fn shell(
             }
             (deps.open_shell)(name, dir.as_deref(), host).map_err(lower)?;
             // 托管终端的句柄就是名字。
-            (Landed::Idle, dir, name.to_string())
+            (Landed::Idle, dir, name.to_string(), host)
         }
     };
     let line = attach_line(&target, here, deps)?;
     Ok(Opened {
         cwd,
-        ..opened(landed, Some(name.to_string()), Some(line))
+        ..opened(landed, Some((name.to_string(), host)), Some(line))
     })
 }
 
@@ -754,15 +760,15 @@ fn start_in_tmux(
     live: &[u32],
     deps: &Deps,
 ) -> Result<Opened, Said> {
-    let (landed, name, note) = match carriers(rows, &it.sid) {
-        Standing::Running(e) => (Landed::Running, e.name.clone(), None),
+    let (landed, (name, host), note) = match carriers(rows, &it.sid) {
+        Standing::Running(e) => (Landed::Running, (e.name.clone(), e.host), None),
         Standing::Ambiguous(es) => {
             let first = es[0].name.clone();
             let note = copy_core::copy_text(
                 "beSessionOpen.look.many",
                 &[("n", &es.len().to_string()), ("name", &first)],
             );
-            (Landed::Running, first, Some(note))
+            (Landed::Running, (first, es[0].host), Some(note))
         }
         _ if !live.is_empty() => return Err(already_live(live)),
         Standing::Idle(e) => {
@@ -776,18 +782,18 @@ fn start_in_tmux(
                 .map_err(|m| fail("refused", m, None))?;
             pretrust(account, &it.cwd, deps);
             (deps.send_into)(&e.name, &it.sid, &line).map_err(lower)?;
-            (Landed::InPlace, e.name.clone(), None)
+            (Landed::InPlace, (e.name.clone(), e.host), None)
         }
         Standing::None => {
             let name = (deps.mint)(NameBase::Cwd(&it.cwd)).map_err(lower)?;
             start_named(it, b, account, &name, here, deps)?;
-            (Landed::Started, name, None)
+            (Landed::Started, (name, TerminalHost::Tmux), None)
         }
     };
     let line = attach_line(&name, here, deps)?;
     Ok(Opened {
         note,
-        ..opened(landed, Some(name), Some(line))
+        ..opened(landed, Some((name, host)), Some(line))
     })
 }
 
@@ -1131,12 +1137,20 @@ fn start_new(
                     .map_err(|m| fail("refused", m, None))?;
                 run_ccm(&argv, name, deps)?;
                 let line = attach_line(name, here, deps)?;
-                opened(Landed::Started, Some(name.clone()), Some(line))
+                opened(
+                    Landed::Started,
+                    Some((name.clone(), TerminalHost::Tmux)),
+                    Some(line),
+                )
             }
             None if run == Launch::Managed => {
                 let name = start_hosted(&l, &account, here, deps)?;
                 let line = attach_line(&name, here, deps)?;
-                opened(Landed::Started, Some(name), Some(line))
+                opened(
+                    Landed::Started,
+                    Some((name, TerminalHost::Managed)),
+                    Some(line),
+                )
             }
             None => {
                 let line = lr::line_of(&l, &account, here, deps.caps, &entry)
