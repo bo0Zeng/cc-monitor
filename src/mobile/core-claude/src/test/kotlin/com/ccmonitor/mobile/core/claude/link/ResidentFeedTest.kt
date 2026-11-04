@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BranchRun
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.Failed
@@ -569,6 +570,24 @@ class ResidentFeedTest {
             core.emit("frame", """{"kind":"changed","topic":"tasks"}""")
             core.emit("frame", """{"kind":"sessions_replayed"}""")
             assertEquals(listOf(Changed.Rotation("s1"), Changed.SessionHidden("s2", HiddenNow(null)), Changed.HistoryList, Changed.Needs()), got)
+            assertEquals(1, breaks.size)
+        }
+
+    @Test
+    fun `session_branch 帧出成主线外清单那一截：at · off · runs 原样；缺必填格 ⇒ 不出、报契约对不上`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val breaks = mutableListOf<String>()
+            val f = feed(core, onBreak = { breaks += it })
+            val got = mutableListOf<BranchFrame>()
+            backgroundScope.launch { f.branches.collect { got += it } }
+            core.emit(
+                "frame",
+                """{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":2,"off":["e","g"],""" +
+                    """"runs":[{"at":2,"n":2,"said":"已被 Esc 回退 · 消息 ×2"}],"sum":"x"}""",
+            )
+            core.emit("frame", """{"kind":"session_branch","sid":"s1"}""")
+            assertEquals(listOf(BranchFrame("s1", "/p/s1.jsonl", 2, listOf("e", "g"), listOf(BranchRun(2, 2, "已被 Esc 回退 · 消息 ×2")))), got)
             assertEquals(1, breaks.size)
         }
 

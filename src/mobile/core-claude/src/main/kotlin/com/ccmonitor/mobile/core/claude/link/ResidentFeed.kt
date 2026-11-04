@@ -190,6 +190,9 @@ class ResidentFeed(
     private val liveFlow = MutableSharedFlow<LiveCards>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val live: SharedFlow<LiveCards> = liveFlow.asSharedFlow()
 
+    private val branchFlow = MutableSharedFlow<BranchFrame>(extraBufferCapacity = BUFFER)
+    override val branches: SharedFlow<BranchFrame> = branchFlow.asSharedFlow()
+
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
 
@@ -423,6 +426,8 @@ class ResidentFeed(
 
     private suspend fun onFrame(frame: Map<String, Any?>) {
         if (frame["kind"] == CHANGED) Wire.bind<Changed>(frame)?.let(changedFlow::tryEmit) ?: broke("frame", frame.toString())
+        // 一截接一截（前 `at` 条照旧）：丢一截账就错 ⇒ 满了在这里等，不丢。
+        if (frame["kind"] == BRANCH) Wire.bind(BranchFrame.ADAPTER, frame)?.let { branchFlow.emit(it) } ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
     }
@@ -526,5 +531,8 @@ class ResidentFeed(
 
         /** 流上 `changed` 那种帧的 `kind`。 */
         const val CHANGED = "changed"
+
+        /** 流上 `session_branch` 那种帧的 `kind`。 */
+        const val BRANCH = "session_branch"
     }
 }

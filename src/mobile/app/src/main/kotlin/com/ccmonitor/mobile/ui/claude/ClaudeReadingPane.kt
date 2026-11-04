@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,9 +45,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +106,8 @@ fun ClaudeReadingPane(
     notice: (RenderUnit.Notice) -> NoticeCard? = { NoticeLook.card(it, emptyList(), emptyList()) },
     // 一段过程的那一行（聊天屏画它）。
     process: @Composable (StreamItem.Process) -> Unit = {},
+    // 点一个回退框（那一段的段首条 id）：开 ⇄ 合。
+    branch: (String) -> Unit = {},
     // 人说的那一句的长按与就地编辑（聊天屏给）；只读阅读面不给 ⇒ 不出。
     said: SaidHooks? = null,
 ) {
@@ -119,9 +126,10 @@ fun ClaudeReadingPane(
             val fade = if (editAt in 0 until i) Modifier.alpha(EDIT_FADE) else Modifier
             when (item) {
                 is StreamItem.Process -> Box(fade) { process(item) }
-                // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
+                is StreamItem.Branch -> Box(fade) { BranchHead(item) { branch(item.run) } }
+                // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」；回退框里的：淡显 ＋ 左边一道虚线。
                 is StreamItem.Card ->
-                    Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
+                    Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(if (item.branch != null) Modifier.branchRail() else Modifier).then(fade)) {
                         UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait, retry, errorNext, notice), said)
                     }
             }
@@ -139,6 +147,48 @@ private fun Modifier.foldRail(): Modifier {
         .drawBehind { drawRect(rail, size = Size(2.dp.toPx(), size.height)) }
         .padding(start = tokens.spacing.sm)
 }
+
+/** 回退框的框头：一行虚线框，箭头 ＋ 那台写好的那一句（`runs[].said`）；整行是开合区。 */
+@Composable
+private fun BranchHead(
+    item: StreamItem.Branch,
+    onToggle: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    val line = tokens.borderStrong
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = BRANCH_HEAD_MIN)
+            .clip(RoundedCornerShape(tokens.radius.m))
+            .drawBehind {
+                drawRoundRect(line, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))), cornerRadius = CornerRadius(tokens.radius.m.toPx()))
+            }.clickable(onClick = onToggle)
+            .padding(horizontal = tokens.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhIcon(if (item.open) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = tokens.textFaint)
+        Spacer(Modifier.width(tokens.spacing.sm))
+        Text(item.said, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 点开着的回退框里那几张卡：整体淡显、左边一道虚线。 */
+@Composable
+private fun Modifier.branchRail(): Modifier {
+    val tokens = LocalAppTokens.current
+    val rail = tokens.borderStrong
+    return this
+        .alpha(BRANCH_FADE)
+        .drawBehind {
+            val w = 2.dp.toPx()
+            drawLine(rail, Offset(w / 2, 0f), Offset(w / 2, size.height), strokeWidth = w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
+        }.padding(start = tokens.spacing.md)
+}
+
+/** 回退框框头至少这么高（一行可点的高度）· 框里那几张卡淡到多少（看得出已作废、字还读得清）。 */
+private val BRANCH_HEAD_MIN = 40.dp
+private const val BRANCH_FADE = 0.6f
 
 /** 人说的那一句的长按与就地编辑（聊天屏给）：[editing] 是正在编辑的那张卡的 key；长按交 [onLongPress]；编辑中那张卡画 [editor]。 */
 class SaidHooks(

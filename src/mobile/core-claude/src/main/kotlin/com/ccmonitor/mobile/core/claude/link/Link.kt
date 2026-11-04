@@ -71,6 +71,9 @@ interface CoreLink {
     /** 活卡：某会话某运行此刻整份的卡（核心折好，只有名单里的会话）。可丢：丢了一格，下一格就是那一处的整份。 */
     val live: SharedFlow<LiveCards>
 
+    /** 流上的 `session_branch`：一个会话的主线外清单的一截（「前 `at` 条照旧，其后换成 `off`」，段照 `runs`），只有名单里要了清单的会话。 */
+    val branches: SharedFlow<BranchFrame>
+
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
      * 断着那一段的 `line` 帧没收到 ⇒ 读过的正文要从断处补读。

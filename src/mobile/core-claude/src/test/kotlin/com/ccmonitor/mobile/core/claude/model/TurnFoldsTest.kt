@@ -43,6 +43,7 @@ class TurnFoldsTest {
             when (it) {
                 is StreamItem.Card -> it.unit.key
                 is StreamItem.Process -> "proc:${it.fold.after}:${if (it.open) "open" else "shut"}"
+                is StreamItem.Branch -> it.key
             }
         }
 
