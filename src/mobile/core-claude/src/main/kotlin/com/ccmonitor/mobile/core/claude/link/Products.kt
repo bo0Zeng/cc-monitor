@@ -165,6 +165,15 @@ object HistoryAnnotate {
         title: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "patch" to mapOf("customTitle" to title.trim()))
 
+    /**
+     * 「无人答时自动答」那一格：等 [min] 分钟没人答就替人答，`0` ＝ 关；替人答的那一句不动。
+     * 改完那台推 `changed {needs}`，会话事实跟着重读（几档 · 此刻那一档照 `history-facts` 的 `autoAnswerChoices` · `autoAnswer`）。
+     */
+    fun autoAnswer(
+        sid: String,
+        min: Int,
+    ): Map<String, Any?> = mapOf("sid" to sid, "patch" to mapOf("autoAnswer" to mapOf("afterMin" to min)))
+
     /** 回包：改之前那一格（`prev`）；撤销「隐藏」原样交回 [hide]（`null` ⇒ 回到规则，不把照规则显示的钉成单独显示）。 */
     fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
 }

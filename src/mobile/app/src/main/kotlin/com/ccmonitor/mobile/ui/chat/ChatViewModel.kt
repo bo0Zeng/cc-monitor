@@ -55,6 +55,12 @@ class ChatViewModel(
 
     fun jumpFail(after: String) = session.jumpFail(after)
 
+    /** 跳到一处（会话里找的一条命中 · 大纲的一句）：那一行的字节起点 · 落在哪次工具调用的卡里（见 [ChatSession.jump]）。 */
+    fun jump(
+        at: Long,
+        tool: String?,
+    ) = session.jump(at, tool)
+
     /** 输入框上方那一排附件；新建会话 ⇒ `null`。 */
     val attach: StateFlow<AttachUi>? get() = session.attach?.state
 
