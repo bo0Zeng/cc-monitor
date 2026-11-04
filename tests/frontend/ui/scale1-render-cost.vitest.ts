@@ -158,7 +158,7 @@ const EXPECTED_SAMPLES = 552;
  * 每个卡型的**绝对**样本数（69 条 × 8 遍；独立写死，理由同 `EXPECTED_SAMPLES_PER_BUCKET`）。
  * `card-steps` = 30 条只有步骤的记录（工具 · 思考），一条一张（界面不并组）。
  * 记录换形（10-09）：字节口径换成通用记录的 JSON（桶跟着挪）；那一条代理自动应答（`autoReply`）从 assistant 卡挪进 skip。
- * 空思考（10-23）：只有空思考的 7 条不再跳过、画成一行「思考 · 没写进记录」⇒ 从 skip 挪进 card-steps（30 条）。
+ * 空思考（10-23）：只有空思考的 7 条不再跳过、画成一行「思考 · 未写入记录」⇒ 从 skip 挪进 card-steps（30 条）。
  */
 const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
   "card-assistant": 216,

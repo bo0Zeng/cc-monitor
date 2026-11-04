@@ -1197,7 +1197,7 @@ pub enum Topic {
     Plan,
     /// 这台某个会话的任务清单（`key` ＝ sid）。
     Tasks,
-    /// 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 进出等人 · 离开「活」，
+    /// 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「无人答时自动答」改了 · 进出等人 · 离开「活」，
     /// 重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号要登录 · MCP 要登录 · 登录作业收了）或计划要人看的数变了，重问 `sessions-needs`）。
     Needs,
     /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。

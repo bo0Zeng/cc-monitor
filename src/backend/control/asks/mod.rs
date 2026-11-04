@@ -5,7 +5,7 @@
 //! 成品挂在会话的 `needs` 上（`observe::recognize::facts::dress_ask`）：`needs.ask` 是「这一条可以怎么答」—— 选项的字、语气、要不要附一句话都由这里写好，出口不按工具名取字；
 //! pidfile 说在等、却没有挂着的请求（用户自己起的会话 · 只能本人答的框 · 工作区信任框 …）⇒ `ask: null`，`manualText` 写好「只能在终端里答」。
 //!
-//! **没人答时自动答**（只管提问；批准工具 · 批计划是安全闸，一律不自动答 —— 只此一处判，[`auto_of`]）：这条会话的注解开着
+//! **无人答时自动答**（只管提问；批准工具 · 批计划是安全闸，一律不自动答 —— 只此一处判，[`auto_of`]）：这条会话的注解开着
 //! `autoAnswer` ⇒ 挂上的提问自己带期限（`needs-ask` 那条在等的，零定时器：期限跟着这一次挂着的走），等满了还没人答就替人答 ——
 //! 每一题答成「其他」＋ 那一句；留一条记录（`sessions-needs.answered` · 会话事实 `autoAnswered`），这条会话下一次挂上提问才换掉。
 //!
@@ -153,7 +153,7 @@ impl Drop for Desk {
 
 /// `needs-ask` 的本体：`{agent, hook}` ⇒ 挂上、等人答 ⇒ `{decision}`（`null` ＝ 不给决定，hook 空手退）。
 /// 那一家没有答题口 · hook 输入不是要人答的那一种 ⇒ 立刻 `{decision: null}`（不挂）。
-/// `setting` ＝ 这条会话「没人答时自动答」那一格（注解里那一份，调用方现读交进来）。
+/// `setting` ＝ 这条会话「无人答时自动答」那一格（注解里那一份，调用方现读交进来）。
 pub async fn ask(
     conn: u64,
     req: AskReq,
@@ -184,7 +184,7 @@ pub async fn ask(
 /// 挂着的这一条自己带的期限（等满 `min` 分钟醒一次）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "会话设了「没人答时自动答」的那一条提问自己带的一次性期限，不是节拍：随这一条收场一起没，那一格关着就不起"
+    reason = "会话设了「无人答时自动答」的那一条提问自己带的一次性期限，不是节拍：随这一条收场一起没，那一格关着就不起"
 )]
 async fn due(min: u32) {
     tokio::time::sleep(std::time::Duration::from_secs(u64::from(min) * 60)).await;
@@ -237,7 +237,7 @@ pub fn auto_say() -> String {
     copy_text("beAsk.auto.say", &[])
 }
 
-/// 「没人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限同注解那一侧的值域（`history::history_annotations::AUTO_MAX_MIN`）。
+/// 「无人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限同注解那一侧的值域（`history::history_annotations::AUTO_MAX_MIN`）。
 const AUTO_CHOICES: [u32; 4] = [0, 5, 15, 30];
 
 /// 自动答可选的那几档 —— **唯一一处**：几档 ＋ 此刻那一格（`now`；关 ⇒ `None`）不在几档里 ⇒ 多列一项，按分钟排好；字都写好。

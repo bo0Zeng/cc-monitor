@@ -1973,7 +1973,7 @@
   color: var(--text-faint);
 }
 
-/* 「思考 · 没写进记录」那一行点不开 ⇒ 不给手形 */
+/* 「思考 · 未写入记录」那一行点不开 ⇒ 不给手形 */
 .block-thinking[data-recorded="false"] .block-summary {
   cursor: default;
 }

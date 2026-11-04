@@ -346,7 +346,7 @@ fn pin_is_a_cell_on_the_session_and_membership_is_not_patched_here() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
-/// 「没人答时自动答」那一格的值域：0 ＝ 关 · 超了分钟上限拒 · 那一句去首尾空白、空白 ⇒ 缺省 · 过长拒；分钟上限短于那一家给 hook 的期限（到点时 hook 还活着）。
+/// 「无人答时自动答」那一格的值域：0 ＝ 关 · 超了分钟上限拒 · 那一句去首尾空白、空白 ⇒ 缺省 · 过长拒；分钟上限短于那一家给 hook 的期限（到点时 hook 还活着）。
 #[test]
 fn the_auto_answer_setting_is_checked_before_it_is_written() {
     let on = |min: u32, say: Option<&str>| cmd_wire::needs::AutoAnswer {
@@ -364,7 +364,7 @@ fn the_auto_answer_setting_is_checked_before_it_is_written() {
     assert!(u64::from(AUTO_MAX_MIN) * 60 < crate::agents::claudecode::asks::HOOK_TIMEOUT_SECS);
 }
 
-/// 「没人答时自动答」那一格：写上 · 只换分钟留着那一句 · 空白那一句回到缺省 · 0 摘掉（盘上那一格也没了）· 超了上限拒、文件不动。
+/// 「无人答时自动答」那一格：写上 · 只换分钟留着那一句 · 空白那一句回到缺省 · 0 摘掉（盘上那一格也没了）· 超了上限拒、文件不动。
 #[test]
 fn the_auto_answer_cell_is_written_kept_and_removed() {
     let p = temp_copy("auto");
@@ -425,7 +425,7 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
-/// 改了「没人答时自动答」那一格 ⇒ 推 `changed {needs, key: sid}`（出口照它重读会话事实）；只改别的格不推。
+/// 改了「无人答时自动答」那一格 ⇒ 推 `changed {needs, key: sid}`（出口照它重读会话事实）；只改别的格不推。
 #[test]
 fn changing_the_auto_answer_cell_pushes_needs_for_that_session() {
     let p = temp_copy("auto-push");

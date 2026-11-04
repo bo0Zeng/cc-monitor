@@ -109,7 +109,7 @@ pub enum Loaded {
     Unreadable(String),
 }
 
-/// 这条会话「没人答时自动答」那一格（现读这台那一份；读不到 ⇒ 关）。
+/// 这条会话「无人答时自动答」那一格（现读这台那一份；读不到 ⇒ 关）。
 pub fn auto_answer_of(sid: &str) -> Option<cmd_wire::needs::AutoAnswer> {
     path().and_then(|p| auto_answer_at(&p, sid))
 }
@@ -122,7 +122,7 @@ pub(crate) fn auto_answer_at(path: &Path, sid: &str) -> Option<cmd_wire::needs::
     }
 }
 
-/// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
+/// 「无人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
 pub const AUTO_MAX_MIN: u32 = 30;
 
 /// 替人答的那一句至多几个字。
@@ -273,7 +273,7 @@ pub(crate) struct Patch {
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     hide: Option<HideAsk>,
-    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
+    /// 无人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
     #[serde(default, rename = "autoAnswer")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,

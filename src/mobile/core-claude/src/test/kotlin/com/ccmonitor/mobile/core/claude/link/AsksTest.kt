@@ -62,7 +62,7 @@ class AsksTest {
     fun `sessions-needs 一条带 ask · head · headCode；ask 为空时带 manualText`() {
         val data =
             mapOf(
-                "answered" to listOf(mapOf("sid" to "s9", "said" to "10 分钟没人答，已自动答：继续")),
+                "answered" to listOf(mapOf("sid" to "s9", "said" to "10m 无人答 · 已自动答：继续")),
                 "items" to
                     sessionItems(
                         listOf(
@@ -104,7 +104,7 @@ class AsksTest {
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
-        assertEquals(listOf(AnsweredRow("s9", "10 分钟没人答，已自动答：继续")), SessionsNeeds.list(data)!!.answered)
+        assertEquals(listOf(AnsweredRow("s9", "10m 无人答 · 已自动答：继续")), SessionsNeeds.list(data)!!.answered)
         assertEquals("等批准 · Bash", rows[0].needs.head)
         assertEquals("touch a.txt", rows[0].needs.headCode)
         assertEquals("ask-1", rows[0].needs.ask?.id)
