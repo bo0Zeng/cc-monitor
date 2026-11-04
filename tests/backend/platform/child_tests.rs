@@ -690,10 +690,11 @@ impl Drop for TestJob {
     }
 }
 
-/// 下一条判据的帮手（只被它当子进程叫）：脱离起一个 `ping`，把它的 pid 写进 `CCM_T_DETACH_PIDFILE`。
+/// 下面几条判据的帮手（只被它们当子进程叫）：脱离起一个 `ping`，把它的 pid 写进 `CCM_T_DETACH_PIDFILE`。
+/// 设了 `CCM_T_DETACH_LINGER` ⇒ 写完不退、一直等着（等起它的那一方到点杀组）。
 #[cfg(windows)]
 #[test]
-#[ignore = "只被 a_detached_child_on_windows_outlives_the_job_that_started_it 当子进程叫"]
+#[ignore = "只被几条脱离起（Windows）的判据当子进程叫"]
 fn detach_helper_inner() {
     let Some(f) = std::env::var_os("CCM_T_DETACH_PIDFILE") else {
         return;
@@ -706,6 +707,90 @@ fn detach_helper_inner() {
     let tmp = std::path::PathBuf::from(&f).with_extension("t");
     std::fs::write(&tmp, pid.to_string()).expect("写 pid");
     std::fs::rename(&tmp, &f).expect("改名");
+    if std::env::var_os("CCM_T_DETACH_LINGER").is_some() {
+        // 不等任何事：一直停在这里，直到起它的那一方到点杀组（`park` 可能空醒 ⇒ 再停）。
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
+/// 照 pid 收掉一个脱离起的 `ping`（判据收尾）。
+#[cfg(windows)]
+fn win_kill(pid: &str) {
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", pid, "/F"])
+        .output();
+}
+
+/// 用 [`Child::run`] 叫帮手（它的输出是 `run` 收的那两根管道）；回 `run` 的结局与脱离起的那个的 pid。
+#[cfg(windows)]
+fn run_detach_helper(
+    tag: &str,
+    linger: bool,
+    within: Deadline,
+) -> (Result<std::process::Output, ChildFail>, Option<String>) {
+    let d = test_home::scratch(tag);
+    let f = d.join("pid");
+    let mut c = Child::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "child::tests::detach_helper_inner",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("CCM_T_DETACH_PIDFILE", &f);
+    if linger {
+        c = c.env("CCM_T_DETACH_LINGER", "1");
+    }
+    let r = c.run(within);
+    let pid = std::fs::read_to_string(&f)
+        .ok()
+        .map(|p| p.trim().to_string());
+    let _ = std::fs::remove_dir_all(&d);
+    (r, pid)
+}
+
+/// 脱离起（Windows）只交它自己那三格空设备：起它的那一方的输出是一根管道（`run` 收的那一种）⇒
+/// 脱离起的那个不替它攥着这根管道，起它的那一方一退，`run` 就读到头、交回结局（不等脱离起的那个退）。
+#[cfg(windows)]
+#[test]
+fn a_detached_child_on_windows_leaves_its_starters_output_pipe_alone() {
+    let (r, pid) = run_detach_helper("detach-win-pipe", false, Deadline::secs(20));
+    let alive = pid.as_deref().is_some_and(win_alive);
+    if let Some(p) = &pid {
+        win_kill(p);
+    }
+    match r {
+        Ok(o) => assert!(o.status.success(), "帮手没脱离起来：{o:?}"),
+        Err(e) => panic!("起它的那一方退了，`run` 却没读到头：{e:?}"),
+    }
+    assert!(alive, "脱离起的 {pid:?} 一起来就没了");
+}
+
+/// 脱离起（Windows）脱离 `run` 给它那一组建的 Job：起它的那一方过了期限、整组被杀 ⇒ 脱离起的那个还活着。
+#[cfg(windows)]
+#[test]
+fn a_detached_child_on_windows_outlives_the_run_group_that_started_it() {
+    let (r, pid) = run_detach_helper("detach-win-run-group", true, Deadline::secs(20));
+    assert!(
+        matches!(r, Err(ChildFail::TimedOut { .. })),
+        "帮手一直等着，该到点：{r:?}"
+    );
+    let pid = pid.expect("脱离起的那个的 pid（帮手在期限内写好）");
+    // 整组已杀：多看几轮，防终止慢一拍时把「还没来得及没」当成活着。
+    let mut alive = win_alive(&pid);
+    for _ in guard_core::wall::rounds().take(20) {
+        alive = win_alive(&pid);
+        if !alive {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    if alive {
+        win_kill(&pid);
+    }
+    assert!(alive, "`run` 那一组被杀之后，脱离起的 {pid} 跟着没了");
 }
 
 /// 脱离起（Windows）：起它的那一方在一个「关句柄即杀」的 Job 里 ——
