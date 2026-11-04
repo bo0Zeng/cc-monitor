@@ -34,6 +34,40 @@ async fn the_viewer_tz_rides_on_every_request() {
     assert_eq!(call.await.unwrap().unwrap(), None);
 }
 
+/// 转一问（本机后端把别人的请求交那台）：信封里的时区是发起方那一份，不是这条连接登记的那一份；
+/// 带不带出口声明都一样带。
+#[tokio::test(start_paused = true)]
+async fn a_relayed_request_carries_the_askers_tz() {
+    for view in [
+        None,
+        Some(serde_json::json!({"omit": {"entries": ["size"]}})),
+    ] {
+        let (mine, theirs) = tokio::io::duplex(64 * 1024);
+        let client = park(mine).into_client(hello());
+        client.set_viewer_tz(Some("Asia/Shanghai".into()));
+        let mut peer = tokio::io::BufReader::new(theirs);
+        let c = client.clone();
+        let v2 = view.clone();
+        let call = tokio::spawn(async move {
+            c.relay_until(
+                "ping",
+                serde_json::json!({}),
+                v2.as_ref(),
+                "America/Los_Angeles",
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+        });
+        let mut line = String::new();
+        peer.read_line(&mut line).await.unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["tz"], "America/Los_Angeles", "view={view:?}");
+        assert_eq!(v.get("view"), view.as_ref());
+        assert!(client.route_reply(v["id"].as_str().unwrap(), true, None, None, None, None));
+        assert_eq!(call.await.unwrap().unwrap(), None);
+    }
+}
+
 /// 这一端怎么称呼这条连接通往的那台（登记时记下的名字）进每条信封的 `called`：远端照名字，本机照「本机」那个词；
 /// 没登记 ⇒ 不带（那台不编名字）。问的是它持有的别台（`call_at`）⇒ 不带：那一问的称呼归转过去那一跳的客户端。
 #[tokio::test(start_paused = true)]

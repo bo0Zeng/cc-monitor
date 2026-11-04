@@ -655,7 +655,7 @@ const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
 
 /// **问那台的一问经它的常驻流转过去**（请求信封带 `machine` 的那一形，分派在 `stream/inbound`）：命令 · 入参 · 出口声明原样交那台，
 /// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 原话 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
-/// 由这一端连那台的客户端判（`InboundClient::call`），判下来的那几种照码说。期限是发起方那一份（`within_ms`）。
+/// 由这一端连那台的客户端判（`InboundClient::relay_until`），判下来的那几种照码说。期限 · 时区都是发起方那一份（`within_ms` · `tz`）。
 #[expect(
     clippy::disallowed_methods,
     reason = "不是本后端的定时器：发起方那一份期限（`within_ms` 换成的截止时刻）原样换成连那台的客户端要的那一刻，交它去等"
@@ -675,13 +675,11 @@ pub async fn forward(machine: String, req: crate::wire::Request) -> crate::wire:
     let Some(client) = feed.client_by(deadline).await else {
         return Err(unreachable());
     };
-    let got = if req.view.is_null() {
-        client.call_until(&req.cmd, req.args, deadline).await
-    } else {
-        client
-            .call_until_viewed(&req.cmd, req.args, &req.view, deadline)
-            .await
-    };
+    // 看的人的时区照请求交下去：那台照它写回包里的「几点」（这条连那台的客户端自己没登记时区）。
+    let view = (!req.view.is_null()).then_some(&req.view);
+    let got = client
+        .relay_until(&req.cmd, req.args, view, &req.tz.iana_name(), deadline)
+        .await;
     got.map_err(|e| match e {
         CallError::Remote(r) => {
             let f = crate::wire::spec::fail(&r.code, r.said).and_raw(Some(&r.detail));
