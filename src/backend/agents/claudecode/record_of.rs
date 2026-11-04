@@ -11,7 +11,7 @@
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
+use crate::agents::record::{Block, Body, Record, TitleBy, UnreadWhy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
@@ -137,9 +137,11 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
             child_runs,
             ..
         } => {
-            let error = is_api_error_message.then(|| ReplyError {
-                reason: api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
-                status: api_error_status,
+            let error = is_api_error_message.then(|| {
+                crate::agents::record::reply_error(
+                    api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
+                    api_error_status,
+                )
             });
             let auto_reply = is_auto_reply(error.is_some(), message.model.as_deref());
             Some(rec_of(
@@ -174,6 +176,7 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
                 reason: api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
                 attempt: retry_attempt,
                 max: max_retries,
+                text: None,
             },
         )),
         JsonlRecord::AiTitle { ai_title, .. } => Some(rec_of(

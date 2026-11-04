@@ -293,7 +293,7 @@ pub struct CaptureOpts {
     pub stdin: Option<String>,
 }
 
-/// `use: forward` 的参数。
+/// `use: forward` 的参数：每接进一条连接开一条到哪儿的隧道。本机口不在这里 —— 宿主绑好交给拨号核心（`uses::run_forward`）。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -301,7 +301,6 @@ pub struct CaptureOpts {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct ForwardSpec {
-    pub local_port: u16,
     pub remote_host: String,
     pub remote_port: u16,
 }

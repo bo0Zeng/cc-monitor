@@ -22,10 +22,7 @@ fn run(cmd: &str, args: Value) -> Result<Value, String> {
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     let got = match invoke(
         spec.run,

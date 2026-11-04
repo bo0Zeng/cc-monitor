@@ -67,26 +67,9 @@ pub mod ssh_config;
 pub mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
 pub mod terminal_processes; // ↗ 那一问的本机那一半：终端连接是这台电脑上哪个进程开的、它往上的进程链
 
-/// 开出 channel 之后的几种用法：拨号核心那一份，进门前先装上本后端的那一套（[`host`]）。
-pub(crate) mod uses {
-    #[cfg(test)]
-    pub(crate) use ssh_dial::uses::*;
-
-    /// 一份拨号请求的完整一趟（[`ssh_dial::uses::run`]）；先装上本后端的那一套。
-    pub(crate) fn run<'a, R, W>(
-        req: &'a super::DialRequest,
-        stages: &'a super::StageSink,
-        input: R,
-        out: &'a mut W,
-    ) -> impl std::future::Future<Output = ()> + Send + 'a
-    where
-        R: tokio::io::AsyncRead + Unpin + Send + 'a,
-        W: tokio::io::AsyncWrite + Unpin + Send,
-    {
-        super::host();
-        ssh_dial::uses::run(req, stages, input, out)
-    }
-}
+/// 开出 channel 之后的几种用法：拨号核心那一份（判据经这里够到；生产那一处是端口转发，进门前先装上本后端的那一套 [`host`]）。
+#[cfg(test)]
+pub(crate) use ssh_dial::uses;
 
 /// SFTP 客户端：拨号核心那一份，传输那一趟进门前先装上本后端的那一套（[`host`]）。
 pub mod sftp {
@@ -133,17 +116,31 @@ pub fn host() {
     });
 }
 
-/// 钥匙是私钥文件的路径：打头的 `~` 按这台家目录展开再读（[`crate::platform::paths::expand_tilde_from`]；
-/// 拨号核心不碰家目录，展开是宿主的事）；读不出来那一句里的路径照用户写的。
+/// 钥匙是私钥文件的路径：打头的 `~` 按这台家目录展开（[`crate::platform::paths::expand_tilde_from`]；
+/// 拨号核心不碰家目录也不读盘，展开 · 读都是宿主的事），带上限读成文本，再交拨号核心解（[`ssh_dial::env::key_from_pem`]）；
+/// 读不出来那一句里的路径照用户写的。
 pub(crate) struct HomeKeyFiles {
     /// 这台的家目录（装的那一下定；说不出 ⇒ `None`，`~` 原样交下去）。
     pub(crate) home: Option<std::path::PathBuf>,
 }
 
+/// 钥匙文件的读上限：OpenSSH 私钥几 KiB，超了就不是一把钥匙（拒收，回读不出那一句）。
+const KEY_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::Reject,
+};
+
 impl ssh_dial::env::KeySource for HomeKeyFiles {
     fn credential(&self, key: &str) -> Result<ssh_dial::env::Credential, ssh_dial::Said> {
         let at = crate::platform::paths::expand_tilde_from(key, self.home.as_deref());
-        ssh_dial::env::key_file(key, &at)
+        let pem = crate::platform::fs::Ro::read_string_capped(&at, KEY_FILE_CAP).map_err(|e| {
+            let why = match e.raw {
+                Some(raw) => format!("{} · {raw}", e.said),
+                None => e.said,
+            };
+            Said::with_raw(ssh_dial::env::key_unreadable(key), why)
+        })?;
+        ssh_dial::env::key_from_pem(key, &pem, None)
     }
 }
 

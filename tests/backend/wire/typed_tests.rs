@@ -17,10 +17,7 @@ pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> crate::wire::spec::Outc
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     let own = crate::platform::fs::Own::for_tests();
     match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {

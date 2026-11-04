@@ -19,7 +19,6 @@ import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
-import { machineName } from "./ipc/chan-caller";
 import { canReattach, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
@@ -1191,9 +1190,8 @@ export class TabBarView {
     // 窄栏看不见组名 ⇒ 组员的悬停卡首行带上（I8：收起后看不见的信息进提示）。
     const col = folded() && tab.group !== null ? this.prefs.collections.find((c) => c.id === tab.group) : undefined;
     card.appendChild(line("tab-hover-title", col ? copyText("tabBar.group.memberHint", { group: col.name, title: tab.title }) : tab.title));
-    const where = line("tab-hover-row", machineName(tab.origin));
-    card.appendChild(where);
-    if (tab.projectDir) card.appendChild(line("tab-hover-row tab-hover-mono", tab.projectDir));
+    // 「机器 · 目录」那一句是会话那台照看的这一端对它的称呼写好的（会话事实 `whereLine`）。
+    if (tab.whereLine) card.appendChild(line("tab-hover-row tab-hover-mono", tab.whereLine));
     const st = stateLine(tab, now);
     const state = document.createElement("div");
     state.className = st.needs ? "tab-hover-state tab-hover-need" : "tab-hover-state";

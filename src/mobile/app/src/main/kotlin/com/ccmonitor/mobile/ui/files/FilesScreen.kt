@@ -453,7 +453,7 @@ private fun OfflineBand(vm: FilesViewModel) {
     )
 }
 
-/** 工具条：tab 面板 · 新建目录 · 新建空文件 · 排序 · 在此打开终端。 */
+/** 工具条：tab 面板 · 搜索（当前目录以下，那台搜）· 新建目录 · 新建空文件 · 排序 · 在此打开终端。 */
 @Composable
 private fun Toolbar(
     dir: RemotePath,
@@ -470,6 +470,8 @@ private fun Toolbar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhIconButton(Ph.Tabs, copyText("beProfile.slot.tab"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(Ph.MagnifyingGlass, copyText("mobChats.search.open"), onClick = vm.search::open, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        FileSearchSheet(vm.search, dir, vm::reveal)
         IconTextButton(Ph.FolderPlus, copyText("rsFilewinWriteops.label.mkdir"), onClick = { onDialog(FilesDialog.Mkdir) })
         IconTextButton(Ph.File, copyText("rsFilewinChrome.command.newFile"), onClick = { onDialog(FilesDialog.Create) })
         SecondaryButton(onClick = vm::toggleSort) { Text(if (sortBySize) copyText("rsFilewinSource.sort.size") else copyText("machineForm.field.name")) }

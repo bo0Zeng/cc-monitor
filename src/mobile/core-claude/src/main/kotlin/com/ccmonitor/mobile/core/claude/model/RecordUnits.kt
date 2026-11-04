@@ -6,12 +6,13 @@ import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.Speaker
 import com.ccmonitor.mobile.core.wire.gen.StepBody
+import com.ccmonitor.mobile.core.wire.gen.TaskEnd
 import com.ccmonitor.mobile.core.wire.gen.ToolCard
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按记录 · 说话人 · 块是哪一形排，
- * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么有一张表，
- * 那张表里画成事件条的几类（交回 · 后台任务 · 来话 …）还没定画法，先不上屏。
+ * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么有一张表：另一会话来话画成来话条，后台任务收场画成那台写好的那一行，
+ * 重试画成细条（相邻的并成一条），带 `error` 的回复画成报错卡；交回 · 途中来话还没定画法，先不上屏。
  *
  * 一条会话一份，随记录增量排：新来的记录只排它自己；工具结果到了只换它配上的那一张调用卡，别的单元原样留着。
  */
@@ -36,8 +37,17 @@ class RecordUnits {
     /** 手上几条记录。 */
     val size: Int get() = rows.size
 
-    /** 此刻的整张单元表（只拼，不排）；没变 ⇒ 上次那一份原样（同一个实例）。拼是 O(手上的行数)：手上留多少由持有者截（见手机端按页丢）。 */
-    fun units(): List<RenderUnit> = last ?: rows.flatMapTo(ArrayList(rows.size * 2)) { it.units }.also { last = it }
+    /**
+     * 此刻的整张单元表（只拼，不排）；没变 ⇒ 上次那一份原样（同一个实例）。拼是 O(手上的行数)：手上留多少由持有者截（见手机端按页丢）。
+     * 紧挨着上一张重试细条的那一条重试不另起一条（并进上一条：那一串的整句是会话事实那一格）。
+     */
+    fun units(): List<RenderUnit> =
+        last ?: ArrayList<RenderUnit>(rows.size * 2)
+            .also { out ->
+                for (row in rows) {
+                    for (u in row.units) if (!(u is RenderUnit.Retry && out.lastOrNull() is RenderUnit.Retry)) out += u
+                }
+            }.also { last = it }
 
     /** 丢最前面 [n] 条（往上翻读进来、离视口远了的那几页）：它们的调用卡与结果一并忘掉；后面那几条原样留着。 */
     fun dropFirst(n: Int) {
@@ -133,7 +143,8 @@ class RecordUnits {
     ): List<RenderUnit> =
         when (r) {
             is LineRecord.Said -> listOfNotNull(said(r))
-            is LineRecord.Reply -> reply(r, results)
+            is LineRecord.Reply -> r.error?.let { e -> listOf(RenderUnit.ApiError(r.id, e.title, r.timeText, rawOf(r.blocks), r.id)) } ?: reply(r, results)
+            is LineRecord.Retry -> listOf(RenderUnit.Retry(r.id, r.text.orEmpty(), r.id))
             is LineRecord.Unread -> listOf(RenderUnit.Unread(r.id, r.text, r.timeText, r.excerpt, r.id))
             else -> emptyList()
         }
@@ -142,13 +153,23 @@ class RecordUnits {
         val id = r.id
         val text = r.who.text
         return when (val s = r.who.speaker) {
-            Speaker.Human -> RenderUnit.UserText(id, text, id, images = imagesOf(r.blocks, id), attachments = r.attachments.orEmpty())
+            Speaker.Human ->
+                RenderUnit.UserText(
+                    id,
+                    text,
+                    id,
+                    images = imagesOf(r.blocks, id),
+                    attachments = r.attachments.orEmpty(),
+                    parts = saidParts(text, r.who.pasted.orEmpty()),
+                )
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)
             is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id)
             is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, id)
             Speaker.Interrupt -> RenderUnit.Interrupt(id, r.timeText, id)
             Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id)
+            is Speaker.PeerSession -> RenderUnit.Peer(id, s.title, r.timeText, s.doc, id)
+            is Speaker.TaskNotification -> s.row?.let { RenderUnit.Notice(id, it, s.end == TaskEnd.FAILED, id) }
             else -> null
         }
     }
@@ -194,6 +215,18 @@ class RecordUnits {
             interactive = r.cards?.get(callId) == ToolCard.INTERACTIVE,
         )
     }
+
+    /** 报错卡的原文：那一条回复里的字（正文树上的字 · 纯字块），照块的先后接起来。 */
+    private fun rawOf(blocks: List<Block>): String =
+        blocks
+            .mapNotNull { b ->
+                when (b) {
+                    is Block.Prose -> b.doc.plainText()
+                    is Block.Text -> b.text
+                    else -> null
+                }
+            }.joinToString("\n")
+            .trim()
 
     /** 人说的那一句里的图片块（画不出的来源那台已经不出块）：引用照收，记下是哪一条的。 */
     private fun imagesOf(

@@ -86,7 +86,7 @@ export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf
     pendingToolResults: tab.pendingToolResults,
     needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
     stepWait: (call) => tab.pending.find((p) => p.id === call),
-    retryOutcome: (id) => tab.retries.get(id),
+    retryRun: (id) => tab.retries.get(id),
     runLabelOf: (run) => host.runLabelOf(tab.sessionId, run),
     onRunCard: (tool, card) => host.markNewRunCard(tab.sessionId, tool, card),
     // 出口省掉的正文展开那一下按骨架偏移取回那一行全文（查看器那一路同一处 `readRecordById`）。

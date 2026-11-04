@@ -13,6 +13,10 @@ export type HistoryTail = {
  */
 how: TailHow, 
 /**
+ * 手上那一份作废的那两种（变短 · 被改写）写好的那一句（界面照摆）；别的接法 ⇒ 缺。
+ */
+said?: string, 
+/**
  * `rows` 第一行的行号（续传 ＝ 交来的 `held.next`；`handoff` ＝ `total`；其余 ＝ `tail_from`）。
  */
 from: number, 

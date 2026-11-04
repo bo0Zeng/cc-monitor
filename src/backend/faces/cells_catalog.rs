@@ -750,6 +750,7 @@ mod specimens {
                 from: some("f"),
                 body: some("b"),
                 doc: Some(md_core::parse("b")),
+                title: Some(Words(s("t"))),
             },
             Speaker::Coordinator {
                 body: some("b"),
@@ -774,7 +775,8 @@ mod specimens {
                 body_start: 0,
                 body_end: 1,
                 lines: 1,
-                fold: false,
+                fold: true,
+                fold_text: Some(Words(s("f"))),
             }],
         }
     }
@@ -929,12 +931,14 @@ mod specimens {
                 error: Some(ReplyError {
                     reason: ApiReason::Overloaded,
                     status: Some(529),
+                    title: Words(s("t")),
                 }),
             }),
             rec(Body::Retry {
                 reason: ApiReason::Network,
                 attempt: Some(1),
                 max: Some(3),
+                text: Some(Words(s("r"))),
             }),
             rec(Body::Title {
                 text: s("t"),
@@ -985,6 +989,7 @@ mod specimens {
                     agent: Some("agent".into()),
                     writers: vec![1],
                     writers_line: Some(Words(s("w"))),
+                    where_line: Some(Words(s("w"))),
                     pending: vec![PendingCall {
                         id: s("c"),
                         name: s("Bash"),
@@ -1023,6 +1028,7 @@ mod specimens {
                     retries: vec![RetryRun {
                         id: s("r"),
                         outcome: RetryOutcome::Recovered,
+                        text: Words(s("r")),
                     }],
                     notices: vec![crate::observe::recognize::facts::NoticeRun {
                         id: s("n"),
@@ -1123,6 +1129,9 @@ mod specimens {
                         count: 1,
                         kinds: vec![s("k")],
                     }),
+                    started_by_text: Some(Words(s("p"))),
+                    children_text: Some(Words(s("c"))),
+                    retry_log: Vec::new(),
                 };
                 node_of(&f)
             })

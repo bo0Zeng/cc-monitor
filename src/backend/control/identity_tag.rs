@@ -214,6 +214,13 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     any(test, feature = "test-support"),
     path = "../../../tests/backend/control/identity_tag_door.rs"
 )]
+#[cfg_attr(
+    any(test, feature = "test-support"),
+    expect(
+        clippy::disallowed_methods,
+        reason = "测试档那一份把打标记进沙箱文件（同各包测试段放开碰盘）"
+    )
+)]
 pub mod door;
 
 /// 打标那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。

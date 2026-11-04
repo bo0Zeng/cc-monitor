@@ -81,10 +81,8 @@ impl crate::wire::typed::Here for LocalFrames {
             id: "in-process".to_string(),
             cmd: cmd.to_string(),
             args,
-            within_ms: None,
-            view: serde_json::Value::Null,
             tz: self.tz.clone(),
-            until: None,
+            ..Default::default()
         };
         // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
         let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(Some(&self.own))) else {

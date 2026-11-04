@@ -5,7 +5,7 @@
 pub(crate) const TEST_DIR_MODE: u32 = 0o700;
 
 /// 装上测试档那一套：同 [`crate::env::Env::bare`]，只是远端写按部署那两处（判据要写 `staging` / `bin`）、
-/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件、
+/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件（读成文本交 [`crate::env::key_from_pem`]）、
 /// 主机钥匙库是进程里一份文本（[`remembered`] · [`seed_library`]）。一个进程一次。
 pub(crate) fn test_host() {
     static ONCE: std::sync::Once = std::sync::Once::new();
@@ -56,7 +56,11 @@ impl crate::env::KeySource for TestKeys {
         match found {
             Some(TestCred::Password(p)) => Ok(crate::env::Credential::Password(p)),
             Some(TestCred::Signer(s)) => Ok(crate::env::Credential::Signer(s)),
-            None => crate::env::KeyFiles.credential(key),
+            // 不在表里 ⇒ 按路径读那份钥匙文件（宿主那一侧的事，测试档替它读），再交拨号核心解。
+            None => match std::fs::read_to_string(key) {
+                Ok(pem) => crate::env::key_from_pem(key, &pem, None),
+                Err(e) => Err(crate::Said::with_raw(crate::env::key_unreadable(key), &e)),
+            },
         }
     }
 }

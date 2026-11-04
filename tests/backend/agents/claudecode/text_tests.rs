@@ -344,6 +344,7 @@ fn named_frames_without_record_fields() {
             from: Some("会话乙".into()),
             body: Some("甲".into()),
             doc: None,
+            title: None,
         }
     );
     // 斜杠命令：三个标签顺序随版本漂，转义要解。
@@ -481,6 +482,7 @@ fn pasted_blocks_are_human_with_their_bounds() {
                 body_end: at("</pasted_content id"),
                 lines: 2,
                 fold: false,
+                fold_text: None,
             },
             Pasted {
                 id: None,
@@ -490,6 +492,7 @@ fn pasted_blocks_are_human_with_their_bounds() {
                 body_end: at("</pasted_content>"),
                 lines: 1,
                 fold: false,
+                fold_text: None,
             },
         ]
     );
@@ -511,7 +514,7 @@ fn pasted_blocks_are_human_with_their_bounds() {
     );
 }
 
-/// 折不折由后端定：超过 12 行（两头的空行不算）⇒ `fold`，12 行以内照排。
+/// 折不折由后端定：超过 12 行（两头的空行不算）⇒ `fold`，并写好折起那一行（「粘贴的内容 · N 行」）；12 行以内照排、没有那一行。
 #[test]
 fn a_paste_over_twelve_lines_folds() {
     let paste = |n: usize| {
@@ -521,10 +524,18 @@ fn a_paste_over_twelve_lines_folds() {
             .join("\n");
         let t = format!("看：<pasted_content id=\"p\">\n{body}\n\n</pasted_content id=\"p\">");
         let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
-        (u.pasted[0].lines, u.pasted[0].fold)
+        let p = &u.pasted[0];
+        (p.lines, p.fold, p.fold_text.as_ref().map(|w| w.0.clone()))
     };
-    assert_eq!(paste(12), (12, false));
-    assert_eq!(paste(13), (13, true));
+    assert_eq!(paste(12), (12, false, None));
+    assert_eq!(
+        paste(13),
+        (
+            13,
+            true,
+            Some(copy_core::copy_text("speaker.paste.fold", &[("n", "13")]))
+        )
+    );
 }
 
 /// 没有 `origin` 的旧版插话那一行：照原话认（同 user 记录那一份的具名框与固定句）；不是说了话的那几种 ⇒ 不答。
@@ -732,6 +743,7 @@ fn the_index_kind_is_the_wire_kind() {
             from: None,
             body: None,
             doc: None,
+            title: None,
         },
         Speaker::Coordinator {
             body: None,

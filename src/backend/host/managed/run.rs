@@ -382,6 +382,10 @@ async fn write_out<W: tokio::io::AsyncWrite + Unpin>(out: &Outbox, wr: &mut W) {
     clippy::let_underscore_must_use,
     reason = "测试档的夹具：只在测试档与上层测试档（`test-support`）编；清上一趟留下的沙箱目录 · 回报绑好的口时丢结果，同各包测试段放开的那一样"
 )]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档的夹具建 · 清沙箱数据目录（同各包测试段放开碰盘）"
+)]
 pub mod test_support;
 
 #[cfg(test)]

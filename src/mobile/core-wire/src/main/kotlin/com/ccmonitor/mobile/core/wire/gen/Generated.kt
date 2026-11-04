@@ -6593,6 +6593,7 @@ data class FactsReply(
     val agent: String?,
     val writers: List<Int>,
     val writersLine: String? = null,
+    val whereLine: String? = null,
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
@@ -6612,6 +6613,8 @@ data class FactsReply(
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
     val children: List<Kin>,
+    val startedByText: String?,
+    val childrenText: String?,
     val line: FactsLine?,
     val quietUnread: QuietUnread?,
 ) : Ordered {
@@ -6630,6 +6633,7 @@ data class FactsReply(
             Field("agent", { opt(Str) }, optional = false, nullable = true),
             Field("writers", { arr(Int32) }, optional = false, nullable = false),
             Field("writersLine", { opt(Str) }, optional = true, nullable = true),
+            Field("whereLine", { opt(Str) }, optional = true, nullable = true),
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
@@ -6649,11 +6653,13 @@ data class FactsReply(
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
             Field("children", { arr(Kin.ADAPTER) }, optional = false, nullable = false),
+            Field("startedByText", { opt(Str) }, optional = false, nullable = true),
+            Field("childrenText", { opt(Str) }, optional = false, nullable = true),
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<String>, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as List<BgTask>, a[21] as FactsBackground?, a[22] as String?, a[23] as Int?, a[24] as List<AutoChoice>, a[25] as String?, a[26] as List<McpTrouble>, a[27] as Kin?, a[28] as List<Kin>, a[29] as FactsLine?, a[30] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as List<PendingCall>, a[12] as LastSay?, a[13] as Needs?, a[14] as List<String>, a[15] as List<RetryRun>, a[16] as List<NoticeRun>, a[17] as String?, a[18] as String?, a[19] as TokenUse?, a[20] as FactsCost?, a[21] as List<BgTask>, a[22] as FactsBackground?, a[23] as String?, a[24] as Int?, a[25] as List<AutoChoice>, a[26] as String?, a[27] as List<McpTrouble>, a[28] as Kin?, a[29] as List<Kin>, a[30] as String?, a[31] as String?, a[32] as FactsLine?, a[33] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }
@@ -7892,7 +7898,6 @@ enum class ForwardRowState(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class ForwardSpec(
-    val localPort: Int,
     val remoteHost: String,
     val remotePort: Int,
 ) : Ordered {
@@ -7901,12 +7906,11 @@ data class ForwardSpec(
     companion object {
         val ADAPTER: JsonAdapter<ForwardSpec> = obj(
             listOf(
-            Field("local_port", { Int32 }, optional = false, nullable = false),
             Field("remote_host", { Str }, optional = false, nullable = false),
             Field("remote_port", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> ForwardSpec(a[0] as Int, a[1] as String, a[2] as Int) },
-            { v -> arrayOf(v.localPort, v.remoteHost, v.remotePort) },
+            { a -> ForwardSpec(a[0] as String, a[1] as Int) },
+            { v -> arrayOf(v.remoteHost, v.remotePort) },
         )
     }
 }
@@ -10080,6 +10084,7 @@ enum class HistorySort(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class HistoryTail(
     val how: TailHow,
+    val said: String? = null,
     val from: Long,
     val rows: List<ReadRow>,
     val next: Long,
@@ -10096,6 +10101,7 @@ data class HistoryTail(
         val ADAPTER: JsonAdapter<HistoryTail> = obj(
             listOf(
             Field("how", { TailHow.ADAPTER }, optional = false, nullable = false),
+            Field("said", { opt(Str) }, optional = true, nullable = true),
             Field("from", { U64 }, optional = false, nullable = false),
             Field("rows", { arr(ReadRow.ADAPTER) }, optional = false, nullable = false),
             Field("next", { U64 }, optional = false, nullable = false),
@@ -10106,8 +10112,8 @@ data class HistoryTail(
             Field("split_at", { U64 }, optional = false, nullable = false),
             Field("end", { U64 }, optional = false, nullable = false),
             ),
-            { a -> HistoryTail(a[0] as TailHow, a[1] as Long, a[2] as List<ReadRow>, a[3] as Long, a[4] as Boolean, a[5] as Held, a[6] as Long, a[7] as Long, a[8] as Long, a[9] as Long) },
-            { v -> arrayOf(v.how, v.from, v.rows, v.next, v.eof, v.held, v.total, v.tailFrom, v.splitAt, v.end) },
+            { a -> HistoryTail(a[0] as TailHow, a[1] as String?, a[2] as Long, a[3] as List<ReadRow>, a[4] as Long, a[5] as Boolean, a[6] as Held, a[7] as Long, a[8] as Long, a[9] as Long, a[10] as Long) },
+            { v -> arrayOf(v.how, v.said, v.from, v.rows, v.next, v.eof, v.held, v.total, v.tailFrom, v.splitAt, v.end) },
         )
     }
 }
@@ -11557,6 +11563,7 @@ sealed interface LineRecord {
         val reason: ApiReason,
         val attempt: Int? = null,
         val max: Int? = null,
+        val text: String? = null,
     ) : LineRecord, Ordered {
         override val t: String get() = "retry"
         override var wireOrder: IntArray? = null
@@ -11654,9 +11661,10 @@ sealed interface LineRecord {
                         Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
                         Field("attempt", { opt(Int32) }, optional = true, nullable = true),
                         Field("max", { opt(Int32) }, optional = true, nullable = true),
+                        Field("text", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as ApiReason, a[9] as Int?, a[10] as Int?) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "retry", v.reason, v.attempt, v.max) },
+                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as ApiReason, a[9] as Int?, a[10] as Int?, a[11] as String?) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "retry", v.reason, v.attempt, v.max, v.text) },
                     )),
                 Variant("title", LineRecord.Title::class.java, obj(
                         listOf(
@@ -11732,6 +11740,7 @@ sealed interface LineRecordBody {
         val reason: ApiReason,
         val attempt: Int? = null,
         val max: Int? = null,
+        val text: String? = null,
     ) : LineRecordBody, Ordered {
         override val t: String get() = "retry"
         override var wireOrder: IntArray? = null
@@ -11794,9 +11803,10 @@ sealed interface LineRecordBody {
                         Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
                         Field("attempt", { opt(Int32) }, optional = true, nullable = true),
                         Field("max", { opt(Int32) }, optional = true, nullable = true),
+                        Field("text", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecordBody.Retry(a[1] as ApiReason, a[2] as Int?, a[3] as Int?) },
-                        { v -> arrayOf("retry", v.reason, v.attempt, v.max) },
+                        { a -> LineRecordBody.Retry(a[1] as ApiReason, a[2] as Int?, a[3] as Int?, a[4] as String?) },
+                        { v -> arrayOf("retry", v.reason, v.attempt, v.max, v.text) },
                     )),
                 Variant("title", LineRecordBody.Title::class.java, obj(
                         listOf(
@@ -16105,6 +16115,7 @@ data class Pasted(
     val bodyEnd: Int,
     val lines: Int,
     val fold: Boolean,
+    val foldText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16118,9 +16129,10 @@ data class Pasted(
             Field("bodyEnd", { Int32 }, optional = false, nullable = false),
             Field("lines", { Int32 }, optional = false, nullable = false),
             Field("fold", { Bool }, optional = false, nullable = false),
+            Field("foldText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Pasted(a[0] as String?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int, a[6] as Boolean) },
-            { v -> arrayOf(v.id, v.start, v.end, v.bodyStart, v.bodyEnd, v.lines, v.fold) },
+            { a -> Pasted(a[0] as String?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int, a[6] as Boolean, a[7] as String?) },
+            { v -> arrayOf(v.id, v.start, v.end, v.bodyStart, v.bodyEnd, v.lines, v.fold, v.foldText) },
         )
     }
 }
@@ -20349,6 +20361,7 @@ enum class Refused(val wire: String) {
 data class ReplyError(
     val reason: ApiReason,
     val status: Int? = null,
+    val title: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20357,9 +20370,10 @@ data class ReplyError(
             listOf(
             Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
             Field("status", { opt(Int32) }, optional = true, nullable = true),
+            Field("title", { Str }, optional = false, nullable = false),
             ),
-            { a -> ReplyError(a[0] as ApiReason, a[1] as Int?) },
-            { v -> arrayOf(v.reason, v.status) },
+            { a -> ReplyError(a[0] as ApiReason, a[1] as Int?, a[2] as String) },
+            { v -> arrayOf(v.reason, v.status, v.title) },
         )
     }
 }
@@ -20542,6 +20556,7 @@ enum class RetryOutcome(val wire: String) {
 data class RetryRun(
     val id: String,
     val outcome: RetryOutcome,
+    val text: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20550,9 +20565,10 @@ data class RetryRun(
             listOf(
             Field("id", { Str }, optional = false, nullable = false),
             Field("outcome", { RetryOutcome.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> RetryRun(a[0] as String, a[1] as RetryOutcome) },
-            { v -> arrayOf(v.id, v.outcome) },
+            { a -> RetryRun(a[0] as String, a[1] as RetryOutcome, a[2] as String) },
+            { v -> arrayOf(v.id, v.outcome, v.text) },
         )
     }
 }
@@ -23676,6 +23692,7 @@ data class SessionFacts(
     val agent: String?,
     val writers: List<Int>,
     val writersLine: String? = null,
+    val whereLine: String? = null,
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
@@ -23695,6 +23712,8 @@ data class SessionFacts(
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
     val children: List<Kin>,
+    val startedByText: String?,
+    val childrenText: String?,
     val line: FactsLine?,
     val quietUnread: QuietUnread?,
 ) : Ordered {
@@ -23712,6 +23731,7 @@ data class SessionFacts(
             Field("agent", { opt(Str) }, optional = false, nullable = true),
             Field("writers", { arr(Int32) }, optional = false, nullable = false),
             Field("writersLine", { opt(Str) }, optional = true, nullable = true),
+            Field("whereLine", { opt(Str) }, optional = true, nullable = true),
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
@@ -23731,11 +23751,13 @@ data class SessionFacts(
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
             Field("children", { arr(Kin.ADAPTER) }, optional = false, nullable = false),
+            Field("startedByText", { opt(Str) }, optional = false, nullable = true),
+            Field("childrenText", { opt(Str) }, optional = false, nullable = true),
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Int?, a[23] as List<AutoChoice>, a[24] as String?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as FactsLine?, a[29] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<String>, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as List<BgTask>, a[21] as FactsBackground?, a[22] as String?, a[23] as Int?, a[24] as List<AutoChoice>, a[25] as String?, a[26] as List<McpTrouble>, a[27] as Kin?, a[28] as List<Kin>, a[29] as String?, a[30] as String?, a[31] as FactsLine?, a[32] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }
@@ -25148,6 +25170,7 @@ sealed interface Speaker {
     data class PeerSession(
         val from: String? = null,
         val doc: Doc? = null,
+        val title: String? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "peerSession"
         override var wireOrder: IntArray? = null
@@ -25257,9 +25280,10 @@ sealed interface Speaker {
                         Field("kind", { tag("peerSession") }, optional = false, nullable = false),
                         Field("from", { opt(Str) }, optional = true, nullable = true),
                         Field("doc", { opt(Doc.ADAPTER) }, optional = true, nullable = true),
+                        Field("title", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.PeerSession(a[1] as String?, a[2] as Doc?) },
-                        { v -> arrayOf("peerSession", v.from, v.doc) },
+                        { a -> Speaker.PeerSession(a[1] as String?, a[2] as Doc?, a[3] as String?) },
+                        { v -> arrayOf("peerSession", v.from, v.doc, v.title) },
                     )),
                 Variant("coordinator", Speaker.Coordinator::class.java, obj(
                         listOf(

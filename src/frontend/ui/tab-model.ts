@@ -22,7 +22,8 @@ import type { SessionFace } from "./generated/SessionFace";
 import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
 import type { AutoChoice } from "./generated/AutoChoice";
-import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
+import type { BackgroundWork, Needs, PendingCall, UsageFact } from "./session-reads";
+import type { RetryRun } from "./generated/RetryRun";
 import type { SessionHidden, SessionLineage } from "./session-hidden";
 
 export interface Tab {
@@ -57,6 +58,8 @@ export interface Tab {
   forkedFromSessionId: string | null;
   /** 不止一个进程在同时写这条会话时那一句（后端会话事实的 `writersLine`，界面照摆）；没有 ⇒ `null`。 */
   writersLine: string | null;
+  /** 这条会话在哪：「机器 · 目录」那一句（后端会话事实的 `whereLine`，那台照看的这一端对它的称呼写好，界面照摆）；没有 ⇒ `null`。 */
+  whereLine: string | null;
   /**
    * 数据来源：本机 = `LOCAL`；远端 = 那台的键（标签页 · 会话头另画那台的标签）。
    * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。
@@ -118,8 +121,8 @@ export interface Tab {
   pending: PendingCall[];
   /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */
   lastSay: { text: string; at: string | null; atMs: number | null } | null;
-  /** 一串一串重试的结局（后端 `retries`：首条重试记录的 uuid → 结局）：消息流里的重试细条按它画。 */
-  retries: ReadonlyMap<string, RetryOutcome>;
+  /** 一串一串的重试（后端 `retries`：首条重试记录的 uuid → 结局与写好的整句）：消息流里的重试细条照它画。 */
+  retries: ReadonlyMap<string, RetryRun>;
   /**
    * 这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
    * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上没有旁路记账。

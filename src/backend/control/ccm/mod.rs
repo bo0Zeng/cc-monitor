@@ -104,8 +104,8 @@ pub const CAPABILITIES: &[&str] = &[
 /// 没有 tmux 的平台上 `--ccm-probe` 自报时摘掉它们（[`ccm_launcher_with`]）。
 /// 与「真靠 tmux 的那几条」两向相等，由 `target_parity_guard.rs` 的
 /// `every_ccm_capability_that_rides_tmux_is_declared_tmux_carried` 用真解析器 ＋ 真计划现推钉着。
+/// `attach` 不在这里：接回按宿主分 —— `--attach <名>` 先认托管名单（瘦客户端接上，哪个平台都做得到），认不到才落 `tmux attach`。
 pub const CCM_TMUX_CARRIED: &[&str] = &[
-    "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
     "ccm-sid",              // 写的是 tmux 会话上的意图标（`@ccm_sid_expect`）；直路上没有可写的地方
     "detach",               // 实现就是 `tmux detach`

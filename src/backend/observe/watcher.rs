@@ -2764,6 +2764,14 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.branches.remove(key);
 }
 
+/// 记录文件被改短 / 改过、已从头重显那一句（`history-tail` 回包带它；界面照摆）。
+pub fn reread_said(why: RereadWhy) -> crate::common::cells::Words {
+    crate::common::cells::Words(match why {
+        RereadWhy::Truncated => copy_core::copy_text("sessionState.recordFile.truncated", &[]),
+        RereadWhy::Rewritten => copy_core::copy_text("sessionState.recordFile.rewritten", &[]),
+    })
+}
+
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（补读计数用）。
 fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> usize {
     let Some(session_id) = state.sid_of(path) else {
@@ -5453,6 +5461,10 @@ fn file_stem_str(p: &Path) -> Option<String> {
 // 判据夹具（不等地取一帧 · 夹具那一份发帧口 · 读者 · 在跑名单的耳朵）：本包的判据与上层判据经 `test-support` 共用。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/observe/watcher_support.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档夹具在沙箱目录里写记录与事实文件（同各包测试段放开碰盘）"
+)]
 pub mod test_support;
 
 #[cfg(test)]

@@ -287,8 +287,18 @@ function placeRadio(places: HTMLElement, value: Place, title: string): PlaceRadi
   return { label, input, note };
 }
 
-/** 「更多」那一折：tmux 会话名（分叉不出）· 启动命令。 */
-function moreFields(forking: boolean): { tmuxInput: HTMLInputElement; tmuxRow: Row; cmdInput: HTMLInputElement; cmdRow: Row; moreRow: HTMLElement } {
+/**
+ * 「更多」那一折：tmux 会话名（分叉不出；只在运行于 tmux 时在）· 启动命令。
+ * 标题列的就是展开后在的那几格：`paintTitle` 照 tmux 会话名那一格此刻在不在重画标题，展开着的不收起。
+ */
+function moreFields(forking: boolean): {
+  tmuxInput: HTMLInputElement;
+  tmuxRow: Row;
+  cmdInput: HTMLInputElement;
+  cmdRow: Row;
+  moreRow: HTMLElement;
+  paintTitle: () => void;
+} {
   const tmuxInput = textInput(copyText("newSession.label.tmuxName"));
   const tmuxRow = row(copyText("newSession.label.tmuxName"), tmuxInput);
   const cmdInput = textInput(copyText("newSession.label.command"));
@@ -299,10 +309,16 @@ function moreFields(forking: boolean): { tmuxInput: HTMLInputElement; tmuxRow: R
   more.appendChild(cmdRow.root);
   const moreRow = el("div");
   moreRow.className = s.nsMoreRow;
-  moreRow.appendChild(
-    fold({ title: forking ? copyText("newSession.more.fork") : copyText("newSession.more.plain"), open: false, body: more, bare: true }),
-  );
-  return { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow };
+  let open = false;
+  let title: string | null = null;
+  const paintTitle = (): void => {
+    const next = !forking && !tmuxRow.root.hidden ? copyText("newSession.more.plain") : copyText("newSession.more.fork");
+    if (next === title) return;
+    title = next;
+    moreRow.replaceChildren(fold({ title, open, body: more, bare: true, onToggle: (o) => (open = o) }));
+  };
+  paintTitle();
+  return { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle };
 }
 
 /** 终端窗口那一张的灰字：本机 · 远端有 tmux · 远端没 tmux。 */
@@ -544,7 +560,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   if (ask) paintRuns(ask.runs);
 
   // 更多
-  const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
+  const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow, paintTitle: paintMoreTitle } = moreFields(fork !== null);
   moreRow.hidden = ask !== null;
   single.appendChild(moreRow);
 
@@ -689,6 +705,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     managedRadio.label.hidden = !(facts?.hosts.includes("managed") ?? false);
     windowRadio.note.textContent = windowNote(origin, hasTmux);
     tmuxRow.root.hidden = place() !== "tmux";
+    paintMoreTitle();
     promptInput.disabled = place() === "window";
   };
 

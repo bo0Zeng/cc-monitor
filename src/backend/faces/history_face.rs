@@ -727,6 +727,15 @@ pub(crate) fn tail_at(
         },
         plan,
         how,
+        said: match how {
+            TailHow::Truncated => Some(crate::observe::watcher::reread_said(
+                crate::wire::RereadWhy::Truncated,
+            )),
+            TailHow::Rewritten => Some(crate::observe::watcher::reread_said(
+                crate::wire::RereadWhy::Rewritten,
+            )),
+            TailHow::Tail | TailHow::Resume | TailHow::Handoff => None,
+        },
         from,
         rows: Vec::new(),
         next: u64::MAX,
@@ -1401,21 +1410,23 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<FactsReply, HistoryFactsErr>> + Send + 'static
     {
-        let tz = cx.tz;
+        let crate::wire::typed::Cx { tz, called, .. } = cx;
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
             let limits = crate::common::machine_prefs::read_now().prefs().limits();
-            facts_at(&home(), req, &limits, &tz)
+            facts_at(&home(), req, &limits, &tz, called.as_deref())
         }
     }
 }
 
-/// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）。
+/// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）；
+/// `called` ＝ 看的那一端怎么称呼这台（「在哪」那一句照它写，没交 ⇒ 不编名字）。
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
     tz: &crate::common::time::Tz,
+    called: Option<&str>,
 ) -> Result<FactsReply, HistoryFactsErr> {
     use crate::observe::recognize::facts;
     let (path, found) = match req {
@@ -1441,6 +1452,7 @@ pub(crate) fn facts_at(
     if facts.project_dir.is_none() {
         facts.project_dir = locate::facts_project_dir(home, path);
     }
+    facts.where_line = facts::where_line(called, facts.project_dir.as_deref());
     if facts.agent.is_none() {
         facts.agent = locate::facts_agent(home, path).map(Into::into);
     }
@@ -1509,10 +1521,11 @@ pub(crate) fn facts_at(
     );
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
     facts::settle_notices(&mut facts, tz);
-    // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
+    // 重试串：照结局写整句（钟面照看的那一台）。
+    facts::settle_retries(&mut facts, tz);
+    // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）连同那两句。
     let (parent, children) = kin_of(home, sid, &crate::history::session_hidden::Here::read_now());
-    facts.started_by = parent;
-    facts.children = children;
+    facts::set_kin(&mut facts, parent, children);
     let reply = FactsReply {
         path: found.then(|| path.to_string()),
         facts,
@@ -1595,6 +1608,10 @@ mod read_cap_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/history/facts_by_sid_tests.rs"]
 mod facts_by_sid_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/facts_where_tests.rs"]
+mod facts_where_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_image_tests.rs"]

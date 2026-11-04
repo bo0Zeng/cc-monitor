@@ -9,14 +9,15 @@ import org.junit.Test
 class SessionFindTest {
     @Test
     fun `history-find：交路径与查询串，别的格不带（那台照缺省：工具结果不搜 · 500 条）`() {
-        assertEquals(mapOf("path" to "/p/s.jsonl", "query" to "q"), InSessionFind.args("/p/s.jsonl", "q"))
+        assertEquals(mapOf("path" to "/p/s.jsonl", "query" to "q"), InSessionFind.args("/p/s.jsonl", "q", user = false))
+        assertEquals("只搜用户 ⇒ 带 scope user", mapOf("path" to "/p/s.jsonl", "query" to "q", "scope" to "user"), InSessionFind.args("/p/s.jsonl", "q", user = true))
     }
 
     @Test
     fun `history-find 回包：命中带行号 · 落在哪次工具调用里；缺必填格 ⇒ 解不出`() {
         val hit = mapOf("uuid" to "u1", "line" to 42L, "kind" to "assistant", "before" to "a ", "matched" to "q", "after" to " b", "turn" to 3L, "tsMs" to 0L, "tsText" to "10:00", "tool" to "c1")
-        val got = InSessionFind.of(mapOf("total" to 7L, "hits" to listOf(hit)))!!
-        assertEquals(7L, got.total)
+        val got = InSessionFind.of(mapOf("total" to 7L, "hits" to listOf(hit), "head" to "前 1 · 共 7", "widen" to false))!!
+        assertEquals("前 1 · 共 7", got.head)
         assertEquals(42L, got.hits.single().line)
         assertEquals("c1", got.hits.single().tool)
         assertNull(InSessionFind.of(mapOf("hits" to emptyList<Any>())))

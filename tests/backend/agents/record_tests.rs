@@ -55,6 +55,7 @@ fn incoming_message_bodies_go_out_as_trees() {
             from: None,
             body: Some(md.into()),
             doc: None,
+            title: None,
         },
         Speaker::Coordinator {
             body: Some(md.into()),
@@ -156,10 +157,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             cards,
             steps,
             runs,
-            error: Some(ReplyError {
-                reason: cmd_wire::record::ApiReason::Unknown,
-                status: None,
-            }),
+            error: Some(reply_error(cmd_wire::record::ApiReason::Unknown, None)),
         },
         b => b,
     };
@@ -329,6 +327,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
                 reason: cmd_wire::record::ApiReason::Unknown,
                 attempt: None,
                 max: None,
+                text: None,
             },
             Draw::Card,
             false,

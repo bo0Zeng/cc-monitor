@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,11 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -113,7 +113,6 @@ fun ChatRoute(
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     val scope = rememberCoroutineScope()
     val host = rememberChatHost(hostId) ?: return
-    val product = rememberProductName(hostId)
     val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd), host.machine) else existingChat(hostId, sessionId, host.machine, at, tool)
     val vm: ChatViewModel = koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -130,7 +129,6 @@ fun ChatRoute(
         val cwd = state.cwd
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
-    val picker = vm.picker
     val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
     val findTerminal: suspend (String) -> TermEntry? = { s -> termEntry(terminals, s) }
@@ -138,12 +136,16 @@ fun ChatRoute(
     val toTerminal: () -> Unit = { state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } } }
     // ⋯ 里的会话里找 · 大纲 · 结束会话 · 无人答时自动答（判定都在那台，见 [ChatMore]）。
     val more = remember(open.key) { ChatMore(backends.of(hostId), host.machine, scope, { vm.state.value.sid }, vm::jump) }
+    // 点标题出的「会话信息」（只读，字都是那台写的，见 [ChatInfo]）。
+    val info = remember(open.key) { ChatInfo(backends.of(hostId), host.machine, scope) { vm.state.value.sid } }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
             topBar = {
                 ChatTopBar(
-                    title = if (state.drafting) copyText("newSession.title.plain") else state.label ?: product,
+                    title = if (state.drafting) copyText("newSession.title.plain") else state.title.orEmpty(),
+                    head = headLine(state).takeIf { !state.drafting },
+                    onTitle = info::open,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     sid = state.sid?.takeIf { !state.drafting },
                     findTerminal = findTerminal,
@@ -167,8 +169,9 @@ fun ChatRoute(
                     .consumeWindowInsets(inner)
                     .imePadding(),
             ) {
-                ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
+                ChatHead(hostId, host.machine, vm.picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatMorePanes(more)
+                ChatInfoPane(info, host.machine) { sid -> onDrawerAction(DrawerAction.OpenRecent(sid)) }
                 ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
             }
         }
@@ -291,17 +294,6 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     return got
 }
 
-/** 顶栏的名字：这台缺省那一家写给人看的名字（那台 `session-open-facts` 给的，缺省照那台）；还没问到 ⇒ 空。 */
-@Composable
-private fun rememberProductName(hostId: String): String {
-    val backends = koinInject<HostBackends>()
-    val got by produceState("", hostId) {
-        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap())
-        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }?.let { SessionOpenFacts.pick(it.agents, null)?.text }.orEmpty()
-    }
-    return got
-}
-
 /** ⋯「在终端里打开」那一项：第二行是它所在的 tmux 会话名（终端已经不在 ⇒「恢复后在新终端中显示」）。 */
 @Composable
 private fun TerminalItem(
@@ -332,8 +324,12 @@ private class Renaming(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatTopBar(
-    /** 这台那一家写给人看的名字（那台给的）。不写主机名，界面上不出现「连接」那套说法。 */
+    /** 这条会话那台写好的整行标题（会话簿的 `title`）；还没起好的新建会话写「新建会话」。 */
     title: String,
+    /** 第二行：点 ＋ 状态一句（＋ 上下文要注意那一句）；簿里还没这一条 · 新建会话 ⇒ `null`、不画。 */
+    head: HeadLine?,
+    /** 点标题：出「会话信息」。 */
+    onTitle: () -> Unit,
     onOpenDrawer: () -> Unit,
     sid: String?,
     /** 那条会话在终端里的样子（问那台的终端名单）；问不到 ⇒ `null`。 */
@@ -365,7 +361,7 @@ private fun ChatTopBar(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        title = { TopTitle(title, head, onTitle.takeIf { sid != null }) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
         actions = {
             needs()
@@ -412,6 +408,19 @@ private fun ChatTopBar(
 }
 
 private const val MORE_GLYPH = "⋯"
+
+/** 顶栏标题那两行：那台写好的整行标题 ＋ [head]；[onClick] 给了（会话起好了）⇒ 点了出「会话信息」。 */
+@Composable
+private fun TopTitle(
+    title: String,
+    head: HeadLine?,
+    onClick: (() -> Unit)?,
+) {
+    Column(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier) {
+        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        head?.let { HeadLineRow(it) }
+    }
+}
 
 /** ⋯「打开工作目录」那一项（字同桌面）：先收起菜单再去。 */
 @Composable

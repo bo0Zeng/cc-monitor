@@ -84,7 +84,12 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+/**
+ * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
+ * 一串的结局与整句另在会话事实 `retries[]`。
+ */
+text?: string, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */

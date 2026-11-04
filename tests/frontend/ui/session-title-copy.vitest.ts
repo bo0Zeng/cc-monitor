@@ -40,6 +40,7 @@ function tab(over: Partial<Tab> = {}): Tab {
     origin: LOCAL,
     forkedFromSessionId: "fedcba9876543210",
     writersLine: null,
+    whereLine: null,
     unread: 0,
     needs: null,
     autoAnswer: null,

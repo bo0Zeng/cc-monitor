@@ -60,10 +60,7 @@ fn run_any(cmd: &str, args: serde_json::Value) -> super::spec::Outcome {
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: serde_json::Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     match invoke(
         spec.run,

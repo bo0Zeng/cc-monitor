@@ -66,6 +66,11 @@ writers: Array<number>,
  */
 writersLine?: Words, 
 /**
+ * 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
+ * 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
+ */
+whereLine?: Words, 
+/**
  * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
  */
 pending: Array<PendingCall>, 
@@ -82,7 +87,7 @@ needs: Needs | null,
  */
 handedBack: Array<string>, 
 /**
- * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+ * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。出口那一下照 [`SessionFacts::retry_log`] 写（[`settle_retries`]）。
  */
 retries: Array<RetryRun>, 
 /**
@@ -144,6 +149,14 @@ startedBy: Kin | null,
  * 它起的子会话（按起的先后）；不累加，每次现查。
  */
 children: Array<Kin>, 
+/**
+ * 由谁启动那一句（「由「X」启动」，[`set_kin`] 写）；不是谁起的 ⇒ `null`。
+ */
+startedByText: Words | null, 
+/**
+ * 子会话那一句（「子会话 N」，[`set_kin`] 写）；一个都没有 ⇒ `null`。
+ */
+childrenText: Words | null, 
 /**
  * **状态一句里会走的那一截**：pidfile 此刻说的那一态 ＋ 记录里的事实（在跑的那一步 · 等的种类与起点 · 最后一句的时刻），[`line_of`] 写。
  * 不活 ⇒ `null`。不累加，每次现查。

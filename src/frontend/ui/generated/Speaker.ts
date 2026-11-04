@@ -22,7 +22,11 @@ doc?: Doc, } | { "kind": "peerSession", from?: string,
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */
-doc?: Doc, } | { "kind": "coordinator", 
+doc?: Doc, 
+/**
+ * 来话条抬头那一句（「会话「{from}」」，造记录那一下写；界面照摆）。还没造成记录 ⇒ 缺。
+ */
+title?: string, } | { "kind": "coordinator", 
 /**
  * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
  */

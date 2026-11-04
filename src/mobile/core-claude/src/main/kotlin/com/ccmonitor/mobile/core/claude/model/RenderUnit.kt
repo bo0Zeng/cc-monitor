@@ -3,6 +3,9 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.wire.gen.Attachment
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.Pasted
+import com.ccmonitor.mobile.core.wire.gen.RetryOutcome
+import com.ccmonitor.mobile.core.wire.gen.RetryRun
 
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
@@ -36,6 +39,57 @@ data class SaidImage(
     val record: String,
 )
 
+/** 人说的那一句的一段：照排的字 · 折成一行的那一块（[text] 是收着时那一行，那台写好的 `foldText`；[body] 是点开后的正文）。 */
+sealed interface SaidPart {
+    data class Plain(
+        val text: String,
+    ) : SaidPart
+
+    data class Folded(
+        val text: String,
+        val body: String,
+    ) : SaidPart
+}
+
+/**
+ * 照记录成品的 `pasted[]`（UTF-16 下标，含两头的标记）把 [text] 切成几段：标记不上屏，只露正文那一截（两头的换行去掉）；
+ * 折不折照那一块的 `fold`。折起来的那一段自己占一行 ⇒ 紧挨着它的那一个换行不再另算。相邻照排的几段并成一段。没有粘贴的块 ⇒ 空（照 `text` 画）。
+ */
+fun saidParts(
+    text: String,
+    pasted: List<Pasted>,
+): List<SaidPart> {
+    if (pasted.isEmpty()) return emptyList()
+    val out = ArrayList<SaidPart>()
+    val plain = StringBuilder()
+
+    fun flush() {
+        if (plain.isNotEmpty()) out += SaidPart.Plain(plain.toString())
+        plain.setLength(0)
+    }
+    var at = 0
+    var afterFold = false
+    for (p in pasted.sortedBy { it.start }) {
+        var before = text.substring(at.coerceAtMost(p.start), p.start)
+        if (afterFold) before = before.removePrefix("\r\n").removePrefix("\n")
+        if (p.fold) before = before.removeSuffix("\n").removeSuffix("\r")
+        plain.append(before)
+        val body = text.substring(p.bodyStart, p.bodyEnd).trim('\r', '\n')
+        if (p.fold) {
+            flush()
+            out += SaidPart.Folded(p.foldText.orEmpty(), body)
+        } else {
+            plain.append(body)
+        }
+        afterFold = p.fold
+        at = p.end
+    }
+    val tail = text.substring(at.coerceAtMost(text.length))
+    plain.append(if (afterFold) tail.removePrefix("\r\n").removePrefix("\n") else tail)
+    flush()
+    return out
+}
+
 /**
  * 正文的渲染单元，由 [RecordUnits] 从核心的通用记录排出来；UI 把每个 unit 映射成一张卡片。
  *
@@ -49,10 +103,15 @@ sealed interface RenderUnit {
     val key: String
     val sourceUuid: String?
 
+    /** 有一段正文的那几种（搜索照 [text] 搜）。 */
+    sealed interface Worded : RenderUnit {
+        val text: String
+    }
+
     /** 用户输入的真实 prompt（非 meta、非 tool_result）。 */
     data class UserText(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
         /** 本地发送状态；`null` ＝ 记录里的那一条，或已送到。 */
         val delivery: DeliveryState? = null,
@@ -62,7 +121,9 @@ sealed interface RenderUnit {
         val images: List<SaidImage> = emptyList(),
         /** 这一句带的附件（后端认出的 `attachments[]`：类别字 · 名字 · 大小 · 已清理都是那台写好的），画在气泡外上方。 */
         val attachments: List<Attachment> = emptyList(),
-    ) : RenderUnit
+        /** 正文分段（记录成品带了人粘贴的块才有：只露正文那一截，那台说要折的折成一段）；空 ⇒ 照 [text] 画。 */
+        val parts: List<SaidPart> = emptyList(),
+    ) : Worded
 
     /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版；`more` 是后端写好的「展开 {大小}」那一格（照放进按钮）。 */
     data class AssistantMarkdown(
@@ -70,21 +131,21 @@ sealed interface RenderUnit {
         val doc: Doc,
         val more: String,
         override val sourceUuid: String?,
-    ) : RenderUnit {
+    ) : Worded {
         /** 树上的字（搜索 · 跟到底那一格量长短用），取一次留着。 */
-        val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc.plainText() }
+        override val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc.plainText() }
     }
 
     /** 助手思考块，默认折叠。 */
     data class Thinking(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /**
      * 一次工具调用，已把 tool_use 与其后匹配的 tool_result 合并。
-     * [resultText] 为 null 表示仍在执行（无匹配结果）。
+     * [pending] ＝ 还没配上结果（[resultText] 为 null）；此刻是在跑 · 等批准 · 说不清，由会话事实 `pending[]` 说，这里不判。
      */
     data class ToolCall(
         override val key: String,
@@ -133,17 +194,64 @@ sealed interface RenderUnit {
      */
     data class Brief(
         override val key: String,
-        val text: String,
+        override val text: String,
         val timeText: String?,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /** `/compact` 续接摘要，默认折叠（超长，点开看全文）。 */
     data class CompactSummary(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
+
+    /**
+     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头是核心写好的那一句（[title]，「会话「X」」）＋ [timeText]，
+     * 正文是核心解析好的块树 [doc]（没有正文 ⇒ `null`，只画抬头）。
+     */
+    data class Peer(
+        override val key: String,
+        val title: String?,
+        val timeText: String?,
+        val doc: Doc?,
+        override val sourceUuid: String?,
+    ) : Worded {
+        /** 树上的字（搜索用），取一次留着。 */
+        override val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc?.plainText().orEmpty() }
+    }
+
+    /** 后台任务的收场通知（`speaker.taskNotification`）：一行，字是核心写好的那一行（`row`）；[failed] ＝ 那台说它失败了。 */
+    data class Notice(
+        override val key: String,
+        override val text: String,
+        val failed: Boolean,
+        override val sourceUuid: String?,
+    ) : Worded
+
+    /**
+     * 一串重试（记录 `t: retry`，相邻的几条并成一条细条）：[key] 是首条的 id（会话事实 `retries[]` 按它给那一串），
+     * [text] 是首条写好的那一行（`retry.text`）；事实到了照那一串画（[RetryLook.strip]）。
+     */
+    data class Retry(
+        override val key: String,
+        override val text: String,
+        override val sourceUuid: String?,
+    ) : Worded
+
+    /**
+     * 上游最终失败写的那一条回复（`reply.error`）：报错卡。卡头 [title] 是核心写好的（`error.title`），[raw] 是报错原文（进「原文」折叠）；
+     * 下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]），否则通用那一句。
+     */
+    data class ApiError(
+        override val key: String,
+        val title: String,
+        val timeText: String?,
+        val raw: String,
+        override val sourceUuid: String?,
+    ) : Worded {
+        override val text: String get() = "$title\n$raw"
+    }
 
     /** 「已中断本轮 · {time}」那一道细线（记录里 `speaker.interrupt` 那一条）；[timeText] 是核心写好的钟面。 */
     data class Interrupt(
@@ -158,27 +266,57 @@ sealed interface RenderUnit {
      */
     data class Unread(
         override val key: String,
-        val text: String,
+        override val text: String,
         val timeText: String?,
         val excerpt: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
+}
+
+/** 重试细条此刻的字与淡不淡（接上了 · 人打断了 ⇒ 淡）。 */
+data class RetryStrip(
+    val text: String,
+    val faded: Boolean,
+)
+
+/**
+ * 重试细条与报错卡照会话事实 `retries[]`（首条 id ⇒ 结局与写好的整句）摆：那一串在事实里 ⇒ 照它的整句；不在 ⇒ 记录那一行、在重试。
+ * 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡。原因 · 次数 · 时刻全是核心拼好的，这里只挑哪一句放哪。
+ */
+object RetryLook {
+    /** 细条画什么；收起 ⇒ `null`。 */
+    fun strip(
+        u: RenderUnit.Retry,
+        runs: List<RetryRun>,
+    ): RetryStrip? {
+        val run = runs.firstOrNull { it.id == u.key } ?: return RetryStrip(u.text, faded = false)
+        return when (run.outcome) {
+            RetryOutcome.FAILED -> null
+            RetryOutcome.RETRYING -> RetryStrip(run.text, faded = false)
+            RetryOutcome.RECOVERED, RetryOutcome.INTERRUPTED -> RetryStrip(run.text, faded = true)
+        }
+    }
+
+    /** 报错卡 [error]（它的 key）下一步那一句：紧挨着它的上一张是一串没接上的重试 ⇒ 那一串的整句；否则 `null`（画通用那一句）。 */
+    fun next(
+        units: List<RenderUnit>,
+        error: String,
+        runs: List<RetryRun>,
+    ): String? {
+        val before = units.getOrNull(units.indexOfFirst { it.key == error } - 1) as? RenderUnit.Retry ?: return null
+        return runs.firstOrNull { it.id == before.key }?.takeIf { it.outcome == RetryOutcome.FAILED }?.text
+    }
 }
 
 /** 会话内搜索用的可搜索纯文本（工具调用含名/参数/输出，便于搜命令、文件名、输出）。 */
 fun RenderUnit.searchableText(): String =
     when (this) {
-        is RenderUnit.UserText -> text
-        is RenderUnit.AssistantMarkdown -> text
-        is RenderUnit.Thinking -> text
+        is RenderUnit.Worded -> text
         is RenderUnit.ToolCall -> toolCallSearchable()
         is RenderUnit.SlashCommand -> if (args.isEmpty()) name else "$name $args"
         is RenderUnit.BashInput -> command
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
-        is RenderUnit.Brief -> text
-        is RenderUnit.CompactSummary -> text
         is RenderUnit.Interrupt -> ""
-        is RenderUnit.Unread -> text
     }
 
 private fun RenderUnit.ToolCall.toolCallSearchable(): String =
