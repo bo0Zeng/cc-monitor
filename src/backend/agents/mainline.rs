@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
+use std::ops::Range;
 
 /// 人那一侧一句话的摘要（去首尾空白后的 64 位 FNV-1a）：排队豁免只比两句是不是同一句，原文不进链。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -87,6 +88,8 @@ pub struct Chain {
     root_of: Vec<u32>,
     winner: Option<u32>,
     off: Vec<String>,
+    /// 清单分成的段（`off` 的下标区间，首尾相接、盖满 `off`）：按文件序，进界面的主线节点夹在中间就断段。跟 `off` 一起算。
+    runs: Vec<Range<usize>>,
     /// 自上一次 [`Chain::take_kept`] 起清单变过 ⇒ 那时的清单与此刻的公共前缀至多这么长（`session_branch` 只发变了的那一截）；没变过 ⇒ `None`。
     kept: Option<usize>,
     /// 记进来了、还没重算（[`Chain::load`] 攒着，[`Chain::settle`] 一次算掉）。
@@ -185,6 +188,13 @@ impl Chain {
         &self.off
     }
 
+    /// 清单分成的段（`off` 的下标区间，文件序）：两条之间夹着一条进界面的主线节点 ⇒ 分在两段；不进界面的不断段。
+    /// 文件只追加 ⇒ 清单前缀相同时，前缀里相邻两条之间的边界也相同（夹在中间的若变成主线外，就会进清单、前缀就不同了）。
+    pub fn runs(&self) -> &[Range<usize>] {
+        debug_assert!(!self.dirty, "记了没算就来读段");
+        &self.runs
+    }
+
     /// 上一次问它到此刻，清单前几条没动（主线外清单是文件序，新的分叉一般接在尾上 ⇒ 只有后面那几条是新的）；问完重新记。
     /// 中间变了几次都算上（取最短的公共前缀）⇒ 拿上一次发出去的那一份接上这一截，就是此刻的清单。
     pub fn take_kept(&mut self) -> usize {
@@ -228,10 +238,21 @@ impl Chain {
         let m = main_branch(&self.nodes, &at);
         let exempt = exempt_queued(&self.nodes, &m.on, &self.has_child, &self.queued);
         let ids = self.ids();
-        let off: Vec<&str> = (0..self.nodes.len())
-            .filter(|&i| self.nodes[i].shown && !m.on[i] && !exempt[i])
-            .map(|i| ids[i])
-            .collect();
+        let mut off: Vec<&str> = Vec::new();
+        let mut runs: Vec<Range<usize>> = Vec::new();
+        let mut open = false;
+        for i in (0..self.nodes.len()).filter(|&i| self.nodes[i].shown) {
+            if m.on[i] || exempt[i] {
+                open = false;
+                continue;
+            }
+            match runs.last_mut() {
+                Some(r) if open => r.end += 1,
+                _ => runs.push(off.len()..off.len() + 1),
+            }
+            open = true;
+            off.push(ids[i]);
+        }
         let changed = (!off.iter().eq(self.off.iter())).then(|| {
             let k = off
                 .iter()
@@ -245,6 +266,7 @@ impl Chain {
         self.root_of = m.root_of;
         self.winner = m.winner;
         self.exempt = exempt;
+        self.runs = runs;
         let Some((k, off)) = changed else {
             return false;
         };

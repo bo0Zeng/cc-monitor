@@ -3096,24 +3096,28 @@ fn report_owed(state: &mut ReaderState, sink: &mut FrameSink) {
 /// 这份记录的主线外清单变了 ⇒ 发变了的那一截（`whole` ⇒ 从头整份：从 0 重读 · 读完那一刻）。
 /// 从上一次发起清单前几条没动由链索引记着（[`crate::agents::mainline::Chain::take_kept`]）；丢过它一帧的连接拿整份（[`FrameSink::branch`]）。
 fn send_branch(state: &mut ReaderState, sink: &mut FrameSink, sid: &str, path: &Path, whole: bool) {
-    let (off, kept) = match state.branches.get_mut(&path_key(path)) {
+    let (off, runs, kept) = match state.branches.get_mut(&path_key(path)) {
         Some(c) => {
             let kept = c.take_kept();
-            (c.off(), if whole { 0 } else { kept })
+            let kept = crate::wire::run_head(c.runs(), kept);
+            (c.off(), c.runs(), if whole { 0 } else { kept })
         }
-        None => (&[][..], 0),
+        None => (&[][..], &[][..], 0),
     };
-    sink.branch(sid, &path.to_string_lossy(), off, kept);
+    sink.branch(sid, &path.to_string_lossy(), (off, runs), kept);
 }
 
 /// 给一条连接这份记录此刻的主线外清单（它刚要起这份清单：照它交回的手上那份只补缺的）。
 fn branch_to(state: &ReaderState, sink: &mut FrameSink, id: u64, sid: &str, path: &Path) {
-    let off = state
+    let list = state
         .branches
         .get(&path_key(path))
-        .map_or(&[][..], |c| c.off());
-    sink.branch_to(id, sid, &path.to_string_lossy(), off);
+        .map_or((&[][..], &[][..]), |c| (c.off(), c.runs()));
+    sink.branch_to(id, sid, &path.to_string_lossy(), list);
 }
+
+/// 一份主线外清单：那几条的 `id` ＋ 分好的段（[`crate::agents::mainline::Chain::runs`]）。
+type BranchList<'a> = (&'a [String], &'a [std::ops::Range<usize>]);
 
 /// 一行记进这份记录的链索引（这一家有链才记）；不算 —— 这一趟读的行都记完了由 [`settle_chain`] 算一次。
 fn feed_chain(state: &mut ReaderState, path: &Path, line: &crate::agents::Line<'_>) {
@@ -5246,13 +5250,13 @@ impl FrameSink {
         self.subs.retain(|s| !s.tx.is_closed());
     }
 
-    /// 一份记录的主线外清单变了：给在看它的每条连接发「前 `kept` 条照旧，其后是这些」（按页切几帧，[`Frame::branch_pages`]）；
+    /// 一份记录的主线外清单变了：给在看它的每条连接发「前 `kept` 条照旧，其后是这些」（`kept` 是段首；按页切几帧，[`Frame::branch_pages`]）；
     /// 丢过这份一帧的连接（[`Sub::push`] 记下的）手上的对不上 ⇒ 给它整份。预读没交回的会话不发（同 [`Self::send`]）。
-    fn branch(&mut self, sid: &str, path: &str, off: &[String], kept: usize) {
+    fn branch(&mut self, sid: &str, path: &str, (off, runs): BranchList<'_>, kept: usize) {
         if self.priming.contains(sid) {
             return;
         }
-        let delta = Frame::branch_pages(sid, path, off, kept);
+        let delta = Frame::branch_pages(sid, path, off, runs, kept);
         let mut whole: Option<Vec<Frame>> = None;
         for s in &mut self.subs {
             if !delta.first().is_some_and(|f| s.wants(f)) {
@@ -5260,11 +5264,11 @@ impl FrameSink {
             }
             let frames = if s.branch_held.contains_key(path) {
                 // 刚要起这份、预读那会儿没发成：照它交回的手上那份补（[`Sub::held_at`]）。
-                let at = s.held_at(path, off);
-                Frame::branch_pages(sid, path, off, at)
+                let at = s.held_at(path, (off, runs));
+                Frame::branch_pages(sid, path, off, runs, at)
             } else if s.branch_stale.remove(path) {
                 whole
-                    .get_or_insert_with(|| Frame::branch_pages(sid, path, off, 0))
+                    .get_or_insert_with(|| Frame::branch_pages(sid, path, off, runs, 0))
                     .clone()
             } else {
                 delta.clone()
@@ -5278,10 +5282,10 @@ impl FrameSink {
 
     /// 给那一条连接这份记录的主线外清单（它刚要起这份）：它交回的手上那份前缀没动、也没丢过帧 ⇒ 只发它缺的那一截
     /// （`at` ＝ 它手上的条数）；否则整份。
-    fn branch_to(&mut self, id: u64, sid: &str, path: &str, off: &[String]) {
+    fn branch_to(&mut self, id: u64, sid: &str, path: &str, (off, runs): BranchList<'_>) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
-            let at = s.held_at(path, off);
-            for f in Frame::branch_pages(sid, path, off, at) {
+            let at = s.held_at(path, (off, runs));
+            for f in Frame::branch_pages(sid, path, off, runs, at) {
                 s.push(f);
             }
         }
@@ -5337,14 +5341,20 @@ impl Sub {
     }
 
     /// 这条连接手上这份记录的主线外清单从第几条起要补：它交回的那份（[`Self::branch_held`]，用完即摘）前缀摘要对得上、
-    /// 这条连接也没丢过它的帧 ⇒ 它手上的条数；否则 0（整份）。
-    fn held_at(&mut self, path: &str, off: &[String]) -> usize {
+    /// 这条连接也没丢过它的帧 ⇒ 它手上的条数（不到全长 ⇒ 挪到段首：最后那一段可能长了，[`crate::wire::run_head`]）；否则 0（整份）。
+    fn held_at(&mut self, path: &str, (off, runs): BranchList<'_>) -> usize {
         let stale = self.branch_stale.remove(path);
         match self.branch_held.remove(path) {
             Some((n, sum)) if !stale => usize::try_from(n)
                 .ok()
                 .filter(|&n| n <= off.len() && crate::wire::branch_sum(&off[..n]) == sum)
-                .unwrap_or(0),
+                .map_or(0, |n| {
+                    if n == off.len() {
+                        n
+                    } else {
+                        crate::wire::run_head(runs, n)
+                    }
+                }),
             _ => 0,
         }
     }
@@ -5474,6 +5484,10 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_lines_tests.rs"]
 mod lines_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/branch_runs_tests.rs"]
+mod branch_runs_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_watch_tests.rs"]

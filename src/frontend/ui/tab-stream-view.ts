@@ -15,7 +15,7 @@ import type { SessionFacts } from "./session-reads";
 import type { FactsChange } from "./tab-session-facts";
 import { MessageStream } from "./stream";
 import { forgetDetached, reconcilePendingToolResults, type RenderContext } from "./cards";
-import { BranchFolder } from "./branch-fold";
+import { BranchFolder, type BranchList } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // 实时会话的分叉入口
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
@@ -815,9 +815,9 @@ export class TabStreamView {
     }
   }
 
-  /** 主线外清单到了（整份）：折叠层按它重折。 */
-  setOff(tab: Tab, off: ReadonlySet<string>): void {
-    tab.branchFolder.setOff(off);
+  /** 主线外清单到了（整份，带段）：折叠层按它重折。 */
+  setBranch(tab: Tab, list: BranchList): void {
+    tab.branchFolder.setList(list);
   }
 
   /** 这个 tab 的骨架账本（展开省掉的正文按它取偏移；没接上 ⇒ `null`）。 */

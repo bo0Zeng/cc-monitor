@@ -303,6 +303,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         path: path.into(),
         at,
         off: ids.iter().map(|i| i.to_string()).collect(),
+        runs: Vec::new(),
         sum: format!("s{at}+{}", ids.len()),
     };
     let mut b = Book::default();
@@ -313,7 +314,8 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
-            off: off(&["u1"])
+            off: off(&["u1"]),
+            runs: Vec::new(),
         }]
     );
     // 只来变了的那一截 ⇒ 交出去的是拼好的整份。
@@ -322,7 +324,8 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
-            off: off(&["u1", "u2", "u3"])
+            off: off(&["u1", "u2", "u3"]),
+            runs: Vec::new(),
         }]
     );
     // 前 2 条照旧、其后没有了 ⇒ 截短。
@@ -351,6 +354,45 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     assert_eq!(got, vec!["live a", r#"branch a ["u1", "u2"]"#, "live b"]);
 }
 
+/// 段跟着清单拼：起在 `at` 之前的段照旧，其后换成这一帧带的（那台保证 `at` 是段首，账不并段、不数数）；F5 重放带同一份段。
+#[test]
+fn branch_runs_are_spliced_at_the_frames_head_and_replayed() {
+    let run = |at: u64, n: u64| cmd_wire::frame::BranchRun {
+        at,
+        n,
+        said: cmd_wire::cells::Words(format!("x{n}")),
+    };
+    let branch = |at: u64, ids: &[&str], runs: Vec<cmd_wire::frame::BranchRun>| In::Branch {
+        origin: crate::origin::Origin::named("pi"),
+        sid: "a".into(),
+        path: "/a.jsonl".into(),
+        at,
+        off: ids.iter().map(|i| i.to_string()).collect(),
+        runs,
+        sum: format!("s{at}"),
+    };
+    let runs_of = |out: &[Out]| match out {
+        [Out::Branch { runs, .. }] => runs.clone(),
+        other => panic!("{other:?}"),
+    };
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(branch(0, &["u1", "u2", "u3"], vec![run(0, 2), run(2, 1)]));
+    // 第 2 条起那一段长了一条 ⇒ 那台从它的段首起整段重发。
+    let out = b.step(branch(2, &["u3", "u4"], vec![run(2, 2)]));
+    assert_eq!(runs_of(&out), [run(0, 2), run(2, 2)]);
+    let r = b.replay(&[]);
+    let replayed: Vec<_> = r
+        .before
+        .iter()
+        .filter_map(|o| match o {
+            Out::Branch { runs, .. } => Some(runs.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(replayed, [vec![run(0, 2), run(2, 2)]]);
+}
+
 /// read8c：报名单时交回手上那份主线外清单（条数 ＋ 那台给的最后一帧的摘要）—— 断线不摘（重接之后交回，那台只补缺的）；
 /// 拼的时候中间缺过一截（`at` 比手上的长）⇒ 说不准，交 `at: 0`；没有的、会话离开了的 ⇒ `at: 0`；那台报完清单时不在了 ⇒ 摘。
 #[test]
@@ -367,6 +409,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link_said_unclear() {
         path: format!("/{s}.jsonl"),
         at,
         off: ids.iter().map(|i| i.to_string()).collect(),
+        runs: Vec::new(),
         sum: sum.into(),
     };
     let sids = |v: &[&str]| {
@@ -420,6 +463,7 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
         path: "/a.jsonl".into(),
         at,
         off: ids.iter().map(|i| i.to_string()).collect(),
+        runs: Vec::new(),
         sum: sum.into(),
     };
     let only_a: std::collections::BTreeSet<String> = ["a".to_string()].into();

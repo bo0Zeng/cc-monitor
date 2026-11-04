@@ -44,6 +44,8 @@ pub struct ScanMap {
     pub(crate) turns: Vec<TurnRow>,
     /// 主线外清单（回退掉的那几条，文件序；`history-branch`）。用户输入与轮次已经不含它们。
     pub off: Vec<String>,
+    /// 主线外清单分成的段（`off` 的下标区间，链索引分的：[`Chain::runs`]）。
+    pub runs: Vec<std::ops::Range<usize>>,
     /// 定上下文上限之前的事实（上限按每次问的上限表现定，[`RecordScans::facts`]）。
     pub(crate) facts: SessionFacts,
     /// 接着扫要的那几样（骨架也落它）。
@@ -208,6 +210,7 @@ impl Scan {
     fn done(mut self, seen: u64) -> ScanMap {
         self.rest.chain.settle();
         let off = self.rest.chain.off().to_vec();
+        let runs = self.rest.chain.runs().to_vec();
         let mut inputs = self.rest.inputs.clone();
         let mut turns = self.rest.turns.clone();
         if let Some(row) = self.rest.open.clone().finish() {
@@ -227,6 +230,7 @@ impl Scan {
             inputs,
             turns,
             off,
+            runs,
             facts: self.facts,
             rest: self.rest,
             bytes: 0,
@@ -317,7 +321,7 @@ impl ScanMap {
             .iter()
             .map(|r| 96 + opt(&r.u) + opt(&r.x) + opt(&r.ts))
             .sum();
-        let off: usize = self.off.iter().map(|o| 24 + o.len()).sum();
+        let off: usize = self.off.iter().map(|o| 24 + o.len()).sum::<usize>() + 16 * self.runs.len();
         let inputs: usize = off
             + self
                 .inputs

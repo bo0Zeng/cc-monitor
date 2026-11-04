@@ -412,7 +412,7 @@ describe("子 agent 的时间线：回退掉的那几条按那份记录的主线
       which: { run: "r" },
       load,
       render: renderNum,
-      branch: async (path) => (asked.push(path), ["r1", "r2"]),
+      branch: async (path) => (asked.push(path), { off: ["r1", "r2"], runs: [{ at: 0, n: 2, said: "×2" }] }),
     });
     await t.refresh();
     await t.refresh();

@@ -12,7 +12,7 @@ import {
   forgetDetached,
   reconcilePendingToolResults,
 } from "../cards";
-import { BranchFolder } from "../branch-fold";
+import { BranchFolder, type BranchList } from "../branch-fold";
 import { RecordTimeline } from "../record-timeline";
 import { releaseEnhanceRoot } from "../render";
 import { renderStreamRecord, type StreamSink } from "../render-stream-record";
@@ -268,7 +268,7 @@ export class SessionViewer {
    */
   private watchFrom: number | null = null;
   /** 读完之前流里先来的主线外清单（比冷读那一份新：读完就用它）。 */
-  private followOff: string[] | null = null;
+  private followOff: BranchList | null = null;
   private loaded = false;
   private live = false;
   private following = false;
@@ -448,9 +448,9 @@ export class SessionViewer {
       const [branch] = await Promise.all([branchP, this.settled()]);
       if (this.loadGeneration !== gen || !this.stream) return;
       this.setLoading(false);
-      const off = this.followOff ?? branch?.off;
+      const list = this.followOff ?? branch;
       this.followOff = null;
-      if (off) this.folder.setOff(new Set(off));
+      if (list) this.folder.setList(list);
       this.rebuildFold();
       this.countEl.textContent = copyText("sessionViewer.head.count", { n: this.total });
       this.updateStatus();
@@ -605,8 +605,8 @@ export class SessionViewer {
       this.onLive?.(e.live);
     } else if (e.t === "branch") {
       // 主线外清单（整份）：读完了就当场重折；还没读完 ⇒ 记着，读完用它（比冷读那一份新）。
-      if (this.loaded && this.folder) this.folder.setOff(new Set(e.off));
-      else this.followOff = e.off;
+      if (this.loaded && this.folder) this.folder.setList(e.branch);
+      else this.followOff = e.branch;
     } else if (e.t === "sight") {
       this.following = e.seen;
       if (this.loaded) this.updateStatus();

@@ -56,7 +56,7 @@ vi.mock("../../../src/frontend/ui/record-reads", () => ({
     const page = h.pages.shift() ?? { rows: [] };
     return Promise.resolve({ run: "a1", path: "/p/s1/a1.jsonl", rows: page.rows, end: from + page.rows.length, more: page.more ?? false });
   },
-  readBranch: () => Promise.resolve({ off: [], end: 0 }),
+  readBranch: () => Promise.resolve({ off: [], runs: [], end: 0 }),
 }));
 vi.mock("../../../src/frontend/ui/events", () => ({
   followSession: (_o: unknown, _sid: string, sink: (e: unknown) => void) => {

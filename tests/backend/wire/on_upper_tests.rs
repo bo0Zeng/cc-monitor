@@ -383,6 +383,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: s("/p/s1.jsonl"),
                 at: 0,
                 off: vec![s("u2"), s("a2")],
+                runs: vec![],
                 sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
             }),
             Frame::SessionBranch(crate::wire::SessionBranch {
@@ -390,6 +391,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: s("/p/s1.jsonl"),
                 at: 2,
                 off: vec![],
+                runs: vec![],
                 sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
             }),
         ],

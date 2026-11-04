@@ -16,7 +16,9 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use cmd_wire::frame::{Frame, Life, SessionAdded, SessionLeft, SessionRuns, SessionStatus};
+use cmd_wire::frame::{
+    BranchRun, Frame, Life, SessionAdded, SessionLeft, SessionRuns, SessionStatus,
+};
 use face_core::book::{Seat, SessionBook};
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
@@ -32,12 +34,14 @@ pub enum In {
     Closed { origin: String },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
+    /// `runs` ＝ 段首落在这一帧里的段（那台分好的；`at` 恒是段首 ⇒ 起在它之前的段照旧，其后的换成这些，账不并段）。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
         path: String,
         at: u64,
         off: Vec<String>,
+        runs: Vec<BranchRun>,
         sum: String,
     },
 }
@@ -68,19 +72,21 @@ pub enum Out {
         origin: String,
         runs: SessionRuns,
     },
-    /// 一个会话的主线外清单（拼好的整份）。
+    /// 一个会话的主线外清单（拼好的整份）与它分成的段。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
         off: Vec<String>,
+        runs: Vec<BranchRun>,
     },
 }
 
-/// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
+/// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份与段 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
 #[derive(Debug, Default, Clone)]
 struct BranchCopy {
     path: String,
     off: Vec<String>,
+    runs: Vec<BranchRun>,
     sum: Option<String>,
 }
 
@@ -119,6 +125,7 @@ impl Book {
                 path,
                 at,
                 off,
+                runs,
                 sum,
             } => {
                 let held = self
@@ -139,11 +146,14 @@ impl Book {
                 let whole = at <= held.off.len();
                 held.off.truncate(at);
                 held.off.extend(off);
+                held.runs.retain(|r| r.at < at as u64);
+                held.runs.extend(runs);
                 held.sum = whole.then_some(sum);
                 vec![Out::Branch {
                     origin,
                     sid,
                     off: held.off.clone(),
+                    runs: held.runs.clone(),
                 }]
             }
             In::Closed { origin } => {
@@ -213,6 +223,7 @@ impl Book {
                     path,
                     off,
                     sum: Some(sum),
+                    ..
                 }) => cmd_wire::watch::BranchHeld {
                     sid: sid.clone(),
                     path: Some(path.clone()),
@@ -297,6 +308,7 @@ impl Book {
                                 origin: at,
                                 sid: sid.clone(),
                                 off: c.off.clone(),
+                                runs: c.runs.clone(),
                             });
                         }
                     }
@@ -357,9 +369,10 @@ impl Out {
                 all: *all,
             }),
             Out::Runs { runs, .. } => F::Runs(runs.clone()),
-            Out::Branch { sid, off, .. } => F::Branch(b::SessionBranchPayload {
+            Out::Branch { sid, off, runs, .. } => F::Branch(b::SessionBranchPayload {
                 sid: sid.clone(),
                 off: off.clone(),
+                runs: runs.clone(),
             }),
         }
     }

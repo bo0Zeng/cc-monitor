@@ -202,6 +202,7 @@ pub(crate) async fn apply(
             path: b.path,
             at: b.at,
             off: b.off,
+            runs: b.runs,
             sum: b.sum,
         }),
     }

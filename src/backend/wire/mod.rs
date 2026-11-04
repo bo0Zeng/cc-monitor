@@ -50,6 +50,7 @@ use crate::agents::record::RecordExt as _;
 use crate::common::cells::{Tone, Words};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::ops::Range;
 pub use topic::TopicExt;
 
 /// 线上那一格一生（[`cmd_wire::frame::Life`]）：这一层的 [`Life`] 是造脸的入参，名字让给它。
@@ -64,7 +65,7 @@ pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, 
 pub use cmd_wire::frame::{Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
-pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
+pub use cmd_wire::frame::{BranchRun, SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 pub use cmd_wire::frame::{Topic, Unavailable};
 use cmd_wire::session::Launch;
@@ -607,9 +608,17 @@ pub trait FrameRules {
     /// 穷尽 `match`，同 [`Self::loss_is_recoverable`]：新增帧种时编译期就得表态。
     fn content_of(&self) -> Option<&str>;
 
-    /// 一份主线外清单「前 `at` 条照旧，其后是 `off[at..]`」切成几帧 `session_branch`（每帧至多 `REPLY_PAGE_BYTES` 字节，一条单独超了 ⇒ 那一帧只有它）。
+    /// 一份主线外清单（`off` ＋ 分好的段 `runs`）「前 `at` 条照旧，其后是 `off[at..]`」切成几帧 `session_branch`
+    /// （每帧至多 `REPLY_PAGE_BYTES` 字节，一条单独超了 ⇒ 那一帧只有它）；每帧带段首落在它里面的段。
+    /// `at` 由调用方给成段首（[`run_head`]）；客户端手上已是整份（交回的条数就是全长、摘要对得上）⇒ 全长，段也照旧。
     /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
-    fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame>;
+    fn branch_pages(
+        sid: &str,
+        path: &str,
+        off: &[String],
+        runs: &[Range<usize>],
+        at: usize,
+    ) -> Vec<Frame>;
 
     /// **推出去那一下**按这条流看的那一台的时区写钟面（`stream/writer.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
     /// `line.record.timeText` · `session_runs.runs[].startedText`。产这些帧的那几层不写钟面（同一份状态可能推给几个时区不同的看的人）。
@@ -698,31 +707,42 @@ impl FrameRules for Frame {
         }
     }
 
-    fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame> {
+    fn branch_pages(
+        sid: &str,
+        path: &str,
+        off: &[String],
+        runs: &[Range<usize>],
+        at: usize,
+    ) -> Vec<Frame> {
         let at = at.min(off.len());
         // 摘要沿清单一趟滚过去：第 k 帧的 `sum` ＝ 到它末尾为止那一截的摘要。
         let mut sum = BranchSum::default();
         off[..at].iter().for_each(|id| sum.push(id));
-        let page = |at: usize, ids: &[String], sum: String| {
+        let page = |at: usize, end: usize, sum: String| {
             Frame::SessionBranch(SessionBranch {
                 sid: sid.to_string(),
                 path: path.to_string(),
                 at: at as u64,
-                off: ids.to_vec(),
+                off: off[at..end].to_vec(),
+                runs: branch_runs(runs, at..end),
                 sum,
             })
         };
-        let fixed = serde_json::to_vec(&page(usize::MAX, &[], BranchSum::default().hex()))
+        let fixed = serde_json::to_vec(&page(0, 0, BranchSum::default().hex()))
             .map_or(0, |b| b.len())
-            + 1;
+            + 2 * u64::MAX.to_string().len();
         let room = REPLY_PAGE_BYTES.as_len().saturating_sub(fixed);
+        let heads: HashMap<usize, usize> =
+            runs.iter().map(|r| (r.start, r.len())).collect();
         let mut out = Vec::new();
         let mut start = at;
         loop {
             let mut used = 0;
             let mut end = start;
             while end < off.len() {
-                let c = serde_json::to_vec(&off[end]).map_or(0, |b| b.len()) + 1;
+                let c = serde_json::to_vec(&off[end]).map_or(0, |b| b.len())
+                    + 1
+                    + heads.get(&end).map_or(0, |&n| run_bytes(end, n));
                 if end > start && used + c > room {
                     break;
                 }
@@ -730,7 +750,7 @@ impl FrameRules for Frame {
                 sum.push(&off[end]);
                 end += 1;
             }
-            out.push(page(start, &off[start..end], sum.hex()));
+            out.push(page(start, end, sum.hex()));
             if end >= off.len() {
                 return out;
             }
@@ -777,6 +797,45 @@ impl BranchSum {
     fn hex(self) -> String {
         format!("{:016x}", self.0)
     }
+}
+
+/// 「前 `at` 条照旧」挪到段首：第 `at - 1` 条所在那一段的段首（那一段可能接上了新来的、或尾上几条回了主线，条数变了）；`at` 是 0 ⇒ 0。
+/// 挪完起在 `at` 之前的段一定照旧：前缀里相邻两条之间的边界不变（[`crate::agents::mainline::Chain::runs`]）。
+pub fn run_head(runs: &[Range<usize>], at: usize) -> usize {
+    at.checked_sub(1)
+        .and_then(|last| runs.iter().find(|r| r.contains(&last)))
+        .map_or(at, |r| r.start)
+}
+
+/// 段首落在 `window` 里的那几段（`history-branch` 一页 · `session_branch` 一帧）：下标是整份清单里的，`n` 是整段。
+pub fn branch_runs(runs: &[Range<usize>], window: Range<usize>) -> Vec<BranchRun> {
+    runs.iter()
+        .filter(|r| window.contains(&r.start))
+        .map(|r| BranchRun {
+            at: r.start as u64,
+            n: r.len() as u64,
+            said: run_said(r.len()),
+        })
+        .collect()
+}
+
+/// 一段的框头那一句（`×n`）。
+fn run_said(n: usize) -> Words {
+    Words(copy_core::copy_text(
+        "branchFold.wrapRun.summary",
+        &[("n", &n.to_string())],
+    ))
+}
+
+/// 一段在帧 / 回包里占几个字节（分页记账用，连分隔符）。
+pub fn run_bytes(at: usize, n: usize) -> usize {
+    serde_json::to_vec(&BranchRun {
+        at: at as u64,
+        n: n as u64,
+        said: run_said(n),
+    })
+    .map_or(0, |b| b.len())
+        + 1
 }
 
 /// 清单前几条（`ids`）的摘要（同 `session_branch.sum`）。
