@@ -692,6 +692,7 @@ impl Drop for TestJob {
 
 /// 下面几条判据的帮手（只被它们当子进程叫）：脱离起一个 `ping`，把它的 pid 写进 `CCM_T_DETACH_PIDFILE`。
 /// 设了 `CCM_T_DETACH_LINGER` ⇒ 写完不退、一直等着（等起它的那一方到点杀组）。
+/// 设了 `CCM_T_DETACH_VIA_RUN` ⇒ 自己不脱离起，当中间那一层：用 [`Child::run`] 叫（摘掉这一格的）自己，等它交回就退。
 #[cfg(windows)]
 #[test]
 #[ignore = "只被几条脱离起（Windows）的判据当子进程叫"]
@@ -699,6 +700,22 @@ fn detach_helper_inner() {
     let Some(f) = std::env::var_os("CCM_T_DETACH_PIDFILE") else {
         return;
     };
+    if std::env::var_os("CCM_T_DETACH_VIA_RUN").is_some() {
+        let r = Child::new(std::env::current_exe().expect("本测试程序"))
+            .args([
+                "child::tests::detach_helper_inner",
+                "--exact",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env_remove("CCM_T_DETACH_VIA_RUN")
+            .run(Deadline::secs(20));
+        assert!(
+            r.as_ref().is_ok_and(|o| o.status.success()),
+            "帮手没脱离起来：{r:?}"
+        );
+        return;
+    }
     let n = (4 * guard_core::wall::CEILING_SECS).to_string();
     let pid = Child::new("ping.exe")
         .args(["-n", &n, "127.0.0.1"])
@@ -768,28 +785,6 @@ fn a_detached_child_on_windows_leaves_its_starters_output_pipe_alone() {
     assert!(alive, "脱离起的 {pid:?} 一起来就没了");
 }
 
-/// 下一条判据的中间那一层（只被它当子进程叫）：用 [`Child::run`] 叫 [`detach_helper_inner`]（它脱离起一个 `ping`），等它交回就退。
-#[cfg(windows)]
-#[test]
-#[ignore = "只被「起它的那一方的上一层」那条判据当子进程叫"]
-fn detach_via_run_helper() {
-    if std::env::var_os("CCM_T_DETACH_PIDFILE").is_none() {
-        return;
-    }
-    let r = Child::new(std::env::current_exe().expect("本测试程序"))
-        .args([
-            "child::tests::detach_helper_inner",
-            "--exact",
-            "--ignored",
-            "--test-threads=1",
-        ])
-        .run(Deadline::secs(20));
-    assert!(
-        r.as_ref().is_ok_and(|o| o.status.success()),
-        "帮手没脱离起来：{r:?}"
-    );
-}
-
 /// 脱离起（Windows）也不替**再上一层**攥着管道：桌面 PowerShell `$out = … | & ccm.exe` 那一形 ——
 /// 最外层持一根管道收中间那一层的输出，中间那一层用 `run` 起帮手、帮手脱离起一个 `ping` ⇒ 中间那一层一退，最外层就读到头。
 /// 中间那一层的标准输出是从最外层继承来的可继承句柄；它起帮手时这一格不许跟着交下去，不然帮手再脱离起的那个就带着它。
@@ -800,12 +795,13 @@ fn a_detached_child_on_windows_leaves_the_pipe_two_levels_up_alone() {
     let f = d.join("pid");
     let mut mid = std::process::Command::new(std::env::current_exe().expect("本测试程序"))
         .args([
-            "child::tests::detach_via_run_helper",
+            "child::tests::detach_helper_inner",
             "--exact",
             "--ignored",
             "--test-threads=1",
         ])
         .env("CCM_T_DETACH_PIDFILE", &f)
+        .env("CCM_T_DETACH_VIA_RUN", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
