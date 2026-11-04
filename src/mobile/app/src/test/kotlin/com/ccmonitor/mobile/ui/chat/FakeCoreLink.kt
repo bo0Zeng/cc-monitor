@@ -334,6 +334,8 @@ internal class FakeCoreLink :
                             "tail_from" to tailFrom,
                             "total" to n,
                             "how" to how,
+                            // 变短 · 被改写 ⇒ 那台写好的那一句（字是替身的，不是文案表的）。
+                            "said" to SAID[how],
                             "from" to from,
                             "rows" to rows(from, n),
                             "next" to n * W,
@@ -372,8 +374,11 @@ internal class FakeCoreLink :
             b: Long,
         ) = (a until b).map { mapOf("end" to (it + 1) * W, "hash" to it, "record" to records[it.toInt()]) }
 
-        private companion object {
-            const val W = 10L
+        companion object {
+            private const val W = 10L
+
+            /** 变短 · 被改写时那台说的那一句（替身的字）。 */
+            val SAID = mapOf("truncated" to "tail-said-truncated", "rewritten" to "tail-said-rewritten")
         }
     }
 }

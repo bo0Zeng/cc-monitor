@@ -7,6 +7,8 @@ import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
+import com.ccmonitor.mobile.core.wire.gen.RetryOutcome
+import com.ccmonitor.mobile.core.wire.gen.RetryRun
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,16 +38,36 @@ class RecordUnitsTest {
         assertEquals(listOf(SaidPart.Plain("see A\nB end")), u.parts)
     }
 
-    @Suppress("UNCHECKED_CAST")
     @Test
-    fun `人粘贴的块：那台说要折 ⇒ 折成一段，带那台数好的行数与正文那一截`() {
-        val r = Json.obj(File(repoRoot(), "tests/__fixtures__/record.golden.jsonl").readLines().first { it.contains("\"case\":\"said-pasted\"") })!!
-        val rec = (r["record"] as Map<String, Any?>).toMutableMap()
-        val who = (rec["who"] as Map<String, Any?>).toMutableMap()
-        who["pasted"] = (who["pasted"] as List<Map<String, Any?>>).map { it + ("fold" to true) + ("lines" to 248) }
-        rec["who"] = who
-        val u = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(rec)))).single() as RenderUnit.UserText
-        assertEquals(listOf(SaidPart.Plain("see "), SaidPart.Folded(248, "A\nB"), SaidPart.Plain(" end")), u.parts)
+    fun `人粘贴的块：那台说要折 ⇒ 折成一段，收着那一行是那台写好的 foldText，点开是正文那一截`() {
+        val u = units("said-pasted-fold").single() as RenderUnit.UserText
+        assertEquals(listOf(SaidPart.Plain("see "), SaidPart.Folded("粘贴的内容 · 13 行", (1..13).joinToString("\n"))), u.parts)
+    }
+
+    @Test
+    fun `重试记录画成重试细条：字是那一条写好的 retry_text；相邻的几条并成一条，身份是首条的`() {
+        assertEquals(listOf(RenderUnit.Retry("r-full", "服务器过载 · 重试 2/10 · 01:30 起", "r-full")), units("retry-full"))
+        assertEquals("相邻的并成一条", listOf("r-full"), units("retry-full", "retry-min").map { it.key })
+        assertEquals("中间隔着别的 ⇒ 各一条", listOf("r-full", "a-min#0", "@4096"), units("retry-full", "reply-min", "retry-min").map { it.key })
+    }
+
+    @Test
+    fun `带 error 的回复画成报错卡：卡头是那台写好的 error_title，正文进原文`() {
+        assertEquals(listOf(RenderUnit.ApiError("a-err", "本轮中断 · 额度满", "01:30", "API Error: 429 rate limited", "a-err")), units("reply-error"))
+    }
+
+    @Test
+    fun `细条照会话事实那一串：在 ⇒ 那一串的整句与结局；不在 ⇒ 记录那一行；没接上 ⇒ 收起、整句进紧跟着的报错卡`() {
+        val us = units("retry-full", "retry-min", "reply-error")
+        val strip = us[0] as RenderUnit.Retry
+        assertEquals("事实还没到 ⇒ 记录那一行、在重试", RetryStrip("服务器过载 · 重试 2/10 · 01:30 起", faded = false), RetryLook.strip(strip, emptyList()))
+        val ok = RetryRun("r-full", RetryOutcome.RECOVERED, "重试 3 次后接上")
+        assertEquals("接上了 ⇒ 那一串的整句、变淡", RetryStrip("重试 3 次后接上", faded = true), RetryLook.strip(strip, listOf(ok)))
+        assertEquals("接上了 ⇒ 报错卡照通用那一句", null, RetryLook.next(us, "a-err", listOf(ok)))
+        val failed = RetryRun("r-full", RetryOutcome.FAILED, "重试 10 次仍未接上")
+        assertEquals("没接上 ⇒ 细条收起", null, RetryLook.strip(strip, listOf(failed)))
+        assertEquals("没接上 ⇒ 整句进紧跟着的报错卡", "重试 10 次仍未接上", RetryLook.next(us, "a-err", listOf(failed)))
+        assertEquals("报错卡前面不是细条 ⇒ 通用那一句", null, RetryLook.next(units("reply-error"), "a-err", listOf(failed)))
     }
 
     @Test
@@ -114,16 +136,16 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `没定画法的那几类（交回 · 系统 · 重试 · 标题）不上屏`() {
+    fun `没定画法的那几类（交回 · 系统 · 标题）不上屏`() {
         val silent =
-            listOf("said-system", "said-agent-message", "said-coordinator", "said-command-output", "retry-full", "title-agent", "said-read")
+            listOf("said-system", "said-agent-message", "said-coordinator", "said-command-output", "title-agent", "said-read")
         assertEquals(emptyList<RenderUnit>(), units(*silent.toTypedArray()))
     }
 
     @Test
-    fun `另一会话来话画成来话条：谁发的照 from 原样 · 钟面 · 正文是那台解析好的树`() {
+    fun `另一会话来话画成来话条：抬头是那台写好的 title · 钟面 · 正文是那台解析好的树`() {
         assertEquals(
-            listOf(RenderUnit.Peer("u-said-peer-session", "s2", "01:31", Doc(listOf(MdBlock.P(listOf(Inl.Text("hi")))), emptyList()), "u-said-peer-session")),
+            listOf(RenderUnit.Peer("u-said-peer-session", "会话「s2」", "01:31", Doc(listOf(MdBlock.P(listOf(Inl.Text("hi")))), emptyList()), "u-said-peer-session")),
             units("said-peer-session"),
         )
     }

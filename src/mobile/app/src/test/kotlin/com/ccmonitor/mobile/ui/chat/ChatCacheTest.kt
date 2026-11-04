@@ -165,6 +165,7 @@ class ChatCacheTest {
             assertTrue("第一页随 history-tail 来", link.calls("history-read").isEmpty())
             assertEquals(listOf("u1", "a1#0", "u2"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f1"), cache.anchors["s1"])
+            assertNull("续得上 ⇒ 那台不说那一句", s.state.value.note)
         }
 
     @Test
@@ -191,6 +192,7 @@ class ChatCacheTest {
             runCurrent()
             assertEquals(listOf("n1", "n2#0"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
+            assertEquals("变短那一句是那台写好的", FakeCoreLink.File.SAID["truncated"], s.state.value.note)
         }
 
     @Test
@@ -204,6 +206,7 @@ class ChatCacheTest {
             runCurrent()
             assertEquals(listOf("n1", "n2#0", "n3"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f2"), cache.anchors["s1"])
+            assertEquals("被改写那一句是那台写好的", FakeCoreLink.File.SAID["rewritten"], s.state.value.note)
         }
 
     @Test

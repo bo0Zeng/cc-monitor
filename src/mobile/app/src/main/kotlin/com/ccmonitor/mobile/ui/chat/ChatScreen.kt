@@ -176,6 +176,8 @@ fun ChatTranscript(
                 trailer = { liveCards(state.live) },
                 stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
                 stepWait = state::waitOf,
+                retry = state::retryOf,
+                errorNext = state::errorNextOf,
                 process = { ProcessRow(it, process) },
                 said = hooks,
             )

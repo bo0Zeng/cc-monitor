@@ -24,6 +24,9 @@ import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAccount
 import com.ccmonitor.mobile.core.claude.link.SessionTasks
+import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.RetryLook
+import com.ccmonitor.mobile.core.claude.model.RetryStrip
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -63,6 +66,18 @@ fun headLine(s: ChatUiState): HeadLine? {
 /** 一次工具调用还没配上结果时那一态：会话事实 `pending[]` 里同 id 那一项；不在里面 ⇒ `null`（不画状态）。 */
 fun ChatUiState.waitOf(call: String): PendingCall? = facts?.pending?.firstOrNull { it.id == call }
 
+/** 一条重试细条此刻画什么（照会话事实 `retries[]` 那一串，[RetryLook.strip]）；收起 ⇒ `null`。 */
+fun ChatUiState.retryOf(u: RenderUnit.Retry): RetryStrip? = RetryLook.strip(u, facts?.retries.orEmpty())
+
+/** 报错卡（它的 key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]）；否则 `null`。 */
+fun ChatUiState.errorNextOf(error: String): String? = RetryLook.next(units, error, facts?.retries.orEmpty())
+
+/** 血缘一行：抬头 [head] 是那台写好的那一句（「由「X」启动」·「子会话 N」），后面每条一颗。 */
+data class KinLine(
+    val head: String,
+    val kin: List<Kin>,
+)
+
 /** 「会话信息」抽屉此刻的样子：各格是那台写好的那一句；[failed] 是没问成的那几问各自那台那一句。 */
 data class InfoUi(
     val busy: Boolean = true,
@@ -73,10 +88,10 @@ data class InfoUi(
     val account: String? = null,
     /** 一轮停了、后台命令还在跑 ⇒ 那台写好的那一句（会话事实 `background.text`）；不是这一态 ⇒ `null`。 */
     val background: String? = null,
-    /** 由谁启动（会话事实 `startedBy`：标题 · 点 · 隐藏那一格都是那台给的）；不是谁起的 ⇒ `null`。 */
-    val parent: Kin? = null,
-    /** 它起的子会话（会话事实 `children`，按起的先后）。 */
-    val children: List<Kin> = emptyList(),
+    /** 由谁启动（会话事实 `startedByText` ＋ `startedBy`：标题 · 点 · 隐藏那一格都是那台给的）；不是谁起的 ⇒ `null`。 */
+    val parent: KinLine? = null,
+    /** 它起的子会话（会话事实 `childrenText` ＋ `children`，按起的先后）；一个都没有 ⇒ `null`。 */
+    val children: KinLine? = null,
     /** 有任务才有（没有任务 ⇒ 不画那一段）。 */
     val tasks: TasksList? = null,
     val failed: List<String> = emptyList(),
@@ -115,8 +130,8 @@ class ChatInfo(
                     context = f?.usage?.contextText,
                     account = a?.accountLine,
                     background = f?.background?.text,
-                    parent = f?.startedBy,
-                    children = f?.children.orEmpty(),
+                    parent = f?.startedBy?.let { p -> f.startedByText?.let { KinLine(it, listOf(p)) } },
+                    children = f?.children?.takeIf { it.isNotEmpty() }?.let { c -> f.childrenText?.let { KinLine(it, c) } },
                     tasks = t?.takeIf { it.tasks.isNotEmpty() },
                     failed = failed,
                 )
@@ -178,8 +193,8 @@ private fun InfoSheet(
     ModalBottomSheet(onDismissRequest = onClose) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
             Text(ui.where ?: machine, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            ui.parent?.let { KinRow(copyText("beCcm.item.parent"), listOf(it), onOpen) }
-            if (ui.children.isNotEmpty()) KinRow(copyText("settings.machine.childTab"), ui.children, onOpen)
+            ui.parent?.let { KinRow(it, onOpen) }
+            ui.children?.let { KinRow(it, onOpen) }
             if (ui.busy) Text(copyText("findStrip.status.busy"), style = faint, color = tokens.textFaint)
             ui.writers?.let { Text(it, style = faint) }
             ui.context?.let { Text(it, style = faint) }
@@ -203,19 +218,18 @@ private fun InfoSheet(
     }
 }
 
-/** 血缘一行：抬头那一格（「主会话」·「子会话」）＋ 每条一颗（点 ＋ 标题；隐藏了 ⇒ 接那台那一句），点了切过去。 */
+/** 血缘一行：抬头那一句（那台写好的「由「X」启动」·「子会话 N」）＋ 每条一颗（点 ＋ 标题；隐藏了 ⇒ 接那台那一句），点了切过去。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KinRow(
-    label: String,
-    kin: List<Kin>,
+    line: KinLine,
     onOpen: (String) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+        Text(line.head, style = MaterialTheme.typography.labelMedium, color = tokens.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
         FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            kin.forEach { k ->
+            line.kin.forEach { k ->
                 AssistChip(
                     onClick = { onOpen(k.sid) },
                     label = {
