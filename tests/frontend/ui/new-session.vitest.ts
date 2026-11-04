@@ -687,6 +687,25 @@ describe("目录格 · 最近的 · 更多那几格", () => {
     expect(newRequests()[0]).toMatchObject({ what: { tmuxName: "mine", command: "ccm -- x" }, run: "tmux" });
   });
 
+  it("「更多」标题列的就是展开后在的那几格：那台没有 tmux ⇒ 不写 tmux 会话名；有 tmux 选终端窗口 ⇒ 也不写，切回 tmux ⇒ 写回，展开着的不收起", async () => {
+    const moreHead = (): HTMLElement => dialog().querySelector<HTMLElement>("[data-fold-head]")!;
+    replies.set("session-open-facts", { ...FACTS, hosts: ["direct"], run: "direct" });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(moreHead().textContent).toBe(copyText("newSession.more.fork"));
+    document.body.replaceChildren();
+    replies.set("session-open-facts", FACTS);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(moreHead().textContent).toBe(copyText("newSession.more.plain"));
+    moreHead().click();
+    dialog().querySelector<HTMLInputElement>('input[value="window"]')!.click();
+    expect(moreHead().textContent).toBe(copyText("newSession.more.fork"));
+    expect(moreHead().getAttribute("aria-expanded")).toBe("true");
+    dialog().querySelector<HTMLInputElement>('input[value="tmux"]')!.click();
+    expect(moreHead().textContent).toBe(copyText("newSession.more.plain"));
+  });
+
   it("切到终端窗口 ⇒ 终端名那一格收起、请求里不带它", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
