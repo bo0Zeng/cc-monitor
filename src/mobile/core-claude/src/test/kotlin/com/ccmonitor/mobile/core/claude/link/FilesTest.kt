@@ -75,6 +75,14 @@ class FilesTest {
     }
 
     @Test
+    fun `搜：按名字交词 · 起点 · 只搜起点以下；按内容交起点与那一串（路径照原始字节上线）`() {
+        assertEquals(mapOf("query" to "main", "under" to "/w", "scope" to "under"), FilesFind.args(RemotePath.of("/w"), "main"))
+        assertEquals(mapOf("path" to mapOf("b16" to "2f78ff"), "needle" to "main"), FilesGrep.args(RemotePath(bad), "main"))
+        assertNull("缺必填格 ⇒ 解不出", FilesFind.of(mapOf("hits" to emptyList<Any>())))
+        assertNull(FilesGrep.of(mapOf("hits" to emptyList<Any>())))
+    }
+
+    @Test
     fun `files-ls 每行的门照那台判的画：许读多少 · 不许时那一句；预览门原样留成那一格`() {
         fun gated(
             name: String,

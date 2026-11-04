@@ -44,6 +44,8 @@ class SentRequestsTest {
                 ),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
             FilesDeleteSession.COMMAND to listOf(FilesDeleteSession.args("s")),
+            FilesFind.COMMAND to listOf(FilesFind.args(dir, "main")),
+            FilesGrep.COMMAND to listOf(FilesGrep.args(bin, "main")),
             FilesHome.COMMAND to listOf(emptyMap()),
             FilesLs.COMMAND to listOf(FilesLs.args(bin), FilesLs.dirs("/w")),
             FilesMkdir.COMMAND to listOf(FilesMkdir.args(dir, "d")),

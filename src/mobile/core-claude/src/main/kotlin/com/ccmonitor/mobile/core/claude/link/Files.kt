@@ -11,7 +11,12 @@ import com.ccmonitor.mobile.core.wire.gen.FilesDeleteSessionReq
 import com.ccmonitor.mobile.core.wire.gen.FilesMkdirReq
 import com.ccmonitor.mobile.core.wire.gen.FilesRenameReq
 import com.ccmonitor.mobile.core.wire.gen.FilesWriteTextReq
+import com.ccmonitor.mobile.core.wire.gen.FindReply
+import com.ccmonitor.mobile.core.wire.gen.FindReq
+import com.ccmonitor.mobile.core.wire.gen.FindScope
 import com.ccmonitor.mobile.core.wire.gen.Gate
+import com.ccmonitor.mobile.core.wire.gen.GrepReply
+import com.ccmonitor.mobile.core.wire.gen.GrepReq
 import com.ccmonitor.mobile.core.wire.gen.LsEntry
 import com.ccmonitor.mobile.core.wire.gen.LsHead
 import com.ccmonitor.mobile.core.wire.gen.LsReq
@@ -247,6 +252,32 @@ object FilesLs {
             (head.crumbs.lastOrNull()?.path as? WirePath.Text)?.value,
         )
     }
+}
+
+/** `files-find`：按名字搜（那台的文件清单），起点是 [under]、只搜它以下（`scope: under`）。 */
+object FilesFind {
+    const val COMMAND: String = Commands.FilesFind.NAME
+
+    fun args(
+        under: RemotePath,
+        query: String,
+    ): Map<String, Any?> = Commands.FilesFind.args(FindReq(query = query, under = under.typed, scope = FindScope.UNDER))
+
+    /** 命中（每条带路径 · 是不是目录 · 相对起点所在的目录）；解不出 ⇒ `null`。 */
+    fun of(data: Any?): FindReply? = Commands.FilesFind.reply(data)
+}
+
+/** `files-grep`：按内容搜 [path] 以下的文件（每份第一处命中）。 */
+object FilesGrep {
+    const val COMMAND: String = Commands.FilesGrep.NAME
+
+    fun args(
+        path: RemotePath,
+        needle: String,
+    ): Map<String, Any?> = Commands.FilesGrep.args(GrepReq(path = path.typed, needle = WirePath.Text(needle)))
+
+    /** 命中（相对起点的路径 · 行号 · 那一行）；解不出 ⇒ `null`。 */
+    fun of(data: Any?): GrepReply? = Commands.FilesGrep.reply(data)
 }
 
 /** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录、在哪个目录里）。 */
