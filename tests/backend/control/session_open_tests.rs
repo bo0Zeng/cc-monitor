@@ -150,9 +150,9 @@ impl Rig {
             crate::platform::tmux::TMUX_PLATFORM
         };
         let caps: BTreeSet<String> = crate::control::ccm::ccm_launcher_with(platform)
-                .into_iter()
-                .map(str::to_string)
-                .collect();
+            .into_iter()
+            .map(str::to_string)
+            .collect();
         let list = || -> Result<crate::control::session_batch::Listed, Said> {
             match self.list_err {
                 Some(c) => Err(Said::new(c, "列不出".to_string())),
