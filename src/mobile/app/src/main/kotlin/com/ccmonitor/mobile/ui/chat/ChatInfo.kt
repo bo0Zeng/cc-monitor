@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -9,8 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -18,9 +15,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +55,8 @@ data class HeadLine(
  */
 fun headLine(s: ChatUiState): HeadLine? {
     val face = s.face ?: return null
-    val context = s.facts?.usage?.takeIf { it.contextTone == Tone.WARN }?.contextText
+    val usage = s.facts?.usage
+    val context = if (usage?.contextTone == Tone.WARN) usage.contextText else null
     return HeadLine(face.dot, face.line, context)
 }
 
@@ -78,25 +73,13 @@ data class InfoUi(
     val account: String? = null,
     /** 一轮停了、后台命令还在跑 ⇒ 那台写好的那一句（会话事实 `background.text`）；不是这一态 ⇒ `null`。 */
     val background: String? = null,
-    /** 由谁启动（会话事实 `startedBy`）；不是谁起的 ⇒ `null`。 */
-    val parent: KinChip? = null,
-    /** 它起的子会话（会话事实 `children`）；一条都没有 ⇒ `null`。 */
-    val children: KinKids? = null,
+    /** 由谁启动（会话事实 `startedBy`：标题 · 点 · 隐藏那一格都是那台给的）；不是谁起的 ⇒ `null`。 */
+    val parent: Kin? = null,
+    /** 它起的子会话（会话事实 `children`，按起的先后）。 */
+    val children: List<Kin> = emptyList(),
     /** 有任务才有（没有任务 ⇒ 不画那一段）。 */
     val tasks: TasksList? = null,
     val failed: List<String> = emptyList(),
-)
-
-/** 「由「X」启动」那一颗：点了切到 [sid]。字照文案表 `sessionHead.kin.parent`，标题是那台给的（同桌面会话头）。 */
-data class KinChip(
-    val sid: String,
-    val text: String,
-)
-
-/** 「子会话 n」那一颗：点开列 [kids]（标题 · 点，那台给的），点一行切过去。字照文案表 `sessionHead.kin.children`（同桌面会话头）。 */
-data class KinKids(
-    val text: String,
-    val kids: List<Kin>,
 )
 
 /**
@@ -132,8 +115,8 @@ class ChatInfo(
                     context = f?.usage?.contextText,
                     account = a?.accountLine,
                     background = f?.background?.text,
-                    parent = f?.startedBy?.let { KinChip(it.sid, copyText("sessionHead.kin.parent", "title" to it.title)) },
-                    children = f?.children?.takeIf { it.isNotEmpty() }?.let { KinKids(copyText("sessionHead.kin.children", "n" to it.size), it) },
+                    parent = f?.startedBy,
+                    children = f?.children.orEmpty(),
                     tasks = t?.takeIf { it.tasks.isNotEmpty() },
                     failed = failed,
                 )
@@ -163,7 +146,7 @@ class ChatInfo(
 
 /**
  * 「会话信息」底部抽屉：顶上是这条会话在哪（那台写好的「<目录> · <机器>」；还没问到 ⇒ 机器条那台的名字）；下面各段有才画 ——
- * 血缘两颗（「由「X」启动」点了切过去 · 「子会话 n」点开列子会话、点一行切过去）· 几个进程在写（那台那一句，不是红）·
+ * 血缘（「主会话」一行、「子会话」一行，每条一颗：点 ＋ 那台给的标题 ＋ 隐藏了就带那台那一句，点了切过去）· 几个进程在写（那台那一句，不是红）·
  * 上下文 · 号与额度 · 后台在跑（那台那一句）· 任务（计数那一格 ＋ 那一句 ＋ 每条名字与状态字）；没问成的写那台那一句。
  */
 @Composable
@@ -182,7 +165,7 @@ fun ChatInfoPane(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InfoSheet(
     ui: InfoUi,
@@ -195,12 +178,8 @@ private fun InfoSheet(
     ModalBottomSheet(onDismissRequest = onClose) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
             Text(ui.where ?: machine, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (ui.parent != null || ui.children != null) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                    ui.parent?.let { p -> AssistChip(onClick = { onOpen(p.sid) }, label = { Text(p.text, maxLines = 1, overflow = TextOverflow.Ellipsis) }) }
-                    ui.children?.let { KidsChip(it, onOpen) }
-                }
-            }
+            ui.parent?.let { KinRow(copyText("beCcm.item.parent"), listOf(it), onOpen) }
+            if (ui.children.isNotEmpty()) KinRow(copyText("settings.machine.childTab"), ui.children, onOpen)
             if (ui.busy) Text(copyText("findStrip.status.busy"), style = faint, color = tokens.textFaint)
             ui.writers?.let { Text(it, style = faint) }
             ui.context?.let { Text(it, style = faint) }
@@ -224,25 +203,28 @@ private fun InfoSheet(
     }
 }
 
-/** 「子会话 n」：点开下拉列每一条（点 ＋ 标题，已隐藏的带那一标），点一行切过去。 */
+/** 血缘一行：抬头那一格（「主会话」·「子会话」）＋ 每条一颗（点 ＋ 标题；隐藏了 ⇒ 接那台那一句），点了切过去。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KidsChip(
-    kids: KinKids,
+private fun KinRow(
+    label: String,
+    kin: List<Kin>,
     onOpen: (String) -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        AssistChip(onClick = { open = true }, label = { Text(kids.text) })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            kids.kids.forEach { k ->
-                DropdownMenuItem(
-                    text = { Text(k.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { StatusDot(k.face.dot, k.face.name) },
-                    trailingIcon = k.hidden?.let { { Text(copyText("history.row.hidden"), style = MaterialTheme.typography.bodySmall) } },
-                    onClick = {
-                        open = false
-                        onOpen(k.sid)
+    val tokens = LocalAppTokens.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            kin.forEach { k ->
+                AssistChip(
+                    onClick = { onOpen(k.sid) },
+                    label = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                            Text(k.title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            k.hidden?.let { h -> Text(h.said, color = tokens.textFaint, maxLines = 1) }
+                        }
                     },
+                    leadingIcon = { StatusDot(k.face.dot, k.face.name) },
                 )
             }
         }

@@ -228,8 +228,8 @@ private fun BriefCard(
 private const val BRIEF_LINES = 4
 
 /**
- * 另一个会话发来的话（同桌面那一条）：左 2dp 琥珀条，抬头「会话「from」」＋「消息」＋ 钟面，下面是那台解析好的正文（照树排版）。
- * 那台没说是谁发的 ⇒ 抬头只写「消息」。
+ * 另一个会话发来的话：左 2dp 琥珀条，抬头「消息」＋ 谁发的（记录里的 `from` 原样，没有 ⇒ 不写）＋ 钟面，下面是那台解析好的正文（照树排版）。
+ * 「会话「from」」那一整句要那台写好成一格（同桌面那一条），手机不拼。
  */
 @Composable
 private fun PeerBar(
@@ -247,8 +247,8 @@ private fun PeerBar(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-            unit.from?.let { Text(copyText("speaker.peer.title", "from" to it), style = MaterialTheme.typography.labelMedium) }
-            Text(copyText("kit.toast.region"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(copyText("kit.toast.region"), style = MaterialTheme.typography.labelMedium)
+            unit.from?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             unit.timeText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         unit.doc?.let { MarkdownText(it, "", modifier = Modifier.fillMaxWidth()) }
@@ -262,7 +262,7 @@ private fun NoticeLine(
     matched: Boolean,
 ) {
     Text(
-        unit.row,
+        unit.text,
         Modifier.fillMaxWidth().matchHighlight(matched),
         style = monoSmall,
         color = if (unit.failed) LocalAppTokens.current.errorText else MaterialTheme.colorScheme.onSurfaceVariant,

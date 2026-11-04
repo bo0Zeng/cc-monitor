@@ -128,15 +128,13 @@ class RecordUnitsTest {
         )
     }
 
+    @Suppress("UNCHECKED_CAST")
     @Test
     fun `后台任务收场通知画一行：字是那台写好的 row，失败照 end`() {
         assertEquals(listOf(RenderUnit.Notice("u-said-task-notification", "后台任务 finished 完成 · 01:31", false, "u-said-task-notification")), units("said-task-notification"))
         val r = Json.obj(File(repoRoot(), "tests/__fixtures__/record.golden.jsonl").readLines().first { it.contains("\"case\":\"said-task-notification\"") })!!
-        @Suppress("UNCHECKED_CAST")
         val rec = (r["record"] as Map<String, Any?>).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
         val who = (rec["who"] as Map<String, Any?>).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
         who["speaker"] = (who["speaker"] as Map<String, Any?>) + ("end" to "failed")
         rec["who"] = who
         val failed = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(rec)))).single() as RenderUnit.Notice

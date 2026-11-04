@@ -101,10 +101,15 @@ sealed interface RenderUnit {
     val key: String
     val sourceUuid: String?
 
+    /** 有一段正文的那几种（搜索照 [text] 搜）。 */
+    sealed interface Worded : RenderUnit {
+        val text: String
+    }
+
     /** 用户输入的真实 prompt（非 meta、非 tool_result）。 */
     data class UserText(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
         /** 本地发送状态；`null` ＝ 记录里的那一条，或已送到。 */
         val delivery: DeliveryState? = null,
@@ -116,7 +121,7 @@ sealed interface RenderUnit {
         val attachments: List<Attachment> = emptyList(),
         /** 正文分段（记录成品带了人粘贴的块才有：只露正文那一截，那台说要折的折成一段）；空 ⇒ 照 [text] 画。 */
         val parts: List<SaidPart> = emptyList(),
-    ) : RenderUnit
+    ) : Worded
 
     /** 助手正文：后端解析好的块树（`Block.Prose` 的 `doc`），卡上照树排版；`more` 是后端写好的「展开 {大小}」那一格（照放进按钮）。 */
     data class AssistantMarkdown(
@@ -124,17 +129,17 @@ sealed interface RenderUnit {
         val doc: Doc,
         val more: String,
         override val sourceUuid: String?,
-    ) : RenderUnit {
+    ) : Worded {
         /** 树上的字（搜索 · 跟到底那一格量长短用），取一次留着。 */
-        val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc.plainText() }
+        override val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc.plainText() }
     }
 
     /** 助手思考块，默认折叠。 */
     data class Thinking(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /**
      * 一次工具调用，已把 tool_use 与其后匹配的 tool_result 合并。
@@ -187,20 +192,20 @@ sealed interface RenderUnit {
      */
     data class Brief(
         override val key: String,
-        val text: String,
+        override val text: String,
         val timeText: String?,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /** `/compact` 续接摘要，默认折叠（超长，点开看全文）。 */
     data class CompactSummary(
         override val key: String,
-        val text: String,
+        override val text: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /**
-     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头写谁发的（[from] 原样，进文案表那一句）＋ [timeText]，
+     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头是谁发的（[from] 原样）＋ [timeText]，
      * 正文是核心解析好的块树 [doc]（没有正文 ⇒ `null`，只画抬头）。
      */
     data class Peer(
@@ -209,18 +214,18 @@ sealed interface RenderUnit {
         val timeText: String?,
         val doc: Doc?,
         override val sourceUuid: String?,
-    ) : RenderUnit {
+    ) : Worded {
         /** 树上的字（搜索用），取一次留着。 */
-        val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc?.plainText().orEmpty() }
+        override val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc?.plainText().orEmpty() }
     }
 
-    /** 后台任务的收场通知（`speaker.taskNotification`）：一行，字是核心写好的 [row]；[failed] ＝ 那台说它失败了。 */
+    /** 后台任务的收场通知（`speaker.taskNotification`）：一行，字是核心写好的那一行（`row`）；[failed] ＝ 那台说它失败了。 */
     data class Notice(
         override val key: String,
-        val row: String,
+        override val text: String,
         val failed: Boolean,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 
     /** 「已中断本轮 · {time}」那一道细线（记录里 `speaker.interrupt` 那一条）；[timeText] 是核心写好的钟面。 */
     data class Interrupt(
@@ -235,29 +240,22 @@ sealed interface RenderUnit {
      */
     data class Unread(
         override val key: String,
-        val text: String,
+        override val text: String,
         val timeText: String?,
         val excerpt: String,
         override val sourceUuid: String?,
-    ) : RenderUnit
+    ) : Worded
 }
 
 /** 会话内搜索用的可搜索纯文本（工具调用含名/参数/输出，便于搜命令、文件名、输出）。 */
 fun RenderUnit.searchableText(): String =
     when (this) {
-        is RenderUnit.UserText -> text
-        is RenderUnit.AssistantMarkdown -> text
-        is RenderUnit.Thinking -> text
+        is RenderUnit.Worded -> text
         is RenderUnit.ToolCall -> toolCallSearchable()
         is RenderUnit.SlashCommand -> if (args.isEmpty()) name else "$name $args"
         is RenderUnit.BashInput -> command
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
-        is RenderUnit.Brief -> text
-        is RenderUnit.CompactSummary -> text
-        is RenderUnit.Peer -> text
-        is RenderUnit.Notice -> row
         is RenderUnit.Interrupt -> ""
-        is RenderUnit.Unread -> text
     }
 
 private fun RenderUnit.ToolCall.toolCallSearchable(): String =

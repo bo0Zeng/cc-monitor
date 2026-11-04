@@ -191,9 +191,8 @@ class ChatInfoTest {
             val ui = info.state.value!!
             assertEquals("~/work/orders · devbox", ui.where)
             assertEquals("后台任务运行中 · npm run dev · 18m", ui.background)
-            assertEquals("s0" to "由「发版前整理」启动", ui.parent?.let { it.sid to it.text })
-            assertEquals("子会话 2", ui.children?.text)
-            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children?.kids?.map { it.sid to it.title })
+            assertEquals("s0" to "发版前整理", ui.parent?.let { it.sid to it.title })
+            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children.map { it.sid to it.title })
         }
 
     @Test
@@ -207,6 +206,6 @@ class ChatInfoTest {
             assertNull(ui.where)
             assertNull(ui.background)
             assertNull(ui.parent)
-            assertNull(ui.children)
+            assertEquals(emptyList<Any>(), ui.children)
         }
 }
