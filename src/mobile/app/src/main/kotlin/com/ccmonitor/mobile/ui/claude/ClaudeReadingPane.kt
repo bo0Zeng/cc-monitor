@@ -176,11 +176,24 @@ private fun UnitCard(
         is RenderUnit.Brief -> BriefCard(unit, matched)
         is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
         is RenderUnit.Peer -> PeerBar(unit, matched)
+        is RenderUnit.Notice, is RenderUnit.Interrupt, is RenderUnit.Unread, is RenderUnit.Retry, is RenderUnit.ApiError -> TimelineLine(unit, matched, steps)
+    }
+}
+
+/** 时间线上的那几种细条与报错卡：后台任务收场 · 中断 · 认不出的那一条 · 重试 · 上游失败。 */
+@Composable
+private fun TimelineLine(
+    unit: RenderUnit,
+    matched: Boolean,
+    steps: Steps,
+) {
+    when (unit) {
         is RenderUnit.Notice -> NoticeLine(unit, matched)
         is RenderUnit.Interrupt -> InterruptLine(unit)
         is RenderUnit.Unread -> UnreadLine(unit, matched)
         is RenderUnit.Retry -> steps.retry(unit)?.let { RetryLine(it, matched) }
         is RenderUnit.ApiError -> ApiErrorCard(unit, steps.errorNext(unit.key), matched)
+        else -> Unit
     }
 }
 

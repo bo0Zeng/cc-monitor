@@ -129,10 +129,11 @@ class ChatInfoTest {
                 )
             val records = listOf(FakeCoreLink.human("u0", "问"), retry, error)
             val calm = opened(records = records)
-            val strip = calm.chat.units.filterIsInstance<RenderUnit.Retry>().single()
+            val units = calm.chat.units
+            val strip = units.filterIsInstance<RenderUnit.Retry>().single()
             assertEquals("事实里还没有 ⇒ 记录那一行", "rec-line", calm.chat.retryOf(strip)?.text)
             assertNull("事实里还没有 ⇒ 报错卡照通用那一句", calm.chat.errorNextOf("a-err"))
-            assertEquals("err-title", calm.chat.units.filterIsInstance<RenderUnit.ApiError>().single().title)
+            assertEquals(listOf("err-title"), units.filterIsInstance<RenderUnit.ApiError>().map { it.title })
             val run = mapOf("id" to "r1", "outcome" to "failed", "text" to "run-text")
             val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "retries" to listOf(run)), records = records)
             assertNull("没接上 ⇒ 细条收起", o.chat.retryOf(strip))
