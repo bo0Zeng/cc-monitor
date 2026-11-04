@@ -778,14 +778,15 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
     );
 }
 
-/// 竞速原因词：解析不出 · 拨不通 · 超时各一个词；别的（握手 · 指纹）说不清 ⇒ 原因不明。
+/// 竞速原因词：解析不出 · 拨不通 · 超时 · 主机指纹不符各一个词；别的（握手）说不清 ⇒ 原因不明。
 #[test]
 fn the_race_reason_word_follows_the_worst_stage() {
     let w = |k: &str| copy_text(k, &[]);
     assert_eq!(race_reason(Some("resolve")), w("reason.dial.resolve"));
     assert_eq!(race_reason(Some("tcp")), w("reason.dial.refused"));
     assert_eq!(race_reason(Some("timeout")), w("reason.link.noAnswer"));
-    assert_eq!(race_reason(Some("hostkey")), w("reason.io.unknown"));
+    assert_eq!(race_reason(Some("hostkey")), w("reason.dial.hostKey"));
+    assert_eq!(race_reason(Some("other")), w("reason.io.unknown"));
     assert_eq!(race_reason(None), w("reason.io.unknown"));
 }
 
