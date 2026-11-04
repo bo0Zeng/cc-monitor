@@ -85,7 +85,15 @@ interface ResidentCore {
         withinMs: Long,
     ): Long
 
-    /** 撤那一趟（[stage] 回的编号）：本机那一份当场不再读。 */
+    /** 拉进内存那一半（[path] 是线上 `WirePath` 的 JSON，[cap] 门给的上限）：回问答编号，走到哪经 `moved`、结局经 `reply`；这台不在 ⇒ 0。 */
+    fun read(
+        handle: Long,
+        path: String,
+        cap: Long,
+        withinMs: Long,
+    ): Long
+
+    /** 撤那一趟（[stage] · [read] 回的编号）：在问的那一块当场丢下。 */
     fun transferStop(id: Long)
 
     /** 起一组（[want] 是 JSON；`{kept}` ⇒ 接回落盘那一份）：回编号，事经 `batch` 那一种交回、落盘那一份经 `batch_keep`；这台不在 · 读不动 ⇒ 0。 */
@@ -271,6 +279,7 @@ class ResidentFeed(
         val id =
             when (how) {
                 is Transfer.Stage -> core.stage(h, fd(), how.name, withinMs)
+                is Transfer.Pull -> core.read(h, Json.line(how.path.wire), how.cap, withinMs)
             }
         if (id == 0L) return Reply.LinkDown
         moving[id] = moved

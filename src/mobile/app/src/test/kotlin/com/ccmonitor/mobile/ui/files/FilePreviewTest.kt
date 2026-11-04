@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.ui.files
 
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.Transfer
+import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.core.wire.gen.TextPreview
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
@@ -52,5 +54,37 @@ class FilePreviewTest {
         runTest {
             val got = FilePreview(link(hl = Reply.LinkDown)) { "box" }.text(path, TextPreview(cap = 100, lang = "rs")).getOrThrow()
             assertEquals(FilePreview.Text(code, emptyList()), got)
+        }
+
+    @Test
+    fun `门是 Image ⇒ 照门的上限经核心分块读，交回图的字节`() =
+        runTest {
+            val l =
+                FakeCoreLink().apply {
+                    transferred = { Reply.Ok(mapOf("bytes" to 3.0, "content" to mapOf("b16" to "89504e"), "undecodable" to "解不开")) }
+                }
+            val png = RemotePath.of("/w/p.png")
+            val got = FilePreview(l) { "box" }.show(png, PreviewGate.Image(4_194_304)).getOrThrow()
+            assertEquals(Transfer.Pull(png, 4_194_304), l.transfers.single().first)
+            assertTrue(got is FilePreview.Image && got.bytes.contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e)))
+            assertEquals("解不开", (got as FilePreview.Image).undecodable)
+        }
+
+    @Test
+    fun `门是 Text ⇒ 照文本读，不走分块`() =
+        runTest {
+            val l = link()
+            val got = FilePreview(l) { "box" }.show(path, PreviewGate.Text(TextPreview(cap = 100))).getOrThrow()
+            assertEquals(FilePreview.Text(code, emptyList()), got)
+            assertTrue(l.transfers.isEmpty())
+        }
+
+    @Test
+    fun `门不许 ⇒ 那台那一句，不读`() =
+        runTest {
+            val l = link()
+            val got = FilePreview(l) { "box" }.show(path, PreviewGate.No("太大")).exceptionOrNull()
+            assertEquals("太大", got?.message)
+            assertTrue(l.transfers.isEmpty() && l.calls("files-read-text").isEmpty())
         }
 }

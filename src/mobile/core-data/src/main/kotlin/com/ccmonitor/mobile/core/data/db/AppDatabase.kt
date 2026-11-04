@@ -18,7 +18,7 @@ import androidx.room.TypeConverters
         Draft::class,
         PendingBatch::class,
     ],
-    version = 25,
+    version = 26,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class, HostConverters::class)

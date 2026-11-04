@@ -191,6 +191,18 @@ class SentRequestsTest {
         }
     }
 
+    /** 新起 · 恢复都不交 `run`：放在哪由那台定（`default_run`），手机不替它选宿主。 */
+    @Test
+    fun newAndResumeLeaveTheHostToTheMachine() {
+        val asks =
+            listOf(
+                SessionOpen.newIn("/w", "t", "claude", "hi"),
+                SessionOpen.newIn("/w", "t", "claude", "hi", account = "a", rotation = SessionOpen.Rotation("x")),
+                SessionOpen.resume("s"),
+            )
+        for (a in asks) assertTrue("这一份交了 run：${Json.args(a)}", "run" !in a)
+    }
+
     /** 表与 `link/` 里的命令名（取生成的 `Commands.<命令>.NAME` · 写着的）两向相等；写着 `COMMAND` 的那几处必是后端命令表里有的命令。 */
     @Test
     fun theTableCoversEveryCommandTheLinkNames() {

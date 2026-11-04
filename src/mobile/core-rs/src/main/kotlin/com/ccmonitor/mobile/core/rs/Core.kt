@@ -207,6 +207,17 @@ object Core {
         withinMs: Long,
     ): Long
 
+    /**
+     * 拉进内存那一半：那台的 [path]（线上 `WirePath` 的 JSON）逐块读回、过 [cap]（门给的上限）就停。回问答编号：
+     * 每块之后一行 `moved`，结局 `reply`：成了 ⇒ `data {bytes, content: {b16}}`。这台不在 ⇒ 0。
+     */
+    external fun transferRead(
+        handle: Long,
+        path: String,
+        cap: Long,
+        withinMs: Long,
+    ): Long
+
     /** 撤问答编号 [id] 那一趟（［停］）：在问的那一块当场丢下，本机那一份不再写；之后不回结局。 */
     external fun transferStop(id: Long)
 

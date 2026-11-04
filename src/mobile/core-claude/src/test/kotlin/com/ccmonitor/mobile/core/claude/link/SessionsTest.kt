@@ -31,12 +31,11 @@ class SessionsTest {
         )
 
     @Test
-    fun `session-open 新起：在那台 tmux 里起那一家，带票、第一句随起交；不带模型 · 权限 · 账号（跟随默认）`() {
+    fun `session-open 新起：起那一家，带票、第一句随起交；不带宿主 · 模型 · 权限 · 账号（跟随那台）`() {
         val args = SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "codex", prompt = "你好")
         assertEquals(
             mapOf(
                 "what" to mapOf("kind" to "new", "agent" to "codex", "cwd" to "~/proj", "prompt" to "你好"),
-                "run" to "tmux",
                 "local" to false,
                 "ticket" to "t-1",
                 "client" to "mobile",
@@ -46,9 +45,9 @@ class SessionsTest {
     }
 
     @Test
-    fun `session-open 另几形：恢复照 tmux · 接回与开 shell 不带 run（放在哪由那台定）`() {
+    fun `session-open 另几形：恢复 · 接回 · 开 shell 都不带 run（放在哪由那台定）`() {
         assertEquals(
-            mapOf("what" to mapOf("kind" to "resume", "sid" to "s1"), "run" to "tmux", "local" to false, "client" to "mobile"),
+            mapOf("what" to mapOf("kind" to "resume", "sid" to "s1"), "local" to false, "client" to "mobile"),
             SessionOpen.resume("s1"),
         )
         assertEquals(mapOf("what" to mapOf("kind" to "look", "session" to "demo"), "local" to false, "client" to "mobile"), SessionOpen.look("demo"))

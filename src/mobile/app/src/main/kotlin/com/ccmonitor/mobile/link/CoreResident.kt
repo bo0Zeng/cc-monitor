@@ -49,6 +49,13 @@ object CoreResident : ResidentCore {
         withinMs: Long,
     ): Long = Core.transferStage(handle, fd, name, withinMs)
 
+    override fun read(
+        handle: Long,
+        path: String,
+        cap: Long,
+        withinMs: Long,
+    ): Long = Core.transferRead(handle, path, cap, withinMs)
+
     override fun transferStop(id: Long) = Core.transferStop(id)
 
     override fun batchStart(

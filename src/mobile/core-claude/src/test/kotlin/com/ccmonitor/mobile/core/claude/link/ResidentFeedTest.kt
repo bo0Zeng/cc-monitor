@@ -153,6 +153,16 @@ class ResidentFeedTest {
             return 40L + transfers.size
         }
 
+        override fun read(
+            handle: Long,
+            path: String,
+            cap: Long,
+            withinMs: Long,
+        ): Long {
+            transfers += listOf("read", path, cap, withinMs)
+            return 40L + transfers.size
+        }
+
         override fun deploy(
             handle: Long,
             slots: String,
@@ -429,6 +439,20 @@ class ResidentFeedTest {
             core.emit("reply", """{"call":41,"end":"ok","data":{"key":"k"}}""")
             assertEquals(Reply.Ok(mapOf("key" to "k")), up.await())
             assertEquals("别的那一趟的不算；总数不知道 ⇒ -1", listOf(5L to 10L, 10L to -1L), seen)
+        }
+
+    @Test
+    fun `拉进内存：路径照线上那一形 · 上限交给核心，不开本机那一份；读回的字节照回包解`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val odd = RemotePath(byteArrayOf(0x2f, 0xff.toByte()))
+            val got = async { f.transfer(Transfer.Pull(odd, 100), { error("拉进内存不开本机那一份") }, 9_000) { _, _ -> } }
+            assertEquals(listOf<Any>("read", """{"b16":"2fff"}""", 100L, 9_000L), core.transfers.single())
+            core.emit("reply", """{"call":41,"end":"ok","data":{"bytes":2,"content":{"b16":"89ff"},"undecodable":"解不开"}}""")
+            val read = Transfer.Pull.of((got.await() as Reply.Ok).data)
+            assertEquals(listOf(0x89.toByte(), 0xff.toByte()), read?.bytes?.toList())
+            assertEquals("解不开", read?.undecodable)
         }
 
     @Test

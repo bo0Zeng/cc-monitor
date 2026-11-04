@@ -90,7 +90,8 @@ interface CoreLink {
     /**
      * 分块传（循环在核心里，桌面同一份）：[fd] 现开本机那一份、交出描述符（核心用完就关；开不了就抛 [java.io.IOException]）。
      * 每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
-     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`。
+     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`；
+     * [Transfer.Pull]：读进内存（[fd] 不调），成了 ⇒ `{bytes, content, undecodable}`（[Transfer.Pull.of] 解）。
      */
     suspend fun transfer(
         how: Transfer,
@@ -156,6 +157,28 @@ sealed interface Transfer {
     data class Stage(
         val name: String,
     ) : Transfer
+
+    /** 拉进内存那一半：那台的 [path] 逐块读回、过 [cap]（门给的上限）就停；不碰本机文件（[CoreLink.transfer] 的 `fd` 不开）。 */
+    data class Pull(
+        val path: RemotePath,
+        val cap: Long,
+    ) : Transfer {
+        /** 读回的那一份：原样字节 ＋ 本机解不开时屏上那一句（核心写的）。 */
+        class Got(
+            val bytes: ByteArray,
+            val undecodable: String,
+        )
+
+        companion object {
+            /** 成了的回包 `{bytes, content: {b16}, undecodable}` ⇒ [Got]；形状不对 ⇒ `null`。 */
+            fun of(data: Any?): Got? {
+                val m = data as? Map<*, *> ?: return null
+                val bytes = ((m["content"] as? Map<*, *>)?.get("b16") as? String)?.let(::unhex) ?: return null
+                val undecodable = m["undecodable"] as? String ?: return null
+                return Got(bytes, undecodable)
+            }
+        }
+    }
 }
 
 /** 一问一答默认等多久。 */
