@@ -130,3 +130,16 @@ fn an_unknown_remote_origin_says_so_instead_of_pretending() {
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
     );
 }
+
+/// 远端那台在不在只有一个源：本机后端推来的那台成品（界面照 `MachineState` 画）。壳的状态口对远端不表态（`channel: null`），
+/// 不拿自己记的那台 hello 另答一份 —— 两个源里只要一个不更新，界面就一处说在线、一处说离线。
+#[test]
+fn the_status_port_does_not_answer_whether_a_remote_is_up() {
+    let ledger = crate::backend_policy::DeathLedger::default();
+    let st = backend_status_now("某远端".into(), &ledger).expect("远端那一问照样答得出");
+    assert_eq!(
+        serde_json::to_value(&st).unwrap()["channel"],
+        serde_json::Value::Null,
+        "远端那一格壳又在答在不在"
+    );
+}

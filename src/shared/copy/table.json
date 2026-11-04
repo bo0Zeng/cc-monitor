@@ -4056,9 +4056,8 @@
     "front.body.detached": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 · 未接终端",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "会话在跑 · 未接终端",
+      "args": []
     },
     "front.body.background": {
       "kind": "body",
@@ -21533,7 +21532,7 @@
     "acctNew.name.example": {
       "kind": "control",
       "role": "标签",
-      "zh": "b",
+      "zh": "work",
       "args": []
     },
     "acctNew.name.commands": {

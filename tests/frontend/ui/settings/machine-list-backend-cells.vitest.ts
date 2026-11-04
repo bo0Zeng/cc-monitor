@@ -63,6 +63,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { BACKEND_UNREGISTERED_WHY, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
+import type { MachineState } from "../../../../src/frontend/ui/settings/machine-state";
 import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
@@ -105,7 +106,12 @@ async function mount(
   opts: { cellsThrow?: boolean } = {},
 ): Promise<{ sec: RemoteSection; backend: BackendSection }> {
   ipc.hosts = hosts;
-  const backend = new BackendSection({ headless: true, hosted: true });
+  // 远端那一格的在不在照后端推来的那台成品：甲机此刻在线。
+  const backend = new BackendSection({
+    headless: true,
+    hosted: true,
+    stateOf: (o) => (o === "甲机" ? ({ offline: false } as MachineState) : null),
+  });
   cur.backend = backend;
   cur.cellsThrow = opts.cellsThrow;
   pageBox.replaceChildren();

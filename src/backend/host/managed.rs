@@ -135,19 +135,7 @@ pub fn tag_pid(pid: u32, sid: &str) -> Option<Tagged> {
 /// 认法：这个进程环境里的 `CCM_HOST`（托管进程给子进程设的，[`run::HOST_ENV`]；里面的 ccm · claude 原样继承）。
 /// 没设 ⇒ `None`；环境读不到（Windows）⇒ 按进程祖先认（[`host_by_ancestry`]），认不出 ⇒ `None`。认出了 ⇒ 容器就是那个托管终端；事实里已是这个 sid ⇒ 不写；否则经托管口发 `tag`，等托管进程写完才回。
 pub(crate) fn tag_pid_at(own: &Own, pid: u32, sid: &str) -> Option<Tagged> {
-    use crate::platform::proc::{parent_of, proc_env_var, EnvRead};
-    let id = match proc_env_var(pid, run::HOST_ENV) {
-        EnvRead::Value(v) => v.trim().to_string(),
-        EnvRead::Unset => return None,
-        // 环境读不到（Windows 上读不到别的进程的环境）⇒ 按祖先认。
-        EnvRead::Unreadable => {
-            let hosts: Vec<(String, u32)> = home::alive(own)
-                .into_iter()
-                .filter_map(|f| f.child_pid.map(|c| (f.id, c)))
-                .collect();
-            host_by_ancestry(pid, &hosts, parent_of)?
-        }
-    };
+    let id = host_of_pid(own, pid)?;
     // 形状不对 · sid 不是会话 id：说得出它在托管终端里，但不往里写没核过的字符串。
     if !home::id_ok(&id) {
         tracing::warn!(
@@ -178,6 +166,45 @@ pub(crate) fn tag_pid_at(own: &Own, pid: u32, sid: &str) -> Option<Tagged> {
         }
     };
     Some((container, wrote))
+}
+
+/// `pid` 住在哪个托管终端里（打标与「谁在显示它」同一处认法）：它环境里的 `CCM_HOST`（[`run::HOST_ENV`]）；
+/// 环境读不到（Windows 上读不到别的进程的环境）⇒ 按进程祖先认（[`host_by_ancestry`]）。不在托管终端里 ⇒ `None`。
+fn host_of_pid(own: &Own, pid: u32) -> Option<String> {
+    use crate::platform::proc::{parent_of, proc_env_var, EnvRead};
+    match proc_env_var(pid, run::HOST_ENV) {
+        EnvRead::Value(v) => Some(v.trim().to_string()),
+        EnvRead::Unset => None,
+        EnvRead::Unreadable => {
+            let hosts: Vec<(String, u32)> = home::alive(own)
+                .into_iter()
+                .filter_map(|f| f.child_pid.map(|c| (f.id, c)))
+                .collect();
+            host_by_ancestry(pid, &hosts, parent_of)
+        }
+    }
+}
+
+/// 附着端里显示会话的那几个真终端（后端那一端不算）：`(进程号, 最近动静秒)`，报不出进程号 ⇒ `None`；最近动静在前。**纯函数**。
+pub(crate) fn terminal_ends(rows: Vec<wire::ClientRow>) -> Vec<(Option<u32>, u64)> {
+    let mut ends: Vec<(Option<u32>, u64)> = rows
+        .into_iter()
+        .filter(|r| r.kind == wire::WhoKind::Terminal)
+        .map(|r| (r.pid, u64::try_from(r.last_ms / 1000).unwrap_or(0)))
+        .collect();
+    ends.sort_by_key(|e| std::cmp::Reverse(e.1));
+    ends
+}
+
+/// `pid` 住在托管终端里 ⇒ 此刻附着在那个托管终端上的真终端（[`terminal_ends`]；`Ok(空)` ＝ 一个都没有，问托管口没问成 ⇒ `Err`）；
+/// 不住在托管终端里（或名单的家没装）⇒ `None`。
+pub fn terminal_ends_of_pid(pid: u32) -> Option<std::io::Result<Vec<(Option<u32>, u64)>>> {
+    let own = HOME.get()?;
+    let id = host_of_pid(own, pid)?;
+    let asked = home::sock_of(own, &id)
+        .map_err(|s| std::io::Error::other(s.logged()))
+        .and_then(|sock| client::clients(&sock));
+    Some(asked.map(terminal_ends))
 }
 
 /// 往上走几层父进程就不走了（会话里的 claude 离托管终端的子进程至多隔着几层外壳；父进程表成环时也靠它停）。

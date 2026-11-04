@@ -1790,7 +1790,9 @@ mod g6_dependency_signoff {
     const DEV_DEPS: &str = "[dev-dependencies]";
     /// 只在远端 musl 版才链的那一段（今天只有分配器 `mimalloc`，判据 `allocator_guard`）。
     const MUSL_DEPS: &str = "[target.'cfg(target_env = \"musl\")'.dependencies]";
-    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS];
+    /// 只在 Windows 版才链的那一段（今天只有系统时区名 → IANA 名那一样 `iana-time-zone`，`platform/local_tz.rs`）。
+    const WIN_DEPS: &str = "[target.'cfg(windows)'.dependencies]";
+    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS, WIN_DEPS];
     /// 「我们写下的依赖」的版本与缺省 feature 住的那一段（根清单）：各成员段里只写 `<名>.workspace = true`。
     const WS_DEPS: &str = "[workspace.dependencies]";
     /// 同一棵 workspace 里不归本判据管的成员（目录, 为什么）：它们的清单手机那一侧也单读，版本照旧自己写、与根清单那一段对齐。
@@ -2329,6 +2331,14 @@ mod g6_dependency_signoff {
             "远端 musl 版的全局分配器（`main.rs` 那一处 `#[global_allocator]`）：它只管进程自己的堆 —— \
              向内核要页、还页（mmap / madvise），不开文件、不起进程；缺省 feature 为空（不开 override / secure）。\
              写不写盘：分配器的接口里没有路径这一样东西（用法签字，没扫它带的 C 源）",
+        ),
+        (
+            "iana-time-zone",
+            WIN_DEPS,
+            UNMEASURED,
+            "Windows 版取这台的时区名（`platform/local_tz.rs::iana_name` 那一臂）：只调 `get_timezone()`，\
+             在 Windows 上问系统接口拿时区名、映射成 IANA 名，名字再过一遍内嵌时区库才用。\
+             写不写盘：那个口只读系统时区设置，不写盘、不起进程（用法签字，没扫它的源码）",
         ),
         (
             "walkdir",

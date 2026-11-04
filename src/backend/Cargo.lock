@@ -498,6 +498,7 @@ dependencies = [
  "copy-core",
  "creds-core",
  "guard-core",
+ "iana-time-zone",
  "jiff",
  "libc",
  "notify",

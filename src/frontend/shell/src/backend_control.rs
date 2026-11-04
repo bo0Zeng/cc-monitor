@@ -38,8 +38,8 @@ pub struct BackendStatus {
     /// 本机后端起没起来；远端 ⇒ `null`（各台的状态成品在本机后端）。
     pub local: Option<crate::ui_contract::LocalBackend>,
     pub origin: String,
-    /// 那台的通道在不在（本机 ⇒ 本机那条连接；别台 ⇒ 本机后端转来的那台此刻那一条）。
-    pub channel: bool,
+    /// 本机那条连接在不在；远端 ⇒ `null`（那台在不在只看本机后端推来的那台成品 `MachineState`，壳不另答一份）。
+    pub channel: Option<bool>,
     pub pid: Option<u32>,
     pub attempts: Option<u32>,
     /// 走没走过脱离那条路；远端 ⇒ `null`。
@@ -47,7 +47,7 @@ pub struct BackendStatus {
     pub health: crate::backend_policy::HealthFace,
 }
 
-/// 这台机的后端现在什么状态。「通道在不在」两侧同一问（`inbound_client::offer_of`：本机那条连接 · 本机后端转来的那台 hello，都在 hello 之后才有）。
+/// 这台机的后端现在什么状态。「通道在不在」只答本机（本机那条连接 hello 之后才有）；远端那台在不在的唯一源是本机后端推来的成品。
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上）—— 天然不对称，所以它们是 `null`。
 /// `async`（`INVARIANTS §10`）：本机那一支要拿句柄表的锁，进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
@@ -69,17 +69,18 @@ pub(crate) fn backend_status_now(
     ledger: &crate::backend_policy::DeathLedger,
 ) -> Result<BackendStatus, Said> {
     check_origin(&origin)?;
-    let channel =
-        crate::inbound_client::offer_of(&cmd_wire::Machine::named(origin.clone())).is_some();
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。
     // 本机后端起没起来同一处分派（按通道与手上这一版）；各台的状态成品在本机后端（`machine-read` · `changed {machine}`）⇒ 远端 `null`。
     // 死亡账是本机后端的账，同一处分派：远端那一格是空账 —— 远端退出状态在别人机器上拿不到，「没人在记」正是实情，
     //   那一格说「答不出来」（判定在 `backend_policy::health_face`）。不填 `null`：那与 `pid` / `attempts` 不是一件事。
-    let (pid, attempts, detached, local, h) = if is_local(&origin) {
+    // 通道那一格同一处分派：只答本机；远端那台在不在只看本机后端推来的成品（界面照 `MachineState` 画），壳不另答。
+    let (channel, pid, attempts, detached, local, h) = if is_local(&origin) {
+        let channel = crate::inbound_client::local_client().is_some();
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
+            Some(channel),
             p,
             a,
             Some(crate::local_backend_host::is_detached()),
@@ -91,6 +92,7 @@ pub(crate) fn backend_status_now(
         )
     } else {
         (
+            None,
             None,
             None,
             None,

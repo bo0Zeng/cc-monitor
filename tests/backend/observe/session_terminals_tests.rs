@@ -341,6 +341,57 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 托管终端里的会话：显示它的只算附着上来的真终端（逐个读它们的环境，最近动静在前），不拿 claude 自己的环境
+/// （那是起后端那条 ssh 继承来的，`front.body.mismatch` 那一张就是这么来的）。一个附着端都没有 ⇒ `detached`
+/// （能接回去，本机照这个原因给［在终端里打开］）、不在 tmux 里；问不到附着端 · 一个都读不出 ⇒ `unreadable`。
+#[test]
+fn a_hosted_session_is_shown_only_by_the_terminals_attached_to_it() {
+    let ssh = |port: u16| SshConnection {
+        client_addr: "192.0.2.5".into(),
+        client_port: port,
+        server_addr: "192.0.2.9".into(),
+        server_port: 22,
+    };
+    let read = |pid: u32, at: u64| {
+        (pid != 99).then(|| Terminal {
+            ssh: Some(ssh(u16::try_from(pid).unwrap())),
+            activity: Some(at),
+            window: None,
+        })
+    };
+    let none = hosted_shown(Ok(vec![]), read);
+    assert_eq!(none, Shown::HostedDetached);
+    assert_eq!(
+        serde_json::to_value(product(&none)).expect("json"),
+        serde_json::json!({ "terminals": [], "why": "detached", "tmux": false }),
+        "没附着端 ⇒ 能接回去的那个原因，不是「进程没有终端」"
+    );
+    assert_eq!(
+        hosted_shown(
+            Ok(vec![
+                (Some(5001), 8),
+                (None, 7),
+                (Some(99), 6),
+                (Some(5002), 5)
+            ]),
+            read
+        ),
+        Shown::By {
+            terminals: vec![read(5001, 8).unwrap(), read(5002, 5).unwrap()],
+            tmux: false,
+        },
+        "读得出的那几个按交来的先后（最近动静在前）"
+    );
+    assert_eq!(
+        hosted_shown(Ok(vec![(None, 7), (Some(99), 6)]), read),
+        Shown::Unreadable
+    );
+    assert_eq!(
+        hosted_shown(Err(std::io::Error::other("托管口没答")), read),
+        Shown::Unreadable
+    );
+}
+
 /// 窗口标签（`WindowLabel`）：`<进程号>-<起始时刻>` 解一次成两个数，线上写回同一串；`Terminal.window` 上形状不对 ⇒ 不带。
 #[test]
 fn a_window_label_is_a_pid_and_a_start_or_nothing() {

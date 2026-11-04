@@ -1,5 +1,7 @@
 //! 帧命令 `session-terminals`：**此刻是哪个终端在显示这个会话**（点 ↗ 时那台答一次）。
 //!
+//! - 在托管终端里：claude 的环境是起后端那条 ssh 继承来的 ⇒ 不用它。问那个托管终端「此刻附着着哪些真终端」
+//!   （`host::managed::terminal_ends_of_pid`），逐个读它们的环境，按最近动静倒序。一个都没有 ⇒ `detached`（能接回去）。
 //! - 不在 tmux 里：claude 进程自己的环境就是答案（它从那个终端的登录 shell 继承来）；进程已经没有控制终端 ⇒ `no-terminal`。
 //! - 在 tmux 里：claude 的环境是建会话那个人的、可能早就断开了 ⇒ 不用它。问那个 socket（取自 claude 环境里的 `TMUX`）
 //!   「现在有哪些客户端连着这个 pane 所在的会话」，逐个读那些客户端进程的环境，按最近动静倒序。一个都没有 ⇒ `detached`。
@@ -34,6 +36,8 @@ pub(crate) enum Shown {
     },
     /// 在 tmux 里放在后台，现在没有终端连着。
     Detached,
+    /// 在托管终端里，现在没有真终端附着（能接回去，同 [`Shown::Detached`]，只是不在 tmux 里）。
+    HostedDetached,
     /// 不在 tmux 里，进程已经没有终端。
     NoTerminal,
     /// 读不了那个终端的信息（别的用户 / 权限 / 这一刻读不到）。
@@ -92,7 +96,7 @@ pub struct Showing {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "kebab-case")]
 pub enum ShownWhy {
-    /// 在 tmux 里、没终端连着。
+    /// 在 tmux 或托管终端里、没终端连着（能接回去：本机照它给［在终端里打开］）。
     Detached,
     /// 不在 tmux 里、进程没有终端。
     NoTerminal,
@@ -117,6 +121,7 @@ pub(crate) fn product(shown: &Shown) -> Showing {
             tmux: true,
             ..empty(ShownWhy::Detached)
         },
+        Shown::HostedDetached => empty(ShownWhy::Detached),
         Shown::NoTerminal => empty(ShownWhy::NoTerminal),
         Shown::Unreadable => empty(ShownWhy::Unreadable),
     }
@@ -133,6 +138,10 @@ fn env(pid: u32, key: &str) -> Result<Option<String>, ()> {
 
 /// `pid`（那个 claude 进程）此刻由谁在显示。tmux 起不来 / 报错 ⇒ `failed`（带它的原话）。
 pub(crate) fn shown_by(pid: u32) -> Result<Shown, Said> {
+    // 住在托管终端里：显示它的是附着上来的真终端；claude 自己的环境是起后端那条 ssh 继承来的，不是谁在看它。
+    if let Some(ends) = crate::host::managed::terminal_ends_of_pid(pid) {
+        return Ok(hosted_shown(ends, |p, at| terminal_of(p, Some(at))));
+    }
     let Ok(tmux) = env(pid, TMUX_ENV) else {
         return Ok(Shown::Unreadable);
     };
@@ -158,6 +167,33 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, Said> {
         Clients::Detached => Shown::Detached,
         Clients::Unreadable => Shown::Unreadable,
     })
+}
+
+/// 托管终端里的会话由谁显示：附着上来的真终端（`(进程号, 最近动静秒)`，最近动静在前；`read` 读一个终端进程的那几格）。
+/// 一个都没有 ⇒ [`Shown::HostedDetached`]；问托管口没问成 · 一个都读不出 ⇒ [`Shown::Unreadable`]。**纯函数**（读法是参数）。
+pub(crate) fn hosted_shown(
+    ends: std::io::Result<Vec<(Option<u32>, u64)>>,
+    read: impl Fn(u32, u64) -> Option<Terminal>,
+) -> Shown {
+    let Ok(ends) = ends else {
+        return Shown::Unreadable;
+    };
+    if ends.is_empty() {
+        return Shown::HostedDetached;
+    }
+    let terminals: Vec<Terminal> = ends
+        .into_iter()
+        .filter_map(|(pid, at)| read(pid?, at))
+        .take(MAX_TERMINALS)
+        .collect();
+    if terminals.is_empty() {
+        Shown::Unreadable
+    } else {
+        Shown::By {
+            terminals,
+            tmux: false,
+        }
+    }
 }
 
 /// 本机那一问（`session-window`）要的：此刻显示这个会话的终端进程（链从它起）和它的终端，最近动静在前；或没有终端连着。
