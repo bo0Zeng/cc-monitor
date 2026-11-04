@@ -768,6 +768,80 @@ fn a_detached_child_on_windows_leaves_its_starters_output_pipe_alone() {
     assert!(alive, "脱离起的 {pid:?} 一起来就没了");
 }
 
+/// 下一条判据的中间那一层（只被它当子进程叫）：用 [`Child::run`] 叫 [`detach_helper_inner`]（它脱离起一个 `ping`），等它交回就退。
+#[cfg(windows)]
+#[test]
+#[ignore = "只被「起它的那一方的上一层」那条判据当子进程叫"]
+fn detach_via_run_helper() {
+    if std::env::var_os("CCM_T_DETACH_PIDFILE").is_none() {
+        return;
+    }
+    let r = Child::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "child::tests::detach_helper_inner",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .run(Deadline::secs(20));
+    assert!(
+        r.as_ref().is_ok_and(|o| o.status.success()),
+        "帮手没脱离起来：{r:?}"
+    );
+}
+
+/// 脱离起（Windows）也不替**再上一层**攥着管道：桌面 PowerShell `$out = … | & ccm.exe` 那一形 ——
+/// 最外层持一根管道收中间那一层的输出，中间那一层用 `run` 起帮手、帮手脱离起一个 `ping` ⇒ 中间那一层一退，最外层就读到头。
+/// 中间那一层的标准输出是从最外层继承来的可继承句柄；它起帮手时这一格不许跟着交下去，不然帮手再脱离起的那个就带着它。
+#[cfg(windows)]
+#[test]
+fn a_detached_child_on_windows_leaves_the_pipe_two_levels_up_alone() {
+    let d = test_home::scratch("detach-win-two-up");
+    let f = d.join("pid");
+    let mut mid = std::process::Command::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "child::tests::detach_via_run_helper",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("CCM_T_DETACH_PIDFILE", &f)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("起中间那一层");
+    let mut out = mid.stdout.take().expect("中间那一层的输出");
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut all = Vec::new();
+        let _ = out.read_to_end(&mut all);
+        let _ = tx.send(all);
+    });
+    let status = mid.wait().expect("等中间那一层");
+    let mut whole = None;
+    for _ in guard_core::wall::rounds().take(400) {
+        if let Ok(all) = rx.try_recv() {
+            whole = Some(all);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let pid = std::fs::read_to_string(&f)
+        .ok()
+        .map(|p| p.trim().to_string());
+    if let Some(p) = &pid {
+        win_kill(p);
+    }
+    let _ = std::fs::remove_dir_all(&d);
+    assert!(status.success(), "中间那一层没走完：{status:?}");
+    assert!(pid.is_some(), "帮手没写出脱离起的那个的 pid");
+    assert!(
+        whole.is_some(),
+        "中间那一层退了，最外层却读不到头：脱离起的 {pid:?} 替它攥着那根管道"
+    );
+}
+
 /// 脱离起（Windows）脱离 `run` 给它那一组建的 Job：起它的那一方过了期限、整组被杀 ⇒ 脱离起的那个还活着。
 #[cfg(windows)]
 #[test]

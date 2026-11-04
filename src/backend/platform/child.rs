@@ -379,7 +379,10 @@ impl Child {
         self.command()
     }
 
+    /// 每一个口（`run` · `detach` · `stream` · `converse` · 伪终端 · `exec_replace`）起子进程前都经这里造 `Command`；
+    /// 先把本进程从上一层继承来的三格标准句柄设成不可继承（[`os::keep_own_stdio`]），这一层起的谁都不顺带攥着它们。
     fn command(&self) -> Command {
+        os::keep_own_stdio();
         #[expect(
             clippy::disallowed_methods,
             reason = "起子进程原语：后端生产段起子进程只在这一处造 `Command`（期限 · 杀整组 · 环境都在这一层做）"
@@ -733,6 +736,9 @@ mod os {
     }
 
     pub(super) fn no_console_window(_cmd: &mut Command) {}
+
+    /// POSIX 上本进程的三格标准句柄就是 0 · 1 · 2，起子进程时被换成指定的那一份，不会另外跟着交下去 ⇒ 不用做。
+    pub(super) fn keep_own_stdio() {}
 }
 
 #[cfg(windows)]
@@ -920,13 +926,11 @@ mod os {
     /// 脱离起：不要控制台（`DETACHED_PROCESS`：关掉起它的那个窗口不连它一起关）· 自成进程组（起它的那一方的 Ctrl+C 不传给它）·
     /// 脱离起它的那个 Job（`CREATE_BREAKAWAY_FROM_JOB`：那个 Job 被收掉时它不跟着没）。
     /// 本进程所在的 Job 不许脱离 ⇒ 系统拒（拒绝访问）⇒ 去掉脱离 Job 那一位再起一次，照实记一行：那时它留在 Job 里，Job 收掉它也没。
-    /// 起之前先把本进程自己的三格标准句柄设成不可继承（[`keep_own_stdio`]）。
     pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
         const ERROR_ACCESS_DENIED: i32 = 5;
-        keep_own_stdio();
         let stay = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
         cmd.creation_flags(stay | CREATE_BREAKAWAY_FROM_JOB);
         match cmd.spawn() {
@@ -942,12 +946,13 @@ mod os {
         }
     }
 
-    /// 本进程自己的三格标准句柄设成不可继承。
+    /// 本进程自己的三格标准句柄设成不可继承（起每一个子进程之前，[`super::Child`] 造 `Command` 那一处调）。
     /// `std` 起子进程一律许继承（`bInheritHandles`）：本进程里**每一个**可继承的句柄都跟着交下去，不只交给它的那三格。
-    /// `std` 自己开的句柄都不可继承（给子进程那几端只在起的那一下可继承），可继承的只剩从起本进程的那一方继承来的标准句柄；
-    /// 它们是一根管道时（`run` 收输出的那一种），脱离起的那个就替起本进程的那一方攥着管道的写端，那一方读不到头。
+    /// `std` 自己开的句柄都不可继承（给子进程那几端只在起的那一下可继承），可继承的只剩从起本进程的那一方继承来的标准句柄。
+    /// 只在脱离起之前设不够：中间那一层（`run` 起的那一个）照旧把它们当普通句柄交给下一层，下一层再脱离起时清的只是它自己那三格 ——
+    /// 桌面 PowerShell `$out = … | & ccm.exe` 收输出的那根管道就这样经两层落到托管进程手里，PowerShell 读不到头。
     /// 之后照旧继承标准句柄的子进程不受影响：`Stdio::inherit` 交的是复制出来的一份。设不上（句柄是空的 · 不是内核句柄）⇒ 不管。
-    fn keep_own_stdio() {
+    pub(super) fn keep_own_stdio() {
         // `STD_INPUT_HANDLE` · `STD_OUTPUT_HANDLE` · `STD_ERROR_HANDLE`（-10 · -11 · -12 的 u32 形）。
         const STD_HANDLES: [u32; 3] = [0xFFFF_FFF6, 0xFFFF_FFF5, 0xFFFF_FFF4];
         const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
