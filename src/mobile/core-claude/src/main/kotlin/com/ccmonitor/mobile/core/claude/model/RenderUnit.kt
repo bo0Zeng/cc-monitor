@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.wire.gen.Attachment
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.NoticeRun
 import com.ccmonitor.mobile.core.wire.gen.Pasted
 import com.ccmonitor.mobile.core.wire.gen.RetryOutcome
 import com.ccmonitor.mobile.core.wire.gen.RetryRun
@@ -305,6 +306,36 @@ object RetryLook {
     ): String? {
         val before = units.getOrNull(units.indexOfFirst { it.key == error } - 1) as? RenderUnit.Retry ?: return null
         return runs.firstOrNull { it.id == before.key }?.takeIf { it.outcome == RetryOutcome.FAILED }?.text
+    }
+}
+
+/**
+ * 一张收场通知卡此刻画什么：卡头 [head]（那一组写好的组头；没有 ⇒ 露着的那一行）· 展开里露着的几行 [rows] · [failed]；
+ * [single] ⇒ 卡头就是那一行、不展开。
+ */
+data class NoticeCard(
+    val head: String,
+    val rows: List<RenderUnit.Notice>,
+    val failed: Boolean,
+    val single: Boolean,
+)
+
+/**
+ * 收场通知照会话事实 `notices[]`（后端分好的组）摆：每组首条那一张当这一组，别的成员那几行收进它的展开、它们自己那一张不画；
+ * `hidden` 里的不露，整组都不露 ⇒ 不画；不在哪一组里 ⇒ 它自己那一行。组头 · 失败都是核心写好的，这里只挑哪一句放哪。
+ */
+object NoticeLook {
+    /** 通知 [u] 那一张画什么；不画 ⇒ `null`。 */
+    fun card(
+        u: RenderUnit.Notice,
+        units: List<RenderUnit>,
+        runs: List<NoticeRun>,
+    ): NoticeCard? {
+        val run = runs.firstOrNull { u.key in it.members } ?: return NoticeCard(u.text, listOf(u), u.failed, single = true)
+        if (run.id != u.key) return null
+        val rows = run.members.filter { it !in run.hidden }.mapNotNull { id -> units.firstOrNull { it.key == id } as? RenderUnit.Notice }
+        val first = rows.firstOrNull() ?: return null
+        return NoticeCard(run.head ?: first.text, rows, run.failed, single = run.head == null)
     }
 }
 

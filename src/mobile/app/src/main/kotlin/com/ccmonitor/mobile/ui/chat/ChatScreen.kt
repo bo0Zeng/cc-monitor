@@ -178,6 +178,7 @@ fun ChatTranscript(
                 stepWait = state::waitOf,
                 retry = state::retryOf,
                 errorNext = state::errorNextOf,
+                notice = state::noticeOf,
                 process = { ProcessRow(it, process) },
                 said = hooks,
             )

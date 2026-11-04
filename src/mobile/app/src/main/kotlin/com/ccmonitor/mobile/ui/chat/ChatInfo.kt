@@ -24,6 +24,8 @@ import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAccount
 import com.ccmonitor.mobile.core.claude.link.SessionTasks
+import com.ccmonitor.mobile.core.claude.model.NoticeCard
+import com.ccmonitor.mobile.core.claude.model.NoticeLook
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.RetryLook
 import com.ccmonitor.mobile.core.claude.model.RetryStrip
@@ -71,6 +73,9 @@ fun ChatUiState.retryOf(u: RenderUnit.Retry): RetryStrip? = RetryLook.strip(u, f
 
 /** 报错卡（它的 key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]）；否则 `null`。 */
 fun ChatUiState.errorNextOf(error: String): String? = RetryLook.next(units, error, facts?.retries.orEmpty())
+
+/** 一张收场通知卡此刻画什么（照会话事实 `notices[]` 那一组，[NoticeLook.card]）；并进别的组 · 整组不露 ⇒ `null`。 */
+fun ChatUiState.noticeOf(u: RenderUnit.Notice): NoticeCard? = NoticeLook.card(u, units, facts?.notices.orEmpty())
 
 /** 血缘一行：抬头 [head] 是那台写好的那一句（「由「X」启动」·「子会话 N」），后面每条一颗。 */
 data class KinLine(
