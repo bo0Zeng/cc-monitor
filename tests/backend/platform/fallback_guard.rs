@@ -141,38 +141,19 @@ mod tests {
     }
 
     pub(super) fn platform_sources() -> Vec<(String, String)> {
+        // 本护栏住测试树、不在 `platform/` 里，遍历器也不跟指向 tests 的挂载 ⇒ 人群里没有它自己，不用摘。
         let root = guard_core::addr::backend_src_root().join("platform");
-        let mut out = Vec::new();
-        let mut stack = vec![root.clone()];
-        while let Some(dir) = stack.pop() {
-            for e in std::fs::read_dir(&dir).expect("read platform dir") {
-                let p = e.expect("dir entry").path();
-                if p.is_dir() {
-                    stack.push(p);
-                    continue;
-                }
-                if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                    continue;
-                }
-                // 跳过本护栏自身：它的说明文字里逐字写着那个 `true`。
+        let mut out: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(p, raw)| {
                 let rel = p
                     .strip_prefix(&root)
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");
-                // 跳过本护栏自身：它的说明文字里逐字写着那个布尔字面量。
-                // **按路径判不按裸文件名**（Phase D 审计）：跳过是**豁免**语义 = fail-open，
-                // 落在 U3 判 `readonly_guard` 白名单有罪的那一侧（而登记表那种「认账」语义
-                // 是 fail-closed、可以裸名 —— 判据看的是失败方向，见 no_timer_guard 的对照表）。
-                if rel == "fallback_guard.rs" {
-                    continue;
-                }
-                out.push((
-                    rel,
-                    production_code(&std::fs::read_to_string(&p).expect("read")),
-                ));
-            }
-        }
+                (rel, production_code(&raw))
+            })
+            .collect();
         out.sort();
         out
     }

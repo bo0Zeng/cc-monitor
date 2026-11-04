@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// `(相对仓根的路径, 类别, 说明 + 谁退役它)`，按文件两向相等（产名的本体只许一个文件，由下面那条钉）。
 ///
@@ -75,21 +75,21 @@ fn hits(src: &str) -> usize {
 /// ⇒ **自检必须量被测者实际用的那个对象**，不能量一个「同样构造」的副本。
 fn scan_files() -> Vec<PathBuf> {
     let root = repo_root();
-    let mut files: Vec<PathBuf> = Vec::new();
-    collect_ts(&root.join("src"), &mut files);
-    files.sort();
-    // 壳那棵换成它的全部人群根（壳 `src/` ＋ manifest 明写的兄弟包，窗口包也在内）；有几个住 `src/common/`，去重。
-    for r in guard_core::addr::shell_population_roots() {
-        collect_rs(&r, &mut files);
-    }
-    collect_rs(&root.join("src/common"), &mut files);
+    let mut files = frontend_ts();
+    // 壳那棵连它的全部人群（壳 `src/` ＋ manifest 明写的兄弟包，窗口包也在内，`scan_tree!` 自己收）；
+    //   兄弟包有几个住 `src/common/`，去重。
+    let rs = guard_core::scan_tree!(&guard_core::addr::shell_src_root(), &["rs"])
+        .into_iter()
+        .chain(guard_core::scan_tree!(&root.join("src/common"), &["rs"]))
+        .map(|(p, _)| guard_core::lexically_normalized(&p));
+    files.extend(rs);
     files.sort();
     files.dedup();
     // 🔴 `shared/ccm` 删了 ⇒ 换成后端那份原生实现。
-    //    `collect_rs` 只扫 `src/frontend/shell/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
+    //    上面的 Rust 人群只到壳与 `src/common/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
     for extra in [
         "src/backend/control/ccm/plan.rs",
-        // 原 `src/common/gate-core`（上面 `collect_rs` 扫得到那一棵）收成后端模块 ⇒ 按 extra 点名。
+        // 原 `src/common/gate-core`（上面扫得到那一棵）收成后端模块 ⇒ 按 extra 点名。
         "src/backend/control/gate_rules.rs",
     ] {
         files.push(root.join(extra));
@@ -117,60 +117,31 @@ fn scan() -> Vec<String> {
     out
 }
 
-/// Rust 侧也递归遍历 —— 与 TS 侧同一口径（`target/` 除外）。
-fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            if p.file_name().is_some_and(|n| n == "target") {
-                continue;
-            }
-            collect_rs(&p, out);
-        } else if p.extension().is_some_and(|x| x == "rs") {
-            out.push(p);
-        }
-    }
-}
-
-fn collect_ts(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            collect_ts(&p, out);
-            continue;
-        }
-        let n = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        if n.ends_with(".ts")
-            && !n.contains(".vitest.")
-            && !n.contains(".test.")
-            && !n.ends_with(".d.ts")
-        {
-            out.push(p);
-        }
-    }
+/// `src/**/*.ts`，测试与声明文件除外（已排序）。
+fn frontend_ts() -> Vec<PathBuf> {
+    guard_core::scan_tree!(&repo_root().join("src"), &["ts"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|p| {
+            let name = p.file_name().unwrap_or_default().to_string_lossy();
+            !name.contains(".vitest.") && !name.contains(".test.") && !name.ends_with(".d.ts")
+        })
+        .collect()
 }
 
 /// ★ 抽取器自检。
 #[test]
 fn the_scan_actually_reads_all_four_surfaces() {
     let root = repo_root();
-    let mut ts = Vec::new();
-    collect_ts(&root.join("src"), &mut ts);
-    // 两侧遍历器的正控：前端入口 `main.ts` 与 Rust 那半的入口 `lib.rs` 必在人群里
-    //（把遍历根指到一个不存在的目录，本条要红）。
-    assert!(
-        ts.iter()
-            .any(|p| *p == root.join("src/frontend/ui/main.ts")),
-        "前端 .ts 的遍历器没走到 `main.ts`（走到 {} 份）—— 遍历器坏了",
-        ts.len()
-    );
+    // 两侧的正控都量 `scan_files()` 本身：前端入口 `main.ts` 与 Rust 那半的入口 `lib.rs` 必在人群里。
     let files = scan_files();
+    assert!(
+        files
+            .iter()
+            .any(|p| *p == root.join("src/frontend/ui/main.ts")),
+        "前端 .ts 那半没走到 `main.ts`（人群 {} 份）—— 遍历器坏了",
+        files.len()
+    );
     assert!(
         files
             .iter()
