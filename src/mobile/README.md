@@ -14,7 +14,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-claude` | `link/`：那台常驻流交来的事落成手机这一侧的几条流（接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`，桌面同一份；会话簿 · 活卡在核心里照共享核心 `face-core` 那一份折好再交）；回包 · 核心交上来的几样事都照 `core-wire` 那份生成的类解（缺格报两端契约对不上）；手机里没有任何一家 agent 的知识：哪几家 · 叫什么 · 能换哪些模型都问那台 `session-open-facts`；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元 |
 | `core-wire` | 线上契约（`src/common/cmd-wire`）的 Kotlin 那一头：生成的类与编解码（`gen/`，`tests/scripts/gen-kotlin-wire.mjs` 从 ts-rs 导出的声明生成，不手改）＋ `Wire` 那几口；不放判定。回包金样 `RepliesGoldenTest` 解再写回与 Rust 逐字节同 |
 | `core-ssh` | 终端 · 文件走的那层连接（按机器单飞；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接）与 `RustTransport`：SSH 本身走 `core-rs` 那份 Rust 核心（竞速 · 跳板 · SFTP · host key · 鉴权都在核心里）；`~/.ssh/config` 导入与钥匙派生也经它 |
-| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 |

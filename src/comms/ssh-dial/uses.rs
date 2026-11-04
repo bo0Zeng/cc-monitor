@@ -752,7 +752,11 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
                 .forward
                 .clone()
                 .ok_or_else(|| fail(crate::malformed("use=forward without `forward`").into()))?;
-            // 只绑回环（不对外暴露）。绑口是**后端**的事。
+            // 只绑回环（不对外暴露）。
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "已知违反「通信层不绑端口」：端口转发在拨号核心里自己绑本机口，待改成宿主绑好、把监听口交进来"
+            )]
             let listener = tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port))
                 .await
                 .map_err(|e| {

@@ -437,7 +437,7 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
         4,
         "窗口一趟拖入同时起几件变了 —— 这个数改了要回来重读本条那段关系"
     );
-    let pool = guard_core::production_code(include_str!("../../../src/backend/ssh-dial/pool.rs"));
+    let pool = guard_core::production_code(include_str!("../../../src/comms/ssh-dial/pool.rs"));
     let cap_of = |name: &str| -> usize {
         let line = format!("pub const {name}: usize = ");
         let at = guard_core::find_pinned(&pool, &line)
