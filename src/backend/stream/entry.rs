@@ -74,7 +74,10 @@ pub async fn run() {
         reason = "进程 argv 只在这里取一次，要它的模块由调用方交"
     )]
     let process_argv: Vec<String> = std::env::args().collect();
-    // 写后端自家状态（数据目录底下）的句柄：只在这里造一次，顺着各入口递下去（`readonly_guard` 构造判据钉「只许这里造」）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "写后端自家状态（数据目录底下）的句柄：只在启动入口造一次，顺着各入口递下去"
+    )]
     let own = crate::platform::Own::issue();
     // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
     dial::install_known_hosts(&own);
@@ -154,11 +157,16 @@ pub async fn run() {
     //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在起中转之前：接上之后这一行起的
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
     let env = |k: &str| std::env::var(k).ok();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "stderr 落盘那只窄手只在启动入口造：抢到口之后装给脱离常驻那条载体"
+    )]
+    let issue_diag = crate::platform::DiagLog::issue;
     let (listening, installed) = match claim_then_log(
         &own,
         &env,
         control::resident::account_home().as_deref(),
-        || stderr_log::install_from_env(crate::platform::DiagLog::issue, &env),
+        || stderr_log::install_from_env(issue_diag, &env),
     )
     .await
     {
@@ -722,7 +730,10 @@ async fn serve_listening(
 /// 整行追加进这台后端的诊断文件（`stderr_log::oneshot_writer`）。
 fn init_tracing(oneshot: bool) {
     let writer = if oneshot {
-        // 诊断文件那一份的窄句柄只在这里造（启动入口），装给一次性模式的写者。
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "诊断文件那一份的窄句柄只在启动入口造，装给一次性模式的写者"
+        )]
         stderr_log::keep_oneshot(crate::platform::DiagLog::issue);
         tracing_subscriber::fmt::writer::BoxMakeWriter::new(stderr_log::oneshot_writer)
     } else {
