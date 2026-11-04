@@ -199,6 +199,29 @@ sealed interface RenderUnit {
         override val sourceUuid: String?,
     ) : RenderUnit
 
+    /**
+     * 另一个会话发来的话（`speaker.peerSession`）：来话条，抬头写谁发的（[from] 原样，进文案表那一句）＋ [timeText]，
+     * 正文是核心解析好的块树 [doc]（没有正文 ⇒ `null`，只画抬头）。
+     */
+    data class Peer(
+        override val key: String,
+        val from: String?,
+        val timeText: String?,
+        val doc: Doc?,
+        override val sourceUuid: String?,
+    ) : RenderUnit {
+        /** 树上的字（搜索用），取一次留着。 */
+        val text: String by lazy(LazyThreadSafetyMode.PUBLICATION) { doc?.plainText().orEmpty() }
+    }
+
+    /** 后台任务的收场通知（`speaker.taskNotification`）：一行，字是核心写好的 [row]；[failed] ＝ 那台说它失败了。 */
+    data class Notice(
+        override val key: String,
+        val row: String,
+        val failed: Boolean,
+        override val sourceUuid: String?,
+    ) : RenderUnit
+
     /** 「已中断本轮 · {time}」那一道细线（记录里 `speaker.interrupt` 那一条）；[timeText] 是核心写好的钟面。 */
     data class Interrupt(
         override val key: String,
@@ -231,6 +254,8 @@ fun RenderUnit.searchableText(): String =
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
         is RenderUnit.Brief -> text
         is RenderUnit.CompactSummary -> text
+        is RenderUnit.Peer -> text
+        is RenderUnit.Notice -> row
         is RenderUnit.Interrupt -> ""
         is RenderUnit.Unread -> text
     }

@@ -114,10 +114,33 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `没定画法的那几类（事件条 · 系统 · 重试 · 标题）不上屏`() {
+    fun `没定画法的那几类（交回 · 系统 · 重试 · 标题）不上屏`() {
         val silent =
-            listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "retry-full", "title-agent", "said-read")
+            listOf("said-system", "said-agent-message", "said-coordinator", "said-command-output", "retry-full", "title-agent", "said-read")
         assertEquals(emptyList<RenderUnit>(), units(*silent.toTypedArray()))
+    }
+
+    @Test
+    fun `另一会话来话画成来话条：谁发的照 from 原样 · 钟面 · 正文是那台解析好的树`() {
+        assertEquals(
+            listOf(RenderUnit.Peer("u-said-peer-session", "s2", "01:31", Doc(listOf(MdBlock.P(listOf(Inl.Text("hi")))), emptyList()), "u-said-peer-session")),
+            units("said-peer-session"),
+        )
+    }
+
+    @Test
+    fun `后台任务收场通知画一行：字是那台写好的 row，失败照 end`() {
+        assertEquals(listOf(RenderUnit.Notice("u-said-task-notification", "后台任务 finished 完成 · 01:31", false, "u-said-task-notification")), units("said-task-notification"))
+        val r = Json.obj(File(repoRoot(), "tests/__fixtures__/record.golden.jsonl").readLines().first { it.contains("\"case\":\"said-task-notification\"") })!!
+        @Suppress("UNCHECKED_CAST")
+        val rec = (r["record"] as Map<String, Any?>).toMutableMap()
+        @Suppress("UNCHECKED_CAST")
+        val who = (rec["who"] as Map<String, Any?>).toMutableMap()
+        @Suppress("UNCHECKED_CAST")
+        who["speaker"] = (who["speaker"] as Map<String, Any?>) + ("end" to "failed")
+        rec["who"] = who
+        val failed = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(rec)))).single() as RenderUnit.Notice
+        assertTrue(failed.failed)
     }
 
     @Test

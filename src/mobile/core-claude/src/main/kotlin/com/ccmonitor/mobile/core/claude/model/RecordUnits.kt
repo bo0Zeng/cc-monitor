@@ -6,12 +6,13 @@ import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.Speaker
 import com.ccmonitor.mobile.core.wire.gen.StepBody
+import com.ccmonitor.mobile.core.wire.gen.TaskEnd
 import com.ccmonitor.mobile.core.wire.gen.ToolCard
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按记录 · 说话人 · 块是哪一形排，
- * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么有一张表，
- * 那张表里画成事件条的几类（交回 · 后台任务 · 来话 …）还没定画法，先不上屏。
+ * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么有一张表：另一会话来话画成来话条，后台任务收场画成那台写好的那一行；
+ * 交回 · 途中来话 · 重试还没定画法，先不上屏。
  *
  * 一条会话一份，随记录增量排：新来的记录只排它自己；工具结果到了只换它配上的那一张调用卡，别的单元原样留着。
  */
@@ -157,6 +158,8 @@ class RecordUnits {
             is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, id)
             Speaker.Interrupt -> RenderUnit.Interrupt(id, r.timeText, id)
             Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id)
+            is Speaker.PeerSession -> RenderUnit.Peer(id, s.from, r.timeText, s.doc, id)
+            is Speaker.TaskNotification -> s.row?.let { RenderUnit.Notice(id, it, s.end == TaskEnd.FAILED, id) }
             else -> null
         }
     }

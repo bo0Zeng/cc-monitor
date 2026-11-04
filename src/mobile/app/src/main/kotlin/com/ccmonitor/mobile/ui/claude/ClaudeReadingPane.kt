@@ -167,6 +167,8 @@ private fun UnitCard(
         is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
         is RenderUnit.Brief -> BriefCard(unit, matched)
         is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
+        is RenderUnit.Peer -> PeerBar(unit, matched)
+        is RenderUnit.Notice -> NoticeLine(unit, matched)
         is RenderUnit.Interrupt -> InterruptLine(unit)
         is RenderUnit.Unread -> UnreadLine(unit, matched)
     }
@@ -224,6 +226,48 @@ private fun BriefCard(
 
 /** 派活卡正文超过几行收起（同桌面）。 */
 private const val BRIEF_LINES = 4
+
+/**
+ * 另一个会话发来的话（同桌面那一条）：左 2dp 琥珀条，抬头「会话「from」」＋「消息」＋ 钟面，下面是那台解析好的正文（照树排版）。
+ * 那台没说是谁发的 ⇒ 抬头只写「消息」。
+ */
+@Composable
+private fun PeerBar(
+    unit: RenderUnit.Peer,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    val bar = tokens.warn
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .matchHighlight(matched)
+            .drawBehind { drawRect(bar, size = Size(2.dp.toPx(), size.height)) }
+            .padding(start = tokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            unit.from?.let { Text(copyText("speaker.peer.title", "from" to it), style = MaterialTheme.typography.labelMedium) }
+            Text(copyText("kit.toast.region"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            unit.timeText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        unit.doc?.let { MarkdownText(it, "", modifier = Modifier.fillMaxWidth()) }
+    }
+}
+
+/** 后台任务收场那一行：字是核心写好的；那台说失败 ⇒ 红字。 */
+@Composable
+private fun NoticeLine(
+    unit: RenderUnit.Notice,
+    matched: Boolean,
+) {
+    Text(
+        unit.row,
+        Modifier.fillMaxWidth().matchHighlight(matched),
+        style = monoSmall,
+        color = if (unit.failed) LocalAppTokens.current.errorText else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
 
 /** 「已中断本轮 · {time}」一道细线；字照文案表，钟面照核心。 */
 @Composable
