@@ -875,7 +875,7 @@ export class TabManager {
    */
   onSessionBranch(p: SessionBranchPayload): void {
     const tab = this.store.tabs.get(p.sid);
-    if (tab) this.view.setOff(tab, new Set(p.off));
+    if (tab) this.view.setBranch(tab, p);
   }
 
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */

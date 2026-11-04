@@ -48,7 +48,7 @@ export interface SessionLinesPage {
   payloads: JsonlLinePayload[];
 }
 
-/** 主线外清单（后端 `history-branch`）：回退掉的那几条记录的 `id`（文件序）· 读到哪个字节（之后的由实时帧接着说）。 */
+/** 主线外清单（后端 `history-branch`，各页拼成整份）：回退掉的那几条记录的 `id`（文件序）· 分好的段 · 读到哪个字节（之后的由实时帧接着说）。 */
 export type BranchOff = Branch;
 
 /** 那台后端漂移账的一个面（各家的面并在一起；面名 · 后果那一句都是那一家写好的）。 */
@@ -169,15 +169,17 @@ export async function loadRunPage(origin: Machine, parentJsonlPath: string, whic
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
 export async function readBranch(origin: Machine, jsonlPath: string): Promise<BranchOff> {
   const off: string[] = [];
+  const runs: Branch["runs"] = [];
   let at: number | null = 0;
   let end = 0;
   while (at !== null) {
     const page: Branch = await asked(callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
     off.push(...page.off);
+    runs.push(...page.runs);
     end = page.end;
     at = page.next ?? null;
   }
-  return { off, end, next: null };
+  return { off, runs, end, next: null };
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */

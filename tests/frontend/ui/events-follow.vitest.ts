@@ -56,18 +56,19 @@ describe("跟着一个会话", () => {
     h.stop();
   });
 
-  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交", async () => {
+  it("主线外清单那一格（branch）⇒ 一件 {t: branch, branch}（清单连段原样交）；别的会话的不交", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     const rec = streamFake.subscriptions[0]!;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mine = { sid: "s1", off: ["u2", "u3"], runs: [{ at: 0, n: 2, said: "×2" }] };
     rec.sink([
-      frame(0, { branch: { sid: "s1", off: ["u2", "u3"] } }),
-      frame(1, { branch: { sid: "s9", off: ["x"] } }),
+      frame(0, { branch: mine }),
+      frame(1, { branch: { sid: "s9", off: ["x"], runs: [{ at: 0, n: 1, said: "×1" }] } }),
       frame(3, { line: line("s1", 4) }),
     ]);
     warn.mockRestore();
-    expect(got).toEqual([{ t: "lines", lines: [line("s1", 4)] }, { t: "branch", off: ["u2", "u3"] }]);
+    expect(got).toEqual([{ t: "lines", lines: [line("s1", 4)] }, { t: "branch", branch: mine }]);
     h.stop();
   });
 

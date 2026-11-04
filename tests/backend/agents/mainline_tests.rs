@@ -508,3 +508,34 @@ fn a_chain_read_back_from_its_skeleton_goes_on_like_the_one_in_memory() {
     }
     assert!(!live.off().is_empty());
 }
+
+/// 回退掉的那几条分段：按文件序，进界面的主线节点夹在中间就断段；不进界面的（主线上 · 主线外都一样）不断段、不计数。
+/// 回退 5 条、中间隔着一截主线 ⇒ 两段（2 · 3）；逐条喂与整批算分出的段相同。
+#[test]
+fn off_records_split_into_runs_at_shown_main_line_records() {
+    let r = [
+        node("A", None, "t01", K::Said),
+        node("B", Some("A"), "t02", K::Reply),
+        node("C1", Some("B"), "t03", K::Said),
+        node("D1", Some("C1"), "t04", K::Reply),
+        node("C2", Some("B"), "t05", K::Said),
+        node("D2", Some("C2"), "t06", K::Reply),
+        node("E1", Some("D2"), "t07", K::Said),
+        node("x", Some("E1"), "t071", K::Att),
+        node("F1", Some("E1"), "t08", K::Reply),
+        node("G1", Some("F1"), "t09", K::Said),
+        node("E2", Some("D2"), "t10", K::Said),
+    ];
+    let mut batch = Chain::new();
+    for f in r.iter().cloned() {
+        batch.load(f);
+    }
+    batch.settle();
+    assert_eq!(batch.off(), ["C1", "D1", "E1", "F1", "G1"]);
+    assert_eq!(batch.runs(), [0..2, 2..5]);
+    let mut live = Chain::new();
+    for f in r {
+        feed(&mut live, f);
+    }
+    assert_eq!(live.runs(), batch.runs());
+}

@@ -821,6 +821,7 @@ pub struct RunEndLine {
 /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`。
 ///
 /// **「前 `at` 条照旧，其后换成 `off`」**：变了才发，只发变了的那一截；整份从 `at = 0` 起、按页切成几帧接着发。
+/// `at` 恒落在段首：起在第 `at` 条之前的段照旧，其后的段换成 `runs`（客户端不并段）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -834,8 +835,29 @@ pub struct SessionBranch {
     pub at: u64,
     /// 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止）。
     pub off: Vec<String>,
+    /// 段首落在这一帧那几条里的段（[`BranchRun`]，`at` 是整份清单里的下标；`n` 是整段，可越过这一帧的末尾）。
+    pub runs: Vec<BranchRun>,
     /// 清单前 `at + off.len()` 条的摘要：客户端在 `stream-watch` 的 `branch` 里原样交回，后端照它判手上那份前缀还对不对。
     pub sum: String,
+}
+
+/// 主线外清单里的**一段**（一次 Esc 回退掉的、文件里连着的那几条）：段里那几条 ＝ 清单 `off[at..at + n]`，框头照 `said` 摆。
+/// 分段与数数只在后端（链索引一处）；`history-branch` 回包与 `session_branch` 帧同一形。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct BranchRun {
+    /// 段首在整份清单里第几条（0 起）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub at: u64,
+    /// 段里几条。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub n: u64,
+    /// 框头那一句（写好的）。
+    pub said: Words,
 }
 
 /// **一个终端此刻的一整屏**（终端实时预览；`terminal-follow` 之后才出现）。

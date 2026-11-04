@@ -6,7 +6,7 @@
 import type { LineRecord } from "./generated/LineRecord";
 import type { Machine } from "./ipc/origin";
 import { loadRunPage, readBranch, type RunPage, type RunWhich } from "./record-reads";
-import { BranchFolder } from "./branch-fold";
+import { BranchFolder, type BranchList } from "./branch-fold";
 import { markCardId } from "./render-stream-record";
 import { buildStepsCard } from "./cards";
 import { copyText } from "./copy-table";
@@ -37,7 +37,7 @@ export interface RunTimelineDeps {
    */
   enhanceRoot?: HTMLElement;
   /** 那份记录的主线外清单怎么问（判据换成假的；缺 ＝ 经通道问 `history-branch`）。 */
-  branch?: (path: string) => Promise<string[]>;
+  branch?: (path: string) => Promise<BranchList>;
 }
 
 export class RunTimeline {
@@ -125,9 +125,9 @@ export class RunTimeline {
   private askBranch(path: string): void {
     if (this.branchAsked) return;
     this.branchAsked = true;
-    const ask = this.deps.branch ?? ((p: string) => readBranch(this.deps.origin, p).then((b) => b.off));
+    const ask = this.deps.branch ?? ((p: string) => readBranch(this.deps.origin, p));
     void ask(path).then(
-      (off) => this.folder.setOff(new Set(off)),
+      (list) => this.folder.setList(list),
       (e: unknown) => console.warn("[run-timeline] 主线外清单没读到（不折）：", e),
     );
   }

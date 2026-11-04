@@ -318,7 +318,7 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
   it("★★ 金样：主线外清单（history-branch）的成品就是生成的那个类型", () => {
     // 金样那份会话两条都没有链（r-2 不接 r-1）⇒ 两个根、r-1 是不接任何回复的人那一句 ⇒ 后端判它回退掉了。
     const branch: Branch = recordGolden["history-branch"] as Branch;
-    expect(branch).toEqual({ off: ["r-1"], end: 273, next: null });
+    expect(branch).toEqual({ off: ["r-1"], runs: [{ at: 0, n: 1, said: copyText("branchFold.wrapRun.summary", { n: 1 }) }], end: 273, next: null });
   });
 });
 

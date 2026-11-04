@@ -18,7 +18,7 @@ import { clipboardWrites } from "../../test-support/clipboard-fake";
 const f15 = vi.hoisted(() => ({
   cardsAdded: 0,
   rebuildNow: 0,
-  setOff: [] as string[][],
+  setList: [] as string[][],
   /**
    * ★ `renderContentRecord` 的**保真默认实现**（往 timeline 里塞一条）。
    *
@@ -95,9 +95,9 @@ vi.mock("../../../src/frontend/ui/branch-fold", () => ({
   BranchFolder: class {
     constructor(_el: unknown) {}
     offCount = 0;
-    setOff(off: ReadonlySet<string>): void {
-      f15.setOff.push([...off]);
-      this.offCount = off.size;
+    setList(list: { off: readonly string[] }): void {
+      f15.setList.push([...list.off]);
+      this.offCount = list.off.length;
     }
     // F15：计数，不做事 —— 量的是「被调了几次」，不是它做了什么。
     cardsAdded(): void {
@@ -2583,10 +2583,10 @@ describe("F15 每行代价的现状基线", () => {
 
   it("★ 会话流的 branch 格 ⇒ 那个 tab 的折叠层按整份清单重折；没有那个 tab ⇒ 不收", () => {
     tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL);
-    f15.setOff.length = 0;
-    tm.onSessionBranch({ sid: "s1", off: ["u-2", "u-3"] });
-    tm.onSessionBranch({ sid: "nope", off: ["x"] });
-    expect(f15.setOff).toEqual([["u-2", "u-3"]]);
+    f15.setList.length = 0;
+    tm.onSessionBranch({ sid: "s1", off: ["u-2", "u-3"], runs: [{ at: 0, n: 2, said: "×2" }] });
+    tm.onSessionBranch({ sid: "nope", off: ["x"], runs: [{ at: 0, n: 1, said: "×1" }] });
+    expect(f15.setList).toEqual([["u-2", "u-3"]]);
   });
 
   it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {

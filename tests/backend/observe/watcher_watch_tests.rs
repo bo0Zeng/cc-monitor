@@ -569,7 +569,7 @@ fn a_lost_change_and_a_lost_branch_page_come_back_in_the_report() {
         body: None,
     }));
     let pa = file(&dir, A);
-    sink.branch(A, &pa.to_string_lossy(), &[], 0);
+    sink.branch(A, &pa.to_string_lossy(), (&[], &[]), 0);
     while rx.try_recv().is_ok() {}
     sink.send_to(1, gone("t"));
     report_owed(&mut state, &mut sink);

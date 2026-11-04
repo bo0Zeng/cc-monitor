@@ -29,6 +29,8 @@ pub struct BranchReq {
 pub struct Branch {
     /// 回退掉的那几条记录的 `id`（只含进界面的；文件序），这一页是清单里从 `from` 起的那几条；这一家的记录没有链 ⇒ 恒空。
     pub off: Vec<String>,
+    /// 段首落在这一页里的段（同 `session_branch.runs`：`at` 是整份清单里的下标，`n` 是整段、可越过页尾）。
+    pub runs: Vec<crate::wire::BranchRun>,
     /// 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) end: u64,
@@ -43,17 +45,27 @@ pub fn branch_page(home: &Path, req: BranchReq, cap: usize) -> Result<Branch, St
     let from = usize::try_from(req.from.unwrap_or(0)).unwrap_or(usize::MAX);
     let fixed = jlen(&Branch {
         off: Vec::new(),
+        runs: Vec::new(),
         end: u64::MAX,
         next: Some(u64::MAX),
     });
     let mut pager = Pager::new(cap, fixed, req.limit);
     let rest = map.off.get(from..).unwrap_or_default();
+    let heads: std::collections::HashMap<usize, usize> =
+        map.runs.iter().map(|r| (r.start, r.len())).collect();
     let n = rest
         .iter()
-        .take_while(|id| pager.admit(jlen(*id) + 1))
+        .enumerate()
+        .take_while(|(k, id)| {
+            let head = heads
+                .get(&(from + k))
+                .map_or(0, |&n| crate::wire::run_bytes(from + k, n));
+            pager.admit(jlen(*id) + 1 + head)
+        })
         .count();
     Ok(Branch {
         off: rest[..n].to_vec(),
+        runs: crate::wire::branch_runs(&map.runs, from..from + n),
         end: map.end,
         next: (n < rest.len()).then(|| (from + n) as u64),
     })

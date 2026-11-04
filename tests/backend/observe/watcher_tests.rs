@@ -4078,7 +4078,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
         }
     }
     assert!(got.is_empty(), "清单没变不该发：{got:?}");
-    // 在 a1 之后再回退重发 ⇒ 只发变了的那一截（8a b）：前 1 条（u2）照旧，其后是 u3 · a3。
+    // 在 a1 之后再回退重发 ⇒ 只发变了的那一截（8a b）：u3 · a3 接进 u2 那一段（中间没有进界面的主线）⇒ 从那一段的段首（第 0 条）起整段重发。
     body += &line("u4", "a1", "t6", "user");
     std::fs::write(&jsonl, &body).unwrap();
     process_jsonl(&jsonl, &mut state, &mut sink);
@@ -4088,7 +4088,13 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
             got.push((at, off));
         }
     }
-    assert_eq!(got, [(1, vec!["u3".to_string(), "a3".to_string()])]);
+    assert_eq!(
+        got,
+        [(
+            0,
+            vec!["u2".to_string(), "u3".to_string(), "a3".to_string()]
+        )]
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -4278,7 +4284,7 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
 #[test]
 fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     // 通道恰好装得下四帧「other」的空清单。
-    let other = Frame::branch_pages("other", "/p/o.jsonl", &[], 0);
+    let other = Frame::branch_pages("other", "/p/o.jsonl", &[], &[], 0);
     let (tx, mut rx) = frame_channel(4 * wire_bytes(&other[0]));
     let mut sink = FrameSink::wanting_branches(tx, &["s", "other"]);
     let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -4291,22 +4297,22 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
         }
         v
     };
-    sink.branch("s", "/p/s.jsonl", &ids(&["a"]), 0);
+    sink.branch("s", "/p/s.jsonl", (&ids(&["a"]), &[]), 0);
     assert_eq!(branches(&mut rx), [(0, ids(&["a"]))]);
     // 通道挤满 ⇒ 这一截（前 1 条照旧，其后 b）丢了。
     for _ in 0..4 {
-        sink.branch("other", "/p/o.jsonl", &[], 0);
+        sink.branch("other", "/p/o.jsonl", (&[], &[]), 0);
     }
-    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b"]), 1);
+    sink.branch("s", "/p/s.jsonl", (&ids(&["a", "b"]), &[]), 1);
     assert!(
         branches(&mut rx).iter().all(|(_, o)| o.is_empty()),
         "丢的那一截不该到"
     );
     // 再变一次：这条连接拿整份，不是「前 2 条照旧」。
-    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c"]), 2);
+    sink.branch("s", "/p/s.jsonl", (&ids(&["a", "b", "c"]), &[]), 2);
     assert_eq!(branches(&mut rx), [(0, ids(&["a", "b", "c"]))]);
     // 之后照旧只拿那一截。
-    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c", "d"]), 3);
+    sink.branch("s", "/p/s.jsonl", (&ids(&["a", "b", "c", "d"]), &[]), 3);
     assert_eq!(branches(&mut rx), [(3, ids(&["d"]))]);
 }
 

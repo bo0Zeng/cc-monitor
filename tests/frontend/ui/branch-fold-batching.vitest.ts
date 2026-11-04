@@ -1,15 +1,27 @@
 /**
- * `BranchFolder`：按那台后端给的主线外清单（回退掉的那几条记录的 `id`）把连续的那几张卡折成一段。
- * 界面不判谁在主线上 —— 清单整份来、整份换；这里钉的是排版：
+ * `BranchFolder`：按那台后端给的主线外清单与它分好的段（`runs`：段首 · 条数 · 框头那一句）把一段里相邻的那几张卡折成一个框。
+ * 界面不判谁在主线上、不分段、不数数 —— 清单与段整份来、整份换；这里钉的是排版：
  * - 清单换了就当场重折，同一份再来不动；新卡挂进来只排一次帧末重折（清单空 ⇒ 一次都不排）；
+ * - 框头照段的 `said` 摆；DOM 上相邻、却分在两段的卡折成两个框；
  * - 折叠段的展开态按段首条 id 记，重折之后继承；
  * - 差量重折 == 平铺容器上从零折（C1）。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { BranchFolder } from "../../../src/frontend/ui/branch-fold";
+import { BranchFolder, type BranchList } from "../../../src/frontend/ui/branch-fold";
+
+/** 一份清单：每段写成它那几条 id；框头那一句是夹具字（后端写好的那一句在这里只当不透明的串摆）。 */
+function list(runs: string[][]): BranchList {
+  const off: string[] = [];
+  const out: BranchList["runs"][number][] = [];
+  for (const r of runs) {
+    out.push({ at: off.length, n: r.length, said: `段×${r.length}` });
+    off.push(...r);
+  }
+  return { off, runs: out };
+}
 
 /** 一份折叠层此刻的清单（判据读私有格：等价那一格要拿同一份清单去折参照）。 */
-const offOf = (f: BranchFolder): Set<string> => new Set((f as unknown as { off: ReadonlySet<string> }).off);
+const listOf = (f: BranchFolder): BranchList => (f as unknown as { list: BranchList }).list;
 
 function mount(ids: Array<string | null>): { el: HTMLElement; folder: BranchFolder } {
   const el = document.createElement("div");
@@ -29,22 +41,45 @@ const folded = (el: HTMLElement): string[][] =>
 describe("按清单折", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("清单里连着的几张折成一段；没有 id 的元素与主线卡断段；清单换了当场重折", () => {
+  it("一段里连着的几张折成一个框；没有 id 的元素与主线卡断框；清单换了当场重折", () => {
     const { el, folder } = mount(["a", "b", "c", null, "d", "e"]);
-    folder.setOff(new Set(["b", "c", "d", "e"]));
+    folder.setList(list([["b", "c", "d", "e"]]));
     expect(folded(el)).toEqual([["b", "c"], ["d", "e"]]);
-    folder.setOff(new Set(["a"]));
+    folder.setList(list([["a"]]));
     expect(folded(el)).toEqual([["a"]]);
-    folder.setOff(new Set());
+    folder.setList(list([]));
     expect(folded(el)).toEqual([]);
+  });
+
+  it("框头照后端写好的那一句摆；DOM 上相邻、分在两段的卡折成两个框（段归后端分）", () => {
+    const { el, folder } = mount(["a", "b", "c", "d"]);
+    folder.setList({
+      off: ["b", "c", "d"],
+      runs: [
+        { at: 0, n: 1, said: "回退一" },
+        { at: 1, n: 2, said: "回退二" },
+      ],
+    });
+    expect(folded(el)).toEqual([["b"], ["c", "d"]]);
+    expect([...el.querySelectorAll(".branch-fold-title")].map((t) => t.textContent)).toEqual(["回退一", "回退二"]);
+    // 段长了一条（框头那一句换了）⇒ 那个框重包、框头跟着换。
+    folder.setList({
+      off: ["a", "b", "c", "d"],
+      runs: [
+        { at: 0, n: 2, said: "回退三" },
+        { at: 2, n: 2, said: "回退二" },
+      ],
+    });
+    expect(folded(el)).toEqual([["a", "b"], ["c", "d"]]);
+    expect([...el.querySelectorAll(".branch-fold-title")].map((t) => t.textContent)).toEqual(["回退三", "回退二"]);
   });
 
   it("展开过的那一段：重折之后还是展开的（按段首条 id 记）", () => {
     const { el, folder } = mount(["a", "b", "c"]);
-    folder.setOff(new Set(["b", "c"]));
+    folder.setList(list([["b", "c"]]));
     el.querySelector<HTMLElement>(".branch-fold-header")!.click();
-    folder.setOff(new Set(["b"]));
-    folder.setOff(new Set(["b", "c"]));
+    folder.setList(list([["b"]]));
+    folder.setList(list([["b", "c"]]));
     expect(el.querySelector(".branch-fold-wrap")?.classList.contains("expanded")).toBe(true);
   });
 
@@ -54,7 +89,7 @@ describe("按清单折", () => {
     const { el, folder } = mount(["a"]);
     folder.cardsAdded();
     expect(frames.length, "清单空也排了活").toBe(0);
-    folder.setOff(new Set(["x", "y"]));
+    folder.setList(list([["x", "y"]]));
     for (const id of ["x", "y"]) {
       const c = document.createElement("div");
       c.setAttribute("data-id", id);
@@ -72,12 +107,12 @@ describe("按清单折", () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
     const { el, folder } = mount(["a", "b"]);
-    folder.setOff(new Set(["b"]));
+    folder.setList(list([["b"]]));
     folder.cardsAdded();
     folder.unwrapAll();
     folder.dispose();
     frames.shift()!(0);
-    folder.setOff(new Set(["a"]));
+    folder.setList(list([["a"]]));
     expect(folded(el)).toEqual([]);
   });
 });
@@ -143,17 +178,24 @@ describe("C1 · 差量重折 == 从零折", () => {
         }
         twin.set(c, t);
       } else {
-        // 换主线外清单：每张卡独立地以 0.3 的概率在清单里
-        const off = new Set<string>();
+        // 换主线外清单：每张卡独立地以 0.3 的概率在清单里；逻辑序里连着的几条分在一段（同后端：夹着主线卡 · 没有 id 的就断段）
+        const runs: string[][] = [];
+        let open = false;
         for (const c of order) {
           const u = c.dataset.id;
-          if (u && r() < 0.3) off.add(u);
+          if (u && r() < 0.3) {
+            if (!open) runs.push([]);
+            runs[runs.length - 1].push(u);
+            open = true;
+          } else {
+            open = false;
+          }
         }
-        folder.setOff(off);
+        folder.setList(list(runs));
       }
       folder.rebuildNow();
       const ref = flat.cloneNode(true) as HTMLElement;
-      new BranchFolder(ref).setOff(offOf(folder));
+      new BranchFolder(ref).setList(listOf(folder));
       if (!el.isEqualNode(ref)) expect(el.innerHTML, `种子 ${seed} 第 ${step} 步`).toBe(ref.innerHTML);
       foldedSeen += el.querySelectorAll(":scope > .branch-fold-wrap").length;
       checked++;
@@ -182,11 +224,11 @@ describe("C1 · 差量重折 == 从零折", () => {
     const el = document.createElement("div");
     const folder = new BranchFolder(el);
     for (let i = 0; i < 10; i++) el.appendChild(card(`k${i}`));
-    folder.setOff(new Set(["k2", "k3", "k4", "k7", "k8"])); // 折出两段：k2–k4 · k7–k8
+    folder.setList(list([["k2", "k3", "k4"], ["k7", "k8"]])); // 折出两段：k2–k4 · k7–k8
     expect(el.querySelectorAll(".branch-fold-wrap").length).toBe(2);
     const mo = new MutationObserver(() => {});
     mo.observe(el, { childList: true, subtree: true, attributes: true });
-    folder.setOff(new Set(["k2", "k3", "k4", "k7", "k8"])); // 同一份清单再来
+    folder.setList(list([["k2", "k3", "k4"], ["k7", "k8"]])); // 同一份清单再来
     folder.rebuildNow(); // 清单没变
     el.appendChild(card("k10"));
     const before = mo.takeRecords().length; // 只有那一次 append
