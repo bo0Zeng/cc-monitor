@@ -177,6 +177,9 @@ fn corpus(name: &str) -> Vec<Value> {
                 crate::observe::recognize::facts::background_of(&tasks, None, u64::MAX / 2),
             )
             .unwrap();
+            // 金样那份会话只有一个写入进程（`writersLine` 缺）⇒ 同上，用真判定现造两个进程的那一句。
+            f["writersLine"] =
+                serde_json::to_value(crate::observe::recognize::facts::writers_line(&[1, 2])).unwrap();
             // 金样那份会话没有血缘（`parent` 是 null、`children` 空）⇒ 同上，用真判定现造一份：
             // 主会话起它时写了 `--tab hide`、它起的子会话照偏好隐藏（两格都带隐藏那一格）。
             let mut here = crate::history::session_hidden::Here::default();

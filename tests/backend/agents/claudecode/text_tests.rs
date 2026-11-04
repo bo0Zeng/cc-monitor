@@ -515,7 +515,10 @@ fn pasted_blocks_are_human_with_their_bounds() {
 #[test]
 fn a_paste_over_twelve_lines_folds() {
     let paste = |n: usize| {
-        let body = (0..n).map(|i| format!("行{i}")).collect::<Vec<_>>().join("\n");
+        let body = (0..n)
+            .map(|i| format!("行{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let t = format!("看：<pasted_content id=\"p\">\n{body}\n\n</pasted_content id=\"p\">");
         let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
         (u.pasted[0].lines, u.pasted[0].fold)

@@ -373,7 +373,11 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
     .unwrap();
     let mut keys: Vec<&String> = v.as_object().unwrap().keys().collect();
     keys.sort();
-    assert_eq!(keys, ["head", "hits", "total", "widen"], "查找的成品形状变了");
+    assert_eq!(
+        keys,
+        ["head", "hits", "total", "widen"],
+        "查找的成品形状变了"
+    );
     assert_eq!(v["total"].as_u64(), Some(2));
     let hits: Vec<&str> = v["hits"]
         .as_array()
