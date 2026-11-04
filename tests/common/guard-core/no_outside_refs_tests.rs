@@ -14,7 +14,7 @@
 //! 测试声明行（`it(` · `test(` · `describe(` · `bench(` 打头）不扫 —— 测试名不改。
 //!
 //! 第三张网（工单 / 裁决编号 · 指向已摘掉的代码全景目录）：同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时的编号）、
-//! 两张存量名单（它们列的就是这些名字）与界面生成物（源头在人群里，名单跟不住重新生成），测试声明行不扫；拦，今天的存量记在它自己那张按文件的名单里、只许变短，对账与第六张网同一套。
+//! 它自己的存量名单（列的就是这些名字）与界面生成物（源头在人群里，名单跟不住重新生成），测试声明行不扫；拦，今天的存量记在一张按文件的名单里、只许变短。
 //! 名单清空的那个提交连名单一起删，网照旧拦。
 //!
 //! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
@@ -27,8 +27,7 @@
 //! 文案表 · cc-bus 包（Claude 的「一轮」是那里的真术语）· 禁用词表与对外文案普查量具（它们列这个词就是为了禁它）。
 //! 第三副网眼（口语的连接说法）：「连不」＋「上」。连接说「断开」，机器状态说「{machine} 离线」。放过禁用词表与文案规则表（列它、举它当反例）。
 //!
-//! 第六张网（施工史 · 施工代号 · 已删的旧面板）：`src/` · `tests/` · `.github/` 里拦，今天的存量记在一张按文件的名单里、只许变短；
-//! 名单清空的那个提交连名单一起删，网照旧拦。
+//! 第六张网（施工史 · 施工代号 · 已删的旧面板）：`src/` · `tests/` · `.github/` 里拦，命中集 == ∅，点名哪个文件哪一行。
 //!
 //! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
@@ -655,7 +654,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
     );
 }
 
-/// 第三张网的存量名单：`路径<TAB>命中行数`，记法与对账同 [`HISTORY_STOCK`]。
+/// 第三张网的存量名单：`路径<TAB>命中行数`，记法与对账见 [`stock_list_red`]。
 const TICKET_STOCK: &str = "tests/__fixtures__/ticket-refs-pending.tsv";
 
 /// 第三张网：拦，带一张只许变短的存量名单。人群见本文件头注。
@@ -672,7 +671,7 @@ fn no_ticket_codes_beyond_the_shrinking_stock_list() {
     let mut found = std::collections::BTreeMap::new();
     for (rel, text) in texts {
         if PROCESS_NAMES_EXEMPT.contains(&rel.as_str())
-            || [HISTORY_STOCK, TICKET_STOCK].contains(&rel.as_str())
+            || rel == TICKET_STOCK
             || rel.starts_with(GENERATED)
         {
             continue;
@@ -725,9 +724,9 @@ fn the_ticket_net_catches_its_two_shapes_and_spares_the_rest() {
     );
 }
 
-/// 第六张网（施工史与施工代号）：拦，带一张只许变短的存量名单。
-/// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（两张存量名单除外：它们列的就是这些名字）；测试声明行不扫。
-/// 生成物（[`GENERATED`]）不扫：那里的字来自 Rust 源码注释，源头在人群里；它随重新生成变，名单跟不住它。
+/// 第六张网（施工史与施工代号）：拦，命中集 == ∅。
+/// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（第三张网的存量名单除外：它列的就是那些名字）；测试声明行不扫。
+/// 生成物（[`GENERATED`]）不扫：那里的字来自 Rust 源码注释，源头在人群里，源头清了、重新生成就没了。
 /// 三形各一个名字，每个网眼拆两段、运行期拼：
 /// - 施工史：「先」「从」＋「前」（「从」＋「前端 / 前后」不算）·「原」＋「住」·「搬家」＋「前」·「回修」＋「轮」·「这一」＋「刀」
 ///   —— 写的是现在是什么样，不是从哪儿改过来；
@@ -767,12 +766,6 @@ fn coded_evidence_name() -> Regex {
     .expect("文件名网眼")
 }
 
-/// 存量名单：`路径<TAB>命中行数`，一份一行，记实数。名单外的命中 ⇒ 红；名单里的一份命中行数与记下的不等 ⇒ 红
-/// （变少了就把那一行改成实数）；名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。
-/// 只许变短对着基线判（`guard_core::baseline_text`，与 main 分叉点上那一版）：基线上没有的行 · 比基线大的数 ⇒ 红。
-/// 名单清空的那个提交连它和本段读名单的那几行一起删。
-const HISTORY_STOCK: &str = "tests/__fixtures__/outside-refs-pending.tsv";
-
 /// 界面那份生成物的目录：第六张网不扫它。
 const GENERATED: &str = "src/frontend/ui/generated/";
 
@@ -811,6 +804,10 @@ fn line_hits(eyes: &[(&str, Regex)], decl: &Regex, text: &str) -> Vec<(usize, St
     hits
 }
 
+/// 存量名单：`路径<TAB>命中行数`，一份一行，记实数。名单外的命中 ⇒ 红；名单里的一份命中行数与记下的不等 ⇒ 红
+/// （变少了就把那一行改成实数）；名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。
+/// 只许变短对着基线判（`guard_core::baseline_text`，与 main 分叉点上那一版）：基线上没有的行 · 比基线大的数 ⇒ 红。
+///
 /// 存量名单 `list`（仓根相对）对今天的命中判一遍：先比基线（只许变短），再对账。返回红的那几条（空 ⇒ 过）。
 /// 今天的命中按名单的形状打到标准输出（`-- --nocapture` 看得见），删行时照它对。
 fn stock_list_red(
@@ -838,7 +835,7 @@ fn stock_list_red(
 }
 
 #[test]
-fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
+fn no_tracked_text_carries_build_history_or_codes() {
     let root = repo();
     let texts = tracked_texts(&root);
     assert!(
@@ -847,36 +844,29 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
         texts.len()
     );
     let (eyes, decl) = (history_eyes(), test_declaration());
-    let mut found = std::collections::BTreeMap::new();
+    let mut bad = Vec::new();
     for (rel, text) in texts {
         let in_scope = ["src/", "tests/", ".github/"]
             .iter()
             .any(|d| rel.starts_with(d));
-        if !in_scope
-            || [HISTORY_STOCK, TICKET_STOCK].contains(&rel.as_str())
-            || rel.starts_with(GENERATED)
-        {
+        if !in_scope || rel == TICKET_STOCK || rel.starts_with(GENERATED) {
             continue;
         }
-        let hits = history_hits(&eyes, &decl, rel, text);
-        if !hits.is_empty() {
-            found.insert(rel.clone(), hits);
+        for (n, s) in history_hits(&eyes, &decl, rel, text) {
+            bad.push(format!("{rel}:{n}  {s}"));
         }
     }
-    let bad = stock_list_red(&root, HISTORY_STOCK, &found);
     assert!(
         bad.is_empty(),
-        "施工史 · 施工代号 · 已删的旧面板对不上存量名单 `{HISTORY_STOCK}`（今天命中 {} 份）。\
-         新写的删掉、写成现在是什么样；清完的那一份从名单删行。{} 条，前 50 条：\n{}",
-        found.len(),
+        "施工史 · 施工代号 · 已删的旧面板 {} 处：删掉，或写成现在是什么样、为什么。前 50 条：\n{}",
         bad.len(),
         bad.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
     );
 }
 
-/// 合成夹具：三形与文件名该抓的抓到、该放过的放过；名单只许变短的三种红各判一次。
+/// 合成夹具：三形与文件名该抓的抓到、该放过的放过；存量名单对账（第三张网用的 [`stock_list_red`]）的几种红各判一次。
 #[test]
-fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
+fn the_history_net_catches_its_shapes_and_the_stock_list_check_reds() {
     let (eyes, decl) = (history_eyes(), test_declaration());
     let lines = [
         format!("// 先{}住在 lib.rs", "前"),          // 1 ✔
