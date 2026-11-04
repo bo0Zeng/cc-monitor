@@ -653,6 +653,39 @@ fn on_windows_a_hosted_session_comes_back_with_its_attach_line() {
     assert!(o.line.unwrap().ends_with("-- --attach h-1"));
 }
 
+/// 启动命令照那一行在哪台跑认：Windows 本机托管终端填 `C:\tools\claude.cmd` ⇒ 起好、那一跳交给 ccm 的启动器就是它；
+/// 同一个值交给 POSIX 那一台 ⇒ `bad_command`。
+#[test]
+fn a_launch_command_naming_a_windows_path_is_judged_by_where_the_line_runs() {
+    let cmd = r"C:\tools\claude.cmd";
+    let rig = Rig {
+        hosts: true,
+        windows: true,
+        ccm_out: "ccm-session=w-cc\n".into(),
+        ..Rig::new(None)
+    };
+    let o = rig
+        .open(json!({
+            "what": { "kind": "new", "agent": "claude", "cwd": "C:\\w", "command": cmd },
+            "run": "managed",
+            "local": true
+        }))
+        .unwrap_or_else(|e| panic!("Windows 本机的绝对路径启动命令被拒了：{e:?}"));
+    assert_eq!(o.landed, Landed::Started);
+    assert!(
+        rig.ccm
+            .borrow()
+            .iter()
+            .any(|argv| argv.iter().any(|a| a == cmd)),
+        "交给 ccm 的那一跳没带上这个启动命令：{:?}",
+        rig.ccm.borrow()
+    );
+    let err = Rig::new(Some(vec![]))
+        .open(new(json!({ "command": cmd })))
+        .unwrap_err();
+    assert_eq!(err.code.as_deref(), Some("bad_command"));
+}
+
 /// 新起：放在 tmux ⇒ 后台起好、回会话名与接进去那一行；直路 ⇒ 回起会话那一行。
 #[test]
 fn new_lands_started_or_window() {

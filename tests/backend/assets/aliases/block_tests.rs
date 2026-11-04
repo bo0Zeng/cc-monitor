@@ -206,10 +206,8 @@ fn damaged_fence_leaves_the_file_byte_identical() {
             "{what}：应因围栏损坏中止，实得：{e}"
         );
         // 顺带：不许留下备份/临时文件（上一版变异② 的泄漏形态）
-        let leaked: Vec<String> = std::fs::read_dir(dir)
-            .expect("列 tempdir")
-            .filter_map(|x| x.ok())
-            .map(|x| x.file_name().to_string_lossy().into_owned())
+        let leaked: Vec<String> = test_home::list(dir)
+            .into_iter()
             .filter(|n| n != "Microsoft.PowerShell_profile.ps1")
             .collect();
         assert!(leaked.is_empty(), "{what}：不该留下 {leaked:?}");
@@ -558,28 +556,14 @@ fn install_preserves_existing_user_content() {
     // 门就是本进程的 `Door::put` ⇒ 直接看盘：旁边真留了一份备份。
     let parent = p.parent().unwrap();
     let stem = p.file_name().unwrap().to_string_lossy().to_string();
-    let backups = std::fs::read_dir(parent)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with(&format!("{stem}.ccm-backup-"))
-        })
+    let backups = test_home::list(parent)
+        .iter()
+        .filter(|n| n.starts_with(&format!("{stem}.ccm-backup-")))
         .count();
     assert!(
         backups >= 1,
         "改用户的 profile 必须要后端留一份备份（旁边一份都没有）"
     );
-
-    // 清理
-    let _ = std::fs::remove_file(&p);
-    for entry in std::fs::read_dir(parent).unwrap().filter_map(|e| e.ok()) {
-        let n = entry.file_name().to_string_lossy().to_string();
-        if n.starts_with(&format!("{stem}.ccm-backup-")) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
 }
 
 #[test]
@@ -618,16 +602,6 @@ fn reinstall_replaces_block_keeps_user_content() {
     assert!(after.contains("function __ccm_bind"));
     // 只应该有一个 BEGIN 块
     assert_eq!(after.matches("# === cc-monitor BEGIN").count(), 1);
-
-    let _ = std::fs::remove_file(&p);
-    let parent = p.parent().unwrap();
-    let stem = p.file_name().unwrap().to_string_lossy().to_string();
-    for entry in std::fs::read_dir(parent).unwrap().filter_map(|e| e.ok()) {
-        let n = entry.file_name().to_string_lossy().to_string();
-        if n.starts_with(&format!("{stem}.ccm-backup-")) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
 }
 
 // 「Windows 上替换要保住 explicit ACE（`ReplaceFileW`）」那条性质住写的那一侧（后端）：
@@ -645,16 +619,6 @@ fn uninstall_strips_block_keeps_user_content() {
     assert!(after.contains("Set-Alias g git"));
     assert!(!after.contains("# === cc-monitor"));
     assert!(!after.contains("__ccm_bind"));
-
-    let _ = std::fs::remove_file(&p);
-    let parent = p.parent().unwrap();
-    let stem = p.file_name().unwrap().to_string_lossy().to_string();
-    for entry in std::fs::read_dir(parent).unwrap().filter_map(|e| e.ok()) {
-        let n = entry.file_name().to_string_lossy().to_string();
-        if n.starts_with(&format!("{stem}.ccm-backup-")) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -836,9 +800,6 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
     for line in BARE_RC.lines() {
         assert!(pinned(&stripped, line), "卸载吃掉了用户那一行：{line:?}");
     }
-    for entry in std::fs::read_dir(&td.0).unwrap().filter_map(|e| e.ok()) {
-        let _ = std::fs::remove_file(entry.path());
-    }
 }
 
 /// ★ 方言按**文件是什么**定，不按**机器是什么**定；而且路径仍然由人选。
@@ -871,7 +832,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     let p = td.0.join(".bashrc");
     std::fs::write(&p, BARE_RC).expect("写夹具");
     let before = std::fs::read(&p).expect("读");
-    let before_n = std::fs::read_dir(&td.0).unwrap().count();
+    let before_names = test_home::list(&td.0);
 
     // 扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
@@ -904,8 +865,8 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 
     assert_eq!(std::fs::read(&p).expect("读回"), before, "扫描改了文件内容");
     assert_eq!(
-        std::fs::read_dir(&td.0).unwrap().count(),
-        before_n,
+        test_home::list(&td.0),
+        before_names,
         "扫描在目录里留下了东西（备份 / 临时文件）—— 那也是「动机器」"
     );
 }
@@ -1564,11 +1525,7 @@ fn the_posix_block_leaves_a_terminal_record_only_in_a_local_graphical_shell() {
             serde_json::json!({ "shell_pid": pid.parse::<u64>().unwrap(), "proc_start": start, "tty": tty }),
             "{sh}"
         );
-        let leftovers: Vec<_> = std::fs::read_dir(home.0.join(".cc-monitor/ps-await"))
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name())
-            .collect();
+        let leftovers = test_home::list(&home.0.join(".cc-monitor/ps-await"));
         assert_eq!(leftovers.len(), 1, "{sh}: 半截文件没留下：{leftovers:?}");
 
         for (why, env) in [

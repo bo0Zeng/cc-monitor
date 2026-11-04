@@ -1,7 +1,7 @@
 //! 文件管理面的写：[`Face`] · [`Resolved`] · [`FaceFile`]；分叉那一处只会新建的 [`NewFile`]。
 //!
 //! - [`Resolved`] 是「已过路径解析」的那一格：根底下已打开的那一层目录（unix 是目录句柄）＋ 最后一段名字。只能由路径解析造
-//!   （`common/root_path.rs::walk_in_root` 从根句柄逐段往下开；删会话那一道 [`Resolved::vouch`]，谁许调由 `readonly_guard` 的构造判据钉）。
+//!   （`common/root_path.rs::walk_in_root` 从根句柄逐段往下开；删会话那一道 [`Resolved::vouch`]；谁许调由后端 `clippy.toml` 那份名单管）。
 //!   [`Face`] 的写方法只收它，不收 `&Path` ⇒ 没过路径解析的路径递不进来。
 //! - unix 上每个写动词都是 `*at` 一族、相对那个已开的目录句柄：判过之后半路哪一层被换成链接，动的仍是判过的那一层。
 //!   Windows 那一臂仍按路径字符串动手（这一形在 Windows 上没闭合、没在真 Windows 上跑过）。
@@ -59,7 +59,11 @@ impl Resolved {
         })
     }
 
-    /// 担保 `p` 是要动的那一格（按路径开它的上一层）。只许删会话那一道调（构造判据钉）。
+    /// 担保 `p` 是要动的那一格（按路径开它的上一层）。只许删会话那一道调（名单管）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "按路径担保那一形开它的上一层：经逐段开那一口（同一处造）"
+    )]
     pub fn vouch(p: PathBuf) -> io::Result<Resolved> {
         let (Some(dir), Some(name)) = (p.parent(), p.file_name()) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));

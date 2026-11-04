@@ -27,8 +27,12 @@ impl crate::wire::typed::Handle for SessionOpen {
         let (_cx, needs) = cx.split();
         async move {
             let (files, own) = (needs.0, &needs.1);
-            answer(req, files, own, &crate::platform::fs::NewFile::issue())
-                .map_err(open::SessionOpenErr)
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "打开会话那一条带分叉（从某一轮接着开）：在它自己那份实现里领一只只会新建的手（别的命令拿不到它）"
+            )]
+            let nf = crate::platform::fs::NewFile::issue();
+            answer(req, files, own, &nf).map_err(open::SessionOpenErr)
         }
     }
 }
@@ -97,6 +101,10 @@ fn answer(
 }
 
 /// 同 [`with_launch_ctx`]，分支记录那一手由这里造（起一组那一族不分叉，手里没有它）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "分叉那条命令的另一个入口：手里没有那只只会新建的手的调用方由这里领一只"
+)]
 pub(crate) fn with_launch_ctx_here<T>(
     own: &crate::platform::fs::Own,
     f: impl FnOnce(ForkWrite, &PreRotation, Option<&std::path::Path>) -> T,
