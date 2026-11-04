@@ -1364,6 +1364,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     leaked: NONE,
     // 测试档那几格环境变量要不要摘（只判测试进程自己的环境）；TS 侧没有孪生。
     strays: NONE,
+    // 判据要临时目录只从这一口拿（沙箱根底下、每拿一次一个新的空目录）；TS 侧没有孪生。
+    scratch: NONE,
   },
   "relay-route-core": {
     // 带上限的同步读只经这三样（读到流尽 · 读一个窗口 · 读本机文件前的预检）：后端 · 壳 · 手机核心同一份；TS 侧没有孪生。
