@@ -701,7 +701,7 @@ fn the_next_line_says_when_from_the_same_simulation() {
         copy_text("beRotation.line.next", &[]),
         "换到的不是第二格 ⇒ 不写钟点"
     );
-    // 在用的号本会话先不用：照旧在第一格，右格写到下一个节点换下。
+    // 在用的号本会话先不用：照旧在第一格，右格写「下次判定时换下」。
     let off_now = lines_of(
         &["a".to_string(), "b".to_string()],
         &["a".to_string()],

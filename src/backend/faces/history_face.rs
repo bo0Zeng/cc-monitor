@@ -1445,7 +1445,7 @@ pub(crate) fn facts_at(
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
     facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
-    // 没人答时自动答：注解里那一格 · 上一条替人答过的那一句（判定与记录都住 `control::asks`）。
+    // 无人答时自动答：注解里那一格 · 上一条替人答过的那一句（判定与记录都住 `control::asks`）。
     facts.auto_answer =
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
     facts.auto_answer_choices = crate::control::asks::auto_choices(facts.auto_answer);
