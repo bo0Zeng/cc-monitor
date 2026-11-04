@@ -50,15 +50,14 @@ pub fn answer_at(home: &Path, cmd: &str, args: &Value, tz: &crate::common::time:
                 crate::common::machine_prefs::read_at(&crate::common::machine_prefs::path_in(home))
                     .prefs()
                     .limits();
-            h::facts_at(home, r, &limits, tz)
+            h::facts_at(home, r, &limits, tz, None)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
             crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(
                 r,
                 crate::wire::typed::Cx {
                     tz: tz.clone(),
-                    until: None,
-                    needs: (),
+                    ..Default::default()
                 },
             ))
         }),
@@ -70,8 +69,7 @@ pub fn answer_at(home: &Path, cmd: &str, args: &Value, tz: &crate::common::time:
                 r,
                 crate::wire::typed::Cx {
                     tz: tz.clone(),
-                    until: None,
-                    needs: (),
+                    ..Default::default()
                 },
             ))
         }),

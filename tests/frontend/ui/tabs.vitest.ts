@@ -5069,6 +5069,25 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     }
   });
 
+  it("成品带「机器 · 目录」那一句 ⇒ 悬停卡照摆那一行，不另摆机器名与目录两行；不带 ⇒ 不说", async () => {
+    // 夹具那一句与目录、机器名都故意不同：界面若还在自己摆 machineName · projectDir，就红。
+    const said = "那台写的在哪一句";
+    let whereLine: string | undefined = said;
+    answerFacts(() => facts({ projectDir: "/w/where-proj", ...(whereLine === undefined ? {} : { whereLine }) }));
+    tm.onLine(line("wh", 0));
+    await settle();
+    const tab = home(tm).store.tabs.get("wh")!;
+    const tip = () => cardText(tm, "wh").split("\n");
+    expect(tab.whereLine).toBe(said);
+    expect(tip()).toContain(said);
+    expect(tip()).not.toContain("/w/where-proj");
+    whereLine = undefined;
+    tm.onLine(line("wh", 1));
+    await settle();
+    expect(tab.whereLine).toBeNull();
+    expect(tip()).not.toContain(said);
+  });
+
   it("成品带写入进程那一句 ⇒ tab 的悬停提示照摆那一句；不带 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
     // 夹具那一句与 pid 个数故意无关：界面若还在自己数 pid、自己拼，就红。
     const said = "那台写的写入进程句";

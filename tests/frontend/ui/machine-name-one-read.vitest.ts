@@ -1,8 +1,9 @@
 /**
  * 界面里「这台叫什么」只有一个读口：`machineName(origin)`，照那台机器成品的 `name`（本机远端同一条路）。
  *
- * 喂两台成品（远端 devbox 叫「工作站 B」、本机叫「laptop」）之后，会话头 · 标签悬停卡 · 终端页头 · 终端输入「发给 …」
- * 四处写的都是成品里的名字，不写键（devbox）、不按本机 / 远端另挑字。设置窗去处那一个改叫 `machinePageOf`，
+ * 喂两台成品（远端 devbox 叫「工作站 B」、本机叫「laptop」）之后，会话头 · 终端页头 · 终端输入「发给 …」
+ * 三处写的都是成品里的名字，不写键（devbox）、不按本机 / 远端另挑字。标签悬停卡那一行摆的是会话事实里那台写好的
+ * 「在哪」那一句（`whereLine`，判据在 `tabs.vitest.ts`），不读这个口。设置窗去处那一个改叫 `machinePageOf`，
  * `settings-dest` 不再有 `machineOf` 这个名字。
  *
  * 夹具只造结构（sid · 路径），不采会话正文。
@@ -10,9 +11,6 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
-import { TabStore } from "../../../src/frontend/ui/tab-store";
-import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
-import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { SessionHead } from "../../../src/frontend/ui/session-head";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
@@ -70,17 +68,6 @@ function headText(t: Tab): string {
   return h.el.textContent ?? "";
 }
 
-function hoverText(t: Tab): string {
-  const store = new TabStore();
-  store.tabs.set(t.sessionId, t);
-  store.orderedIds.push(t.sessionId);
-  const el = document.createElement("div");
-  document.body.appendChild(el);
-  const host = new Proxy({}, { get: () => vi.fn() }) as unknown as TabBarViewHost;
-  const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, host);
-  return view.hoverCard(t.sessionId)?.textContent ?? "";
-}
-
 async function terminalText(t: Tab): Promise<string> {
   const reads: TerminalReads = {
     follow: vi.fn((_o, _terminal, events) => {
@@ -101,9 +88,9 @@ async function terminalText(t: Tab): Promise<string> {
 
 describe("机器叫法只读那台成品里的名字", () => {
   for (const c of CASES) {
-    it(`★ ${c.origin}：会话头 · 悬停卡 · 终端页头 · 「发给 …」写成品名字「${c.name}」`, async () => {
+    it(`★ ${c.origin}：会话头 · 终端页头 · 「发给 …」写成品名字「${c.name}」`, async () => {
       const t = tab(c.sid, c.origin);
-      const texts = { head: headText(t), hover: hoverText(t), terminal: await terminalText(t) };
+      const texts = { head: headText(t), terminal: await terminalText(t) };
       for (const [where, text] of Object.entries(texts)) {
         expect(text, `${where} 写成品名字`).toContain(c.name);
         if (c.key !== null) expect(text, `${where} 不写键`).not.toContain(c.key);

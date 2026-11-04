@@ -198,7 +198,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/app-store.ts", // 号徽章 · 悬停那两行照会话那台写好的 `session-account`；停发那一句照 `rotation-view`：都从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
-    "src/frontend/ui/ipc/chan-caller.ts", // 悬停卡里那台叫什么：照那台成品的名字（`machineName`）
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
     "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需手动」计数 · 键帽
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）

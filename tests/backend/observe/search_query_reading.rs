@@ -24,10 +24,7 @@ fn ask(phase: &str, round: usize, q: &str) {
         id: "sx1".to_string(),
         cmd: "history-search".to_string(),
         args: json!({ "query": q, "limit": LIMIT }),
-        within_ms: None,
-        view: Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     })
     .unwrap_or_else(|f| {
         panic!(

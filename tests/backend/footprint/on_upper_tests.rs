@@ -21,10 +21,7 @@ fn run_on_frame(
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,
-        within_ms: None,
-        view: Value::Null,
-        tz: Default::default(),
-        until: None,
+        ..Default::default()
     };
     run(req)
         .map(|_| ())

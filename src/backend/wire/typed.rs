@@ -143,12 +143,26 @@ pub trait Handle: Command {
     ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
 }
 
-/// 信封里除了 `args` 那几样：看的那一台的时区 · 分派那一层换算好的截止时刻。
+/// 信封里除了 `args` 那几样：看的那一台的时区 · 看的那一端对本台的称呼 · 分派那一层换算好的截止时刻。
 pub struct Cx<N: Needs = needs::Nothing> {
     pub tz: crate::common::time::Tz,
+    /// 看的那一端怎么称呼本台（信封 `called`）；没带 ⇒ `None`，句子里不编名字。
+    pub called: Option<String>,
     pub until: Option<crate::platform::child::Until>,
     /// 分派那一层按 [`Handle::Needs`] 交进来的那几样。
     pub needs: N::Given,
+}
+
+/// 不带能力的那一份：UTC · 没有称呼 · 没有期限。进程内造（帧里的小成品 · 批量里的单条 · 判据）写要的那几格、其余 `..Default::default()`。
+impl Default for Cx {
+    fn default() -> Self {
+        Cx {
+            tz: Default::default(),
+            called: None,
+            until: None,
+            needs: (),
+        }
+    }
 }
 
 impl<N: Needs> Cx<N> {
@@ -157,6 +171,7 @@ impl<N: Needs> Cx<N> {
         (
             Cx {
                 tz: self.tz,
+                called: self.called,
                 until: self.until,
                 needs: (),
             },
@@ -361,6 +376,7 @@ fn go<C: Handle>(h: &super::spec::Hands, how: How) -> Option<super::spec::Prepar
         let req = take::<C::Req>(&r.args)?;
         let cx = Cx::<C::Needs> {
             tz: r.tz,
+            called: r.called,
             until: r.until,
             needs,
         };
@@ -420,6 +436,7 @@ where
             let req = take::<C::Req>(&r.args)?;
             let cx = Cx {
                 tz: r.tz,
+                called: r.called,
                 until: r.until,
                 needs: (),
             };
@@ -447,6 +464,7 @@ where
         let req = take::<C::Req>(&r.args)?;
         let cx = Cx {
             tz: r.tz,
+            called: r.called,
             until: r.until,
             needs: (),
         };
