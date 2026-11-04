@@ -4,6 +4,13 @@
     "next": null,
     "off": [
       "r-1"
+    ],
+    "runs": [
+      {
+        "at": 0,
+        "n": 1,
+        "said": "已被 Esc 回退 · 消息 ×1"
+      }
     ]
   },
   "history-lines": {
