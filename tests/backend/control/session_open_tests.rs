@@ -48,6 +48,8 @@ struct Rig {
     fork_tmux: Option<bool>,
     /// 这台能托管（名单那一格 `managed`）。
     hosts: bool,
+    /// 这台是 Windows 那一档：能力照没有 tmux 的平台自报、本机终端是 PowerShell、目录 `C:\w` 在。
+    windows: bool,
     /// 启动台账记着那条会话起在哪种宿主里（恢复照起时那一种读它）。
     started: Option<crate::wire::TerminalHost>,
     /// 起 ccm 那一趟的 stdout（托管那一形报 `ccm-session=<名>`）。
@@ -81,6 +83,7 @@ impl Rig {
             e2e: false,
             fork_tmux: None,
             hosts: false,
+            windows: false,
             started: None,
             ccm_out: String::new(),
             ccm: RefCell::new(vec![]),
@@ -141,8 +144,12 @@ impl Rig {
 
     /// 拼一份替身 `Deps` 交给 `f`。
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
-        let caps: BTreeSet<String> =
-            crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
+        let platform = if self.windows {
+            crate::platform::tmux::TmuxPlatform::AbsentUnlessExeOnPath
+        } else {
+            crate::platform::tmux::TMUX_PLATFORM
+        };
+        let caps: BTreeSet<String> = crate::control::ccm::ccm_launcher_with(platform)
                 .into_iter()
                 .map(str::to_string)
                 .collect();
@@ -219,7 +226,13 @@ impl Rig {
         } else {
             || Some("/b/ccm".into())
         };
-        let is_dir: fn(&str) -> bool = if self.e2e { |_| true } else { |d| d == "/p" };
+        let is_dir: fn(&str) -> bool = if self.e2e {
+            |_| true
+        } else if self.windows {
+            |d| d == "C:\\w"
+        } else {
+            |d| d == "/p"
+        };
         f(&Deps {
             list: &list,
             record: &record,
@@ -229,7 +242,7 @@ impl Rig {
             mint: &mint,
             caps: &caps,
             host: crate::control::launch_render::Host {
-                windows: false,
+                windows: self.windows,
                 is_dir,
                 entry,
             },
@@ -594,6 +607,50 @@ fn look_attaches_a_hosted_terminal_by_handle() {
         .open(json!({ "what": { "kind": "look", "sid": A } }))
         .unwrap_err();
     assert_eq!(err.code.as_deref(), Some("place_unavailable"));
+}
+
+/// ★ Windows 那一档（没有 tmux · 只能托管 · 本机 PowerShell）：新起一个托管会话 ⇒ 起好、回接进去那一行
+/// `& '<入口>' -- --attach <名>`；按 sid 接回一个托管终端同样回那一行。接回不要 tmux 载体（`--attach` 先认托管名单）。
+#[test]
+fn on_windows_a_hosted_session_comes_back_with_its_attach_line() {
+    let rig = Rig {
+        hosts: true,
+        windows: true,
+        ccm_out: "ccm-session=w-cc\n".into(),
+        ..Rig::new(None)
+    };
+    let o = rig
+        .open(json!({
+            "what": { "kind": "new", "agent": "claude", "cwd": "C:\\w" },
+            "run": "managed",
+            "local": true
+        }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Started, Some("w-cc"))
+    );
+    let line = o.line.unwrap();
+    assert!(
+        line.starts_with("& ") && line.ends_with("-- --attach w-cc"),
+        "{line}"
+    );
+    let rig = Rig {
+        hosts: true,
+        windows: true,
+        hosted: vec![TermEntry {
+            host: crate::wire::TerminalHost::Managed,
+            name: "box-cc".into(),
+            terminal: "h-1".into(),
+            sid: Some(A.into()),
+            agent: true,
+        }],
+        ..Rig::new(None)
+    };
+    let o = rig
+        .open(json!({ "what": { "kind": "look", "sid": A }, "local": true }))
+        .unwrap();
+    assert!(o.line.unwrap().ends_with("-- --attach h-1"));
 }
 
 /// 新起：放在 tmux ⇒ 后台起好、回会话名与接进去那一行；直路 ⇒ 回起会话那一行。
