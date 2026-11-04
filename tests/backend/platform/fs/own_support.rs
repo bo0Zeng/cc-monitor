@@ -39,6 +39,10 @@ impl Own {
 /// 判据的「fd 2」替身要的两样（生产里 fd 2 那一份由 `platform::stderr_fd` 量、指，不经它们）。
 impl super::DiagFile {
     /// 此刻多长（问不到 ⇒ `None`）。
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "判据只量长度涨没涨，「是不是空」没人问"
+    )]
     pub fn len(&self) -> Option<u64> {
         self.0.metadata().ok().map(|m| m.len())
     }

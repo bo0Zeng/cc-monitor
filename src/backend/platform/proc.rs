@@ -390,6 +390,13 @@ impl std::fmt::Display for OpenFiles {
 /// 常驻后端起来那一下把本进程的 fd 软上限抬到硬上限（硬上限是「不限」⇒ 抬到 Linux `fs.nr_open` 的缺省值 1<<20：软上限不许超过它）。
 /// 桌面会话起进程缺省给软上限 1024，而中转每条在途连接约占三个 fd、各台常驻流与会话文件另占 ⇒ 不抬就是第一堵墙。
 /// 只动软上限（不要特权）；硬上限不碰。抬不动照旧起，结局交调用方记一行。
+#[cfg_attr(
+    all(unix, target_pointer_width = "64"),
+    expect(
+        clippy::unnecessary_cast,
+        reason = "`rlim_t` 随平台定：64 位上就是 `u64`，32 位 glibc 上是 `u32`；转换照写、两边都对"
+    )
+)]
 pub fn raise_open_files_limit() -> OpenFiles {
     #[cfg(unix)]
     {

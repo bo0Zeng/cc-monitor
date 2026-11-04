@@ -58,12 +58,12 @@
 //!
 //! - **它数的是什么**（两条针，各数各的）：
 //!   ① **搬 `Frame` 的 mpsc 通道的诞生点**，不是类型名的出现处（`PINS` 里两行）：
-//!      观测通道 `mpsc::unbounded_channel::<(Frame, usize)>(` = 1（`observe/watcher.rs`，按字节记账的那条）；
-//!      应答通道 `mpsc::channel::<Frame>(` = 2（`stream/entry.rs`：stdio 那条 + 常驻那条，与 `writer_task(` 那条针的 2 同源）。
+//!   观测通道 `mpsc::unbounded_channel::<(Frame, usize)>(` = 1（`observe/watcher.rs`，按字节记账的那条）；
+//!   应答通道 `mpsc::channel::<Frame>(` = 2（`stream/entry.rs`：stdio 那条 + 常驻那条，与 `writer_task(` 那条针的 2 同源）。
 //!   ② 生产段里 `::channel(` 出现几次 = **0**
-//!      （[`tests::no_qualified_channel_call_leaves_its_payload_type_to_inference`]）——
-//!      一处「**带路径前缀而把载荷类型交给推导**」的诞生点都没有。
-//!      ⚠ 它是一条**关于拼法**的棘轮，不是关于 `Frame` 的：谁的载荷都算。
+//!   （[`tests::no_qualified_channel_call_leaves_its_payload_type_to_inference`]）——
+//!   一处「**带路径前缀而把载荷类型交给推导**」的诞生点都没有。
+//!   ⚠ 它是一条**关于拼法**的棘轮，不是关于 `Frame` 的：谁的载荷都算。
 //! - **它因此能保证什么**：`tokio` 的 `mpsc::Receiver` **不可 clone**（类型层面挡着）
 //!   ⇒ 一条通道**至多**一个消费端 ⇒ **通道诞生数是 `Frame` 消费端数的上界**
 //!   （是上界不是等式：造了通道而把 receiver 立刻扔掉，消费端就是 0）。
@@ -224,8 +224,8 @@ mod tests {
     /// - 逮不到（**故意**）：`mpsc::channel::<Frame>(8)`（有 turbofish，那是 `PINS` 那条的活）
     ///   · `sync_channel::<String>(4)` 与任何 `xxx_channel(` （`::` 不紧挨）
     ///   · `fn reply_channel(cap: usize)` 与 `inbound::reply_channel(8)`
-    ///     —— **抽一个叫 `…_channel` 的 helper 是纯重构，它一处都不许红**，
-    ///     这正是那条承重线；用 `channel(` 当锚点就会在这里出假阳。
+    ///   —— **抽一个叫 `…_channel` 的 helper 是纯重构，它一处都不许红**，
+    ///   这正是那条承重线；用 `channel(` 当锚点就会在这里出假阳。
     const BARE_BIRTH: &str = "::channel(";
 
     /// 全 crate 语料：`src/` 下**全部**（含子目录）`.rs` 的生产段。
@@ -233,7 +233,7 @@ mod tests {
     /// # ⚠ 为什么走 `scan_tree!` 而不是自己 `read_dir`
     ///
     /// 〔08-27，回修当天被本仓自己的判据逮到，如实留档〕本函数第一版是裸递归 `read_dir`
-    /// + 一张 `SKIPPED_BY_NAME` 自摘表，**当场被 monitor 侧的
+    /// ＋ 一张 `SKIPPED_BY_NAME` 自摘表，**当场被 monitor 侧的
     /// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself` 打红**
     /// （它是一条**递减棘轮**：存量清单只许变短）。
     /// 那条判据的理由逐字：「判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ **恒绿**，

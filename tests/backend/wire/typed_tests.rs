@@ -226,6 +226,7 @@ fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
 fn take_bad_args_omits_sentinel_value_from_rejection() {
     #[derive(serde::Deserialize, Debug)]
     struct DummyReq {
+        #[expect(dead_code, reason = "只为反序列化那一下按类型拒，值没人读")]
         port: u16,
     }
     let sentinel = "SENTINEL_SECRET_VALUE_12345";

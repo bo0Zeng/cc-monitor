@@ -14,18 +14,19 @@
 //!
 //! # 信封
 //!
-//! · 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
+//! - 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
 //!   - stdin：默认读到 EOF；带 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
 //!     capture 不关远端 stdin）。stdin 开着却 [`super::cli_args::STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`，不挂住。
 //!   - argv：[`crate::wire::cli_words::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
 //!     给了它就**不碰 stdin**；与 [`crate::wire::cli_words::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
+//!
 //!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
-//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
+//! - 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
-//! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
-//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::common::time::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
-//! · 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
-//! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
+//! - 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
+//! - 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::common::time::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
+//! - 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
+//! - exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
 use crate::common::said::Said;

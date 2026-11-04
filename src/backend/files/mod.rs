@@ -157,10 +157,13 @@ pub fn dir_changes() -> tokio::sync::broadcast::Receiver<String> {
 static LS_VIEWS: std::sync::LazyLock<crate::common::views::Views> =
     std::sync::LazyLock::new(|| crate::common::views::Views::new(browse_watch::MAX_BROWSE_WATCHES));
 
+/// 列好的一份：头 ＋ 逐条（名字, 那一条）。
+type Listed = (wire::LsHead, Vec<(String, wire::LsEntry)>);
+
 /// 此刻列好的那一份（交给备忘比：问一次只取一次）。
 struct LsNow {
     key: String,
-    now: std::cell::Cell<Option<(wire::LsHead, Vec<(String, wire::LsEntry)>)>>,
+    now: std::cell::Cell<Option<Listed>>,
 }
 
 impl crate::common::views::ViewSource for LsNow {
@@ -169,7 +172,7 @@ impl crate::common::views::ViewSource for LsNow {
     fn ask_key(&self) -> String {
         self.key.clone()
     }
-    fn now(&self) -> (wire::LsHead, Vec<(String, wire::LsEntry)>) {
+    fn now(&self) -> Listed {
         self.now.take().expect("一问只比一次")
     }
 }

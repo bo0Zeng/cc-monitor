@@ -173,7 +173,7 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
     }
     // 版本给错了类型 ⇒ `bad_args`，拒的原因是那一格的类型（不是「多了个不认识的键」：键名对得上才测得到类型）。
     let got = run_any("profiles-write", json!({ "changes": [], "ifRev": 3 }));
-    let f = got.err().expect("版本给成数该拒");
+    let f = got.expect_err("版本给成数该拒");
     assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert!(
         f.raw.as_deref() == Some("`ifRev`: expected a string"),

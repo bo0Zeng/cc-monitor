@@ -58,7 +58,7 @@ fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
     for t in &got {
         assert!(is_subcommand(t), "`{t}` 在集合里，`is_subcommand` 却不认");
         assert!(
-            is_query_mode(&[t.clone()]),
+            is_query_mode(std::slice::from_ref(t)),
             "`{t}` 不进一次性查询 —— 它会静默变成起了个流"
         );
     }
@@ -966,19 +966,23 @@ fn the_argv_payload_refuses_clearly() {
 #[test]
 fn the_argv_cap_sits_inside_the_systems_single_argument_cap() {
     const LINUX_MAX_ARG_STRLEN: u64 = 32 * 4096;
-    assert!(
-        MAX_ARGS_B64_LEN.bytes < LINUX_MAX_ARG_STRLEN,
-        "argv 载荷口的上限超过了系统单个参数的上限 —— 那一段永远轮不到本后端回码"
-    );
+    const {
+        assert!(
+            MAX_ARGS_B64_LEN.bytes < LINUX_MAX_ARG_STRLEN,
+            "argv 载荷口的上限超过了系统单个参数的上限 —— 那一段永远轮不到本后端回码"
+        )
+    };
     assert_eq!(
         MAX_ARGS_B64_LEN.bytes % 4,
         0,
         "上限不是 4 的倍数 —— 刚好到上限的合法 base64 也会被拒"
     );
-    assert!(
-        MAX_ARGS_B64_LEN.bytes / 4 * 3 <= MAX_CLI_STDIN.bytes,
-        "argv 口解出来的上限比 stdin 那一形还大"
-    );
+    const {
+        assert!(
+            MAX_ARGS_B64_LEN.bytes / 4 * 3 <= MAX_CLI_STDIN.bytes,
+            "argv 口解出来的上限比 stdin 那一形还大"
+        )
+    };
 }
 
 /// ★ 协议文档写的数与代码里的常量是同一个（上限 · 静默窗 · 两个旗标 · 码）。改了常量不改文档，这里红。

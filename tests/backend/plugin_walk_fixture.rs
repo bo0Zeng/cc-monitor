@@ -169,24 +169,17 @@ mod tests {
     /// 挖掉之后流程必须在一个说得出话的地方停（形状照 `agents/fake::FakeCaps`）。
     #[derive(Clone)]
     struct Caps {
-        discovery: Option<fn(&Path, &str) -> (Vec<PathBuf>, &'static str)>,
-        work_call: Option<fn() -> (Vec<&'static str>, Vec<(&'static str, &'static str)>)>,
+        discovery: Option<Discovery>,
+        work_call: Option<WorkCall>,
         code_table: Option<fn(Option<i32>) -> &'static str>,
     }
 
-    impl Caps {
-        /// 还剩几样知识在（[`without`](Self::without) 的自检用）。
-        fn present(&self) -> usize {
-            [
-                self.discovery.is_some(),
-                self.work_call.is_some(),
-                self.code_table.is_some(),
-            ]
-            .iter()
-            .filter(|b| **b)
-            .count()
-        }
+    /// 找程序：去哪几处找 · 找不到时那一句提示。
+    type Discovery = fn(&Path, &str) -> (Vec<PathBuf>, &'static str);
+    /// 干活那一下：子命令 · 环境。
+    type WorkCall = fn() -> (Vec<&'static str>, Vec<(&'static str, &'static str)>);
 
+    impl Caps {
         /// 完整的一套（正题用）。
         fn full() -> Self {
             Self {
