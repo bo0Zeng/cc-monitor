@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 
 /**
@@ -216,8 +216,7 @@ private fun EndDialog(
     ask: EndAsk,
     more: ChatMore,
 ) {
-    AlertDialog(
-        onDismissRequest = more::cancelEnd,
+    DangerConfirmDialog(
         title = { Text(copyText("tabMenu.kill.label")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.xs)) {
@@ -226,7 +225,8 @@ private fun EndDialog(
                 EndRow(copyText("kit.interrupts.keep"), copyText("tabSessionActions.kill.keeps"))
             }
         },
-        confirmButton = { SecondaryButton(onClick = more::confirmEnd, danger = true) { Text(copyText("tabBatch.verb.stop")) } },
-        dismissButton = { SecondaryButton(onClick = more::cancelEnd) { Text(copyText("kit.dialog.cancel")) } },
+        confirm = copyText("tabBatch.verb.stop"),
+        onConfirm = more::confirmEnd,
+        onDismiss = more::cancelEnd,
     )
 }
