@@ -42,7 +42,7 @@ pub struct Facts {
 }
 
 /// 句柄 · 名只许这些字（进路径、进名单、进命令行都不用转义）。
-pub(crate) fn id_ok(id: &str) -> bool {
+pub fn id_ok(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id

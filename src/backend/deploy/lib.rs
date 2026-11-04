@@ -36,7 +36,7 @@ pub const MARKS: Marks<'static> = Marks {
 };
 
 pub type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-/// 问一个文件的那两次取样：`(metadata 的 size, 补问的 exists)`；连不上 ⇒ `Err`。
+/// 问一个文件：metadata 给的 size，与 metadata 问不到时 `try_exists` 的结论（入参形状同 [`interpret_target_probe`]）；会话开不起来 ⇒ `Err`。
 pub type Probed = Result<(Option<Option<u64>>, Option<bool>), String>;
 /// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
 pub type Listed = Option<Vec<(String, Option<u64>)>>;
