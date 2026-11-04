@@ -53,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
+import com.ccmonitor.mobile.core.claude.model.NoticeCard
+import com.ccmonitor.mobile.core.claude.model.NoticeLook
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.RetryLook
 import com.ccmonitor.mobile.core.claude.model.RetryStrip
@@ -95,6 +97,8 @@ fun ClaudeReadingPane(
     retry: (RenderUnit.Retry) -> RetryStrip? = { RetryLook.strip(it, emptyList()) },
     // 报错卡（key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句；否则 null（画通用那一句）。
     errorNext: (String) -> String? = { null },
+    // 一张收场通知卡此刻画什么（照会话事实那一组）；并进别的组 · 整组不露 ⇒ null。没有事实 ⇒ 它自己那一行。
+    notice: (RenderUnit.Notice) -> NoticeCard? = { NoticeLook.card(it, emptyList(), emptyList()) },
     // 一段过程的那一行（聊天屏画它）。
     process: @Composable (StreamItem.Process) -> Unit = {},
     // 人说的那一句的长按与就地编辑（聊天屏给）；只读阅读面不给 ⇒ 不出。
@@ -118,7 +122,7 @@ fun ClaudeReadingPane(
                 // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
                 is StreamItem.Card ->
                     Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
-                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait, retry, errorNext), said)
+                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait, retry, errorNext, notice), said)
                     }
             }
         }
@@ -146,12 +150,13 @@ class SaidHooks(
 /** 就地编辑时它后面那几项淡到多少。 */
 private const val EDIT_FADE = 0.35f
 
-/** 卡上照会话事实摆的那几样：工具卡在等人那一枚的字 · 没配上结果时那一态（都按 tool_use id）· 重试细条 · 报错卡下一步那一句。 */
+/** 卡上照会话事实摆的那几样：工具卡在等人那一枚的字 · 没配上结果时那一态（都按 tool_use id）· 重试细条 · 报错卡下一步那一句 · 通知组。 */
 private class Steps(
     val badge: (String) -> String?,
     val wait: (String) -> PendingCall?,
     val retry: (RenderUnit.Retry) -> RetryStrip?,
     val errorNext: (String) -> String?,
+    val notice: (RenderUnit.Notice) -> NoticeCard?,
 )
 
 /** 一张卡（照它今天的样子）。 */
@@ -188,7 +193,7 @@ private fun TimelineLine(
     steps: Steps,
 ) {
     when (unit) {
-        is RenderUnit.Notice -> NoticeLine(unit, matched)
+        is RenderUnit.Notice -> steps.notice(unit)?.let { NoticeLine(it, matched) }
         is RenderUnit.Interrupt -> InterruptLine(unit)
         is RenderUnit.Unread -> UnreadLine(unit, matched)
         is RenderUnit.Retry -> steps.retry(unit)?.let { RetryLine(it, matched) }
@@ -337,18 +342,34 @@ private fun PeerBar(
     }
 }
 
-/** 后台任务收场那一行：字是核心写好的；那台说失败 ⇒ 红字。 */
+/**
+ * 后台任务收场那一张：一行，字是核心写好的（一组 ⇒ 组头，点开是组里露着的那几行，同桌面那一张）；失败 ⇒ 红字。
+ * 搜索命中自动展开。
+ */
 @Composable
 private fun NoticeLine(
-    unit: RenderUnit.Notice,
+    card: NoticeCard,
     matched: Boolean,
 ) {
-    Text(
-        unit.text,
-        Modifier.fillMaxWidth().matchHighlight(matched),
-        style = monoSmall,
-        color = if (unit.failed) LocalAppTokens.current.errorText else MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    val tokens = LocalAppTokens.current
+    val plain = MaterialTheme.colorScheme.onSurfaceVariant
+    val tone = { failed: Boolean -> if (failed) tokens.errorText else plain }
+    if (card.single) {
+        Text(card.head, Modifier.fillMaxWidth().matchHighlight(matched), style = monoSmall, color = tone(card.failed))
+        return
+    }
+    var open by rememberExpandable(matched)
+    Column(Modifier.fillMaxWidth().matchHighlight(matched)) {
+        Row(Modifier.fillMaxWidth().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+            Caret(open)
+            Text(card.head, style = monoSmall, color = tone(card.failed))
+        }
+        AnimatedVisibility(open) {
+            Column(Modifier.padding(start = tokens.spacing.md)) {
+                card.rows.forEach { Text(it.text, style = monoSmall, color = tone(it.failed)) }
+            }
+        }
+    }
 }
 
 /** 「已中断本轮 · {time}」一道细线；字照文案表，钟面照核心。 */
