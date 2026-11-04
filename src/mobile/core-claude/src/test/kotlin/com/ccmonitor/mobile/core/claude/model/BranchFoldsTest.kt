@@ -55,9 +55,10 @@ class BranchFoldsTest {
     }
 
     @Test
-    fun `清单空 ⇒ 流原样`() {
+    fun `清单空 · 段首还没接到 ⇒ 流原样`() {
         val s = cards("a", "b")
         assertEquals(s, BranchFolds.fold(s, BranchList.EMPTY, emptySet()))
+        assertEquals(s, BranchFolds.fold(s, BranchList(listOf("a"), listOf(BranchRun(at = 3, n = 1, said = "x"))), emptySet()))
     }
 
     private fun tag(s: StreamItem): String =

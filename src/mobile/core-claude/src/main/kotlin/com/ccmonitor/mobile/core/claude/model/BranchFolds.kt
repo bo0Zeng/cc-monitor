@@ -36,10 +36,11 @@ object BranchFolds {
         open: Set<String>,
     ): List<StreamItem> {
         if (list.runs.isEmpty()) return stream
+        // 段首不在手上那份清单里（还没接到）⇒ 这一段不画。
         val runOf = HashMap<String, BranchRun>()
         for (r in list.runs) {
-            val ids = list.off.drop(r.at.toInt()).take(r.n.toInt())
-            for (id in ids) runOf[id] = r
+            if (r.at >= list.off.size) continue
+            for (id in list.off.drop(r.at.toInt()).take(r.n.toInt())) runOf[id] = r
         }
         val out = ArrayList<StreamItem>(stream.size)
         var cur: BranchRun? = null
