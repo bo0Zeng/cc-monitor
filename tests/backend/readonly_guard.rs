@@ -1488,7 +1488,7 @@ mod capture_is_read_only {
     /// 会改 tmux 状态的动词 / 旗，`(针, 为什么它算改状态)`。
     ///
     /// 🔴 **运行时拼**，不写字面量：本模块与被扫的文本今天不在同一份文件里
-    /// （那是刻意的，见 `ratchet_guard.rs` 头注），但同族坑本仓记过四次，照纪律拼。
+    /// （判据住 `tests/backend/`、扫 `src/backend`，靠住址不在自己的语料里），但同族坑本仓记过四次，照纪律拼。
     fn mutating_verbs() -> Vec<(String, &'static str)> {
         vec![
             (

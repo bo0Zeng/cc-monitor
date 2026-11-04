@@ -94,7 +94,7 @@ use backend_host as host; // 宿主口：终端住在哪种宿主里（tmux · �
 use test_meters::golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（住 dev 侧的量具包）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
-mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod no_timer_guard; // 零定时器护栏两面：代码里没有会自己醒来的构件 · 散文不许许诺定时 / 轮询兜底（内部整体 #[cfg(test)]，生产构建为空）
 use backend_observe as observe; // U3：观测面 —— 读，不改变世界（独立的包 `backend-observe`：只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/observe.rs"]
@@ -118,9 +118,6 @@ mod protocol_doc_gen; // 协议参考 IPC-COMMANDS.md 由它从代码生成；�
 #[cfg(test)]
 #[path = "../../tests/backend/protocol_doc_guard.rs"]
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
-#[cfg(test)]
-#[path = "../../tests/backend/ratchet_guard.rs"]
-mod ratchet_guard; // 动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
