@@ -69,9 +69,7 @@ pub mod terminal_processes; // ↗ 那一问的本机那一半：终端连接是
 
 /// 开出 channel 之后的几种用法：拨号核心那一份（判据经这里够到；生产那一处是端口转发，进门前先装上本后端的那一套 [`host`]）。
 #[cfg(test)]
-pub(crate) mod uses {
-    pub(crate) use ssh_dial::uses::*;
-}
+pub(crate) use ssh_dial::uses;
 
 /// SFTP 客户端：拨号核心那一份，传输那一趟进门前先装上本后端的那一套（[`host`]）。
 pub mod sftp {

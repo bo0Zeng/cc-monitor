@@ -72,7 +72,7 @@ fn homes_of(needle: &str) -> (std::collections::BTreeSet<String>, usize) {
 fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
     // (指纹, dial/ 里应当命中的那几份 —— 正控)
     let prints: &[(&str, &[&str])] = &[
-        ("uses::run(", &["dial/forwards.rs"]),
+        ("uses::run", &["dial/forwards.rs"]),
         ("uses::capture(", &["dial/remote_ask.rs"]),
         ("abort_marker", &["ssh-dial/uses.rs", "dial/remote_ask.rs"]),
         ("read_request(", &["dial/mod.rs", "dial/remote_ask.rs"]),

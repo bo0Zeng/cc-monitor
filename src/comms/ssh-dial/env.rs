@@ -163,3 +163,7 @@ impl Facts for PlainFacts {
         std::time::UNIX_EPOCH
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/ssh_dial_env_tests.rs"]
+mod tests;
