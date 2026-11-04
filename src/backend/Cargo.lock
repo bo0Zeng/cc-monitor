@@ -273,6 +273,7 @@ version = "0.0.0"
 dependencies = [
  "backend-common",
  "backend-platform",
+ "backend-relay",
  "backend-wire",
  "cmd-wire",
  "comms-inward",

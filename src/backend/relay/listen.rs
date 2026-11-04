@@ -328,6 +328,19 @@ fn note_listening(port: u16) {
         .insert(port);
 }
 
+/// 本进程起的那个中转去上游那一跳的记账（[`host`] 起来那一刻记下；生产里一个进程至多一个，后起的盖前一个）。
+static HOSTED_HOP: std::sync::Mutex<Option<Arc<comms_outward::HopMeter>>> =
+    std::sync::Mutex::new(None);
+
+/// 本进程起的那个中转去上游那一跳此刻的读数；没起中转 ⇒ `None`。
+pub fn hop_now() -> Option<comms_outward::HopFacts> {
+    HOSTED_HOP
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|m| m.facts())
+}
+
 /// 钥匙文件宽了 / 查不出 ⇒ 印出来（与凭据文件 `[apikey]` 那几行同形）；只给本人 ⇒ 不印。返回印了几行。
 pub(crate) fn announce_key_perm(
     verdict: &creds_core::perm::Verdict,
@@ -392,6 +405,7 @@ pub fn host(
         Ok(a) => a,
         Err(e) => return Hosted::Failed(format!("读不出绑到的地址：{e}")),
     };
+    *HOSTED_HOP.lock().unwrap_or_else(|e| e.into_inner()) = Some(relay.hop());
     // 接受循环**阻塞在 `accept()` 上**（内核事件，不是定时器）；线程随进程生、随进程死 ——
     // 常驻后端按「退出行为」退的那一刻，中转一起走。
     match std::thread::Builder::new()

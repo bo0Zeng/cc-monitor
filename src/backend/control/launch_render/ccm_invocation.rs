@@ -174,6 +174,8 @@ pub(crate) struct CliSpec<'a> {
     pub alias: Option<&'a str>,
     /// 建进 tmux 之后不接进去（`--detach`，只对新建 tmux 容器那一形有意义）：后端自己替人起会话时用（tab 栏批量在 tmux 里起）。
     pub detach: bool,
+    /// 那一行在 Windows 本机跑（PowerShell）：工作目录照 Windows 认绝对路径（`shell_quote_core::windows_free_path_ok`），别处照 POSIX。
+    pub windows: bool,
 }
 
 /// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号。
@@ -405,7 +407,12 @@ pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<St
     }
 
     if let Some(cwd) = spec.cwd {
-        if !shell_quote_core::posix_free_path_ok(cwd) {
+        let form_ok = if spec.windows {
+            shell_quote_core::windows_free_path_ok(cwd)
+        } else {
+            shell_quote_core::posix_free_path_ok(cwd)
+        };
+        if !form_ok {
             return Err(Refusal::FreeTextRefused {
                 slot: FreeTextSlot::Cwd,
                 value: format!("{cwd:?}"),

@@ -136,7 +136,7 @@ fn deps_with<T>(
             accounts,
             writers: &|_| unreachable!("停不问谁在写"),
             pretrust: &|_, _| unreachable!("停不预标"),
-            open_shell: &|_, _| unreachable!("不开空 shell"),
+            open_shell: &|_, _, _| unreachable!("不开空 shell"),
             prefs,
             started,
         })

@@ -6,19 +6,35 @@
 //! 归到哪台：池按拨号身份分族（`ssh_dial::pool::identity`），身份照机器表现算 —— 与开连接那一处同一个组法（[`super::dial_named`]），
 //! 对上的进那台；对不上（机器表改过、旧身份的连接还没收掉 · 测试连接那种表外的）哪台都不进。
 //! 住拨号层不住观测层：用它的是控制面（`control/machine_state.rs`），控制面不许引观测面（控制面那个包不依赖观测面）。
+//!
+//! 本进程起的中转去上游那一跳（读数与那一句住中转核心 `comms_outward::hop`）归本机那台（[`local_from`]），同 SSH 那几跳进复制详情末尾那一段。
 
 use std::collections::BTreeMap;
 
+use backend_relay as relay;
 use ssh_dial::pool::{LinkFacts, Way};
 
 use super::Host;
 
-/// 机器名 → 到那台怎么连过去的（成品那两格）。
+/// 机器名 → 到那台怎么连过去的（成品那两格）；本机那台的键是 [`cmd_wire::machine::LOCAL`]。
 pub type Links = BTreeMap<String, Way>;
 
-/// 此刻那张：机器表 ＋ 本进程那个池。
+/// 此刻那张：机器表 ＋ 本进程那个池 ＋ 本进程起的中转（归本机，键 [`cmd_wire::machine::LOCAL`]）。
 pub fn now(hosts: &[Host]) -> Links {
-    by_machine(hosts, &ssh_dial::pool::ssh().links())
+    let mut links = by_machine(hosts, &ssh_dial::pool::ssh().links());
+    if let Some(way) = local_from(relay::hop_now()) {
+        links.insert(cmd_wire::machine::LOCAL.to_string(), way);
+    }
+    links
+}
+
+/// 中转那一跳的读数 ⇒ 本机那台的那一段（**纯函数**）：一条连接那一句，不另起「怎么连过去的」。
+pub(crate) fn local_from(facts: Option<relay::HopFacts>) -> Option<Way> {
+    let line = facts?.line()?;
+    Some(Way {
+        route: None,
+        hops: vec![line],
+    })
 }
 
 /// 等本进程那个池的「成员动了」（放进一条 · 断了 · 没人用了）。

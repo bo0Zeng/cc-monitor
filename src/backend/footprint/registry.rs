@@ -321,86 +321,131 @@ impl EnvTier {
 ///
 /// 🔴 它分两群：9 项通用工具是 [`Provisioning::UserProvides`]，
 /// [`Provisioning::AppShips`] 那一群今天是空的（账号库由后端自己建，不在表里）。
-pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[
-    // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
-    UnmanagedEnv {
-        id: "tmux",
-        display_name: Text(|| copy_text("mobTerms.row.tmux", &[])),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "tmux",
-        host: HostScope::Either,
-        why: Text(|| copy_text("rsToolRegistry.env.tmuxWhy", &[])),
-        site: "backend/control/launch_render/ccm_invocation.rs::Refusal",
-    },
-    UnmanagedEnv {
-        id: "terminal-exit",
-        display_name: Text(|| copy_text("rsToolRegistry.env.terminalExitName", &[])),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "xdg-terminal-exec",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.terminalExitWhy", &[])),
-        site: "platform/terminal.rs::EMULATORS",
-    },
-    UnmanagedEnv {
-        id: "git",
-        display_name: Text(|| "git".to_string()),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "git",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
-        site: "scanning_guard_registry_tests.rs::git_read",
-    },
-    UnmanagedEnv {
-        id: "ssh",
-        display_name: Text(|| copy_text("rsToolRegistry.env.sshName", &[])),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::SshClient,
-        named: "ssh",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
-        site: "platform/ssh_client.rs::locate",
-    },
-    // `pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
-    UnmanagedEnv {
-        id: "xdg-open",
-        display_name: Text(|| "xdg-open".to_string()),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "xdg-open",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.xdgOpenWhy", &[])),
-        site: "lib.rs::open_with_os",
-    },
-    UnmanagedEnv {
-        id: "login-shell",
-        display_name: Text(|| copy_text("rsToolRegistry.env.loginShellName", &[])),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "bash",
-        host: HostScope::Either,
-        why: Text(|| copy_text("rsToolRegistry.env.loginShellWhy", &[])),
-        site: "platform/shell/mod.rs::fresh_terminal_path",
-    },
-    UnmanagedEnv {
-        id: "mcp-server",
-        display_name: Text(|| copy_text("rsToolRegistry.env.mcpServerName", &[])),
-        who: Provisioning::UserProvides,
-        // 🔴 **这一条是「查不动」而不是「不查」的活体** —— 它不是懒：
-        // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
-        // （`project-mcp` 的落点是 `ProjectRelative`）⇒ 名字本身就是个占位符，
-        // 拿 `$MCP_COMMAND` 去 `PATH` 上找只会恒答「没有」，那是一句**自信的错答案**。
-        probe: EnvProbe::CannotProbe {
-            why: Text(|| copy_text("rsToolRegistry.env.mcpServerCannotProbe", &[])),
+///
+/// 每一条登记时带上它的平台范围（[`OnPlatform`]）：只在 unix 那一台上有意义的几条不进 Windows 那一台的闭集（[`environment_on`]），
+/// 页面与「待办 · 要装」跟着不出 —— 平台范围只住这里，显示侧不另判。
+pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
+    // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`），每台都要。
+    (
+        OnPlatform::Every,
+        UnmanagedEnv {
+            id: "tmux",
+            display_name: Text(|| copy_text("mobTerms.row.tmux", &[])),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::OnPath,
+            named: "tmux",
+            host: HostScope::Either,
+            why: Text(|| copy_text("rsToolRegistry.env.tmuxWhy", &[])),
+            site: "backend/control/launch_render/ccm_invocation.rs::Refusal",
         },
-        named: "$MCP_COMMAND",
-        host: HostScope::ProjectDir,
-        why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
-        site: "mcp_edit.rs::upsert_mcp_server_value",
-    },
+    ),
+    // Windows 那一台开终端走系统自带的那一口，没有 `xdg-terminal-exec`。
+    (
+        OnPlatform::UnixOnly,
+        UnmanagedEnv {
+            id: "terminal-exit",
+            display_name: Text(|| copy_text("rsToolRegistry.env.terminalExitName", &[])),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::OnPath,
+            named: "xdg-terminal-exec",
+            host: HostScope::Client,
+            why: Text(|| copy_text("rsToolRegistry.env.terminalExitWhy", &[])),
+            site: "platform/terminal.rs::EMULATORS",
+        },
+    ),
+    (
+        OnPlatform::Every,
+        UnmanagedEnv {
+            id: "git",
+            display_name: Text(|| "git".to_string()),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::OnPath,
+            named: "git",
+            host: HostScope::Client,
+            why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
+            site: "scanning_guard_registry_tests.rs::git_read",
+        },
+    ),
+    (
+        OnPlatform::Every,
+        UnmanagedEnv {
+            id: "ssh",
+            display_name: Text(|| copy_text("rsToolRegistry.env.sshName", &[])),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::SshClient,
+            named: "ssh",
+            host: HostScope::Client,
+            why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
+            site: "platform/ssh_client.rs::locate",
+        },
+    ),
+    // `pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
+    // Windows 那一台开文件走系统自带的那一口，没有 `xdg-open`。
+    (
+        OnPlatform::UnixOnly,
+        UnmanagedEnv {
+            id: "xdg-open",
+            display_name: Text(|| "xdg-open".to_string()),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::OnPath,
+            named: "xdg-open",
+            host: HostScope::Client,
+            why: Text(|| copy_text("rsToolRegistry.env.xdgOpenWhy", &[])),
+            site: "lib.rs::open_with_os",
+        },
+    ),
+    // Windows 那一台的终端是 PowerShell：新终端的 `PATH` 读注册表，不经登录 bash。
+    (
+        OnPlatform::UnixOnly,
+        UnmanagedEnv {
+            id: "login-shell",
+            display_name: Text(|| copy_text("rsToolRegistry.env.loginShellName", &[])),
+            who: Provisioning::UserProvides,
+            probe: EnvProbe::OnPath,
+            named: "bash",
+            host: HostScope::Either,
+            why: Text(|| copy_text("rsToolRegistry.env.loginShellWhy", &[])),
+            site: "platform/shell/mod.rs::fresh_terminal_path",
+        },
+    ),
+    (
+        OnPlatform::Every,
+        UnmanagedEnv {
+            id: "mcp-server",
+            display_name: Text(|| copy_text("rsToolRegistry.env.mcpServerName", &[])),
+            who: Provisioning::UserProvides,
+            // 🔴 **这一条是「查不动」而不是「不查」的活体** —— 它不是懒：
+            // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
+            // （`project-mcp` 的落点是 `ProjectRelative`）⇒ 名字本身就是个占位符，
+            // 拿 `$MCP_COMMAND` 去 `PATH` 上找只会恒答「没有」，那是一句**自信的错答案**。
+            probe: EnvProbe::CannotProbe {
+                why: Text(|| copy_text("rsToolRegistry.env.mcpServerCannotProbe", &[])),
+            },
+            named: "$MCP_COMMAND",
+            host: HostScope::ProjectDir,
+            why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
+            site: "mcp_edit.rs::upsert_mcp_server_value",
+        },
+    ),
 ];
+
+/// 手写的一条环境项在哪种平台的那台上有意义。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OnPlatform {
+    Every,
+    /// Windows 那一台上没有这回事（终端是 PowerShell · 开终端 / 开文件走系统那一口）。
+    UnixOnly,
+}
+
+impl OnPlatform {
+    /// 这一条在不在那一台的闭集里（`windows` ＝ 那台是 Windows）。
+    pub(crate) fn holds(self, windows: bool) -> bool {
+        match self {
+            OnPlatform::Every => true,
+            OnPlatform::UnixOnly => !windows,
+        }
+    }
+}
 
 /// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。
 ///
@@ -444,10 +489,17 @@ pub(crate) fn tools() -> Vec<&'static ToolSpec> {
         .collect()
 }
 
-/// 环境清单手写那一半的**全集**：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
+/// 环境清单手写那一半的**全集**（各平台合起来）：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
 pub(crate) fn unmanaged() -> Vec<&'static UnmanagedEnv> {
+    unmanaged_on(false)
+}
+
+/// 手写那一半里在这一种平台的那台上有意义的几条（[`OnPlatform::holds`]；各家足迹面带来的每台都要）。
+fn unmanaged_on(windows: bool) -> Vec<&'static UnmanagedEnv> {
     UNMANAGED_ENV
         .iter()
+        .filter(|(on, _)| on.holds(windows))
+        .map(|(_, u)| u)
         .chain(crate::agents::footprint_faces().flat_map(|f| f.env.iter()))
         .collect()
 }
@@ -471,7 +523,14 @@ pub(crate) fn unmanaged() -> Vec<&'static UnmanagedEnv> {
 /// 「本页会去解析并观测它申报的每条路径」。远端那几条观测出来是 `Undetermined`
 /// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
 /// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
+///
+/// 闭集是**这台平台上**的那一份（[`environment_on`]）：登记成 [`OnPlatform::UnixOnly`] 的几条不进 Windows 那一台的。
 pub(crate) fn environment() -> Vec<EnvEntry> {
+    environment_on(cfg!(windows))
+}
+
+/// 见 [`environment`]：`windows` ⇒ Windows 那一台的闭集。
+pub(crate) fn environment_on(windows: bool) -> Vec<EnvEntry> {
     let mut out: Vec<EnvEntry> = tools()
         .into_iter()
         .map(|t| {
@@ -486,7 +545,7 @@ pub(crate) fn environment() -> Vec<EnvEntry> {
             }
         })
         .collect();
-    out.extend(unmanaged().into_iter().map(|u| EnvEntry {
+    out.extend(unmanaged_on(windows).into_iter().map(|u| EnvEntry {
         id: u.id,
         display_name: u.display_name.get(),
         who: u.who,

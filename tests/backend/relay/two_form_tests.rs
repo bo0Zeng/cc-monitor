@@ -12,14 +12,13 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 
-/// 假上游收到的一发：请求行 ＋ 头名（小写）。
+/// 假上游收到的一发：请求行。
 #[derive(Debug, Clone)]
 pub(super) struct Seen {
     pub(super) line: String,
-    pub(super) names: Vec<String>,
 }
 
-/// 记头名的假上游：每一发回 `reply`（整条响应原文）。
+/// 记请求行的假上游：每一发回 `reply`（整条响应原文）。
 pub(super) struct NameUpstream {
     pub(super) addr: SocketAddr,
     pub(super) seen: Arc<Mutex<Vec<Seen>>>,
@@ -38,7 +37,6 @@ pub(super) fn spawn_name_upstream(reply: &'static str) -> NameUpstream {
             if r.read_line(&mut line).is_err() {
                 continue;
             }
-            let mut names = Vec::new();
             let mut clen = 0usize;
             loop {
                 let mut h = String::new();
@@ -48,18 +46,15 @@ pub(super) fn spawn_name_upstream(reply: &'static str) -> NameUpstream {
                     Ok(_) => {}
                 }
                 if let Some((k, v)) = h.split_once(':') {
-                    let k = k.trim().to_ascii_lowercase();
-                    if k == "content-length" {
+                    if k.trim().eq_ignore_ascii_case("content-length") {
                         clen = v.trim().parse().unwrap_or(0);
                     }
-                    names.push(k);
                 }
             }
             let mut body = vec![0u8; clen];
             let _ = r.read_exact(&mut body);
             seen_c.lock().expect("lock").push(Seen {
                 line: line.trim_end().to_string(),
-                names,
             });
             let _ = s.write_all(reply.as_bytes());
             let _ = s.flush();

@@ -98,8 +98,12 @@ fn with_deps_on<T>(
         crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid)
     };
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
-    let open_shell =
-        |name: &str, cwd: Option<&str>| crate::control::launch::open_shell(name, cwd, client);
+    let open_shell = |name: &str, cwd: Option<&str>, host: crate::wire::TerminalHost| match host {
+        crate::wire::TerminalHost::Tmux => crate::control::launch::open_shell(name, cwd, client),
+        crate::wire::TerminalHost::Managed => {
+            crate::control::ccm::open_hosted_shell(name, cwd, client)
+        }
+    };
     let caps = crate::control::ccm::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
