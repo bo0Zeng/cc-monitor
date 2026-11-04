@@ -16,7 +16,6 @@ const PENDING: &[&str] = &[
     "tests/common/guard-core/rules/session_name_registry_tests.rs",
     "tests/common/guard-core/rules/shared_crate_registry_tests.rs",
     "tests/common/host-core/lib_tests.rs",
-    "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
     "src/backend/observe/watcher.rs",
     "tests/backend/observe/watcher_tests.rs",
