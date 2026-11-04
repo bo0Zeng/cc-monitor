@@ -130,12 +130,13 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     let mut scanned = 0usize;
     // 人群 ＝ 整棵 `src/`（后端 · 壳 · 共享脚本都在它底下）；根读不到当场 panic，不静默跳过。
     for (p, raw) in guard_core::scan_tree!(&root.join("src"), &[]) {
-        let name = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        if name.contains(".test.") || name.contains(".vitest.") {
+        // 测试件按文件名中段认（`x.test.ts` · `x.vitest.ts`）：整段相等，不按子串。
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        let parts: Vec<&str> = name.split('.').collect();
+        let middle = parts
+            .get(1..parts.len().saturating_sub(1))
+            .unwrap_or_default();
+        if middle.iter().any(|s| matches!(*s, "test" | "vitest")) {
             continue;
         }
         let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
