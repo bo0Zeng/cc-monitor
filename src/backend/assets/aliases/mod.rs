@@ -293,20 +293,11 @@ pub(crate) fn dialect_here(shell: Shell) -> Result<(), String> {
 }
 
 /// `--cwd` 的形式判定，与 ccm 运行时同一条（`plan.rs::free_text_gate`：绝对 · 无 `..` 段 · 无 NUL/CR/LF）。
-/// POSIX 调共享那一份；PowerShell 目标是 Windows 路径（盘符根或 UNC），分隔符两种都认。
+/// 两形都调共享那一份：POSIX 目标照 POSIX 认绝对，PowerShell 目标是 Windows 路径（盘符根或 UNC，分隔符两种都认）。
 fn cwd_form_ok(v: &str, shell: Shell) -> bool {
     match shell {
         Shell::Posix => shell_quote_core::posix_free_path_ok(v),
-        Shell::PowerShell => {
-            let b = v.as_bytes();
-            let drive = b.len() >= 3
-                && b[0].is_ascii_alphabetic()
-                && b[1] == b':'
-                && matches!(b[2], b'\\' | b'/');
-            (drive || v.starts_with("\\\\"))
-                && !v.split(['/', '\\']).any(|seg| seg == "..")
-                && shell_quote_core::free_text_ok(v)
-        }
+        Shell::PowerShell => shell_quote_core::windows_free_path_ok(v),
     }
 }
 

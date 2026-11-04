@@ -1001,3 +1001,21 @@ fn each_startup_candidate_says_how_many_lines_the_block_would_add() {
 fn alias_file_rev_is_pinned() {
     assert_eq!(rev_of(Some("abc")).as_deref(), Some("3-e71fa2190541574b"));
 }
+
+/// `--cwd` 的形式判定两形各照共享那一份（`shell_quote_core` 的 POSIX / Windows 两条）：PowerShell 目标收盘符根与 UNC，
+/// `..` 段 · 相对路径 · 盘符相对 · 换行拒；POSIX 目标不收盘符路径。
+#[test]
+fn the_cwd_form_follows_the_shared_rule_of_each_shell() {
+    for ok in [r"C:\x y", "D:/w", r"\\nas\share\d"] {
+        assert!(cwd_form_ok(ok, Shell::PowerShell), "{ok:?}");
+        assert_eq!(
+            cwd_form_ok(ok, Shell::PowerShell),
+            shell_quote_core::windows_free_path_ok(ok)
+        );
+    }
+    for bad in [r"C:\a\..\b", "rel", "C:rel", "/home/u", "C:\\a\nb"] {
+        assert!(!cwd_form_ok(bad, Shell::PowerShell), "{bad:?}");
+    }
+    assert!(!cwd_form_ok(r"C:\x", Shell::Posix));
+    assert!(cwd_form_ok("/home/u", Shell::Posix));
+}
