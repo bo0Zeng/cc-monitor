@@ -625,7 +625,9 @@ fn every_code_comes_with_a_sentence_written_here() {
         a["run"] = json!("tmux");
         a
     };
-    let cases: Vec<(&str, Box<dyn Fn(&mut Rig) -> Value>)> = vec![
+    /// 一个码那一项：先把替身摆成那一形，回要交的入参。
+    type Arrange = Box<dyn Fn(&mut Rig) -> Value>;
+    let cases: Vec<(&str, Arrange)> = vec![
         (
             "bad_args",
             Box::new(|_| json!({ "what": { "kind": "resume", "sid": "a;b" } })),
