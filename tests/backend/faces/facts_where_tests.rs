@@ -1,4 +1,4 @@
-//! 会话事实的「机器 · 目录」那一句（`whereLine`）：那台照信封里看的这一端对它的称呼（`called`）写；
+//! 会话事实的「在哪」那一句（`whereLine`，与终端页头同一句「<目录> · <机器>」）：那台照信封里看的这一端对它的称呼（`called`）写；
 //! 没交称呼 ⇒ 只写目录，不编名字；目录还没读到 ⇒ 只写名字；两样都没有 ⇒ 不带。
 use super::*;
 use std::path::PathBuf;
@@ -44,7 +44,7 @@ fn the_line_names_the_machine_the_way_the_viewer_calls_it() {
     assert_eq!(
         got,
         serde_json::json!(copy_core::copy_text(
-            "beFacts.where.line",
+            "terminal.head.where",
             &[("machine", "devbox"), ("dir", "/w/proj")]
         ))
     );

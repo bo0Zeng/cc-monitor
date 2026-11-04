@@ -778,7 +778,7 @@ struct RequestLine<'a> {
     /// 问的是这条连接通往的后端持有的哪一台（[`InboundClient::call_at`]）；缺 ＝ 问它自己。
     #[serde(skip_serializing_if = "Option::is_none")]
     machine: Option<&'a str>,
-    /// 这一端怎么称呼这条连接通往的那台（[`InboundClient::name_machine`] 记下的）：那台写「<名字> · <目录>」这类句子照它。
+    /// 这一端怎么称呼这条连接通往的那台（[`InboundClient::name_machine`] 记下的）：那台写「<目录> · <名字>」这类句子照它。
     /// 问它持有的别台（`machine` 那一格在）⇒ 不带：那一问的称呼归转过去那一跳的客户端。
     #[serde(skip_serializing_if = "Option::is_none")]
     called: Option<&'a str>,

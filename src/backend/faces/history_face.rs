@@ -1411,7 +1411,7 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
 }
 
 /// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）；
-/// `called` ＝ 看的那一端怎么称呼这台（「机器 · 目录」那一句照它写，没交 ⇒ 不编名字）。
+/// `called` ＝ 看的那一端怎么称呼这台（「在哪」那一句照它写，没交 ⇒ 不编名字）。
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,

@@ -820,7 +820,7 @@ pub struct Request {
     #[serde(default, deserialize_with = "lenient_tz")]
     pub tz: crate::common::time::Tz,
     /// 看的那一端怎么称呼本台（连本台的客户端登记的名字：远端是机器表里那台的名字，本机是「本机」那个词）：
-    /// 「<机器> · <目录>」这类句子照它写。可缺；不是非空串 ⇒ 当没带（不拒），没带就不编名字。
+    /// 「<目录> · <机器>」这类句子照它写。可缺；不是非空串 ⇒ 当没带（不拒），没带就不编名字。
     #[serde(default, deserialize_with = "lenient_called")]
     pub called: Option<String>,
     /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。

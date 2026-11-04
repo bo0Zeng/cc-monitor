@@ -98,7 +98,7 @@ pub struct SessionFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub writers_line: Option<Words>,
-    /// 这条会话在哪：「<机器> · <目录>」那一句（[`where_line`]：机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
+    /// 这条会话在哪：「<目录> · <机器>」那一句（[`where_line`]，与终端页头同一句；机器照看的这一端对那台的称呼，信封 `called`；界面照摆）。
     /// 没交称呼 ⇒ 只目录；目录还没读到 ⇒ 只名字；两样都没有 ⇒ 不出现。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -1755,7 +1755,7 @@ pub fn writers_line(writers: &[u32]) -> Option<Words> {
 pub fn where_line(called: Option<&str>, dir: Option<&str>) -> Option<Words> {
     match (called, dir) {
         (Some(machine), Some(dir)) => Some(Words(copy_core::copy_text(
-            "beFacts.where.line",
+            "terminal.head.where",
             &[("machine", machine), ("dir", dir)],
         ))),
         (Some(one), None) | (None, Some(one)) => Some(Words(one.to_string())),
