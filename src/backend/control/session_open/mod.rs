@@ -876,6 +876,10 @@ pub const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
 /// 失败 ⇒ 单个那一条的码 ＋ 原话：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
 pub fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
     let me = std::env::current_exe().map_err(|e| Said::new("start_failed", e.to_string()))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "在 tmux 里后台起会话：起本二进制自己当 ccm 跑界面那一行（只多 `--detach`，argv 不过 shell、stdin 空），被起的那一趟照样归本仓的守法管；不许加第二种用途"
+    )]
     let out = Child::new(me)
         .args(argv.iter().skip(1))
         .env_remove("TMUX")
