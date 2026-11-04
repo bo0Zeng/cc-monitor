@@ -4,7 +4,7 @@
 //!
 //! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 碰盘只经 `platform/fs/` 交出去的句柄：读经 `Ro`（没有写方法）· 改用户文件只经文件管理面的 `Face`（写方法只收已过路径解析的 `Resolved`，只递给命令表文件管理那一族）· 分叉只经只会 `O_EXCL` 新建的 `NewFile` · 后端自家状态只经 `Own`（只写家目录的 `.cc-monitor` 与数据目录底下）。
 //! - **它扫的人群是**：`src/backend/` 底下各包里调碰盘标准库与系统调用的地方（`platform/fs/` 之外一处都不许，由 clippy 按解析后的路径认）·
-//!   造写句柄 · 拿跨进程锁的地方（同一份名单，逐处放行）· 要文件管理写句柄的处理器（同一份名单），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
+//!   造写句柄 · 拿跨进程锁的地方（同一份名单，逐处放行）· 要文件管理写句柄的处理器（同一份名单）· 起进程的地方（`Child::new` · `host::tmux::child` 同一份名单逐处放行、写清起什么；`Command::new` 只许住起子进程原语 `platform/child.rs`）。
 //!
 //! # 怎么挡：一处实现，四种句柄
 //!
@@ -24,7 +24,7 @@
 //!
 //! ⚠ **这两行今天仍不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**：
 //! 「用户既有数据」是**语义**命题，人群是**文本形状 ＋ 类型**，两者之间没有可机检的桥。
-//! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（`spawn_registry` 逐条登记）·
+//! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（起进程那一处的放行理由写着它归谁）·
 //! 不含名单认不出的写（`libc::syscall` 裸调那一形 · 手写 `extern` 声明：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
 //!
 //! # 远端那一半另有一层
@@ -493,576 +493,18 @@ mod tests {
     }
 }
 
-/// 一条护栏的人群与性质对不上时的处置：恰好这四格。「加白名单」不是其中一格 ——
-/// 白名单被反复放宽说明它没有真实消费者，该删；这四格治的是方向相反的病（性质还要、人群画错了）。
-/// 受管例外（[`spawn_registry::ALLOWED`] 的第四栏）必须说得出自己走的是哪一格。
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "四格是闭集：今天的登记都落在「缩性质」，另三格留给下一条登记挑"
-)]
-enum Cell {
-    /// 收窄人群：性质还要，人群画大了（扫到了不该扫的）⇒ 把人群收窄到性质上。收完判据说的话变少，说的每一句都是真的。
-    NarrowPopulation,
-    /// 补齐人群：性质还要，人群画小了（漏了该扫的）⇒ 补齐，并在同一次改动里确认新人群不误红。
-    CompletePopulation,
-    /// 重做或删：盘上有一个形状相同、未经放宽就通过了的反例 ⇒ 先判它今天守住了什么，再定重做还是删。
-    RedoOrDelete,
-    /// 缩性质：性质本身是一个更小性质的粗近似 ⇒ 单独论证，并写清缩掉的那一半从此归谁。
-    ShrinkProperty,
-}
-
-/// **D1 裁决的代码强制**：backend 起进程的**受管例外清单**。
-///
-/// # 为什么要这条
-///
-/// `readonly_guard` 的既有判据只认**文件系统写模式**，**它不认 `Command` / `spawn`**
-/// （`§0.2` 早就登记了这件事：「『backend 只读』这个词今天已经在骗人」）。
-/// 于是「起一个会写用户数据的进程」这条路，**机器护栏永远不会红**。
-///
-/// D1 的裁决选了①：**铁律收窄为「backend 进程自身不许写用户既有数据」**，
-/// 间接写不算 —— 但推荐里带一个**强制条件**：
-///
-/// > 必须同时：在 §41.6 写下「间接写的责任在被起的那个程序，backend 的责任是不越权
-/// > 替它决定写什么」+ 把预信任那条单列为**受管的例外**，**逐条列举写面**。
-///
-/// 「逐条列举」不能只是散文里列一遍 —— 那正是 §0.2 批评的「护栏与散文说的不是一件事」。
-/// 本护栏就是那份清单的机器形态：**生产段每一处起进程都必须在这里登记，并写明它做什么。**
-///
-/// # 它挡什么、不挡什么（如实登记）
-///
-/// - **挡**：悄悄新增一个起进程点。新增而不登记 ⇒ 红。
-/// - **不挡**：已登记的那条改成起别的东西（登记的是**文件名**，不是完整 argv）。
-///   完整 argv 里有格式化变量（`tmux_probe_script()` 拼的脚本），钉不住也不该钉死。
-///   这条边界写在这里，免得下一个人以为它保证了更多。
-#[cfg(test)]
-mod spawn_registry {
-    /// 生产段允许起的进程，**逐条登记**。
-    ///
-    /// `(文件, 起什么, why——做什么、为什么不算违反「backend 进程自身不写用户既有数据」, 格——护栏处置四格里的哪一格, unlock——什么条件满足之后这一条就能删)`
-    ///
-    /// 第四栏是 [`super::Cell`]：加一条登记却说不出它走的是哪一格，编不过。
-    /// 本表每一条都落在 [`super::Cell::ShrinkProperty`]：性质缩成「backend **进程自身**不许改动用户既有数据」，
-    /// 缩掉的那一半（间接写）归**被起的那个程序**，这张表就是「归谁」的落点。
-    pub(super) const ALLOWED: &[(&str, &str, &str, super::Cell, &str)] = &[
-        (
-            "dial/ssh_config.rs",
-            "ssh",
-            "`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
-             别名先过 allowlist、`-` 开头另挡，argv 直传不过 shell。从 monitor 搬来（解读与拨号同一个家）。",
-            super::Cell::ShrinkProperty,
-            "自己解析 ssh_config（Include / Match / 通配 / 默认值）的那天 —— 今天交给 `ssh -G` 是因为它最准。",
-        ),
-        (
-            "control/ccm/mod.rs",
-            "sh",
-            "一次性 `ccm` 模式把**一条已经渲好的命令串**交给 POSIX shell 并 `exec` 掉自己\
-             （attach 那条、容器路的收尾那条、以及带 `CCM_ENV` / cc-bus 配方的那条）。\
-             这与用户在自己终端里手敲同一条命令**没有区别** —— 它跑在用户的进程里、\
-             做的是用户这一趟本来就要做的事（D1 裁决的正例，同 `control/launch.rs` 那条）。\
-             ⚠ **backend 常驻那条路走不到这里**：入口在 `main()` 最前面按 `argv[0]` / 子命令词分出去，\
-             常驻模式一个字节都不经过本模块。",
-            super::Cell::ShrinkProperty,
-            "把收尾那几段（兜底轮询 / attach / cc-bus 登记）逐条做成原生动作、不再经 shell 的那天。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种用途。",
-        ),
-        (
-            "control/ccm/mod.rs",
-            "<非字面量>",
-            "一次性 `ccm` 模式最后那一下 —— `exec` 用户要起的那个 agent\
-             （`claude` / `codex` / `--launcher` 指定的任意命令），argv 直传**不过 shell**。\
-             被起的程序名来自用户这一趟的参数，**按设计就不是字面量**。\
-             它就是「用户敲 `cc` 想要发生的那件事」本身。",
-            super::Cell::ShrinkProperty,
-            "同上那条：一次性模式整个搬走、或起 agent 不再由本进程 `exec` 的那天。",
-        ),
-        (
-            "control/ccm/mod.rs",
-            "<非字面量>",
-            "不在 tmux 里敲 `cc`（或 `--hosted`）⇒ 脱离起**本二进制自己**当托管进程（`-- --host-run …`，\
-             那一串由 `plan::host_run_argv` 拼，`argv[0]` 是这一趟被叫成的那个入口；Windows 上是 `host/managed/bin.rs` 那份按版本的副本）：\
-             它持一个伪终端、在里面直接起同送进 tmux 容器的那一跳（不经 shell）；起好之后同一跳加 `--ccm-print` 原生跑一次自检\
-             （只算计划、不起 agent）。与 tmux 那一形起 tmux 会话同一个角色；里面的程序写什么归它自己，\
-             **不是**后端进程自身写用户既有数据。键与上一条同为 `<非字面量>` ⇒ 加这一条不会红，是人读了才写下的。",
-            super::Cell::ShrinkProperty,
-            "托管终端改由别的入口起（或不再由本二进制持伪终端）的那天摘掉。⚠ 起的只许是 `--host-run` 那一串。",
-        ),
-        (
-            "control/tmux_hook.rs",
-            "tmux",
-            "装 tmux hook（`set-hook -g`）。改的是 **tmux server 的运行期状态**，\
-             不是用户既有数据；P4b 的零轮询判活靠它",
-            super::Cell::ShrinkProperty,
-            "判活不再需要后端自己去装 hook 的那天（换成别的内核事件源，\
-             或 hook 由用户侧一次性装好而后端只读）——那时这一条摘掉。",
-        ),
-        (
-            "control/launch.rs",
-            "tmux",
-            "建 tmux 会话 / 往已有会话 send-keys（argv 直传，不过 shell）。\
-             改的是 **tmux server 的运行期状态** + 起一个用户自己要起的 claude 进程，\
-             **不是后端进程自身写用户既有数据** —— 载荷落盘由那个 claude 进程负责，\
-             与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
-            super::Cell::ShrinkProperty,
-            "「起会话」这条路整个搬出后端（或改成由 monitor 侧起、backend 只观测）的那天。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种被起的程序。",
-        ),
-        (
-            "control/kill.rs",
-            "tmux",
-            "`kill-session` / `kill-pane`（argv 直传；会话里还有别的 claude 窗格时只结束挂着那个 sid 的窗格）。\
-             **破坏性**，但改的是 **tmux server 的运行期状态**，不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
-             本文件只这一处起进程",
-            super::Cell::ShrinkProperty,
-            "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
-             这一条要回来重判（它是本表里唯一**破坏性**的 tmux 动作）。",
-        ),
-        (
-            "control/gate.rs",
-            "tmux",
-            "§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）。\
-             **只读 tmux**，不改任何状态；登记在 control/ 是因为它是「能不能改这个会话」\
-             这个决策的一部分（定框 C13）。\
-             ⚠ 「一次列全部会话」（`list-sessions -F`）**不在这里**：判活向那张会话快照发一次询问，\
-             探测器在 `host/tmux.rs`。\
-             两条子命令共用本文件**一处**起进程：探测那条 `display-message`，以及按 sid 找窗格那条只读的 \
-             `list-panes -s -F '#{pane_id}…#{@ccm_sid}…'`（一个 tmux 会话里可以有几个 claude 窗格；`kill.rs` 杀之前读 pane pid 也走它）。",
-            super::Cell::ShrinkProperty,
-            "这一条是**只读 tmux**，本来就落在收窄后的性质之内；\
-             等哪天有一条判据能机检「这个起进程点只读」，它就该从受管例外里摘出去、不再占一格。",
-        ),
-        (
-            "control/capture_pane.rs",
-            "tmux",
-            "**全 crate 唯一一处 `capture-pane`** —— \
-             `tmux -u capture-pane -p -t <窗格>`（argv 直传不过 shell），\
-             把名单里那个终端此刻那一屏的文本打到 stdout（终端预览 · 送前比指纹）。\
-             **只读 tmux**：不 attach、不落 tmux buffer（`-p` = 打到 stdout，\
-             换成落 buffer 就是改 tmux 状态了）、不写任何文件。\
-             ⚠ **这张表的键分不出被调的是哪条 tmux 子命令**（同 `plugin/invoke.rs` 那条\
-             自陈的 `K6b` 盲区）⇒ 光靠这一行**买不到「只读」**。\
-             真正钉住它的是本文件的 [`super::capture_is_read_only`]：\
-             值级（argv 逐元素）＋ 文本级（生产段零改状态动词）＋ 反向自检。\
-             ⚠ **它只抓一次就返回**，轮询不在这一层 —— 同一个模块里\
-             「抓一次」被改成「循环抓」时，`no_timer_guard` 与 `the_capture_site_is_one_shot` \
-             各红一条。",
-            super::Cell::ShrinkProperty,
-            "这一条是**只读 tmux**，本来就落在收窄后的性质之内 —— 同 `control/gate.rs` 那条：\
-             等哪天有一条**通用**判据能机检「这个起进程点只读」，它就该从受管例外里摘出去。\
-             ⚠ [`super::capture_is_read_only`] **不是**那条通用判据：它只盖本文件这一处 \
-             ⇒ 不许拿它去把 `control/gate.rs` / `host/tmux.rs` 那两条也摘掉。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
-             这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。\
-             终端预览要的颜色（`-e`）与往回几行（`-S -N`）是同一条子命令上的两类只读旗（`capture_argv_with`，值级同样钉着）。",
-        ),
-        (
-            "control/terminals.rs",
-            "tmux",
-            "终端管理 L1：逐窗格列名单（`list-panes -a -F`）· 列客户端（`list-clients -F`）· 问尺寸光标（`display-message -p`）三处只读，\
-             外加经同一个命令构造器交给 `control/launch.rs` 的送字送键（`send-keys` / 粘贴）与 `control/gate.rs` 的身份探测 \
-             —— 写的那一半只改 **tmux server 的运行期状态**（往用户明确要送的那个终端里打字），\
-             不写任何文件；送之前过身份门（同 `launch` 的 `send-into`），只认名单里的终端。",
-            super::Cell::ShrinkProperty,
-            "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉。",
-        ),
-        (
-            "control/terminal_follow.rs",
-            "tmux",
-            "终端实时预览：起一个 tmux **控制模式**客户端（`-C attach-session -f read-only,ignore-size`）挂在那个终端所在的会话上，\
-             只读它报的输出事件当「画面变了」的信号（画面本身照旧经 `control/terminals.rs` 抓）；只读客户端不能往窗格里打字、\
-             不改窗格尺寸，不写任何文件。订阅一停（退订 · 连接走 · 终端没了）就杀组收尸（`Child::stream` 放手即收）。",
-            super::Cell::ShrinkProperty,
-            "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉（托管进程自己推画面）。",
-        ),
-        (
-            "host/tmux.rs",
-            "tmux",
-            "宿主口 tmux 那一形：**起 `tmux` 的唯一构造**（`child`，只指 server、不定子命令）。\
-             经它起的算调用方那份文件起 tmux，写面在本表逐个调用方登记（扫描认 `host::tmux::child(`）。\
-             本文件自己发的只有只读三样：终端名单两发（`list-panes -a` · `list-clients`）、\
-             `On::read`（调用方经它问尺寸与光标 `display-message -p` · 问版本 `-V`）、\
-             **全 crate 唯一一处「一次列全部 tmux 会话」**（`list-sessions`，会话快照的探测器：\
-             用户定的「向快照发一次询问, 快照更新一次」那「一次询问」；一次调用列全部，不是每个成员探一次）。\
-             **只读 tmux**，不改任何状态。",
-            super::Cell::ShrinkProperty,
-            "tmux 那一形宿主整个删掉（托管成为唯一宿主）的那一版。\
-             ⚠ 在那之前**不许**往本文件自己发的那几样底下加会改 tmux 状态的子命令 —— 写面归调用方、各自登记。",
-        ),
-        (
-            // 搬家不是新增：`Command::new("tmux")` 从 `identity_tag.rs` 挪进它的 `door`
-            //   （测试构建整个换成假 tmux，`INVARIANTS §48.3`）；`set-option` 那条 argv 仍在 `identity_tag.rs::set_sid`。
-            "control/identity_tag/door.rs",
-            "tmux",
-            "`U-NP④`：`set-option @ccm_sid`（argv 直传）—— 把「这个 tmux 会话在跑哪个 sid」\
-             这条事实打上去。接的是 `shared/ccm` 那条**每会话一条、每秒一轮**的身份 poller 的班\
-             （「不要轮询」「ccm 做到必须走后端」）。改的是 **tmux server 的\
-             运行期状态**，不是后端自己写用户既有数据（同 `tmux_hook`）。\
-             ⚠ **探测不在这里**：它复用 `control/gate.rs` 那一处 `display-message`，\
-             所以本文件只有这一处起进程 —— 刻意不让面变大",
-            super::Cell::ShrinkProperty,
-            "会话身份不再靠 tmux 变量承载的那天（身份脱离 tmux，这一条随之消失）。\
-             ⚠ 那一件要来动本护栏时，先读这套受管例外的做法，别顺手加白名单。",
-        ),
-        (
-            "observe/session_terminals.rs",
-            "tmux",
-            "点 ↗ 时答「此刻谁在显示这个会话」：`list-clients -t <pane> -F '#{client_pid} #{client_activity}'`（argv 直传，\
-             socket 取自那个进程自己的 `TMUX`）。**只读 tmux**，不改任何状态、不读不设标题；只在被问时起一次。",
-            super::Cell::ShrinkProperty,
-            "「谁连着这个会话」改由别的事实源答（不再问 tmux）的那天。",
-        ),
-        (
-            "plugin/invoke.rs",
-            "<非字面量>",
-            "**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
-             期限由起子进程原语执行（调用方给秒数，到点杀整组）。\
-             程序名是**查出来的路径**（PATH 里未必有用户级 bin 目录）⇒ 非字面量。\
-             cc-bus 不经这一处口：收件箱住后端自己的数据目录，读写都在后端里。\
-             万一将来有写的，也是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
-             （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
-             不写用户既有数据）。键分不出被调命令 ⇒ 一条**破坏性**的转调命令可以漏登而判据全绿，\
-             下面那条相等断言就是为这一形设的闸。\
-             ⚠ 这一处口是**通用**的：经它起的每一个插件，写面都落在这一条理由底下，\
-             而这条键**分不出**是哪个插件 —— 加一种新的被调命令时**不会红**，必须回来重读这一段，\
-             没有任何机检会替你想起。\
-             经它起的是计划读面那一条（`plan/mod.rs` 起 pb）：只读。",
-            super::Cell::ShrinkProperty,
-            "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，几条命令共用一个键）。\
-             ⚠ 在那之前，本条的覆盖面没有机检：加一种被调命令时回来重读这一段。",
-        ),
-        (
-            "platform/shell/mod.rs", // `platform/shell.rs` 成了目录模块
-            "sh",
-            "**全 crate 唯一一处把命令串交给 POSIX shell 的适配层口**。\
-             经它送出去的是 `observe/watcher.rs` 那两跳（`command -v tmux && tmux ls` \
-             与 `tmux display-message -p`）—— 两处都**只读**，`sh -c` 是为了让 \
-             `command -v` 解析 PATH。起 shell 那一跳在适配层，调用方不各自裸写 `Command::new(\"sh\")`。\
-             ⚠⚠ **这一处口是通用的**，而这条键**分不出**是谁在用它 —— \
-             与 `plugin/invoke.rs` 那条 `<非字面量>` 同一族病：\
-             将来经它起的每一条脚本，写面都落在这条理由底下，而加一个新用户**不会红**。\
-             ⇒ 加新用户时必须回来重读这一段，没有任何机检会替你想起。\
-             今天经它送出去的**恰好两处**，两处都在 `observe/watcher.rs`。",
-            super::Cell::ShrinkProperty,
-            "同 `control/gate.rs` 那条：今天经它送的两处都是只读，\
-             等有判据能机检「这个起进程点只读」时就该摘出受管例外。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
-             要加就先回来把这一栏的「恰好两处」重新数一遍。",
-        ),
-        (
-            "platform/shell/mod.rs", // `platform/shell.rs` 成了目录模块
-            "powershell.exe",
-            "别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
-             `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到。从 monitor `shell_dialect.rs` 搬来：\
-             规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
-             进程内缓存一次。调用方 `platform/shell/dialect.rs::ask_get_alias`（方言住适配层）。\
-同一处口（`platform/shell/mod.rs::powershell_command`）又多两种**固定脚本**的用途：\
-             ① 现问执行策略（`Get-ExecutionPolicy` 三行，只读；`aliases-read` 每份 5.1 的 `$PROFILE` 候选）；\
-             ② **写一格用户设置**：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（HKCU 那一档，值写死），\
-             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）；\
-             ③ 现问连接表与进程表（`Get-NetTCPConnection -State Established` ＋ `Win32_Process` 只取进程号 · 父进程号 · 名字 · 启动时刻四格，\
-             只读、不吃入参；`session-window`，点 ↗ 时问一次）。",
-            super::Cell::ShrinkProperty,
-            "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
-             ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",
-        ),
-        (
-            "platform/shell/mod.rs",
-            "pwsh.exe",
-            "PowerShell 7 那一代（它的 `$PROFILE` 在 `Documents/PowerShell/`，执行策略与 5.1 分开存）：\
-             同上一条的 ① ② 两种固定脚本（现问执行策略 · 用户确认后设当前用户 `RemoteSigned`），只在 7 的 profile 目录在时问。",
-            super::Cell::ShrinkProperty,
-            "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
-             ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
-        ),
-        (
-            "platform/shell/mod.rs",
-            "<非字面量>",
-            "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
-             不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
-             按后端生命周期只问一次（缓存）；只从足迹报告（`data-report`）判 agent 命令行装没装、起新会话框（`session-open-facts`）判这台能起哪几家、\
-             后端自己起 agent 程序（`login-start` 登录子命令 · `quota-probe` 用量探针，经 `platform::shell::agent_launch`）找程序时进来。",
-            super::Cell::ShrinkProperty,
-            "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
-        ),
-        (
-            "host/managed/run.rs",
-            "<非字面量>",
-            "托管终端（`--host-run <id> … -- <argv>`）：在它自己的伪终端里起 ccm 交来的那一行（同送进 tmux 容器的那一行，argv 直传不过 shell），\
-             与 tmux 在窗格里起它同一个角色：里面的程序写什么归它自己（agent 照它自己的样子用它自己的目录），托管进程只读它的输出、按持有者送键。\
-             **不是**后端进程自身写用户既有数据。只从 `ccm -- --host-run` 进来。",
-            super::Cell::ShrinkProperty,
-            "托管终端改由别的宿主（或不再由本二进制持伪终端）的那天摘掉。⚠ 起的只许是 `--host-run` 那一串 `--` 之后的 argv。",
-        ),
-        // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
-        (
-            "control/session_open/mod.rs",
-            "<非字面量>",
-            "在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
-             argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\
-             **不是**后端进程自身写用户既有数据。只从 `session-open`（tmux 那一形、要新建会话）· 换号重启 · 说一句恢复进来。",
-            super::Cell::ShrinkProperty,
-            "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
-        ),
-        (
-            "accounts/sign_in.rs",
-            "<非字面量>",
-            "在 app 里登录一个号：起那一家的官方登录子命令（Claude：`claude auth login --claudeai`），程序名与参数来自适配层登记的那一形\
-             （`AccountsFace::sign_in`）、argv 直传不过 shell；stdin 只写人从登录页粘回来的那一段码。令牌由官方客户端自己换、自己写进\
-             **那个号自己的**配置目录（照它自己的样子用它自己的文件），后端一个字节不写。**不是**后端进程自身写用户既有数据。",
-            super::Cell::ShrinkProperty,
-            "官方客户端改成别的登录方式（或后端改走别的路登录）的那天摘掉。",
-        ),
-        (
-            "faces/quota_probe_face.rs",
-            "<非字面量>",
-            "`quota-probe`：起那一家的官方客户端报一次某个号的用量（Claude：`claude -p /usage`），程序名与参数来自适配层登记的那一形\
-             （`agents::usage_of`）、argv 直传不过 shell、stdin 空、期限 30 秒。它只读那个号的登录、问一次上游的用量，不发模型请求；\
-             工作目录是家里不出会话的那一个。**不是**后端进程自身写用户既有数据（官方客户端照它自己的样子用它自己的配置目录）。",
-            super::Cell::ShrinkProperty,
-            "用量改由别的来源（如回包头里已经带着按模型的那几档）读得全、不再需要问官方客户端的那天摘掉。\
-             ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是适配层登记的那一条报用量的命令。",
-        ),
-        (
-            "accounts/quota/warm.rs",
-            "<非字面量>",
-            "开窗（`quota-warm` · 轮换策略交回 `warm`）：**本后端这个二进制自己**（`current_exe`）当 ccm 跑一发，参数来自适配层登记的那一形\
-             （`agents::warm_of`，Claude：`claude -p` 一句 haiku · 不给工具 · 不落会话记录）、argv 直传不过 shell、期限 120 秒；\
-             号由 `--account` 点名、这一发不轮换、工作目录是家里不出会话的那一个。被起的是 ccm 那一趟，它自己的起法由本护栏照样管；\
-             **不是**后端进程自身写用户既有数据。",
-            super::Cell::ShrinkProperty,
-            "号的 5 小时窗不再由第一发触发（或有别的不花额度的办法开窗）的那天摘掉。\
-             ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟、发适配层登记的那一句。",
-        ),
-        (
-            "control/resident.rs",
-            "<非字面量>",
-            "远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
-             以常驻载体起（stdio 全空、自成进程组、钥匙经文件交）。被起的就是流模式那一臂，它自己的写面由本护栏照样管；\
-             **不是**后端进程自身写用户既有数据。只从 CLI 子命令 `--resident-ensure` 一条进来（monitor 经链路 capture 跑）。",
-            super::Cell::ShrinkProperty,
-            "远端常驻后端改由别的东西起的那天摘掉。⚠ 在那之前**不许**往这一处底下加第二种用途 —— 它起的永远是本二进制的常驻载体。",
-        ),
-    ];
-
-    /// 经宿主口起 tmux 的写法：调用方那份文件算起 tmux（构造本身住 `host/tmux.rs`）。
-    const HOST_TMUX_CHILD: &str = "host::tmux::child(";
-
-    /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
-    #[test]
-    fn every_process_spawn_in_production_is_registered() {
-        // ★ **递归遍历，不是硬编码文件表**。
-        //
-        // 手写一张 `include_str!` 清单的话，新加一份起进程的文件**不在表里 ⇒ 这条护栏根本扫不到它**，
-        // 加一个未登记的起进程点全绿（实测过）—— 本仓「扫描面画小了」那一族。
-        let src_dir = guard_core::addr::backend_src_root();
-        let mut stack = vec![src_dir.clone()];
-        let mut files: Vec<(String, String)> = Vec::new();
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                    continue;
-                }
-                let rel = path
-                    .strip_prefix(&src_dir)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                // 跳过本护栏文件自身：它的清单里逐字写着 `Command::new("tmux")` 这类字面量。
-                if rel == "readonly_guard.rs" {
-                    continue;
-                }
-                files.push((rel, std::fs::read_to_string(&path).expect("read rs file")));
-            }
-        }
-        assert!(
-            files.len() >= 20,
-            "只遍历到 {} 个源文件 —— 遍历坏了，本断言在空转",
-            files.len()
-        );
-        let mut found: Vec<(String, String)> = Vec::new();
-        for (name, raw) in &files {
-            let prod = guard_core::production_code(raw);
-            // 经宿主口起 tmux（`host::tmux::child(`）算这份文件起 tmux：写面逐个调用方登记。
-            for _ in prod.matches(HOST_TMUX_CHILD) {
-                found.push((name.clone(), "tmux".to_string()));
-            }
-            let mut from = 0usize;
-            while let Some(rel) = prod[from..].find("Child::new(") {
-                let at = from + rel + "Child::new(".len();
-                let tail = &prod[at..];
-                // ★★**非字面量也要记**。
-                //
-                // 原来这里是「往后找第一个引号」——`Command::new(&bin)` 这种写法下，
-                // 那个引号可能在**几十行之外**的某个无关字符串上，于是：
-                // ① 记下来的"程序名"是假的；② 更坏的是它**可能与某条已登记的 pair 撞上**
-                //   （同文件里已登记 `tmux`，而后面某处正好有 `"tmux"` 字面量）⇒ 静默放行。
-                // ⇒ 认准紧跟其后的那个字符：是引号才当字面量，否则记成 `<非字面量>`，逼它单独登记。
-                let prog = if let Some(lit) = tail.strip_prefix('"') {
-                    match lit.find('"') {
-                        Some(e) => lit[..e].to_string(),
-                        None => "<未闭合的字面量>".to_string(),
-                    }
-                } else {
-                    "<非字面量>".to_string()
-                };
-                found.push((name.clone(), prog));
-                from = at;
-            }
-        }
-        // 处数不再写死：键集与 `ALLOWED` 两向相等（这一条管正向，下面 `every_registered_entry_is_backed_by_a_real_spawn_site` 管反向）。
-        let unregistered: Vec<&(String, String)> = found
-            .iter()
-            .filter(|(f, p)| !ALLOWED.iter().any(|(af, ap, ..)| af == f && ap == p))
-            .collect();
-        assert!(
-            unregistered.is_empty(),
-            "这些起进程点没在受管例外清单里：{unregistered:?}\n\
-             D1 把铁律收窄成「backend **进程自身**不许写用户既有数据」，代价是**必须逐条列举**\n\
-             起进程的写面 —— 否则收窄就退化成「隔一层 exec 就绕过」。\n\
-             把它加进 `ALLOWED` 并**写明它做什么、为什么不违反收窄后的铁律**。"
-        );
-    }
-
-    /// ★ 清单里不许有**幽灵条目**（登记了但生产段已经没有了）。
-    ///
-    /// 否则清单会越攒越松，上面那条的判据跟着变松。
-    #[test]
-    fn the_registry_has_no_ghost_entries() {
-        // 第四栏是 [`Cell`]：说不出走的是哪一格就编不过。
-        for (f, p, why, _cell, unlock) in ALLOWED {
-            assert!(
-                !why.is_empty(),
-                "{f} 起 {p} 没写理由 —— 「逐条列举」列的是写面与理由，不是文件名清单"
-            );
-            assert!(
-                unlock.trim().chars().count() >= 20,
-                "{f} 起 {p} 没写**解锁条件**（实得 {} 字）—— 要写的是「什么条件满足之后\
-                 这一条就能删」，不是「为什么现在不能删」。\
-                 没有解锁条件的受管例外只是「永久豁免」的好听说法。",
-                unlock.trim().chars().count()
-            );
-        }
-        let hook =
-            guard_core::production_code(include_str!("../../src/backend/control/tmux_hook.rs"));
-        // 🔴 起 shell 那一跳住适配层 `platform/shell`：核的是「登记的那一条在生产段里真的找得到」。
-        let shell =
-            guard_core::production_code(include_str!("../../src/backend/platform/shell/mod.rs"));
-        assert!(
-            hook.contains(HOST_TMUX_CHILD),
-            "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
-        );
-        assert!(
-            shell.contains("Child::new(\"sh\")"),
-            "清单登记了 platform/shell.rs 起 sh，但生产段里找不到了 —— 幽灵条目"
-        );
-    }
-
-    /// ★★ `KY1′-b`：**全表反向核** —— `ALLOWED` 的每一条都得对得上一处真的起进程。
-    ///
-    /// # 它补的是上面那条的哪一个洞（实测出来的，不是设想）
-    ///
-    /// [`the_registry_has_no_ghost_entries`] 只做两件事：断言每条 `why` 非空 +
-    /// **硬编码**核 `tmux_hook.rs` / `watcher.rs` 那两条。**它不核其余五条。**
-    /// ⇒ 搬家时如果**加**了 `plugin/invoke.rs` 的登记却**忘了删**
-    /// `control/cc_bus.rs` 那条：`ALLOWED` 变 8 条、扫到的仍是 9 处、`unregistered` 仍空
-    /// ⇒ **三条判据全绿，而表里躺着一条幽灵**。
-    ///
-    /// 本条把「硬编码那两条」换成**全表**：登记表与扫描结果做**双向**对账 ——
-    /// 正向（每处起进程都在表里）由上面那条管，反向（每条登记都对得上起进程）由本条管。
-    ///
-    /// # 它**仍然**不检查什么（射程说清，别读大一格）
-    ///
-    /// - 不检查那条 `why` **说得对不对**（`K6b` 原样保留 —— 上面那条 `ALLOWED` 里
-    ///   一条破坏性的转调漏了 13 天就是这个洞的活体标本，本条也逮不住它）；
-    /// - 不检查一条登记**覆盖了几处** —— 键是 `(文件, 程序名)`，同一个键下加第二种被调命令
-    ///   不会红（同一个洞的另一面）。
-    #[test]
-    fn every_registered_entry_is_backed_by_a_real_spawn_site() {
-        let src_dir = guard_core::addr::backend_src_root();
-        // 与上面那条**分开走一遍树**：那边还要分类、比数，这边只回答「表里这一条今天还在吗」。
-        let mut stack = vec![src_dir.clone()];
-        let mut found: Vec<(String, String)> = Vec::new();
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                    continue;
-                }
-                let rel = path
-                    .strip_prefix(&src_dir)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if rel == "readonly_guard.rs" {
-                    continue;
-                }
-                let prod =
-                    guard_core::production_code(&std::fs::read_to_string(&path).expect("read rs"));
-                if prod.contains(HOST_TMUX_CHILD) {
-                    found.push((rel.clone(), "tmux".to_string()));
-                }
-                let mut from = 0usize;
-                while let Some(at) = prod[from..].find("Child::new(") {
-                    let i = from + at + "Child::new(".len();
-                    let tail = &prod[i..];
-                    let prog = if let Some(lit) = tail.strip_prefix('"') {
-                        match lit.find('"') {
-                            Some(e) => lit[..e].to_string(),
-                            None => "<未闭合的字面量>".to_string(),
-                        }
-                    } else {
-                        "<非字面量>".to_string()
-                    };
-                    found.push((rel.clone(), prog));
-                    from = i;
-                }
-            }
-        }
-        assert!(
-            found.len() >= 5,
-            "只扫到 {} 处起进程 —— 遍历坏了，本断言在空转",
-            found.len()
-        );
-        let ghosts: Vec<String> = ALLOWED
-            .iter()
-            .filter(|(af, ap, ..)| !found.iter().any(|(f, p)| f == af && p == ap))
-            .map(|(af, ap, ..)| format!("{af} 起 {ap}"))
-            .collect();
-        assert!(
-            ghosts.is_empty(),
-            "这些登记在生产段里**已经找不到对应的起进程点**了：{ghosts:?}\n\
-             ⇒ 搬走了/删掉了就**同轮把登记摘掉**。留着的后果不是「多一行没用的字」——\n\
-             它会让下一个人以为那个文件还在起进程，而真正的那一处在别处、\n\
-             理由却还挂在旧地址上（`ALLOWED` 里那条漏登 13 天，就是这么来的）。"
-        );
-    }
-}
-
 /// 🔴 **那一处抓屏起进程点「只读」这件事，逐元素钉住。**
 ///
-/// # 为什么 `spawn_registry` 那一行买不到它
+/// # 为什么调用点的放行买不到它
 ///
-/// [`spawn_registry::ALLOWED`] 的键是 `(文件, 起什么程序)` —— 它**分不出被调的是哪条
+/// 起进程在后端 `clippy.toml` 的名单上、每处在调用点放行写理由 —— 但放行**分不出被调的是哪条
 /// tmux 子命令**。同一份文件里把 `capture-pane -p` 改成别的动词、或多塞一个旗，
-/// 键一个字都不变 ⇒ **那条登记照常绿**。这不是新发现的洞：`ALLOWED` 里
-/// `plugin/invoke.rs` 那条自己就写着这句话（`K6b` 那一族，它是活体标本），
-/// 而 `control/gate.rs` 那条的 `unlock` 栏逐字写着「等哪天**有一条判据能机检
-/// 「这个起进程点只读」**」——本模块就是那条判据的**第一格**。
+/// 放行一个字都不变 ⇒ **照常绿**。本模块钉的是这一处的「只读」。
 ///
 /// # 它盖多大（⚠ 别读大）
 ///
 /// **只盖 `control/capture_pane.rs` 这一份文件。** 它不是通用判据
-/// ⇒ **不许**拿它去把 `control/gate.rs` / `host/tmux.rs` 那两条
-/// 「只读 tmux」的受管例外摘掉 —— 那两处今天仍然只有 `ALLOWED` 那一行看着。
+/// ⇒ `control/gate.rs` / `host/tmux.rs` 那两处「只读 tmux」今天仍然只有调用点那一句放行理由看着。
 ///
 /// # 两层 ＋ 一条反向自检，缺一不可
 ///
@@ -1175,7 +617,7 @@ mod capture_is_read_only {
              · `-u` 必须排在子命令**之前**（放后面是 rc=1 + unknown flag，\n\
                而那个响错会被判法读成「抓不到」）；\n\
              · 子命令必须是抓屏那一条 —— 换成任何会改状态的动词，\n\
-               `readonly_guard` 的 `ALLOWED` **不会红**（那张表的键分不出子命令），\n\
+               调用点那一句放行**不会红**（放行分不出子命令），\n\
                本条是唯一会红的；\n\
              · `-p` 必须是「打到 stdout」—— 换成落 tmux buffer 就是改 tmux 状态。"
         );
@@ -1205,7 +647,7 @@ mod capture_is_read_only {
             Vec::<String>::new(),
             "抓屏那一处的生产段里出现了会改 tmux 状态的动词：{bad:?}\n\
              ⇒ 要么有人绕过 `capture_argv_with` 另起了一条 argv，要么那个构造器被改了。\n\
-             这一处的立身之本就是「只读」——`readonly_guard::ALLOWED` 那一行的理由\n\
+             这一处的立身之本就是「只读」——调用点那一句放行的理由\n\
              逐字写着它不改任何 tmux 状态；写不成真话就别写。"
         );
     }
@@ -1362,7 +804,7 @@ mod error_envelope_registry {
 ///
 /// # 它买不到什么（逐条写明，别读大一格）
 ///
-/// - **不检查那行签字说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界。
+/// - **不检查那行签字说得对不对** —— 同起进程那几处的放行理由。
 ///   它钉的是「说得出来」，不是「真的想过」。
 /// - **分母是清单上直接声明的那几条**，传递依赖不在里面 ⇒ 一条依赖的依赖在写盘，本条一声不吭。
 ///   ⚠⚠ **订正（09-04 同轮，别读成「看不见」）**：本条初版逐字写的是
@@ -2290,9 +1732,7 @@ mod g6_dependency_signoff {
 
     /// 这里那把尺子：**护栏自己那两张模式表 ∪ 起进程点 ∪ 远端写那两张网**（现算，不手抄第二份）。
     ///
-    /// ⚠ 起进程点那一项**运行时拼** —— 本文件里别再多一处那个字面量：
-    /// [`super::spawn_registry`] 那条判据靠**按文件名跳过本文件**才不自匹配，
-    /// 而跨文件数它的那些判据不一定跳。
+    /// ⚠ 起进程点那一项**运行时拼** —— 本文件里别再多一处那个字面量：跨文件数它的那些判据不一定跳过本文件。
     ///
     /// 并进了 [`super::remote_write_layer`] 那两张网。**理由是「同职」**：
     /// 这把尺子替 `已量·未见写面` 那一档回答「这几棵仓内 crate 今天干不干净」，
@@ -3359,14 +2799,27 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         }
     }
 
-    /// L2 本机代理写（起进程）：分母 = `spawn_registry::ALLOWED` 的登记条数。
-    fn layer_local_proxy(_corpus: &Corpus) -> LayerReading {
-        let n = super::spawn_registry::ALLOWED.len();
+    /// L2 本机代理写（起进程）：分母 = 生产段里经原语起（`Child::new`）与经宿主口起 tmux（`host::tmux::child`）的处数，注释行不算。
+    /// 每一处都在后端 `clippy.toml` 的名单上、调用点放行（看得见）；被起的那个程序写什么，放行理由里写着、机器判不了。
+    fn layer_local_proxy(corpus: &Corpus) -> LayerReading {
+        let needles = [
+            format!("Child::{}(", "new"),
+            format!("host::tmux::{}(", "child"),
+        ];
+        let n: usize = corpus
+            .iter()
+            .flat_map(|(_, c)| c.lines())
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .map(|l| {
+                needles
+                    .iter()
+                    .map(|k| l.matches(k.as_str()).count())
+                    .sum::<usize>()
+            })
+            .sum();
         LayerReading {
             total: Denominator::Counted(n),
             seen: Denominator::Counted(n),
-            // 每一条都登记了「起什么」，**一条都判不了被起的那个程序写了什么** ——
-            // （`control/cc_bus.rs` 转调的 cc-bus 命令就是这一形：写面只写在 `ALLOWED` 的理由里）。
             blind: Denominator::Counted(n),
         }
     }
@@ -3421,7 +2874,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         (
             "L2 本机代理写（起进程）",
             layer_local_proxy,
-            "登记的是「起什么」，**判不了被起的那个程序写了什么**",
+            "放行理由写的是「起什么」，**判不了被起的那个程序写了什么**",
         ),
         (
             "L3 远端能力写（新加）",
@@ -3870,7 +3323,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             "数得出的四层加起来是 0 处 —— 尺子全瞎了，这张读数此刻什么也不说明"
         );
         // 🔴 **判不了的那几处不许是 0** —— 它是 0 就说明这张表把自己粉饰过了
-        //    （盘上今天真有：起进程 7 处 ＋ 远端 exec 1 处）。
+        //    （盘上今天真有：起进程那几十处 ＋ 远端 exec 1 处）。
         assert!(
             blind > 0,
             "「看得见却判不了它写什么」合计 0 处 —— 盘上明明有起进程与远端 exec 两族，\

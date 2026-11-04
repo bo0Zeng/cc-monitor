@@ -408,7 +408,7 @@ fn plan_of(
     // 而「纯」的口径是**相对于快照**（`§0c`）。
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
-    // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
+    // ⚠ 探测点仍然只有一个（快照那处），这里不多起进程。
     // 并上这台活着的托管终端（[`taken_here`]，起会话铸名同一份）：托管名与 tmux 名同一份避让，resume 也认托管那几行。
     // tmux 那一份列不成 ⇒ 只照托管那几个名字避让（tmux 那一臂照旧诚实降级）。
     let hosted = hosted_here();
@@ -926,6 +926,10 @@ pub(crate) fn spawn_hosted(
             rest[i + 2] = program.clone();
         }
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，stdio 全空、自成一组）：被起的托管终端那一形照样归本仓的守法管"
+    )]
     let mut spawn = Child::new(&program)
         .args(&rest)
         .env_remove("TMUX")
@@ -996,6 +1000,10 @@ fn hosted_self_check(c: &plan::Container) -> Result<(), String> {
     let Some((exe, args)) = c.self_check_argv.split_first() else {
         return Ok(());
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "托管那一形的自检：里面那一跳的同一串加 `--ccm-print` 原生跑一次，只算计划、不起会话"
+    )]
     let mut check = Child::new(exe)
         .args(args)
         .env_remove("TMUX")
@@ -1145,8 +1153,10 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 }
 
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
-///
-/// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "一次性 ccm 把一条已经渲好的命令串交给 POSIX shell 并换掉自己：同用户在自己终端里手敲同一条，常驻那条路走不到这里；不许往这一处加第二种用途"
+)]
 fn exec_shell(line: &str, why: &str, account: Note<'_>, own: &crate::platform::fs::Own) -> i32 {
     exec_or_spawn(
         Child::new("sh").arg("-c").arg(line),
@@ -1273,12 +1283,12 @@ fn exec_direct(
         Ok(v) => v,
         Err(why) => return die(&why),
     };
-    exec_or_spawn(
-        Child::new(program).args(lead).args(rest),
-        &format!("'{prog}'"),
-        note,
-        own,
-    )
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "一次性 ccm 最后那一下换成用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
+    )]
+    let agent = Child::new(program).args(lead).args(rest);
+    exec_or_spawn(agent, &format!("'{prog}'"), note, own)
 }
 
 /// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的 ·

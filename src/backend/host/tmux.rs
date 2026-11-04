@@ -1,7 +1,7 @@
 //! tmux 那一种宿主：起 `tmux` 进程只在这一份文件里（[`child`]，与观测那两跳 `sh -c`）。
 //!
 //! 别处要对 tmux 下命令，经 [`child`] 拿一个已指好 server 的命令，argv 由调用方给；
-//! 起进程登记表（`readonly_guard::spawn_registry`）把经 [`child`] 起的算进调用方那份文件，写面逐个调用方登记。
+//! 经 [`child`] 起的算调用方那一处起进程：[`child`] 在后端 `clippy.toml` 的名单上，每个调用点放行、写清发什么。
 //! 名单（`list-panes` · `list-clients` 两发）、一次列全部会话（`list-sessions`，快照的探测器）也住这里。
 
 use super::TermRow;
@@ -15,6 +15,10 @@ use crate::common::said::Said;
 
 /// 起 `tmux` 的唯一构造：`socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；
 /// `Some(p)` = 显式 `-S <p>`（判据在隔离 socket 上起真 tmux）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "起 `tmux` 的唯一构造：只指 server、不定子命令；发什么由各调用点放行时写清"
+)]
 pub fn child(socket: Option<&str>) -> Child {
     let c = Child::new("tmux");
     match socket {
@@ -48,6 +52,10 @@ pub struct On<'a> {
 
 impl On<'_> {
     /// 只读一发（名单 · 问尺寸 · 问版本）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "只读 tmux：终端名单两发、调用方问尺寸光标 · 问版本；不许经它发改状态的子命令"
+    )]
     pub fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
         child(self.socket).args(args).run(READ_TMUX_WITHIN)
     }
@@ -248,6 +256,10 @@ const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
 /// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
 /// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
 /// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`host_tests` 那条判据钉住次序）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "全 crate 唯一一处一次列全部 tmux 会话（会话快照的探测器）：只读 tmux，不改任何状态"
+)]
 pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
     let out = child(None)
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])

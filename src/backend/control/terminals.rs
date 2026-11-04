@@ -776,6 +776,10 @@ fn agent_in_front(row: &TermRow) -> bool {
 }
 
 /// 名单里对上 · 过身份门 · `takes` 收 ⇒ 那一行 ＋ 对它下手的句柄；不收 ⇒ 原因（[`send_on`] 送之前、[`say_target_on`] 看屏之前同一道）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "身份门那一探交给 `control/gate.rs`：只读 tmux"
+)]
 fn admit_on(
     on: On<'_>,
     target: &Target,
@@ -828,6 +832,10 @@ pub fn say_target_on(
 }
 
 /// [`input_on`] · [`say_on`] 的本体：`via` 答走哪一道（[`Via`]）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "往名单里那个终端送字送键（经 `control/launch.rs` 的 `send-keys` / 粘贴）、送完不成再探一次还在不在：只改 tmux server 的运行期状态、不写文件，送之前过身份门"
+)]
 fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, Said> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
