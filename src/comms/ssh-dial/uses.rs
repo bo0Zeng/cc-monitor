@@ -1,6 +1,6 @@
 //! 开出 channel 之后的几种用法（[`crate::Use`]）。进程内的调用方走有类型的两个口：[`open`]（开成 ⇒ [`Opened`]，没开成 ⇒ [`DialFail`]）·
-//! [`capture`]（一口收全 ⇒ [`Captured`]）。写成链路字节的只有 [`run_with`] 一处（真过进程的那条链路，`link.rs`）。
-//! 连接是池里拿的（[`Lease`]，同身份复用）。
+//! [`capture`]（一口收全 ⇒ [`Captured`]）。写成链路字节的是 [`run_with`] 与 [`run_forward`]（真过进程的那条链路，`link.rs` · 后端转发的账）。
+//! 连接是池里拿的（[`Lease`]，同身份复用）。端口转发的本机口由宿主绑好交进来（[`run_forward`]）：本 crate 不绑端口。
 
 use crate::Said;
 use copy_core::{copy_text, Discard, Why};
@@ -638,7 +638,7 @@ pub async fn open(
     mut on_step: impl FnMut(&'static str) + Send,
 ) -> Result<Opened, DialFail> {
     let (live, mut rx) = stages.reporting();
-    let fut = opening(req, &live);
+    let fut = opening(req, &live, None);
     tokio::pin!(fut);
     loop {
         tokio::select! {
@@ -666,7 +666,7 @@ pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
             None,
         ));
     }
-    let opened = opening(req, &StageSink::new(false)).await?;
+    let opened = opening(req, &StageSink::new(false), None).await?;
     let Opened { lease, held } = opened;
     let Held::Capture {
         mut rd,
@@ -683,12 +683,27 @@ pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
     Ok(got)
 }
 
-/// [`open`] 的本体（进展只报进 `stages`，不另交）。
+/// 转发要宿主绑好的本机口、别的用法不收口：两样对不上时那一句的诊断。
+const FORWARD_TAKES_A_LISTENER: &str =
+    "use=forward takes the host's bound listener (uses::run_forward); other uses take none";
+
+/// [`open`] 的本体（进展只报进 `stages`，不另交）。`listener` ＝ 宿主绑好的本机口，只 `use: forward` 收（[`run_forward`]）。
 #[expect(
     clippy::result_large_err,
     reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
 )]
-async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFail> {
+async fn opening(
+    req: &DialRequest,
+    stages: &StageSink,
+    listener: Option<tokio::net::TcpListener>,
+) -> Result<Opened, DialFail> {
+    // 用法与口对不上 ⇒ 不拨，当场回请求格式不对。
+    if (req.use_ == Use::Forward) != listener.is_some() {
+        return Err(crate::fail(
+            crate::malformed(FORWARD_TAKES_A_LISTENER).into(),
+            None,
+        ));
+    }
     let mut lease = match Lease::take(req, stages, lane_of(req.use_)).await {
         Ok(l) => l,
         Err((e, fp)) => {
@@ -752,25 +767,8 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
                 .forward
                 .clone()
                 .ok_or_else(|| fail(crate::malformed("use=forward without `forward`").into()))?;
-            // 只绑回环（不对外暴露）。
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "已知违反「通信层不绑端口」：端口转发在拨号核心里自己绑本机口，待改成宿主绑好、把监听口交进来"
-            )]
-            let listener = tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port))
-                .await
-                .map_err(|e| {
-                    fail(Said::with_raw(
-                        copy_text(
-                            "beUses.forward.bindFailed",
-                            &[
-                                ("port", &spec.local_port.to_string()),
-                                ("why", &copy_core::io_reason(e.kind())),
-                            ],
-                        ),
-                        &e,
-                    ))
-                })?;
+            let listener =
+                listener.ok_or_else(|| fail(crate::malformed(FORWARD_TAKES_A_LISTENER).into()))?;
             Held::Forward { listener, spec }
         }
         Use::Hold => Held::Hold,
@@ -820,13 +818,45 @@ where
 }
 
 /// 同 [`run`]，另带链路字节之外的那几样（[`Control`]：PTY 改窗口）。
+pub fn run_with<'a, R, W>(
+    req: &'a DialRequest,
+    stages: &'a StageSink,
+    input: R,
+    out: &'a mut W,
+    control: Control,
+) -> impl std::future::Future<Output = ()> + Send + 'a
+where
+    R: AsyncRead + Unpin + Send + 'a,
+    W: AsyncWrite + Unpin + Send,
+{
+    running(req, stages, None, input, out, control)
+}
+
+/// 端口转发（`use: forward`）那一趟，写成链路字节同 [`run`]：本机口由宿主绑好交进来（`listener`，只绑回环是宿主的事），
+/// 拨通 ⇒ ack ⇒ 每接进一条连接一行 `{"accepted":n}`。别的用法走这里 ⇒ 请求格式不对、不拨。
+pub fn run_forward<'a, R, W>(
+    req: &'a DialRequest,
+    listener: tokio::net::TcpListener,
+    stages: &'a StageSink,
+    input: R,
+    out: &'a mut W,
+) -> impl std::future::Future<Output = ()> + Send + 'a
+where
+    R: AsyncRead + Unpin + Send + 'a,
+    W: AsyncWrite + Unpin + Send,
+{
+    running(req, stages, Some(listener), input, out, Control::none())
+}
+
+/// [`run_with`] · [`run_forward`] 的本体。
 #[expect(
     clippy::manual_async_fn,
     reason = "`Send` 写在签名上：两个宿主都把它交给多线程运行时，写成 `async fn` 这条承诺就只剩推断、改坏了报在调用处"
 )]
-pub fn run_with<'a, R, W>(
+fn running<'a, R, W>(
     req: &'a DialRequest,
     stages: &'a StageSink,
+    listener: Option<tokio::net::TcpListener>,
     input: R,
     out: &'a mut W,
     control: Control,
@@ -843,7 +873,7 @@ where
         } else {
             (stages.clone(), None)
         };
-        match moving(out, &mut steps, opening(req, &live)).await {
+        match moving(out, &mut steps, opening(req, &live, listener)).await {
             Err(f) => {
                 write_stages_then_ack(out, &live, &DialAck::of_fail(f))
                     .await
