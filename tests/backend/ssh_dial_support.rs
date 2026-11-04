@@ -5,7 +5,7 @@
 pub(crate) const TEST_DIR_MODE: u32 = 0o700;
 
 /// 装上测试档那一套：同 [`crate::env::Env::bare`]，只是远端写按部署那两处（判据要写 `staging` / `bin`）、
-/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件、
+/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件（读成文本交 [`crate::env::key_from_pem`]）、
 /// 主机钥匙库是进程里一份文本（[`remembered`] · [`seed_library`]）。一个进程一次。
 pub(crate) fn test_host() {
     static ONCE: std::sync::Once = std::sync::Once::new();
@@ -56,9 +56,58 @@ impl crate::env::KeySource for TestKeys {
         match found {
             Some(TestCred::Password(p)) => Ok(crate::env::Credential::Password(p)),
             Some(TestCred::Signer(s)) => Ok(crate::env::Credential::Signer(s)),
-            None => crate::env::KeyFiles.credential(key),
+            // 不在表里 ⇒ 按路径读那份钥匙文件（宿主那一侧的事，测试档替它读），再交拨号核心解。
+            None => match std::fs::read_to_string(key) {
+                Ok(pem) => crate::env::key_from_pem(key, &pem, None),
+                Err(e) => Err(crate::Said::with_raw(crate::env::key_unreadable(key), &e)),
+            },
         }
     }
+}
+
+/// 没装宿主那一套时（[`crate::env::Env::bare`]）钥匙那一格不碰盘：盘上真有一把 OpenSSH 私钥、路径照写，也回读不出那一句。
+#[test]
+fn the_bare_env_never_reads_a_key_file() {
+    let dir = std::env::temp_dir().join(format!("ccm-dial-bare-key-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let at = dir.join("id_t");
+    std::fs::write(&at, test_pem().as_bytes()).unwrap();
+    let shown = at.to_string_lossy().into_owned();
+    let said = match crate::env::Env::bare().keys.credential(&shown) {
+        Err(s) => s.said,
+        Ok(_) => panic!("没装宿主那一套也读盘拿到了钥匙"),
+    };
+    assert_eq!(
+        said,
+        copy_core::copy_text("beConnect.auth.keyLoad", &[("path", &shown)])
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 宿主读好的 PEM 文本由拨号核心那一处解：同一份文本解得出钥匙；坏文本回读不出那一句（路径照交来的那一形）、解码原话进 `raw`。
+#[test]
+fn a_pem_handed_in_by_the_host_decodes_in_the_core() {
+    let pem = test_pem();
+    assert!(matches!(
+        crate::env::key_from_pem("~/.ssh/id_t", &pem, None),
+        Ok(crate::env::Credential::Key(_))
+    ));
+    let bad = match crate::env::key_from_pem("~/.ssh/id_t", "not a key", None) {
+        Err(s) => s,
+        Ok(_) => panic!("坏文本解成了钥匙"),
+    };
+    assert_eq!(bad.said, crate::env::key_unreadable("~/.ssh/id_t"));
+    assert!(bad.raw.is_some(), "解码原话没带上");
+}
+
+/// 一把 OpenSSH 格式的私钥文本（固定种子，判据现造）。
+fn test_pem() -> String {
+    russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(
+        &[7; 32],
+    ))
+    .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+    .unwrap()
+    .to_string()
 }
 
 /// 测试档那份主机钥匙库（整个进程一份文本；各判据的服务端各占一个口，按口认自己那几行）。

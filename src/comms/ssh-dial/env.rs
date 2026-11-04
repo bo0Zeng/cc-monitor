@@ -2,7 +2,8 @@
 //!
 //! 一个进程一份（[`install`]，宿主起来时装一次）：后端装它自己那一套（钥匙文件 · `~/.cc-monitor/known_hosts` · 本机 agent ·
 //! 后端的时刻与机器）；手机装 JNI 那一套（库里的钥匙 / Keystore 签名 · 没有 agent）。
-//! 没装就用 [`Env::bare`]：钥匙按路径读文件、没有主机钥匙库、没有 agent、远端一个字节都不许写 —— 宿主不许靠它。
+//! 没装就用 [`Env::bare`]：没有钥匙、没有主机钥匙库、没有 agent、远端一个字节都不许写 —— 宿主不许靠它。
+//! 本 crate 不读盘：钥匙文本由宿主读好交进来，「PEM 文本 ⇒ 能鉴权的钥匙」只在 [`key_from_pem`] 一处（后端 · 手机共用）。
 
 use std::future::Future;
 use std::pin::Pin;
@@ -99,10 +100,10 @@ pub fn installed() -> bool {
 }
 
 impl Env {
-    /// 没装时的那一套：钥匙按路径读文件 · 没有主机钥匙库 · 没有 agent · 详情只写命令、码与原话 · 远端一个字节都不许写。
+    /// 没装时的那一套：没有钥匙 · 没有主机钥匙库 · 没有 agent · 详情只写命令、码与原话 · 远端一个字节都不许写。
     pub fn bare() -> Env {
         Env {
-            keys: Box::new(KeyFiles),
+            keys: Box::new(NoKeys),
             host_keys: Box::new(Forget),
             agent: None,
             facts: Box::new(PlainFacts),
@@ -111,20 +112,25 @@ impl Env {
     }
 }
 
-/// 钥匙是一个 OpenSSH 私钥文件的路径（桌面那一形）。
-pub struct KeyFiles;
+/// 没有钥匙：哪一格都回读不出那一句（不碰盘）。
+pub struct NoKeys;
 
-impl KeySource for KeyFiles {
+impl KeySource for NoKeys {
     fn credential(&self, key: &str) -> Result<Credential, Said> {
-        key_file(key, key)
+        Err(key_unreadable(key).into())
     }
 }
 
-/// 读 `at` 那个 OpenSSH 私钥文件；读不出来那一句里的路径写 `shown`（用户写的那一形：宿主展开过 `~` 也照原样说）。
-pub fn key_file(shown: &str, at: &str) -> Result<Credential, Said> {
-    russh::keys::load_secret_key(at, None)
+/// 钥匙读不出那一句；路径写 `shown`（用户写的那一形：宿主展开过 `~` 也照原样说；手机是钥匙编号）。
+pub fn key_unreadable(shown: &str) -> String {
+    copy_text("beConnect.auth.keyLoad", &[("path", shown)])
+}
+
+/// OpenSSH 私钥文本 ⇒ 能鉴权的钥匙（`pass` ＝ 口令，没有写 `None`）。宿主读好文本交进来；解不开 ⇒ 读不出那一句（[`key_unreadable`]）＋ 解码原话。
+pub fn key_from_pem(shown: &str, pem: &str, pass: Option<&str>) -> Result<Credential, Said> {
+    russh::keys::decode_secret_key(pem, pass)
         .map(|k| Credential::Key(Box::new(k)))
-        .map_err(|e| Said::with_raw(copy_text("beConnect.auth.keyLoad", &[("path", shown)]), &e))
+        .map_err(|e| Said::with_raw(key_unreadable(shown), &e))
 }
 
 /// 没有库：一把都没记过、记了也不留。
