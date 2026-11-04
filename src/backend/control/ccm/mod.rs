@@ -409,22 +409,13 @@ fn plan_of(
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
-    // 并上这台活着的托管终端（凭盘现读，家由入口装好）：托管名与 tmux 名同一份避让，resume 也认托管那几行。
-    // tmux 那一份问不到 ⇒ 只照托管那几个名字避让（tmux 那一臂照旧诚实降级）。
-    let hosted: Vec<crate::common::session_snapshot::SessionRow> =
-        crate::host::managed::installed()
-            .map(crate::host::managed::home::alive)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|f| crate::common::session_snapshot::SessionRow {
-                name: f.name,
-                ccm_sid: f.sid,
-            })
-            .collect();
-    let taken = Some(match crate::host::snapshot().taken_names() {
-        Ok(t) => t.with_hosted(hosted),
-        Err(_) => crate::common::session_snapshot::TakenNames::hosted_only(hosted),
-    });
+    // 并上这台活着的托管终端（[`taken_here`]，起会话铸名同一份）：托管名与 tmux 名同一份避让，resume 也认托管那几行。
+    // tmux 那一份列不成 ⇒ 只照托管那几个名字避让（tmux 那一臂照旧诚实降级）。
+    let hosted = hosted_here();
+    let taken = Some(
+        taken_here(crate::host::snapshot().taken_names(), hosted.clone())
+            .unwrap_or_else(|_| crate::common::session_snapshot::TakenNames::hosted_only(hosted)),
+    );
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
     let mut plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
     // 接管 agent 原本的出网设置（免代理表加中转口）：继承那一格同账号目录，别名预览不继承。
@@ -629,23 +620,56 @@ pub fn preview_resolved(
 /// **起会话要一个终端名 —— 这台铸**（这一版宿主只有 tmux，铸的是 tmux 会话名）：工作目录 ⇒ `<项目名>-cc`，
 /// 分叉 ⇒ `<…>-fork-cc`。避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），
 /// 与 `ccm` 起会话、`--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ `session-open` 铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
-/// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
-/// 铸名的内核（快照是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
+/// 「已占用」与 ccm 算计划是同一份（[`taken_here`]：tmux 快照 ＋ 活着的托管终端）⇒ 铸出来的名字过得了起会话那一步的核对。
+/// 托管终端照这台装好的家现读。
 pub fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
+) -> Result<String, crate::common::said::Said> {
+    terminal_name_mint_among(base, snap, hosted_here())
+}
+
+/// 铸名的内核（快照与托管那几行是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
+pub fn terminal_name_mint_among(
+    base: crate::control::session_batch::NameBase<'_>,
+    snap: &crate::common::session_snapshot::SessionSnapshot,
+    hosted: Vec<crate::common::session_snapshot::SessionRow>,
 ) -> Result<String, crate::common::said::Said> {
     let base = match base {
         crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
         crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
     };
-    let name = match snap.taken_names() {
-        Ok(taken) => plan::mint_tmux_name(&base, &taken),
-        // 这台没装 tmux：没有会话 ⇒ 没有名字可撞。
-        Err(e) if e.code.as_deref() == Some("no_tmux") => base,
-        Err(e) => return Err(e),
-    };
-    Ok(name)
+    let taken = taken_here(snap.taken_names(), hosted)?;
+    Ok(plan::mint_tmux_name(&base, &taken))
+}
+
+/// 这台活着的托管终端（名字 ＋ 挂着的 sid），凭盘现读，家由入口装好；没装 ⇒ 一个都没有。
+fn hosted_here() -> Vec<crate::common::session_snapshot::SessionRow> {
+    crate::host::managed::installed()
+        .map(crate::host::managed::home::alive)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|f| crate::common::session_snapshot::SessionRow {
+            name: f.name,
+            ccm_sid: f.sid,
+        })
+        .collect()
+}
+
+/// **这台此刻占着的终端名，只在这里算**：tmux 那一份（会话快照问一次的结果）＋ 活着的托管终端（两种宿主的名字不撞）。
+/// ccm 算计划（[`plan_of`]）与起会话铸名（[`terminal_name_mint_among`]）都问它。
+/// 这台没装 tmux ⇒ 只照托管那几个；tmux 列不成（别的失败）⇒ 原样交回，由调用方定降不降级。
+fn taken_here(
+    tmux: Result<crate::common::session_snapshot::TakenNames, crate::common::said::Said>,
+    hosted: Vec<crate::common::session_snapshot::SessionRow>,
+) -> Result<crate::common::session_snapshot::TakenNames, crate::common::said::Said> {
+    match tmux {
+        Ok(t) => Ok(t.with_hosted(hosted)),
+        Err(e) if e.code.as_deref() == Some("no_tmux") => {
+            Ok(crate::common::session_snapshot::TakenNames::hosted_only(hosted))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；调用方的能力协商读 `capabilities=` 那一行）。
