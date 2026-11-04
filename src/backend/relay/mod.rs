@@ -45,11 +45,7 @@ pub use comms_outward::{
 
 /// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。后端自己发的那几发（续登录令牌）交它；
 /// 中转转发的那一发经 [`open_for`]（先按那条会话的描述）。
-pub fn open_here(
-    host: &str,
-    port: u16,
-    deadline: std::time::Duration,
-) -> std::io::Result<Opened> {
+pub fn open_here(host: &str, port: u16, deadline: std::time::Duration) -> std::io::Result<Opened> {
     open_by(egress::here(), host, port, deadline)
 }
 
@@ -57,9 +53,8 @@ pub fn open_here(
 pub type EgressOf = std::sync::Arc<dyn Fn(&str) -> Option<egress::Egress> + Send + Sync>;
 
 /// 中转转发那一发开上游 TCP 的那一口（来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP 与它经没经代理；同 `comms_outward` 里 `upstream::OpenFor` 的形状）。
-pub type OpenFor = dyn Fn(Option<&str>, &str, u16, std::time::Duration) -> std::io::Result<Opened>
-    + Send
-    + Sync;
+pub type OpenFor =
+    dyn Fn(Option<&str>, &str, u16, std::time::Duration) -> std::io::Result<Opened> + Send + Sync;
 
 /// 中转转发那一发开上游 TCP 的那一口：这一发带着来处、那条会话有描述 ⇒ 照它；否则照这台的出网描述。
 pub fn open_for(egress_of: EgressOf) -> std::sync::Arc<OpenFor> {

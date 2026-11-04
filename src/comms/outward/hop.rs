@@ -51,9 +51,10 @@ impl HopFacts {
             ],
         );
         Some(match self.last {
-            Some(Last::Failed(at)) => {
-                copy_text("beLinks.relay.failed", &[("line", &line), ("hop", at.words().1)])
-            }
+            Some(Last::Failed(at)) => copy_text(
+                "beLinks.relay.failed",
+                &[("line", &line), ("hop", at.words().1)],
+            ),
             Some(Last::Up) | None => line,
         })
     }

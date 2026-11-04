@@ -674,22 +674,6 @@ fn no_tap() -> TeeSink {
 }
 
 /// 起一个中转，返回 `(地址, Relay 句柄, tee 收集器)`。
-/// 一个**保证不存在**的 claude 家目录。
-///
-/// ⚠ 判据里凡是会走到「读凭据」那一步的，都得喂它 —— 否则会去读**跑判据这台机器上
-/// 用户真实的那份凭据文件**。那既是越界，又会让读数随机器而变。
-/// 名字取中性（不含任何被断言的字面），免得路径原样印进输出、让断言靠路径恒真。
-fn nowhere_home() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
-        "ccm-rc-nohome-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ))
-}
-
 fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap) {
     let (addr, relay, tee, _inflight) = spawn_relay_counted(up);
     (addr, relay, tee)
@@ -2676,7 +2660,7 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
             assert!(String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"));
         }
     });
-    let mut one = || {
+    let one = || {
         let down = accept_from(&listener, &client);
         serve_one(down, &relay).expect("serve_one");
     };
@@ -4455,7 +4439,10 @@ impl Taps {
 impl comms_outward::TapPort for Taps {
     fn offer(&self, ev: crate::relay::TapEvent) -> bool {
         let g = self.0.lock().unwrap();
+        // 每一路都要交一份（不在第一路收下时停）⇒ 数收下的，不用会短路的 `any`。
         g.iter()
-            .fold(false, |took, tx| tx.try_send(ev.clone()).is_ok() || took)
+            .filter(|tx| tx.try_send(ev.clone()).is_ok())
+            .count()
+            > 0
     }
 }

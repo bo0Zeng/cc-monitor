@@ -1,8 +1,10 @@
 //! 中转去上游那一跳的读数：真中转（回环）打一个假上游，读那一份读数与那一句。
 
 use super::*;
-use crate::upstream::{Base, Opened, OpenFor};
-use crate::{door, Ask, Destination, Destinations, Mode, Relay, RouteKey, TapEvent, TapPort, TeeSink};
+use crate::upstream::{Base, OpenFor, Opened};
+use crate::{
+    door, Ask, Destination, Destinations, Mode, Relay, RouteKey, TapEvent, TapPort, TeeSink,
+};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
@@ -129,34 +131,58 @@ fn a_relayed_send_reports_the_proxy_the_bytes_and_that_it_got_through() {
         })
     });
     let (relay, hop) = spawn_relay(port, open);
-    assert_eq!(hop.facts(), HopFacts::default(), "一发都没走过 ⇒ 读数全是缺省");
+    assert_eq!(
+        hop.facts(),
+        HopFacts::default(),
+        "一发都没走过 ⇒ 读数全是缺省"
+    );
     let body = "x".repeat(300);
     let got = send(relay, &body);
-    assert!(got.starts_with("HTTP/1.1 200"), "下游该拿到上游那条应答：{got}");
+    assert!(
+        got.starts_with("HTTP/1.1 200"),
+        "下游该拿到上游那条应答：{got}"
+    );
     let f = hop.facts();
-    assert_eq!(f.endpoint.as_deref(), Some(format!("127.0.0.1:{port}").as_str()));
+    assert_eq!(
+        f.endpoint.as_deref(),
+        Some(format!("127.0.0.1:{port}").as_str())
+    );
     assert!(f.via_proxy, "出网口说经代理 ⇒ 读数里经代理");
     assert_eq!(f.last, Some(Last::Up));
-    assert!(f.bytes_out >= 300, "发出的字节至少有那份请求体：{}", f.bytes_out);
-    assert_eq!(f.bytes_in, ANSWER.len() as u64, "收到的字节就是上游答的那一段");
+    assert!(
+        f.bytes_out >= 300,
+        "发出的字节至少有那份请求体：{}",
+        f.bytes_out
+    );
+    assert_eq!(
+        f.bytes_in,
+        ANSWER.len() as u64,
+        "收到的字节就是上游答的那一段"
+    );
 }
 
-/// 上游连不上 ⇒ 读数记下卡在建立连接，那一句说出卡在哪。
+/// 上游连接失败 ⇒ 读数记下卡在建立连接，那一句说出卡在哪。
 #[test]
 fn an_upstream_that_cannot_be_reached_reports_the_connect_step() {
     let open: Arc<OpenFor> = Arc::new(|_from, _h, _p, _d| {
-        Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "refused",
+        ))
     });
     let (relay, hop) = spawn_relay(9, open);
     let got = send(relay, "{}");
-    assert!(got.starts_with("HTTP/1.1 502"), "连不上 ⇒ 502：{got}");
+    assert!(got.starts_with("HTTP/1.1 502"), "连接失败 ⇒ 502：{got}");
     let f = hop.facts();
     assert_eq!(f.endpoint.as_deref(), Some("127.0.0.1:9"));
     assert_eq!(f.last, Some(Last::Failed(FailedAt::Connect)));
     assert_eq!((f.bytes_in, f.bytes_out), (0, 0));
     let line = f.line().expect("走过一发 ⇒ 有那一句");
     assert!(line.contains("127.0.0.1:9"), "{line}");
-    assert!(line.contains(FailedAt::Connect.words().1), "说出卡在哪一步：{line}");
+    assert!(
+        line.contains(FailedAt::Connect.words().1),
+        "说出卡在哪一步：{line}"
+    );
 }
 
 /// 那一句：经代理那一形照出网口的写法；收发两格照大小的写法；连上了 ⇒ 不说卡在哪。
@@ -170,12 +196,24 @@ fn the_line_names_the_upstream_the_proxy_and_both_byte_counts() {
         last: Some(Last::Up),
     };
     let line = f.line().expect("有上游 ⇒ 有那一句");
-    let proxied = copy_core::copy_text("beLinks.route.proxy", &[("endpoint", "api.example.test:443")]);
+    let proxied = copy_core::copy_text(
+        "beLinks.route.proxy",
+        &[("endpoint", "api.example.test:443")],
+    );
     assert!(line.contains(&proxied), "{line}");
     assert!(line.contains(&copy_core::size_text(2048)), "{line}");
     assert!(line.contains(&copy_core::size_text(5 << 20)), "{line}");
-    for at in [FailedAt::Connect, FailedAt::Send, FailedAt::NoAnswer, FailedAt::NotHttp] {
+    for at in [
+        FailedAt::Connect,
+        FailedAt::Send,
+        FailedAt::NoAnswer,
+        FailedAt::NotHttp,
+    ] {
         assert!(!line.contains(at.words().1), "连上了不说卡在哪：{line}");
     }
-    assert_eq!(HopFacts::default().line(), None, "一发都没走过 ⇒ 没有那一句");
+    assert_eq!(
+        HopFacts::default().line(),
+        None,
+        "一发都没走过 ⇒ 没有那一句"
+    );
 }

@@ -153,7 +153,11 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
     // 出网口说这一条经了代理 ⇒ 中转那一跳的读数里也经代理（开上游那一口不把它丢掉）；代理之后 TLS 不成 ⇒ 上次没连上。
     let f = hop.facts();
     assert!(f.via_proxy, "出网口给的经代理丢了：{f:?}");
-    assert_eq!(f.endpoint.as_deref(), Some("api.anthropic.com:443"), "{f:?}");
+    assert_eq!(
+        f.endpoint.as_deref(),
+        Some("api.anthropic.com:443"),
+        "{f:?}"
+    );
     assert!(
         matches!(f.last, Some(comms_outward::Last::Failed(_))),
         "{f:?}"

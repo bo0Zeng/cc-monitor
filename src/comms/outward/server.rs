@@ -619,21 +619,20 @@ fn send_upstream(
 ) -> Answered {
     let lane = upstream::Lane::new(reach.origin, tag, base);
     let pooled = reach.pool.take(&lane, reach.deadline);
-    let mut up =
-        match pooled.map_or_else(
-            || upstream::connect(base, reach.deadline, reach.open, reach.hop),
-            Ok,
-        ) {
-            Ok(c) => c,
-            Err(e) => {
-                let who = Who::of(base);
-                return Answered::UpstreamFailed(UpstreamFailure::new(
-                    &who,
-                    FailedAt::Connect,
-                    Some(e),
-                ));
-            }
-        };
+    let mut up = match pooled.map_or_else(
+        || upstream::connect(base, reach.deadline, reach.open, reach.hop),
+        Ok,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            let who = Who::of(base);
+            return Answered::UpstreamFailed(UpstreamFailure::new(
+                &who,
+                FailedAt::Connect,
+                Some(e),
+            ));
+        }
+    };
     let wrote = (|| -> std::io::Result<()> {
         up.write_all(&render_upstream_request(head, rest, base, auth, body.len()))?;
         if !body.is_empty() {
@@ -825,10 +824,11 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）也回「504（超时）或 502 ＋ why」，不是静默 FIN：
     // 「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
-    let (mut status_line, mut headers, mut raw_resp) = match read_final_head(&mut up, &who, &relay.hop) {
-        Ok(h) => h,
-        Err(why) => return respond_upstream_failed(&mut down_w, &why, &relay.hop),
-    };
+    let (mut status_line, mut headers, mut raw_resp) =
+        match read_final_head(&mut up, &who, &relay.hop) {
+            Ok(h) => h,
+            Err(why) => return respond_upstream_failed(&mut down_w, &why, &relay.hop),
+        };
     // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读），再问要不要换去处、用同一份请求体重发。
     //   要 ⇒ 发新的那一发、读它的头，手上这个回包整个丢掉（下游一个字节都没收到过，对 agent 透明）；
     //   新的那一发没发出去 ⇒ 不再换，把手上这个原样往下游送；发出去了、头读不出来 ⇒ 回中转自己的 502/504

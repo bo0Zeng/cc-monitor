@@ -343,7 +343,10 @@ fn the_local_row_carries_the_relay_hop_in_its_detail() {
         local.detail
     );
     assert_eq!(local.route, None, "本机不另起「怎么连过去的」");
-    assert_eq!(read_in(&[], &Links::new())[cmd_wire::machine::LOCAL].detail, None);
+    assert_eq!(
+        read_in(&[], &Links::new())[cmd_wire::machine::LOCAL].detail,
+        None
+    );
 }
 
 /// ★ 池里成员动了一笔 ⇒ 推一遍；发端收了 ⇒ 跟的那一路收工（不空转）。
