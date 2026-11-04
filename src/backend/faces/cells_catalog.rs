@@ -774,6 +774,7 @@ mod specimens {
                 body_start: 0,
                 body_end: 1,
                 lines: 1,
+                fold: false,
             }],
         }
     }
