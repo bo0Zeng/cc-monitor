@@ -4958,29 +4958,6 @@ data class ConfigHost(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class ConfigSurfaceReport(
-    val rows: List<SurfaceRow>,
-    val settingsScopes: List<SettingsScope>,
-    val agentHome: String,
-    val home: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<ConfigSurfaceReport> = obj(
-            listOf(
-            Field("rows", { arr(SurfaceRow.ADAPTER) }, optional = false, nullable = false),
-            Field("settings_scopes", { arr(SettingsScope.ADAPTER) }, optional = false, nullable = false),
-            Field("agent_home", { Str }, optional = false, nullable = false),
-            Field("home", { Str }, optional = false, nullable = false),
-            ),
-            { a -> ConfigSurfaceReport(a[0] as List<SurfaceRow>, a[1] as List<SettingsScope>, a[2] as String, a[3] as String) },
-            { v -> arrayOf(v.rows, v.settingsScopes, v.agentHome, v.home) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class Conflict(
     val key: String,
     val name: WirePath,
@@ -24537,31 +24514,6 @@ data class SetRowOut(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SettingsScope(
-    val scope: String,
-    val path: String,
-    val state: SurfaceState,
-    val hasCcBusHooks: Boolean?,
-    val precedenceNote: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SettingsScope> = obj(
-            listOf(
-            Field("scope", { Str }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
-            Field("state", { SurfaceState.ADAPTER }, optional = false, nullable = false),
-            Field("has_cc_bus_hooks", { opt(Bool) }, optional = false, nullable = true),
-            Field("precedence_note", { Str }, optional = false, nullable = false),
-            ),
-            { a -> SettingsScope(a[0] as String, a[1] as String, a[2] as SurfaceState, a[3] as Boolean?, a[4] as String) },
-            { v -> arrayOf(v.scope, v.path, v.state, v.hasCcBusHooks, v.precedenceNote) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class Sha256Expect(
     val sha256: String,
 ) : Ordered {
@@ -26027,100 +25979,6 @@ sealed interface StreamEv {
                         ),
                         { a -> StreamEv.Stop(a[1] as Boolean) },
                         { v -> arrayOf("stop", v.ok) },
-                    )),
-                ),
-            )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class SurfaceRow(
-    val toolId: String,
-    val toolName: String,
-    val tier: EnvTier,
-    val sourceLabel: String,
-    val pathDeclared: String,
-    val pathResolved: String?,
-    val note: String?,
-    val hostLabel: String,
-    val effectLabel: String,
-    val state: SurfaceState,
-    val installable: Boolean,
-    val uninstallable: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SurfaceRow> = obj(
-            listOf(
-            Field("tool_id", { Str }, optional = false, nullable = false),
-            Field("tool_name", { Str }, optional = false, nullable = false),
-            Field("tier", { EnvTier.ADAPTER }, optional = false, nullable = false),
-            Field("source_label", { Str }, optional = false, nullable = false),
-            Field("path_declared", { Str }, optional = false, nullable = false),
-            Field("path_resolved", { opt(Str) }, optional = false, nullable = true),
-            Field("note", { opt(Str) }, optional = false, nullable = true),
-            Field("host_label", { Str }, optional = false, nullable = false),
-            Field("effect_label", { Str }, optional = false, nullable = false),
-            Field("state", { SurfaceState.ADAPTER }, optional = false, nullable = false),
-            Field("installable", { Bool }, optional = false, nullable = false),
-            Field("uninstallable", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> SurfaceRow(a[0] as String, a[1] as String, a[2] as EnvTier, a[3] as String, a[4] as String, a[5] as String?, a[6] as String?, a[7] as String, a[8] as String, a[9] as SurfaceState, a[10] as Boolean, a[11] as Boolean) },
-            { v -> arrayOf(v.toolId, v.toolName, v.tier, v.sourceLabel, v.pathDeclared, v.pathResolved, v.note, v.hostLabel, v.effectLabel, v.state, v.installable, v.uninstallable) },
-        )
-    }
-}
-
-sealed interface SurfaceState {
-    /** 判别格（`kind`）那个词。 */
-    val kind: String
-
-    @Suppress("UNCHECKED_CAST")
-    data class Present(
-        val detail: String,
-    ) : SurfaceState, Ordered {
-        override val kind: String get() = "present"
-        override var wireOrder: IntArray? = null
-    }
-    data object Absent : SurfaceState {
-        override val kind: String get() = "absent"
-    }
-    @Suppress("UNCHECKED_CAST")
-    data class Undetermined(
-        val why: String,
-    ) : SurfaceState, Ordered {
-        override val kind: String get() = "undetermined"
-        override var wireOrder: IntArray? = null
-    }
-
-    companion object {
-        val ADAPTER: JsonAdapter<SurfaceState> =
-            tagged<SurfaceState>(
-                "kind",
-                listOf(
-                Variant("present", SurfaceState.Present::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("present") }, optional = false, nullable = false),
-                        Field("detail", { Str }, optional = false, nullable = false),
-                        ),
-                        { a -> SurfaceState.Present(a[1] as String) },
-                        { v -> arrayOf("present", v.detail) },
-                    )),
-                Variant("absent", SurfaceState.Absent::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("absent") }, optional = false, nullable = false),
-                        ),
-                        { SurfaceState.Absent },
-                        { arrayOf("absent") },
-                    )),
-                Variant("undetermined", SurfaceState.Undetermined::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("undetermined") }, optional = false, nullable = false),
-                        Field("why", { Str }, optional = false, nullable = false),
-                        ),
-                        { a -> SurfaceState.Undetermined(a[1] as String) },
-                        { v -> arrayOf("undetermined", v.why) },
                     )),
                 ),
             )
