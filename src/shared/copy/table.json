@@ -4044,7 +4044,7 @@
     "front.hint.unregistered": {
       "kind": "body",
       "role": "说明",
-      "zh": "接上终端后新开的终端标签页可识别",
+      "zh": "接上终端后新开的标签页才可识别 · 本会话需手动切换",
       "args": []
     },
     "front.body.notLive": {
@@ -14948,7 +14948,7 @@
     "beAsk.manual.offSettings": {
       "kind": "body",
       "role": "说明",
-      "zh": "自带的会话级设置{why} · 答题口未接上 · 只能在终端里答",
+      "zh": "自带的 --settings 无法合并 · {why} · 答题口未接上 · 只能在终端里答",
       "args": ["why"]
     },
     "beAsk.manual.offUnknown": {
@@ -20401,7 +20401,7 @@
     "terminal.input.keysHint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "回车连回车送进终端 · Shift+回车换行 · Ctrl+回车只送字",
+      "zh": "回车送出并回车 · Shift+回车换行 · Ctrl+回车只送出不回车",
       "args": [],
       "waive": {
         "C-W12": "终端输入框的固定键（不可改绑）"
@@ -23306,7 +23306,7 @@
     "beChore.relay.whyCovered": {
       "kind": "body",
       "role": "说明",
-      "zh": "{file} 自带上游地址 · 在该项目里起的会话写进记录才显示",
+      "zh": "{file} 另设 API 地址 · 该项目里起的会话写入记录后才显示",
       "args": ["file"]
     },
     "beChore.sshd.name": {
@@ -24281,7 +24281,7 @@
     "plan.review.endedSub": {
       "kind": "body",
       "role": "说明",
-      "zh": "负责人是 agent：父会话也停才算",
+      "zh": "负责人是 agent · 主会话也已结束",
       "args": []
     },
     "plan.review.resume": {
@@ -26741,7 +26741,7 @@
     "beRotation.line.offUse": {
       "kind": "body",
       "role": "片段",
-      "zh": "先不用 · 下一个节点换下",
+      "zh": "先不用 · 下次判定时换下",
       "args": []
     },
     "beRotation.line.next": {
