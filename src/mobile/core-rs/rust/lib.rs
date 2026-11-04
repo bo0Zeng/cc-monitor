@@ -1237,6 +1237,34 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStage<'l>(
     })
 }
 
+/// `Core.transferRead(handle, path, cap, withinMs)`：那台的 `path`（线上 `WirePath` 的 JSON）逐块读进内存、过 `cap` 就停（`transfer.rs`）；
+/// 回问答编号，走到哪经 `moved`、结局（`{bytes, content}`）经 `reply` 交回。这台不在 · 路径读不出 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferRead<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    path: JString<'l>,
+    cap: jlong,
+    within_ms: jlong,
+) -> jlong {
+    guarded(0, || {
+        let Some(path) = string(&mut env, &path)
+            .and_then(|p| serde_json::from_str::<cmd_wire::files::WirePath>(&p).ok())
+        else {
+            return 0;
+        };
+        let _rt = runtime().enter();
+        transfer::read(
+            handle,
+            path,
+            u64::try_from(cap).unwrap_or(0),
+            u64::try_from(within_ms).unwrap_or(0),
+            on_resident(),
+        )
+    })
+}
+
 /// `Core.transferStop(id)`：撤问答编号 `id` 那一趟（［停］）：在问的那一块当场丢下，本机那一份不再写；之后不回结局那一行。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStop<'l>(

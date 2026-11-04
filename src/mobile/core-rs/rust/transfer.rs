@@ -3,11 +3,12 @@
 //! 往 Kotlin 交的事：进度 `moved {call, done, total}`，结局走一问一答那一种 `reply`（同 [`resident::reply_json`] 那一行，编号同一族）。
 //!
 //! 上传这里只把块送进那台的暂存区、交回 `{key, chunks, bytes, sha256}`；提交（同名照 `on_exists`）由 Kotlin 一问（同桌面）。
-//! 下载那一半（[`pull_with`]）只由下到本机那一组调（`batch.rs`：本机那一份由它向 Kotlin 要）。
+//! 下载那一半（[`pull_with`]）只由下到本机那一组调（`batch.rs`：本机那一份由它向 Kotlin 要）；
+//! 拉进内存那一形（[`read_with`]，文件屏预览一张图）同一个循环，按门给的上限停。
 
 use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
-use cmd_wire::files::WirePath;
+use cmd_wire::files::{HexBytes, WirePath};
 use cmd_wire::phone::{CallEnd, Moved};
 use cmd_wire::transfer::{Pulled, Staged};
 use cmd_wire::Call;
@@ -268,6 +269,64 @@ pub async fn pull_with<A: Ask<Err = String>>(
         }),
         Err(line) => line,
     }
+}
+
+/// 读回来的一块攒进内存；攒过 `cap`（门给的上限）⇒ 停，不读下一块。
+struct ToMemory {
+    bytes: Vec<u8>,
+    cap: u64,
+    id: i64,
+}
+
+impl Sink for ToMemory {
+    type Err = String;
+    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), String> {
+        self.bytes.extend_from_slice(&bytes);
+        if self.bytes.len() as u64 > self.cap {
+            let limit = copy_core::size_text(self.cap);
+            return Err(line(&CallEnd::Failed {
+                call: self.id,
+                code: "too_large".into(),
+                said: copy_core::copy_text("rsFilewinPicture.read.grew", &[("limit", &limit)]),
+                detail: format!("read {} > cap {}", self.bytes.len(), self.cap),
+                data: None,
+            }));
+        }
+        Ok(())
+    }
+}
+
+/// 拉进内存那一半（文件屏预览一张图）：`path` 逐块读回（循环同 [`pull_with`]），过 `cap` 就停 ⇒
+/// `{call, ok, data: {bytes, content}}`（`content` 是线上 `HexBytes` 那一形）或没成那一行。
+pub async fn read_with<A: Ask<Err = String>>(
+    ask: &A,
+    id: i64,
+    path: WirePath,
+    cap: u64,
+    watch: &mut impl Watch,
+) -> String {
+    let mut sink = ToMemory {
+        bytes: Vec::new(),
+        cap,
+        id,
+    };
+    match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
+        Ok(n) => line(&CallEnd::Ok {
+            call: id,
+            data: serde_json::json!({ "bytes": n, "content": HexBytes(sink.bytes) }),
+        }),
+        Err(line) => line,
+    }
+}
+
+/// 起一趟拉进内存：回问答编号，进度与结局经 `on_event` 交；这台不在 ⇒ 0。
+pub fn read(h: i64, path: WirePath, cap: u64, within_ms: u64, on_event: OnEvent) -> i64 {
+    if resident::feed(h).is_none() {
+        return 0;
+    }
+    launch(h, within_ms, on_event, move |ask, mut moves| async move {
+        read_with(&ask, ask.id, path, cap, &mut moves).await
+    })
 }
 
 /// 起一趟：编号与撤的那一口登记上，`run` 在后台跑；跑完 ⇒ 摘掉，结局那一行没撤才交（撤了 Kotlin 那一侧不在等）。
@@ -557,6 +616,67 @@ mod tests {
             seen.0.last(),
             Some(&(file.len() as u64, Some(file.len() as u64)))
         );
+    }
+
+    /// 拉进内存：三块读回拼成原样交回（`content` 同线上 `HexBytes` 那一形），结局带总字节；走到哪照报。
+    #[test]
+    fn a_read_into_memory_hands_back_the_bytes_as_they_are() {
+        let file: Vec<u8> = (0..chunk_core::CHUNK * 2 + 17)
+            .map(|i| (i % 241) as u8)
+            .collect();
+        let there = Box {
+            file: file.clone(),
+            ..Box::default()
+        };
+        let mut seen = Seen::default();
+        let v = json(&run(read_with(
+            &there,
+            9,
+            WirePath(b"/w/p.png".to_vec()),
+            file.len() as u64,
+            &mut seen,
+        )));
+        assert_eq!(
+            (v["call"].as_i64(), v["end"].as_str()),
+            (Some(9), Some("ok")),
+            "{v}"
+        );
+        assert_eq!(v["data"]["bytes"].as_u64(), Some(file.len() as u64));
+        let back: cmd_wire::files::HexBytes =
+            serde_json::from_value(v["data"]["content"].clone()).unwrap();
+        assert_eq!(back.0, file);
+        assert_eq!(seen.0.len(), 3, "每块一次");
+    }
+
+    /// 读着读着过了门的上限 ⇒ 不再读下一块，交「过上限」那一句（同桌面文件窗口读图那一句）。
+    #[test]
+    fn a_read_past_the_cap_stops_and_says_so() {
+        let file = vec![7u8; chunk_core::CHUNK * 3];
+        let there = Box {
+            file,
+            ..Box::default()
+        };
+        let cap = chunk_core::CHUNK as u64 + 1;
+        let mut seen = Seen::default();
+        let v = json(&run(read_with(
+            &there,
+            10,
+            WirePath(b"/w/big.png".to_vec()),
+            cap,
+            &mut seen,
+        )));
+        assert_eq!(
+            (v["call"].as_i64(), v["end"].as_str()),
+            (Some(10), Some("failed"))
+        );
+        assert_eq!(
+            v["said"],
+            copy_core::copy_text(
+                "rsFilewinPicture.read.grew",
+                &[("limit", &copy_core::size_text(cap))]
+            )
+        );
+        assert_eq!(seen.0.len(), 1, "第二块读回就停，不读第三块");
     }
 
     /// 那台读回第二块时：`Hang` ⇒ 一直不回 · `Late` ⇒ 回话前一刻撤了（撤在回话路上）。
