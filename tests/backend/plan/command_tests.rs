@@ -2,7 +2,8 @@
 //! 带着 agent 身份的那一侧调不到用户命令；接过仓库（`adopt`）那几步；0.5 没有的动词不在界面能点的那几条里。
 
 use super::*;
-use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
+use crate::plan::fixture::{dump, fake_pb, runs, workspace};
+use test_home::scratch;
 use cmd_wire::plan::{PlanAdopted, PlanCmdReply};
 use std::cell::RefCell;
 

@@ -1,7 +1,8 @@
 //! 找 pb：名字对、入口脚本在才算；次序照交进来的。
 
 use super::*;
-use crate::plan::fixture::{fake_pb, scratch};
+use crate::plan::fixture::fake_pb;
+use test_home::scratch;
 
 #[test]
 fn the_first_plugin_named_planned_build_with_its_entry_wins() {

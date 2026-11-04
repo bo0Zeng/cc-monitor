@@ -18,15 +18,9 @@ fn own_in(dir: &Path) -> OwnState {
     .expect("临时目录是绝对路径")
 }
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-auto-launch-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&d);
-    d
-}
-
 #[test]
 fn default_when_missing() {
-    let d = scratch("missing");
+    let d = test_home::scratch("missing");
     let cfg = load(&own_in(&d));
     assert!(!cfg.auto_launch_enabled);
     assert!(cfg.monitor_exe_path.is_none());
@@ -34,7 +28,7 @@ fn default_when_missing() {
 
 #[test]
 fn save_and_load_roundtrip() {
-    let d = scratch("rt");
+    let d = test_home::scratch("rt");
     let own = own_in(&d);
     let cfg = AutoLaunchConfig {
         auto_launch_enabled: true,
@@ -52,11 +46,9 @@ fn save_and_load_roundtrip() {
 #[test]
 fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
     // 数据目录那一格其实是个文件 ⇒ 写不进去（真的下层错，不是造的）。
-    let not_a_dir =
-        std::env::temp_dir().join(format!("ccm-auto-launch-notdir-{}", std::process::id()));
+    let not_a_dir = test_home::scratch("notdir").join("f");
     fs::write(&not_a_dir, b"x").unwrap();
     let e = set_enabled(&own_in(&not_a_dir), true).expect_err("文件下面建不了文件");
-    let _ = fs::remove_file(&not_a_dir);
     assert!(
         e.said.starts_with(&copy_core::copy_text(
             "rsShellCmd.autoLaunch.saveFailed",

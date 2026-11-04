@@ -22,19 +22,6 @@ impl FrameLog {
     }
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "filewin-frame-log-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 fn input(pointer: Option<egui::Pos2>) -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -78,7 +65,7 @@ fn off_by_default_writes_nothing() {
 
 #[test]
 fn each_frame_is_one_line_saying_whether_the_picture_and_the_text_layout_moved() {
-    let dir = scratch("lines");
+    let dir = test_home::scratch("lines");
     let file = dir.join("frames.log");
     let ctx = egui::Context::default();
     let mut log = FrameLog::to_file(&file).expect("开得了日志文件");
@@ -114,7 +101,7 @@ fn each_frame_is_one_line_saying_whether_the_picture_and_the_text_layout_moved()
 /// 开着忘了关也不会把盘写满：记满上限那么多帧后写一行「停了」、之后不再写也不再读画面。
 #[test]
 fn the_log_stops_itself_at_the_cap_with_one_closing_line() {
-    let dir = scratch("cap");
+    let dir = test_home::scratch("cap");
     let file = dir.join("frames.log");
     let ctx = egui::Context::default();
     let mut log = FrameLog::capped(&file, 3).expect("开得了日志文件");

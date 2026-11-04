@@ -2,7 +2,8 @@
 //! 那一行只带名字 · pb 太旧没有 `--domains` ⇒ 要更新 · 那一行照路径与领域写。
 
 use super::*;
-use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
+use crate::plan::fixture::{dump, fake_pb, runs, workspace};
+use test_home::scratch;
 use crate::plan::locate::Missing;
 
 fn names(f: &PlanNewForm) -> Vec<String> {

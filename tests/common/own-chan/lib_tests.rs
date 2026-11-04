@@ -4,13 +4,6 @@
 
 use super::*;
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("own-chan-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("夹具目录");
-    d
-}
-
 /// 起子进程那一刻（fork 到 exec 之间）子进程拿着本进程每一份打开的描述，锁跟着那份描述走 ⇒
 /// 锁那条与起子进程那条不能同时跑，否则「放了还拿不到」会偶发红。
 #[cfg(unix)]
@@ -21,7 +14,7 @@ static NO_FORK_NOW: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[test]
 fn the_dir_lock_is_exclusive_and_released_on_drop() {
     let _quiet = NO_FORK_NOW.lock().unwrap_or_else(|e| e.into_inner());
-    let d = scratch("lock");
+    let d = test_home::scratch("lock");
     let first = try_hold(&d).expect("锁").expect("第一个该拿到");
     assert!(
         try_hold(&d).expect("锁").is_none(),
@@ -40,7 +33,7 @@ fn the_dir_lock_is_exclusive_and_released_on_drop() {
 #[tokio::test]
 async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let d = scratch("bind");
+    let d = test_home::scratch("bind");
     let path = d.join("s.sock");
     assert!(!connect_blocking(&path).is_ok(), "还没绑就说有人在听");
     let l = bind(&path).expect("绑");
@@ -82,7 +75,7 @@ async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
 async fn a_blocking_connection_hands_over_to_the_runtime() {
     use std::io::Write as _;
     use tokio::io::AsyncReadExt;
-    let d = scratch("hand");
+    let d = test_home::scratch("hand");
     let path = d.join("s.sock");
     let l = bind(&path).expect("绑");
     let b = connect_blocking(&path).expect("同步连");
@@ -107,7 +100,7 @@ async fn a_blocking_connection_hands_over_to_the_runtime() {
 #[test]
 fn the_peer_is_the_process_that_listens() {
     use std::io::BufRead as _;
-    let d = scratch("peer");
+    let d = test_home::scratch("peer");
     let path = d.join("s.sock");
     let quiet = NO_FORK_NOW.lock().unwrap_or_else(|e| e.into_inner());
     let mut other = std::process::Command::new("python3")
