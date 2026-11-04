@@ -96,12 +96,6 @@ impl Selection {
         self.picked.is_empty()
     }
 
-    /// 光标那一行的名字（`None` = 还没有光标；判据读）。
-    #[cfg(test)]
-    pub fn cursor(&self) -> Option<&str> {
-        self.cursor.as_deref()
-    }
-
     /// 选中那几项的名字（字典序；判据与状态行用）。
     pub fn names(&self) -> Vec<String> {
         self.picked.iter().cloned().collect()

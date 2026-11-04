@@ -4,6 +4,19 @@
 use super::*;
 use copy_core::copy_text;
 
+/// 判据读进度表用的那一件（生产那一份里没有它；关窗那一问走 `running_for_close`）。
+impl Progress {
+    /// 还在跑的那几趟（标题）。
+    pub(crate) fn running_titles(&self) -> Vec<String> {
+        let g = self.lock();
+        g.jobs
+            .iter()
+            .filter(|j| j.state() == State::Running && j.shown())
+            .map(|j| j.title())
+            .collect()
+    }
+}
+
 fn upload(board: &DropBoard, n: usize) -> Trip {
     let items: Vec<super::super::transfer::Pending> = (0..n)
         .map(|k| {

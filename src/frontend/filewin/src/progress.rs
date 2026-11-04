@@ -257,17 +257,6 @@ impl Progress {
         self.lock().jobs.retain(|j| j.state() == State::Running);
     }
 
-    /// 还在跑的那几趟（标题；判据读，关窗那一问走 [`Self::running_for_close`]）。
-    #[cfg(test)]
-    pub fn running_titles(&self) -> Vec<String> {
-        let g = self.lock();
-        g.jobs
-            .iter()
-            .filter(|j| j.state() == State::Running && j.shown())
-            .map(|j| j.title())
-            .collect()
-    }
-
     /// 关窗那一问用：还在跑的那几趟，按族（传输中 · 删除中 · 解压中 · 计算大小中），每行 `(图标, 名字, 右端那一格)`。
     pub fn running_for_close(&self) -> Vec<(String, Vec<(&'static str, String, String)>)> {
         use egui_phosphor::regular as ph;

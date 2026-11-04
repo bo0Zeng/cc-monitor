@@ -2,6 +2,14 @@ use super::*;
 
 use std::sync::atomic::{AtomicUsize, Ordering as O};
 
+/// 判据读撤单台用的那一件（生产那一份里没有它；本模块挂在 `transfer` 底下，读得到私有字段）。
+impl CancelDesk {
+    /// 一共造过几个键（对「造键的处数 ＝ 真起过的趟数」）。
+    fn minted(&self) -> u64 {
+        self.minted.load(O::SeqCst)
+    }
+}
+
 /// 提交那一条的线上名字：读入参类型上挂的那一个（生产段经后端那一侧读的也是它）。
 const COMMIT: &str = <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME;
 

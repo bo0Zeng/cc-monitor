@@ -354,12 +354,6 @@ impl CancelDesk {
             .collect()
     }
 
-    /// 一共造过几个键（判据对「造键的处数 ＝ 真起过的趟数」）。
-    #[cfg(test)]
-    pub fn minted(&self) -> u64 {
-        self.minted.load(Ordering::SeqCst)
-    }
-
     pub fn is_cancelled(&self) -> bool {
         self.requested.load(Ordering::SeqCst)
     }
