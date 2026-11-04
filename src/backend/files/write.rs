@@ -2450,8 +2450,12 @@ fn fenced_session_file(
             &[("path", &p.display().to_string())],
         ));
     }
-    // 这一份就是会话那一条的落点：`locate` 按 sid 找到、名字与形状都对上了（删会话不过根内路径解析，过的是这道围栏）。
-    Resolved::vouch(p.clone()).map_err(|e| {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "按路径担保那一形只给删会话那一道：`locate` 按 sid 找到、名字与形状都对上了（删会话不过根内路径解析，过的是这道围栏）"
+    )]
+    let vouched = Resolved::vouch(p.clone());
+    vouched.map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
             &[

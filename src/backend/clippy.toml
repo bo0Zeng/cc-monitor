@@ -19,6 +19,10 @@
 #   （`ro` · `face` · `own`）逐处放行；这一面只由本名单守（`readonly_guard` 不扫它的文本）。认不出的：`Path` 上的读方法（`exists` · `is_dir` …，只读）·
 #   `File::from(OwnedFd)` 这类经 `From` 的换法（要先有一个描述符）· `libc::syscall` 裸调（`libc::SYS_renameat2` 那一形；名单上禁它会连
 #   `libc::SYS_pidfd_send_signal` 那一发一起禁）· 手写 `extern` 声明。只在 clippy 里红（`cargo test` 不红）；Windows 那几臂由门禁 `winchk-backend` 那一格看。
+# 写句柄只在该造的那几处造（`Own` · `DiagLog` 启动入口 · `Face` 分派那一层 · `NewFile` 分叉那两条 · `Resolved` 路径解析与删会话那一道）、
+#   跨进程锁 `platform::lock::hold` 只在写自家状态的句柄与账号库那两趟读—改—写里拿：每一处在调用点放行、写理由；`platform/fs` 里那几处照写。
+#   要文件管理写句柄的处理器（`type Needs = needs::Face`，`disallowed-types` 那一条）只住文件管理那两扇门（挂载那一行放行）。
+#   按定义路径认：经 `fn` 项当值递（`install_from_env(DiagLog::issue, …)`）也认得出。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管 `src/backend/` 底下的各包（各自的 `[lints.clippy]` 定成 deny）；拨号核心 · 出网口住 `src/comms/`，读那边那一份。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
@@ -182,4 +186,15 @@ disallowed-methods = [
   { path = "libc::mknod", reason = "碰盘只经 `platform/fs`（读走 `Ro`，写拿 `Face` · `NewFile` · `Own`）", allow-invalid = true },
   { path = "libc::mknodat", reason = "碰盘只经 `platform/fs`（读走 `Ro`，写拿 `Face` · `NewFile` · `Own`）", allow-invalid = true },
   { path = "libc::utimensat", reason = "碰盘只经 `platform/fs`（读走 `Ro`，写拿 `Face` · `NewFile` · `Own`）", allow-invalid = true },
+  { path = "backend_platform::fs::Own::issue", reason = "自家状态写句柄只在启动入口造一次、顺着入口递下去：要写自家状态的那一处收一个 `&Own`" },
+  { path = "backend_platform::fs::Own::issue_with", reason = "自家状态写句柄只在启动入口造一次、顺着入口递下去：要写自家状态的那一处收一个 `&Own`" },
+  { path = "backend_platform::fs::DiagLog::issue", reason = "stderr 落盘那只手只在启动入口造：要它的那一处由入口递" },
+  { path = "backend_platform::fs::Face::issue", reason = "文件管理写句柄只在分派那一层造、只活那一问：处理器写 `type Needs = needs::Face` 由分派递" },
+  { path = "backend_platform::fs::NewFile::issue", reason = "只会新建的那只手只给分叉那两条命令造" },
+  { path = "backend_platform::fs::Resolved::walk", reason = "「已过路径解析」只由路径解析本身造（`common/root_path.rs` 从根句柄逐段开）" },
+  { path = "backend_platform::fs::Resolved::vouch", reason = "按路径担保那一形只给删会话那一道（文件管理写面）" },
+  { path = "backend_platform::lock::hold", reason = "跨进程锁只在写自家状态的句柄与账号库那两趟读—改—写里拿：写自家状态经 `Own`（锁随它拿）" },
+]
+disallowed-types = [
+  { path = "backend_wire::spec::needs::Face", reason = "文件管理写句柄只递给文件管理那两扇门的处理器：别处要了它，就多了一个写用户文件的口" },
 ]

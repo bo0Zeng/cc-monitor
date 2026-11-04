@@ -45,7 +45,15 @@ use tokio::sync::mpsc;
 mod caps;
 mod doors;
 pub(crate) mod files_face;
+#[expect(
+    clippy::disallowed_types,
+    reason = "文件管理那扇门（删会话那一份）：处理器要文件管理写句柄"
+)]
 pub(crate) mod files_session_face;
+#[expect(
+    clippy::disallowed_types,
+    reason = "文件管理那扇门（写面 · 上传提交 · 解压那一份）：处理器要文件管理写句柄"
+)]
 pub(crate) mod files_write_face;
 mod sniff;
 mod typed; // 各族登记一行 typed 命令经它：测试档在这里给那一行补形状
@@ -251,6 +259,10 @@ where
         let given = Given { watch, own };
         // 本连接的传输票表：随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
         // （`control::transfer::Desk` 的 `Drop`）。
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "文件管理写句柄只在分派那一层造：传输台那四条硬臂的票表在帧面这一处领一份"
+        )]
         let xfers = crate::control::transfer::Desk::new(
             replies.clone(),
             crate::platform::fs::Face::issue(),
@@ -638,6 +650,10 @@ fn dispatch(
         }
         // 两台之间复制一组：同上一臂挂本连接听票；本体在阻塞线程上（连两台 ＋ 逐个文件搬），写本机暂存经分派这一层造的写句柄。
         "transfer-copy" => listened(req, replies, |req| {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "文件管理写句柄只在分派那一层造：两台之间复制一组写本机暂存，句柄只活这一趟"
+            )]
             let face = crate::platform::fs::Face::issue();
             Disposition::SpawnBlocking(
                 req,

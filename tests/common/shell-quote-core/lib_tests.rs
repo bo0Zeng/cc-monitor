@@ -211,11 +211,13 @@ fn a_launcher_is_a_command_fragment_from_one_whitelist() {
         "./node_modules/.bin/claude",
         "my_agent-2.1",
     ] {
-        assert_eq!(
-            launcher_refused_char(good),
-            None,
-            "真实启动器被拒了：{good:?}"
-        );
+        for windows in [false, true] {
+            assert_eq!(
+                launcher_refused_char(good, windows),
+                None,
+                "真实启动器被拒了（Windows = {windows}）：{good:?}"
+            );
+        }
     }
     for (bad, c) in [
         ("claude;rm -rf ~", ';'),
@@ -243,7 +245,49 @@ fn a_launcher_is_a_command_fragment_from_one_whitelist() {
         ("clé", 'é'),
         ("c*", '*'),
     ] {
-        assert_eq!(launcher_refused_char(bad), Some(c), "{bad:?}");
+        for windows in [false, true] {
+            assert_eq!(
+                launcher_refused_char(bad, windows),
+                Some(c),
+                "Windows = {windows}：{bad:?}"
+            );
+        }
+    }
+}
+
+/// 启动器的 Windows 那一形（那一行在 Windows 本机跑）：绝对路径（盘符根 `X:\` / `X:/` · UNC `\\…`）与 `\` 分隔的路径照放，
+/// 每个词打头都认盘符根（`--settings D:\x.json` 这一类参数）；`:` 只许在词首的盘符那一位。POSIX 那一形照旧拒 `:` 与 `\`。
+#[test]
+fn a_launcher_on_windows_may_name_an_absolute_path() {
+    for good in [
+        r"C:\tools\claude.cmd",
+        r"c:\Users\x\AppData\Roaming\npm\claude.cmd --x",
+        "C:/tools/claude.exe",
+        r"\\srv\share\claude.cmd",
+        r"tools\claude.cmd",
+        r"claude --settings D:\cfg\s.json",
+    ] {
+        assert_eq!(
+            launcher_refused_char(good, true),
+            None,
+            "Windows 上的真实启动器被拒了：{good:?}"
+        );
+    }
+    for (bad, c) in [
+        ("C:", ':'),
+        ("C:tools", ':'),
+        ("a:b", ':'),
+        (r"C:\a:b", ':'),
+        (r"1:\x", ':'),
+        (r"claude x:", ':'),
+        (r"C:\a;b", ';'),
+        (r"C:\$x", '$'),
+        (r"C:\a~", '~'),
+    ] {
+        assert_eq!(launcher_refused_char(bad, true), Some(c), "{bad:?}");
+    }
+    for (bad, c) in [(r"C:\tools\claude.cmd", ':'), (r"tools\claude", '\\')] {
+        assert_eq!(launcher_refused_char(bad, false), Some(c), "POSIX：{bad:?}");
     }
 }
 

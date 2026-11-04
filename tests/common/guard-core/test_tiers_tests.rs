@@ -443,11 +443,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend_host" },
     ),
     (
-        "tests/backend/agents/claudecode/parse_tests.rs",
-        "f63_real_data_ledger",
-        Trigger::Manual("要本机真实历史数据（只读），改记录解析时人工重算的台账；跑法住它自己的头注"),
-    ),
-    (
         "tests/shots/proc-start.vitest.ts",
         "process.platform===\"\"",
         Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里读 `/proc` 的那一句；Linux 上门禁与 quick-check 的整套 vitest 跑它"),

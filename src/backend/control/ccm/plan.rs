@@ -953,7 +953,11 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     {
         return Err(refuse(flag::CWD, cwd));
     }
-    if let Some(c) = shell_quote_core::launcher_refused_char(&o.launcher) {
+    // ccm 跑在目标机上：启动器照这一台的平台认（同上面工作目录照 `Path::is_absolute`）。
+    if let Some(c) = shell_quote_core::launcher_refused_char(
+        &o.launcher,
+        crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+    ) {
         return Err(Die(copy_text(
             "bePlan.build.launcherRefused",
             &[
