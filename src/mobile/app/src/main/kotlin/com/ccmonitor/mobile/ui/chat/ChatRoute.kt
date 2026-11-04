@@ -171,7 +171,7 @@ fun ChatRoute(
             ) {
                 ChatHead(hostId, host.machine, vm.picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatMorePanes(more)
-                ChatInfoPane(info, host.machine, state.cwd)
+                ChatInfoPane(info, host.machine) { sid -> onDrawerAction(DrawerAction.OpenRecent(sid)) }
                 ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
             }
         }

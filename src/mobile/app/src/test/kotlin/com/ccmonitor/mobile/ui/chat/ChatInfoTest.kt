@@ -162,4 +162,50 @@ class ChatInfoTest {
             assertEquals(listOf("那台不认"), ui.failed)
             assertNull("没有任务 ⇒ 不画那一段", ui.tasks)
         }
+
+    private fun kin(
+        sid: String,
+        title: String,
+    ) = mapOf("sid" to sid, "title" to title, "face" to Faces.raw["live-working-plain"], "hidden" to null)
+
+    private val quiet: (String, Map<String, Any?>?) -> Reply? = { cmd, _ ->
+        mapOf("session-account" to FakeCoreLink.failed("x"), "tasks-list" to Reply.Ok(mapOf("tasks" to emptyList<Any>(), "chip" to "", "hint" to "")))[cmd]
+    }
+
+    @Test
+    fun `信息抽屉：在哪 · 后台在跑 · 血缘照会话事实那几格`() =
+        runTest {
+            val bg = mapOf("text" to "后台任务运行中 · npm run dev · 18m", "clock" to null, "what" to "npm run dev", "count" to 1, "tone" to "busy")
+            val facts =
+                Wires.facts(
+                    "path" to "/p/s1.jsonl",
+                    "whereLine" to "~/work/orders · devbox",
+                    "background" to bg,
+                    "startedBy" to kin("s0", "发版前整理"),
+                    "children" to listOf(kin("c1", "子一"), kin("c2", "子二")),
+                )
+            val o = opened(facts = facts, extra = quiet)
+            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            info.open()
+            runCurrent()
+            val ui = info.state.value!!
+            assertEquals("~/work/orders · devbox", ui.where)
+            assertEquals("后台任务运行中 · npm run dev · 18m", ui.background)
+            assertEquals("s0" to "发版前整理", ui.parent?.let { it.sid to it.title })
+            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children.map { it.sid to it.title })
+        }
+
+    @Test
+    fun `信息抽屉：没有血缘 · 不在后台 · 不知在哪 ⇒ 那几段不画`() =
+        runTest {
+            val o = opened(extra = quiet)
+            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            info.open()
+            runCurrent()
+            val ui = info.state.value!!
+            assertNull(ui.where)
+            assertNull(ui.background)
+            assertNull(ui.parent)
+            assertEquals(emptyList<Any>(), ui.children)
+        }
 }
