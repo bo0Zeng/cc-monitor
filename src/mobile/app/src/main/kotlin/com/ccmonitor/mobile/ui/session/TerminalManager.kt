@@ -53,6 +53,7 @@ internal data class TermLine(
  */
 internal fun terminalPlan(rows: List<TerminalsList.Row>): List<TermGroup> {
     val (withSession, plain) = rows.partition { it.sid != null }
+
     fun lines(rs: List<TerminalsList.Row>) = rs.map { TermLine(it, endable = it.endRefused == null, note = it.endRefused?.takeIf { s -> s.isNotBlank() }) }
     return listOfNotNull(
         withSession.takeIf { it.isNotEmpty() }?.let { TermGroup(copyText("mobTerms.group.session", "n" to it.size), lines(it)) },
