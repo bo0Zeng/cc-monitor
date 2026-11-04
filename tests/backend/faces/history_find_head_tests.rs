@@ -5,8 +5,7 @@ use copy_core::copy_text;
 use std::path::PathBuf;
 
 fn scratch(tag: &str) -> (PathBuf, String) {
-    let d = std::env::temp_dir().join(format!("ccm-find-head-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch(tag);
     let dir = d.join("projects").join("-p");
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("s.jsonl");

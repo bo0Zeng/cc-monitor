@@ -50,7 +50,7 @@ own-chan = { path = "../../common/own-chan" }
 deploy-contract = { path = "../../common/deploy-contract" }
 deploy = { path = "../deploy" }
 # 机器表字段的宽松读法（同拨号核心那一份）。
-ssh-dial = { path = "../ssh-dial" }
+ssh-dial = { path = "../../comms/ssh-dial" }
 # 连远端常驻后端的客户端那一侧（各台的常驻流）。
 resident-client = { path = "../../comms/resident-client" }
 # 通道那一句（离线那一句只由连接层写）。
@@ -77,7 +77,7 @@ test-meters = { path = "../test-meters" }
 ts-rs.workspace = true
 cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 tokio = { workspace = true, features = ["test-util"] }
-ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+ssh-dial = { path = "../../comms/ssh-dial", features = ["test-support"] }
 backend-platform = { path = "../platform", features = ["test-support", "ts"] }
 backend-common = { path = "../common", features = ["test-support", "ts"] }
 backend-agents = { path = "../agents", features = ["test-support", "ts"] }

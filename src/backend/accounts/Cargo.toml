@@ -40,7 +40,7 @@ upstream-url-core = { path = "../../common/upstream-url-core" }
 # 中转本身（上游选择交进去的那几样类型）。
 comms-outward = { path = "../../comms/outward" }
 # 出网口（直连或经代理开上游 TCP）。
-egress = { path = "../egress" }
+egress = { path = "../../comms/egress" }
 # 轮换策略的脚本引擎。
 rhai.workspace = true
 ring.workspace = true
@@ -59,8 +59,8 @@ guard-core = { path = "../../common/guard-core" }
 # 量具（线程级内存 · 金样 · 听 `tracing` 说了什么）：只在 dev 侧的包。
 test-meters = { path = "../test-meters" }
 # 拨了必被拒的本机口（续令牌一律发到它，绝不发到那一家的真端点）。
-ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
-egress = { path = "../egress", features = ["test-support"] }
+ssh-dial = { path = "../../comms/ssh-dial", features = ["test-support"] }
+egress = { path = "../../comms/egress", features = ["test-support"] }
 comms-outward = { path = "../../comms/outward", features = ["test-support"] }
 acct-core = { path = "../../common/acct-core", features = ["fixtures"] }
 # 判据里异源算 sha256。

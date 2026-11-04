@@ -246,18 +246,10 @@ mod tests {
         assert!(f["detail"].as_str().unwrap().contains("uname: x"), "{f}");
     }
 
-    /// 这一条判据自己的临时目录（测试档的临时目录已是沙箱）。
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("mobcore-load-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).expect("临时目录");
-        d
-    }
-
     /// 本版带的那份后端比上限大一个字节 ⇒ 拒收，那一句是超出上限（带实际大小），一个字节不读进来。
     #[test]
     fn a_carried_backend_one_byte_over_the_cap_is_refused_as_over_the_cap() {
-        let d = scratch("over");
+        let d = test_home::scratch("over");
         let p = d.join("backend");
         let f = std::fs::File::create(&p).expect("建假后端");
         f.set_len(BACKEND_BYTES_CAP.bytes + 1)
@@ -281,7 +273,7 @@ mod tests {
     /// 正好等于上限的照读，多一个字节就拒。用小上限量，不写几百 MB。
     #[test]
     fn exactly_at_the_cap_is_read_one_byte_more_is_refused() {
-        let d = scratch("edge");
+        let d = test_home::scratch("edge");
         let p = d.join("backend");
         std::fs::write(&p, b"0123456789").expect("写假后端");
         let at = |bytes| Cap {
@@ -303,7 +295,7 @@ mod tests {
     /// 不是普通文件（目录 · FIFO · 设备）⇒ 不打开、回「不是普通文件」。
     #[test]
     fn a_carried_backend_that_is_not_a_regular_file_is_refused() {
-        let d = scratch("dir");
+        let d = test_home::scratch("dir");
         let said = load(&d).expect_err("目录却读成了").said;
         assert_eq!(said, copy_text("reason.fs.notRegular", &[]));
         let _ = std::fs::remove_dir_all(&d);

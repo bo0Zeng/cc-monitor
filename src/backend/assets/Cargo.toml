@@ -35,7 +35,7 @@ creds-core = { path = "../../common/creds-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 机器表字段的宽松读法（同拨号核心那一份）。
-ssh-dial = { path = "../ssh-dial" }
+ssh-dial = { path = "../../comms/ssh-dial" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

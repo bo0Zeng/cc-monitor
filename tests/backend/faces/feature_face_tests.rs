@@ -18,16 +18,9 @@ fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 #[test]
 fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
-    let h = scratch("tasks");
+    let h = test_home::scratch("tasks");
     let dir = crate::observe::tasks_query::tasks_root(&h).join("s");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
@@ -60,7 +53,7 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
 fn the_tasks_product_matches_the_golden() {
     let g: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/tasks-list.golden.json")).unwrap();
-    let h = scratch("tasks-golden");
+    let h = test_home::scratch("tasks-golden");
     let sid = g["request"]["sid"].as_str().unwrap();
     let dir = crate::observe::tasks_query::tasks_root(&h).join(sid);
     std::fs::create_dir_all(&dir).unwrap();

@@ -2,9 +2,10 @@
 
 use super::*;
 use crate::plan::fixture::{
-    as_json, dump, dump_broken, dump_top_signed, fake_pb, scratch, waits_per, who, workspace,
+    as_json, dump, dump_broken, dump_top_signed, fake_pb, waits_per, who, workspace,
 };
 use serde_json::Value;
+use test_home::scratch;
 
 /// 判据用的口（生产不用，住这里不进生产树）。
 impl Book {

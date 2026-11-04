@@ -8,12 +8,7 @@ use std::path::PathBuf;
 
 /// 一个沙箱数据目录 ＋ 指着它的写句柄。
 pub(crate) fn sandbox(tag: &str) -> (PathBuf, Own) {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-skeleton-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch(tag);
     std::fs::create_dir_all(d.join("data")).unwrap();
     let own = Own::issue_roots(&d, &d.join("data"));
     (d, own)

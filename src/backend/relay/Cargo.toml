@@ -20,7 +20,7 @@ backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
 # 中转本身（搬字节那一层）· 出网口（直连或经代理开上游 TCP）。
 comms-outward = { path = "../../comms/outward" }
-egress = { path = "../egress" }
+egress = { path = "../../comms/egress" }
 copy-core = { path = "../../common/copy-core" }
 # 钥匙文件的住址与形状（中转与 `ccm` 共用的那一份）。
 relay-route-core = { path = "../../common/relay-route-core" }

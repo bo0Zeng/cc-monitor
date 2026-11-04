@@ -24,7 +24,7 @@ backend-platform = { path = "../platform" }
 # 中转宿主：本进程起的中转去上游那一跳的读数归本机那台（`links::local`）。
 backend-relay = { path = "../relay" }
 # 拨号核心（多地址竞速 · 跳板 · host key · 鉴权 · 池 · SFTP；手机同一份）：本包是后端那一侧的宿主。
-ssh-dial = { path = "../ssh-dial" }
+ssh-dial = { path = "../../comms/ssh-dial" }
 # 帧的线上形（客户端按同一份解）。
 cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
@@ -47,7 +47,7 @@ test-home = { path = "../../common/test-home" }
 # 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
 guard-core = { path = "../../common/guard-core" }
 ts-rs.workspace = true
-ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+ssh-dial = { path = "../../comms/ssh-dial", features = ["test-support"] }
 cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 russh.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

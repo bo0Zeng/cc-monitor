@@ -4,13 +4,6 @@ use super::*;
 use std::io::Write as _;
 use std::time::{Duration, Instant};
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-one-wait-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建夹具目录");
-    d
-}
-
 /// 一条压缩摘要（结构同那一家写的那种，正文是占位）。
 fn summary() -> String {
     r#"{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"S"},"uuid":"u-s"}"#.to_string()
@@ -53,7 +46,7 @@ fn the_fixture_line_is_what_the_adapter_calls_a_compact_summary() {
 /// 期限内写进一条压缩摘要 ⇒ 等到，且写进去之后很快就回（不拖到期限）。装之前就在的那一条摘要不算。
 #[test]
 fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
-    let d = scratch("seen");
+    let d = test_home::scratch("seen");
     let rec = d.join("s.jsonl");
     append(&rec, &said(1));
     append(&rec, &summary());
@@ -76,7 +69,7 @@ fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
     assert!(took < guard_core::wall::CEILING, "等到了却拖到 {took:?}");
 
     // 只有旧的那条、期限内没有新的 ⇒ 没等到。
-    let d = scratch("old");
+    let d = test_home::scratch("old");
     let rec = d.join("s.jsonl");
     append(&rec, &summary());
     let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
@@ -88,7 +81,7 @@ fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
 /// 期限内没写 ⇒ 到点回「没等到」：不早退，也不拖。
 #[test]
 fn nothing_written_returns_at_the_deadline() {
-    let d = scratch("late");
+    let d = test_home::scratch("late");
     let rec = d.join("s.jsonl");
     append(&rec, &said(1));
     let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
@@ -109,7 +102,7 @@ fn nothing_written_returns_at_the_deadline() {
 /// 记录被整份换掉（改名换进来一份新的）⇒ 照流式那一套从头重读，新内容里的摘要认得出。
 #[test]
 fn a_rewritten_record_is_reread_from_the_start() {
-    let d = scratch("rewrite");
+    let d = test_home::scratch("rewrite");
     let rec = d.join("s.jsonl");
     for n in 0..20 {
         append(&rec, &said(n));
@@ -174,7 +167,7 @@ fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
 /// ★ 等到的是取出来的那一份：此刻之后长出的、第一条取得出的；装之前就在的不算。
 #[test]
 fn a_pick_hands_back_what_the_new_line_carries() {
-    let d = scratch("pick");
+    let d = test_home::scratch("pick");
     let rec = d.join("s.jsonl");
     append(&rec, r#"{"n":1}"#);
     let armed = record_pick(&rec, |v| v.get("n").and_then(serde_json::Value::as_u64)).expect("装");

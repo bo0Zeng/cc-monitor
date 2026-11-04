@@ -7,9 +7,7 @@ use std::path::{Path, PathBuf};
 
 /// 一格一个临时目录 ＋ 目标 ＋ 旁名。
 fn scratch(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
-    let d = std::env::temp_dir().join(format!("ccm-platcore-atomic-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&d).ok();
-    std::fs::create_dir_all(&d).expect("建测试目录");
+    let d = test_home::scratch(tag);
     let at = d.join("state.json");
     let tmp = d.join(".state.json.tmp");
     (d, at, tmp)

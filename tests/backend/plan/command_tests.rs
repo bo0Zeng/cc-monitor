@@ -2,9 +2,10 @@
 //! 带着 agent 身份的那一侧调不到用户命令；接过仓库（`adopt`）那几步；0.5 没有的动词不在界面能点的那几条里。
 
 use super::*;
-use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
+use crate::plan::fixture::{dump, fake_pb, runs, workspace};
 use cmd_wire::plan::{PlanAdopted, PlanCmdReply};
 use std::cell::RefCell;
+use test_home::scratch;
 
 /// 界面能点的只剩 0.5 有的那几条（`repo` 是新计划框的［新建］）；记原话 · 接过仓库的旧名 · 旧的画图命令都不在。
 #[test]

@@ -3,13 +3,6 @@
 use crate::dir::{hold, private_dir, private_dir_all, LockStage, PRIVATE_DIR_MODE};
 use crate::proc::parse_stat;
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-platcore-{tag}-{}", std::process::id()));
-    std::fs::remove_dir_all(&d).ok();
-    std::fs::create_dir_all(&d).expect("建测试目录");
-    d
-}
-
 #[cfg(unix)]
 fn mode(p: &std::path::Path) -> u32 {
     use std::os::unix::fs::PermissionsExt as _;
@@ -20,7 +13,7 @@ fn mode(p: &std::path::Path) -> u32 {
 #[test]
 fn private_dir_builds_one_level_owner_only_and_leaves_an_existing_one_alone() {
     use std::os::unix::fs::PermissionsExt as _;
-    let base = scratch("one");
+    let base = test_home::scratch("one");
     let fresh = base.join("fresh");
     private_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
@@ -40,7 +33,7 @@ fn private_dir_builds_one_level_owner_only_and_leaves_an_existing_one_alone() {
 #[cfg(unix)]
 #[test]
 fn private_dir_all_builds_every_missing_level_owner_only() {
-    let base = scratch("all");
+    let base = test_home::scratch("all");
     let deep = base.join("a").join("b");
     private_dir_all(&deep).expect("建");
     assert_eq!(mode(&base.join("a")), PRIVATE_DIR_MODE);
@@ -54,7 +47,7 @@ fn private_dir_all_builds_every_missing_level_owner_only() {
 #[test]
 fn the_dir_lock_excludes_another_open_until_dropped() {
     use std::os::fd::AsRawFd as _;
-    let base = scratch("lock");
+    let base = test_home::scratch("lock");
     let try_other = || {
         let f = std::fs::File::open(&base).expect("开目录");
         // SAFETY：`f` 活着、描述有效。
@@ -70,7 +63,7 @@ fn the_dir_lock_excludes_another_open_until_dropped() {
 
 #[test]
 fn the_dir_lock_on_a_missing_dir_fails_at_open() {
-    let base = scratch("lockmiss");
+    let base = test_home::scratch("lockmiss");
     let err = hold(&base.join("nope")).err().expect("目录不在还拿到了锁");
     assert_eq!(err.stage, LockStage::Open);
     std::fs::remove_dir_all(&base).ok();
