@@ -54,7 +54,7 @@ impl On<'_> {
     /// 只读一发（名单 · 问尺寸 · 问版本）。
     #[expect(
         clippy::disallowed_methods,
-        reason = "只读 tmux：终端名单 `list-panes -a` · `list-clients`、调用方问尺寸光标 `display-message -p` · 问版本 `-V`；不许经它发改状态的子命令"
+        reason = "只读 tmux：终端名单两发、调用方问尺寸光标 · 问版本；不许经它发改状态的子命令"
     )]
     pub fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
         child(self.socket).args(args).run(READ_TMUX_WITHIN)
@@ -258,7 +258,7 @@ const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
 /// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`host_tests` 那条判据钉住次序）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "全 crate 唯一一处一次列全部 tmux 会话（`list-sessions`，会话快照的探测器）：只读 tmux，不改任何状态"
+    reason = "全 crate 唯一一处一次列全部 tmux 会话（会话快照的探测器）：只读 tmux，不改任何状态"
 )]
 pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
     let out = child(None)

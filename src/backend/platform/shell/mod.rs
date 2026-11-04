@@ -26,7 +26,7 @@ pub mod powershell;
     unix,
     expect(
         clippy::disallowed_methods,
-        reason = "全 crate 唯一一处把命令串交给 POSIX shell：今天只送 `observe/watcher.rs` 那两跳只读（`command -v tmux && tmux ls` · `tmux display-message -p`），加第三种用途先回来重读这一句"
+        reason = "全 crate 唯一一处把命令串交给 POSIX shell：今天只送 `observe/watcher.rs` 那两跳只读的探测，加第三种用途先回来重读这一句"
     )
 )]
 pub fn posix_shell(script: &str) -> Option<Child> {

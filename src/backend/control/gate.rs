@@ -81,7 +81,7 @@ pub(crate) fn probe(target: &str) -> Result<Option<Probed>, Said> {
 /// `Some(p)` = 显式 `-S <p>`（只为让「按 sid 找窗格」在隔离的 tmux server 上测得出来）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "三道门里身份那一探（`display-message -p` 取 `@ccm_sid`）与按 sid 找窗格（`list-panes -s -F`）：只读 tmux，不改任何状态"
+    reason = "三道门里身份那一探（取 `@ccm_sid`）与按 sid 找窗格：只读 tmux，不改任何状态"
 )]
 fn tmux_on(socket: Option<&str>) -> Child {
     crate::host::tmux::child(socket)

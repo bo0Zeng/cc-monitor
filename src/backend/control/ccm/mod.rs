@@ -1155,7 +1155,7 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
 #[expect(
     clippy::disallowed_methods,
-    reason = "一次性 ccm 把一条已经渲好的命令串交给 POSIX shell 并 exec 掉自己：同用户在自己终端里手敲同一条，常驻那条路走不到这里；不许往这一处加第二种用途"
+    reason = "一次性 ccm 把一条已经渲好的命令串交给 POSIX shell 并换掉自己：同用户在自己终端里手敲同一条，常驻那条路走不到这里；不许往这一处加第二种用途"
 )]
 fn exec_shell(line: &str, why: &str, account: Note<'_>, own: &crate::platform::fs::Own) -> i32 {
     exec_or_spawn(
@@ -1285,7 +1285,7 @@ fn exec_direct(
     };
     #[expect(
         clippy::disallowed_methods,
-        reason = "一次性 ccm 最后那一下 exec 用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
+        reason = "一次性 ccm 最后那一下换成用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
     )]
     let agent = Child::new(program).args(lead).args(rest);
     exec_or_spawn(agent, &format!("'{prog}'"), note, own)

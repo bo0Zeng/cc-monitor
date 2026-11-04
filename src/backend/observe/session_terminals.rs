@@ -312,7 +312,7 @@ const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 pub fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
     #[expect(
         clippy::disallowed_methods,
-        reason = "点 ↗ 时答此刻谁在显示这个会话（`list-clients -t <窗格>`）：只读 tmux，只在被问时起一次"
+        reason = "点 ↗ 时答此刻谁在显示这个会话：只读 tmux，只在被问时起一次"
     )]
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)

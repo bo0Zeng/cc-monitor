@@ -778,7 +778,7 @@ fn agent_in_front(row: &TermRow) -> bool {
 /// 名单里对上 · 过身份门 · `takes` 收 ⇒ 那一行 ＋ 对它下手的句柄；不收 ⇒ 原因（[`send_on`] 送之前、[`say_target_on`] 看屏之前同一道）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "身份门那一探交给 `control/gate.rs`（`display-message -p` · `list-panes -s`）：只读 tmux"
+    reason = "身份门那一探交给 `control/gate.rs`：只读 tmux"
 )]
 fn admit_on(
     on: On<'_>,
