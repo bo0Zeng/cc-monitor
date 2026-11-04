@@ -146,7 +146,7 @@ export const ANSWER_SCENES: Scene[] = [
     await until(() => document.querySelector("[role=group] [data-part=gone]"));
     await sleep(1500);
   }),
-  shot("answer-auto-menu", "答批准 · 没人答时自动答 ▸（甲8）", "会话头菜单（右键标签页同一份）「没人答时自动答 ▸」：关 · 5m · 15m · 30m 一组单选，勾在会话注解里那一格上（这里经真后端设成 15 分钟）", async ({ backend }) => {
+  shot("answer-auto-menu", "答批准 · 无人答时自动答 ▸（甲8）", "会话头菜单（右键标签页同一份）「无人答时自动答 ▸」：关 · 5m · 15m · 30m 一组单选，勾在会话注解里那一格上（这里经真后端设成 15 分钟）", async ({ backend }) => {
     await mainReady(1);
     await backend.annotate(LOCAL, SID, { autoAnswer: { afterMin: 15 } });
     await sleep(800);
