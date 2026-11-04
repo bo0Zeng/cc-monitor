@@ -58,7 +58,7 @@ pub enum OpenWhat {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         session: Option<String>,
     },
-    /// 开一个 shell，不起 agent：给了 `session` ⇒ 这台 tmux 里那个会话（不在就在 `cwd` 里建一个空的）；
+    /// 开一个 shell，不起 agent：给了 `session` ⇒ 这台那个名字的终端（tmux 或托管里都认；不在就在 `cwd` 里建一个空的，放哪照这台缺省：能托管就托管）；
     /// 只给 `cwd` ⇒ 这台 shell 里进那个目录那一行。`cwd` 只在建的那一刻生效（已在的会话不往里敲 `cd`）。
     Shell {
         #[serde(default, skip_serializing_if = "Option::is_none")]

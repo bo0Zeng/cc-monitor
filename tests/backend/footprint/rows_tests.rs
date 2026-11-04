@@ -90,8 +90,8 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
         SurfaceState::Undetermined { .. }
     ));
     // 登记表里 ssh 那一行用的就是这个查法。
-    let row = crate::footprint::registry::UNMANAGED_ENV
-        .iter()
+    let row = crate::footprint::registry::unmanaged()
+        .into_iter()
         .find(|u| u.id == "ssh")
         .expect("ssh 那一行");
     assert_eq!(row.probe, EnvProbe::SshClient);
@@ -1288,9 +1288,12 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     let h = home();
     let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
     // 人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
-    //   + 手写那一半每项一行。**两半都现算**，不写死一个数。
-    let expected: usize =
-        TOOLS.iter().map(|t| t.touches().count()).sum::<usize>() + UNMANAGED_ENV.len();
+    //   + 手写那一半（这台平台上的那几条）每项一行。**两半都现算**，不写死一个数。
+    let named = crate::footprint::registry::environment()
+        .iter()
+        .filter(|e| matches!(e.backing, EnvBacking::Named { .. }))
+        .count();
+    let expected: usize = TOOLS.iter().map(|t| t.touches().count()).sum::<usize>() + named;
     assert_eq!(
         rows.len(),
         expected,

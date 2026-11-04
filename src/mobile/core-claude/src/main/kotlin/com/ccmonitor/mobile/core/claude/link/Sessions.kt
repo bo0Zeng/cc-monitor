@@ -57,7 +57,7 @@ import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
 
 /**
  * `session-open`：新起 · 恢复 · 接回 · 开一个 shell，都是这一问（那台定落在哪、渲好要在终端里敲的那一行）。
- * 手机的终端只是 ssh 那一屏：永远 `local: false`；新起 · 恢复永远起在那台 tmux 里，桌面那一侧看得到、接得上。
+ * 手机的终端只是 ssh 那一屏：永远 `local: false`。新起 · 恢复交 `run: tmux`；开一个 shell 不带宿主，放在哪由那台定。
  */
 object SessionOpen {
     const val COMMAND: String = Commands.SessionOpen.NAME
@@ -89,21 +89,15 @@ object SessionOpen {
         val strategy: String?,
     )
 
-    /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（tmux 管理窗「后台起」那一格）。 */
-    fun newInTmux(
-        agent: String,
-        name: String,
-        ticket: String,
-    ): Map<String, Any?> = ask(OpenWhat.New(agent = agent, cwd = FilesHome.TILDE, tmuxName = name), run = true, ticket = ticket)
-
     /** 恢复 [sid] 那条（终端没了 ⇒ 那台照记录起回来；已在跑 ⇒ 回它所在的那个）。 */
     fun resume(sid: String): Map<String, Any?> = ask(OpenWhat.Resume(sid), run = true)
 
-    /** 接回名叫 [session] 的那个 tmux 会话（不在 ⇒ 那台拒，不建）。 */
+    /** 接回名叫 [session] 的那个终端（tmux 会话 · 托管终端都认；不在 ⇒ 那台拒，不建）。 */
     fun look(session: String): Map<String, Any?> = ask(OpenWhat.Look(session = session))
 
     /**
-     * 开一个 shell：给了 [session] ⇒ 那台 tmux 里那个会话（不在就在 [cwd] 里建一个空的）；只给 [cwd] ⇒ 进那个目录那一行（那台的 shell 方言）。
+     * 开一个 shell：给了 [session] ⇒ 那台里叫这个名的终端（不在就在 [cwd] 里建一个空的，宿主照那台缺省：能托管 ⇒ 托管，否则 tmux）；
+     * 只给 [cwd] ⇒ 进那个目录那一行（那台的 shell 方言）。
      * [cwd] 只在建的那一刻生效。
      */
     fun shell(

@@ -1514,6 +1514,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ARG_TEXT_REFUSED: NONE,
     arg_text_ok: NONE,
     posix_free_path_ok: NONE,
+    windows_free_path_ok: NONE,
     posix_quote: "J4",
     // shell 赋值词（`NAME=值`）：TS 侧零处认它 ⇒ NONE。
     is_assignment: NONE,

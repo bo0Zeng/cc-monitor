@@ -75,6 +75,37 @@ fn a_posix_free_path_is_absolute_without_parent_segments_and_nothing_quote_canno
     }
 }
 
+/// 〔`INVARIANTS §47` ②〕Windows 自由文本路径：形式（盘符根 · UNC · 两种分隔符都不许 `..` 段）＋ 同一拒绝集，**正反各一格**。
+#[test]
+fn a_windows_free_path_is_a_drive_or_unc_root_without_parent_segments() {
+    for good in [
+        r"C:\Users\x\proj",
+        "c:/w/Bob's notes",
+        r"D:\",
+        r"\\nas\share\照片 (2019)",
+        r"C:\a..b\c...",
+    ] {
+        assert!(windows_free_path_ok(good), "真实好值被拒了：{good:?}");
+    }
+    for bad in [
+        "",
+        "rel",
+        "C:",
+        "C:rel",
+        "/home/u",
+        r"\single",
+        r"C:\a\..\b",
+        "C:/a/..",
+        r"C:\a/../b",
+        "C:\\a\nb",
+        "C:\\a\rb",
+        "C:\\a\0b",
+        "1:\\x",
+    ] {
+        assert!(!windows_free_path_ok(bad), "坏值放行了：{bad:?}");
+    }
+}
+
 /// 〔`INVARIANTS §47` ①〕sid：今天各处规则的交集，**正反各一格**（§47「拒过头也算违反」）。
 /// 要求：「凡是有对应 `*-core` crate 的判定，TS 侧零实现」· `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 #[test]

@@ -53,7 +53,7 @@ class SentRequestsTest {
             FilesWriteText.COMMAND to listOf(FilesWriteText.args(dir, bin, "x", SHA)),
             Groups.COMMAND to listOf(Groups.ARGS),
             HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl"), HistoryFacts.bySid("0a1b2c3d-0000-4000-8000-000000000001")),
-            HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
+            HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L), LineStart.args("/p/s.jsonl", 7L)),
             HistoryImage.COMMAND to listOf(HistoryImage.args("/p/s.jsonl", 120L, 0, "u-a")),
             HistoryAnnotate.COMMAND to
                 listOf(
@@ -63,7 +63,12 @@ class SentRequestsTest {
                     HistoryAnnotate.star("s", true),
                     HistoryAnnotate.rename("s", "t"),
                     HistoryAnnotate.rename("s", "  "),
+                    HistoryAnnotate.autoAnswer("s", 5),
+                    HistoryAnnotate.autoAnswer("s", 0),
                 ),
+            InSessionFind.COMMAND to listOf(InSessionFind.args("/p/s.jsonl", "q")),
+            SaidList.COMMAND to listOf(SaidList.args("/p/s.jsonl")),
+            SessionsStop.COMMAND to listOf(SessionsStop.args(listOf("s"))),
             HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY)), HistoryList.args(ListAsk(), "e.1.2")),
             HistorySearch.COMMAND to listOf(HistorySearch.args("q")),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
@@ -151,7 +156,6 @@ class SentRequestsTest {
                     SessionOpen.newIn("/w", "t", "claude", "hi"),
                     SessionOpen.newIn("/w", "t", "claude", "hi", account = "a", rotation = SessionOpen.Rotation("x")),
                     SessionOpen.newIn("/w", "t", "claude", "hi", rotation = SessionOpen.Rotation(null)),
-                    SessionOpen.newInTmux("claude", "demo", "t"),
                     SessionOpen.resume("s"),
                     SessionOpen.look("demo"),
                     SessionOpen.shell("main", "~/w"),
@@ -168,6 +172,7 @@ class SentRequestsTest {
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
             SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s", "u")),
             SessionsNeeds.COMMAND to listOf(null),
+            SessionsWhere.COMMAND to listOf(SessionsWhere.args("s")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),
             TerminalsList.COMMAND to listOf(TerminalsList.args()),
         )

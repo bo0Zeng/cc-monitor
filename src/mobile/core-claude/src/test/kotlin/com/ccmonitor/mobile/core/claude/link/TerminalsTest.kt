@@ -47,10 +47,24 @@ class TerminalsTest {
     }
 
     @Test
-    fun `一条会话在哪个终端里：认名单上里面跑着它的那一行（那台认的）；没有 ⇒ 没有`() {
+    fun `能不能结束照每行的 can_end：不能 ⇒ 那台那一句；能 ⇒ 没有`() {
         val rows = TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!
-        assertEquals("demo-cc", TerminalsList.holding(rows, "sid-a")?.name)
-        assertNull(TerminalsList.holding(rows, "sid-zz"))
+        assertNull(rows.first { it.name == "demo-cc" }.endRefused)
+        assertEquals("属于别的前端 · 只读", rows.first { it.name == "other" }.endRefused)
+    }
+
+    @Test
+    fun `sessions-where：只问那一条、自报是手机；回包照解，问的那一条在第一个`() {
+        assertEquals(mapOf("sids" to listOf("s1"), "client" to "mobile"), SessionsWhere.args("s1"))
+        val reply =
+            mapOf(
+                "results" to
+                    listOf(mapOf("sid" to "s1", "standing" to "ambiguous", "names" to listOf("a", "b"), "terminals" to listOf(mapOf("host" to "tmux", "terminal" to "h-a"), mapOf("host" to "managed", "terminal" to "m-b")), "run" to "tmux")),
+            )
+        val w = SessionsWhere.of(reply)!!
+        assertEquals("s1", w.sid)
+        assertEquals(listOf("a", "b"), w.names)
+        assertNull("缺 results ⇒ 解不出", SessionsWhere.of(mapOf("x" to 1)))
     }
 
     @Test

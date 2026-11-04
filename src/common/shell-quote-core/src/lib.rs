@@ -11,7 +11,8 @@
 /// 为什么只收这三个、**不拒 shell 元字符**：`Bob's notes` · `照片 (2019)` 这类真实名字里 `'` `(` `)` `&` 都合法，
 /// 元字符交给 [`posix_quote`]（单引号里没有一个会被解释）；拒它们就是 §47 自己写的「拒过头也算违反」。
 /// 而这三个字符 quote 挡不住它们的后果：NUL 截断参数、CR / LF 在交互 shell 里（`tmux send-keys` 那一跳）等于按了回车。
-/// 形式判定（绝对路径 · 无 `..` 段 …）**按各自语境**写在调用处（本机 / 远端、POSIX / Windows 的「绝对」不是同一件事）。
+/// 自由文本路径的形式判定（绝对 · 无 `..` 段）分 POSIX 与 Windows 两形，都住本文件（[`posix_free_path_ok`] · [`windows_free_path_ok`]）；
+/// 调用处只按那一行在哪台平台上跑挑一形。
 /// 本仓自管的值（配置目录 · 后端落点）不走这一条，走全表（`acct-core` 的 `config_dir_ok` 那一族）。
 /// 交给 agent 的参数 · 登记备注也不走这一条：它们可以跨行，走 [`ARG_TEXT_REFUSED`]。
 pub const FREE_TEXT_REFUSED: [char; 3] = ['\0', '\r', '\n'];
@@ -38,6 +39,18 @@ pub fn arg_text_ok(s: &str) -> bool {
 /// 住这里而不住 monitor 的载荷模块：文件窗口进程也要它，而那个进程够到 app 侧只许走通道（`filewin/boundary_tests.rs`）。
 pub fn posix_free_path_ok(p: &str) -> bool {
     p.starts_with('/') && !p.split('/').any(|seg| seg == "..") && free_text_ok(p)
+}
+
+/// **Windows 语境下的自由文本路径**（Windows 本机的工作目录）：[`posix_free_path_ok`] 的 Windows 那一形。
+/// 形式 = 绝对（盘符根 `X:\` / `X:/`，或 UNC `\\…`）· 两种分隔符切出来都没有 `..` 段；拒绝集 = [`free_text_ok`]。
+/// `C:rel`（盘符相对）· `\x`（当前盘的根）不算绝对：落在哪个目录要看进程此刻的状态。
+pub fn windows_free_path_ok(p: &str) -> bool {
+    let b = p.as_bytes();
+    let drive_root =
+        b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/');
+    (drive_root || p.starts_with("\\\\"))
+        && !p.split(['/', '\\']).any(|seg| seg == "..")
+        && free_text_ok(p)
 }
 
 //

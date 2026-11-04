@@ -1,11 +1,14 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.SidsReq
 import com.ccmonitor.mobile.core.wire.gen.TermInput
+import com.ccmonitor.mobile.core.wire.gen.TerminalCanEnd
 import com.ccmonitor.mobile.core.wire.gen.TerminalEndReq
 import com.ccmonitor.mobile.core.wire.gen.TerminalHost
 import com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq
 import com.ccmonitor.mobile.core.wire.gen.TerminalsListReq
+import com.ccmonitor.mobile.core.wire.gen.Whereabout
 
 /*
  * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
@@ -42,6 +45,8 @@ object TerminalsList {
          * 手机不另调 `terminal-take-input` · `terminal-release-input`。
          */
         val holder: String? = null,
+        /** 这一行结束不了时那台写好的那一句（`can.end` 说不能）；能结束 ⇒ `null`。 */
+        val endRefused: String? = null,
     )
 
     fun of(data: Any?): List<Row>? =
@@ -55,20 +60,35 @@ object TerminalsList {
                 sid = t.session?.sid,
                 tmux = t.host == TerminalHost.TMUX,
                 holder = (t.input as? TermInput.Held)?.holder?.said,
+                endRefused =
+                    when (val e = t.can.end) {
+                        is TerminalCanEnd.Flag -> if (e.value) null else ""
+                        is TerminalCanEnd.Obj -> e.value.said
+                    },
             )
         }
-
-    /** 里面跑着 [sid] 那条会话的那一行（名单上的 `session.sid`，那台认的）；没有 ⇒ `null`。 */
-    fun holding(
-        rows: List<Row>,
-        sid: String,
-    ): Row? = rows.firstOrNull { it.sid == sid }
 
     /** 名字一模一样的那一行的句柄；没有 ⇒ `null`。 */
     fun handleOf(
         rows: List<Row>,
         name: String,
     ): String? = rows.firstOrNull { it.name == name }?.terminal
+}
+
+/**
+ * `sessions-where`：一条会话此刻在那台哪个终端里（在跑 · 空着 · 不止一个 · 没有 · 那台没 tmux）。判定只在那台，手机不拿名单自己找。
+ */
+object SessionsWhere {
+    const val COMMAND: String = Commands.SessionsWhere.NAME
+
+    fun args(sid: String): Map<String, Any?> = Commands.SessionsWhere.args(SidsReq(sids = listOf(sid), client = CLIENT))
+
+    /** 问的那一条（回包与入参同序，只问了一条 ⇒ 第一个）；回包里没有 ⇒ `null`。 */
+    fun of(data: Any?): Whereabout? =
+        Commands.SessionsWhere
+            .reply(data)
+            ?.results
+            ?.firstOrNull()
 }
 
 /** `terminal-preview`：抓一个终端的一屏（纯文字）。 */

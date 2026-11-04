@@ -35,6 +35,7 @@ fn base_spec() -> CliSpec<'static> {
         ccm_path: "ccm",
         alias: None,
         detach: false,
+        windows: false,
     }
 }
 
@@ -222,6 +223,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         ccm_path: "ccm",
         alias: None,
         detach: false,
+        windows: false,
     };
     assert_eq!(
         render(&spec).unwrap(),
@@ -456,6 +458,52 @@ fn windows_launches_go_the_direct_way_and_attach_is_the_thin_client() {
         line.starts_with("& 'C:/cc/ccm.exe' -- --attach ") && line.contains("cc-x"),
         "{line}"
     );
+}
+
+/// Windows 本机的托管终端：工作目录是 Windows 绝对路径（盘符根 · UNC），照那台的平台认；
+/// 同一个值交给远端（POSIX）照拒；`..` 段 · 换行 · NUL · 相对路径两形都拒。
+#[test]
+fn a_windows_hosted_terminal_takes_a_windows_absolute_cwd() {
+    use super::super::{hosted_argv_of, Act, Here};
+    use crate::control::launch_account::Settled;
+    let win = Here::Local { windows: true };
+    let caps = caps_without_one(None);
+    let hosted = |cwd: &str, here: Here| {
+        let mut l = launch("claude", Act::New);
+        l.cwd = Some(cwd.into());
+        hosted_argv_of(&l, &Settled::Base, here, &caps, "C:/cc/ccm.exe")
+    };
+    for good in [
+        r"C:\Users\x\proj",
+        "C:/Users/x/照片 (2019)",
+        r"\\nas\share\d",
+        r"D:\",
+    ] {
+        let argv = hosted(good, win).unwrap_or_else(|e| panic!("{good:?} 被拒：{e}"));
+        let at = argv.iter().position(|t| t == "--cwd").expect("带 --cwd");
+        assert_eq!(argv.get(at + 1).map(String::as_str), Some(good), "{argv:?}");
+    }
+    let cwd_refused = copy_core::copy_text(
+        "rsCcmInvocation.refusal.freeTextCwd",
+        &[("value", &format!("{:?}", r"C:\Users\x\proj"))],
+    );
+    assert_eq!(
+        hosted(r"C:\Users\x\proj", Here::Remote),
+        Err(cwd_refused),
+        "远端是 POSIX：盘符路径不是绝对路径"
+    );
+    for bad in [
+        r"C:\a\..\b",
+        "C:/a/../b",
+        "C:\\a\nb",
+        "C:\\a\0b",
+        "C:\\a\rb",
+        "rel",
+        "C:rel",
+        "/home/u",
+    ] {
+        assert!(hosted(bad, win).is_err(), "Windows 那一形放行了 {bad:?}");
+    }
 }
 
 /// 经别名起：`@别名` 紧跟入口（ccm 只认第一个词是 `@名`）；PowerShell 那一行写成字面量（裸的 `@名` 在那里是摊开变量）。
