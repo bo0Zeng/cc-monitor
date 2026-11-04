@@ -9,15 +9,10 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 /// 守「只许变短」的是 [`the_pending_ratchet_never_turns_backwards`]：它拿 **git 历史**当权威，
 /// 断「今天的条数不许比它在历史上出现过的**最低档**还高」（不是「清单真的在变短」；挡不住把那条判据本身删掉）。
 const PENDING: &[&str] = &[
-    "tests/frontend/shell/backend_kill_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
-    "tests/common/guard-core/rules/polling_registry_tests.rs",
     "tests/backend/assets/aliases/block_tests.rs",
-    "tests/common/guard-core/rules/session_name_registry_tests.rs",
-    "tests/common/guard-core/rules/shared_crate_registry_tests.rs",
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
-    "tests/backend/platform/fallback_guard.rs",
     "tests/backend/readonly_guard.rs",
 ];
 
