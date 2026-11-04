@@ -5282,20 +5282,21 @@ describe("〔FW1〕记录文件的出声", () => {
     };
     line(0);
     const before = home(tm).store.tabs.get("rf-sid")!.face;
-    rf.onSessionFileNotice("rf-sid", "gone");
-    expect(noticeText(tm)).toBe(copyText("sessionState.recordFile.gone"));
+    // 那一句是后端写好的（格里带来的），这里照摆、不照取值自己映。
+    rf.onSessionFileNotice("rf-sid", "gone", "甲句");
+    expect(noticeText(tm)).toBe("甲句");
     expect(home(tm).store.tabs.get("rf-sid")!.face, "记录文件不见了就改了会话状态（误判结束）").toEqual(before);
     line(1);
     expect(noticeText(tm), "又来了一行，「不见了」那句还挂着").toBeNull();
-    rf.onSessionFileNotice("rf-sid", "rewritten");
+    rf.onSessionFileNotice("rf-sid", "rewritten", "乙句");
     line(2);
-    expect(noticeText(tm), "重读那句被下一行收掉了").toBe(copyText("sessionState.recordFile.rewritten"));
-    rf.onSessionFileNotice("rf-sid", "truncated");
-    expect(noticeText(tm), "新的一句没盖掉旧的").toBe(copyText("sessionState.recordFile.truncated"));
+    expect(noticeText(tm), "重读那句被下一行收掉了").toBe("乙句");
+    rf.onSessionFileNotice("rf-sid", "truncated", "丙句");
+    expect(noticeText(tm), "新的一句没盖掉旧的").toBe("丙句");
     // 认不出的取值 / 没有这个 tab ⇒ 不画、不抛。
-    rf.onSessionFileNotice("rf-sid", "moved");
-    expect(noticeText(tm)).toBe(copyText("sessionState.recordFile.truncated"));
-    expect(() => rf.onSessionFileNotice("no-such-sid", "gone")).not.toThrow();
+    rf.onSessionFileNotice("rf-sid", "moved", "丁句");
+    expect(noticeText(tm)).toBe("丙句");
+    expect(() => rf.onSessionFileNotice("no-such-sid", "gone", "甲句")).not.toThrow();
   });
 });
 

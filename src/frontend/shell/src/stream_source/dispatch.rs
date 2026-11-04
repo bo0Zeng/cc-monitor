@@ -182,8 +182,9 @@ pub(crate) async fn apply(
         }
         Ordered::SessionFileGone(g) => {
             intake
-                .notice(&g.session_id, &g.path, FileChange::Gone, None)
-                .await
+                .notice(&g.session_id, &g.path, FileChange::Gone, &g.said.0, None)
+                .await;
+            told(at, Frame::SessionFileGone(g));
         }
         Ordered::SessionFileReread(r) => {
             let change = match r.why {
@@ -191,7 +192,7 @@ pub(crate) async fn apply(
                 wire::RereadWhy::Rewritten => FileChange::Rewritten,
             };
             intake
-                .notice(&r.session_id, &r.path, change, Some(r.lines))
+                .notice(&r.session_id, &r.path, change, &r.said.0, Some(r.lines))
                 .await;
             told(at, Frame::SessionFileReread(r));
         }

@@ -66,6 +66,9 @@ pub struct SessionBook {
     /// 每条会话的记录被从头重读过几回（`session_file_reread`）：数变了 ⇒ 读过的那一代作废、整份重来。
     #[cfg_attr(test, ts(type = "{ [key in string]: number }"))]
     pub rereads: BTreeMap<String, u64>,
+    /// 每条会话的记录文件最近怎么了，那台写好的那一句（`session_file_gone` · `session_file_reread` 带的 `said`）：后来的盖前面的，出口照摆。
+    #[cfg_attr(test, ts(type = "{ [key in string]: string }"))]
+    pub file_said: BTreeMap<String, Words>,
     /// 那台说「活会话清单报完了」（`sessions_replayed`）。
     pub listed: bool,
     /// 那台此刻看不见（[`SessionBook::unseen_now`] 记的那一张，[`unseen`]）：簿里没有、又不是「看不见时照旧作数」的会话一律照它画；
@@ -110,6 +113,10 @@ impl SessionBook {
             }
             Frame::SessionFileReread(r) => {
                 *self.rereads.entry(r.session_id.clone()).or_default() += 1;
+                self.file_said.insert(r.session_id.clone(), r.said.clone());
+            }
+            Frame::SessionFileGone(g) => {
+                self.file_said.insert(g.session_id.clone(), g.said.clone());
             }
             Frame::SessionsReplayed(_) => {
                 self.listed = true;
@@ -182,6 +189,7 @@ impl SessionBook {
         self.live.remove(sid);
         self.left.remove(sid);
         self.runs.remove(sid);
+        self.file_said.remove(sid);
     }
 }
 

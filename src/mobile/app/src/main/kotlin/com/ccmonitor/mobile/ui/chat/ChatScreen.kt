@@ -165,6 +165,8 @@ fun ChatTranscript(
 
     Column(modifier.fillMaxWidth()) {
         HistoryStatusBar(state)
+        // 记录文件不见了 / 从头重读过：那台写好的那一句原样一行（会话簿那一格）。
+        state.fileNotice?.let { Text(it, modifier = Modifier.fillMaxWidth().padding(8.dp)) }
 
         NewContentBox(Modifier.weight(1f), ChatNewContent.Tail(lastUnit?.key, lastUnit?.searchableText()?.length ?: 0, liveLength), followState, toBottom = { listState.scrollToItem((total - 1).coerceAtLeast(0), Int.MAX_VALUE) }) {
             ClaudeReadingPane(

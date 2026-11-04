@@ -164,6 +164,7 @@ impl LineIntake {
         sid: &str,
         path: &str,
         change: FileChange,
+        said: &str,
         lines: Option<u64>,
     ) {
         self.flush().await;
@@ -176,6 +177,7 @@ impl LineIntake {
                 origin: self.origin_label.clone(),
                 path: path.to_string(),
                 change: change.as_wire().to_string(),
+                said: said.to_string(),
             })
             .await;
         if change != FileChange::Gone {

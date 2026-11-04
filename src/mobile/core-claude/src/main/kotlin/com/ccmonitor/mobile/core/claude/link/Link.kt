@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineState
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -72,7 +73,7 @@ interface CoreLink {
     val live: SharedFlow<LiveCards>
 
     /** 流上的 `session_branch`：一个会话的主线外清单的一截（「前 `at` 条照旧，其后换成 `off`」，段照 `runs`），只有名单里要了清单的会话。 */
-    val branches: SharedFlow<BranchFrame>
+    val branches: SharedFlow<SessionBranch>
 
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
