@@ -44,7 +44,7 @@ static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> 
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
     std::sync::LazyLock::new(|| {
-        crate::footprint::registry::unmanaged()
+        super::unmanaged_on(false)
             .into_iter()
             .cloned()
             .collect()

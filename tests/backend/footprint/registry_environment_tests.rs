@@ -28,7 +28,7 @@ static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> 
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
     std::sync::LazyLock::new(|| {
-        crate::footprint::registry::unmanaged()
+        unmanaged_on(false)
             .into_iter()
             .cloned()
             .collect()
@@ -289,9 +289,9 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
         assert_eq!(
             e.who,
             Provisioning::AppShips,
-            "`{}` 落在「欠装口」那一档，而它的 `who` 不是「{}」—— 派生坏了",
+            "`{}` 落在「欠装口」那一档，而它的 `who` 不是「{:?}」—— 派生坏了",
             e.id,
-            Provisioning::AppShips.label()
+            Provisioning::AppShips
         );
     }
 }
@@ -385,9 +385,9 @@ fn every_provisioning_value_is_really_used() {
     for w in Provisioning::ALL {
         assert!(
             env.iter().any(|e| e.who == *w),
-            "「{}」这个取值在闭集里一项都没有（共 {} 值 · 闭集 {} 项）—— \
+            "「{:?}」这个取值在闭集里一项都没有（共 {} 值 · 闭集 {} 项）—— \
                  没人用的取值要么删掉，要么它就是漏了",
-            w.label(),
+            w,
             Provisioning::ALL.len(),
             env.len()
         );
@@ -403,10 +403,10 @@ fn nobody_declares_an_installer_for_something_we_should_not_install() {
         if who != Provisioning::AppShips {
             assert!(
                 !t.installable,
-                "`{}` 的落点说它「{}」，而 `installable: true` 说我们装得了 —— \
+                "`{}` 的落点说它「{:?}」，而 `installable: true` 说我们装得了 —— \
                      两句话有一句是假的",
                 t.id,
-                who.label()
+                who
             );
         }
     }
@@ -436,16 +436,7 @@ fn the_prompt_tier_declares_how_it_will_look() {
         };
         match probe {
             EnvProbe::OnPath | EnvProbe::InSessionShell | EnvProbe::SshClient => probeable += 1,
-            EnvProbe::CannotProbe { why } => {
-                blind += 1;
-                assert!(
-                    why.get().len() > 30,
-                    "`{}` 申报「查不动」而理由只有 {} 字节 —— \
-                         「查不动」与「懒得查」在表上长得一模一样，理由是唯一分得开的东西",
-                    e.id,
-                    why.get().len()
-                );
-            }
+            EnvProbe::CannotProbe => blind += 1,
         }
     }
     assert!(
