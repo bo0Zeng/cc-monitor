@@ -84,7 +84,11 @@ object SessionsWhere {
     fun args(sid: String): Map<String, Any?> = Commands.SessionsWhere.args(SidsReq(sids = listOf(sid), client = CLIENT))
 
     /** 问的那一条（回包与入参同序，只问了一条 ⇒ 第一个）；回包里没有 ⇒ `null`。 */
-    fun of(data: Any?): Whereabout? = Commands.SessionsWhere.reply(data)?.results?.firstOrNull()
+    fun of(data: Any?): Whereabout? =
+        Commands.SessionsWhere
+            .reply(data)
+            ?.results
+            ?.firstOrNull()
 }
 
 /** `terminal-preview`：抓一个终端的一屏（纯文字）。 */

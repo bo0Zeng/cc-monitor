@@ -883,7 +883,12 @@ pub(crate) fn spawn_hosted(
     name: &str,
     own: &crate::platform::fs::Own,
 ) -> Result<(), HostSpawn> {
-    let failed = |why: &str| copy_text("beCcm.execute.hostSpawnFailed", &[("name", name), ("why", why)]);
+    let failed = |why: &str| {
+        copy_text(
+            "beCcm.execute.hostSpawnFailed",
+            &[("name", name), ("why", why)],
+        )
+    };
     let Some((called, rest)) = host_run.split_first() else {
         return Err(HostSpawn::Refused(failed("argv")));
     };

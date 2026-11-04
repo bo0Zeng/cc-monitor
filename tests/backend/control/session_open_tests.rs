@@ -1024,8 +1024,14 @@ fn a_named_shell_lands_where_this_machine_defaults() {
     let o = there
         .open(json!({ "what": { "kind": "shell", "session": "main" } }))
         .unwrap();
-    assert_eq!((o.landed, o.session.as_deref()), (Landed::Idle, Some("main")));
-    assert!(o.line.unwrap().ends_with("--attach m-main"), "托管那一行接句柄");
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Idle, Some("main"))
+    );
+    assert!(
+        o.line.unwrap().ends_with("--attach m-main"),
+        "托管那一行接句柄"
+    );
     assert!(there.shells.borrow().is_empty(), "已在 ⇒ 不建");
 
     let neither = Rig::new(None);
