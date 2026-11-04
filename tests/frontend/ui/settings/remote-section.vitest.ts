@@ -8,7 +8,7 @@ import type { FleetLines } from "../../../../src/frontend/ui/generated/FleetLine
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
-const { ipcCalls, chanOps, chanSent, ipcReplies } = vi.hoisted(() => ({
+const { ipcCalls, chanOps, chanSent, ipcReplies, machinesReplyEdit } = vi.hoisted(() => ({
   ipcCalls: [] as string[],
   /** 经 `commands.chan_call` 发出去的那几问的 op（按发出顺序）。 */
   chanOps: [] as string[],
@@ -16,6 +16,8 @@ const { ipcCalls, chanOps, chanSent, ipcReplies } = vi.hoisted(() => ({
   chanSent: [] as { origin: string; op: string; req: unknown }[],
   /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
   ipcReplies: new Map<string, unknown>(),
+  /** 机器表那几问的回包在交出去之前再改一笔（金样里的库都是空的；演「库里有这台的指纹」那几条用）。 */
+  machinesReplyEdit: { fn: undefined as undefined | ((op: string, reply: Record<string, unknown>) => unknown) },
 }));
 // jsdom 里没有 Tauri 宿主：真 `invoke` 一调就抛（调用点多是 `() => void …`，抛出去是一条被吞掉的 unhandled rejection）。
 vi.mock("@tauri-apps/api/core", () => ({
@@ -47,7 +49,13 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         if (op.startsWith("machines-")) {
           const a0 = args[0] as { payload?: number[] };
           const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
-          return machinesChanCall(op, req);
+          const edit = machinesReplyEdit.fn;
+          if (!edit) return machinesChanCall(op, req);
+          return machinesChanCall(op, req).then((b) => {
+            const reply = JSON.parse(new TextDecoder().decode(new Uint8Array(b))) as Record<string, unknown>;
+            const u = new TextEncoder().encode(JSON.stringify(edit(op, reply)));
+            return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
+          });
         }
         const reply = ipcReplies.get(name);
         // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
@@ -84,6 +92,7 @@ import { loadConfig } from "../../../../src/frontend/ui/config";
 import { fakeCfg } from "../config-patch-fake";
 import { fakeMachines, machinesChanCall, recordedMachines, type MachinesDisk } from "../machines-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { shortFingerprint } from "../../../../src/frontend/ui/settings/machine-card";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import {
   shouldShowResetFingerprint,
@@ -1001,6 +1010,35 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(writtenHosts().map((h) => h.label)).toEqual(["gpu", "gpu-2"]);
       expect(p.added.map((a) => a.id)).toContain("machine:gpu-2");
       ipcReplies.clear();
+    });
+
+    it("★ 新加一台、存盘、写口读回带这台的指纹 ⇒ 那张卡的「主机指纹」写这一枚（不写「未记录」）", async () => {
+      const fp = "SHA256:QHfm7CD7FzWxZSMLUA4iqu2RyGLyQ1F37pvqnJSiVmI";
+      machinesReplyEdit.fn = (op, reply) => {
+        if (op !== "machines-set") return reply;
+        const m = reply.machines as Record<string, unknown>;
+        return { ...reply, machines: { ...m, hostKeys: { "gpu-2": [fp] } } };
+      };
+      try {
+        ipcReplies.set("ssh-config-import", { groups: sshGroups.slice(1), partial: false });
+        const p = fakePages();
+        const sec = await mount([mkH("gpu", "5.5.5.5")], p.host);
+        const dlg = await openAdd(sec);
+        const name = dlg.querySelector<HTMLInputElement>(".add-machine-row input:not([type=checkbox])")!;
+        name.value = "gpu-2";
+        name.dispatchEvent(new Event("input"));
+        for (let i = 0; i < 5; i++) await tick();
+        okBtn(dlg).click();
+        for (let i = 0; i < 5; i++) await tick();
+        const page = p.added.find((a) => a.id === "machine:gpu-2");
+        expect(page, "新那台没开页").toBeDefined();
+        const shown = page!.element.querySelector<HTMLElement>(".machine-fp");
+        expect(shown?.textContent, "写口读回的指纹没交给卡").toBe(shortFingerprint(fp));
+        expect(shown?.title).toBe(fp);
+      } finally {
+        machinesReplyEdit.fn = undefined;
+        ipcReplies.clear();
+      }
     });
 
     it("★ 后端说只读到一部分 ⇒ 多一行说明、读到的照列；一组都没读到也留在这一栏（不说成没有 config）；读全了不说", async () => {

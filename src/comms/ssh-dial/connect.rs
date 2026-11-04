@@ -705,12 +705,13 @@ async fn race(
     }
 }
 
-/// 竞速全输了那一句的原因词（按最说明问题的那一格）：解析不出 · 拨不通 · 超时有词；指纹不对另有那台的状态、别的说不清 ⇒ 原因不明。
+/// 竞速全输了那一句的原因词（按最说明问题的那一格）：解析不出 · 拨不通 · 超时 · 主机指纹不符有词；别的说不清 ⇒ 原因不明。
 pub fn race_reason(worst: Option<&str>) -> String {
     match worst {
         Some("resolve") => copy_text("reason.dial.resolve", &[]),
         Some("tcp") => copy_text("reason.dial.refused", &[]),
         Some("timeout") => copy_text("reason.link.noAnswer", &[]),
+        Some("hostkey") => copy_text("reason.dial.hostKey", &[]),
         _ => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }

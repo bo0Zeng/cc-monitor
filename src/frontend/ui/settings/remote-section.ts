@@ -932,7 +932,11 @@ export class RemoteSection {
     for (const c of saving) {
       const now = c.collect();
       const row = next.hosts.find((r) => sameHost(r.host, now));
-      if (row) c.persistedKey = row.name;
+      if (row) {
+        c.persistedKey = row.name;
+        // 库里记着的那几枚照写口读回的那一份交给卡（新加的那台建卡时还没有名字，指纹只在这一刻拿得到）。
+        c.setHostKeys(next.hostKeys?.[row.name] ?? []);
+      }
       c.renderStatusStrip();
     }
     this.loadedKeys = saving.map((c) => c.persistedKey!);
