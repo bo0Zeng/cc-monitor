@@ -347,9 +347,9 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
 #[test]
 fn a_hosted_session_is_shown_only_by_the_terminals_attached_to_it() {
     let ssh = |port: u16| SshConnection {
-        client_addr: "10.0.0.2".into(),
+        client_addr: "192.0.2.5".into(),
         client_port: port,
-        server_addr: "10.0.0.1".into(),
+        server_addr: "192.0.2.9".into(),
         server_port: 22,
     };
     let read = |pid: u32, at: u64| {

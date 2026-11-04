@@ -4057,8 +4057,7 @@
       "kind": "body",
       "role": "说明",
       "zh": "会话在跑 · 未接终端",
-      "args": [],
-      "limited": ["tmux"]
+      "args": []
     },
     "front.body.background": {
       "kind": "body",
