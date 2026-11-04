@@ -11556,7 +11556,7 @@
     "rsHistory.launcher.badChars": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动命令 {launcher} 含 {c} · 未恢复 · 只许字母、数字、空格、-_./ 与开头的 ~/",
+      "zh": "启动命令 {launcher} 含 {c} · 未恢复 · 只许字母、数字、空格、-_./ 与开头的 ~/（Windows 本机另许 \\ 与词首盘符根 X:\\）",
       "args": ["launcher", "c"]
     },
     "rsFrameQuery.readPage.stuck": {
@@ -13987,7 +13987,7 @@
     "bePlan.build.launcherRefused": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{what} 的值 {value} 含不允许的 {c} · 不能拼进命令\n启动器只许字母、数字、空格、-_./ 与开头的 ~/",
+      "zh": "{what} 的值 {value} 含不允许的 {c} · 不能拼进命令\n启动器只许字母、数字、空格、-_./ 与开头的 ~/（Windows 本机另许 \\ 与词首盘符根 X:\\）",
       "args": ["what", "value", "c"]
     },
     "beRelayUpstream.parse.whitespace": {
