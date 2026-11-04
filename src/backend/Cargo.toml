@@ -25,7 +25,7 @@ edition = "2021"
 # native binary per target platform, identity = `BUILD_ID`). Build this
 # natively on the target.
 # It is the root of its own small workspace (see `[workspace]` at the end): the
-# dial core `ssh-dial/` (shared with the phone) is a member, so both share this
+# dial core `../comms/ssh-dial/` (shared with the phone) is a member, so both share this
 # lock and the same russh, and `cargo test --workspace` runs its tests too.
 #
 # 「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
@@ -39,10 +39,10 @@ edition = "2021"
 # 不影响部署。由 monitor 侧 `cross_half_edge_registry` 逐条登记 + 钉住
 # 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
-# 「后端源码树」的判据人群：本包 ＋ 只有后端链的兄弟包（中转 `comms-outward`）。拨号核心 `ssh-dial` 住本目录底下（`ssh-dial/`），按目录就在人群里。按人群扫的判据（只读 · 零定时器 · 日志白名单 …）
-#   照旧管到中转那几份；`guard_core::walk_tree` / `module_address` 按它收 / 认（中转的文件认作 `comms-outward/<文件>`）。
+# 「后端源码树」的判据人群：本包 ＋ 住通信层目录、后端链着的兄弟包（中转 `comms-outward` · 拨号核心 `ssh-dial` · 出网口 `egress`）。按人群扫的判据（只读 · 零定时器 · 日志白名单 …）
+#   照旧管到这几份；`guard_core::walk_tree` / `module_address` 按它收 / 认（兄弟包的文件认作 `<包名>/<文件>`：`ssh-dial/sftp.rs` · `egress/lib.rs`）。
 [package.metadata.guard]
-population = ["../comms/outward"]
+population = ["../comms/outward", "../comms/ssh-dial", "../comms/egress"]
 
 # 🔴 库面。前置 1：目标是「`backend-core` 一份，
 #    两个宿主 link 同一份」——本机 GUI 进程内跑它，远端走下面那个薄 `main` 壳。
@@ -175,11 +175,11 @@ rhai.workspace = true
 # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `deploy` crate。
 deploy-contract = { path = "../common/deploy-contract" }
 # 拨号核心（竞速 · 跳板 · 鉴权 · 复用 · 用法 · SFTP 客户端）：手机同一份；本后端经 `dial/mod.rs::host` 装上自己那一套。
-ssh-dial = { path = "ssh-dial" }
+ssh-dial = { path = "../comms/ssh-dial" }
 # 装 / 升级远端后端的判定与编排（与 ssh-dial 并列；手机 mobcore 链同一份）。
 deploy = { path = "deploy" }
 # 出网口（这台所有出站 TCP 只在那里开：直连或经代理）：中转去上游 · 拨 SSH 都经它；本后端起来时照自己的环境装这台的描述（`main.rs`）。
-egress = { path = "egress" }
+egress = { path = "../comms/egress" }
 # 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：测试连接拿表单那份配置跑一趟它的常驻流（`dial/probe.rs`），与真连接同一串。
 # 它的期限与退避属客户端那一侧，不进本 crate 的零定时器判据人群。
 resident-client = { path = "../comms/resident-client" }
@@ -237,7 +237,7 @@ ring.workspace = true
 russh.workspace = true
 # ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
 #
-# 🔴 **它只服务 `src/backend/ssh-dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
+# 🔴 **它只服务 `src/comms/ssh-dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
 # 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
 # （`INVARIANTS §41.6`）。签字行住 `readonly_guard::g6_dependency_signoff`。
 # 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；现打核过 5 个候选、
@@ -276,9 +276,9 @@ test-home = { path = "../common/test-home" }
 # typed 命令的线上类型住 `cmd-wire`（账号库 · 文件管理那几条）：测试档要它们的 TS 派生（形状指纹 · 生成类型），发布构建不开。
 cmd-wire = { path = "../common/cmd-wire", features = ["ts"] }
 # 测试档不许出网：拨号核心那一句断言（`test-support`）在后端的测试档里也开着（resolver 2 ⇒ 不并进发布构建）。
-ssh-dial = { path = "ssh-dial", features = ["test-support"] }
+ssh-dial = { path = "../comms/ssh-dial", features = ["test-support"] }
 # 测试档不许出网：那一句断言住出网口真开 TCP 的那一处（`test-support`）。
-egress = { path = "egress", features = ["test-support"] }
+egress = { path = "../comms/egress", features = ["test-support"] }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # 源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
@@ -346,11 +346,11 @@ lto = true
 codegen-units = 1
 strip = true
 
-# ── 后端这一棵 workspace：本包 ＋ 拨号核心（`ssh-dial/`）＋ 手机嵌的 Rust 核心（`../mobile/core-rs/rust`，crate `mobcore`，只是拨号核心的 FFI 外壳）──
+# ── 后端这一棵 workspace：本包 ＋ 拨号核心与出网口（`../comms/ssh-dial` · `../comms/egress`）＋ 手机嵌的 Rust 核心（`../mobile/core-rs/rust`，crate `mobcore`，只是拨号核心的 FFI 外壳）──
 # 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "assets", "control", "observe", "footprint", "plan", "faces", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
+members = [".", "platform", "common", "plugin", "files", "agents", "relay", "stderr_log", "wire", "dial", "host", "history", "accounts", "assets", "control", "observe", "footprint", "plan", "faces", "test-meters", "../comms/ssh-dial", "deploy", "../comms/egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。

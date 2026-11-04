@@ -3,16 +3,9 @@
 
 use super::*;
 
-fn sandbox(tag: &str) -> std::path::PathBuf {
-    let home = std::env::temp_dir().join(format!("ccm-buslist-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).expect("建夹具家目录");
-    home
-}
-
 #[test]
 fn a_known_session_gets_its_title_and_a_judged_liveness_an_unknown_one_stays_unknown() {
-    let home = sandbox("seen");
+    let home = test_home::scratch("seen");
     let sid = "b5000000-0000-4000-8000-000000000001";
     let dir = home.join("projects").join("-w");
     std::fs::create_dir_all(&dir).unwrap();

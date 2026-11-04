@@ -29,7 +29,7 @@ deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }
-ssh-dial = { path = "../ssh-dial" }
+ssh-dial = { path = "../../comms/ssh-dial" }
 jiff.workspace = true
 ring.workspace = true
 serde.workspace = true

@@ -97,9 +97,11 @@ always = list(always_by) + unmapped
 ls = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files"], capture_output=True, text=True).stdout.split("\n")
 tracked = set(f for f in ls if f)
 WS = {
-    "shellrs": ("src/frontend/shell/", "src/frontend/filewin/", "src/common/", "src/comms/",
+    "shellrs": ("src/frontend/shell/", "src/frontend/filewin/", "src/common/",
+                "src/comms/inward/", "src/comms/outward/", "src/comms/resident-client/",
                 "tests/frontend/shell/", "tests/frontend/filewin/", "tests/common/", "tests/comms/"),
-    "backendrs": ("src/backend/", "src/comms/outward/", "src/common/", "tests/backend/", "tests/benches/"),
+    "backendrs": ("src/backend/", "src/comms/outward/", "src/comms/ssh-dial/", "src/comms/egress/", "src/common/",
+                  "tests/backend/", "tests/benches/"),
 }
 owners = defaultdict(set)
 for f in tracked:

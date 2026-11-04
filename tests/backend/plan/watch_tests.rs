@@ -1,7 +1,8 @@
 //! `changed {plan}`：只认计划仓（连 pb 0.5 的工作区配置 `.planned-build/.env`）与声明过的文件；摘要变了才推，没变不推。
 
 use super::*;
-use crate::plan::fixture::{dump_at, made_with, scratch, who};
+use crate::plan::fixture::{dump_at, made_with, who};
+use test_home::scratch;
 
 /// 成品（工作区 `ws`，那一片的仓库登记在 `path`）。
 fn product(ws: &Path, path: &str) -> cmd_wire::plan::PlanRead {

@@ -24,7 +24,7 @@ copy-core = { path = "../../common/copy-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 win-path-core = { path = "../../common/win-path-core" }
 # 解压条目的相对路径拆段（同远端写围栏那一份）。
-ssh-dial = { path = "../ssh-dial" }
+ssh-dial = { path = "../../comms/ssh-dial" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

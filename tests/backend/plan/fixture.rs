@@ -573,16 +573,6 @@ pub fn pb_id_env() -> std::sync::MutexGuard<'static, ()> {
     L.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// 一次性目录。
-pub fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("plan-{tag}-{}", std::process::id()));
-    if d.exists() {
-        std::fs::remove_dir_all(&d).unwrap();
-    }
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 /// 在 `root` 底下造一个假 pb 插件：清单名字是 pb，入口脚本
 /// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`（最近那一次），argv 另追加一行进 `<root>/runs.log`（每一次）；
 /// ② 当前目录（往上找）有 `.planned-build/` ⇒ `dump --node` 印 `<那个目录>/node.json`；`dump --refs` 把标准输入记进 `<root>/stdin.txt`、

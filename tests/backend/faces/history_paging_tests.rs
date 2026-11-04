@@ -8,8 +8,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("r8ab-paging-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
+    let d = test_home::scratch(tag);
     std::fs::create_dir_all(d.join("projects").join("-p")).unwrap();
     d
 }

@@ -1577,7 +1577,7 @@ fn backend_blocks() -> std::collections::BTreeSet<String> {
 fn the_backend_module_map_matches_the_backend_tree() {
     let blocks = backend_blocks();
     // 正控：两种来路都认得出。
-    for must in ["stream/", "ssh-dial/"] {
+    for must in ["stream/", "deploy/"] {
         assert!(blocks.contains(must), "没认出 `{must}`：{blocks:?}");
     }
     let probe = map_entries_in(

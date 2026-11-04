@@ -116,11 +116,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     let mut found: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = guard_core::module_address(&root, &path);
         scanned += 1;
         let prod = guard_core::addr::production_side_of(&path, &src);
         found.extend(dir_creations(&rel, &prod));
@@ -167,9 +163,17 @@ const MOVED_TO_OWN: &[&str] = &[
 
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
+    // 按模块住址取（人群里的兄弟包认作 `<包名>/<文件>`：拨号核心住 `src/comms/ssh-dial`）。
+    let root = guard_core::addr::backend_src_root();
+    let tree: std::collections::BTreeMap<String, String> =
+        guard_core::scan_tree_excluding(&root, &["rs"], &[])
+            .into_iter()
+            .map(|(path, text)| (guard_core::module_address(&root, &path), text))
+            .collect();
     let src = |p: &str| {
         guard_core::production_code(
-            &std::fs::read_to_string(guard_core::addr::backend_src_root().join(p)).expect("读"),
+            tree.get(p)
+                .unwrap_or_else(|| panic!("后端源码人群里没有 `{p}`")),
         )
     };
     // 暂存区那两层：经文件管理面句柄那一个自家目录方法（`Face::own_dir`，本体同 `Own::own_dir` 那一个函数），恰好一处。

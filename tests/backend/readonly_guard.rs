@@ -1797,9 +1797,9 @@ mod g6_dependency_signoff {
     const WS_DEPS: &str = "[workspace.dependencies]";
     /// 同一棵 workspace 里不归本判据管的成员（目录, 为什么）：它们的清单手机那一侧也单读，版本照旧自己写、与根清单那一段对齐。
     const NOT_COVERED: &[(&str, &str)] = &[
-        ("ssh-dial", "拨号核心：手机的 `mobcore` 也链它，清单自带版本，由 `dial_compress_tests` 钉 russh 那一行与各清单对齐"),
+        ("../comms/ssh-dial", "拨号核心：手机的 `mobcore` 也链它，清单自带版本，由 `dial_compress_tests` 钉 russh 那一行与各清单对齐"),
         ("deploy", "装 / 升级远端后端的编排：手机同链，清单自带版本"),
-        ("egress", "出网口：手机同链，清单自带版本"),
+        ("../comms/egress", "出网口：手机同链，清单自带版本"),
         ("../mobile/core-rs/rust", "手机嵌的 Rust 核心（`mobcore`）：Gradle 那一侧单编它，清单自带版本"),
     ];
     /// 只在 dev 侧的成员（包名）：它们的 `[dependencies]` 只进测试二进制，签字记在 [`DEV_DEPS`] 那一档。
@@ -1944,8 +1944,8 @@ mod g6_dependency_signoff {
             "ssh-dial",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
-            "拨号核心（后端与手机同一份）：仓内 crate，**住本 crate 目录底下**（`ssh-dial/`）⇒ 它的源码就在本护栏的人群里\
-             （`src/backend` 下全部 `.rs`），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
+            "拨号核心（后端与手机同一份）：仓内 crate，住 `src/comms/ssh-dial/`，本 crate 清单的 `population` 写着它 ⇒ 它的源码就在本护栏的人群里\
+             （`src/backend` 下全部 `.rs` ＋ 人群里的兄弟包），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
              （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
              谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
@@ -1970,7 +1970,7 @@ mod g6_dependency_signoff {
             "egress",
             DEPS,
             MEASURED_CLEAN,
-            "出网口（这台所有出站 TCP 只在那里开：直连 · HTTP CONNECT · SOCKS5）：仓内 crate、只依赖标准库，住本 crate 目录底下（`egress/`）⇒ \
+            "出网口（这台所有出站 TCP 只在那里开：直连 · HTTP CONNECT · SOCKS5）：仓内 crate、只依赖标准库，住 `src/comms/egress/`，本 crate 清单的 `population` 写着它 ⇒ \
              源码在本护栏的人群里。现打 0 处写面：不开文件、不碰盘、不读环境（描述由宿主照它的环境造好装进来）",
         ),
         (
@@ -3670,11 +3670,8 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         let root = guard_core::addr::backend_src_root();
         let mut out: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            // 模块住址：人群里的兄弟包（拨号核心住 `src/comms/ssh-dial`）认作 `ssh-dial/<文件>`。
+            let rel = guard_core::module_address(&root, &path);
             out.push((rel, guard_core::production_source(&src)));
         }
         out.sort();

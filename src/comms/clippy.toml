@@ -1,4 +1,4 @@
-# 通信层里 `resident-client` · `comms-inward` 共用这一份（clippy 从包目录往上找）；`comms-outward` 自己那一份把它盖住，照旧单写。
+# 通信层里 `resident-client` · `comms-inward` · 拨号核心 `ssh-dial` · 出网口 `egress` 共用这一份（clippy 从包目录往上找）；`comms-outward` 自己那一份把它盖住，照旧单写。
 # 几组名单共用 `disallowed_methods` 一个 lint 名：放行只放在最小的作用域上（一条语句，或只做这一件事的小函数），
 #   写 `#[expect(clippy::disallowed_methods, reason = "…")]`，不写 `allow`；放大了，同名的别的组也一起放过。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。
@@ -11,7 +11,14 @@
 # 起进程 · 绑端口：起子进程、接管子、开监听口都归宿主，交进来的是已经连好的那一端。
 # 期限字面量（`Duration::from_*`）：期限由宿主按调用给；通信层自己定的那几个数逐处放行，reason 写这个数管哪一次等待。
 # 静默丢（`try_send`）：满了就丢且没人知道。丢只许经 `Gap`（接收方看得见缺了哪一段），发 `Gap` 那一处放行。
+# 出站 TCP 只在出网口开（`egress/lib.rs` 那一处放行）：拨 SSH 那一跳经 `egress::open`，别处自己开一条就绕过了代理。经第三方 crate 间接开的认不出。
 disallowed-methods = [
+  { path = "std::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）" },
+  { path = "std::net::TcpStream::connect_timeout", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）" },
+  { path = "tokio::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v4", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+
   { path = "std::thread::sleep", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "std::thread::park_timeout", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
