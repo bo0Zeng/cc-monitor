@@ -24091,6 +24091,13 @@
       "zh": "端口不通",
       "args": []
     },
+    "reason.dial.hostKey": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "主机指纹与已记录的不符",
+      "args": [],
+      "limited": ["SSH 主机指纹"]
+    },
     "beQuotaProbe.workDir.failed": {
       "kind": "error",
       "role": "报错",
