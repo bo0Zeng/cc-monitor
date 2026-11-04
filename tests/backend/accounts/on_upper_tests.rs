@@ -66,12 +66,7 @@ fn a_login_file_or_the_manifest_changing_sends_a_logins_node() {
         wait_for(&mut rx, Source::Logins).is_some(),
         "登录文件变了 ⇒ 该来一件"
     );
-    write_manifest(
-        &manifest,
-        &manifest.parent().expect("dir").to_path_buf(),
-        &z,
-        "1",
-    );
+    write_manifest(&manifest, manifest.parent().expect("dir"), &z, "1");
     assert!(
         wait_for(&mut rx, Source::Logins).is_some(),
         "清单变了 ⇒ 该来一件"

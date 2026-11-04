@@ -307,7 +307,7 @@ fn tidy(s: &str) -> String {
         }
     }
     let t = t.replace("[`", "`").replace("`]", "`");
-    let t = if t.split("**").count() % 2 == 0 {
+    let t = if t.split("**").count().is_multiple_of(2) {
         t.replace("**", "")
     } else {
         t

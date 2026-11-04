@@ -25,7 +25,7 @@ pub(crate) fn not_installed_message(
     copy_text(
         "beDiscover.notInstalledMessage.notFound",
         &[
-            ("name", &name.to_string()),
+            ("name", name),
             (
                 "places",
                 &(if places.is_empty() {
@@ -36,7 +36,7 @@ pub(crate) fn not_installed_message(
                 .to_string(),
             ),
             ("pathDirs", &path_dirs.to_string()),
-            ("hint", &hint.to_string()),
+            ("hint", hint),
         ],
     )
 }

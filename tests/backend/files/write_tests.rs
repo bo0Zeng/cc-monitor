@@ -570,7 +570,7 @@ fn a_clean_write_lands_once_and_never_overwrites() {
         err.code()
     );
     assert!(
-        copy_core::copy_matches("beFilesWrite.create.failed", &err.message()),
+        copy_core::copy_matches("beFilesWrite.create.failed", err.message()),
         "失败了，但不是我们的报错：{}",
         err.message()
     );
@@ -615,7 +615,7 @@ fn the_write_entry_point_is_still_fenced_after_a_symlink_is_resolved() {
         .expect_err("词法上干净、解完却落到根外 —— 写入口竟然放行了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        copy_core::copy_matches("beFilesWrite.path.escaped", &err.message()),
+        copy_core::copy_matches("beFilesWrite.path.escaped", err.message()),
         "拒了，但不是解析② 拒的：{}",
         err.message()
     );

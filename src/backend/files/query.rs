@@ -792,7 +792,7 @@ fn text(word: &str, force_path: bool) -> Node {
         }
     }
     Node::Text(Text {
-        on_path: force_path || pat.iter().any(|&b| b == b'/'),
+        on_path: force_path || pat.contains(&b'/'),
         glob: pat.iter().any(|&b| b == b'*' || b == b'?'),
         unicode,
         pat,

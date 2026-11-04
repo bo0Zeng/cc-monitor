@@ -596,6 +596,7 @@ mod tests {
     ///
     /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（10-26 随那条没人调的帧命令删了）；
     /// - `fork_write.rs` 的几个：分叉的出参（当时是一次性子命令 `--fork-session` 的出参，今天是 typed 帧命令 `session-fork`），不是流协议。
+    ///
     /// （当时还有账号清单那一侧解析清单**文件**的一个类型；10-24 账号库清单收成 `accounts/manage` 一个读口，它删了。）
     ///
     /// ⇒ 目标不变（新增一个上线类型不许溜进来），形状改成 `spawn_registry` 那一套：

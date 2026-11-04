@@ -857,8 +857,7 @@ mod tests {
         // 头一次是探「起不起得了 scope」（`-- true`），起重活的是最后那一次。
         let run = calls
             .lines()
-            .filter(|l| l.starts_with("systemd-run "))
-            .last()
+            .rfind(|l| l.starts_with("systemd-run "))
             .unwrap_or_else(|| panic!("没经 systemd-run：{calls}"));
         for want in [
             "--user",

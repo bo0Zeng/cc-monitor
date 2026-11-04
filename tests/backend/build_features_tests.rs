@@ -118,6 +118,7 @@ fn the_test_build_keeps_only_line_tables_for_debug_info() {
 /// - 后端：rhai（＋ 它热路径上的 smartstring · ahash）开 3 ⇒ 后端测试二进制 89–93 s → 30–36 s、CPU 少四成六；冷编多一成。
 /// - 壳：egui 那一族开 3 ⇒ 文件窗口测试二进制 40–42 s → 28–31 s、CPU 少四成；冷编多不到一成。
 /// - 只给这几样、不给 `"*"`：全部依赖开 2 时测试一样快，但壳冷编的 CPU 涨到近四倍。工作区自己的 crate 照旧不开（内循环的增量编译不受影响）。
+///
 /// 判法：两棵 workspace 的 `[profile.dev.package.*]` 两向等于下面这张表，且每一项都在那棵的 `Cargo.lock` 里
 /// （名字对不上时 cargo 只警告一声、什么都不做 ⇒ 改名 / 换掉依赖以后这条就红，不会安静地失效）。
 #[test]

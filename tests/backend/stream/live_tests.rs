@@ -93,10 +93,13 @@ fn drain(l: &mut Live, id: u64) -> Vec<LiveCard> {
     v
 }
 
+/// 屏上一张卡：会话 · 运行 · 阶段 · 截没截过 · 块。
+type Card = (String, Option<String>, LivePhase, bool, Vec<LiveBlock>);
+
 /// 客户端那一侧：只照帧画（`n` 不接 ⇒ 判据当场红：核心该保证同一连接上永远接得上）。
 #[derive(Default, Debug)]
 struct Screen {
-    cards: BTreeMap<u64, (String, Option<String>, LivePhase, bool, Vec<LiveBlock>)>,
+    cards: BTreeMap<u64, Card>,
     next: HashMap<u64, u64>,
 }
 

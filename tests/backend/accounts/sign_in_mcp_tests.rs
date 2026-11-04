@@ -227,7 +227,7 @@ impl Rig {
             then,
             conn: 900,
             cwd: Some(self.root.clone()),
-            path: Some(format!("{}:/usr/bin:/bin", self.root.join("bin").display()).into()),
+            path: Some(format!("{}:/usr/bin:/bin", self.root.join("bin").display())),
         };
         start(&a, Box::new(|_, _| {}))
     }
@@ -329,7 +329,7 @@ fn the_mcp_login_refuses_without_a_terminal() {
         then,
         conn: 901,
         cwd: Some(rig.root.clone()),
-        path: Some(format!("{}:/usr/bin:/bin", rig.root.join("bin").display()).into()),
+        path: Some(format!("{}:/usr/bin:/bin", rig.root.join("bin").display())),
     };
     let _ = start(
         &a,

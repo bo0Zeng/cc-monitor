@@ -31,6 +31,7 @@ use std::time::SystemTime;
 /// - 上界（软，取舍）：它等于「在没挂 watch 的地方新建一个文件，最久多久能搜到」。挂了 `inotify` 的目录（用户正在浏览的）是秒级的。
 /// - 不靠「全挂 watch」消掉这个数：每用户 `inotify` watch 上限（几十万）撑不住整个 home，非特权也拿不到全文件系统监听
 ///   （`man 2 fanotify_init`：不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`）。
+///
 /// 冷缓存下走一遍在机械盘上会不会把盘吵起来，没有读数。
 pub const REWALK_INTERVAL_SECS: u64 = 300;
 
@@ -366,7 +367,7 @@ pub struct Meta {
 fn read_meta(path: &[u8]) -> Meta {
     match Ro::metadata(super::raw::to_path_buf(path)) {
         Ok(md) => Meta {
-            size: (!md.is_dir()).then(|| md.len()),
+            size: (!md.is_dir()).then_some(md.len()),
             mtime_secs: md
                 .modified()
                 .ok()
@@ -666,7 +667,7 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
         };
         for (bytes, kind) in snap.iter_kinds() {
             scanned += 1;
-            if scanned % CHECK_EVERY == 0 && args.ticket.is_some_and(|t| !t.current()) {
+            if scanned.is_multiple_of(CHECK_EVERY) && args.ticket.is_some_and(|t| !t.current()) {
                 return Err(Superseded);
             }
             // 被 watch 盖住的那几个目录：它们的直接子项由 overlay 那一份说话
