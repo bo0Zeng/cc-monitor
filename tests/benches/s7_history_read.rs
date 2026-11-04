@@ -248,7 +248,10 @@ fn main() {
         println!("            ⇒ 两种 sink 下的 K 对得上 ⇒ K 量的是扫描本身。");
     }
     if let (Some(t), Some(tb)) = (
-        pick(&rows, &format!("tail  N={SNAPSHOT_TAIL_LINES}  max 15.1 MiB")),
+        pick(
+            &rows,
+            &format!("tail  N={SNAPSHOT_TAIL_LINES}  max 15.1 MiB"),
+        ),
         pick(&rows, &bare_label),
     ) {
         println!(
@@ -494,7 +497,12 @@ fn page_shape(stdout: &[u8]) -> serde_json::Value {
     let blocks = || {
         rows.iter()
             .filter(|r| r["record"]["t"] == "reply")
-            .flat_map(|r| r["record"]["blocks"].as_array().cloned().unwrap_or_default())
+            .flat_map(|r| {
+                r["record"]["blocks"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+            })
             .filter(|b| b["type"] == "prose")
     };
     let with_tree = blocks()
