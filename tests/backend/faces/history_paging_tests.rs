@@ -258,13 +258,19 @@ fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
     let two = copy_core::copy_text("branchFold.wrapRun.summary", &[("n", "2")]);
     assert_eq!(whole.runs.len() * 2, whole.off.len());
     for (k, r) in whole.runs.iter().enumerate() {
-        assert_eq!((r.at, r.n, r.said.0.as_str()), (2 * k as u64, 2, two.as_str()));
+        assert_eq!(
+            (r.at, r.n, r.said.0.as_str()),
+            (2 * k as u64, 2, two.as_str())
+        );
     }
     let got: Vec<Value> = ps
         .iter()
         .flat_map(|p| p["runs"].as_array().unwrap().clone())
         .collect();
-    assert_eq!(Value::Array(got), serde_json::to_value(&whole.runs).unwrap());
+    assert_eq!(
+        Value::Array(got),
+        serde_json::to_value(&whole.runs).unwrap()
+    );
 }
 
 /// 从中间起、记录又长了（留着的那张图对不上）⇒ 接着扫追加的那一截再切：拼起来照样等于整份。

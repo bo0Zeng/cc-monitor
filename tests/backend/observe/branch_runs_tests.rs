@@ -61,7 +61,10 @@ fn branch_frames_carry_runs_and_resend_the_run_that_grew_from_its_head() {
         }
         v
     };
-    assert_eq!(drain(&mut rx), [(0, vec!["u2".to_string()], vec![run(0, 1)])]);
+    assert_eq!(
+        drain(&mut rx),
+        [(0, vec!["u2".to_string()], vec![run(0, 1)])]
+    );
     // 又在 a1 下回退重发（u4 更新）⇒ u3 也回退：它与 u2 之间没有进界面的主线 ⇒ 接进 u2 那一段（×2），
     // 从那一段的段首（第 0 条）起整段重发，不是「前 1 条照旧」。
     body += &line("u4", "a1", "t5", "user");

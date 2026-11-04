@@ -908,7 +908,11 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
         assert_eq!(*at as usize, all.len());
         // 这一帧的段：段首都落在这一帧那几条里。
         for r in rs {
-            assert!((*at..*at + off.len() as u64).contains(&r.at), "段首 {} 不在这一帧里", r.at);
+            assert!(
+                (*at..*at + off.len() as u64).contains(&r.at),
+                "段首 {} 不在这一帧里",
+                r.at
+            );
             got_runs.push(r.at as usize..(r.at + r.n) as usize);
         }
         all.extend(off.iter().cloned());
@@ -947,7 +951,13 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
 fn a_branch_delta_starts_at_the_head_of_the_run_it_cuts_into() {
     let off: Vec<String> = (0..10).map(|i| format!("id{i}")).collect();
     let runs = [0..4, 4..10];
-    let delta = Frame::branch_pages("s", "/p/s.jsonl", &off, &runs, crate::wire::run_head(&runs, 7));
+    let delta = Frame::branch_pages(
+        "s",
+        "/p/s.jsonl",
+        &off,
+        &runs,
+        crate::wire::run_head(&runs, 7),
+    );
     let [Frame::SessionBranch(b)] = &delta[..] else {
         panic!("一帧：{delta:?}")
     };
@@ -970,7 +980,13 @@ fn a_branch_delta_starts_at_the_head_of_the_run_it_cuts_into() {
     assert_eq!(crate::wire::run_head(&runs, 0), 0);
     // 清单缩成前缀（尾上那几条回到主线）⇒ 最后那一段条数变了，也挪到它的段首整段重发。
     let short = [0..4, 4..6];
-    let shrunk = Frame::branch_pages("s", "/p/s.jsonl", &off[..6], &short, crate::wire::run_head(&short, 6));
+    let shrunk = Frame::branch_pages(
+        "s",
+        "/p/s.jsonl",
+        &off[..6],
+        &short,
+        crate::wire::run_head(&short, 6),
+    );
     assert!(
         matches!(&shrunk[..], [Frame::SessionBranch(b)] if b.at == 4 && b.off.len() == 2 && b.runs.len() == 1 && b.runs[0].n == 2)
     );

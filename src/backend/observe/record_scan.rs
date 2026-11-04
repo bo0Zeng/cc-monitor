@@ -321,7 +321,8 @@ impl ScanMap {
             .iter()
             .map(|r| 96 + opt(&r.u) + opt(&r.x) + opt(&r.ts))
             .sum();
-        let off: usize = self.off.iter().map(|o| 24 + o.len()).sum::<usize>() + 16 * self.runs.len();
+        let off: usize =
+            self.off.iter().map(|o| 24 + o.len()).sum::<usize>() + 16 * self.runs.len();
         let inputs: usize = off
             + self
                 .inputs

@@ -4090,7 +4090,10 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     }
     assert_eq!(
         got,
-        [(0, vec!["u2".to_string(), "u3".to_string(), "a3".to_string()])]
+        [(
+            0,
+            vec!["u2".to_string(), "u3".to_string(), "a3".to_string()]
+        )]
     );
     std::fs::remove_dir_all(&dir).ok();
 }

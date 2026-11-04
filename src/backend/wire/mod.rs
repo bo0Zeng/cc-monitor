@@ -59,13 +59,15 @@ pub use cmd_wire::frame::Life as WireLife;
 // （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{AttachFrom, CanAttach};
+pub use cmd_wire::frame::{
+    BranchRun, SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen,
+};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
 pub use cmd_wire::frame::{Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
-pub use cmd_wire::frame::{BranchRun, SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 pub use cmd_wire::frame::{Topic, Unavailable};
 use cmd_wire::session::Launch;
@@ -732,8 +734,7 @@ impl FrameRules for Frame {
             .map_or(0, |b| b.len())
             + 2 * u64::MAX.to_string().len();
         let room = REPLY_PAGE_BYTES.as_len().saturating_sub(fixed);
-        let heads: HashMap<usize, usize> =
-            runs.iter().map(|r| (r.start, r.len())).collect();
+        let heads: HashMap<usize, usize> = runs.iter().map(|r| (r.start, r.len())).collect();
         let mut out = Vec::new();
         let mut start = at;
         loop {
