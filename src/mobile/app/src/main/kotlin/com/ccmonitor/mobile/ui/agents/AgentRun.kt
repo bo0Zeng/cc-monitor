@@ -1,12 +1,17 @@
 package com.ccmonitor.mobile.ui.agents
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.HistoryRun
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Turns
+import com.ccmonitor.mobile.core.claude.model.NoticeCard
+import com.ccmonitor.mobile.core.claude.model.NoticeLook
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
+import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.TurnFolds
+import com.ccmonitor.mobile.core.wire.gen.NoticeRun
 import com.ccmonitor.mobile.core.wire.gen.TurnRow
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -30,7 +35,14 @@ data class AgentRunUi(
     val loading: Boolean = true,
     /** 读不成那一句（核心写好的）；读成了 ⇒ `null`。 */
     val failed: String? = null,
+    /** 手上那几张卡（通知组按 id 找成员）。 */
+    val units: List<RenderUnit> = emptyList(),
+    /** 这份记录会话事实里的通知组（`history-facts` 的 `notices[]`）；还没问到 · 问不到 ⇒ 空（一条一张）。 */
+    val notices: List<NoticeRun> = emptyList(),
 )
+
+/** 一张收场通知卡此刻画什么（同聊天屏那一处，[NoticeLook.card]）；并进别的组 · 整组不露 ⇒ `null`。 */
+fun AgentRunUi.noticeOf(u: RenderUnit.Notice): NoticeCard? = NoticeLook.card(u, units, notices)
 
 /**
  * 一个子运行的正文（只读）：按运行读（`history-run`），收场的从头读、在跑的从尾巴读（⇐ 后端 B3）；往上翻拿最上面那一页的 `from` 当 `before`，
@@ -107,6 +119,7 @@ class AgentRun(
                 publish(loading = false, failed = null)
             }
             fold(page.path)
+            notices(page.path)
         }
     }
 
@@ -135,13 +148,20 @@ class AgentRun(
         }
     }
 
+    /** 通知组：照这份记录问会话事实（问不到不算读不出：一条一张）。 */
+    private suspend fun notices(p: String) {
+        val facts = (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) } ?: return
+        _state.update { it.copy(notices = facts.notices) }
+    }
+
     /** 锁里调。 */
     private fun publish(
         loading: Boolean = _state.value.loading,
         failed: String? = _state.value.failed,
     ) {
-        val stream = TurnFolds.fold(body.units(), turns, opened)
-        _state.update { it.copy(stream = stream, canOlder = (top ?: 0L) > 0L, loading = loading, failed = failed) }
+        val units = body.units()
+        val stream = TurnFolds.fold(units, turns, opened)
+        _state.update { it.copy(stream = stream, units = units, canOlder = (top ?: 0L) > 0L, loading = loading, failed = failed) }
     }
 
     companion object {

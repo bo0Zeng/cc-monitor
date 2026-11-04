@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.agents
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.StreamItem
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
@@ -89,6 +90,42 @@ class AgentRunTest {
             runCurrent()
             assertEquals(mapOf("parent" to "/p/s1.jsonl", "run" to "r1", "from" to 20L), link.calls("history-run").last())
             assertEquals(listOf("派的话", "做完了"), texts(r.state.value.stream))
+        }
+
+    private fun notice(
+        id: String,
+        row: String,
+    ) = mapOf(
+        "agent" to "claude",
+        "id" to id,
+        "t" to "said",
+        "draw" to "card",
+        "human" to false,
+        "blocks" to emptyList<Any>(),
+        "who" to
+            mapOf(
+                "speaker" to mapOf("kind" to "taskNotification", "taskId" to id, "toolUseId" to null, "status" to "done", "summary" to null, "end" to "done", "row" to row),
+                "text" to "",
+            ),
+    )
+
+    @Test
+    fun `通知照这份子运行记录的会话事实分组：照回包的 path 问 history-facts，并进组里的那张不画、首条卡头是组头`() =
+        runTest {
+            val group = mapOf("id" to "n1", "members" to listOf("n1", "n2"), "hidden" to emptyList<String>(), "head" to "head-said", "failed" to false)
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "history-run" -> Reply.Ok(page(0, 20, false, notice("n1", "row-1"), notice("n2", "row-2")))
+                    "history-facts" -> Reply.Ok(Wires.facts("path" to "/p/s1/subagents/r1.jsonl", "notices" to listOf(group)))
+                    else -> Reply.LinkDown
+                }
+            }
+            val r = open(link, running = false)
+            assertEquals(listOf(mapOf("path" to "/p/s1/subagents/r1.jsonl")), link.calls("history-facts"))
+            val ui = r.state.value
+            val ns = ui.stream.mapNotNull { (it as? StreamItem.Card)?.unit as? RenderUnit.Notice }
+            assertEquals(listOf("head-said", null), ns.map { ui.noticeOf(it)?.head })
         }
 
     @Test

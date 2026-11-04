@@ -55,6 +55,9 @@ class ChatViewModel(
 
     fun jumpFail(after: String) = session.jumpFail(after)
 
+    /** 点一个回退框（开 ⇄ 合）。 */
+    fun toggleBranch(run: String) = session.toggleBranch(run)
+
     /** 跳到一处（会话里找的一条命中 · 大纲的一句）：那一行的字节起点 · 落在哪次工具调用的卡里（见 [ChatSession.jump]）。 */
     fun jump(
         at: Long,

@@ -243,6 +243,9 @@ class ChatSession(
     /** 过程怎么分段（那台 `history-turns`）· 点开着的那几段。 */
     private val folds = ChatTurns(link)
 
+    /** 主线外清单（Esc 回退掉的那几条，那台 `history-branch` · `session_branch`）· 点开着的那几个回退框。 */
+    private val branch = ChatBranch(link)
+
     /** 正文跟读（读到哪 · 读最后一屏 · 补缺 · 往上翻 · 从命中读起）；排进了 ⇒ 分段重问。 */
     private val record =
         ChatRecord(
@@ -346,6 +349,7 @@ class ChatSession(
             landingKey = null
             landingTool = null
             folds.forget(all = true)
+            branch.forget()
             body.reset(emptyList())
             queue.reset()
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
@@ -356,6 +360,9 @@ class ChatSession(
 
     /** 点一行过程：开 ⇄ 合。 */
     fun toggle(after: String) = underLock { folds.toggle(after) }
+
+    /** 点一个回退框（[run] ＝ 那一段的段首条 id）：开 ⇄ 合。 */
+    fun toggleBranch(run: String) = underLock { branch.toggle(run) }
 
     /** 「跳到第一处失败」：那一段展开（记成手动开），落点是那台指的那一步那张卡。 */
     fun jumpFail(after: String) =
@@ -656,6 +663,14 @@ class ChatSession(
         val (p, facts) = record.recordOf(s, fresh) ?: return@coroutineScope
         record.path = p
         followTurns(s, p)
+        branch.follow(this, s, p) { block ->
+            lock.withLock {
+                if (record.path == p) {
+                    block()
+                    publishLocked()
+                }
+            }
+        }
         if (facts != null) chips.take(facts) else launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { record.loadLocked(p, at) }
@@ -735,7 +750,7 @@ class ChatSession(
             landingTool = null
         }
         val landing = landingKey
-        _state.value = _state.value.copy(units = units, outbox = outbox, queue = queue.lines(), landing = landing, stream = folds.fold(units, landing))
+        _state.value = _state.value.copy(units = units, outbox = outbox, queue = queue.lines(), landing = landing, stream = branch.fold(folds.fold(units, landing)))
     }
 
     companion object {

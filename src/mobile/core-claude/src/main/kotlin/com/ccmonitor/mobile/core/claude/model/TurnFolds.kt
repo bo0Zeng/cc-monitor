@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.core.wire.gen.TurnPart
 import com.ccmonitor.mobile.core.wire.gen.TurnRow
 
-/** 流里的一项：一张卡，或一段过程的那一行。 */
+/** 流里的一项：一张卡，或一段过程的那一行，或一段主线外的框头。 */
 sealed interface StreamItem {
     val key: String
 
@@ -13,8 +13,20 @@ sealed interface StreamItem {
         val unit: RenderUnit,
         /** 它在哪一段过程里（那一段的 `after`；点开了才画出来）；露着的 ⇒ `null`。 */
         val fold: String? = null,
+        /** 它在哪一段主线外的框里（那一段的段首条 id；点开了才画出来）；主线上的 ⇒ `null`。 */
+        val branch: String? = null,
     ) : StreamItem {
         override val key: String get() = unit.key
+    }
+
+    /** 一段主线外的框头（[BranchFolds]）：[run] ＝ 段首条 id（开合认它）· [said] 后端写好的那一句 · [first] 框里第一张卡的 key（一段被断成几个框时各自的身份）。 */
+    data class Branch(
+        val run: String,
+        val said: String,
+        val open: Boolean,
+        val first: String,
+    ) : StreamItem {
+        override val key: String get() = "branch#$first"
     }
 
     /** 一段过程（[open] ＝ 这一段点开了：段里的卡接在它后面）。 */

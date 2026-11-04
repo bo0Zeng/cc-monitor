@@ -64,6 +64,8 @@ fun ChatScreen(
     onRetrySend: (String) -> Unit = {},
     /** 过程行的开合 · 跳到第一处失败。 */
     process: ProcessActions = ProcessActions(),
+    /** 回退框的开合（那一段的段首条 id）。 */
+    onBranch: (String) -> Unit = {},
     /** 流里在等的那一步（那张工具卡上标它）。 */
     awaiting: AwaitingStep? = null,
     /** 需手动那一块（钉条 ＋ 答题抽屉），贴在输入框上方。 */
@@ -81,7 +83,7 @@ fun ChatScreen(
 ) {
     CompositionLocalProvider(LocalSaidImages provides loadImage, LocalSegHl provides loadHl, LocalMdDoc provides loadDoc) {
         Column(modifier.fillMaxSize()) {
-            ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
+            ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, onBranch = onBranch, awaiting = awaiting, said = actions.said, onFollow = onFollow)
             needs()
             // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
             ChatInputArea(state = state, actions = actions, attach = attach)
@@ -101,6 +103,7 @@ fun ChatTranscript(
     onLoadOlder: () -> Unit = {},
     onRetrySend: (String) -> Unit = {},
     process: ProcessActions = ProcessActions(),
+    onBranch: (String) -> Unit = {},
     awaiting: AwaitingStep? = null,
     /** 自己那句的长按与就地编辑（[SaidEdit]）；不给 ⇒ 不出。 */
     said: SaidActions? = null,
@@ -180,6 +183,7 @@ fun ChatTranscript(
                 errorNext = state::errorNextOf,
                 notice = state::noticeOf,
                 process = { ProcessRow(it, process) },
+                branch = onBranch,
                 said = hooks,
             )
         }

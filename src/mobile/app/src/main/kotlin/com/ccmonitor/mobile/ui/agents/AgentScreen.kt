@@ -180,6 +180,7 @@ private fun Transcript(
         modifier = modifier,
         listState = listState,
         onCopyCode = { clipboard.setText(AnnotatedString(it)) },
+        notice = ui::noticeOf,
         process = { ProcessRow(it, ProcessActions(toggle = body::toggle)) },
     )
 }

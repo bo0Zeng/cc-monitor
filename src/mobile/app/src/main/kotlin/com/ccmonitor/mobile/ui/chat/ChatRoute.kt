@@ -209,6 +209,7 @@ private fun ChatBody(
         onRetrySend = vm::retry,
         onLoadOlder = vm::loadOlder,
         process = ProcessActions(toggle = vm::toggle, jumpFail = vm::jumpFail),
+        onBranch = vm::toggleBranch,
         awaiting = needsUi.awaiting,
         needs = { ChatNeeds(needs) },
         modifier = modifier,
