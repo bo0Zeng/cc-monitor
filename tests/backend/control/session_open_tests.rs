@@ -1417,7 +1417,7 @@ fn what_was_started_comes_back_with_its_arrival_and_nothing_else_does() {
             ..opened(
                 Landed::Started,
                 Some(("w".into(), crate::wire::TerminalHost::Managed)),
-                None
+                None,
             )
         },
         3,

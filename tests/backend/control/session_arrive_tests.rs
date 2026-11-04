@@ -129,7 +129,12 @@ fn missed_in_tmux_says_the_last_words_and_hands_the_terminal() {
         body.ends_with("c\nd\ne\nf\ng\nError: no such flag --x"),
         "末 6 行非空行：{body}"
     );
-    assert!(h.asked.lock().unwrap().iter().any(|a| a == "screen w-1 tmux"));
+    assert!(h
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|a| a == "screen w-1 tmux"));
 }
 
 #[test]
@@ -275,7 +280,10 @@ fn a_bad_ask_is_refused_before_waiting() {
     ))
     .is_err());
     // 终端名与宿主成对：只给一样 ⇒ 不等、不猜是哪种。
-    for (session, host) in [(Some("w-1".to_string()), None), (None, Some(TerminalHost::Tmux))] {
+    for (session, host) in [
+        (Some("w-1".to_string()), None),
+        (None, Some(TerminalHost::Tmux)),
+    ] {
         let lone = ArriveAsk {
             session,
             host,

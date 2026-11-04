@@ -1,6 +1,6 @@
 //! **等起好的会话报到**（帧命令 `session-arrive`）：`session-open` 回包里的 `arrival` 那一格原样交回来，这台等那一条报到。
 //! 等多久 ＝ 请求信封的期限（减余量）。报到了 ⇒ 那个 sid；没见到 ⇒ 那一句（起在终端里的抓那一屏末几行当原话）＋ 那个终端还在就给句柄。
-//! 那一句照起在哪种宿主里分两套（tmux 会话 · 托管终端），只在 [`missed_key`] 这一处判。
+//! 那一句照起在哪种宿主里分两套（tmux 会话 · 托管终端），只在 [`missed_in`] 这一处判。
 //! 认「是不是它」住观测层（`observe::arrivals`，认的是界面也收的那一帧 `session_added`），抓屏住 `terminals`，都由入口经 [`Host`] 交进来。
 
 pub(crate) use super::session_restart::MAX_WAIT_MS;
@@ -41,20 +41,48 @@ pub(crate) fn last_words(text: &str) -> String {
     kept[kept.len().saturating_sub(WORDS_LINES)..].join("\n")
 }
 
-/// 那个终端的样子 ⇒ 那一句的键：tmux 会话一套、托管终端一套（托管那几句不提 tmux）。
-fn missed_key(host: TerminalHost, screen: &Screen, words_empty: bool) -> &'static str {
+/// 起在终端里的那一句：tmux 会话一套、托管终端一套（托管那几句不提 tmux）。宿主只在这一处判。
+fn missed_in(dur: &str, name: &str, host: TerminalHost, screen: &Screen) -> String {
+    use copy_core::copy_text;
     use TerminalHost::{Managed, Tmux};
+    let words = match screen {
+        Screen::There { text, .. } => last_words(text),
+        Screen::Gone | Screen::Unread(_) => String::new(),
+    };
+    let w = words.as_str();
     match (host, screen) {
-        (Tmux, Screen::There { .. }) if words_empty => "beSessionArrive.missed.emptyScreen",
-        (Tmux, Screen::There { .. }) => "beSessionArrive.missed.words",
-        (Tmux, Screen::Gone) => "beSessionArrive.missed.gone",
-        (Tmux, Screen::Unread(_)) => "beSessionArrive.missed.noScreen",
-        (Managed, Screen::There { .. }) if words_empty => {
-            "beSessionArrive.missed.managed.emptyScreen"
-        }
-        (Managed, Screen::There { .. }) => "beSessionArrive.missed.managed.words",
-        (Managed, Screen::Gone) => "beSessionArrive.missed.managed.gone",
-        (Managed, Screen::Unread(_)) => "beSessionArrive.missed.managed.noScreen",
+        (Tmux, Screen::There { .. }) if w.is_empty() => copy_text(
+            "beSessionArrive.missed.emptyScreen",
+            &[("dur", dur), ("name", name)],
+        ),
+        (Tmux, Screen::There { .. }) => copy_text(
+            "beSessionArrive.missed.words",
+            &[("dur", dur), ("name", name), ("words", w)],
+        ),
+        (Tmux, Screen::Gone) => copy_text(
+            "beSessionArrive.missed.gone",
+            &[("dur", dur), ("name", name)],
+        ),
+        (Tmux, Screen::Unread(why)) => copy_text(
+            "beSessionArrive.missed.noScreen",
+            &[("dur", dur), ("name", name), ("why", why.as_str())],
+        ),
+        (Managed, Screen::There { .. }) if w.is_empty() => copy_text(
+            "beSessionArrive.missed.managed.emptyScreen",
+            &[("dur", dur), ("name", name)],
+        ),
+        (Managed, Screen::There { .. }) => copy_text(
+            "beSessionArrive.missed.managed.words",
+            &[("dur", dur), ("name", name), ("words", w)],
+        ),
+        (Managed, Screen::Gone) => copy_text(
+            "beSessionArrive.missed.managed.gone",
+            &[("dur", dur), ("name", name)],
+        ),
+        (Managed, Screen::Unread(why)) => copy_text(
+            "beSessionArrive.missed.managed.noScreen",
+            &[("dur", dur), ("name", name), ("why", why.as_str())],
+        ),
     }
 }
 
@@ -65,26 +93,12 @@ pub(crate) fn missed(waited_ms: u64, at: Option<(&str, TerminalHost, Screen)>) -
     let dur = copy_core::short_duration(waited_ms);
     let (body, terminal) = match at {
         Some((name, host, screen)) => {
-            let words = match &screen {
-                Screen::There { text, .. } => last_words(text),
-                _ => String::new(),
+            let body = missed_in(&dur, name, host, &screen);
+            let terminal = match screen {
+                Screen::There { terminal, .. } => Some(terminal),
+                Screen::Gone | Screen::Unread(_) => None,
             };
-            let key = missed_key(host, &screen, words.is_empty());
-            let mut args = vec![("dur", dur.as_str()), ("name", name)];
-            let terminal = match &screen {
-                Screen::There { terminal, .. } => {
-                    if !words.is_empty() {
-                        args.push(("words", words.as_str()));
-                    }
-                    Some(terminal.clone())
-                }
-                Screen::Unread(why) => {
-                    args.push(("why", why.as_str()));
-                    None
-                }
-                Screen::Gone => None,
-            };
-            (copy_text(key, &args), terminal)
+            (body, terminal)
         }
         None => (
             copy_text("beSessionArrive.missed.inWindow", &[("dur", &dur)]),

@@ -15,8 +15,8 @@ use super::session_batch::{
 use crate::common::said::Said;
 pub mod new;
 use crate::platform::child::{Child, Deadline};
-pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
 use crate::wire::TerminalHost;
+pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
 pub use new::{ForkWrite, PreRotation};
 
