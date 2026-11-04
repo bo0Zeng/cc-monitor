@@ -262,6 +262,7 @@ pub const TIMED_OUT: &str = "child_timed_out";
     any(test, feature = "test-support"),
     expect(
         clippy::let_underscore_must_use,
+        clippy::disallowed_methods,
         reason = "测试档那一份先建 socket 目录、建不成也照起（同各包测试段放开的那几样）"
     )
 )]
@@ -753,6 +754,9 @@ mod os {
         ) -> i32;
         fn AssignProcessToJobObject(job: RawHandle, process: RawHandle) -> i32;
         fn TerminateJobObject(job: RawHandle, exit_code: u32) -> i32;
+        // 句柄写成 `isize`：同一个函数在 `win_term.rs` 里也这么声明（两处不一致编译器报冲突）。
+        fn GetStdHandle(which: u32) -> isize;
+        fn SetHandleInformation(handle: isize, mask: u32, flags: u32) -> i32;
     }
     use crate::platform::win_proc::{CloseHandle, TerminateProcess};
     use platform_core::proc::CREATE_NO_WINDOW;
@@ -760,6 +764,9 @@ mod os {
     const EXTENDED_INFO_CLASS: i32 = 9;
     /// 标志位 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个 Job 句柄关掉 ⇒ 系统终止 Job 里的每一个进程。
     const KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    /// 标志位 `JOB_OBJECT_LIMIT_BREAKAWAY_OK`：Job 里的进程带 `CREATE_BREAKAWAY_FROM_JOB` 起的子进程可以不进这个 Job
+    /// （[`spawn_detached`] 起的那一类；别的照旧留在里面）。
+    const BREAKAWAY_OK: u32 = 0x0000_0800;
 
     /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`（字段照 winnt.h 的次序与宽度）。
     #[repr(C)]
@@ -800,6 +807,7 @@ mod os {
     /// - [`Group::adopt_tree`] · [`Group::tree_of_handle`]（一问一答那一类）：设「关句柄即杀」—— 放手时直接子进程已经退了、
     ///   孙进程还在（`claude` 起的那一类）也跟着收；我们这边整个进程没了（句柄随之关）也一样。
     ///
+    /// 两种都许脱离：里面的进程脱离起的（[`spawn_detached`]）不进这个 Job，到点 · 放手收 Job 时不跟着没。
     /// 放进去之前那一小段里它已经起的孙进程不在 Job 里（起子进程之后才放：`std` 与伪终端库都不给先挂起再放）。
     /// 放不进去（老系统不许嵌套 Job）⇒ 退成只杀直接子进程。
     pub(super) struct Group {
@@ -825,8 +833,8 @@ mod os {
         fn of_handle(process: RawHandle, on_close: OnClose) -> Group {
             let job = unsafe { CreateJobObjectW(core::ptr::null_mut(), core::ptr::null()) };
             let job = (!job.is_null()).then_some(job).filter(|&j| {
-                let ok = (on_close == OnClose::Leave || set_kill_on_close(j))
-                    && unsafe { AssignProcessToJobObject(j, process) } != 0;
+                let ok =
+                    set_limits(j, on_close) && unsafe { AssignProcessToJobObject(j, process) } != 0;
                 if !ok {
                     unsafe { CloseHandle(j) };
                 }
@@ -861,11 +869,15 @@ mod os {
         KillAll,
     }
 
-    /// 设不上 ⇒ `false`（调用方据此不用这个 Job、退成只杀直接子进程）。
-    fn set_kill_on_close(job: RawHandle) -> bool {
+    /// 许脱离 · （[`OnClose::KillAll`]）关句柄即杀。设不上 ⇒ `false`（调用方据此不用这个 Job、退成只杀直接子进程）。
+    fn set_limits(job: RawHandle, on_close: OnClose) -> bool {
+        let kill = match on_close {
+            OnClose::Leave => 0,
+            OnClose::KillAll => KILL_ON_JOB_CLOSE,
+        };
         let info = ExtendedLimits {
             basic: BasicLimits {
-                limit_flags: KILL_ON_JOB_CLOSE,
+                limit_flags: BREAKAWAY_OK | kill,
                 ..Default::default()
             },
             ..Default::default()
@@ -908,11 +920,13 @@ mod os {
     /// 脱离起：不要控制台（`DETACHED_PROCESS`：关掉起它的那个窗口不连它一起关）· 自成进程组（起它的那一方的 Ctrl+C 不传给它）·
     /// 脱离起它的那个 Job（`CREATE_BREAKAWAY_FROM_JOB`：那个 Job 被收掉时它不跟着没）。
     /// 本进程所在的 Job 不许脱离 ⇒ 系统拒（拒绝访问）⇒ 去掉脱离 Job 那一位再起一次，照实记一行：那时它留在 Job 里，Job 收掉它也没。
+    /// 起之前先把本进程自己的三格标准句柄设成不可继承（[`keep_own_stdio`]）。
     pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
         const ERROR_ACCESS_DENIED: i32 = 5;
+        keep_own_stdio();
         let stay = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
         cmd.creation_flags(stay | CREATE_BREAKAWAY_FROM_JOB);
         match cmd.spawn() {
@@ -925,6 +939,24 @@ mod os {
                 cmd.spawn()
             }
             other => other,
+        }
+    }
+
+    /// 本进程自己的三格标准句柄设成不可继承。
+    /// `std` 起子进程一律许继承（`bInheritHandles`）：本进程里**每一个**可继承的句柄都跟着交下去，不只交给它的那三格。
+    /// `std` 自己开的句柄都不可继承（给子进程那几端只在起的那一下可继承），可继承的只剩从起本进程的那一方继承来的标准句柄；
+    /// 它们是一根管道时（`run` 收输出的那一种），脱离起的那个就替起本进程的那一方攥着管道的写端，那一方读不到头。
+    /// 之后照旧继承标准句柄的子进程不受影响：`Stdio::inherit` 交的是复制出来的一份。设不上（句柄是空的 · 不是内核句柄）⇒ 不管。
+    fn keep_own_stdio() {
+        // `STD_INPUT_HANDLE` · `STD_OUTPUT_HANDLE` · `STD_ERROR_HANDLE`（-10 · -11 · -12 的 u32 形）。
+        const STD_HANDLES: [u32; 3] = [0xFFFF_FFF6, 0xFFFF_FFF5, 0xFFFF_FFF4];
+        const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
+        for which in STD_HANDLES {
+            let h = unsafe { GetStdHandle(which) };
+            // 空 · `INVALID_HANDLE_VALUE`（全 1）⇒ 没有这一格。
+            if h != 0 && h != -1 {
+                unsafe { SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0) };
+            }
         }
     }
 
