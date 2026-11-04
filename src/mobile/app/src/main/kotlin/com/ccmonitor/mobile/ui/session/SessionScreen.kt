@@ -403,7 +403,7 @@ private fun ConnectedTerminal(
     onCaptured: (String) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // 终端名单 · 切模型 · 抓屏 · 推公钥要那台后端连着（名单两种宿主都列）；新建那一排要那台有 tmux：都照那台说的（[Reach]）。
+    // 终端名单 · 切模型 · 抓屏 · 推公钥要那台后端连着（名单两种宿主都列；新建的放在哪由那台定）：照那台说的（[Reach]）。
     val reach by vm.reach.collectAsState()
     // 本 tab 当前所在的 tmux 会话名（切模型 · 抓屏按它找那台名单里的终端）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
@@ -487,10 +487,8 @@ private fun ConnectedDialogs(
     onDismissKeyPush: () -> Unit,
 ) {
     if (showTmux) {
-        val reach by vm.reach.collectAsState()
         TerminalManagerDialog(
             terminals = vm.terminals,
-            noTmux = reach.noTmux,
             onAttach = { name ->
                 // 附着是新开终端 tab，由它的新 shell 敲那台渲出的那一行；不往当前前台 pty 注入
                 // （前台若是 Claude Code 会打进它的输入框）。

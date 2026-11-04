@@ -359,6 +359,19 @@ pub fn speaks_powershell() -> bool {
 /// （本机起会话的渲染按它挑写法，`control/launch_render/mod.rs` 的 `Host`）。
 pub const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 
+/// 空终端（托管终端里不起 agent 那一形）里跑的那一串 argv：这台用户的登录 shell。POSIX 是「在此打开终端」那一句的登录 shell 半段
+/// （[`posix::cd_then_login_shell`]，目录由起它的那一方给），交 `sh -c`；Windows 是 PowerShell。
+pub fn bare_terminal_argv() -> Vec<String> {
+    #[cfg(unix)]
+    {
+        vec!["sh".into(), "-c".into(), posix::cd_then_login_shell(None)]
+    }
+    #[cfg(not(unix))]
+    {
+        vec!["powershell.exe".into(), "-NoLogo".into()]
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/shell_tests.rs"]
 mod tests;

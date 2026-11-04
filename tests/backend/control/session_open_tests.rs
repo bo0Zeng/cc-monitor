@@ -56,6 +56,8 @@ struct Rig {
     sent: RefCell<Vec<(String, String)>>,
     marks: RefCell<usize>,
     shells: RefCell<Vec<(String, Option<String>)>>,
+    /// 建空终端那几趟各建在哪种宿主里（与 `shells` 同序）。
+    shell_hosts: RefCell<Vec<crate::wire::TerminalHost>>,
 }
 
 impl Rig {
@@ -85,6 +87,7 @@ impl Rig {
             sent: RefCell::new(vec![]),
             marks: RefCell::new(0),
             shells: RefCell::new(vec![]),
+            shell_hosts: RefCell::new(vec![]),
         }
     }
 
@@ -182,13 +185,16 @@ impl Rig {
         };
         let writers = |_: &str| self.live.clone();
         let pretrust = |_: &str, _: &str| *self.marks.borrow_mut() += 1;
-        let open_shell =
-            |name: &str, cwd: Option<&str>| -> Result<bool, crate::common::said::Said> {
-                self.shells
-                    .borrow_mut()
-                    .push((name.into(), cwd.map(str::to_string)));
-                Ok(true)
-            };
+        let open_shell = |name: &str,
+                          cwd: Option<&str>,
+                          host: crate::wire::TerminalHost|
+         -> Result<bool, crate::common::said::Said> {
+            self.shells
+                .borrow_mut()
+                .push((name.into(), cwd.map(str::to_string)));
+            self.shell_hosts.borrow_mut().push(host);
+            Ok(true)
+        };
         let library = || {
             crate::observe::accounts_query::test_support::list(
                 self.names
@@ -619,7 +625,9 @@ fn every_code_comes_with_a_sentence_written_here() {
         a["run"] = json!("tmux");
         a
     };
-    let cases: Vec<(&str, Box<dyn Fn(&mut Rig) -> Value>)> = vec![
+    /// 一个码那一项：先把替身摆成那一形，回要交的入参。
+    type Arrange = Box<dyn Fn(&mut Rig) -> Value>;
+    let cases: Vec<(&str, Arrange)> = vec![
         (
             "bad_args",
             Box::new(|_| json!({ "what": { "kind": "resume", "sid": "a;b" } })),
@@ -962,6 +970,76 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
     }
     assert_eq!(rig.shells.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
+}
+
+/// ★ 开一个带名字的 shell，名单里没有 ⇒ 宿主照这台缺省（同新起：能托管 ⇒ 托管，只有 tmux ⇒ tmux）：
+/// 这台只能托管、没 tmux ⇒ 照样建（建在托管里）、回接进去那一行，不回 `place_unavailable`；两种都有 ⇒ 托管；
+/// 名单里托管那一行已叫这个名 ⇒ 不建、接它的句柄；两种都没有 ⇒ `place_unavailable`，什么都不建。
+#[test]
+fn a_named_shell_lands_where_this_machine_defaults() {
+    use crate::wire::TerminalHost::{Managed, Tmux};
+    let only_managed = Rig {
+        hosts: true,
+        ..Rig::new(None)
+    };
+    let o = only_managed
+        .open(json!({ "what": { "kind": "shell", "session": "main", "cwd": "/p" } }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref(), o.agent),
+        (Landed::Idle, Some("main"), None)
+    );
+    assert!(o.line.unwrap().ends_with("--attach main"));
+    assert_eq!(*only_managed.shell_hosts.borrow(), [Managed]);
+    assert_eq!(
+        *only_managed.shells.borrow(),
+        [("main".to_string(), Some("/p".to_string()))]
+    );
+
+    let both = Rig {
+        hosts: true,
+        ..Rig::new(Some(vec![]))
+    };
+    both.open(json!({ "what": { "kind": "shell", "session": "main" } }))
+        .unwrap();
+    assert_eq!(*both.shell_hosts.borrow(), [Managed], "能托管 ⇒ 托管");
+
+    let tmux_only = Rig::new(Some(vec![]));
+    tmux_only
+        .open(json!({ "what": { "kind": "shell", "session": "main" } }))
+        .unwrap();
+    assert_eq!(*tmux_only.shell_hosts.borrow(), [Tmux], "只有 tmux ⇒ tmux");
+
+    let there = Rig {
+        hosts: true,
+        hosted: vec![TermEntry {
+            host: Managed,
+            name: "main".into(),
+            terminal: "m-main".into(),
+            sid: None,
+            agent: false,
+        }],
+        ..Rig::new(None)
+    };
+    let o = there
+        .open(json!({ "what": { "kind": "shell", "session": "main" } }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Idle, Some("main"))
+    );
+    assert!(
+        o.line.unwrap().ends_with("--attach m-main"),
+        "托管那一行接句柄"
+    );
+    assert!(there.shells.borrow().is_empty(), "已在 ⇒ 不建");
+
+    let neither = Rig::new(None);
+    let err = neither
+        .open(json!({ "what": { "kind": "shell", "session": "main" } }))
+        .unwrap_err();
+    assert_eq!(err.code.as_deref(), Some("place_unavailable"));
+    assert!(neither.shells.borrow().is_empty());
 }
 
 /// e2e 要的那一份意图（`CCM_E2E_OPEN`，只给 `tests/e2e/open-line-emit.sh` 用）。

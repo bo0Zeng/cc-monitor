@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
+import com.ccmonitor.mobile.core.claude.link.SessionsWhere
 import com.ccmonitor.mobile.core.claude.link.TerminalEnd
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
@@ -15,16 +16,15 @@ import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
-import com.ccmonitor.mobile.core.wire.gen.Launch
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.PushOutcome
+import com.ccmonitor.mobile.core.wire.gen.Whereabout
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
-import java.util.UUID
 
 /**
- * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
+ * 终端屏里要那台核心做的几件（列 · 结束 · 会话在哪 · 进终端那一行 · 建终端 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
  * 找哪个窗格、怎么附着、怎么建、shell 方言全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
  * [machine] 是这台在手机上的名字（走不通时那一句里用）。
  * 哪几家、叫什么、能换哪些模型都问那台（`session-open-facts`），手机一家都不认识。
@@ -55,28 +55,20 @@ class TerminalOps(
     /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 能放在哪几种都是那台给的）。 */
     suspend fun facts(): Result<OpenFacts> = ask(SessionOpenFacts.COMMAND, emptyMap(), SessionOpenFacts::of)
 
-    /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句（tmux 也当没有）。 */
+    /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句。 */
     suspend fun reach(): Reach =
         facts().fold(
-            onSuccess = { f -> Reach(noTmux = if (Launch.TMUX in f.hosts) null else copyText("mobTerm.tmux.none", "host" to machine())) },
-            onFailure = { Reach(it.message.orEmpty(), it.message.orEmpty()) },
+            onSuccess = { Reach() },
+            onFailure = { Reach(it.message.orEmpty()) },
         )
 
     /** 这台能起的几家。 */
     suspend fun agents(): Result<List<AgentFacts>> = facts().map { it.agents }
 
-    /** 这台起会话用哪一家：那台列的第一家（线上 kind；缺省照那台）。问不到 ⇒ 失败（那一句）。 */
-    private suspend fun agent(): Result<String> =
-        agents().mapCatching { SessionOpenFacts.pick(it, null)?.kind ?: throw Problem(unreadableReply(machine(), SessionOpenFacts.COMMAND, it.toString()).text) }
+    /** [sid] 那条会话此刻在那台哪个终端里（`sessions-where`，那台判）。问不到 ⇒ 失败（那一句）。 */
+    suspend fun where(sid: String): Result<Whereabout> = ask(SessionsWhere.COMMAND, SessionsWhere.args(sid), SessionsWhere::of)
 
-    /** 在名叫 [name] 的会话里后台起这台那一家（不进入）。失败 ⇒ 那一句。 */
-    suspend fun startAgent(name: String): String? =
-        agent()
-            .mapCatching { a -> open(SessionOpen.newInTmux(agent = a, name = name, ticket = UUID.randomUUID().toString())).getOrThrow() }
-            .exceptionOrNull()
-            ?.message
-
-    /** 在那台建一个名叫 [name] 的空会话（在了就不动），不进入。失败 ⇒ 那一句。 */
+    /** 在那台建一个名叫 [name] 的空终端（在了就不动；宿主照那台缺省），不进入。失败 ⇒ 那一句。 */
     suspend fun create(name: String): String? = open(SessionOpen.shell(name, null)).exceptionOrNull()?.message
 
     /**
