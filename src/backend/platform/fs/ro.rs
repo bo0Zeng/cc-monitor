@@ -1,8 +1,9 @@
 //! 读盘的唯一住址：[`Ro`]（只读的命名空间）· [`RoFile`]（只能读、只能挪读写位置的文件）。
 //!
-//! 后端生产段只有 `platform/fs/` 许点名文件系统命名空间（`readonly_guard::only_the_fs_platform_module_names_the_filesystem`）；
+//! 后端碰盘的标准库与系统调用只在 `platform/fs/` 放行（`src/backend/clippy.toml` 碰盘那一组）；
 //! 别处读盘一律经这里。`Ro` 没有写方法，[`Ro::open`] 交回的 [`RoFile`] 不实现 `Write` ⇒ 拿着它写不出来。
-//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），护栏不用动。本文件点名的标准库条目由同一份护栏逐个核是读（`the_fs_home_names_only_its_registered_entries`）。
+//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），名单不用动。
+//! 本文件每一处放行都写在那一个函数上，理由一律是「只读」：放行处多一个写动词，读这一份的人看得见。
 //! 平台无关的部分不认域知识（不认识账号、会话、帧）。
 
 use copy_core::copy_text;
@@ -28,28 +29,40 @@ pub type Stamp = (std::time::SystemTime, u64, u64);
 pub struct Ro;
 
 impl Ro {
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：列目录，只读")]
     pub fn read_dir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
         std::fs::read_dir(p)
     }
 
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：问元数据，只读")]
     pub fn metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
         std::fs::metadata(p)
     }
 
     /// 问元数据、不跟链接（最后一段是链接 ⇒ 答的是链接本身）。
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：问元数据，只读")]
     pub fn symlink_metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
         std::fs::symlink_metadata(p)
     }
 
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：解路径，只读")]
     pub fn canonicalize(p: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::fs::canonicalize(p)
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "读盘的唯一住址：读链接内容，只读"
+    )]
     pub fn read_link(p: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::fs::read_link(p)
     }
 
     /// 只读打开（跟链接，同 `File::open`）。交回的只能读、挪读写位置、问元数据。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "读盘的唯一住址：只读打开，交回的 `RoFile` 不实现 `Write`"
+    )]
     pub fn open(p: impl AsRef<Path>) -> io::Result<RoFile> {
         std::fs::File::open(p).map(RoFile)
     }
@@ -60,11 +73,16 @@ impl Ro {
     }
 
     /// 异步问元数据（跟链接）。
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：问元数据，只读")]
     pub async fn metadata_async(p: impl AsRef<Path>) -> io::Result<Metadata> {
         tokio::fs::metadata(p).await
     }
 
     /// 异步只读打开（跟链接）：交回的只能读、挪读写位置。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "读盘的唯一住址：只读打开，交回的 `RoAsyncFile` 只实现读与挪位置"
+    )]
     pub async fn open_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
         tokio::fs::File::open(p).await.map(RoAsyncFile)
     }
@@ -78,6 +96,13 @@ impl Ro {
     }
 
     /// 照一个 unix 模式（低 12 位）造权限位那一格的值。别的平台没有这一维 ⇒ `None`。
+    #[cfg_attr(
+        unix,
+        expect(
+            clippy::disallowed_methods,
+            reason = "读盘的唯一住址：造一个权限位的值，不落盘"
+        )
+    )]
     pub fn perms_from_mode(mode: u32) -> Option<Perms> {
         #[cfg(unix)]
         {
@@ -119,6 +144,7 @@ impl Ro {
     }
 
     /// 文件 mtime 的毫秒时间戳；任何读取失败都退化成 `0`（排序时沉到最旧：读失败与「1970 年的文件」混成同一个值，要改得连同调用点的排序语义一起想）。
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：问元数据，只读")]
     pub fn mtime_ms(p: &Path) -> i64 {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
@@ -129,6 +155,13 @@ impl Ro {
     }
 
     /// unix 权限位（`st_mode` 全字，含文件类型位；调用方按需 `& 0o777`）。别的平台没有这一维 ⇒ `None`。
+    #[cfg_attr(
+        unix,
+        expect(
+            clippy::disallowed_methods,
+            reason = "读盘的唯一住址：从已读的元数据取权限位"
+        )
+    )]
     pub fn mode(m: &Metadata) -> Option<u32> {
         #[cfg(unix)]
         {
@@ -143,6 +176,13 @@ impl Ro {
     }
 
     /// unix 的属主 uid。别的平台 ⇒ `None`。
+    #[cfg_attr(
+        unix,
+        expect(
+            clippy::disallowed_methods,
+            reason = "读盘的唯一住址：从已读的元数据取属主"
+        )
+    )]
     pub fn uid(m: &Metadata) -> Option<u32> {
         #[cfg(unix)]
         {
@@ -158,6 +198,7 @@ impl Ro {
 
     /// 盘上那一份的戳（[`Stamp`]）：改动时刻 · 长度 · inode（别的平台记 0）。不在 / 读不出元数据 ⇒ `None`。
     /// 原子替换每次换一个新节点，同一纳秒里写两次也分得出 —— 缓存判「别人写过没有」用它。
+    #[expect(clippy::disallowed_methods, reason = "读盘的唯一住址：问元数据，只读")]
     pub fn stamp(p: &Path) -> Option<Stamp> {
         let m = std::fs::metadata(p).ok()?;
         #[cfg(unix)]
@@ -168,6 +209,13 @@ impl Ro {
     }
 
     /// unix 的硬链接数。别的平台 ⇒ `None`。
+    #[cfg_attr(
+        unix,
+        expect(
+            clippy::disallowed_methods,
+            reason = "读盘的唯一住址：从已读的元数据取硬链接数"
+        )
+    )]
     pub fn nlink(m: &Metadata) -> Option<u64> {
         #[cfg(unix)]
         {
@@ -182,6 +230,13 @@ impl Ro {
     }
 
     /// unix 的设备号（同一个文件系统内才相等）。别的平台 ⇒ `None`。
+    #[cfg_attr(
+        unix,
+        expect(
+            clippy::disallowed_methods,
+            reason = "读盘的唯一住址：从已读的元数据取设备号"
+        )
+    )]
     pub fn dev(m: &Metadata) -> Option<u64> {
         #[cfg(unix)]
         {
@@ -205,6 +260,10 @@ enum Link {
 
 /// 带上限的整份读：先看类型 · 再看长度 · 再读，都在 `relay_route_core::read_capped_regular`（手机核心读本机文件同一份）；
 /// 这里只定跟不跟链接（元数据怎么取 · 怎么打开）与那一句。读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "读盘的唯一住址：问元数据 · 只读打开，读满上限即停"
+)]
 fn read_whole(path: &Path, limit: Cap, link: Link) -> Result<Vec<u8>, Said> {
     let io = |e: io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
     let meta = match link {
@@ -246,6 +305,10 @@ fn parse_json(b: &[u8]) -> Result<serde_json::Value, Said> {
 }
 
 /// 只读、不跟链接的开法（最后一段是链接 ⇒ 失败）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "读盘的唯一住址：只读的开法（只 `read(true)` ＋ 不跟链接）"
+)]
 fn nofollow_read() -> std::fs::OpenOptions {
     let mut o = std::fs::OpenOptions::new();
     o.read(true);
@@ -306,7 +369,7 @@ impl Seek for RoFile {
 }
 
 /// 拿描述符的那一面只给 unix：目录锁要对它 `flock`（`platform::lock`）。描述符本身换不回一个能写的文件 ——
-/// 那一步要点名 `std::fs`，只有本目录点得了。
+/// 它是只读打开的，包成别的文件照样写不进去。
 #[cfg(unix)]
 impl std::os::fd::AsFd for RoFile {
     fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {

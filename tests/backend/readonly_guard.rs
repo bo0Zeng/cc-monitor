@@ -3,14 +3,17 @@
 //! # 性质与人群，两行逐字
 //!
 //! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 碰盘只经 `platform/fs/` 交出去的句柄：读经 `Ro`（没有写方法）· 改用户文件只经文件管理面的 `Face`（写方法只收已过路径解析的 `Resolved`，只递给命令表文件管理那一族）· 分叉只经只会 `O_EXCL` 新建的 `NewFile` · 后端自家状态只经 `Own`（只写家目录的 `.cc-monitor` 与数据目录底下）。
-//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里点名文件系统命名空间的地方（`platform/fs/` 之外一处都不许）与造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
+//! - **它扫的人群是**：`src/backend/` 底下各包里调碰盘标准库与系统调用的地方（`platform/fs/` 之外一处都不许，由 clippy 按解析后的路径认）·
+//!   本 crate `src/` 递归全部 `.rs` 的生产段源码文本里造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
 //!
 //! # 怎么挡：一处实现，四种句柄
 //!
 //! 挡在类型上，不靠扫每一处 `fs::` 调用再逐张表登记：
 //!
-//! - 只有 `platform/fs/` 许点名 `std::fs` · `tokio::fs` · `os::unix::fs` · `OpenOptions` · `DirBuilder`（[`tests::only_the_fs_platform_module_names_the_filesystem`]）；
-//!   那里点名的每一样也逐份登记（[`tests::the_fs_home_names_only_its_registered_entries`]）。
+//! - 碰盘的标准库与系统调用（`std::fs` · `tokio::fs` 的各函数与开法、`os::unix::fs` 的建链接 · 改属主与扩展特征上那几样、`libc` 的 `*at` 一族）
+//!   列在后端 `clippy.toml` 碰盘那一组（deny），只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行、写明理由；
+//!   起别名 · 分组导入照认；放行写在用不到它的地方 ⇒「期望没满足」（警告，不红）。⚠ 只在 clippy 里红、`cargo test` 不红；Windows 那几臂只有门禁 `winchk-backend` 看得见。
+//!   名单认不出的几形写在那份 toml 的头注里（`Path` 上的读方法 · 经 `From` 的换法 · `libc::syscall` 裸调 · 手写 `extern`）。
 //! - 读不用递句柄：`Ro` 没有写方法，`Ro::open` 交回的那一份不实现 `Write`（[`tests::the_read_only_file_has_no_write`]）。
 //! - 写要拿到句柄，句柄只在登记的那几处造（[`tests::the_write_handles_are_issued_only_at_startup`]：`Own` 只在启动入口 ·
 //!   `Face` 只在分派那一层 · `NewFile` 只在分叉那两条命令 · `Resolved` 只由路径解析担保）；
@@ -21,13 +24,13 @@
 //! ⚠ **这两行今天仍不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**：
 //! 「用户既有数据」是**语义**命题，人群是**文本形状 ＋ 类型**，两者之间没有可机检的桥。
 //! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（`spawn_registry` 逐条登记）·
-//! 不含不经那几个命名空间的写（裸系统调用：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
+//! 不含名单认不出的写（`libc::syscall` 裸调那一形 · 手写 `extern` 声明：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
 //!
 //! # 远端那一半另有一层
 //!
 //! **根本不在本机的写**（SFTP 那一套）不是这条护栏的一个漏项，是它**从来没有过的一维**。
 //! ⇒ 远端那一半立在 [`remote_write_layer`]，两行性质 / 人群与盲区读数都在那里。
-//! （本机换个命名空间的写，`os::unix::fs::symlink` 一族，今天由命名空间那一条一并拦着。）
+//! （本机换个命名空间的写，`os::unix::fs::symlink` 一族，由 `clippy.toml` 碰盘那一组一并拦着。）
 //!
 //! # 依赖 crate 的写面：不经 `platform/fs`，类型挡管不到它 —— 照旧由依赖签字那张表守
 //!
@@ -40,8 +43,8 @@
 //!
 //! 性质那一句的来历与原措辞住 `src/doc/INVARIANTS.md` §41.6。
 //!
-//! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言 `platform/fs/` 之外不点名文件系统命名空间、
-//! 写句柄只在登记的那几处造。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
+//! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言写句柄只在登记的那几处造
+//! （`platform/fs/` 之外不碰盘由 clippy 名单守，见上）。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。
 
@@ -451,278 +454,14 @@ mod tests {
         );
     }
 
-    // ═══════════════ 碰盘只经 `platform/fs/`（类型挡第一刀：读）═══════════════
+    // ═══════════════ 碰盘只经 `platform/fs/` ═══════════════
+    //
+    // 谁能调碰盘的标准库与系统调用，不在这里扫文本：后端 `clippy.toml` 碰盘那一组（deny）按解析后的路径认，
+    // 只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行（理由写在那个函数上：读那一份是「只读」）。
+    // 下面几条只管 clippy 名单管不到的：谁能造句柄 · 谁拿得到 `Face` · `Face` 的签名 · `RoFile` 不能写。
 
-    /// 唯一允许点名文件系统命名空间的地方。别处要读盘只能经它交出去的 [`crate::platform::fs::Ro`]。
+    /// 碰盘的那一层住在哪：造句柄的判据不把它算进调用方。
     const FS_HOME: &str = "platform/fs/";
-
-    /// 带路径的那几个命名空间：点名一处就红（前后都要是边界，`std::fsx` 不算）。
-    const FS_PATHS: &[&str] = &["std::fs", "tokio::fs", "os::unix::fs", "os::windows::fs"];
-    /// 只认整词的那两个类型名（`OpenOptionsLike` 不算）。
-    /// ⚠ 裸 `File` 不在这里：它不在前导里，要用 `std` / `tokio` 的那个 `File` 先得点名上面某个路径
-    ///   （全路径 · 导入 · 分组导入 · 起别名都是），而裸词会撞上一堆叫 `File` 的枚举臂（`Item::File` · `What::File` …）。
-    const FS_WORDS: &[&str] = &["OpenOptions", "DirBuilder"];
-    /// 分组导入的根：`use std::{fs, io}` 这种写法里没有 `std::fs` 这串字，要按组认。
-    const FS_GROUP_ROOTS: &[&str] = &["std::", "tokio::", "os::", "os::unix::", "os::windows::"];
-
-    fn word_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
-    }
-
-    fn word_at(code: &str, at: usize, needle: &str) -> bool {
-        let before = code[..at].chars().next_back().is_some_and(word_char);
-        let after = code[at + needle.len()..]
-            .chars()
-            .next()
-            .is_some_and(word_char);
-        !before && !after
-    }
-
-    /// 一段生产代码（已剥测试段与注释）里点名文件系统命名空间的每一处：`(行号, 命中的那一形)`。
-    pub(super) fn fs_namespace_hits(code: &str) -> Vec<(usize, String)> {
-        let line_of = |at: usize| code[..at].matches('\n').count() + 1;
-        let mut hits = Vec::new();
-        for needle in FS_PATHS.iter().chain(FS_WORDS) {
-            let mut from = 0;
-            while let Some(k) = code[from..].find(needle) {
-                let at = from + k;
-                if word_at(code, at, needle) {
-                    hits.push((line_of(at), needle.to_string()));
-                }
-                from = at + needle.len();
-            }
-        }
-        for root in FS_GROUP_ROOTS {
-            let open = format!("{root}{{");
-            let mut from = 0;
-            while let Some(k) = code[from..].find(open.as_str()) {
-                let at = from + k;
-                let body_at = at + open.len();
-                let mut depth = 1usize;
-                let mut end = code.len();
-                for (i, c) in code[body_at..].char_indices() {
-                    match c {
-                        '{' => depth += 1,
-                        '}' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                end = body_at + i;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                let body = &code[body_at..end];
-                let mut f = 0;
-                while let Some(j) = body[f..].find("fs") {
-                    let p = f + j;
-                    if word_at(body, p, "fs") {
-                        hits.push((line_of(at), format!("{open}…fs…}}")));
-                        break;
-                    }
-                    f = p + 2;
-                }
-                from = body_at;
-            }
-        }
-        hits.sort();
-        hits.dedup();
-        hits
-    }
-
-    /// 🔴 **碰盘只经 `platform/fs/`。** 后端生产段除了 `platform/fs/`，一处都不许点名
-    /// `std::fs` · `tokio::fs` · `os::unix::fs` · `OpenOptions` · `DirBuilder`（分组导入、起别名一样算；`std::fs::File` 只能经这些路径点名）。
-    /// 读盘走 `platform::fs::Ro`（只读：没有写方法，`open` 交回的只能读和挪读写位置）；
-    /// 今后加一个读动词只改 `platform/fs/` 一处，本条不用动。
-    #[test]
-    fn only_the_fs_platform_module_names_the_filesystem() {
-        let root = guard_core::addr::backend_src_root();
-        let mut bad = Vec::new();
-        let (mut scanned, mut home_hits) = (0usize, 0usize);
-        for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let code = guard_core::production_code(&src);
-            let hits = fs_namespace_hits(&code);
-            scanned += 1;
-            if rel.starts_with(FS_HOME) {
-                home_hits += hits.len();
-                continue;
-            }
-            // 行号是剥过注释的那份里的，不对盘 ⇒ 报那一行的原文。
-            for (line, what) in hits {
-                let text = code.lines().nth(line - 1).unwrap_or("").trim();
-                bad.push(format!("  {rel}: {what} —— {text}"));
-            }
-        }
-        assert!(
-            scanned >= 100,
-            "只扫到 {scanned} 份后端源码 —— 遍历坏了，本条会空转地绿"
-        );
-        assert!(
-            bad.is_empty(),
-            "后端生产段在 `{FS_HOME}` 之外点名了文件系统：\n{}\n\n\
-             读盘走 `crate::platform::fs::Ro`（`Ro::metadata` · `Ro::read_to_string` · `Ro::open` …）；\n\
-             缺一个读动词就加进 `platform/fs/ro.rs`。写盘不在这里开口子 —— 那是写的那几层的事。",
-            bad.join("\n")
-        );
-        assert!(
-            home_hits > 0,
-            "`{FS_HOME}` 里一处命名空间都没扫到 —— 针坏了（那里本该是唯一点名 `std::fs` 的地方）"
-        );
-    }
-
-    /// 上一条的针真咬得住：该红的那几形红、该绿的那几形绿（a9b661c1a 那一形就是该绿的那一句）。
-    #[test]
-    fn the_fs_namespace_needle_bites_and_lets_the_typed_reads_through() {
-        for red in [
-            "fn f(p: &Path) { let _ = std::fs::metadata(p); }",
-            "fn f(p: &Path) { let _ = std::fs::symlink_metadata(p); }",
-            "use std::{fs, io};",
-            "use std::{io::{self, Read}, fs::File};",
-            "async fn f(p: &Path) { tokio::fs::read(p).await; }",
-            "fn f(r: BufReader<std::fs::File>) {}",
-            "use std::fs as f;",
-            "let p = ::std::fs::read_link(p);",
-            "let o = OpenOptions::new();",
-            "let b = DirBuilder::new();",
-            "use std::os::unix::fs::PermissionsExt;",
-            "use std::os::{unix::fs::MetadataExt};",
-        ] {
-            assert!(!fs_namespace_hits(red).is_empty(), "该红没红：{red}");
-        }
-        for green in [
-            "fn f(p: &Path) { let _ = crate::platform::fs::Ro::symlink_metadata(p); }",
-            "use crate::platform::fs::{Ro, RoFile};",
-            "struct FileKind; let x = Profile::new(); let y = files::list();",
-            "match i { Item::File { .. } => {} }",
-            "use std::{io, path::Path};",
-            "let s = std::fsync;",
-        ] {
-            assert_eq!(fs_namespace_hits(green), vec![], "该绿没绿：{green}");
-        }
-    }
-    /// `platform/fs/` 里点名标准库文件系统的只许两份：`ro.rs` 点名的每一样都是读（本表）；`own.rs` 的见 [`OWN_NAMES`]
-    /// （文件管理面的写原语住 `mod.rs`，走系统调用、一个命名空间都不点名，谁调得到由写的那几层管）。
-    /// 今后加一个读动词，改的是 `ro.rs` 与这里，别处一行不动。
-    const RO_NAMES: &[&str] = &[
-        "std::fs::read(",
-        "std::fs::read_to_string(",
-        "std::fs::read_dir(",
-        "std::fs::metadata(",
-        "std::fs::canonicalize(",
-        "std::fs::symlink_metadata(",
-        "std::fs::read_link(",
-        "std::fs::File::open(",
-        "std::fs::File)",
-        "std::fs::File,",
-        "std::fs::Metadata;",
-        "std::fs::ReadDir;",
-        "std::os::unix::fs::PermissionsExt",
-        "std::os::unix::fs::MetadataExt",
-        // 不跟链接的只读开法：那份开法只 `.read(true)`，交出去的仍是 `RoFile` / `RoAsyncFile`。
-        "std::fs::OpenOptions::new()",
-        "std::fs::OpenOptions {",
-        "std::os::unix::fs::OpenOptionsExt",
-        "std::fs::Permissions;",
-        // 异步读（传输台读本机那一份）：问元数据 · 只读打开，交回的只能读和挪位置。
-        "tokio::fs::metadata(",
-        "tokio::fs::File::open(",
-        "tokio::fs::OpenOptions::from(",
-        "RoAsyncFile(tokio::fs::File)",
-    ];
-    /// `platform/fs/face.rs`（文件管理面 `Face` · 分叉那只手 `NewFile`）点名的标准库条目：写面动词闭集
-    /// （unix 上是 `*at` 一族，经 `libc`；Windows 臂按路径：新建 · 就地覆盖写 · 建目录 · 改名 · 删文件 · 删空目录 · 改权限）、
-    /// unix 上从描述符包成文件的那一下、读权限位的那一个特征，与开出来那一份的类型。
-    /// 谁能调由类型管：方法都在 `Face` / `NewFile` 上（写方法只收 `Resolved`），两者只有登记的那几处造（[`ISSUERS`]）。
-    const FACE_NAMES: &[&str] = &[
-        "std::fs::OpenOptions {",
-        "std::fs::OpenOptions::new()",
-        "std::fs::create_dir(",
-        "std::fs::rename(",
-        "std::fs::remove_file(",
-        "std::fs::remove_dir(",
-        "std::fs::set_permissions(",
-        "FaceFile(std::fs::File)",
-        "FaceAsyncFile(tokio::fs::File)",
-        "tokio::fs::File::from_std(",
-        "io::Result<std::fs::File>",
-        "std::fs::File::from(",
-        "std::os::unix::fs::PermissionsExt",
-        // Windows 臂改名顶掉被别的程序开着的目标：按「删」那一项访问权探一下打不打得开（只开不改，`held_as_busy`）。
-        "std::os::windows::fs::OpenOptionsExt",
-    ];
-    /// `platform/fs/own.rs`（自家状态写句柄 `Own`）点名的标准库条目：它的写只有这几样（删文件 · 改名 · 带权限位建一层目录 · 自家目录收回 0700）；
-    /// 原子写的旁名经 `creds_core::perm::create_private` 建（依赖签字那一侧管）。谁能调由类型管：方法都在 `Own` 上，`Own` 只在启动时造。
-    const OWN_NAMES: &[&str] = &[
-        "std::fs::remove_file(",
-        "std::fs::rename(",
-        // 订阅号凭据窄句柄（`AccountCreds`）续期那两把 `mkdir` 锁：建 · 删空目录（那一家定的锁协议，与它互斥只能照它的做法）。
-        "std::fs::create_dir(",
-        "std::fs::remove_dir(",
-        "std::fs::DirBuilder::new()",
-        "std::os::unix::fs::DirBuilderExt",
-        // 诊断文件窄句柄（`DiagLog`）：`O_EXCL` 新建当前那份 · 只追加一整行（权限位 0600）两个打开法，交出去的那一份只会写、交得出 fd。
-        "std::fs::OpenOptions::new()",
-        "std::os::unix::fs::OpenOptionsExt",
-        "DiagFile(std::fs::File)",
-        // 后端自家目录（`own_dir`）组 / 他人有权 ⇒ 收回 0700 那一下。
-        "std::fs::set_permissions(",
-    ];
-
-    #[test]
-    fn the_fs_home_names_only_its_registered_entries() {
-        let root = guard_core::addr::backend_src_root();
-        let mut named = 0usize;
-        let mut bad = Vec::new();
-        for (path, src) in guard_core::scan_tree!(&root.join("platform/fs"), &["rs"]) {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let code = guard_core::production_code(&src);
-            let names: &[&str] = match rel.as_str() {
-                "platform/fs/ro.rs" => RO_NAMES,
-                "platform/fs/own.rs" => OWN_NAMES,
-                "platform/fs/face.rs" => FACE_NAMES,
-                _ => &[],
-            };
-            if names.is_empty() {
-                for (line, what) in fs_namespace_hits(&code) {
-                    let text = code.lines().nth(line - 1).unwrap_or("").trim();
-                    bad.push(format!(
-                        "  {rel}: {what} —— {text}（只许 `ro.rs` · `own.rs` · `face.rs` 点名）"
-                    ));
-                }
-                continue;
-            }
-            // 认得的那几形整段摘掉，剩下的里面再有一处点名就是读以外的东西。
-            let mut rest = code.clone();
-            for ok in names {
-                named += rest.matches(ok).count();
-                rest = rest.replace(ok, "");
-            }
-            for (line, what) in fs_namespace_hits(&rest) {
-                let text = rest.lines().nth(line - 1).unwrap_or("").trim();
-                bad.push(format!("  {rel}: {what} —— {text}"));
-            }
-        }
-        assert!(
-            named >= 8,
-            "`platform/fs/ro.rs` 只扫到 {named} 处点名 —— 针或住址坏了，本条会空转地绿"
-        );
-        assert!(
-            bad.is_empty(),
-            "`platform/fs/` 里点名了读以外的东西：\n{}\n\n\
-             这里是全后端唯一能碰盘的地方：读那一半只许读（`RO_NAMES`），自家状态那一半只许那几样（`OWN_NAMES`）；别的写的能力不从这里开口子。",
-            bad.join("\n")
-        );
-    }
 
     /// 自家状态写句柄的造法（`(针, 只许出现在哪几份)`）：[`crate::platform::fs::Own`] 启动时造一次、顺着入口递下去；
     /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
@@ -2044,7 +1783,7 @@ mod g6_dependency_signoff {
             "助手正文的 Markdown 解析成块树（`md_core::parse` 出 `cmd_wire::md` 的 `Doc`）＋ 代码高亮 ＋ 长正文分段：\
              纯函数、不碰盘、不起进程、不读环境；仓内 crate，现打 0 处写面",
         ),
-        // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（命名空间那一条那条判据数它的写面）。
+        // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（`clippy.toml` 碰盘名单管它的写面）。
         (
             "guard-core",
             DEV_DEPS,
@@ -2058,7 +1797,7 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "只用 pidfd 那三样（清单那段注释逐字），零 feature。它是 syscall 绑定 ——\
-             写不写盘看调用点，而调用点在本 crate 里、由命名空间那一条那条判据数",
+             写不写盘看调用点，而调用点在本 crate 里、由 `clippy.toml` 碰盘名单管",
         ),
         (
             "notify",
@@ -2279,7 +2018,7 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "运行时 + io。⚠ **本表唯一「写面在我们自己手上」的一条**：`fs` feature 开着 ⇒ \
-             它**提供**写 API，而调用点全在本 crate 里 —— 那一面由命名空间那一条与那几种写句柄\
+             它**提供**写 API，而调用点全在本 crate 里 —— 那一面由碰盘名单与那几种写句柄\
              那两条判据数，不由本表。本表管的是「它自己会不会写」",
         ),
         (
@@ -3472,7 +3211,7 @@ mod remote_write_layer {
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
     //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/`（我们自己的目录）、每一处先过 `fenced_remote`。
-    //!   （本机那一半由命名空间那一条与那几种写句柄守；本层守的是**远端**那一半。）
+    //!   （本机那一半由 `clippy.toml` 碰盘名单与那几种写句柄守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
     //!   ＋ **SFTP v3 协议自己那几个改动操作的方法形**（[`REMOTE_MUTATION_VERBS`]）。
@@ -3490,7 +3229,7 @@ mod remote_write_layer {
     //! # ⚠ 它认不出什么 —— **口径与射程同句写清**（盲区读数的落点是 [`BLIND_SPOT_LAYERS`]）
     //!
     //! - **远端 exec**：`channel_open_session` ＋ 把一条会写的 shell 命令交给远端。
-    //!   一条命令写不写，**源码文本上判不了**（`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
+    //!   一条命令写不写，**源码文本上判不了**（`2>/dev/null` 就带 `>`）。这与碰盘名单认不出 `Command::new`
     //!   是**同一个洞的远端孪生** —— 盘上今天就有一处，登记在
     //!   [`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`]。
     //! - **不经 SSH 的远端写协议**（手写 HTTP PUT / 云存储 SDK / 自己封的传输层）：
@@ -3559,7 +3298,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// # ⚠ 它的口径（两个方向都写出来）
     ///
     /// - **取方法形**（带前导点）是为了与本机那一层分开：`std::fs::remove_file(` 是路径形，
-    ///   命名空间那一条已经在数；`sftp.remove_file(` 是方法形，命名空间那一条一条都不匹配 —— 那正是要修的。
+    ///   碰盘名单已经在管；`sftp.remove_file(` 是第三方的方法，碰盘名单一条都不匹配 —— 那正是要修的。
     /// - 它是**超集**：本机某个**恰好同名**的方法也会红（今天树上 **0 处**，分母 = 本 crate
     ///   `src/` 生产段全部 `.rs`，由 [`the_verb_net_has_no_false_positive_on_this_tree_today`] 现打）。
     /// - 🔴 **`write_all(` 刻意不在表上**：backend 唯一合法的写就是把 wire 帧写 stdout
@@ -3754,7 +3493,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             .sum();
         LayerReading {
             total: Denominator::Counted(n),
-            // 落在两张模式表射程里的每一处，命名空间那一条都看得见（看得见 ≠ 会红：
+            // 落在两张模式表射程里的每一处，碰盘名单都看得见（看得见 ≠ 会红：
             // 白名单那两份模块里的 `O_EXCL` 新建是**看得见并且被允许**的）。
             seen: Denominator::Counted(n),
             blind: Denominator::Counted(0),
@@ -3834,7 +3573,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         (
             "L4 远端代理写（远端 exec）",
             layer_remote_proxy,
-            "**那条命令写不写，源码文本上判不了** —— 与命名空间那一条认不出 `Command::new` 同一个洞的远端孪生",
+            "**那条命令写不写，源码文本上判不了** —— 与碰盘名单认不出 `Command::new` 同一个洞的远端孪生",
         ),
         (
             "L5 不经 SSH 的远端写协议",

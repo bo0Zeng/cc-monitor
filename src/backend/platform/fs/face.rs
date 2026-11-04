@@ -111,6 +111,10 @@ enum Open {
 }
 
 #[cfg_attr(unix, expect(dead_code, reason = "只有非 unix 臂按路径开文件"))]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "文件管理面的写：非 unix 臂的三种只写开法，只由收 `Resolved` 的写方法调"
+)]
 fn by_path(how: Open) -> std::fs::OpenOptions {
     let mut o = std::fs::OpenOptions::new();
     o.write(true);
@@ -158,6 +162,13 @@ impl Face {
     }
 
     /// 建一层目录（已在 ⇒ `AlreadyExists`）。
+    #[cfg_attr(
+        not(unix),
+        expect(
+            clippy::disallowed_methods,
+            reason = "文件管理面的写：建目录，落点只收 `Resolved`"
+        )
+    )]
     pub fn make_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
@@ -175,6 +186,13 @@ impl Face {
     }
 
     /// 改名（目标已在会被顶掉，同 `rename(2)`）。
+    #[cfg_attr(
+        not(unix),
+        expect(
+            clippy::disallowed_methods,
+            reason = "文件管理面的写：改名，两头只收 `Resolved`"
+        )
+    )]
     pub fn move_file(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
@@ -236,6 +254,13 @@ impl Face {
     }
 
     /// 删一份文件（含链接本身，不跟）。
+    #[cfg_attr(
+        not(unix),
+        expect(
+            clippy::disallowed_methods,
+            reason = "文件管理面的写：删文件，落点只收 `Resolved`"
+        )
+    )]
     pub fn delete_file(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
@@ -248,6 +273,13 @@ impl Face {
     }
 
     /// 删一个空目录。
+    #[cfg_attr(
+        not(unix),
+        expect(
+            clippy::disallowed_methods,
+            reason = "文件管理面的写：删空目录，落点只收 `Resolved`"
+        )
+    )]
     pub fn delete_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
@@ -260,6 +292,10 @@ impl Face {
     }
 
     /// 改权限（不跟链接：调用方先把路径解到底，那一格此刻是链接 ⇒ 失败）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：改权限，落点只收 `Resolved`（unix 臂取模式位、非 unix 臂按路径改）"
+    )]
     pub fn set_permissions(&self, at: &Resolved, perms: Perms) -> io::Result<()> {
         #[cfg(unix)]
         {
@@ -332,6 +368,10 @@ impl FaceFile {
     }
 
     /// 换成异步的那一份（只会写：下载落点往里写远端读来的字节）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面开出来的那一份换成异步的，开法不变、包进 `FaceAsyncFile`"
+    )]
     pub fn into_async(self) -> FaceAsyncFile {
         FaceAsyncFile(tokio::fs::File::from_std(self.0))
     }
@@ -396,6 +436,10 @@ impl NewFile {
 
     /// `O_EXCL` 新建 `at` 并写满 `body`：已在 ⇒ `AlreadyExists`，不碰那一份。
     /// 写到一半失败 ⇒ 回那一下的错（半截文件留着，调用方报原因）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "分叉那只手：只 `O_EXCL` 新建，不改 · 删 · 覆盖"
+    )]
     pub fn create(&self, at: &Path, body: &[u8]) -> Result<(), NewFileFail> {
         let mut f = std::fs::OpenOptions::new()
             .write(true)
@@ -438,6 +482,10 @@ mod at {
     }
 
     /// 开一层目录（不跟链接；`dir` 缺 ⇒ 按路径开根，根本身可以是链接）。Linux 用 `O_PATH`：只要能进、不必能读。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "路径解析逐段开目录（`O_DIRECTORY`，不跟链接），造 `Resolved` 的那一步"
+    )]
     pub(super) fn open_dir(dir: Option<&OwnedFd>, name: &OsStr) -> io::Result<OwnedFd> {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         let how = libc::O_PATH;
@@ -461,6 +509,10 @@ mod at {
     }
 
     /// 开一份文件（一律不跟链接；建出来的按 0666 ＆ umask）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄开文件，只由 `Face` 的写方法调"
+    )]
     pub(super) fn open(
         dir: &OwnedFd,
         name: &OsStr,
@@ -483,12 +535,20 @@ mod at {
         Ok(std::fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) }))
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄建目录，只由 `Face` 的写方法调"
+    )]
     pub(super) fn mkdir(dir: &OwnedFd, name: &OsStr, mode: u32) -> io::Result<()> {
         let n = c(name)?;
         // SAFETY：同上。
         ok(unsafe { libc::mkdirat(dir.as_raw_fd(), n.as_ptr(), mode as libc::mode_t) })
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄删一项，只由 `Face` 的写方法调"
+    )]
     pub(super) fn unlink(dir: &OwnedFd, name: &OsStr, flags: libc::c_int) -> io::Result<()> {
         let n = c(name)?;
         // SAFETY：同上。
@@ -496,6 +556,10 @@ mod at {
     }
 
     /// 改权限，不跟链接（那一格此刻是链接 ⇒ 失败）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄改权限，只由 `Face` 的写方法调"
+    )]
     pub(super) fn chmod(dir: &OwnedFd, name: &OsStr, mode: u32) -> io::Result<()> {
         let n = c(name)?;
         // SAFETY：同上。
@@ -509,12 +573,20 @@ mod at {
         })
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄建链接，只由 `Face` 的写方法调"
+    )]
     pub(super) fn symlink(target: &OsStr, dir: &OwnedFd, name: &OsStr) -> io::Result<()> {
         let (t, n) = (c(target)?, c(name)?);
         // SAFETY：同上。
         ok(unsafe { libc::symlinkat(t.as_ptr(), dir.as_raw_fd(), n.as_ptr()) })
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄建硬链接（不覆盖改名的退路），只由 `Face` 的写方法调"
+    )]
     pub(super) fn link(fd: &OwnedFd, from: &OsStr, td: &OwnedFd, to: &OsStr) -> io::Result<()> {
         let (f, t) = (c(from)?, c(to)?);
         // SAFETY：同上。
@@ -526,6 +598,10 @@ mod at {
         NoReplace,
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄改名，只由 `Face` 的写方法调"
+    )]
     pub(super) fn rename(
         fd: &OwnedFd,
         from: &OsStr,
@@ -559,6 +635,10 @@ mod at {
     }
 
     #[cfg(target_vendor = "apple")]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄不覆盖改名，只由 `Face` 的写方法调"
+    )]
     fn noreplace(fd: libc::c_int, f: &CString, td: libc::c_int, t: &CString) -> io::Result<()> {
         // SAFETY：同上。
         ok(unsafe { libc::renameatx_np(fd, f.as_ptr(), td, t.as_ptr(), libc::RENAME_EXCL) })
@@ -573,6 +653,10 @@ mod at {
 /// 改名顶掉 `to` 没成时（Windows）：照 [`super::replace_refusal`] 认出「被别的程序开着」⇒ 换成「被占用」那一类（原错包在里面，进复制详情）。
 /// 拒绝访问时探一下：按「删」（改名顶掉要的就是这一项访问权，winnt.h 的 `DELETE` ＝ `0x0001_0000`）打开 `to`、打不开的错号交给判定；探只开不改。
 #[cfg(windows)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "改名没成时按「删」那一项访问权探一下打不打得开：只开不改"
+)]
 fn held_as_busy(e: io::Error, to: &Path) -> io::Error {
     use std::os::windows::fs::OpenOptionsExt as _;
     let Some(code) = e.raw_os_error() else {
