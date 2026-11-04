@@ -14,7 +14,7 @@ path = "lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ssh-dial = { path = "../../../backend/ssh-dial" }
+ssh-dial = { path = "../../../comms/ssh-dial" }
 # 装 / 升级远端后端：判定与编排是桌面后端答 `deploy-plan` 用的同一份（`deploy`），表 A 的键与落点住两份契约。
 deploy = { path = "../../../backend/deploy" }
 deploy-contract = { path = "../../../common/deploy-contract" }

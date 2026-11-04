@@ -2,11 +2,11 @@
 name = "egress"
 version = "0.1.0"
 edition = "2021"
-workspace = ".."
+workspace = "../../backend"
 description = "出网口：这台所有出站 TCP 只在这里开 —— 按一份出网描述直连，或经代理（HTTP CONNECT · SOCKS5，代理鉴权 · 免代理表）。中转与拨号核心链同一份（手机经拨号核心同一份）。"
 
-# 与 ssh-dial · deploy 并列，住后端那棵 workspace（`../Cargo.toml` 的 `[workspace] members`）。
-# 在后端源码树里（`src/backend/`）⇒ 只读 · 零定时器 · 日志白名单这几族扫描型判据照旧管到这里。
+# 与 ssh-dial 并列住通信层目录（`src/comms/`），是后端那棵 workspace 的成员（`../../backend/Cargo.toml` 的 `[workspace] members`）。
+# 也在后端的源码人群里（那边 `[package.metadata.guard] population`）⇒ 只读 · 零定时器 · 日志白名单这几族扫描型判据照旧管到这里。
 # 本 crate 不读环境变量、不碰家目录：描述由宿主照它自己的环境造好、装进来（`install`）。
 [lib]
 path = "lib.rs"

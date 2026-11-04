@@ -300,7 +300,7 @@ mod tests {
             "M\tsrc/mobile/app/src/main/kotlin/X.kt\n",
             "M\tsrc/common/copy-core/src/lib.rs\n",
             "A\tsrc/common/copy-core/src/new_part.rs\n",
-            "M\tsrc/backend/ssh-dial/lib.rs\n",
+            "M\tsrc/comms/ssh-dial/lib.rs\n",
             "M\tsrc/backend/deploy/lib.rs\n",
         ] {
             assert_eq!(

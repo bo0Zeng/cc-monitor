@@ -43,7 +43,7 @@ esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 #   每个后端成员一行（路径照它的目录）；主 crate 那一行排除拆出去的那几个包的目录。
 # shellcheck disable=SC2034  # 两张包表都经 clippy_step 的 nameref 读
-clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/common/ :(exclude)src/backend/plugin/ :(exclude)src/backend/test-meters/ :(exclude)src/backend/agents/ :(exclude)src/backend/relay/ :(exclude)src/backend/stderr_log/ :(exclude)src/backend/wire/ :(exclude)src/backend/dial/ :(exclude)src/backend/host/ :(exclude)src/backend/history/ :(exclude)src/backend/accounts/ :(exclude)src/backend/assets/ :(exclude)src/backend/control/ :(exclude)src/backend/observe/ :(exclude)src/backend/footprint/ :(exclude)src/backend/plan/ :(exclude)src/backend/faces/"
+clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/deploy/ :(exclude)src/backend/platform/ :(exclude)src/backend/common/ :(exclude)src/backend/plugin/ :(exclude)src/backend/test-meters/ :(exclude)src/backend/agents/ :(exclude)src/backend/relay/ :(exclude)src/backend/stderr_log/ :(exclude)src/backend/wire/ :(exclude)src/backend/dial/ :(exclude)src/backend/host/ :(exclude)src/backend/history/ :(exclude)src/backend/accounts/ :(exclude)src/backend/assets/ :(exclude)src/backend/control/ :(exclude)src/backend/observe/ :(exclude)src/backend/footprint/ :(exclude)src/backend/plan/ :(exclude)src/backend/faces/"
   "backend-faces:src/backend/faces/ tests/backend/faces/"
   "backend-plan:src/backend/plan/ tests/backend/plan/"
   "backend-footprint:src/backend/footprint/ tests/backend/footprint/"
@@ -62,7 +62,7 @@ clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backe
   "backend-common:src/backend/common/ tests/backend/common/ tests/backend/heard.rs"
   "backend-plugin:src/backend/plugin/ tests/backend/plugin/ tests/backend/plugin_layer_guard.rs"
   "test-meters:src/backend/test-meters/ tests/backend/alloc_probe.rs tests/backend/alloc_probe_tests.rs tests/backend/golden.rs tests/backend/heard.rs"
-  "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "egress:src/backend/egress/" "mobcore:src/mobile/core-rs/rust/")
+  "ssh-dial:src/comms/ssh-dial/" "deploy:src/backend/deploy/" "egress:src/comms/egress/" "mobcore:src/mobile/core-rs/rust/")
 # 壳那棵 workspace 里带禁用名单的包 → 编进它的路径（连它读的那份 clippy.toml）
 # shellcheck disable=SC2034
 shell_clippy_pkgs=("monitor:src/frontend/shell/ tests/frontend/shell/ src/frontend/clippy.toml" "cc-monitor-filewin:src/frontend/filewin/ tests/frontend/filewin/ src/frontend/clippy.toml" "resident-client:src/comms/resident-client/ tests/comms/resident-client/ src/comms/clippy.toml" "comms-inward:src/comms/inward/ tests/comms/inward/ src/comms/clippy.toml" "comms-outward:src/comms/outward/ tests/comms/outward/")

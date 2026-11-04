@@ -126,7 +126,7 @@ subscribe(origin, kind)    → 流
 ### 2.1 三层
 
 - **前端**：把后端给的东西排版成像素、收手势，并在用户面前开终端窗口。不做判定、不拼命令串、不缓存业务数据。桌面界面状态只有一份 pub-sub：`app-store.ts` 的 `Slice`（当前机器 · 账号快照 · 当前 tab），tab 那一层是 `tab-store.ts` ＋ `tab-router.ts`，overlay 视图的开关收在 `overlay-router.ts`。
-- **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。
+- **通信层**：搬字节，零业务判断。面 A 是前端 ↔ 各处后端（按 `origin` 寻址，住 `src/comms/inward/`）；面 B 是 agent ↔ 上游 API，也就是中转（按路径前缀寻址，住 `src/comms/outward/`）。它不读盘、不起进程、不绑端口，凭据与端口由后端交给它。同住这一层的还有两个包，都是后端那棵 workspace 的成员、后端只是它们的一个用户：拨号核心 `src/comms/ssh-dial/`（竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；手机 `mobcore` 链同一份，后端的 `dial/` 在它上面）与出网口 `src/comms/egress/`（这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理：HTTP CONNECT · SOCKS5；中转与拨号核心链同一份）。拨号核心今天还有两处没守住上面那三条：桌面那一形按路径读钥匙文件（`env.rs` 的 `KeyFiles`），端口转发在本机自己绑口（`uses.rs` 的 `Use::Forward`）。
 - **后端**：其余一切干活的——读会话、起进程、动 tmux、拨 SSH、管资产、管账号、写用户的文件。
 
 ### 2.2 后端：一份代码、两种承载
@@ -147,9 +147,7 @@ subscribe(origin, kind)    → 流
 - `plugin/`：调外部程序的口（找 · 问 · 起 · 收），cc-bus 那一族命令经它起。
 - `relay/`：中转的宿主（门 · 监听 · 根钥匙）；中转本体是通信层面 B。
 - `dial/`：SSH（连接池 · 链路 · SFTP · 问远端后端 · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
-- `ssh-dial/`：拨号核心（独立 crate，后端与手机同一份）：竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；`dial/` 在它上面。
 - `deploy/`：装 / 升级远端后端的判定与编排（独立 crate，桌面后端答 `deploy-plan` 与手机 `mobcore` 同一份）：那台要哪一格 · 落点那一份是谁 · 只升不降 · 残件 · 常驻那一份旧不旧。
-- `egress/`：出网口（独立 crate）：这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理（HTTP CONNECT · SOCKS5）；中转与拨号核心链同一份。
 - `test-meters/`：测试档的量具（独立 crate，只在各包的 dev 侧）：线程级内存量具 · 金样比对 · 听 `tracing` 说了什么；体住 `tests/backend/`。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）；会话血缘（谁起的谁，`history/lineage.rs`）也住这里（独立的包 `backend-history`）。
@@ -376,7 +374,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `core-claude` | `link/`：那台常驻流交来的事（会话簿 · 活卡 · 记录行 · 一问一答的结局 · 那台的状态成品）落成手机这一侧的几条流（`CoreLink`）；接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`（桌面同一份）；`model/` 把通用记录映射成渲染单元 |
 | `core-wire` | 线上契约的 Kotlin 那一头：生成的类与编解码（`gen/`，不手改），不放判定 |
 | `core-ssh` | 终端 · 文件走的那层 SSH 连接（按机器单飞）与 `RustTransport`：SSH 本身走 `core-rs`；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接 |
-| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里；常驻流宿主（`resident.rs`，会话簿照端核心那一份折好再交）· 装后端（`install.rs`，同一份 `deploy` crate）· 分块传与一组一条命令（`transfer.rs` · `batch.rs`，桌面文件窗口同一份） |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里；常驻流宿主（`resident.rs`，会话簿照端核心那一份折好再交）· 装后端（`install.rs`，同一份 `deploy` crate）· 分块传与一组一条命令（`transfer.rs` · `batch.rs`，桌面文件窗口同一份） |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-data` | 本地库（Room） |
 | `core-ui` | 共用主题与反馈 |

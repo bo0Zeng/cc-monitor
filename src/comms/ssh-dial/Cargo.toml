@@ -2,10 +2,10 @@
 name = "ssh-dial"
 version = "0.1.0"
 edition = "2021"
-workspace = ".."
+workspace = "../../backend"
 description = "拨号核心：竞速 · 跳板（多跳）· host key 判定 · 鉴权（钥匙 · agent · 外部签名器 · 密码）· 保活 · 按身份复用 · 开 channel 之后的几种用法（含 PTY）· SFTP 客户端。后端与手机同一份。"
 
-# 住后端那棵 workspace（`../Cargo.toml` 的 `[workspace] members`）：同一份 lock、同一个 russh（crates.io 上游那一份）。
+# 住通信层目录（`src/comms/`），是后端那棵 workspace 的成员（`../../backend/Cargo.toml` 的 `[workspace] members`）：同一份 lock、同一个 russh（crates.io 上游那一份）。
 # 也在后端的源码人群里（那边 `[package.metadata.guard] population`）⇒ 只读 · 零定时器 · 日志白名单这几族扫描型判据照旧管到这里。
 # 平台的事从三个口进（`env.rs`：钥匙从哪来 · 认下的 host key 记到哪 · ssh-agent）；本 crate 不碰家目录、不读环境变量。
 [lib]
