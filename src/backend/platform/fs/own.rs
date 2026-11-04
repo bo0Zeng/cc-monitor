@@ -175,12 +175,20 @@ impl Own {
 
     /// 删一份文件（不删目录）。方法名刻意不叫 `remove_file` / `rename`：那两个方法形是远端写那一层动词网的锚点
     /// （`readonly_guard::remote_write_layer`），本机这一层同名会被认成第二份远端写。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "自家状态的写：删 `Own` 发的那一份"
+    )]
     pub fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
         std::fs::remove_file(&path.0)
     }
 
     /// 收掉一个自家目录：里面那一层的文件（套接字 · 事实文件 · 旁名）删掉，再删目录本身；不往下钻（里面有子目录 ⇒ 删目录那一下照实报错）。
     /// `held` 必须是这个目录自己的锁（托管终端收尾时攥着的那一把），不是 ⇒ 拒、一个字节不动。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "自家状态的写：收掉 `Own` 发的那一个自家目录（攥着它自己的锁）"
+    )]
     pub fn clear_dir(&self, dir: &OwnPath, held: &OwnLock) -> std::io::Result<()> {
         if held.dir != dir.0 {
             return Err(std::io::Error::new(
@@ -200,6 +208,10 @@ impl Own {
     /// 把暂存区里的一份（`~/.cc-monitor/staging/<name>`，`name` 只许一段名字）原子换进后端落点（`~/.cc-monitor/bin/ccm`）：
     /// 落点那层目录不在就建（0700），再 `rename(2)` 盖掉旧的（同在 `~/.cc-monitor` 下 ⇒ 同一块盘，落点在换的全程都在）。
     /// Windows 远端不承诺 ⇒ `Unsupported`。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "自家状态的写：暂存区那一份换进后端落点，两头都在 `~/.cc-monitor` 下"
+    )]
     pub fn place_staged(&self, name: &str) -> std::io::Result<()> {
         if cfg!(windows) {
             return Err(std::io::ErrorKind::Unsupported.into());
@@ -225,6 +237,7 @@ impl Own {
 
 impl Own {
     /// 删掉后端落点那一份（`~/.cc-monitor/bin/ccm`；是链接就删链接本身，不跟）：删了 ⇒ `true`，本来不在 ⇒ `false`。卸载那一趟用。
+    #[expect(clippy::disallowed_methods, reason = "自家状态的写：删后端落点那一份")]
     pub fn clear_landing(&self) -> std::io::Result<bool> {
         let landing = self
             .at_home(relay_route_core::BACKEND_LANDING_REL)
@@ -383,6 +396,10 @@ impl AccountCreds {
     }
 
     /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；名字不是一段名字 ⇒ `Err`。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "凭据窄句柄续期那把 `mkdir` 锁：建一层锁目录（那一家定的锁协议）"
+    )]
     pub fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
         if let RenewLock::OneLogin(n) = which {
             if !one_name(n) {
@@ -400,6 +417,10 @@ impl AccountCreds {
     }
 
     /// 删那一把锁目录（只删空目录）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "凭据窄句柄续期那把 `mkdir` 锁：删空的锁目录"
+    )]
     pub fn drop_lock(&self, which: &RenewLock) -> std::io::Result<()> {
         match self.lock_path(which) {
             Some(p) => std::fs::remove_dir(p),
@@ -444,6 +465,10 @@ impl DiagLog {
     }
 
     /// 当前那份原子挪成旧的：挪了 ⇒ `true`；当前那份不在 ⇒ `false`。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "诊断文件窄句柄：当前那份挪成旧的（同目录两个名字）"
+    )]
     pub fn roll(&self) -> std::io::Result<bool> {
         match std::fs::rename(&self.cur, &self.old) {
             Ok(()) => Ok(true),
@@ -453,6 +478,10 @@ impl DiagLog {
     }
 
     /// 诊断文件的打开选项与落地：unix 上 0600（只给本人）。两口共用这一处。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "诊断文件窄句柄：`O_EXCL` 新建 · 只追加两种开法（0600）"
+    )]
     fn open_cur(&self, create_new: bool, append: bool) -> std::io::Result<DiagFile> {
         let mut o = std::fs::OpenOptions::new();
         if create_new {
@@ -512,6 +541,13 @@ fn create_dir_private(dir: &Path) -> std::io::Result<()> {
 /// 两种写句柄都经这里：`Own` 发的路径（[`Own::own_dir`]：门牌那一层 · 换装锁）· 文件管理面的暂存区（`Face::own_dir`）——
 /// 收在两者共用的这一层，不收进哪一个句柄。远端那一份（`ssh-dial/sftp.rs::own_root`）是同一条规矩的 SFTP 版（不是链接 · 解开仍在家下）。
 /// 非 unix：只核链接与目录（属主 · 权限位那两问在 Windows 上是 ACL，这里不量）。
+#[cfg_attr(
+    unix,
+    expect(
+        clippy::disallowed_methods,
+        reason = "后端自家目录组 / 他人有权 ⇒ 收回 0700（收紧，不丢东西）"
+    )
+)]
 pub(crate) fn own_dir(dir: &Path) -> Result<(), Said> {
     let shown = dir.display().to_string();
     let io = |e: std::io::Error| {

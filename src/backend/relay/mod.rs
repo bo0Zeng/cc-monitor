@@ -83,6 +83,10 @@ fn open_by(
 /// 判据用的钥匙 · tee 落点 · 监听那几样（本包与上层的测试共用）。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/relay/relay_support.rs"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "测试档夹具在沙箱目录里写钥匙与 tee 落点（同各包测试段放开碰盘）"
+)]
 pub mod test_support;
 
 // ── 判据：读的是中转 crate 与上游选择的源码；引到账号域的挂 `accounts/mod.rs`，引到更上层的挂主 crate（`tests/backend/cross/relay.rs`）──

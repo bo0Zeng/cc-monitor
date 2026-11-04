@@ -443,6 +443,8 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 | 后端自有状态文件 | 按文件登记（第四层表，相等断言） | 每份只写它自己那一个文件 |
 | 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload`；换进 `~/.cc-monitor/bin/` · 卸载由传上去的那一份在那台上自己做（`--place-self` · `--unplace-self`） |
 
+碰盘只经 `platform/fs/`：`std::fs` · `tokio::fs` 的各函数与开法、`os::unix::fs` 的建链接 · 改属主与扩展特征上那几样、`libc` 按路径或 `*at` 改盘的系统调用列在 `src/backend/clippy.toml` 碰盘那一组（deny），只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行。只在 clippy 里红；名单认不出的几形写在那份 toml 的头注里。
+
 删历史会话（`files-delete-session`）那一道单列：只收 sid、必须是一份会话记录，`readonly_guard::the_file_manager_face_never_asks_the_session_shape` 钉着「问会话形状的只有删会话那三处」。TOCTOU（判定与动手之间的窗）未闭合，如实登记。
 
 **为什么不能松动**：写的能力被钉在几个可审计的洞里，「后端会写盘」不可能悄悄扩散到第二个模块。

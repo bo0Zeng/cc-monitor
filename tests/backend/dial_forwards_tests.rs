@@ -168,9 +168,18 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
         &reach,
         &ledger,
         |_r, _port, _u, mut down| async move {
-            let _ = down
-                .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"port 15432 in use\",\"uses\":[]}\n")
-                .await;
+            // 照拨号核心写的那一形回：`DialAck::of_fail` 序列化成一行。
+            let ack = ssh_dial::DialAck::of_fail(ssh_dial::DialFail {
+                said: "port 15432 in use".to_string(),
+                detail: None,
+                fingerprint: None,
+                reason: None,
+                key_type: None,
+                expected_fingerprint: None,
+            });
+            let mut row = serde_json::to_vec(&ack).unwrap();
+            row.push(b'\n');
+            let _ = down.write_all(&row).await;
         },
     )
     .await
