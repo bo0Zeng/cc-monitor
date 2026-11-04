@@ -16,9 +16,9 @@
 #   `read_window`：标准库的 `read_to_end` · `read_to_string` 读到流尽才停、没有上限。后端里一处都不放行（那一份住 `relay-route-core`）。
 # 碰盘只经 `platform/fs`（读走 `Ro`，写拿 `Face` · `NewFile` · `Own`）：`std::fs` · `tokio::fs` 的各函数与开法、`os::unix::fs` ·
 #   `os::windows::fs` 的建链接 · 改属主与扩展特征上那几样、`libc` 按路径或 `*at` 改盘的系统调用，只在 `platform/fs/` 那三份
-#   （`ro` · `face` · `own`）逐处放行；判据 `readonly_guard` 不再扫这一面的文本。认不出的：`Path` 上的读方法（`exists` · `is_dir` …，只读）·
-#   `File::from(OwnedFd)` 这类经 `From` 的换法（要先有一个描述符）· `libc::syscall` 裸调（`SYS_renameat2` 那一形；名单上禁它会连
-#   `pidfd_send_signal` 一起禁）· 手写 `extern` 声明。只在 clippy 里红（`cargo test` 不红）；Windows 那几臂由门禁 `winchk-backend` 那一格看。
+#   （`ro` · `face` · `own`）逐处放行；这一面只由本名单守（`readonly_guard` 不扫它的文本）。认不出的：`Path` 上的读方法（`exists` · `is_dir` …，只读）·
+#   `File::from(OwnedFd)` 这类经 `From` 的换法（要先有一个描述符）· `libc::syscall` 裸调（`libc::SYS_renameat2` 那一形；名单上禁它会连
+#   `libc::SYS_pidfd_send_signal` 那一发一起禁）· 手写 `extern` 声明。只在 clippy 里红（`cargo test` 不红）；Windows 那几臂由门禁 `winchk-backend` 那一格看。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管 `src/backend/` 底下的各包（各自的 `[lints.clippy]` 定成 deny）；拨号核心 · 出网口住 `src/comms/`，读那边那一份。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
