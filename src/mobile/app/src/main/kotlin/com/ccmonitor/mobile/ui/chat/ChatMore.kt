@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.AutoAnswerSet
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.InSessionFind
 import com.ccmonitor.mobile.core.claude.link.LineStart
@@ -252,11 +252,11 @@ class ChatMore(
     fun setAuto(min: Int) {
         val s = sid() ?: return
         scope.launch {
-            val r = link.call(AutoAnswerSet.COMMAND, AutoAnswerSet.args(s, min), READ_MS)
+            val r = link.call(HistoryAnnotate.COMMAND, HistoryAnnotate.autoAnswer(s, min), READ_MS)
             if (r is Reply.Ok) {
                 put { it.copy(auto = null) }
             } else {
-                put { it.copy(note = r.problem(machine, AutoAnswerSet.COMMAND, link.offline.value)?.text) }
+                put { it.copy(note = r.problem(machine, HistoryAnnotate.COMMAND, link.offline.value)?.text) }
             }
         }
     }

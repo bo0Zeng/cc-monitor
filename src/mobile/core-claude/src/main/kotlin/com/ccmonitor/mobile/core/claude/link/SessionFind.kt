@@ -51,19 +51,6 @@ object LineStart {
     fun of(data: Any?): Long? = Commands.HistoryLines.reply(data)?.end
 }
 
-/**
- * 「无人答时自动答」那一格（`history-annotate {patch: {autoAnswer}}`）：等 `min` 分钟没人答就替人答，`0` ＝ 关；替人答的那一句不动。
- * 改完那台推 `changed {needs}`，会话事实跟着重读（几档 · 此刻那一档照 `history-facts` 的 `autoAnswerChoices` · `autoAnswer`）。
- */
-object AutoAnswerSet {
-    const val COMMAND: String = Commands.HistoryAnnotate.NAME
-
-    fun args(
-        sid: String,
-        min: Int,
-    ): Map<String, Any?> = mapOf("sid" to sid, "patch" to mapOf("autoAnswer" to mapOf("afterMin" to min)))
-}
-
 /** `sessions-stop`：结束这几条会话（逐个答，一个不成不挡下一个）；不成的那一项带那台写好的那一句。 */
 object SessionsStop {
     const val COMMAND: String = Commands.SessionsStop.NAME

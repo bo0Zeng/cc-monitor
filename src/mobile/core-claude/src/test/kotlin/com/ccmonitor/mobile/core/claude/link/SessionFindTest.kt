@@ -49,7 +49,7 @@ class SessionFindTest {
 
     @Test
     fun `自动答那一格：交 patch_autoAnswer_afterMin（0 ＝ 关），那一句不带`() {
-        assertEquals(mapOf("sid" to "s", "patch" to mapOf("autoAnswer" to mapOf("afterMin" to 5))), AutoAnswerSet.args("s", 5))
-        assertEquals(mapOf("sid" to "s", "patch" to mapOf("autoAnswer" to mapOf("afterMin" to 0))), AutoAnswerSet.args("s", 0))
+        assertEquals(mapOf("sid" to "s", "patch" to mapOf("autoAnswer" to mapOf("afterMin" to 5))), HistoryAnnotate.autoAnswer("s", 5))
+        assertEquals(mapOf("sid" to "s", "patch" to mapOf("autoAnswer" to mapOf("afterMin" to 0))), HistoryAnnotate.autoAnswer("s", 0))
     }
 }

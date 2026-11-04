@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.AutoAnswerSet
+import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsStop
 import com.ccmonitor.mobile.ui.Faces
@@ -149,7 +149,7 @@ class ChatMoreTest {
             assertEquals(5, a.now)
             o.more.setAuto(0)
             runCurrent()
-            assertEquals(listOf(AutoAnswerSet.args("s1", 0)), o.link.calls(AutoAnswerSet.COMMAND))
+            assertEquals(listOf(HistoryAnnotate.autoAnswer("s1", 0)), o.link.calls(HistoryAnnotate.COMMAND))
             assertNull("交成了就收起", o.more.state.value.auto)
         }
 
