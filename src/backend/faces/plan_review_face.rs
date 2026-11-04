@@ -68,10 +68,10 @@ fn unack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
 
 /// `plan-ack` · `plan-unack` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanAckReq {
+pub struct PlanAckReq {
     /// 工作区根。
     pub(crate) workspace: String,
     /// 片名。
@@ -82,7 +82,7 @@ pub(crate) struct PlanAckReq {
 
 typed::codes! {
     /// `plan-ack` 的码。
-    pub(crate) enum PlanAckErr {
+    pub enum PlanAckErr {
         IoFailed = "io_failed",
         NoSuchNeed = "no_such_need",
         NotAckable = "not_ackable",
@@ -93,7 +93,7 @@ typed::codes! {
 
 typed::codes! {
     /// `plan-unack` 的码（没有也不算错）。
-    pub(crate) enum PlanUnackErr {
+    pub enum PlanUnackErr {
         IoFailed = "io_failed",
         NotRead = "not_read",
         ReviewUnreadable = "review_unreadable",
@@ -101,7 +101,7 @@ typed::codes! {
 }
 
 /// `plan-ack`：认可一条要你看（读—改—写后端自己那份小文件 ⇒ 阻塞档、写自家状态）。
-pub(crate) struct PlanAckCmd;
+pub struct PlanAckCmd;
 
 impl Command for PlanAckCmd {
     const NAME: &'static str = "plan-ack";
@@ -112,17 +112,13 @@ impl Command for PlanAckCmd {
 
 impl Handle for PlanAckCmd {
     type Needs = typed::needs::Own;
-    fn run(
-        req: PlanAckReq,
-        cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanAckErr>> + Send + 'static
-    {
-        async move { ack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanAckErr::IoFailed)) }
+    async fn run(req: PlanAckReq, cx: Cx<Self::Needs>) -> Result<wire::PlanAckReply, PlanAckErr> {
+        ack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanAckErr::IoFailed))
     }
 }
 
 /// `plan-unack`：撤掉一条认可（同上）。
-pub(crate) struct PlanUnackCmd;
+pub struct PlanUnackCmd;
 
 impl Command for PlanUnackCmd {
     const NAME: &'static str = "plan-unack";
@@ -133,12 +129,8 @@ impl Command for PlanUnackCmd {
 
 impl Handle for PlanUnackCmd {
     type Needs = typed::needs::Own;
-    fn run(
-        req: PlanAckReq,
-        cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanUnackErr>> + Send + 'static
-    {
-        async move { unack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanUnackErr::IoFailed)) }
+    async fn run(req: PlanAckReq, cx: Cx<Self::Needs>) -> Result<wire::PlanAckReply, PlanUnackErr> {
+        unack(&req, &cx.needs).map_err(|f| typed::of_fail(f, PlanUnackErr::IoFailed))
     }
 }
 

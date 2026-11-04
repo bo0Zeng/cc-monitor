@@ -100,7 +100,7 @@ impl Host for Prod {
 }
 
 /// `session-restart`：换号重启。可撤档（步与步之间撤单生效；停旧 ＋ 起新不可分，开跑之后撤也做完）。
-pub(crate) struct SessionRestart;
+pub struct SessionRestart;
 
 impl crate::wire::typed::Command for SessionRestart {
     const NAME: &'static str = "session-restart";

@@ -64,10 +64,10 @@ pub(crate) const LOG_TAIL_BYTES: relay_route_core::Cap = relay_route_core::Cap {
     over: relay_route_core::Over::TruncateAndSay,
 };
 
-/// 本进程的 stderr 此刻落在哪份文件（`main.rs` 装上之后交进来；没装 ⇒ 空）。
+/// 本进程的 stderr 此刻落在哪份文件（进程入口装上之后交进来；没装 ⇒ 空）。
 static BACKEND_LOG: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
-/// `main.rs` 装上 stderr 诊断文件之后调一次（诊断文件的门在那里，本模块只读它）。
+/// 进程入口（`stream/entry.rs`）装上 stderr 诊断文件之后调一次（诊断文件的门在那里，本模块只读它）。
 pub fn note_backend_log(path: std::path::PathBuf) {
     BACKEND_LOG.set(path).discard(Why::SetOnce);
 }
@@ -114,9 +114,9 @@ pub(crate) fn log_tail(
 
 /// `backend-log` 的应答：这台后端 stderr 诊断文件的尾部。
 #[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LogTail {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LogTail {
     /// 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`。
     pub(crate) path: Option<String>,
     /// 那份文件的总大小，写好的字（`copy_core::size_text`）；没装 ⇒ `null`。
@@ -129,25 +129,25 @@ pub(crate) struct LogTail {
 
 /// `backend-log` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct BackendLogReq {
+pub struct BackendLogReq {
     /// 只回尾部这么多字节；缺 ⇒ 封顶 256 KiB（给多了也照封顶）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable, type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable, type = "number"))]
     pub(crate) max_bytes: Option<u64>,
 }
 
 crate::wire::typed::codes! {
     /// `backend-log` 的码：那份文件读不了。
-    pub(crate) enum BackendLogErr {
+    pub enum BackendLogErr {
         Failed = "failed",
     }
 }
 
 /// `backend-log`：这台后端的 stderr 诊断文件尾部（读一份文件 ⇒ 阻塞档）。
-pub(crate) struct BackendLog;
+pub struct BackendLog;
 
 impl crate::wire::typed::Command for BackendLog {
     const NAME: &'static str = "backend-log";
@@ -158,27 +158,25 @@ impl crate::wire::typed::Command for BackendLog {
 
 impl crate::wire::typed::Handle for BackendLog {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: BackendLogReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<LogTail, BackendLogErr>> + Send + 'static {
-        async move {
-            let max = req
-                .max_bytes
-                .map_or(LOG_TAIL_BYTES.bytes, |n| n.min(LOG_TAIL_BYTES.bytes));
-            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-                .map_err(crate::wire::typed::of_fail_with(BackendLogErr::Failed))
-        }
+    ) -> Result<LogTail, BackendLogErr> {
+        let max = req
+            .max_bytes
+            .map_or(LOG_TAIL_BYTES.bytes, |n| n.min(LOG_TAIL_BYTES.bytes));
+        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
+            .map_err(crate::wire::typed::of_fail_with(BackendLogErr::Failed))
     }
 }
 
 crate::wire::typed::codes! {
     /// `drift-report` 没有别的码。
-    pub(crate) enum DriftReportErr {}
+    pub enum DriftReportErr {}
 }
 
 /// `drift-report`：这台后端的漂移账（看不懂的记录类型），各家的面并在一起、注册序（纯内存读一把锁，同 `forward-list`）。
-pub(crate) struct DriftReportCmd;
+pub struct DriftReportCmd;
 
 impl crate::wire::typed::Command for DriftReportCmd {
     const NAME: &'static str = "drift-report";
@@ -202,8 +200,8 @@ impl crate::wire::typed::Handle for DriftReportCmd {
 
 /// `drift-merge` 的一台：那台的漂移账（`drift-report` 的回包原样）；问不到 ⇒ `null`。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub(crate) struct DriftOn {
     /// 那台的键（本机 `<local>`，别的台是机器表里的名字）。
     pub(crate) origin: String,
@@ -212,20 +210,20 @@ pub(crate) struct DriftOn {
 
 /// `drift-merge` 的回包：本机在前，其余照机器表的顺序。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct DriftMerge {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct DriftMerge {
     pub(crate) machines: Vec<DriftOn>,
 }
 
 crate::wire::typed::codes! {
     /// `drift-merge` 没有别的码。
-    pub(crate) enum DriftMergeErr {}
+    pub enum DriftMergeErr {}
 }
 
 /// `drift-merge`：本机与机器表里每台的漂移账（诊断信息要的那一份）。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问
 /// `drift-report`（`control/feeds.rs::call`），同时问、并好再答（[`drift_hub`]）。只读；读机器表进阻塞池。
-pub(crate) struct DriftMergeCmd;
+pub struct DriftMergeCmd;
 
 impl crate::wire::typed::Command for DriftMergeCmd {
     const NAME: &'static str = "drift-merge";
@@ -313,13 +311,13 @@ where
 
 crate::wire::typed::codes! {
     /// `accounts-list` 的码：整份超过一帧装得下的。
-    pub(crate) enum AccountsListErr {
+    pub enum AccountsListErr {
         TooLarge = "too_large",
     }
 }
 
 /// `accounts-list`：账号清单，并上这台机器自己那份 apikey 表（读 manifest ＋ 每个号 stat 一下 ⇒ 阻塞档）。
-pub(crate) struct AccountsListCmd;
+pub struct AccountsListCmd;
 
 impl crate::wire::typed::Command for AccountsListCmd {
     crate::wire::typed::by_call!(cmd_wire::accounts::AccountsListReq);
@@ -328,42 +326,37 @@ impl crate::wire::typed::Command for AccountsListCmd {
 
 impl crate::wire::typed::Handle for AccountsListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: crate::observe::accounts_query::AccountsListReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::accounts_query::AccountsList, AccountsListErr>,
-    > + Send
-           + 'static {
-        async move {
-            let (kind, _) = crate::agents::pick_kind(Some(req.agent.as_str()))
-                .map_err(AccountsListErr::BadArgs)?;
-            let agent = crate::agents::pick_route(Some(&req.agent))
-                .map_err(AccountsListErr::BadArgs)?
-                .id();
-            let rows = crate::accounts::upstream_select::file_face::machine_rows();
-            let mut v = crate::observe::accounts_query::list_product(
-                &rows,
-                agent,
-                crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-                crate::relay::our_relay_listening(relay_route_core::PORT),
-            );
-            let quota = crate::faces::rotation_face::quota_read_with(
-                &crate::faces::rotation_face::Ctx::here(),
-                crate::common::time::now_secs(),
-                &cx.tz,
-            );
-            with_quota(&mut v, &quota, kind);
-            crate::observe::accounts_query::with_sign_in(
-                &mut v,
-                crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
-            );
-            let size = serde_json::to_string(&v).map_or(0, |t| t.len());
-            if size > LINES_CAP_BYTES.as_len() {
-                return Err(AccountsListErr::TooLarge(too_large(size).said));
-            }
-            Ok(v)
+    ) -> Result<crate::observe::accounts_query::AccountsList, AccountsListErr> {
+        let (kind, _) =
+            crate::agents::pick_kind(Some(req.agent.as_str())).map_err(AccountsListErr::BadArgs)?;
+        let agent = crate::agents::pick_route(Some(&req.agent))
+            .map_err(AccountsListErr::BadArgs)?
+            .id();
+        let rows = crate::accounts::upstream_select::file_face::machine_rows();
+        let mut v = crate::observe::accounts_query::list_product(
+            &rows,
+            agent,
+            crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+            crate::relay::our_relay_listening(relay_route_core::PORT),
+        );
+        let quota = crate::faces::rotation_face::quota_read_with(
+            &crate::faces::rotation_face::Ctx::here(),
+            crate::common::time::now_secs(),
+            &cx.tz,
+        );
+        with_quota(&mut v, &quota, kind);
+        crate::observe::accounts_query::with_sign_in(
+            &mut v,
+            crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
+        );
+        let size = serde_json::to_string(&v).map_or(0, |t| t.len());
+        if size > LINES_CAP_BYTES.as_len() {
+            return Err(AccountsListErr::TooLarge(too_large(size).said));
         }
+        Ok(v)
     }
 }
 
@@ -385,31 +378,31 @@ pub(crate) fn with_quota(
 
 /// `machine-interrupts` 的入参。
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct MachineInterruptsReq {
+pub struct MachineInterruptsReq {
     /// 停的是哪台：别的台 ⇒ 这台后端经那台的常驻流问它自己那一份（会话三格）、再数自己账上通往它的转发；缺 · 本机 ⇒ 只答这台。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) machine: Option<String>,
     /// `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) app_exit: Option<bool>,
     /// 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) machines: Option<Vec<cmd_wire::Machine>>,
 }
 
 /// `machine-interrupts` 的回包：会话三格 ＋ 转发（[`crate::observe::accounts_query::Interrupts`] 那几格）；
 /// 问的是别的台而那台问不到 ⇒ `relayedSessions` 是 `null`（说不清，不当成 0），另两格 0，转发照这台账上的数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MachineInterruptsReply {
+pub struct MachineInterruptsReply {
     pub(crate) relayed_sessions: Option<u32>,
     pub(crate) relayed_maybe: u32,
     pub(crate) live_streams: u32,
@@ -429,13 +422,13 @@ impl From<crate::observe::accounts_query::Interrupts> for MachineInterruptsReply
 
 crate::wire::typed::codes! {
     /// `machine-interrupts` 没有别的码。
-    pub(crate) enum MachineInterruptsErr {}
+    pub enum MachineInterruptsErr {}
 }
 
 /// `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
 /// 那台的活会话经不经本机中转 · 活着的几个 · 这台账上通往那台的转发。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问到
 /// （`control/feeds.rs::call`）、并好再答（[`interrupts_hub`]）。只读；这台自己那一份读 pidfile ⇒ 进阻塞池。
-pub(crate) struct MachineInterrupts;
+pub struct MachineInterrupts;
 
 impl crate::wire::typed::Command for MachineInterrupts {
     const NAME: &'static str = "machine-interrupts";
@@ -599,7 +592,7 @@ pub(crate) fn record_face(
 /// 读那一份记录的读法：适配层 ＋ 看的那一台的时区。
 pub(crate) fn reader<'a>(
     face: &'a crate::agents::RecordFace,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> crate::observe::query::body::Reader<'a> {
     crate::observe::query::body::Reader::new(face, tz.clone())
 }
@@ -618,6 +611,11 @@ pub(crate) fn too_large_at(size: usize, cap: usize) -> crate::common::said::Said
         ),
     )
 }
+
+// 按命令名问本族 · 本族点名的那几条：本宿主的判据与主 crate 里引到命令表的那几条读。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/faces/read_face_support.rs"]
+pub mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]

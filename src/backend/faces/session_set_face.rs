@@ -83,7 +83,7 @@ fn is_dir(d: &str) -> bool {
 }
 
 /// `set-plan`：只读不写（读配置文件 · 活会话表 · 启动台账 ⇒ 阻塞档，带文件面）。
-pub(crate) struct SetPlanCmd;
+pub struct SetPlanCmd;
 
 impl Command for SetPlanCmd {
     const NAME: &'static str = "set-plan";
@@ -122,7 +122,7 @@ fn open_req(
 ) -> Result<open::SessionOpenReq, Failed> {
     let resolved =
         crate::assets::aliases::profile::resolve(book, &r.alias, &[]).map_err(refused_launch)?;
-    let crate::ccm_line::argv::Parsed::Opts(o) = resolved.parsed else {
+    let crate::host::ccm_line::argv::Parsed::Opts(o) = resolved.parsed else {
         return Err(refused_launch(copy_core::copy_text(
             "beSessionSet.alias.missing",
             &[("alias", &r.alias)],
@@ -363,7 +363,7 @@ fn req_agent(req: &open::SessionOpenReq) -> String {
 
 crate::wire::typed::codes! {
     /// `set-launch` 的码：没有那一组 · 那一组写错或配置文件读不了（那一句说清哪一样）。一条起不成不算整条失败（记在那一行里）。
-    pub(crate) enum SetLaunchErr {
+    pub enum SetLaunchErr {
         /// 这台没有 tmux（一组只起在 tmux 里）。
         NoTmux = "no_tmux",
         NoSuchSet = "no_such_set",
@@ -372,7 +372,7 @@ crate::wire::typed::codes! {
 }
 
 /// `set-launch`：照存好的那一组补足、逐条起（写组注解 · 起会话 ⇒ 阻塞档，带文件面与写句柄）。
-pub(crate) struct SetLaunchCmd;
+pub struct SetLaunchCmd;
 
 impl Command for SetLaunchCmd {
     const NAME: &'static str = "set-launch";

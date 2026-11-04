@@ -122,7 +122,7 @@ pub(crate) fn return_with(
 fn give_back(req: &PlanReturnReq, own: &crate::platform::fs::Own) -> Answer {
     let ws = req.workspace.as_str();
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
-    let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
+    let doc = crate::faces::plan_face::read_fresh(ws, &crate::common::time::Tz::default())?;
     let put = |r: &SessionQueuePutReq| {
         use super::session_queue_face as face;
         let got = face::put_here(
@@ -142,10 +142,10 @@ fn give_back(req: &PlanReturnReq, own: &crate::platform::fs::Own) -> Answer {
 
 /// `plan-return` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanReturnReq {
+pub struct PlanReturnReq {
     /// 工作区根。
     pub(crate) workspace: String,
     /// 片名。
@@ -156,21 +156,21 @@ pub(crate) struct PlanReturnReq {
     pub(crate) text: String,
     /// `owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable, type = "\"owner\" | \"signer\""))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable, type = "\"owner\" | \"signer\""))]
     pub(crate) to: Option<String>,
     /// 自报的前端（投进队的那一条记作发自它；投递时过 `terminal-input` 那一道身份门）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) client: Option<String>,
     /// `true` ⇒ 目标会话已结束时照投（投递时在这台恢复它、这一行当它的第一句；人点了［恢复并退回］）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) resume: Option<bool>,
 }
 
 typed::codes! {
     /// `plan-return` 的码：现读计划（起 pb）· 判目标 · 投进那条会话的输入队 · 记一条退回。
-    pub(crate) enum PlanReturnErr {
+    pub enum PlanReturnErr {
         AttachmentGone = "attachment_gone",
         ChildTimedOut = "child_timed_out",
         Failed = "failed",
@@ -188,7 +188,7 @@ typed::codes! {
 }
 
 /// `plan-return`：把人的话投给负责那一格的会话（起 pb ⇒ 阻塞档；投进队 · 记退回写自家状态）。
-pub(crate) struct PlanReturnCmd;
+pub struct PlanReturnCmd;
 
 impl Command for PlanReturnCmd {
     const NAME: &'static str = "plan-return";
@@ -199,16 +199,12 @@ impl Command for PlanReturnCmd {
 
 impl Handle for PlanReturnCmd {
     type Needs = typed::needs::Own;
-    fn run(
+    async fn run(
         req: PlanReturnReq,
         cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<cmd_wire::plan::PlanReturnReply, PlanReturnErr>>
-           + std::marker::Send
-           + 'static {
-        async move {
-            let (_, own) = cx.split();
-            give_back(&req, &own).map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
-        }
+    ) -> Result<cmd_wire::plan::PlanReturnReply, PlanReturnErr> {
+        let (_, own) = cx.split();
+        give_back(&req, &own).map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
     }
 }
 

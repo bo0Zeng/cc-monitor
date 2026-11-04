@@ -6,11 +6,11 @@ pub(crate) use cmd_wire::rotation::{RotationFactsReply, RotationFactsReq};
 
 crate::wire::typed::codes! {
     /// `rotation-facts` 自己的码（只有入参不对那一种）。
-    pub(crate) enum RotationFactsErr {}
+    pub enum RotationFactsErr {}
 }
 
 /// `rotation-facts`：读额度账与账号库 ⇒ 阻塞档。
-pub(crate) struct RotationFacts;
+pub struct RotationFacts;
 
 impl Command for RotationFacts {
     crate::wire::typed::by_call!(RotationFactsReq);
@@ -39,7 +39,7 @@ pub(crate) fn facts_with(
     ctx: &crate::faces::rotation_face::Ctx,
     req: &RotationFactsReq,
     now: u64,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<RotationFactsReply, RotationFactsErr> {
     let agent = match &req.agent {
         None => crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,

@@ -24,10 +24,10 @@ use serde::Serialize;
 
 /// `session-window` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SessionWindowReq {
+pub struct SessionWindowReq {
     /// 会话所在那台（本机 ⇒ `<local>`）。
     pub(crate) machine: cmd_wire::Machine,
     /// 会话 id。
@@ -36,25 +36,25 @@ pub(crate) struct SessionWindowReq {
 
 /// `session-window` 的应答。
 #[derive(Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionWindow {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionWindow {
     /// 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
-    #[cfg_attr(test, ts(type = "Array<string>"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "Array<string>"))]
     pub(crate) labels: Vec<WindowLabel>,
     /// 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
-    pub(crate) chain: Vec<Link>,
+    pub chain: Vec<Link>,
     /// 会话在 tmux 里。
     pub(crate) tmux: bool,
     /// 链为什么是空的：写好的那一张（出口照摆；壳按标签也没找到窗口时摆它）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) face: Option<FrontFace>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub face: Option<FrontFace>,
 }
 
 crate::wire::typed::codes! {
     /// `session-window` 的码（这台自己没查成；那台的事写成那一张）。
-    pub(crate) enum SessionWindowErr {
+    pub enum SessionWindowErr {
         /// 问 tmux 那一发没成（起不来 / 报错）· 那台答的形状自相矛盾。
         Failed = "failed",
         /// 问 tmux 那一发过了期限。
@@ -63,7 +63,7 @@ crate::wire::typed::codes! {
 }
 
 /// `session-window`：这条会话在这台电脑上的哪儿。
-pub(crate) struct SessionWindowCmd;
+pub struct SessionWindowCmd;
 
 impl crate::wire::typed::Command for SessionWindowCmd {
     const NAME: &'static str = "session-window";
@@ -74,24 +74,21 @@ impl crate::wire::typed::Command for SessionWindowCmd {
 
 impl crate::wire::typed::Handle for SessionWindowCmd {
     type Needs = crate::wire::typed::needs::Own;
-    fn run(
+    async fn run(
         req: SessionWindowReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionWindow, SessionWindowErr>> + Send + 'static
-    {
-        async move {
-            answer_with(
-                &req,
-                local_here,
-                crate::platform::connection_and_process_tables,
-                &cx.tz,
-                cx.until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-                crate::dial::opened_windows::OnDisk(cx.needs),
-            )
-            .await
-        }
+    ) -> Result<SessionWindow, SessionWindowErr> {
+        answer_with(
+            &req,
+            local_here,
+            crate::platform::connection_and_process_tables,
+            &cx.tz,
+            cx.until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+            crate::dial::opened_windows::OnDisk(cx.needs),
+        )
+        .await
     }
 }
 
@@ -114,11 +111,15 @@ fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
 }
 
 /// 本体（本机那一问 · 这台的两张表 · 可达表 · 对面由调用方给，判据喂替身）。
-pub(crate) async fn answer_with<H, Q, R>(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "八样各是一道可换的口（本机那一问 · 两张表 · 时区 · 期限 · 可达表 · 对面 · 窗口记录），判据逐样喂替身；收成一个结构只是把同样八格换个地方摆"
+)]
+pub async fn answer_with<H, Q, R>(
     req: &SessionWindowReq,
     here: H,
     tables: Q,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &Table,
     remote: &dyn Remote,
@@ -252,7 +253,7 @@ fn local_window(
         Here::Detached => return Ok(reason(Vec::new(), true, Unplaced::Detached, machine)),
         Here::By { seen, tmux } => (seen, tmux),
     };
-    let labels = seen.iter().filter_map(|(_, t)| t.window.clone()).collect();
+    let labels = seen.iter().filter_map(|(_, t)| t.window).collect();
     let procs = match tables().and_then(|raw| crate::dial::terminal_processes::parse_tables(&raw)) {
         Ok(t) => t.procs,
         Err(e) => {
@@ -291,11 +292,7 @@ fn remote_window(
         };
         return Ok(reason(Vec::new(), tmux, why, machine));
     }
-    let labels = shown
-        .terminals
-        .iter()
-        .filter_map(|t| t.window.clone())
-        .collect();
+    let labels = shown.terminals.iter().filter_map(|t| t.window).collect();
     let found = crate::dial::terminal_processes::answer_with(
         &TerminalProcessesReq {
             terminals: shown.terminals,

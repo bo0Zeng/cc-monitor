@@ -4,9 +4,9 @@
 //!
 //! # 为什么要这一层壳（而不是 `control/fork_write.rs` 自己找家）
 //!
-//! 本体住 `control/`，而 `control → observe` 是反向边（`layering_guard` 零容忍）；本体直接问适配层要配置根
+//! 本体住 `control/`，而 `control → observe` 是反向边（控制面那个包不依赖观测面，编不过）；本体直接问适配层要配置根
 //! 又会让「加一家 agent 要回来改的地方」多一处（`agent_locality_guard` 那张只许降的表）。CLI 那一面的家目录
-//! 由 `main.rs` 解析好传进去；帧面没有那一跳 ⇒ 由这层顶层壳补上，与 `read_face` 拿家目录是同一句。
+//! 由进程入口（`stream/entry.rs`）解析好传进去；帧面没有那一跳 ⇒ 由这层顶层壳补上，与 `read_face` 拿家目录是同一句。
 //!
 //! **写盘只在本体**：本文件领一只只会新建的手（`NewFile`）交给 `control/fork_write.rs`（那一处 `O_EXCL` 新建），自己只转交与读。
 
@@ -16,7 +16,7 @@ use crate::wire::typed::Command;
 use std::path::Path;
 
 /// `session-fork`：从某条消息处分叉出一个新会话。读整份 jsonl ⇒ 阻塞档。
-pub(crate) struct SessionFork;
+pub struct SessionFork;
 
 impl Command for SessionFork {
     const NAME: &'static str = "session-fork";
@@ -27,18 +27,16 @@ impl Command for SessionFork {
 
 impl crate::wire::typed::Handle for SessionFork {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: ForkReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Forked, ForkErr>> + Send + 'static {
-        async move {
-            let home = crate::history::listing::agent_home();
-            // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
-            let nf = crate::platform::fs::NewFile::issue();
-            crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
-                launch_of(&home, source, sid)
-            })
-        }
+    ) -> Result<Forked, ForkErr> {
+        let home = crate::history::listing::agent_home();
+        // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+        let nf = crate::platform::fs::NewFile::issue();
+        crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
+            launch_of(&home, source, sid)
+        })
     }
 }
 

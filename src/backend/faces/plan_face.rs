@@ -122,7 +122,7 @@ pub(crate) fn marked(mut doc: wire::PlanRead) -> wire::PlanRead {
 }
 
 /// [`marked`] ＋ 时刻写成给人看的字（按请求带来的看的那一台的时区）：要交出去的那一份走它。
-pub(crate) fn annotated(doc: wire::PlanRead, tz: &crate::Tz) -> wire::PlanRead {
+pub(crate) fn annotated(doc: wire::PlanRead, tz: &crate::common::time::Tz) -> wire::PlanRead {
     let mut doc = marked(doc);
     crate::plan::product::with_time_texts(&mut doc, now_ms() as i64, tz);
     doc
@@ -173,7 +173,7 @@ pub(crate) fn seen_of(v: &wire::PlanRead) -> watch::Seen {
 }
 
 /// 现读一个工作区（起 pb）并标好（认可 · 时刻的字 · 每块的接手会话在哪几组）；计划审面送退回之前用它拿此刻的接手与状态。
-pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Said> {
+pub(crate) fn read_fresh(ws: &str, tz: &crate::common::time::Tz) -> Result<wire::PlanRead, Said> {
     let entry = entry()?;
     let mut doc = read_dir(&entry, Path::new(ws))
         .map(|d| annotated(d, tz))
@@ -225,7 +225,7 @@ fn new_form(req: &PlanNewReq) -> wire::PlanNewForm {
 /// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只做计划 · 当前仓库都在成品里）。
 /// `adopt` 先现读一次（起 pb），按那个仓库此刻是不是只做计划 · 是不是当前仓库定敲哪几条。
 /// `repo` 先照 `plan-new` 同一份判（`workspace` 是新计划框里选的那个目录）：在哪敲、撞上已有的一片 ⇒ 只带名字，敲的就是框里写出的那一行。
-fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Said> {
+fn command(req: &PlanCommandReq, tz: &crate::common::time::Tz) -> Result<wire::PlanCmdReply, Said> {
     let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
         .ok_or_else(|| bad("`cmd` must be one of continue · pause · adopt · render · repo"))?;
@@ -285,7 +285,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, S
 
 /// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
 /// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
-fn files(dir: &str, tz: &crate::Tz) -> wire::PlanFiles {
+fn files(dir: &str, tz: &crate::common::time::Tz) -> wire::PlanFiles {
     let b = book::book();
     let ws = b
         .workspaces()
@@ -305,13 +305,13 @@ fn files(dir: &str, tz: &crate::Tz) -> wire::PlanFiles {
     }
 }
 
-fn list(req: &PlanListReq, tz: &crate::Tz) -> wire::PlanList {
+fn list(req: &PlanListReq, tz: &crate::common::time::Tz) -> wire::PlanList {
     let (pb, docs) = reads(req, tz);
     list_of(pb, &docs)
 }
 
 /// `plan-list` 那一路读到的几份成品（标过认可的，照工作区排）· pb 的结局：[`list`] 与 [`need_slices`] 同一处取。
-fn reads(req: &PlanListReq, tz: &crate::Tz) -> (wire::PlanPb, Vec<wire::PlanRead>) {
+fn reads(req: &PlanListReq, tz: &crate::common::time::Tz) -> (wire::PlanPb, Vec<wire::PlanRead>) {
     let mut dirs: Vec<String> =
         crate::history::live_table::now(&crate::history::listing::agent_home()).cwds();
     dirs.extend(req.dirs.iter().flatten().cloned());
@@ -342,7 +342,7 @@ fn reads_in(
     mut dirs: Vec<String>,
     fresh: bool,
     read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> (wire::PlanPb, Vec<wire::PlanRead>) {
     dirs.sort();
     dirs.dedup();
@@ -393,42 +393,44 @@ fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
 
 /// 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格，照 `plan-list` 的先后；[`crate::plan::needs::need_items`] 摊开）：
 /// 同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
-pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<crate::observe::recognize::facts::NeedAt> {
+pub(crate) fn need_slices(
+    tz: &crate::common::time::Tz,
+) -> Vec<crate::observe::recognize::facts::NeedAt> {
     crate::plan::needs::need_items(&reads(&PlanListReq::default(), tz).1)
 }
 
 /// `plan-list` 的入参。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanListReq {
+pub struct PlanListReq {
     /// 另要问的目录（这台的路径）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) dirs: Option<Vec<String>>,
     /// `true` ⇒ 认过的目录也重问 pb。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) fresh: Option<bool>,
 }
 
 /// `plan-read` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanReadReq {
+pub struct PlanReadReq {
     /// 工作区根（`plan-list` 给的那个）。
     pub(crate) workspace: String,
 }
 
 /// `plan-cell-view` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanCellViewReq {
+pub struct PlanCellViewReq {
     /// 工作区根。
     pub(crate) workspace: String,
     /// 片名。
@@ -439,74 +441,74 @@ pub(crate) struct PlanCellViewReq {
 
 /// `plan-cell-view` 的回包：pb 印给站在这一格的 agent 的那一段，原样。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct PlanCellView {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanCellView {
     pub(crate) view: String,
 }
 
 /// `plan-command` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanCommandReq {
+pub struct PlanCommandReq {
     /// 工作区根。
     pub(crate) workspace: String,
     /// `continue` · `pause` · `adopt` · `render` · `repo`（`repo` 的 `workspace` 是新计划框里选的目录）。
     #[cfg_attr(
-        test,
+        any(test, feature = "ts"),
         ts(type = "\"continue\" | \"pause\" | \"adopt\" | \"render\" | \"repo\"")
     )]
     pub(crate) cmd: String,
     /// `adopt` 接过哪一个仓库（仓库名）；别的动词不带。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) slice: Option<String>,
     /// `repo` 登记的仓库相对工作区根在哪；别的动词不带。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) path: Option<String>,
     /// `repo` 选的那一档领域（缺 ⇒ 不带）；别的动词不带。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) domain: Option<String>,
 }
 
 /// `plan-new` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanNewReq {
+pub struct PlanNewReq {
     /// 在哪个目录开（那台机器上的绝对路径；还不在也行）。
     pub(crate) dir: String,
     /// 仓库相对工作区根在哪（最后一段是片名）；空 ⇒ 只问领域。
     pub(crate) path: String,
     /// 选的那一档领域。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) domain: Option<String>,
 }
 
 /// `plan-pb-check` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanPbCheckReq {
+pub struct PlanPbCheckReq {
     /// 要校验的插件根目录（那台机器上的绝对路径）。
     pub(crate) dir: String,
 }
 
 typed::codes! {
     /// `plan-list` · `plan-files` · `plan-pb-check` · `plan-refs` · `plan-new` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
-    pub(crate) enum PlanListErr {}
+    pub enum PlanListErr {}
 }
 
 typed::codes! {
     /// `plan-read` · `plan-command` 的码（起 pb 的那几种）。
-    pub(crate) enum PlanPbErr {
+    pub enum PlanPbErr {
         Failed = "failed",
         NoPb = "no_pb",
         NotWorkspace = "not_workspace",
@@ -516,7 +518,7 @@ typed::codes! {
 
 typed::codes! {
     /// `plan-command` 的码：同 [`PlanPbErr`]，另有 pb 拒了（或这一侧带着 agent 身份）· 没有那一片。
-    pub(crate) enum PlanCommandErr {
+    pub enum PlanCommandErr {
         Failed = "failed",
         NoPb = "no_pb",
         NoSuchSlice = "no_such_slice",
@@ -528,7 +530,7 @@ typed::codes! {
 
 typed::codes! {
     /// `plan-cell-view` 的码：起 pb 的那几种 ＋ pb 说那一片 · 那一格不在。
-    pub(crate) enum PlanCellViewErr {
+    pub enum PlanCellViewErr {
         Failed = "failed",
         NoPb = "no_pb",
         NoView = "no_view",
@@ -538,7 +540,7 @@ typed::codes! {
 }
 
 /// `plan-list`：这台的 pb 工作区与片（起 pb ⇒ 阻塞档）。
-pub(crate) struct PlanListCmd;
+pub struct PlanListCmd;
 
 impl Command for PlanListCmd {
     const NAME: &'static str = "plan-list";
@@ -549,17 +551,13 @@ impl Command for PlanListCmd {
 
 impl Handle for PlanListCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
-        req: PlanListReq,
-        cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanList, PlanListErr>> + Send + 'static
-    {
-        async move { Ok(list(&req, &cx.tz)) }
+    async fn run(req: PlanListReq, cx: Cx<Self::Needs>) -> Result<wire::PlanList, PlanListErr> {
+        Ok(list(&req, &cx.tz))
     }
 }
 
 /// `plan-read`：一个工作区的成品（起 pb ⇒ 阻塞档）。
-pub(crate) struct PlanReadCmd;
+pub struct PlanReadCmd;
 
 impl Command for PlanReadCmd {
     const NAME: &'static str = "plan-read";
@@ -570,18 +568,13 @@ impl Command for PlanReadCmd {
 
 impl Handle for PlanReadCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
-        req: PlanReadReq,
-        cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanRead, PlanPbErr>> + Send + 'static {
-        async move {
-            read_fresh(&req.workspace, &cx.tz).map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
-        }
+    async fn run(req: PlanReadReq, cx: Cx<Self::Needs>) -> Result<wire::PlanRead, PlanPbErr> {
+        read_fresh(&req.workspace, &cx.tz).map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
     }
 }
 
 /// `plan-cell-view`：一格的 agent 视角（读本子里那一份 ⇒ 阻塞档，同族）。
-pub(crate) struct PlanCellViewCmd;
+pub struct PlanCellViewCmd;
 
 impl Command for PlanCellViewCmd {
     const NAME: &'static str = "plan-cell-view";
@@ -592,16 +585,13 @@ impl Command for PlanCellViewCmd {
 
 impl Handle for PlanCellViewCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PlanCellViewReq,
         _cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<PlanCellView, PlanCellViewErr>> + Send + 'static
-    {
-        async move {
-            cell_view(&req)
-                .map(|view| PlanCellView { view })
-                .map_err(|f| typed::of_fail(f, PlanCellViewErr::Failed))
-        }
+    ) -> Result<PlanCellView, PlanCellViewErr> {
+        cell_view(&req)
+            .map(|view| PlanCellView { view })
+            .map_err(|f| typed::of_fail(f, PlanCellViewErr::Failed))
     }
 }
 
@@ -625,7 +615,7 @@ fn cell_view(req: &PlanCellViewReq) -> Result<String, Said> {
 }
 
 /// `plan-command`：以人的身份代敲 pb 的用户命令（起 pb ⇒ 阻塞档）。
-pub(crate) struct PlanCommandCmd;
+pub struct PlanCommandCmd;
 
 impl Command for PlanCommandCmd {
     const NAME: &'static str = "plan-command";
@@ -636,17 +626,16 @@ impl Command for PlanCommandCmd {
 
 impl Handle for PlanCommandCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PlanCommandReq,
         cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanCmdReply, PlanCommandErr>> + Send + 'static
-    {
-        async move { command(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed)) }
+    ) -> Result<wire::PlanCmdReply, PlanCommandErr> {
+        command(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed))
     }
 }
 
 /// `plan-new`：开一片之前问的那一份（起一次 `pb dump --domains` ⇒ 阻塞档；不写盘）。pb 不在 · 读不成都写在回包里。
-pub(crate) struct PlanNewCmd;
+pub struct PlanNewCmd;
 
 impl Command for PlanNewCmd {
     const NAME: &'static str = "plan-new";
@@ -657,24 +646,18 @@ impl Command for PlanNewCmd {
 
 impl Handle for PlanNewCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
-        req: PlanNewReq,
-        _cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanNewForm, PlanListErr>> + Send + 'static
-    {
-        async move {
-            if !Path::new(req.dir.trim()).is_absolute() {
-                return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
-                    "`dir` must be an absolute path",
-                )));
-            }
-            Ok(new_form(&req))
+    async fn run(req: PlanNewReq, _cx: Cx<Self::Needs>) -> Result<wire::PlanNewForm, PlanListErr> {
+        if !Path::new(req.dir.trim()).is_absolute() {
+            return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
+                "`dir` must be an absolute path",
+            )));
         }
+        Ok(new_form(&req))
     }
 }
 
 /// `plan-files`：文件窗口反查（只读本子里那一份，不起 pb；读认可那份小文件 ⇒ 阻塞档）。
-pub(crate) struct PlanFilesCmd;
+pub struct PlanFilesCmd;
 
 impl Command for PlanFilesCmd {
     typed::by_call!(cmd_wire::plan::PlanFilesReq);
@@ -683,17 +666,16 @@ impl Command for PlanFilesCmd {
 
 impl Handle for PlanFilesCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: cmd_wire::plan::PlanFilesReq,
         cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanFiles, PlanListErr>> + Send + 'static
-    {
-        async move { Ok(files(&req.dir, &cx.tz)) }
+    ) -> Result<wire::PlanFiles, PlanListErr> {
+        Ok(files(&req.dir, &cx.tz))
     }
 }
 
 /// `plan-pb-check`：一个路径能不能当 pb 用（起一次 pb ⇒ 阻塞档；不写盘）。
-pub(crate) struct PlanPbCheckCmd;
+pub struct PlanPbCheckCmd;
 
 impl Command for PlanPbCheckCmd {
     const NAME: &'static str = "plan-pb-check";
@@ -704,20 +686,17 @@ impl Command for PlanPbCheckCmd {
 
 impl Handle for PlanPbCheckCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: PlanPbCheckReq,
         _cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanPbCheck, PlanListErr>> + Send + 'static
-    {
-        async move {
-            let dir = Path::new(req.dir.trim());
-            if !dir.is_absolute() {
-                return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
-                    "`dir` must be an absolute path",
-                )));
-            }
-            Ok(locate::check(dir))
+    ) -> Result<wire::PlanPbCheck, PlanListErr> {
+        let dir = Path::new(req.dir.trim());
+        if !dir.is_absolute() {
+            return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
+                "`dir` must be an absolute path",
+            )));
         }
+        Ok(locate::check(dir))
     }
 }
 
@@ -749,17 +728,17 @@ fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
 
 /// `plan-refs` 的入参：哪个会话的几段人说的话（原文）与几块回复正文（后端交过的树），照先后，回包一段对一段。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanRefsReq {
+pub struct PlanRefsReq {
     pub(crate) sid: String,
     pub(crate) texts: Vec<String>,
     pub(crate) docs: Vec<cmd_wire::md::Doc>,
 }
 
 /// `plan-refs`：会话消息里提到的格（可能起一次 pb ⇒ 阻塞档；pb 不在 · 读不成都回空，不报错）。
-pub(crate) struct PlanRefsCmd;
+pub struct PlanRefsCmd;
 
 impl Command for PlanRefsCmd {
     const NAME: &'static str = "plan-refs";
@@ -770,12 +749,8 @@ impl Command for PlanRefsCmd {
 
 impl Handle for PlanRefsCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
-        req: PlanRefsReq,
-        _cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::PlanMsgRefs, PlanListErr>> + Send + 'static
-    {
-        async move { Ok(refs(&req)) }
+    async fn run(req: PlanRefsReq, _cx: Cx<Self::Needs>) -> Result<wire::PlanMsgRefs, PlanListErr> {
+        Ok(refs(&req))
     }
 }
 

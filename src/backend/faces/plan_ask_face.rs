@@ -8,8 +8,8 @@
 //!   （框里那一句当第一句，盖过别名的）。问图不补足：每问一次是一件新事。
 
 use crate::assets::aliases::profile::{self, Book};
-use crate::ccm_line::argv::{flag, Parsed};
 use crate::common::said::Said;
+use crate::host::ccm_line::argv::{flag, Parsed};
 use crate::plan::needs;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::PlanRead;
@@ -131,7 +131,7 @@ fn ask_here(
     req: &PlanAskReq,
     files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Answer {
     let doc = match crate::plan::book::book().last(&req.workspace) {
         Some(d) => d,
@@ -153,7 +153,7 @@ fn ask_here(
 
 typed::codes! {
     /// `plan-ask` 的码：读计划（手上没有 ⇒ 起 pb）· 读这台的配置文件 · 判格与别名 · 记问图用的那条。
-    pub(crate) enum PlanAskErr {
+    pub enum PlanAskErr {
         ChildTimedOut = "child_timed_out",
         Failed = "failed",
         IoFailed = "io_failed",
@@ -170,7 +170,7 @@ typed::codes! {
 }
 
 /// `plan-ask`：问图开框前那一问（读计划可能起 pb · 读配置文件 · 写自家状态 ⇒ 阻塞档，带文件面与自家写口）。
-pub(crate) struct PlanAskCmd;
+pub struct PlanAskCmd;
 
 impl Command for PlanAskCmd {
     const NAME: &'static str = "plan-ask";
@@ -195,10 +195,10 @@ impl Handle for PlanAskCmd {
 
 /// `plan-ask` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlanAskReq {
+pub struct PlanAskReq {
     /// 工作区根。
     pub(crate) workspace: String,
     /// 片名。
@@ -207,16 +207,16 @@ pub(crate) struct PlanAskReq {
     pub(crate) id: String,
     /// 改选的那条别名（记成这台问图用的）；缺 ⇒ 用记着的。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) alias: Option<String>,
 }
 
 /// `plan-ask` 的回包。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PlanAsk {
+pub struct PlanAsk {
     /// 框顶那一句（「问图 · {标题}」）。
     pub(crate) title: String,
     /// 预选的别名（这一问给的，或记着的那条）；没有 ⇒ `null`（框里那一格空着，选了才能起）。

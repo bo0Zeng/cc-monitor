@@ -99,8 +99,7 @@ async fn merged_for(
         .map(String::as_str)
         .filter(|m| *m != cmd_wire::LOCAL)
         .collect();
-    let machines: Vec<cmd_wire::Machine> =
-        asked.iter().map(|m| cmd_wire::Machine::named(m)).collect();
+    let machines: Vec<cmd_wire::Machine> = asked.iter().map(cmd_wire::Machine::named).collect();
     let got = needs_merge_with(
         &machines,
         std::future::ready(Ok(local)),
@@ -163,7 +162,7 @@ async fn the_needs_fake_replays_merges_made_here() {
         ],
         "cases": cases,
     });
-    crate::golden::assert_golden(
+    test_meters::golden::assert_golden(
         REPLAYED,
         &(serde_json::to_string_pretty(&want).unwrap() + "\n"),
         "需手动替身的回放金样变了：界面测试照它画（needs-panel · main-window-needs · session-hidden）",

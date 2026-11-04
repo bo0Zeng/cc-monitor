@@ -26,7 +26,7 @@ use std::path::Path;
 
 codes! {
     /// `session-rewind-options` 的码。
-    pub(crate) enum SessionRewindOptionsErr {
+    pub enum SessionRewindOptionsErr {
         /// 那台找不到这条会话的记录。
         NoSuchSession = "no_such_session",
         /// 会话所在那台够不到（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）。
@@ -47,7 +47,7 @@ impl Aimed for SessionRewindOptionsReq {
 }
 
 /// `session-rewind-options`：发送那一下给哪几项（问会话所在那台）。
-pub(crate) struct SessionRewindOptionsCmd;
+pub struct SessionRewindOptionsCmd;
 
 impl Command for SessionRewindOptionsCmd {
     const NAME: &'static str = "session-rewind-options";
@@ -58,26 +58,23 @@ impl Command for SessionRewindOptionsCmd {
 
 impl typed::Handle for SessionRewindOptionsCmd {
     type Needs = typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: SessionRewindOptionsReq,
         cx: typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<RewindOptions, SessionRewindOptionsErr>> + Send + 'static
-    {
-        async move {
-            let sid = req.sid.to_string();
-            let to = req.to.clone();
-            route::<Self, _>(
-                &req,
-                move || options_here(&sid, &to),
-                SessionRewindOptionsErr::ALL,
-                &cx.tz,
-                cx.until,
-                &REACH,
-                &DialRemote,
-            )
-            .await
-            .map_err(|f| typed::of_fail(f, SessionRewindOptionsErr::NoSuchSession))
-        }
+    ) -> Result<RewindOptions, SessionRewindOptionsErr> {
+        let sid = req.sid.to_string();
+        let to = req.to.clone();
+        route::<Self, _>(
+            &req,
+            move || options_here(&sid, &to),
+            SessionRewindOptionsErr::ALL,
+            &cx.tz,
+            cx.until,
+            &REACH,
+            &DialRemote,
+        )
+        .await
+        .map_err(|f| typed::of_fail(f, SessionRewindOptionsErr::NoSuchSession))
     }
 }
 
@@ -229,7 +226,7 @@ impl RewindIo for Live<'_> {
                 color: Some(false),
                 ..Default::default()
             },
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
         )?;
         Ok(shot.lines.into_iter().map(|l| l.text).collect())
     }

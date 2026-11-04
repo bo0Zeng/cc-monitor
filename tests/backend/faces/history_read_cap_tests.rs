@@ -40,7 +40,7 @@ fn line_len<T: serde::Serialize>(v: &T) -> usize {
 
 /// 壳冷开的问法：`history-tail`，没读到头就照 `next` 用 `history-read` 接到 `plan.end`。回：每一页的行。
 fn cold_open(home: &Path, path: &str, n: u64) -> Vec<Vec<Value>> {
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let t = tail_at(
         home,
         HistoryTailReq {
@@ -127,7 +127,7 @@ fn pages_cut_by_delivered_bytes_add_up_to_one_whole_read() {
     assert!(pages.len() > 1, "夹具要比一页大");
     let got: Vec<Value> = pages.into_iter().flatten().collect();
 
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let (_, face) = record_face(&home, &path).unwrap();
     let whole = body::read_page(
         &home,
@@ -155,7 +155,7 @@ fn a_row_bigger_than_a_page_goes_alone() {
         .map(|l| l + "\n")
         .concat();
     let path = write(&home, sid, &text);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let ask = |at: u64| {
         read_at(
             &home,

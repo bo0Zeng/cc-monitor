@@ -1,7 +1,7 @@
-//! 计划读面的帧面宿主：参数形状（一格的 agent 视角点到才起 pb：`dump_tests` 里真起假 pb 判）。
+//! 计划读面的帧面宿主：本子只起一次 pb · 交出去的那几句（一格的 agent 视角点到才起 pb：`dump_tests` 里真起假 pb 判）。
+//! 走登记表问的参数形状那几条住 `on_upper_tests`（读命令表 ⇒ 挂主 crate）。
 
 use super::*;
-use crate::cross_wire::typed_tests::ask;
 use serde_json::json;
 
 /// `plan-list` 那一条照 [`reads_in`] 读、再拼成清单：判据换成替身数起了几次 pb。
@@ -10,87 +10,10 @@ fn list_in(
     dirs: Vec<String>,
     fresh: bool,
     read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> wire::PlanList {
     let (pb, docs) = reads_in(b, dirs, fresh, read, tz);
     list_of(pb, &docs)
-}
-
-#[test]
-fn missing_args_are_bad_args() {
-    assert_eq!(
-        ask("plan-read", json!({})).unwrap_err().code.as_deref(),
-        Some("bad_args")
-    );
-    assert_eq!(
-        ask("plan-cell-view", json!({"workspace": "/w"}))
-            .unwrap_err()
-            .code
-            .as_deref(),
-        Some("bad_args")
-    );
-    assert_eq!(
-        ask("plan-list", json!({"dirs": "x"}))
-            .unwrap_err()
-            .code
-            .as_deref(),
-        Some("bad_args")
-    );
-}
-
-/// 入参按类型收：多一个键 ⇒ `bad_args`（不静默不认）。
-#[test]
-fn an_unknown_arg_is_refused() {
-    let f = ask("plan-read", json!({"workspace": "/w", "fresh": true})).unwrap_err();
-    assert_eq!(f.code.as_deref(), Some("bad_args"));
-    let f = ask(
-        "plan-ack",
-        json!({"workspace": "/w", "slice": "a", "key": "k", "x": 1}),
-    )
-    .unwrap_err();
-    assert_eq!(f.code.as_deref(), Some("bad_args"));
-}
-
-/// `slice` 只跟 `take` 走：`take` 不带 · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）。
-#[test]
-fn slice_goes_with_take_and_only_with_it() {
-    let f = ask("plan-command", json!({"workspace": "/w", "cmd": "take"})).unwrap_err();
-    assert_eq!(f.code.as_deref(), Some("bad_args"));
-    let f = ask(
-        "plan-command",
-        json!({"workspace": "/w", "cmd": "pause", "slice": "a"}),
-    )
-    .unwrap_err();
-    assert_eq!(f.code.as_deref(), Some("bad_args"));
-}
-
-/// `path` · `domain` 只跟 `repo` 走：`repo` 不带 `path` · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）；`plan-new` 的 `dir` 要绝对路径。
-#[test]
-fn path_goes_with_repo_and_only_with_it() {
-    for bad in [
-        json!({"workspace": "/w", "cmd": "repo"}),
-        json!({"workspace": "/w", "cmd": "repo", "domain": "软件"}),
-        json!({"workspace": "/w", "cmd": "pause", "path": "a"}),
-        json!({"workspace": "/w", "cmd": "render", "domain": "软件"}),
-    ] {
-        assert_eq!(
-            ask("plan-command", bad.clone())
-                .unwrap_err()
-                .code
-                .as_deref(),
-            Some("bad_args"),
-            "{bad}"
-        );
-    }
-    let f = ask("plan-new", json!({"dir": "rel/dir", "path": "x"})).unwrap_err();
-    assert_eq!(f.code.as_deref(), Some("bad_args"));
-    assert_eq!(
-        ask("plan-new", json!({"dir": "/w"}))
-            .unwrap_err()
-            .code
-            .as_deref(),
-        Some("bad_args")
-    );
 }
 
 /// ★ 不重问时（`plan-list {}` · `sessions-needs` 计划那一截）同一个目录只起一次 pb：认出是工作区 · 不是工作区 · 读不成（pb 失败 · 不认得）
@@ -98,8 +21,9 @@ fn path_goes_with_repo_and_only_with_it() {
 #[test]
 fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
     use crate::plan::dump::Ran;
-    let tz = crate::Tz::default();
-    let cases: [(&str, fn() -> Ran); 3] = [
+    let tz = crate::common::time::Tz::default();
+    type Case = (&'static str, fn() -> Ran);
+    let cases: [Case; 3] = [
         ("不是工作区", || Ran::NotWorkspace("x".into())),
         ("读不成", || Ran::Failed {
             said: "坏了".into(),
@@ -125,53 +49,6 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
         list_in(&b, vec!["/d".into()], true, &read, &tz);
         assert_eq!(runs.get(), 2, "{name}：fresh ⇒ 重起");
     }
-}
-
-/// `record` 要 `slice` · `summary` · `quotes` 都在；别的动词带了 `summary` / `quotes` ⇒ `bad_args`（在起 pb 之前）。
-#[test]
-fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
-    for bad in [
-        json!({"workspace": "/w", "cmd": "record", "summary": "x", "quotes": ["y"]}),
-        json!({"workspace": "/w", "cmd": "record", "slice": "a"}),
-        json!({"workspace": "/w", "cmd": "pause", "summary": "x"}),
-        json!({"workspace": "/w", "cmd": "take", "slice": "a", "quotes": ["y"]}),
-    ] {
-        assert_eq!(
-            ask("plan-command", bad.clone())
-                .unwrap_err()
-                .code
-                .as_deref(),
-            Some("bad_args"),
-            "{bad}"
-        );
-    }
-}
-
-/// `plan-refs {sid, texts, docs}`：入参按类型收（缺 · 多 ⇒ `bad_args`）；认不出片 ⇒ 两样 `null`、一段对一段 · 一棵对一棵地空，不起 pb。
-#[test]
-fn plan_refs_takes_sid_texts_and_trees_and_answers_one_each() {
-    for bad in [
-        json!({"texts": ["A1"], "docs": []}),
-        json!({"sid": "s", "texts": []}),
-        json!({"sid": "s", "texts": [], "docs": [], "x": 1}),
-        json!({"sid": "s", "texts": [], "docs": ["A1"]}),
-    ] {
-        assert_eq!(
-            ask("plan-refs", bad.clone()).unwrap_err().code.as_deref(),
-            Some("bad_args"),
-            "{bad}"
-        );
-    }
-    let tree = serde_json::to_value(md_core::parse("看 A1")).unwrap();
-    let r = ask(
-        "plan-refs",
-        json!({"sid": "00000000-no-such-session", "texts": ["看 A1", "", "B2"], "docs": [tree]}),
-    )
-    .unwrap();
-    assert_eq!(
-        r,
-        Some(json!({"workspace": null, "slice": null, "refs": [[], [], []], "docs": [null]}))
-    );
 }
 
 /// 交出去的那一份：随数据变的那几句后端照文案表写好（`said`），两端不再拼。
