@@ -52,6 +52,12 @@ class FileOps(
         cap: Long,
     ): Result<FilesReadText.Text> = ask(FilesReadText.COMMAND, FilesReadText.args(path, cap), FilesReadText::of)
 
+    /** 读一份的原样字节（预览一张图）：循环在核心里，逐块读回、过 [cap]（门给的上限）就停 ⇒ 核心那一句。 */
+    suspend fun readBytes(
+        path: RemotePath,
+        cap: Long,
+    ): Result<Transfer.Pull.Got> = reply(feed.transfer(Transfer.Pull(path, cap), { NO_FD }, CHUNK_MS) { _, _ -> }, READ, Transfer.Pull::of)
+
     /** 存回（带读时的摘要：盘上被改过 ⇒ 那台拒）。 */
     suspend fun writeText(
         dir: RemotePath,
@@ -244,5 +250,11 @@ class FileOps(
 
         /** 分块传出错时详情里点名的命令。 */
         private const val STAGE = "files-stage-chunk"
+
+        /** 读进内存出错时详情里点名的命令。 */
+        private const val READ = "files-read-chunk"
+
+        /** 读进内存不开本机那一份。 */
+        private const val NO_FD = -1
     }
 }

@@ -179,8 +179,8 @@ class FilesViewModel(
     }
 
     /** 别处点名的那一份打开成了预览（名字 · 读到的那一份）。 */
-    private val _opened = MutableSharedFlow<Pair<String, FilePreview.Text>>(extraBufferCapacity = 1)
-    val opened: SharedFlow<Pair<String, FilePreview.Text>> = _opened.asSharedFlow()
+    private val _opened = MutableSharedFlow<Pair<String, FilePreview.Shown>>(extraBufferCapacity = 1)
+    val opened: SharedFlow<Pair<String, FilePreview.Shown>> = _opened.asSharedFlow()
 
     /**
      * 打开别处点名的一个路径（轮换屏的［看代码］…）：连上以后问那台它是什么，目录 ⇒ 进去；文件 ⇒ 进它所在的目录、开预览。
@@ -425,26 +425,13 @@ class FilesViewModel(
         _progress.value = if (total > 0) (got.toFloat() / total).coerceIn(0f, 1f) else null
     }
 
-    /**
-     * 照那一行的预览门预览（[FilePreview.text]：当文本读，带语言的由那台上色）：不预览 ⇒ 那台那一句；当图读的手机还不读 ⇒ 说不是文本、可下载；
-     * 门不明（那一行不在这一屏）⇒ 说未列出。没成 ⇒ 已说那一句。
-     */
+    /** 照那一行的预览门预览（[FilePreview.show]：文本 · 图 · 不许 · 门不明都在那一处分）。没成 ⇒ 已说那一句。 */
     suspend fun preview(
         path: RemotePath,
         gate: PreviewGate?,
-    ): Result<FilePreview.Text> {
-        if (gate !is PreviewGate.Text) {
-            val said =
-                when (gate) {
-                    is PreviewGate.No -> gate.value
-                    is PreviewGate.Image -> copyText("beFilesOpen.preview.binaryKind")
-                    else -> copyText("rsFilewinSource.gates.unlisted")
-                }
-            _events.tryEmit(Notice(said))
-            return Result.failure(IllegalStateException(said))
-        }
+    ): Result<FilePreview.Shown> {
         _busy.value = true
-        return previews.text(path, gate.value).also {
+        return previews.show(path, gate).also {
             _busy.value = false
             it.onFailure(::say)
         }

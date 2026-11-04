@@ -123,6 +123,13 @@ class FilesResumeTest {
             withinMs: Long,
         ) = 0L
 
+        override fun read(
+            handle: Long,
+            path: String,
+            cap: Long,
+            withinMs: Long,
+        ) = 0L
+
         override fun transferStop(id: Long) = Unit
 
         override fun batchAnswer(

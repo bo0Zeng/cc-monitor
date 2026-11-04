@@ -297,7 +297,8 @@ impl Sink for ToMemory {
 }
 
 /// 拉进内存那一半（文件屏预览一张图）：`path` 逐块读回（循环同 [`pull_with`]），过 `cap` 就停 ⇒
-/// `{call, ok, data: {bytes, content}}`（`content` 是线上 `HexBytes` 那一形）或没成那一行。
+/// `{call, ok, data: {bytes, content, undecodable}}`（`content` 是线上 `HexBytes` 那一形；`undecodable` 是本机解不开时屏上那一句，
+/// 同桌面读图那一句）或没成那一行。
 pub async fn read_with<A: Ask<Err = String>>(
     ask: &A,
     id: i64,
@@ -313,7 +314,11 @@ pub async fn read_with<A: Ask<Err = String>>(
     match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
         Ok(n) => line(&CallEnd::Ok {
             call: id,
-            data: serde_json::json!({ "bytes": n, "content": HexBytes(sink.bytes) }),
+            data: serde_json::json!({
+                "bytes": n,
+                "content": HexBytes(sink.bytes),
+                "undecodable": copy_core::copy_text("rsFilewinPicture.decode.undecodable", &[]),
+            }),
         }),
         Err(line) => line,
     }
@@ -645,6 +650,10 @@ mod tests {
         let back: cmd_wire::files::HexBytes =
             serde_json::from_value(v["data"]["content"].clone()).unwrap();
         assert_eq!(back.0, file);
+        assert_eq!(
+            v["data"]["undecodable"],
+            copy_core::copy_text("rsFilewinPicture.decode.undecodable", &[])
+        );
         assert_eq!(seen.0.len(), 3, "每块一次");
     }
 

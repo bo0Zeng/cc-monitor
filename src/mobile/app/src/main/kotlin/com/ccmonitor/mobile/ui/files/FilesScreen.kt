@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.files
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
@@ -9,6 +10,7 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -40,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,7 +52,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -84,7 +89,9 @@ import com.ccmonitor.mobile.ui.claude.highlighted
 import com.ccmonitor.mobile.ui.claude.rememberMdStyle
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -120,7 +127,7 @@ private sealed interface FilesDialog {
 
     data class Preview(
         val name: String,
-        val content: FilePreview.Text,
+        val content: FilePreview.Shown,
     ) : FilesDialog
 
     /** 编辑（[sha256] 是读时那一份的摘要，存回时交回去）。 */
@@ -680,25 +687,57 @@ private fun ChmodDialog(
 @Composable
 private fun PreviewDialog(
     name: String,
-    content: FilePreview.Text,
+    content: FilePreview.Shown,
     onDismiss: () -> Unit,
 ) {
-    // 那台上好的色照聊天里代码块那一种画（[highlighted]）；没色 ⇒ 纯字。
-    val style = rememberMdStyle()
-    val shown = remember(content, style) { highlighted(content.text, content.hl, style) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
-            Text(
-                if (content.text.isEmpty()) AnnotatedString(copyText("rsFilewinChrome.command.newFile")) else shown,
-                style = monoSmall,
-                modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-            )
+            when (content) {
+                is FilePreview.Text -> PreviewText(content)
+                is FilePreview.Image -> PreviewImage(content)
+            }
         },
         confirmButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) } },
     )
 }
+
+@Composable
+private fun PreviewText(content: FilePreview.Text) {
+    // 那台上好的色照聊天里代码块那一种画（[highlighted]）；没色 ⇒ 纯字。
+    val style = rememberMdStyle()
+    val shown = remember(content, style) { highlighted(content.text, content.hl, style) }
+    Text(
+        if (content.text.isEmpty()) AnnotatedString(copyText("rsFilewinChrome.command.newFile")) else shown,
+        style = monoSmall,
+        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+    )
+}
+
+/** 读回的那份字节在后台解成位图（长边过 [PREVIEW_SIDE] 按 2 的幂缩着解）；解不开 ⇒ 说那一句。 */
+@Composable
+private fun PreviewImage(content: FilePreview.Image) {
+    // 外层 `null` ＝ 还在解；里层 `null` ＝ 解不开。
+    val decoded by produceState<Result<ImageBitmap?>?>(null, content) {
+        value = Result.success(withContext(Dispatchers.Default) { decodePreview(content.bytes) })
+    }
+    val got = decoded ?: return CircularProgressIndicator()
+    val bmp = got.getOrNull() ?: return ErrorLine(content.undecodable)
+    Image(bmp, contentDescription = null, modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+}
+
+private fun decodePreview(bytes: ByteArray): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > PREVIEW_SIDE) sample *= 2
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+}
+
+/** 预览那一张解码时长边最多这么多像素。 */
+private const val PREVIEW_SIDE = 2048
 
 @Composable
 private fun EditDialog(
