@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.canStop
+import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.generation
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
@@ -26,6 +27,7 @@ import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
@@ -34,6 +36,7 @@ import com.ccmonitor.mobile.core.wire.gen.MdDocReq
 import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -101,6 +104,12 @@ data class ChatUiState(
     val cwd: String? = null,
     /** 叫这条会话什么（那台定的：会话簿那一格，状态帧来了就换）；簿里还没有它 ⇒ `null`。 */
     val label: String? = null,
+    /** 顶栏那一行：会话簿那一条那台写好的整行标题（`title`）；簿里还没有它 ⇒ `null`。 */
+    val title: String? = null,
+    /** 会话簿里这一条此刻的脸（顶栏第二行的点与那一句，[headLine]）；簿里还没有它 ⇒ `null`。 */
+    val face: SessionFace? = null,
+    /** 那台这条会话最近一份会话事实（每读进一批记录再问一次）；还没问到 ⇒ `null`。 */
+    val facts: FactsReply? = null,
     /** 上次没发的草稿（本地存的）：输入框还空着时填进去；没有 ⇒ `null`。 */
     val draft: String? = null,
     /** 编辑已发的那几句改到一半的字（记录里那一句的 uuid ⇒ 字，本地存的）：再长按编辑那一句时填进去。 */
@@ -657,6 +666,8 @@ class ChatSession(
                     if (e == Event.Reconnected || e == Event.Reread) loaded = record.reloadLocked(p)
                 } else if (record.stepLocked(p, e) { folds.forget() }) {
                     publishLocked()
+                    // 步骤那一态 · 状态一句跟着记录走：读进一批就再问一次会话事实（在路上就只记一次，回来再问）。
+                    chips.refreshFacts(p)
                 }
             }
         for (e in events) take(e)
@@ -695,9 +706,11 @@ class ChatSession(
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
                 val running = t.canStop(s)
-                // 叫它什么照会话簿那一格（那台定的）；簿里没有 ⇒ 留着上一个。
-                val label = t.live[s]?.label ?: _state.value.label
-                if (running != _state.value.running || label != _state.value.label) _state.value = _state.value.copy(running = running, label = label)
+                // 叫它什么 · 顶栏那一行照会话簿那几格（那台定的）；簿里没有 ⇒ 留着上一个。脸照簿里此刻那一张（走了的也在簿里）。
+                val now = _state.value
+                val seat = t.live[s]
+                val next = now.copy(running = running, label = seat?.label ?: now.label, title = seat?.title ?: now.title, face = t.face(s) ?: now.face)
+                if (next != now) _state.value = next
             }
         }
     }

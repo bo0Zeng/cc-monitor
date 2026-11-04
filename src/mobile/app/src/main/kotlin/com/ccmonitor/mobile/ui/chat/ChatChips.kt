@@ -170,14 +170,34 @@ internal class ChatChips(
         (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) }?.let(::take)
     }
 
+    /** 再问一次会话事实（读进一批记录之后）：一问还在路上 ⇒ 只记一次，回来再问一趟，不叠着问。 */
+    fun refreshFacts(p: String) {
+        if (factsBusy) {
+            factsDirty = true
+            return
+        }
+        factsBusy = true
+        scope.launch {
+            do {
+                factsDirty = false
+                readFacts(p)
+            } while (factsDirty)
+            factsBusy = false
+        }
+    }
+
+    private var factsBusy = false
+    private var factsDirty = false
+
     /**
-     * 会话事实落进屏上：chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）与模型抽屉勾哪一项（`modelPick`）还没换过才用它；
-     * 目录还不知道 ⇒ 取那台读记录开头给的项目目录。
+     * 会话事实落进屏上：整份留着（顶栏第二行 · 工具步骤那一态读它）；chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）
+     * 与模型抽屉勾哪一项（`modelPick`）还没换过才用它；目录还不知道 ⇒ 取那台读记录开头给的项目目录。
      */
     fun take(f: FactsReply) {
         val now = state.value
         state.value =
             now.copy(
+                facts = f,
                 model = now.model.copy(text = now.model.text ?: f.modelText, value = now.model.value ?: f.modelPick),
                 permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
                 cwd = now.cwd ?: f.projectDir,

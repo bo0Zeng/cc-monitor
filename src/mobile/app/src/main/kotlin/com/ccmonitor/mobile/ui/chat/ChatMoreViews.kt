@@ -17,6 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -104,6 +107,35 @@ private fun MoreNote(
     }
 }
 
+/** 查找范围「全部 | 用户」（字同桌面查找条）。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FindScope(
+    user: Boolean,
+    onPick: (Boolean) -> Unit,
+) {
+    val choices = listOf(false to copyText("extPage.filter.all"), true to copyText("machineForm.field.user"))
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        choices.forEachIndexed { i, (v, label) ->
+            SegmentedButton(selected = user == v, onClick = { onPick(v) }, shape = SegmentedButtonDefaults.itemShape(i, choices.size), icon = {}) { Text(label) }
+        }
+    }
+}
+
+/** 结果头：那台写好的那一句原样；那台说可以放宽（`widen`）⇒ 旁边一颗［搜全部］。 */
+@Composable
+private fun FindHead(
+    head: String,
+    widen: Boolean,
+    onWiden: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+        Text(head, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
+        if (widen) SecondaryButton(onClick = onWiden) { Text(copyText("sessionFind.status.searchAll")) }
+    }
+}
+
 /** 会话里找：框里敲、按回车问那台；命中照那台的先后（头一行是那台写好的时刻），点一条跳过去。没问成 ⇒ 那台那一句。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -125,7 +157,9 @@ private fun FindSheet(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { more.find(q) }),
             )
+            FindScope(ui.user) { user -> more.scope(user, q) }
             (if (ui.busy) busy else ui.failed)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
+            if (!ui.busy && ui.failed == null) ui.head?.let { FindHead(it, ui.widen, more::widen) }
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(ui.hits) { h ->
                     Column(Modifier.fillMaxWidth().clickable { more.pickHit(h) }.padding(vertical = tokens.spacing.xs)) {
