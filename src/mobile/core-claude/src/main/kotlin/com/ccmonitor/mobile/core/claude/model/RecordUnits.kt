@@ -149,7 +149,7 @@ class RecordUnits {
                     id,
                     images = imagesOf(r.blocks, id),
                     attachments = r.attachments.orEmpty(),
-                    parts = r.who.pasted?.takeIf { it.isNotEmpty() }?.let { saidParts(text, it) }.orEmpty(),
+                    parts = saidParts(text, r.who.pasted.orEmpty()),
                 )
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)

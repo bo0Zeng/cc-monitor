@@ -36,14 +36,12 @@ class RecordUnitsTest {
         assertEquals(listOf(SaidPart.Plain("see A\nB end")), u.parts)
     }
 
+    @Suppress("UNCHECKED_CAST")
     @Test
     fun `人粘贴的块：那台说要折 ⇒ 折成一段，带那台数好的行数与正文那一截`() {
         val r = Json.obj(File(repoRoot(), "tests/__fixtures__/record.golden.jsonl").readLines().first { it.contains("\"case\":\"said-pasted\"") })!!
-        @Suppress("UNCHECKED_CAST")
         val rec = (r["record"] as Map<String, Any?>).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
         val who = (rec["who"] as Map<String, Any?>).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
         who["pasted"] = (who["pasted"] as List<Map<String, Any?>>).map { it + ("fold" to true) + ("lines" to 248) }
         rec["who"] = who
         val u = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(rec)))).single() as RenderUnit.UserText

@@ -129,12 +129,7 @@ fun ChatTranscript(
     // 到顶 ⇒ 请求更早的一段（判法见 [loadOlderNow]）。
     // 注意：判据必须整个进 `derivedStateOf`；漏在效果体里的变量不在 key 里，效果拿过时快照判一次就不再重跑。
     // 内容不满一屏时会先把视口填满，填满后 `firstVisibleItemIndex` 不再恒为 0，自然停止。
-    val atTop by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            info.visibleItemsInfo.isNotEmpty() && listState.firstVisibleItemIndex == 0
-        }
-    }
+    val atTop by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.isNotEmpty() && listState.firstVisibleItemIndex == 0 } }
     val moreBelow by remember { derivedStateOf { listState.canScrollForward } }
     LaunchedEffect(atTop, moreBelow, following, state.canLoadOlder, state.loadingOlder, state.units.size) {
         if (loadOlderNow(atTop, state.units.isEmpty(), state.canLoadOlder, state.loadingOlder, following, moreBelow)) onLoadOlder()

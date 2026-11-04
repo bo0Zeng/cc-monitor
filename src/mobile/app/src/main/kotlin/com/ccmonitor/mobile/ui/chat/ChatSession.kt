@@ -708,12 +708,9 @@ class ChatSession(
                 val running = t.canStop(s)
                 // 叫它什么 · 顶栏那一行照会话簿那几格（那台定的）；簿里没有 ⇒ 留着上一个。脸照簿里此刻那一张（走了的也在簿里）。
                 val now = _state.value
-                val label = t.live[s]?.label ?: now.label
-                val title = t.live[s]?.title ?: now.title
-                val face = t.face(s) ?: now.face
-                if (running != now.running || label != now.label || title != now.title || face != now.face) {
-                    _state.value = now.copy(running = running, label = label, title = title, face = face)
-                }
+                val seat = t.live[s]
+                val next = now.copy(running = running, label = seat?.label ?: now.label, title = seat?.title ?: now.title, face = t.face(s) ?: now.face)
+                if (next != now) _state.value = next
             }
         }
     }

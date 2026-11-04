@@ -129,7 +129,6 @@ fun ChatRoute(
         val cwd = state.cwd
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
-    val picker = vm.picker
     val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
     val findTerminal: suspend (String) -> TermEntry? = { s -> termEntry(terminals, s) }
@@ -139,7 +138,6 @@ fun ChatRoute(
     val more = remember(open.key) { ChatMore(backends.of(hostId), host.machine, scope, { vm.state.value.sid }, vm::jump) }
     // 点标题出的「会话信息」（只读，字都是那台写的，见 [ChatInfo]）。
     val info = remember(open.key) { ChatInfo(backends.of(hostId), host.machine, scope) { vm.state.value.sid } }
-    val infoUi by info.state.collectAsStateWithLifecycle()
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -171,9 +169,9 @@ fun ChatRoute(
                     .consumeWindowInsets(inner)
                     .imePadding(),
             ) {
-                ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
+                ChatHead(hostId, host.machine, vm.picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatMorePanes(more)
-                infoUi?.let { InfoSheet(it, host.machine, state.cwd, info::close) }
+                ChatInfoPane(info, host.machine, state.cwd)
                 ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
             }
         }
@@ -363,12 +361,7 @@ private fun ChatTopBar(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        title = {
-            Column(if (sid != null) Modifier.clickable(onClick = onTitle) else Modifier) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                head?.let { HeadLineRow(it) }
-            }
-        },
+        title = { TopTitle(title, head, onTitle.takeIf { sid != null }) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
         actions = {
             needs()
@@ -415,6 +408,19 @@ private fun ChatTopBar(
 }
 
 private const val MORE_GLYPH = "⋯"
+
+/** 顶栏标题那两行：那台写好的整行标题 ＋ [head]；[onClick] 给了（会话起好了）⇒ 点了出「会话信息」。 */
+@Composable
+private fun TopTitle(
+    title: String,
+    head: HeadLine?,
+    onClick: (() -> Unit)?,
+) {
+    Column(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier) {
+        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        head?.let { HeadLineRow(it) }
+    }
+}
 
 /** ⋯「打开工作目录」那一项（字同桌面）：先收起菜单再去。 */
 @Composable

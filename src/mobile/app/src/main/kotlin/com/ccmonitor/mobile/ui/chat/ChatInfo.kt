@@ -11,9 +11,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -133,9 +135,19 @@ class ChatInfo(
  * 「会话信息」底部抽屉：顶上是机器条那台的名字与目录（两格各自摆，不拼成一句）；下面各段有才画 —— 几个进程在写（那台那一句，不是红）·
  * 上下文 · 号与额度 · 任务（计数那一格 ＋ 那一句 ＋ 每条名字与状态字）；没问成的写那台那一句。
  */
+@Composable
+fun ChatInfoPane(
+    info: ChatInfo,
+    machine: String,
+    cwd: String?,
+) {
+    val ui by info.state.collectAsStateWithLifecycle()
+    ui?.let { InfoSheet(it, machine, cwd, info::close) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InfoSheet(
+private fun InfoSheet(
     ui: InfoUi,
     machine: String,
     cwd: String?,

@@ -122,11 +122,13 @@ class ChatMore(
     /** 换范围（「全部 | 用户」）：词（缺省是上一问那个）不变、马上再找。 */
     fun scope(
         user: Boolean,
-        query: String = _state.value.find?.query.orEmpty(),
-    ) = ask(query, user)
+        query: String? = null,
+    ) = ask(query ?: lastQuery(), user)
 
     /** 结果头旁那颗［搜全部］（那台说可以放宽才有）：回「全部」再找。 */
     fun widen() = scope(user = false)
+
+    private fun lastQuery(): String = _state.value.find?.query ?: ""
 
     private fun ask(
         query: String,

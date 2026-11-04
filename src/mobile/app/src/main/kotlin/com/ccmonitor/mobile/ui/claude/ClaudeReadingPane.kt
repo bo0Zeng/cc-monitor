@@ -59,8 +59,6 @@ import com.ccmonitor.mobile.core.claude.model.SaidPart
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.codeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.wire.gen.PendingCall
-import com.ccmonitor.mobile.core.wire.gen.StepWait
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -68,6 +66,8 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.PendingCall
+import com.ccmonitor.mobile.core.wire.gen.StepWait
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
@@ -590,7 +590,7 @@ private fun UserBubble(
     }
 }
 
-/** 人说的那一句的一段：照排的字照排；折起来的那一块是一行「粘贴的内容 · N 行」（N 是那台数好的），点开就地展开正文（命中自动展开）。 */
+/** 人说的那一句的一段：照排的字照排；那台说要折的那一块收成一行，点开就地展开正文（命中自动展开）。 */
 @Composable
 private fun SaidPartView(
     part: SaidPart,
@@ -602,7 +602,8 @@ private fun SaidPartView(
             var open by rememberExpandable(matched)
             Row(Modifier.clickable { open = !open }.padding(vertical = LocalAppTokens.current.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 Caret(open)
-                Text(copyText("speaker.paste.fold", "n" to part.lines), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 「粘贴的内容 · N 行」那一句后端还没写成一格（手机不拿行数自己拼）：收着时只露正文头一行。
+                if (!open) Text(part.body.lineSequence().first(), style = monoBody, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             AnimatedVisibility(open) { Text(part.body, style = monoBody, color = MaterialTheme.colorScheme.onSurface) }
         }

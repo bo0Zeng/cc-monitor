@@ -51,14 +51,16 @@ sealed interface SaidPart {
 
 /**
  * 照记录成品的 `pasted[]`（UTF-16 下标，含两头的标记）把 [text] 切成几段：标记不上屏，只露正文那一截（两头的换行去掉）；
- * 折不折照那一块的 `fold`。折起来的那一段自己占一行 ⇒ 紧挨着它的那一个换行不再另算。相邻照排的几段并成一段。
+ * 折不折照那一块的 `fold`。折起来的那一段自己占一行 ⇒ 紧挨着它的那一个换行不再另算。相邻照排的几段并成一段。没有粘贴的块 ⇒ 空（照 `text` 画）。
  */
 fun saidParts(
     text: String,
     pasted: List<Pasted>,
 ): List<SaidPart> {
+    if (pasted.isEmpty()) return emptyList()
     val out = ArrayList<SaidPart>()
     val plain = StringBuilder()
+
     fun flush() {
         if (plain.isNotEmpty()) out += SaidPart.Plain(plain.toString())
         plain.setLength(0)

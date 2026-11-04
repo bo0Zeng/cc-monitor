@@ -33,7 +33,8 @@ class ChatInfoTest {
     ): Opened {
         val link = FakeCoreLink()
         link.report("s1", "/h/proj", Faces.of(face))
-        link.table.value = link.table.value.copy(live = link.table.value.live.mapValues { (_, v) -> v.copy(title = title) })
+        val book = link.table.value
+        link.table.value = book.copy(live = book.live.mapValues { (_, v) -> v.copy(title = title) })
         val file = FakeCoreLink.File(mutableListOf(FakeCoreLink.human("u0", "问")))
         link.answer = { cmd, args -> extra(cmd, args) ?: (if (cmd == "history-facts") Reply.Ok(facts) else null) ?: file.answer(cmd, args) ?: Reply.LinkDown }
         val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
@@ -158,7 +159,8 @@ class ChatInfoTest {
     @Test
     fun `信息抽屉：问不到的那一格写那台那一句，别的照摆`() =
         runTest {
-            val o = opened(extra = { cmd, _ -> if (cmd == "session-account") FakeCoreLink.failed("那台不认") else if (cmd == "tasks-list") Reply.Ok(mapOf("tasks" to emptyList<Any>(), "chip" to "", "hint" to "")) else null })
+            val noTasks = Reply.Ok(mapOf("tasks" to emptyList<Any>(), "chip" to "", "hint" to ""))
+            val o = opened(extra = { cmd, _ -> mapOf("session-account" to FakeCoreLink.failed("那台不认"), "tasks-list" to noTasks)[cmd] })
             val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
             info.open()
             runCurrent()
