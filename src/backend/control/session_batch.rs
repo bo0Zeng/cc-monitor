@@ -95,8 +95,13 @@ pub struct Deps<'a> {
     pub writers: &'a dyn Fn(&str) -> Vec<u32>,
     /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
     pub pretrust: &'a dyn Fn(&str, &str),
-    /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
-    pub open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::common::said::Said>,
+    /// `(名字, 工作目录, 宿主)` ⇒ 开一个空 shell 的终端（tmux 会话 · 托管终端；不在才建，宿主由调用方照这台缺省定好）；
+    /// 回「这一趟建的」。失败带下层原话。
+    pub open_shell: &'a dyn Fn(
+        &str,
+        Option<&str>,
+        crate::wire::TerminalHost,
+    ) -> Result<bool, crate::common::said::Said>,
     /// 这台的偏好（启动命令 · 模型表 · 恢复时放在哪；一趟读一次 `prefs.json`）。
     pub prefs: &'a crate::common::machine_prefs::Prefs,
     /// sid ⇒ 那条会话上次起在哪种宿主里（启动台账；恢复照起时那一种读它）。

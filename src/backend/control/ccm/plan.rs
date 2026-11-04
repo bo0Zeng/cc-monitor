@@ -989,15 +989,17 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
     Ok(())
 }
 
-/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=ccm [size=宽x高] -- <里面那一跳>`。
-/// 句柄就是名字（铸名时已避让过这台的 tmux 会话名与托管终端）；里面那一跳与 tmux 那一形键进窗格的是同一串词（`inner`），
-/// 托管进程直接起它、不经 shell：托管进程是 ccm 自己脱离起的，环境原样往下传，用不着 tmux 那一形为跨 tmux 边界写的 `export`
-/// （那一家一退里面那一跳跟着退、托管终端收尾）。`client=ccm`：同 tmux 那一形 ccm 起的会话（`gate_rules::CLIENT_TERMINAL`）。
-fn host_run_argv(
+/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=<谁建的> [size=宽x高] -- <里面那一跳>`。
+/// 句柄就是名字（调用方已避让过这台的 tmux 会话名与托管终端）；托管进程直接起里面那一跳（`inner`）、不经 shell：
+/// 托管进程是脱离起的，环境原样往下传，用不着 tmux 那一形为跨 tmux 边界写的 `export`（里面那一跳一退、托管终端收尾）。
+/// 起会话那一形：`inner` 与 tmux 那一形键进窗格的是同一串词，`client` 是 `gate_rules::CLIENT_TERMINAL`（同 tmux 那一形 ccm 起的会话）；
+/// 开空 shell 那一形（`ccm::open_hosted_shell`）：`agent` 空、`client` 是建它的那个前端。
+pub(crate) fn host_run_argv(
     self_argv: &[String],
     name: &str,
     cwd: &str,
     agent: &str,
+    client: &str,
     size: Option<&(String, String)>,
     inner: &[String],
 ) -> Vec<String> {
@@ -1009,7 +1011,7 @@ fn host_run_argv(
         format!("name={name}"),
         format!("cwd={cwd}"),
         format!("agent={agent}"),
-        format!("client={}", crate::control::gate_rules::CLIENT_TERMINAL),
+        format!("client={client}"),
     ]);
     if let Some((w, h)) = size {
         v.push(format!("size={w}x{h}"));
@@ -1336,8 +1338,15 @@ pub fn build_among(
                     unset_prefix(&unset),
                     dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
                 );
-                let run =
-                    host_run_argv(&env.self_argv, &name, &cwd, &o.agent, size.as_ref(), &inner);
+                let run = host_run_argv(
+                    &env.self_argv,
+                    &name,
+                    &cwd,
+                    &o.agent,
+                    crate::control::gate_rules::CLIENT_TERMINAL,
+                    size.as_ref(),
+                    &inner,
+                );
                 (run, unset, check)
             }
         };
