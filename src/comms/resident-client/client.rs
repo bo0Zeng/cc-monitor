@@ -352,7 +352,27 @@ impl InboundClient {
         view: Option<&Value>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
-        self.send(Some(machine), cmd, args, view, deadline).await
+        self.send(Some(machine), cmd, args, view, self.viewer_tz(), deadline)
+            .await
+    }
+
+    /// **转一问**：别人问到这一端后端、要交这条连接通往的那台的那一问（本机后端转给远端那台）——
+    /// 照 [`Self::call_until_viewed`] 发，只是信封里的时区是发起方那一份（`tz`，IANA 名），不是这条连接登记的那一份：
+    /// 那台照它写回包里的「几点」。`view` 缺 ⇒ 不带（＝ 全量）。
+    pub async fn relay_until(
+        &self,
+        cmd: &str,
+        args: Value,
+        view: Option<&Value>,
+        tz: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        self.send(None, cmd, args, view, Some(tz), deadline).await
+    }
+
+    /// 这条连接登记的看的这一台的时区（[`Self::set_viewer_tz`]）；没登记 ⇒ `None`。
+    fn viewer_tz(&self) -> Option<&str> {
+        self.tz.get().map(String::as_str)
     }
 
     /// **照类型问一条**：名字取 `C::NAME`（`cmd_wire::Call` 那张表），入参照类型写，回包照 `C::Reply` 解。
@@ -369,7 +389,9 @@ impl InboundClient {
             Ok(a) => a,
             Err(e) => return Ok(Err(e)),
         };
-        let got = self.send(at, C::NAME, args, view, deadline).await?;
+        let got = self
+            .send(at, C::NAME, args, view, self.viewer_tz(), deadline)
+            .await?;
         Ok(serde_json::from_value(got.unwrap_or(Value::Null)))
     }
 
@@ -381,16 +403,19 @@ impl InboundClient {
         view: Option<&Value>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
-        self.send(None, cmd, args, view, deadline).await
+        self.send(None, cmd, args, view, self.viewer_tz(), deadline)
+            .await
     }
 
     /// 发一条命令（`at` ＝ 问的是这条连接通往的后端持有的哪一台；`None` ＝ 问它自己）、在 `deadline` 之前等它的结局。
+    /// `tz`：信封里的时区（自己问 ⇒ 这条连接登记的那一份；转一问 ⇒ 发起方那一份）；`None` ⇒ 不带。
     async fn send(
         &self,
         at: Option<&str>,
         cmd: &str,
         args: Value,
         view: Option<&Value>,
+        tz: Option<&str>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
         // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
@@ -415,7 +440,7 @@ impl InboundClient {
             cmd,
             &args,
             Some(timeout),
-            self.tz.get().map(String::as_str),
+            tz,
             view,
             asked,
         ));
