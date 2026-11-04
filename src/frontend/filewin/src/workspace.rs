@@ -433,7 +433,8 @@ impl Workspace {
         (k, i)
     }
 
-    /// 上一件做不了时那句话。
+    /// 上一件做不了时那句话（判据读；窗口上经命令栏摆）。
+    #[cfg(test)]
     pub fn notice(&self) -> Option<&str> {
         self.notice.as_deref()
     }

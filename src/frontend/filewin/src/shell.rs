@@ -88,6 +88,8 @@ type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>
 ///
 /// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 零次 `read_dir`。
 /// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
+/// 测试构建里不编：那里的选择框是答「没选」的替身，不弹系统框。
+#[cfg(not(test))]
 #[expect(
     clippy::disallowed_methods,
     reason = "本包取主目录只在这一处（用不了 `data_paths`），只当存盘框起始的目录"

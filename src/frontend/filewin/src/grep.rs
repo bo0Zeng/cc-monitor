@@ -317,6 +317,8 @@ impl GrepBoard {
         self.inflight.load(Ordering::SeqCst) > 0
     }
 
+    /// 回过几趟（判据等「这一趟回来了」用）。
+    #[cfg(test)]
     pub fn rounds(&self) -> u64 {
         self.rounds.load(Ordering::SeqCst)
     }

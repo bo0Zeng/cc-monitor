@@ -354,7 +354,8 @@ impl CancelDesk {
             .collect()
     }
 
-    /// 一共造过几个键。
+    /// 一共造过几个键（判据对「造键的处数 ＝ 真起过的趟数」）。
+    #[cfg(test)]
     pub fn minted(&self) -> u64 {
         self.minted.load(Ordering::SeqCst)
     }
@@ -687,17 +688,6 @@ impl DropBoard {
     pub fn switch_to_backend(&self, why: String) {
         self.inner.lock().unwrap().via_backend.get_or_insert(why);
         self.poke();
-    }
-
-    /// 这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
-    pub fn seen(&self, name: &str) -> Option<(u64, u64)> {
-        self.inner
-            .lock()
-            .unwrap()
-            .progress
-            .iter()
-            .find(|(n, ..)| n == name)
-            .map(|(_, g, t)| (*g, *t))
     }
 
     /// 那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比）。

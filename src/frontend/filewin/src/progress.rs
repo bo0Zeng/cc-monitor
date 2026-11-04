@@ -257,7 +257,8 @@ impl Progress {
         self.lock().jobs.retain(|j| j.state() == State::Running);
     }
 
-    /// 关窗前那一问用：还在跑的那几趟（标题）。
+    /// 还在跑的那几趟（标题；判据读，关窗那一问走 [`Self::running_for_close`]）。
+    #[cfg(test)]
     pub fn running_titles(&self) -> Vec<String> {
         let g = self.lock();
         g.jobs

@@ -244,11 +244,13 @@ impl Pictures {
     }
 
     /// 此刻留着几张（判据看）。
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.slots.lock().unwrap().len()
     }
 
-    /// 一张都没留着。
+    /// 一张都没留着（判据看）。
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
