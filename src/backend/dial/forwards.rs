@@ -246,8 +246,7 @@ where
         .map_err(failed)?
         .ok_or_else(|| failed(copy_text("beForwards.start.unconfirmed", &[])))?;
     // 照拨号核心写的那一形读（`DialAck`），不手写键名。
-    let ack: ssh_dial::DialAck =
-        serde_json::from_str(&ack).map_err(|e| failed(e.to_string()))?;
+    let ack: ssh_dial::DialAck = serde_json::from_str(&ack).map_err(|e| failed(e.to_string()))?;
     if !ack.ok {
         let why = ack
             .said
