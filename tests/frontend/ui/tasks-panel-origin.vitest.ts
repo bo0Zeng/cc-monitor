@@ -8,8 +8,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 任务快照改走通道（`chan.call(origin, "tasks-list", {sid})`，后端出成品 `{tasks}`）。
-//   替身翻译层：那一发 `chan.call` 按旧形状 `{origin, sessionId}` 交给 `getSessionTasks`、把它答的数组包成成品 ——
+// 任务快照改走通道（`chan.call(origin, "tasks-list", {sid})`，后端出成品 `{tasks, chip, hint}`）。
+//   替身翻译层：那一发 `chan.call` 按旧形状 `{origin, sessionId}` 交给 `getSessionTasks`、把它答的数组包成成品（{@link listOf}）——
 //   下面各条原来的断言因此数得到**真发出去**的那一发（不换的话数的是一个没人调的旧命令，恒为 0，会空真地绿）。
 const getSessionTasks = vi.fn();
 const chanOps: string[] = [];
@@ -20,17 +20,23 @@ vi.mock("../../../src/comms/inward/chan", () => ({
       if (typeof budget?.until !== "number") throw new Error("没给期限");
       const args = JSON.parse(new TextDecoder().decode(body)) as { sid: string };
       const tasks = await getSessionTasks({ origin, sessionId: args.sid });
-      return new TextEncoder().encode(JSON.stringify({ tasks }));
+      return new TextEncoder().encode(JSON.stringify(listOf(tasks)));
     },
   },
 }));
 
-import { TasksPanel, fetchSessionTasks, originOfSession } from "../../../src/frontend/ui/tasks-panel";
+import { NO_TASKS, TasksPanel, fetchSessionTasks, originOfSession } from "../../../src/frontend/ui/tasks-panel";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { TaskEntry } from "../../../src/frontend/ui/tasks-panel";
+import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
 
 function task(id: string, status = "pending"): TaskEntry {
-  return { id, subject: `s${id}`, status, blocks: [], blockedBy: [] };
+  return { id, subject: `s${id}`, status, statusText: status, blocks: [], blockedBy: [] };
+}
+
+/** 后端那一份成品的替身：chip 只造一句带总数的占位（下面按「/总数」认是哪一次的快照）。 */
+function listOf(tasks: TaskEntry[]): TasksList {
+  return { tasks, chip: tasks.length > 0 ? `枚 /${tasks.length}` : "", hint: "" };
 }
 
 async function settle(): Promise<void> {
@@ -45,7 +51,7 @@ beforeEach(() => {
 describe("LOC1a：任务快照经通道问 `tasks-list`", () => {
   it("发的是 `tasks-list`，不是别的操作名；回包按类型用（形状由握手指纹管，这里不逐格验）", async () => {
     getSessionTasks.mockResolvedValue([task("1")]);
-    expect(await fetchSessionTasks("s1", "devbox")).toEqual([task("1")]);
+    expect(await fetchSessionTasks("s1", "devbox")).toEqual(listOf([task("1")]));
     expect(chanOps).toEqual(["tasks-list"]);
   });
 });
@@ -67,7 +73,7 @@ describe("RM1b：调用带着 origin", () => {
 
   it("失败 ⇒ 空表（面板自然隐藏），不抛", async () => {
     getSessionTasks.mockRejectedValue("远端 [devbox] 的后端还不认 `tasks-list`");
-    expect(await fetchSessionTasks("sid-x", "devbox")).toEqual([]);
+    expect(await fetchSessionTasks("sid-x", "devbox")).toEqual(NO_TASKS);
   });
 });
 
@@ -80,7 +86,7 @@ describe("RM1b：远端现问，本机不问", () => {
 
     const p = new TasksPanel();
     getSessionTasks.mockResolvedValue([task("1"), task("2", "completed")]);
-    p.setSession("r1", []);
+    p.setSession("r1", NO_TASKS);
     await settle();
     expect(getSessionTasks).toHaveBeenCalledTimes(1);
     expect(getSessionTasks.mock.calls[0][0]).toEqual({ origin: "devbox", sessionId: "r1" });
@@ -88,7 +94,7 @@ describe("RM1b：远端现问，本机不问", () => {
     expect(p.summaryElement.textContent).toContain("/2");
 
     getSessionTasks.mockReset();
-    p.setSession("l1", [task("9")]);
+    p.setSession("l1", listOf([task("9")]));
     await settle();
     expect(getSessionTasks, "本机 tab 也去问了 —— 本机有 watcher 推送").toHaveBeenCalledTimes(0);
   });
@@ -97,7 +103,7 @@ describe("RM1b：远端现问，本机不问", () => {
     getSessionTasks.mockResolvedValue([task("1")]);
     await fetchSessionTasks("r2", "devbox");
     const p = new TasksPanel();
-    p.setSession("r2", [task("1")]);
+    p.setSession("r2", listOf([task("1")]));
     await settle();
     getSessionTasks.mockReset();
     getSessionTasks.mockResolvedValue([task("1"), task("2"), task("3")]);
@@ -119,9 +125,9 @@ describe("RM1b：远端现问，本机不问", () => {
     getSessionTasks.mockImplementationOnce(
       () => new Promise<TaskEntry[]>((r) => (releaseA = r)),
     );
-    p.setSession("ra", []);
+    p.setSession("ra", NO_TASKS);
     // 切到本机 tab：本机不现问 ⇒ 代次没动，拦住那次迟到的只能是「sid 已经不是它」这一条。
-    p.setSession("la", [task("9")]);
+    p.setSession("la", listOf([task("9")]));
     await settle();
     expect(p.summaryElement.textContent).toContain("/1");
     releaseA([task("1"), task("2"), task("3"), task("4"), task("5")]);
@@ -141,7 +147,7 @@ describe("RM1b：远端现问，本机不问", () => {
       () => new Promise<TaskEntry[]>((r) => (releaseFirst = r)),
     );
     getSessionTasks.mockResolvedValueOnce([task("1"), task("2")]);
-    p.setSession("rc", []);
+    p.setSession("rc", NO_TASKS);
     void p.refreshIfRemote("rc");
     await settle();
     expect(p.summaryElement.textContent).toContain("/2");
@@ -157,11 +163,11 @@ describe("重画不丢焦点（kit place）", () => {
     await fetchSessionTasks("lf", LOCAL);
     const p = new TasksPanel();
     document.body.replaceChildren(p.pageElement);
-    p.setSession("lf", [task("1"), task("2"), task("3")]);
+    p.setSession("lf", listOf([task("1"), task("2"), task("3")]));
     const row = p.pageElement.querySelector<HTMLElement>('[data-task-id="2"]')!;
     row.tabIndex = 0;
     row.focus();
-    p.setSession("lf", [task("3"), task("1"), task("2", "completed")]);
+    p.setSession("lf", listOf([task("3"), task("1"), task("2", "completed")]));
     expect(p.pageElement.querySelector('[data-task-id="2"]')).toBe(row);
     expect(document.activeElement).toBe(row);
   });

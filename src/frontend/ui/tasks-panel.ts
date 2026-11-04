@@ -11,10 +11,10 @@
  * sid → origin 由 {@link fetchSessionTasks} 记下（Tab 创建时那一次就带着 origin）。
  *
  * 界面：
- *  - **chip**：状态栏里 `任务 {做完}/{全部}`，悬停分项与键位；点了交宿主开 / 收底部抽屉的「任务」页。这个会话没有任务 ⇒ 不渲染。
- *  - **抽屉页**：一个任务一行（状态图标 · 主题 · 在做的那一句），按 id 原地更新；这个会话没有任务 ⇒ 页里写空态。
+ *  - **chip**：状态栏里那一枚照摆后端写好的 `chip`，悬停照摆 `hint` ＋ 键位；点了交宿主开 / 收底部抽屉的「任务」页。这个会话没有任务 ⇒ 不渲染。
+ *  - **抽屉页**：一个任务一行（状态图标 · 主题 · 在做的那一句；读屏字照摆 `statusText`），按 id 原地更新；这个会话没有任务 ⇒ 页里写空态。
  *
- * 全局单例：TabManager 维护 `Map<sid, TaskEntry[]>`，切 Tab / 收到 update 都同步给单例。
+ * 全局单例：TabManager 维护 `Map<sid, TasksList>`，切 Tab / 收到 update 都同步给单例。
  * 同 sid 只显示自己的 task，跨 Tab 不混淆。
  */
 
@@ -26,6 +26,7 @@ import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Task } from "./generated/Task";
+import type { TasksList } from "./generated/TasksList";
 import { isLocalOrigin, type Machine } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
@@ -36,6 +37,9 @@ import { copyText } from "./copy-table";
  * 问回来的与帧里推来的同一个类型（形状由握手指纹管）。
  */
 export type TaskEntry = Task;
+
+/** 没有任务（还没问到 · 问不到 · 没有活动 Tab）那一份。 */
+export const NO_TASKS: TasksList = { tasks: [], chip: "", hint: "" };
 
 
 /** 一个任务行前面那颗图标（状态 ⇒ 图标名）。 */
@@ -66,14 +70,14 @@ export class TasksPanel {
   onLabel: ((label: string) => void) | null = null;
 
   private summaryText: HTMLElement;
-  /** chip 悬停那一句（每次画时按此刻的分项现拼）。 */
+  /** chip 悬停那一句（后端的 `hint` ＋ 此刻的键位）。 */
   private hint = "";
   private list: HTMLUListElement;
   private empty: HTMLElement;
   /** 画出来的行按任务 id 留着：任务表又来一份时原地改，不整表重建。 */
   private readonly rows = new Map<string, HTMLLIElement>();
 
-  private tasks: TaskEntry[] = [];
+  private got: TasksList = NO_TASKS;
   /** 当前显示的 session（来自 TabManager.activeId）。`null` = 无 active Tab。 */
   private activeSid: string | null = null;
   /** 远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
@@ -101,7 +105,7 @@ export class TasksPanel {
 
   /** 页签上的字（有任务 ⇒ 与 chip 同字；没有 ⇒ 页名）。 */
   get label(): string {
-    return this.tasks.length > 0 && this.activeSid !== null ? (this.summaryText.textContent ?? "") : copyText("tasksPanel.page.title");
+    return this.got.tasks.length > 0 && this.activeSid !== null ? (this.summaryText.textContent ?? "") : copyText("tasksPanel.page.title");
   }
 
   /** 抽屉开到 / 离开这一页（宿主调）。开到的那一刻远端会话现问一次（看的就是这一刻的列表）。 */
@@ -116,9 +120,9 @@ export class TasksPanel {
    * 切换当前显示的 session（TabManager.switchTo 或新 Tab 创建时调）。
    * `null` 表示无 active Tab —— summary 隐藏。
    */
-  setSession(sid: string | null, tasks: TaskEntry[]): void {
+  setSession(sid: string | null, got: TasksList): void {
     this.activeSid = sid;
-    this.tasks = tasks;
+    this.got = got;
     this.render();
     // 远端 tab 被切到的那一刻现问一次（本机有 watcher 推送，不必）。
     if (sid !== null) void this.refreshIfRemote(sid);
@@ -132,14 +136,14 @@ export class TasksPanel {
     const origin = originOfSession(sid);
     if (origin === undefined || isLocalOrigin(origin)) return;
     const mine = ++this.refreshSeq;
-    const tasks = await fetchSessionTasks(sid, origin);
+    const got = await fetchSessionTasks(sid, origin);
     if (mine !== this.refreshSeq || this.activeSid !== sid) return;
-    this.tasks = tasks;
+    this.got = got;
     this.render();
   }
 
   private render(): void {
-    const total = this.activeSid === null ? 0 : this.tasks.length;
+    const total = this.activeSid === null ? 0 : this.got.tasks.length;
     this.summaryElement.style.display = total === 0 ? "none" : "";
     const body = total > 0 ? this.list : this.empty;
     if (this.pageElement.firstChild !== body) this.pageElement.replaceChildren(body);
@@ -150,31 +154,11 @@ export class TasksPanel {
       return;
     }
 
-    let completed = 0;
-    let inProgress = 0;
-    let pending = 0;
-    let other = 0;
-    for (const t of this.tasks) {
-      switch (t.status) {
-        case "completed":
-          completed += 1;
-          break;
-        case "in_progress":
-          inProgress += 1;
-          break;
-        case "pending":
-          pending += 1;
-          break;
-        default:
-          other += 1;
-      }
-    }
-    this.summaryText.textContent = copyText("statusBar.tasks.chip", { done: completed, total });
+    this.summaryText.textContent = this.got.chip;
     const chord = dispatcher.effectiveChord("panel.toggle-tasks");
-    const parts = copyText("statusBar.tasks.hint", { done: completed, active: inProgress, open: pending + other });
-    this.hint = chord ? `${parts} · ${KeybindingDispatcher.prettyChord(chord)}` : parts;
+    this.hint = chord ? `${this.got.hint} · ${KeybindingDispatcher.prettyChord(chord)}` : this.got.hint;
     this.onLabel?.(this.label);
-    const items = this.tasks.map((t) => this.row(t));
+    const items = this.got.tasks.map((t) => this.row(t));
     place(this.list, items);
     const keep = new Set(items);
     for (const [id, el] of this.rows) if (!keep.has(el)) this.rows.delete(id);
@@ -224,7 +208,7 @@ export function originOfSession(sid: string): Machine | undefined {
 }
 
 /**
- * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL`）。失败返空数组（panel 自然隐藏）。
+ * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL`）。失败返 {@link NO_TASKS}（panel 自然隐藏）。
  *
  * 第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
  * （`Tab["origin"]`）而不是另写一份类型。那一格已收成 `Machine`（本机 = `LOCAL`），
@@ -233,16 +217,15 @@ export function originOfSession(sid: string): Machine | undefined {
 export async function fetchSessionTasks(
   sessionId: string,
   tabOrigin: Tab["origin"],
-): Promise<TaskEntry[]> {
+): Promise<TasksList> {
   const origin: Machine = tabOrigin;
   originBySid.set(sessionId, origin);
   try {
     const budget = budgetWithin(TASKS_BUDGET_MS);
-    const { tasks } = await callTyped(origin, "tasks-list", { sid: sessionId }, budget);
-    return tasks;
+    return await callTyped(origin, "tasks-list", { sid: sessionId }, budget);
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
-    return [];
+    return NO_TASKS;
   }
 }
 

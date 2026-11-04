@@ -18,7 +18,8 @@ import type { MachineState } from "./generated/MachineState";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
-import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
+import { fetchSessionTasks, NO_TASKS, type TasksPanel } from "./tasks-panel";
+import type { TasksList } from "./generated/TasksList";
 import type { JsonlLinePayload } from "./events";
 import type { BehaviorConfig } from "./behavior";
 import { failToast, noteMessage, undoToast } from "./kit/toast";
@@ -1368,7 +1369,7 @@ export class TabManager {
         this.store.activeId = null;
         this.reportWatching();
         // 关掉最后一个 ⇒ 任务面板进空态。
-        this.tasksPanel?.setSession(null, []);
+        this.tasksPanel?.setSession(null, NO_TASKS);
         this.agentsPanel?.setSession(null, NO_RUNS);
         // 没有邻居可切 ⇒ 当前 tab 那一格清空（HUD 不残留死会话的数）。
         this.publishActive();
@@ -1427,7 +1428,7 @@ export class TabManager {
     }
   }
 
-  updateTasks(sessionId: string, tasks: TaskEntry[]): void {
+  updateTasks(sessionId: string, tasks: TasksList): void {
     this.store.tasksBySid.set(sessionId, tasks);
     if (this.store.activeId === sessionId) {
       this.tasksPanel?.setSession(sessionId, tasks);
@@ -1683,7 +1684,7 @@ export class TabManager {
           if (t) this.view.scrollToBottom(t);
         });
       }
-      this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
+      this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? NO_TASKS);
       this.agentsPanel?.setSession(sessionId, this.live.board.table(sessionId));
       // 任务面板 · agent 面板 · HUD 都切到新的当前会话。
       this.publishActive(); // 当前 tab 那一格（usage · 要不到的原因）
