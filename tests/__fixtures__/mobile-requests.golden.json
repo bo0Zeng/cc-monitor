@@ -60,7 +60,7 @@
   "session-commands": [{"sid":"s"}],
   "session-interrupt": [{"sid":"s","client":"mobile"}],
   "session-model": [{"sid":"s","model":"opus","client":"mobile"}],
-  "session-open": [{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":"x"}},"account":{"kind":"named","name":"a"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":null}},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"~","tmuxName":"demo"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"resume","sid":"s"},"run":"tmux","local":false,"client":"mobile"},{"what":{"kind":"look","session":"demo"},"local":false,"client":"mobile"},{"what":{"kind":"shell","session":"main","cwd":"~/w"},"local":false,"client":"mobile"},{"what":{"kind":"shell","cwd":"/w"},"local":false,"client":"mobile"}],
+  "session-open": [{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":"x"}},"account":{"kind":"named","name":"a"},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"new","agent":"claude","cwd":"/w","prompt":"hi","rotation":{"strategy":null}},"run":"tmux","local":false,"ticket":"t","client":"mobile"},{"what":{"kind":"resume","sid":"s"},"run":"tmux","local":false,"client":"mobile"},{"what":{"kind":"look","session":"demo"},"local":false,"client":"mobile"},{"what":{"kind":"shell","session":"main","cwd":"~/w"},"local":false,"client":"mobile"},{"what":{"kind":"shell","cwd":"/w"},"local":false,"client":"mobile"}],
   "session-open-dir": [{"cwd":"/w"}],
   "session-open-facts": [{}],
   "session-permission": [{"sid":"s","mode":"plan","client":"mobile"}],
@@ -69,6 +69,7 @@
   "session-queue-read": [{"machine":"<local>","sid":"s"}],
   "session-rewind-options": [{"machine":"<local>","sid":"s","to":"u"}],
   "sessions-needs": [null],
+  "sessions-where": [{"sids":["s"],"client":"mobile"}],
   "terminal-end": [{"terminal":"t1","client":"mobile"}],
   "terminal-preview": [{"terminal":"t1","color":false}],
   "terminals-list": [{"client":"mobile"}]

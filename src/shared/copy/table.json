@@ -26301,14 +26301,14 @@
       "args": []
     },
     "mobTerms.group.session": {
-      "kind": "body",
-      "role": "小标题",
+      "kind": "title",
+      "role": "标题",
       "zh": "会话所在的终端",
       "args": []
     },
     "mobTerms.group.plain": {
-      "kind": "body",
-      "role": "小标题",
+      "kind": "title",
+      "role": "标题",
       "zh": "终端会话",
       "args": []
     },
