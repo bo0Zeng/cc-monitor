@@ -128,63 +128,35 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     let argv = format!("\"{verb}\", \"-d\"");
     let mut found: Vec<String> = Vec::new();
     let mut scanned = 0usize;
-    let mut stack: Vec<std::path::PathBuf> =
-        // **这里没有 `"src/backend"`，不是漏了**：后端树搬到
-        // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
-        // 后端的每个文件数两遍。
-        // **这里没有 `"src/frontend/shell/src"`，不是漏了**：
-        // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
-        ["src", "shared"]
-            .iter()
-            .map(|d| root.join(d))
-            .collect();
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
+    // 人群 ＝ 整棵 `src/`（后端 · 壳 · 共享脚本都在它底下）；根读不到当场 panic，不静默跳过。
+    for (p, raw) in guard_core::scan_tree!(&root.join("src"), &[]) {
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if name.contains(".test.") || name.contains(".vitest.") {
             continue;
+        }
+        let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+        if !matches!(ext, "rs" | "ts" | "sh" | "") {
+            continue;
+        }
+        scanned += 1;
+        let body = if ext == "rs" {
+            guard_core::production_code(&raw)
+        } else {
+            raw
         };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            let name = p
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            if name.contains(".test.") || name.contains(".vitest.") {
-                continue;
-            }
-            let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
-            if !matches!(ext, "rs" | "ts" | "sh" | "") {
-                continue;
-            }
-            let Ok(raw) = std::fs::read_to_string(&p) else {
-                continue;
-            };
-            scanned += 1;
-            let body = if ext == "rs" {
-                guard_core::production_code(&raw)
-            } else {
-                raw
-            };
-            let hit = super::creation_detect::creates_a_session(&body);
-            if hit {
-                found.push(
-                    p.strip_prefix(&root)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                );
-            }
+        if super::creation_detect::creates_a_session(&body) {
+            found.push(guard_core::addr::rel_of(&p));
         }
     }
     found.sort();
     // ★ 抽取器自检：遍历坏了下面几条会零命中地绿。
     assert!(
         scanned >= 300,
-        "只扫到 {scanned} 个文件 —— 遍历坏了（四个根目录实测远超 300）"
+        "只扫到 {scanned} 个文件 —— 遍历坏了（`src/` 实测远超 300）"
     );
     let mut registered: Vec<String> = CREATION_PATHS
         .iter()
@@ -387,31 +359,11 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     let needle = format!("过渡期{}", "回落");
     let mut scanned: Vec<String> = Vec::new();
     let mut said: Vec<String> = Vec::new();
-    let mut stack = vec![root.join("src/doc")];
-    while let Some(d) = stack.pop() {
-        let rd = std::fs::read_dir(&d)
-            .unwrap_or_else(|e| panic!("读不到 {} —— 人群空了本条会零命中地绿：{e}", d.display()));
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|x| x.to_str()) != Some("md") {
-                continue;
-            }
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                panic!("{rel} 读不出来 —— 读不到的文件只会静默返回空串");
-            };
-            scanned.push(rel.clone());
-            if text.contains(needle.as_str()) {
-                said.push(rel);
-            }
+    for (p, text) in guard_core::scan_tree!(&root.join("src/doc"), &["md"]) {
+        let rel = guard_core::addr::rel_of(&p);
+        scanned.push(rel.clone());
+        if text.contains(needle.as_str()) {
+            said.push(rel);
         }
     }
     // ★ 抽取器自检：人群塌成 0 时，下面那条相等断言会**空真地**绿。
