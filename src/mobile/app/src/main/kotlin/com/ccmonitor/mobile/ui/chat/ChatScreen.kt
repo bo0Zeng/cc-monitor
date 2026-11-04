@@ -1,22 +1,29 @@
 package com.ccmonitor.mobile.ui.chat
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -24,7 +31,12 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.SegHl
@@ -36,6 +48,7 @@ import com.ccmonitor.mobile.ui.claude.LocalSaidImages
 import com.ccmonitor.mobile.ui.claude.LocalSegHl
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 /**
  * 聊天面：正文（[ChatTranscript]）＋ 输入行。
@@ -155,25 +168,79 @@ fun ChatTranscript(
     Column(modifier.fillMaxWidth()) {
         HistoryStatusBar(state)
 
-        ClaudeReadingPane(
-            items = state.stream,
-            modifier = Modifier.weight(1f).testTag(ChatTestTags.PANE),
-            listState = listState,
-            // 落点那张卡：描边，折着的展开。
-            matchedKeys = setOfNotNull(state.landing),
-            // 不传的话「复制代码」按钮照样渲染但点了没反应。
-            onCopyCode = { clipboard.setText(AnnotatedString(it)) },
-            onRetrySend = onRetrySend,
-            trailer = { liveCards(state.live) },
-            stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
-            process = { ProcessRow(it, process) },
-            said = hooks,
-        )
+        NewContentBox(Modifier.weight(1f), ChatNewContent.Tail(lastUnit?.key, lastUnit?.searchableText()?.length ?: 0, liveLength), followState, toBottom = { listState.scrollToItem((total - 1).coerceAtLeast(0), Int.MAX_VALUE) }) {
+            ClaudeReadingPane(
+                items = state.stream,
+                modifier = Modifier.fillMaxSize().testTag(ChatTestTags.PANE),
+                listState = listState,
+                // 落点那张卡：描边，折着的展开。
+                matchedKeys = setOfNotNull(state.landing),
+                // 不传的话「复制代码」按钮照样渲染但点了没反应。
+                onCopyCode = { clipboard.setText(AnnotatedString(it)) },
+                onRetrySend = onRetrySend,
+                trailer = { liveCards(state.live) },
+                stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
+                process = { ProcessRow(it, process) },
+                said = hooks,
+            )
+        }
 
         state.failedWhy?.let {
             // 会话那一层的失败：核心那一句原样（起不来 · 读不出记录）。
             ErrorLine(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
+    }
+}
+
+/**
+ * 正文那一格 ＋ 浮在它底边正中的「↓ 新内容」：流尾 [tail] 或贴不贴底 [follow] 每变一次照 [ChatNewContent.shown] 判亮不亮；
+ * 只亮一颗，不替人滚。点了恢复跟随、[toBottom]。
+ */
+@Composable
+private fun NewContentBox(
+    modifier: Modifier,
+    tail: ChatNewContent.Tail,
+    follow: MutableState<Boolean>,
+    toBottom: suspend () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    var lit by remember { mutableStateOf(false) }
+    var seen by remember { mutableStateOf<ChatNewContent.Tail?>(null) }
+    LaunchedEffect(tail, follow.value) {
+        lit = ChatNewContent.shown(lit, seen, tail, follow.value)
+        seen = tail
+    }
+    val scope = rememberCoroutineScope()
+    Box(modifier) {
+        content()
+        if (lit) {
+            NewContentButton(Modifier.align(Alignment.BottomCenter)) {
+                follow.value = true
+                lit = false
+                scope.launch { toBottom() }
+            }
+        }
+    }
+}
+
+/** 浮在正文底边正中的那一颗（同桌面会话查看器那一颗，不带数）。 */
+@Composable
+private fun NewContentButton(
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    SecondaryButton(
+        onClick = onClick,
+        modifier =
+            modifier
+                .padding(bottom = tokens.spacing.sm)
+                .clip(RoundedCornerShape(tokens.radius.xl))
+                .background(tokens.bg2)
+                .testTag(ChatTestTags.NEW_CONTENT),
+    ) {
+        PhIcon(Ph.ArrowDown, contentDescription = null, size = Touch.iconInline)
+        Text(copyText("sessionViewer.stream.newContent"))
     }
 }
 

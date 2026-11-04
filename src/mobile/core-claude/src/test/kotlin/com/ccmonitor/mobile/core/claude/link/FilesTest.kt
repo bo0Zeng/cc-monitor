@@ -2,7 +2,9 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.core.wire.gen.Staged
+import com.ccmonitor.mobile.core.wire.gen.TextPreview
 import com.ccmonitor.mobile.core.wire.gen.WirePath
 import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
 import org.junit.Assert.assertArrayEquals
@@ -73,7 +75,7 @@ class FilesTest {
     }
 
     @Test
-    fun `files-ls 每行的门照那台判的画：许读多少 · 不许时那一句；当图读的手机不预览`() {
+    fun `files-ls 每行的门照那台判的画：许读多少 · 不许时那一句；预览门原样留成那一格`() {
         fun gated(
             name: String,
             gates: Map<String, Any?>,
@@ -91,11 +93,11 @@ class FilesTest {
                 ),
             )!!
         val e = got.entries
-        assertEquals(FilesLs.Open(cap = 65_536L), e[0].preview)
+        assertEquals("预览门原样留着（语言不丢）", PreviewGate.Text(TextPreview(cap = 65_536L, lang = "rs")), e[0].preview)
         assertEquals(FilesLs.Open(cap = 8_388_608L), e[0].edit)
-        assertEquals(FilesLs.Open(said = "太大"), e[1].preview)
+        assertEquals(PreviewGate.No("太大"), e[1].preview)
         assertEquals(FilesLs.Open(said = "超编辑上限"), e[1].edit)
-        assertNull("当图读的那一种手机不预览", e[2].preview)
+        assertEquals("当图读的那一种照样留着门", PreviewGate.Image(4_194_304L), e[2].preview)
         assertNull("目录没有门", e[3].preview)
         assertNull(e[3].edit)
     }

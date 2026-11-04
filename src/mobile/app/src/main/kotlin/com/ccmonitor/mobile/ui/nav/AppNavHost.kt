@@ -543,6 +543,7 @@ private fun NavGraphBuilder.chatRoutes(
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
             onOpenAgents = { s -> nav.navigate(Screen.Agents.of(hostId, s)) },
             onOpenPlan = { s -> nav.navigate(Screen.Plan.of(hostId, s)) },
+            onOpenDir = { dir -> nav.navigate(Screen.Session.of(tabManager.open(hostId, SessionTabManager.TabTarget.Files), dir)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
             onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
         )
