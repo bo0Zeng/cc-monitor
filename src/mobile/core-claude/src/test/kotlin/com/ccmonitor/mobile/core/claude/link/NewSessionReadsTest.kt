@@ -9,7 +9,7 @@ import org.junit.Test
 /** 新建会话那几屏问那台的几条：入参照协议的格，回包照 `IPC-COMMANDS.md` 那一形解，缺必填格 ⇒ 解不出。 */
 class NewSessionReadsTest {
     private val what = mapOf("kind" to "new", "agent" to "claude", "cwd" to "~/proj", "prompt" to "你好")
-    private val base = mapOf("what" to what, "run" to "tmux", "local" to false, "ticket" to "t-1", "client" to "mobile")
+    private val base = mapOf("what" to what, "local" to false, "ticket" to "t-1", "client" to "mobile")
 
     @Test
     fun `session-open 新起：账号 · 轮换只在改过时交；改了交那一形（named · strategy，不轮换 ＝ null）`() {
