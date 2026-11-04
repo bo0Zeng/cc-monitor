@@ -90,7 +90,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("groups-read", "16f5fa19"),
     ("groups-write", "b540ff97"),
     ("history-annotate", "b9046900"),
-    ("history-branch", "d78c8205"),
+    ("history-branch", "8b1878d0"),
     ("history-browse", "9eee7681"),
     ("history-facts", "5a9834f4"),
     ("history-find", "099d85da"),

@@ -13,7 +13,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("relayed", "a34c89c4"),
     ("reply", "96e8c938"),
     ("session_added", "05dd309c"),
-    ("session_branch", "8f2c5c0a"),
+    ("session_branch", "52cd2f44"),
     ("session_file_gone", "0284f2c7"),
     ("session_file_reread", "bdab1d4a"),
     ("session_left", "f9746125"),

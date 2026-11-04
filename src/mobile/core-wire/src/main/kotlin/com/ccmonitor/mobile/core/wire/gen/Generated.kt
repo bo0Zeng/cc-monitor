@@ -2846,6 +2846,7 @@ data class BookmarksReadReq(
 @Suppress("UNCHECKED_CAST")
 data class Branch(
     val off: List<String>,
+    val runs: List<BranchRun>,
     val end: Long,
     val next: Long?,
 ) : Ordered {
@@ -2855,11 +2856,12 @@ data class Branch(
         val ADAPTER: JsonAdapter<Branch> = obj(
             listOf(
             Field("off", { arr(Str) }, optional = false, nullable = false),
+            Field("runs", { arr(BranchRun.ADAPTER) }, optional = false, nullable = false),
             Field("end", { U64 }, optional = false, nullable = false),
             Field("next", { opt(U64) }, optional = false, nullable = true),
             ),
-            { a -> Branch(a[0] as List<String>, a[1] as Long, a[2] as Long?) },
-            { v -> arrayOf(v.off, v.end, v.next) },
+            { a -> Branch(a[0] as List<String>, a[1] as List<BranchRun>, a[2] as Long, a[3] as Long?) },
+            { v -> arrayOf(v.off, v.runs, v.end, v.next) },
         )
     }
 }
@@ -2904,6 +2906,27 @@ data class BranchReq(
             ),
             { a -> BranchReq(a[0] as String, a[1] as Long?, a[2] as Long?) },
             { v -> arrayOf(v.path, v.from, v.limit) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BranchRun(
+    val at: Long,
+    val n: Long,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BranchRun> = obj(
+            listOf(
+            Field("at", { U64 }, optional = false, nullable = false),
+            Field("n", { U64 }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BranchRun(a[0] as Long, a[1] as Long, a[2] as String) },
+            { v -> arrayOf(v.at, v.n, v.said) },
         )
     }
 }
@@ -23452,6 +23475,7 @@ data class SessionBook(
 data class SessionBranchPayload(
     val sid: String,
     val off: List<String>,
+    val runs: List<BranchRun>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23460,9 +23484,10 @@ data class SessionBranchPayload(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("off", { arr(Str) }, optional = false, nullable = false),
+            Field("runs", { arr(BranchRun.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> SessionBranchPayload(a[0] as String, a[1] as List<String>) },
-            { v -> arrayOf(v.sid, v.off) },
+            { a -> SessionBranchPayload(a[0] as String, a[1] as List<String>, a[2] as List<BranchRun>) },
+            { v -> arrayOf(v.sid, v.off, v.runs) },
         )
     }
 }

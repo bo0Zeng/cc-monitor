@@ -1583,6 +1583,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.Branch::class.java to com.ccmonitor.mobile.core.wire.gen.Branch.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BranchHeld::class.java to com.ccmonitor.mobile.core.wire.gen.BranchHeld.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BranchReq::class.java to com.ccmonitor.mobile.core.wire.gen.BranchReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.BranchRun::class.java to com.ccmonitor.mobile.core.wire.gen.BranchRun.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BrowseReply::class.java to com.ccmonitor.mobile.core.wire.gen.BrowseReply.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BrowseReq::class.java to com.ccmonitor.mobile.core.wire.gen.BrowseReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BusAct::class.java to com.ccmonitor.mobile.core.wire.gen.BusAct.ADAPTER,
