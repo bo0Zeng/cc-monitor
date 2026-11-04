@@ -6212,7 +6212,11 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
 /**
  * 正文的行数（两头的空行不算）。
  */
-lines: number, };
+lines: number, 
+/**
+ * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
+ */
+fold: boolean, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6684,7 +6688,11 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
 /**
  * 正文的行数（两头的空行不算）。
  */
-lines: number, };
+lines: number, 
+/**
+ * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
+ */
+fold: boolean, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7188,7 +7196,11 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
 /**
  * 正文的行数（两头的空行不算）。
  */
-lines: number, };
+lines: number, 
+/**
+ * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
+ */
+fold: boolean, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7637,7 +7649,11 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
 /**
  * 正文的行数（两头的空行不算）。
  */
-lines: number, };
+lines: number, 
+/**
+ * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
+ */
+fold: boolean, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -8712,6 +8728,10 @@ agent: AgentKind | null,
  */
 writers: Array<number>, 
 /**
+ * 不止一个进程在写时那一句（[`writers_line`]，跟着 `writers` 现给；界面照摆）；一个或没有 ⇒ 不出现。
+ */
+writersLine?: Words, 
+/**
  * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
  */
 pending: Array<PendingCall>, 
@@ -9263,7 +9283,16 @@ total: number,
 /**
  * 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
  */
-hits: Array<FindHit>, };
+hits: Array<FindHit>, 
+/**
+ * 结果头那一句，照「这一页之后已交多少 · 全量多少 · 搜的哪一类」写好（界面照摆）：零条 ⇒ 无匹配（只搜用户时说「仅用户」）；
+ * 全量大于已交 ⇒「前 n · 共 total」；否则「匹配 n」。
+ */
+head: string, 
+/**
+ * 只搜用户、零条 ⇒ 结果头旁给一颗［搜全部］。
+ */
+widen: boolean, };
 type HistoryFindReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
@@ -9731,7 +9760,11 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
 /**
  * 正文的行数（两头的空行不算）。
  */
-lines: number, };
+lines: number, 
+/**
+ * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
+ */
+fold: boolean, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -10035,6 +10068,10 @@ subject: string,
  */
 status: string, 
 /**
+ * `status` 写给人看的那一个字（读屏念它；界面照摆，不自己映）。
+ */
+statusText: string, 
+/**
  * 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
  */
 blocks: Array<string>, 
@@ -10054,7 +10091,15 @@ type TasksList = {
 /**
  * `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
  */
-tasks: Array<Task>, };
+tasks: Array<Task>, 
+/**
+ * 状态栏那一枚的字（「任务 完成数/总数」）；没有任务 ⇒ 空串。
+ */
+chip: string, 
+/**
+ * 那一枚的悬停分项（完成 · 进行 · 未开始）；没有任务 ⇒ 空串。
+ */
+hint: string, };
 type TasksListReq = { 
 /**
  * 会话 id（围栏在本体里：走出任务根 ⇒ `bad_args`）。

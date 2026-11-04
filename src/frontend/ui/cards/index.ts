@@ -346,12 +346,9 @@ export function buildStepsCard(units: HTMLElement[]): HTMLElement {
   return card;
 }
 
-/** 粘贴块超过这么多行就折成一行。 */
-export const PASTE_FOLD_LINES = 12;
-
 /**
- * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；超过 [`PASTE_FOLD_LINES`] 行折成一行「粘贴的内容 · N 行」，点开就地展开。
- * 块的边界、正文那一截与行数都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法。
+ * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；后端标了 `fold` 的折成一行「粘贴的内容 · N 行」，点开就地展开。
+ * 块的边界、正文那一截、行数与折不折都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法、不自己数行。
  */
 function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
   // 露在外面的每一段记下原文（照原文排）：里面提到的格由 `plan-refs.ts` 跟回复正文同一批问；折起的粘贴块不记 ⇒ 不送。
@@ -370,7 +367,7 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
   let at = 0;
   let afterFold = false;
   for (const p of pasted) {
-    const fold = p.lines > PASTE_FOLD_LINES;
+    const fold = p.fold;
     // 折起来的那一行自己占一行：紧挨着它的那一个换行不再另起空行。
     let before = text.slice(at, p.start);
     if (afterFold) before = before.replace(/^\r?\n/, "");

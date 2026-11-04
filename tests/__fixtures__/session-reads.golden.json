@@ -152,6 +152,7 @@
     "writers": []
   },
   "history-find": {
+    "head": "匹配 2",
     "hits": [
       {
         "after": "beta",
@@ -176,7 +177,8 @@
         "uuid": "out-1"
       }
     ],
-    "total": 2
+    "total": 2,
+    "widen": false
   },
   "history-index": {
     "body": {

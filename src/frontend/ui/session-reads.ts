@@ -49,14 +49,19 @@ import { saidOf } from "./kit/detail";
 export type { FindHit };
 
 /** 查找的回包。`available == false` 时 `hits` 为空、`reason` 是给人看的原因（**不是错误**）。 */
-export interface FindResult {
-  available: boolean;
-  reason?: string;
-  /** 按文件顺序（= 对话顺序），最多 [`FIND_LIMIT`] 条。 */
-  hits: FindHit[];
-  /** 全量命中数（≥ `hits.length`；大于 ⇒ 被上限砍过，面板要说出来）。 */
-  total: number;
-}
+export type FindResult =
+  | {
+      available: true;
+      /** 按文件顺序（= 对话顺序），最多 [`FIND_LIMIT`] 条。 */
+      hits: FindHit[];
+      /** 全量命中数（≥ `hits.length`；大于 ⇒ 还有下一页）。 */
+      total: number;
+      /** 结果头那一句（那台照「这一页之后已交多少 · 全量 · 搜的哪一类」写好，面板照摆）。 */
+      head: string;
+      /** 结果头旁给不给［搜全部］（那台定）。 */
+      widen: boolean;
+    }
+  | { available: false; reason: string; hits: FindHit[]; total: number };
 
 /** 一条可点的大纲项（类型从后端生成：`user_inputs::UserInputRow`）。 */
 export type UserInputEntry = UserInputRow;
@@ -168,8 +173,8 @@ export async function findInSession(
   try {
     const which = scope ? { scope } : { include_tools: includeTools };
     const budget = budgetWithin(READ_BUDGET_MS);
-    const { total, hits } = await callTyped(origin, "history-find", { path: jsonlPath, query, ...which, limit: FIND_LIMIT, ...(skip > 0 ? { skip } : {}) }, budget);
-    return { available: true, hits, total };
+    const { total, hits, head, widen } = await callTyped(origin, "history-find", { path: jsonlPath, query, ...which, limit: FIND_LIMIT, ...(skip > 0 ? { skip } : {}) }, budget);
+    return { available: true, hits, total, head, widen };
   } catch (e) {
     const reason = saidOf(e);
     return { available: false, reason, hits: [], total: 0 };

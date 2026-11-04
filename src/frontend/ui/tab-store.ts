@@ -7,7 +7,7 @@
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
  * 改完要刷哪块界面，是 `TabManager`（组装根）与各视图的事。
  */
-import type { TaskEntry } from "./tasks-panel";
+import type { TasksList } from "./generated/TasksList";
 import type { SessionFace } from "./generated/SessionFace";
 import type { Tab, TabsSummary } from "./tab-model";
 import { hasTerminal, isLive } from "./face-can";
@@ -112,8 +112,8 @@ export class TabStore {
   activeId: string | null = null;
   /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;
-  /** 每个 sid 当前的任务列表（ensureTab 拉初次快照，之后按通道的任务变更重问）。切 Tab 时把那个 sid 的快照喂给 TasksPanel。 */
-  readonly tasksBySid = new Map<string, TaskEntry[]>();
+  /** 每个 sid 当前的任务清单（`tasks-list` 的成品；ensureTab 拉初次快照，之后按通道的任务变更重问）。切 Tab 时把那个 sid 的快照喂给 TasksPanel。 */
+  readonly tasksBySid = new Map<string, TasksList>();
   /** 脸早于建 Tab 到（那台说的会话还没有 Tab）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
   readonly pendingFace = new Map<string, SessionFace>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */

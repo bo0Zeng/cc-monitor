@@ -480,6 +480,7 @@ fn pasted_blocks_are_human_with_their_bounds() {
                 body_start: at("甲"),
                 body_end: at("</pasted_content id"),
                 lines: 2,
+                fold: false,
             },
             Pasted {
                 id: None,
@@ -488,6 +489,7 @@ fn pasted_blocks_are_human_with_their_bounds() {
                 body_start: at("丙"),
                 body_end: at("</pasted_content>"),
                 lines: 1,
+                fold: false,
             },
         ]
     );
@@ -507,6 +509,22 @@ fn pasted_blocks_are_human_with_their_bounds() {
         )),
         "human"
     );
+}
+
+/// 折不折由后端定：超过 12 行（两头的空行不算）⇒ `fold`，12 行以内照排。
+#[test]
+fn a_paste_over_twelve_lines_folds() {
+    let paste = |n: usize| {
+        let body = (0..n)
+            .map(|i| format!("行{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let t = format!("看：<pasted_content id=\"p\">\n{body}\n\n</pasted_content id=\"p\">");
+        let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
+        (u.pasted[0].lines, u.pasted[0].fold)
+    };
+    assert_eq!(paste(12), (12, false));
+    assert_eq!(paste(13), (13, true));
 }
 
 /// 没有 `origin` 的旧版插话那一行：照原话认（同 user 记录那一份的具名框与固定句）；不是说了话的那几种 ⇒ 不答。

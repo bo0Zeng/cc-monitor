@@ -283,12 +283,12 @@ export class FindStrip {
     if (gen !== this.gen) return; // 迟到的旧结果
     this.shown = key;
     if (!res.available) {
-      this.head.textContent = copyText("findStrip.status.unavailable", { reason: res.reason ?? "" });
+      this.head.textContent = copyText("findStrip.status.unavailable", { reason: res.reason });
       return;
     }
     this.total = res.total;
     this.append(res.hits);
-    this.sayCount(q);
+    this.sayHead(res);
   }
 
   /** 选下一条 / 上一条并跳过去（到头绕回）。清单空 ⇒ 什么都不做。 */
@@ -345,15 +345,14 @@ export class FindStrip {
       this.more = null;
       if (!res.available) return;
       this.append(res.hits);
-      this.sayCount(q);
+      this.sayHead(res);
     });
     return this.more;
   }
 
-  private sayCount(q: string): void {
-    const n = this.rows.length;
-    if (n === 0 && windowScope === "user") {
-      // 筛选空 ≠ 真没有（C16）：说是在「用户」里没有，给一颗［搜全部］（回「全部」、词不变、马上找、焦点留在框里）。
+  /** 结果头照摆那台写好的那一句；那台说可以放宽 ⇒ 旁边给一颗［搜全部］（回「全部」、词不变、马上找、焦点留在框里）。 */
+  private sayHead(res: Extract<FindResult, { available: true }>): void {
+    if (res.widen) {
       const all = button({
         label: copyText("sessionFind.status.searchAll"),
         size: "compact",
@@ -363,15 +362,10 @@ export class FindStrip {
         },
       });
       all.addEventListener("mousedown", (e) => e.preventDefault());
-      this.head.replaceChildren(document.createTextNode(copyText("sessionFind.status.noneScoped", { q })), all);
+      this.head.replaceChildren(document.createTextNode(res.head), all);
       return;
     }
-    this.head.textContent =
-      n === 0
-        ? copyText("kit.menu.noMatch", { q })
-        : this.total > n
-          ? copyText("findStrip.status.truncated", { total: this.total, n })
-          : copyText("findStrip.status.count", { n });
+    this.head.textContent = res.head;
   }
 
   private armAuto(): void {

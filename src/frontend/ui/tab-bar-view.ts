@@ -1212,7 +1212,7 @@ export class TabBarView {
     const held = holdOf(rot);
     if (held !== null) card.appendChild(line("tab-hover-row", held));
     if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
-    if (isLive(tab.face) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
+    if (isLive(tab.face) && tab.writersLine) card.appendChild(line("tab-hover-row", tab.writersLine));
     const pos = this.visibleOrder().indexOf(sid);
     if (pos >= 0 && pos < 9) card.appendChild(line("tab-hover-foot", copyText("tabBar.hover.key", { key: String(pos + 1) })));
     return card;

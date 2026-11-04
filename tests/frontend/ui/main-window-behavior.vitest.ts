@@ -88,7 +88,8 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), 
 import { emit } from "@tauri-apps/api/event";
 import { flipBehavior } from "../../../src/frontend/ui/behavior-toggle";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
-import { TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
+import { NO_TASKS, TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
+import type { TasksList } from "../../../src/frontend/ui/generated/TasksList";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { MainDrawer } from "../../../src/frontend/ui/main-drawer";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
@@ -138,7 +139,9 @@ beforeEach(() => {
   dispatcher.start();
 });
 
-const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", blocks: [], blockedBy: [] });
+const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", statusText: "甲态", blocks: [], blockedBy: [] });
+/** 任务清单那一份：chip 的字是后端写好的（这里只造一句占位，界面照摆）。 */
+const tasksOf = (tasks: TaskEntry[], chip = "任务枚"): TasksList => ({ tasks, chip, hint: "" });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
 /** 运行表那一份：chip 的字 `summary` 是后端写好的（没有子运行 ⇒ 不上线）。 */
 const runs = (list: RunInfo[], summary?: string): RunTable => ({
@@ -159,16 +162,15 @@ function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDr
 }
 
 describe("状态栏这个会话的几枚：字从文案表来，没内容就不渲染", () => {
-  it("★ 任务 做完/全部（悬停分项）· agent 那一枚照抄运行表写好的字 · 没有就不渲染", () => {
+  it("★ 任务那一枚照抄清单写好的 chip · agent 那一枚照抄运行表写好的字 · 没有就不渲染", () => {
     const { tasks, agents } = mountPanels();
-    const t = (id: string, status: string): TaskEntry => ({ ...task(id), status });
-    tasks.setSession("s", [t("1", "completed"), t("2", "completed"), t("3", "in_progress"), t("4", "pending")]);
-    expect([tasks.summaryElement.textContent, shown(tasks.summaryElement)]).toEqual([copyText("statusBar.tasks.chip", { done: "2", total: "4" }), true]);
+    tasks.setSession("s", tasksOf([task("1"), task("2")], "任务 2/4"));
+    expect([tasks.summaryElement.textContent, shown(tasks.summaryElement)]).toEqual(["任务 2/4", true]);
     agents.setSession("s", runs([run("r1"), { ...run("r2"), state: "done" } as RunInfo], "核心·agent 2 · 1 在跑"));
     expect(agents.summaryElement.textContent).toBe("核心·agent 2 · 1 在跑");
     agents.setSession("s", runs([{ ...run("r1"), state: "done" } as RunInfo, { ...run("r2"), state: "done" } as RunInfo], "核心·agent 2"));
     expect(agents.summaryElement.textContent).toBe("核心·agent 2");
-    tasks.setSession("t", []);
+    tasks.setSession("t", NO_TASKS);
     agents.setSession("t", runs([]));
     expect([shown(tasks.summaryElement), shown(agents.summaryElement)]).toEqual([false, false]);
   });
@@ -181,12 +183,12 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
 
   it("★ 点 chip 开到那一页；开着点另一枚 ⇒ 换页不关；点当前那枚 ⇒ 收起；页签就是 chip 的字", () => {
     const { tasks, agents, drawer } = mountPanels();
-    tasks.setSession("s", [task("1")]);
+    tasks.setSession("s", tasksOf([task("1")], "任务 0/1"));
     agents.setSession("s", runs([run("r1")], "核心·agent 1 · 1 在跑"));
     expect(open(drawer)).toBeNull();
     tasks.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded")]).toEqual(["tasks", "true"]);
-    expect(tabText(drawer)).toEqual([copyText("statusBar.tasks.chip", { done: "0", total: "1" }), "核心·agent 1 · 1 在跑", copyText("mobDrawer.item.terminal")]);
+    expect(tabText(drawer)).toEqual(["任务 0/1", "核心·agent 1 · 1 在跑", copyText("mobDrawer.item.terminal")]);
     agents.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded"), agents.summaryElement.getAttribute("aria-expanded")]).toEqual(["agents", "false", "true"]);
     agents.summaryElement.click();
@@ -196,7 +198,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
   it("★ 一下 Esc 收起（不越过下面那层）；收着时 Esc 落到下面那层", () => {
     const below = floor();
     const { tasks, drawer } = mountPanels();
-    tasks.setSession("s", [task("1")]);
+    tasks.setSession("s", tasksOf([task("1")]));
     drawer.toggle("tasks");
     esc();
     expect([open(drawer), below.hits]).toEqual([null, 0]);
@@ -208,9 +210,9 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
   it("★ 切到没有内容的会话：抽屉照开、页里写空态（不藏），Esc 照样收它；页签退成页名", () => {
     const below = floor();
     const { tasks, agents, drawer } = mountPanels();
-    tasks.setSession("a", [task("1")]);
+    tasks.setSession("a", tasksOf([task("1")]));
     drawer.toggle("tasks");
-    tasks.setSession("b", []);
+    tasks.setSession("b", NO_TASKS);
     agents.setSession("b", runs([]));
     expect(open(drawer)).toBe("tasks");
     expect(pageOf(drawer)).toBe(copyText("tasksPanel.page.empty"));
@@ -262,7 +264,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
 
   it("页签上 ← → 换页", () => {
     const { tasks, agents, drawer } = mountPanels();
-    tasks.setSession("s", [task("1")]);
+    tasks.setSession("s", tasksOf([task("1")]));
     agents.setSession("s", runs([run("r1")], "核心·agent 1 · 1 在跑"));
     drawer.toggle("tasks");
     drawer.dock.el.querySelector("[role=tablist]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -273,9 +275,9 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
   it("任务表又来一份：同 id 的行原地改（不整表重建）", () => {
     const { tasks, drawer } = mountPanels();
     drawer.toggle("tasks");
-    tasks.setSession("s", [task("1"), task("2")]);
+    tasks.setSession("s", tasksOf([task("1"), task("2")]));
     const row1 = drawer.dock.el.querySelector('[data-task-id="1"]');
-    tasks.setSession("s", [{ ...task("1"), status: "completed" }, task("2"), task("3")]);
+    tasks.setSession("s", tasksOf([{ ...task("1"), status: "completed", statusText: "乙态" }, task("2"), task("3")]));
     expect(drawer.dock.el.querySelector('[data-task-id="1"]')).toBe(row1);
     expect(row1?.className).toContain("status-completed");
     expect(drawer.dock.el.querySelectorAll(".tasks-item").length).toBe(3);
@@ -649,31 +651,6 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
     expect(Object.keys(stepLineModule)).not.toContain("durBetween");
     expect(Object.keys(durationFormatModule)).not.toContain("spanNow");
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
-  });
-});
-
-// 人粘贴的块：边界 / 正文那一截 / 行数是后端的 `who.pasted`；超过 12 行折起，不超过的只露正文。
-describe("粘贴块", () => {
-  const said = (text: string, pasted: object[]): LineRecord =>
-    ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted }, draw: "card", human: true }) as never;
-  const span = (text: string, open: string, body: string, close: string, lines: number) => {
-    const start = text.indexOf(open);
-    const bodyStart = start + open.length;
-    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, lines };
-  };
-  it("★ 超过 12 行折成「粘贴的内容 · N 行」、点开是正文；12 行以内照排、两头的标记不露", () => {
-    const long = Array.from({ length: 13 }, (_, i) => `行${i}`).join("\n");
-    const short = "甲\n乙";
-    const text = `看这段：<P1>${long}</P1>再看<P2>${short}</P2>完`;
-    const r = renderMessage(said(text, [span(text, "<P1>", long, "</P1>", 13), span(text, "<P2>", short, "</P2>", 2)]), ctx());
-    if (r.kind !== "card") throw new Error(r.kind);
-    const folds = r.element.querySelectorAll<HTMLDetailsElement>(".paste-fold");
-    expect(folds.length).toBe(1);
-    expect([folds[0].open, folds[0].querySelector("summary")?.textContent]).toEqual([false, copyText("speaker.paste.fold", { n: "13" })]);
-    expect(folds[0].querySelector(".paste-body")?.textContent).toBe(long.replace(/\n/g, ""));
-    const all = r.element.querySelector(".card-body")?.textContent ?? "";
-    expect(all).not.toMatch(/<P|<\/P/);
-    expect(all).toContain("甲乙");
   });
 });
 

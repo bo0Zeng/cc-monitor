@@ -1216,6 +1216,32 @@ pub struct HistoryFind {
     pub(crate) total: u64,
     /// 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
     pub(crate) hits: Vec<crate::observe::search_query::FindHit>,
+    /// 结果头那一句，照「这一页之后已交多少 · 全量多少 · 搜的哪一类」写好（界面照摆）：零条 ⇒ 无匹配（只搜用户时说「仅用户」）；
+    /// 全量大于已交 ⇒「前 n · 共 total」；否则「匹配 n」。
+    pub(crate) head: String,
+    /// 只搜用户、零条 ⇒ 结果头旁给一颗［搜全部］。
+    pub(crate) widen: bool,
+}
+
+/// [`HistoryFind::head`] · [`HistoryFind::widen`]：`shown` 是这一页之后已交的条数（跳过的 ＋ 这一页的）。
+fn find_head(shown: u64, total: u64, user_only: bool, q: &str) -> (String, bool) {
+    if shown == 0 && user_only {
+        return (
+            copy_core::copy_text("sessionFind.status.noneScoped", &[("q", q)]),
+            true,
+        );
+    }
+    let head = if shown == 0 {
+        copy_core::copy_text("kit.menu.noMatch", &[("q", q)])
+    } else if total > shown {
+        copy_core::copy_text(
+            "findStrip.status.truncated",
+            &[("n", &shown.to_string()), ("total", &total.to_string())],
+        )
+    } else {
+        copy_core::copy_text("findStrip.status.count", &[("n", &shown.to_string())])
+    };
+    (head, false)
 }
 
 scan_codes!(
@@ -1263,6 +1289,7 @@ pub fn find_at(
         skip: usize::try_from(req.skip.unwrap_or(0)).unwrap_or(usize::MAX),
         limit,
     };
+    let user_only = matches!(req.scope, Some(super::search_face::SearchScope::User));
     let scope = req.scope.map(super::search_face::SearchScope::word);
     let include_tools = req.include_tools.unwrap_or(false);
     let target = locate::session_path_at(home, &req.path).map_err(HistoryFindErr::Failed)?;
@@ -1287,9 +1314,15 @@ pub fn find_at(
         }
     };
     let (_, total) = hits.finish(scanned)?;
+    let shown = u64::try_from(page.skip.saturating_add(hits.rows.len()))
+        .unwrap_or(u64::MAX)
+        .min(total);
+    let (head, widen) = find_head(shown, total, user_only, &req.query);
     Ok(HistoryFind {
         total,
         hits: hits.rows,
+        head,
+        widen,
     })
 }
 
@@ -1414,6 +1447,7 @@ pub(crate) fn facts_at(
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = locate::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
+    facts.writers_line = facts::writers_line(&facts.writers);
     // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
     facts.permission_mode_text = facts
         .agent
@@ -1565,3 +1599,7 @@ mod facts_by_sid_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_image_tests.rs"]
 mod image_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/history_find_head_tests.rs"]
+mod find_head_tests;

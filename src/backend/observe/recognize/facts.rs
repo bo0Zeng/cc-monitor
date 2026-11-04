@@ -94,6 +94,10 @@ pub struct SessionFacts {
     /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
     pub writers: Vec<u32>,
+    /// 不止一个进程在写时那一句（[`writers_line`]，跟着 `writers` 现给；界面照摆）；一个或没有 ⇒ 不出现。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub writers_line: Option<Words>,
     /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
     pub pending: Vec<PendingCall>,
     /// 最后一段正文的头一行（悬停卡「它最后一句」）。
@@ -1732,6 +1736,20 @@ pub(crate) mod skel {
     }
 }
 
+/// [`SessionFacts::writers_line`]：不止一个进程在写这条会话 ⇒「写入进程 ×n」；一个或没有 ⇒ `None`。
+pub fn writers_line(writers: &[u32]) -> Option<Words> {
+    (writers.len() > 1).then(|| {
+        Words(copy_core::copy_text(
+            "tabBarView.tab.writers",
+            &[("n", &writers.len().to_string())],
+        ))
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/observe/recognize/facts_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/observe/recognize/writers_line_tests.rs"]
+mod writers_line_tests;

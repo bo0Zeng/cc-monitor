@@ -58,6 +58,10 @@ agent: AgentKind | null,
  */
 writers: Array<number>, 
 /**
+ * 不止一个进程在写时那一句（[`writers_line`]，跟着 `writers` 现给；界面照摆）；一个或没有 ⇒ 不出现。
+ */
+writersLine?: Words, 
+/**
  * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
  */
 pending: Array<PendingCall>, 

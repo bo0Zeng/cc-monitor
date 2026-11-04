@@ -6592,6 +6592,7 @@ data class FactsReply(
     val projectDir: String?,
     val agent: String?,
     val writers: List<Int>,
+    val writersLine: String? = null,
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
@@ -6628,6 +6629,7 @@ data class FactsReply(
             Field("projectDir", { opt(Str) }, optional = false, nullable = true),
             Field("agent", { opt(Str) }, optional = false, nullable = true),
             Field("writers", { arr(Int32) }, optional = false, nullable = false),
+            Field("writersLine", { opt(Str) }, optional = true, nullable = true),
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
@@ -6650,8 +6652,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Int?, a[23] as List<AutoChoice>, a[24] as String?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as FactsLine?, a[29] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<String>, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as List<BgTask>, a[21] as FactsBackground?, a[22] as String?, a[23] as Int?, a[24] as List<AutoChoice>, a[25] as String?, a[26] as List<McpTrouble>, a[27] as Kin?, a[28] as List<Kin>, a[29] as FactsLine?, a[30] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -9140,6 +9142,8 @@ data class HistoryFailedDir(
 data class HistoryFind(
     val total: Long,
     val hits: List<FindHit>,
+    val head: String,
+    val widen: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9148,9 +9152,11 @@ data class HistoryFind(
             listOf(
             Field("total", { U64 }, optional = false, nullable = false),
             Field("hits", { arr(FindHit.ADAPTER) }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            Field("widen", { Bool }, optional = false, nullable = false),
             ),
-            { a -> HistoryFind(a[0] as Long, a[1] as List<FindHit>) },
-            { v -> arrayOf(v.total, v.hits) },
+            { a -> HistoryFind(a[0] as Long, a[1] as List<FindHit>, a[2] as String, a[3] as Boolean) },
+            { v -> arrayOf(v.total, v.hits, v.head, v.widen) },
         )
     }
 }
@@ -16098,6 +16104,7 @@ data class Pasted(
     val bodyStart: Int,
     val bodyEnd: Int,
     val lines: Int,
+    val fold: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16110,9 +16117,10 @@ data class Pasted(
             Field("bodyStart", { Int32 }, optional = false, nullable = false),
             Field("bodyEnd", { Int32 }, optional = false, nullable = false),
             Field("lines", { Int32 }, optional = false, nullable = false),
+            Field("fold", { Bool }, optional = false, nullable = false),
             ),
-            { a -> Pasted(a[0] as String?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int) },
-            { v -> arrayOf(v.id, v.start, v.end, v.bodyStart, v.bodyEnd, v.lines) },
+            { a -> Pasted(a[0] as String?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int, a[6] as Boolean) },
+            { v -> arrayOf(v.id, v.start, v.end, v.bodyStart, v.bodyEnd, v.lines, v.fold) },
         )
     }
 }
@@ -23667,6 +23675,7 @@ data class SessionFacts(
     val projectDir: String?,
     val agent: String?,
     val writers: List<Int>,
+    val writersLine: String? = null,
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
@@ -23702,6 +23711,7 @@ data class SessionFacts(
             Field("projectDir", { opt(Str) }, optional = false, nullable = true),
             Field("agent", { opt(Str) }, optional = false, nullable = true),
             Field("writers", { arr(Int32) }, optional = false, nullable = false),
+            Field("writersLine", { opt(Str) }, optional = true, nullable = true),
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
@@ -23724,8 +23734,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Int?, a[22] as List<AutoChoice>, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Int?, a[23] as List<AutoChoice>, a[24] as String?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as FactsLine?, a[29] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -26205,6 +26215,7 @@ data class Task(
     val id: String,
     val subject: String,
     val status: String,
+    val statusText: String,
     val blocks: List<String>,
     val blockedBy: List<String>,
     val description: String? = null,
@@ -26218,13 +26229,14 @@ data class Task(
             Field("id", { Str }, optional = false, nullable = false),
             Field("subject", { Str }, optional = false, nullable = false),
             Field("status", { Str }, optional = false, nullable = false),
+            Field("statusText", { Str }, optional = false, nullable = false),
             Field("blocks", { arr(Str) }, optional = false, nullable = false),
             Field("blockedBy", { arr(Str) }, optional = false, nullable = false),
             Field("description", { opt(Str) }, optional = true, nullable = true),
             Field("activeForm", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Task(a[0] as String, a[1] as String, a[2] as String, a[3] as List<String>, a[4] as List<String>, a[5] as String?, a[6] as String?) },
-            { v -> arrayOf(v.id, v.subject, v.status, v.blocks, v.blockedBy, v.description, v.activeForm) },
+            { a -> Task(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as List<String>, a[5] as List<String>, a[6] as String?, a[7] as String?) },
+            { v -> arrayOf(v.id, v.subject, v.status, v.statusText, v.blocks, v.blockedBy, v.description, v.activeForm) },
         )
     }
 }
@@ -26243,6 +26255,8 @@ enum class TaskEnd(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class TasksList(
     val tasks: List<Task>,
+    val chip: String,
+    val hint: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -26250,9 +26264,11 @@ data class TasksList(
         val ADAPTER: JsonAdapter<TasksList> = obj(
             listOf(
             Field("tasks", { arr(Task.ADAPTER) }, optional = false, nullable = false),
+            Field("chip", { Str }, optional = false, nullable = false),
+            Field("hint", { Str }, optional = false, nullable = false),
             ),
-            { a -> TasksList(a[0] as List<Task>) },
-            { v -> arrayOf(v.tasks) },
+            { a -> TasksList(a[0] as List<Task>, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.tasks, v.chip, v.hint) },
         )
     }
 }

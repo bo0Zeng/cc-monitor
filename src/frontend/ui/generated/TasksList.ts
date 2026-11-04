@@ -8,4 +8,12 @@ export type TasksList = {
 /**
  * `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
  */
-tasks: Array<Task>, };
+tasks: Array<Task>, 
+/**
+ * 状态栏那一枚的字（「任务 完成数/总数」）；没有任务 ⇒ 空串。
+ */
+chip: string, 
+/**
+ * 那一枚的悬停分项（完成 · 进行 · 未开始）；没有任务 ⇒ 空串。
+ */
+hint: string, };
