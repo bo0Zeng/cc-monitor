@@ -25632,13 +25632,6 @@
       "zh": "未在终端里",
       "args": []
     },
-    "mobTerm.tmux.none": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{host} 无 tmux",
-      "args": ["host"],
-      "limited": ["tmux"]
-    },
     "mobTerm.capture.copied": {
       "kind": "body",
       "role": "toast",
@@ -26301,10 +26294,22 @@
       "zh": "新建",
       "args": []
     },
-    "mobTerms.new.detachedCc": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "后台 agent",
+    "mobTerms.new.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "终端名",
+      "args": []
+    },
+    "mobTerms.group.session": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话所在的终端",
+      "args": []
+    },
+    "mobTerms.group.plain": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "终端会话",
       "args": []
     },
     "mobTerms.new.attach": {
