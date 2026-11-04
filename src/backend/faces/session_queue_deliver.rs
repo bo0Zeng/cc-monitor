@@ -256,7 +256,7 @@ fn kick() {
 }
 
 /// 起这台的投递线程（一个进程一份；再调不再起）。`files`：恢复那一支起之前预标信任经的那扇门。
-pub(crate) fn start(own: Own, files: Files) {
+pub fn start(own: Own, files: Files) {
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     if BELL.set(tx).is_err() {
         return;

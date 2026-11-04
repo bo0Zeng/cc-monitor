@@ -71,14 +71,18 @@ mod cross_dial; // 拨号那一侧判据里引到上层的那几条（那一层�
 #[path = "../../tests/backend/cross/host.rs"]
 mod cross_host; // 宿主口与 ccm 行判据里引到上层的那几条（那一层是独立的包、够不到上层）
 use backend_dial as dial; // SSH 拨号的后端那一侧 —— 钥匙 · known_hosts · 转发的账 · 问远端后端 · 开终端（独立的包 `backend-dial`：只引帧面零件 · 纯工具 · 平台三层）
-mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
+use backend_faces as faces; // 帧面宿主：每条帧命令的薄壳 · 格目录 · 通用投影（本体在下面各层；独立的包 `backend-faces`：引除文件管理 · 插件 · 诊断文件外的全部十四层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/faces.rs"]
+mod cross_faces; // 帧面宿主判据里引到上层（命令表 · 进后端的口）的那几条（那一层是独立的包、够不到上层）
 use backend_files as files; // 文件管理那一块：只读族（常驻文件名索引 ＋ 列 · 读 · 找 · grep）＋ 写面（独立的包 `backend-files`：只引纯工具与平台两层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/files.rs"]
 mod cross_files; // 文件管理那一块的判据里引到上层的那几条（那一块是独立的包、够不到上层）
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
-use backend_footprint as footprint; // 「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读；独立的包 `backend-footprint`：只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层）
+#[cfg(test)]
+use backend_footprint as footprint; // 「足迹」：申报表 ＋ 判定 ＋ 这台的 stat，出整份成品（只读；独立的包 `backend-footprint`：只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层；生产段经帧面宿主答，本包只剩判据读它）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/footprint.rs"]
 mod cross_footprint; // 足迹判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -126,9 +130,7 @@ mod readonly_guard;
 #[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
-use backend_relay as relay;
-#[cfg(test)]
-pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`） // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
+use backend_relay as relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/relay.rs"]
 mod cross_relay; // 中转宿主判据里引到上层的那几条（那一层是独立的包、够不到上层）

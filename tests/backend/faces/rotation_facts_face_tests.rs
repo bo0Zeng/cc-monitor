@@ -48,7 +48,7 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
                         .iter()
                         .map(|(id, api)| {
                             crate::accounts::upstream_select::rotate::test_support::book_row(
-                                &id.to_string(),
+                                id,
                                 Some(accts.join(id)),
                                 *api,
                             )
@@ -117,7 +117,7 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
             )),
         },
         NOW,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     )
     .expect("认得的 kind");
     assert_eq!(got.now, NOW);
@@ -175,10 +175,20 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
         reading(1.02, true),
         NOW,
     );
-    let got = facts_with(&c, &RotationFactsReq::default(), NOW, &crate::Tz::default()).unwrap();
+    let got = facts_with(
+        &c,
+        &RotationFactsReq::default(),
+        NOW,
+        &crate::common::time::Tz::default(),
+    )
+    .unwrap();
     let b = got.accounts[0].blocked.clone().expect("被拒");
     assert_eq!((b.why, b.until), (FactWhy::Refused, Some(NOW + 3_600)));
-    let at = crate::common::time::fmt_at((NOW + 3_600) as i64, NOW as i64, &crate::Tz::default());
+    let at = crate::common::time::fmt_at(
+        (NOW + 3_600) as i64,
+        NOW as i64,
+        &crate::common::time::Tz::default(),
+    );
     assert_eq!(
         b.text,
         copy_core::copy_text("beRotation.fact.refused", &[("at", &at)])
@@ -196,7 +206,7 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
         &c,
         &RotationFactsReq::default(),
         NOW + 1,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     )
     .unwrap();
     let b = got.accounts[0].blocked.clone().expect("用满");
@@ -204,38 +214,11 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// ★ 登记成 typed：入参多一格 ⇒ `bad_args`，不往下走。
+/// ★ 入参多一格 ⇒ 解不出（解入参那一步回 `bad_args`，不往下走）。登记表里的码 · 路由名当 `agent` 交来那两条读命令表 ⇒ `on_upper_tests`。
 #[test]
-fn it_is_registered_typed_and_refuses_fields_it_does_not_use() {
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "rotation-facts")
-        .expect("登记了");
+fn it_refuses_fields_it_does_not_use() {
     assert!(
         serde_json::from_value::<RotationFactsReq>(serde_json::json!({"sid": "x"})).is_err(),
         "多一格该拒（解入参那一步回 bad_args）"
     );
-    assert_eq!(spec.codes, ["bad_args"]);
-}
-
-/// ★ 线上只认 kind：后端里面记账用的路由名当 `agent` 交来 ⇒ `bad_args`，不当成那一家（轮换那两条同一个认法）。
-#[test]
-fn a_route_name_is_not_taken_as_an_agent() {
-    let route = crate::agents::claudecode::UPSTREAM.route_id;
-    assert_ne!(route, crate::agents::claudecode::AGENT_KIND);
-    for (cmd, args) in [
-        ("rotation-facts", serde_json::json!({ "agent": route })),
-        (
-            "rotation-try",
-            serde_json::json!({ "source": "", "agent": route }),
-        ),
-    ] {
-        let fail = crate::cross_wire::typed_tests::ask(cmd, args).expect_err(cmd);
-        assert_eq!(
-            fail.code.as_deref(),
-            Some("bad_args"),
-            "{cmd}：{}",
-            fail.said
-        );
-    }
 }

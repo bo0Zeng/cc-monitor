@@ -36,7 +36,7 @@ fn every_line_carries_its_end_and_the_reply_ends_after_the_last_counted_line() {
     text.push('\n');
     text.push_str("{\"torn\":");
     let path = write(&home, "s-lines", &text);
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let page = lines_at(
         &home,
         HistoryLinesReq {
@@ -105,7 +105,7 @@ fn every_line_carries_its_end_and_the_reply_ends_after_the_last_counted_line() {
 #[test]
 fn the_tail_says_how_to_go_on_from_what_the_caller_holds() {
     let home = scratch("tail");
-    let tz = crate::Tz::default();
+    let tz = crate::common::time::Tz::default();
     let text =
         |ks: std::ops::Range<usize>| ks.map(|k| format!("{}\n", user(k))).collect::<String>();
     let path = write(&home, "s-tail", &format!("\n{}", text(0..4)));

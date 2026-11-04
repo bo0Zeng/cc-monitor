@@ -25,7 +25,7 @@ pub(crate) fn now() -> u64 {
 }
 
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
-    let port = crate::refusing_port::refusing_port();
+    let port = ssh_dial::refusing_port::refusing_port();
     crate::accounts::oauth::TokenEndpoint {
         base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
@@ -103,7 +103,7 @@ impl Home {
                             .iter()
                             .map(|(id, api)| {
                                 crate::accounts::upstream_select::rotate::test_support::book_row(
-                                    &id.to_string(),
+                                    id,
                                     Some(accts.join(id)),
                                     *api,
                                 )
@@ -228,62 +228,10 @@ pub(crate) fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewRep
             hours: None,
         },
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("读得到")
-}
-
-// ── 命令登记 ────────────────────────────────────────────────────────────────────
-
-/// ★ 登记表里有第五版的全部命令，第三版那 15 条与会话草稿那两条一条都不在（不留别名）。
-#[test]
-fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
-    let names: Vec<&str> = crate::stream::inbound::REGISTRY
-        .iter()
-        .map(|c| c.name)
-        .collect();
-    for want in [
-        "rotation-facts",
-        "rotation-try",
-        "rotation-strategies",
-        "rotation-view",
-        "rotation-settings",
-        "rotation-use",
-        "rotation-reload",
-        "rotation-for-new",
-        "rotation-temp",
-        "rotation-use-now",
-        "rotation-strategy-add",
-        "rotation-strategy-copy",
-        "rotation-strategy-rename",
-        "rotation-strategy-delete",
-        "rotation-strategy-tz",
-        "quota-read",
-    ] {
-        assert!(names.contains(&want), "缺 {want}");
-    }
-    for gone in [
-        "rotation-save",
-        "rotation-revert",
-        "rotation-configs-read",
-        "rotation-config-save",
-        "rotation-config-rename",
-        "rotation-config-delete",
-        "rotation-default-set",
-        "rotation-strategies-read",
-        "rotation-strategy-try",
-        "rotation-plan",
-        "rotation-session-read",
-        "rotation-session-open",
-        "rotation-session-edit",
-        "rotation-session-save",
-        "rotation-session-revert",
-        "rotation-session-set",
-        "rotation-switch",
-    ] {
-        assert!(!names.contains(&gone), "{gone} 该删了");
-    }
 }
 
 // ── rotation-strategies ─────────────────────────────────────────────────────────
@@ -452,7 +400,7 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
         &ctx,
         &req("by-list"),
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("ok");
@@ -466,7 +414,7 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
             &ctx,
             &req("nope"),
             now(),
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
             &home.alive()
         ),
         Err(RotationViewErr::NoStrategy(_))
@@ -479,7 +427,7 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
                 hours: None,
             },
             now(),
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
             &home.alive()
         ),
         Err(RotationViewErr::NoSession(_))
@@ -587,7 +535,12 @@ fn a_view_writes_every_time_it_carries() {
 }
 
 /// 会话那一形，带看的那一台的时区。
-fn session_view_in(ctx: &Ctx, home: &Home, sid: &str, tz: &crate::Tz) -> RotationViewReply {
+fn session_view_in(
+    ctx: &Ctx,
+    home: &Home,
+    sid: &str,
+    tz: &crate::common::time::Tz,
+) -> RotationViewReply {
     view_with(
         ctx,
         &RotationViewReq {
@@ -612,7 +565,7 @@ pub(crate) fn strategy_view(ctx: &Ctx, home: &Home, id: &str) -> RotationViewRep
             hours: None,
         },
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("读得到")
@@ -719,7 +672,7 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
 /// 推不准（在用的号量不到用速）⇒ 只写「下一个」；接着此刻那段（马上就换）不写钟点。
 #[test]
 fn the_next_line_says_when_from_the_same_simulation() {
-    let face = |t: u64| crate::common::time::hm(crate::Tz::default().local(t as i64));
+    let face = |t: u64| crate::common::time::hm(crate::common::time::Tz::default().local(t as i64));
     let lines = |next_at: Option<(String, String)>| {
         lines_of(
             &["a".to_string(), "b".to_string(), "c".to_string()],
@@ -773,14 +726,14 @@ fn the_unknown_zone_hint_always_names_a_zone() {
     let home = Home::new("view-hint-tz");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    let tz_hint = |tz: &crate::Tz| {
+    let tz_hint = |tz: &crate::common::time::Tz| {
         session_view_in(&ctx, &home, S1, tz)
             .hints
             .into_iter()
             .find(|h| matches!(h.hint, RotHint::TzUnknown { .. }))
             .expect("时区不明那一条")
     };
-    let named = tz_hint(&crate::Tz::named("Europe/Paris").expect("tz"));
+    let named = tz_hint(&crate::common::time::Tz::named("Europe/Paris").expect("tz"));
     assert_eq!(
         named.hint,
         RotHint::TzUnknown {
@@ -789,7 +742,7 @@ fn the_unknown_zone_hint_always_names_a_zone() {
     );
     assert_eq!(named.text, copy_core::copy_text("beRotation.hint.tz", &[]));
     for unsaid in [serde_json::Value::Null, serde_json::json!("Mars/Base")] {
-        let n = tz_hint(&crate::Tz::of(&unsaid));
+        let n = tz_hint(&crate::common::time::Tz::of(&unsaid));
         assert_eq!(
             n.hint,
             RotHint::TzUnknown { zone: "UTC".into() },
@@ -797,7 +750,8 @@ fn the_unknown_zone_hint_always_names_a_zone() {
         );
         assert_eq!(n.text, copy_core::copy_text("beRotation.hint.tz", &[]));
     }
-    let here = tz_hint(&crate::Tz::named(crate::common::time::TZ_HERE).expect("local"));
+    let here =
+        tz_hint(&crate::common::time::Tz::named(crate::common::time::TZ_HERE).expect("local"));
     assert_eq!(
         here.hint,
         RotHint::TzUnknown {
@@ -820,7 +774,7 @@ fn the_hints_carry_what_their_buttons_need() {
         "fn score() {}",
     )
     .expect("w");
-    let tz = crate::Tz::iana("Asia/Shanghai").expect("tz");
+    let tz = crate::common::time::Tz::iana("Asia/Shanghai").expect("tz");
     let v = session_view_in(&ctx, &home, S1, &tz);
     assert_eq!(
         v.now_text,
@@ -939,7 +893,7 @@ fn a_session_keeps_its_copy_until_it_loads_the_new_version() {
                 hours: None,
             },
             now(),
-            &crate::Tz::default(),
+            &crate::common::time::Tz::default(),
             &home.alive(),
         )
         .expect("ok")
@@ -998,8 +952,12 @@ fn quota_read_adds_the_display_state() {
     seen(&ctx, "a", 0.5, None);
     seen(&ctx, "b", 0.86, None);
     seen(&ctx, "api", 0.0, Some(now() + 600));
-    let got =
-        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
+    let got = serde_json::to_value(quota_read_with(
+        &ctx,
+        now(),
+        &crate::common::time::Tz::default(),
+    ))
+    .expect("json");
     let row = |acct: &str| {
         got["accounts"]
             .as_array()
@@ -1032,8 +990,12 @@ fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
     seen(&ctx, "_", 0.1, None);
     seen(&ctx, "a", 0.5, None);
     seen(&ctx, "api", 0.0, None);
-    let got =
-        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
+    let got = serde_json::to_value(quota_read_with(
+        &ctx,
+        now(),
+        &crate::common::time::Tz::default(),
+    ))
+    .expect("json");
     let cands = got["candidates"].as_array().expect("candidates");
     let ids: Vec<&str> = cands
         .iter()
@@ -1060,7 +1022,7 @@ fn the_board_carries_each_cell_resolved_once() {
             hours: None,
         },
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("ok");
@@ -1181,7 +1143,7 @@ fn the_editor_board_shows_cells_by_their_conditions_and_marks_by_the_choice() {
             hours: None,
         },
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("ok");

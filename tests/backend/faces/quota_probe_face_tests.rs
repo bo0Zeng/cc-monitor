@@ -61,7 +61,7 @@ impl Home {
                 )
                 .chain(["b", "c", "bad", "api"].iter().map(|id| {
                     crate::accounts::upstream_select::rotate::test_support::book_row(
-                        &id.to_string(),
+                        id,
                         Some(accts.join(id)),
                         *id == "api",
                     )
@@ -152,7 +152,7 @@ fn a_probe_starts_the_official_client_reads_three_windows_and_books_them() {
     let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(
         &ctx,
         NOW,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     ))
     .expect("json");
     let row = &q["accounts"][0];
@@ -248,20 +248,28 @@ fn the_probe_and_quota_read_replies_keep_their_wire_bytes() {
     let home = Home::new("bytes");
     let ctx = home.ctx();
     let bytes = |v: &dyn erased_serde_free::Ser| v.bytes(&home.root);
-    let absent = crate::faces::rotation_face::quota_read_with(&ctx, NOW, &crate::Tz::default());
+    let absent = crate::faces::rotation_face::quota_read_with(
+        &ctx,
+        NOW,
+        &crate::common::time::Tz::default(),
+    );
     let read = home
         .probe(&ctx, json!({"agent": "claude", "account": "b"}))
         .expect("ok");
     let bad = home
         .probe(&ctx, json!({"agent": "claude", "account": "bad"}))
         .expect("ok");
-    let q = crate::faces::rotation_face::quota_read_with(&ctx, NOW, &crate::Tz::default());
+    let q = crate::faces::rotation_face::quota_read_with(
+        &ctx,
+        NOW,
+        &crate::common::time::Tz::default(),
+    );
     std::fs::write(ctx.hop.quota.path().unwrap(), "{not json").unwrap();
     // 复制详情里带此刻的钟与这台的版本号 ⇒ 那一格只比它在不在。
     let mut unreadable = serde_json::to_value(crate::faces::rotation_face::quota_read_with(
         &ctx,
         NOW,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     ))
     .unwrap();
     assert!(unreadable["detail"]
@@ -337,7 +345,7 @@ fn a_window_used_up_but_not_yet_refused_is_not_counted_as_sendable() {
     let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(
         &ctx,
         NOW,
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
     ))
     .expect("json");
     // 「可发」只剩 api 那一个：结论那一行说可发一个，下面那一行只点它的名。

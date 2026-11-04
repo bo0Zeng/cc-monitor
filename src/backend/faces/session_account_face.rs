@@ -13,19 +13,19 @@ use serde::Deserialize;
 /// `session-account` 的入参。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionAccountReq {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionAccountReq {
     pub(crate) sid: String,
 }
 
 crate::wire::typed::codes! {
     /// `session-account` 自己的码（只有入参不对那一种）。
-    pub(crate) enum SessionAccountErr {}
+    pub enum SessionAccountErr {}
 }
 
 /// `session-account`：读轮换账本 · 活会话表 · 上次的号 · 账号库 · 额度账 ⇒ 阻塞档。
-pub(crate) struct SessionAccountCmd;
+pub struct SessionAccountCmd;
 
 impl Command for SessionAccountCmd {
     const NAME: &'static str = "session-account";
@@ -36,18 +36,15 @@ impl Command for SessionAccountCmd {
 
 impl crate::wire::typed::Handle for SessionAccountCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: SessionAccountReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionAccountReply, SessionAccountErr>> + Send + 'static
-    {
-        async move {
-            let ctx = crate::faces::rotation_face::Ctx::here();
-            let now = crate::common::time::now_secs();
-            let quota = crate::faces::rotation_face::quota_read_with(&ctx, now, &cx.tz);
-            let facts = facts_here(&ctx, &req.sid);
-            Ok(product(&facts, &quota))
-        }
+    ) -> Result<SessionAccountReply, SessionAccountErr> {
+        let ctx = crate::faces::rotation_face::Ctx::here();
+        let now = crate::common::time::now_secs();
+        let quota = crate::faces::rotation_face::quota_read_with(&ctx, now, &cx.tz);
+        let facts = facts_here(&ctx, &req.sid);
+        Ok(product(&facts, &quota))
     }
 }
 

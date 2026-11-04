@@ -20,11 +20,11 @@ use std::future::Future;
 
 codes! {
     /// `sessions-batch` 自己没有别的码（哪台没成只进那一组的逐条结局）。
-    pub(crate) enum SessionsBatchErr {}
+    pub enum SessionsBatchErr {}
 }
 
 /// `sessions-batch`：一批会话跨几台（本机同进程做，别的台经常驻问它自己那一组），合成一份再答。
-pub(crate) struct SessionsBatchCmd;
+pub struct SessionsBatchCmd;
 
 impl Command for SessionsBatchCmd {
     const NAME: &'static str = "sessions-batch";
@@ -107,7 +107,7 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
 /// 本机那一组：照那一样分到停 · 起 · 写注解（隐藏那三样 · 固定那两样）。
 async fn here(
     req: SessionsBatchReq,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     hands: OpenHands,
 ) -> Result<SessionsBatchReply, Said> {
@@ -128,7 +128,7 @@ async fn here(
 /// 隐藏做成了的那几项照改之前那一格分好撤销那几问。
 async fn note_here(
     req: SessionsBatchReq,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     own: crate::platform::Own,
 ) -> Result<SessionsBatchReply, Said> {
@@ -287,7 +287,7 @@ fn undo_push(undo: &mut Vec<SessionsBatchReq>, op: SessionsOp, it: SessionItem) 
 /// 停：同进程跑 `sessions-stop` 的本体（阻塞档 ⇒ 放进阻塞池、带停那一档的期限）。
 async fn stop_here(
     req: SessionsBatchReq,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
 ) -> Result<SessionsBatchReply, Said> {
     use crate::wire::typed::{Codes as _, Handle as _};
@@ -320,7 +320,7 @@ async fn start_here(
     req: SessionsBatchReq,
     run: Launch,
     window_here: bool,
-    tz: crate::Tz,
+    tz: crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     hands: OpenHands,
 ) -> Result<SessionsBatchReply, Said> {
@@ -489,7 +489,7 @@ pub(crate) fn title_here(
 pub(crate) async fn across<'a, L, F>(
     req: SessionsBatchReq,
     local: L,
-    tz: &'a crate::Tz,
+    tz: &'a crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &'a Table,
     remote: &'a dyn Remote,

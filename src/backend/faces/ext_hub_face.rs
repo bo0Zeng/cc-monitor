@@ -3,12 +3,11 @@
 //! 不与内层那 8 条同住：引用图按文件取，这一对够得着的（可达表 · 拨号）不该算到内层头上。
 
 use crate::assets::hub_wire as wire;
-use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `ext-hub-preview` / `ext-hub-apply` 的码（各台的失败不在这里：进那一台的 `error`）。
-    pub(crate) enum ExtHubErr {
+    pub enum ExtHubErr {
         /// 表里没有这一行。
         Missing = "missing",
         /// 这台的资产目录读不出来。
@@ -19,7 +18,7 @@ codes! {
 }
 
 /// `ext-hub-preview`：装到勾上的几台之前那一张卡，本机后端当枢纽向各台问完并好。
-pub(crate) struct ExtHubPreview;
+pub struct ExtHubPreview;
 
 impl Command for ExtHubPreview {
     const NAME: &'static str = "ext-hub-preview";
@@ -48,13 +47,13 @@ impl crate::wire::typed::Handle for ExtHubPreview {
                 &current,
             )
             .await
-            .map_err(|p| typed::of_fail(Said::from(p), ExtHubErr::IoFailed))
+            .map_err(|p| typed::of_fail(p, ExtHubErr::IoFailed))
         }
     }
 }
 
 /// `ext-hub-apply`：装到勾上的几台，各台各自结局。
-pub(crate) struct ExtHubApply;
+pub struct ExtHubApply;
 
 impl Command for ExtHubApply {
     const NAME: &'static str = "ext-hub-apply";
@@ -83,7 +82,7 @@ impl crate::wire::typed::Handle for ExtHubApply {
                 &current,
             )
             .await
-            .map_err(|p| typed::of_fail(Said::from(p), ExtHubErr::IoFailed))
+            .map_err(|p| typed::of_fail(p, ExtHubErr::IoFailed))
         }
     }
 }

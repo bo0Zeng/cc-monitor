@@ -67,7 +67,7 @@ pub(crate) fn host_of(sid: &str) -> Option<crate::wire::TerminalHost> {
 }
 
 /// 交 `f` 一份生产事实（`agent` ＝ 请求说的那一家；认不出 ⇒ 当没有账号这一维）。
-pub(crate) fn with_facts<T>(agent: &str, f: impl FnOnce(&Facts) -> T) -> T {
+pub fn with_facts<T>(agent: &str, f: impl FnOnce(&Facts) -> T) -> T {
     let library = || list_of(agent);
     f(&Facts {
         has_accounts: crate::agents::account_env_of(agent).is_some_and(|e| !e.is_empty()),

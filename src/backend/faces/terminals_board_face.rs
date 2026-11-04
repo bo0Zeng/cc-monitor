@@ -9,19 +9,19 @@ use cmd_wire::board::{BoardHere, TerminalsBoard};
 
 /// `terminals-board-here` 的入参。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct BoardHereReq {
+pub struct BoardHereReq {
     /// 自报的前端（决定每行的 `can_end`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) client: Option<String>,
 }
 
 codes! {
     /// `terminals-board-here` 的码：列名单那两发 tmux。
-    pub(crate) enum BoardHereErr {
+    pub enum BoardHereErr {
         /// 列不出终端名单。
         Unobservable = "unobservable",
         /// 那一发 `tmux` 过了期限。
@@ -30,7 +30,7 @@ codes! {
 }
 
 /// `terminals-board-here`：这台的终端名单写成「终端」视图的那几行。阻塞档（起 tmux · 读活会话表）。
-pub(crate) struct TerminalsBoardHereCmd;
+pub struct TerminalsBoardHereCmd;
 
 impl Command for TerminalsBoardHereCmd {
     const NAME: &'static str = "terminals-board-here";
@@ -41,11 +41,11 @@ impl Command for TerminalsBoardHereCmd {
 
 impl crate::wire::typed::Handle for TerminalsBoardHereCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: BoardHereReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<BoardHere, BoardHereErr>> + Send + 'static {
-        async move { here(&req) }
+    ) -> Result<BoardHere, BoardHereErr> {
+        here(&req)
     }
 }
 
@@ -96,23 +96,23 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
 
 /// `terminals-board` 的入参：问哪几台（本机逐字 `"<local>"`）· 自报的前端。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct BoardReq {
+pub struct BoardReq {
     pub(crate) machines: Vec<cmd_wire::Machine>,
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) client: Option<String>,
 }
 
 codes! {
     /// `terminals-board` 自己没有别的码（哪台没答只进那一组的 `down`）。
-    pub(crate) enum BoardErr {}
+    pub enum BoardErr {}
 }
 
 /// `terminals-board`：本机后端问到各台的那几行（本机同进程答，别的台经常驻问 `terminals-board-here`），合成一份再答。
-pub(crate) struct TerminalsBoardCmd;
+pub struct TerminalsBoardCmd;
 
 impl Command for TerminalsBoardCmd {
     const NAME: &'static str = "terminals-board";
@@ -123,48 +123,46 @@ impl Command for TerminalsBoardCmd {
 
 impl crate::wire::typed::Handle for TerminalsBoardCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: BoardReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<TerminalsBoard, BoardErr>> + Send + 'static {
-        async move {
-            let ask = BoardHereReq {
-                client: req.client.clone(),
-            };
-            let mine = ask.clone();
-            let local = async move {
-                tokio::task::spawn_blocking(move || here(&mine))
-                    .await
-                    .map_err(|e| crate::common::said::Said::from(e.to_string()))?
-                    .map_err(|e| {
-                        use crate::wire::typed::Codes as _;
-                        e.into_said()
-                    })
-            };
-            let got = crate::dial::remote_ask::ask_each::<TerminalsBoardHereCmd, _>(
-                &req.machines,
-                &ask,
-                local,
-                &cx.tz,
-                cx.until,
-                &crate::dial::remote_ask::REACH,
-                &crate::dial::remote_ask::DialRemote,
-            )
-            .await
-            .map_err(BoardErr::BadArgs)?;
-            let now = crate::common::time::now_secs() as i64;
-            let at = crate::common::time::fmt_at(now, now, &cx.tz);
-            let got = got
-                .into_iter()
-                .map(|(m, r)| {
-                    let g = match r {
-                        Ok(here) => Got::Answered(here, at.clone()),
-                        Err(s) => Got::Down(s.said),
-                    };
-                    (m, g)
+    ) -> Result<TerminalsBoard, BoardErr> {
+        let ask = BoardHereReq {
+            client: req.client.clone(),
+        };
+        let mine = ask.clone();
+        let local = async move {
+            tokio::task::spawn_blocking(move || here(&mine))
+                .await
+                .map_err(|e| crate::common::said::Said::from(e.to_string()))?
+                .map_err(|e| {
+                    use crate::wire::typed::Codes as _;
+                    e.into_said()
                 })
-                .collect();
-            Ok(b::merge(got, &b::LAST_SEEN))
-        }
+        };
+        let got = crate::dial::remote_ask::ask_each::<TerminalsBoardHereCmd, _>(
+            &req.machines,
+            &ask,
+            local,
+            &cx.tz,
+            cx.until,
+            &crate::dial::remote_ask::REACH,
+            &crate::dial::remote_ask::DialRemote,
+        )
+        .await
+        .map_err(BoardErr::BadArgs)?;
+        let now = crate::common::time::now_secs() as i64;
+        let at = crate::common::time::fmt_at(now, now, &cx.tz);
+        let got = got
+            .into_iter()
+            .map(|(m, r)| {
+                let g = match r {
+                    Ok(here) => Got::Answered(here, at.clone()),
+                    Err(s) => Got::Down(s.said),
+                };
+                (m, g)
+            })
+            .collect();
+        Ok(b::merge(got, &b::LAST_SEEN))
     }
 }

@@ -21,7 +21,7 @@ type Answer = Result<Probed, crate::common::said::Said>;
 const PROBE_WITHIN: Deadline = Deadline::secs(30);
 
 /// 这条命令的总期限（分派那一层装；略长于那一次子进程）。
-pub(crate) const PROBE_CAP: Deadline = Deadline::secs(32);
+pub const PROBE_CAP: Deadline = Deadline::secs(32);
 
 /// 报错原话里带官方客户端的输出至多这么多个字（截了接「…」）。
 const SAID_CHARS: usize = 200;
@@ -32,10 +32,10 @@ fn bad(detail: &str) -> crate::common::said::Said {
 
 /// `quota-probe` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct QuotaProbeReq {
+pub struct QuotaProbeReq {
     /// 哪一家（线上的 kind）。
     pub(crate) agent: crate::agents::AgentKind,
     /// 账号库里的号（配置目录末段；账号 0 是 `0`）。
@@ -44,7 +44,7 @@ pub(crate) struct QuotaProbeReq {
 
 crate::wire::typed::codes! {
     /// `quota-probe` 的码。
-    pub(crate) enum ProbeErr {
+    pub enum ProbeErr {
         /// 官方客户端没在期限里说完。
         ChildTimedOut = "child_timed_out",
         /// 起不来 · 退出码非零（它自己那句话进原话）。
@@ -59,7 +59,7 @@ crate::wire::typed::codes! {
 }
 
 /// `quota-probe`：用某个号查一次额度（起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`；落账经写句柄）。
-pub(crate) struct QuotaProbe;
+pub struct QuotaProbe;
 
 impl crate::wire::typed::Command for QuotaProbe {
     const NAME: &'static str = "quota-probe";
@@ -70,14 +70,11 @@ impl crate::wire::typed::Command for QuotaProbe {
 
 impl crate::wire::typed::Handle for QuotaProbe {
     type Needs = crate::wire::typed::needs::Own;
-    fn run(
+    async fn run(
         req: QuotaProbeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Probed, ProbeErr>> + Send + 'static {
-        async move {
-            answer_probe(&req, &cx.needs)
-                .map_err(|f| crate::wire::typed::of_fail(f, ProbeErr::Failed))
-        }
+    ) -> Result<Probed, ProbeErr> {
+        answer_probe(&req, &cx.needs).map_err(|f| crate::wire::typed::of_fail(f, ProbeErr::Failed))
     }
 }
 
@@ -222,9 +219,9 @@ pub(crate) fn answer_probe_with(
 
 /// `quota-probe` 的回包。
 #[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Probed {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Probed {
     /// 哪一家（同入参，线上的 kind）。
     pub(crate) agent: crate::agents::AgentKind,
     /// 账号库里的号（同入参）。
@@ -232,7 +229,7 @@ pub(crate) struct Probed {
     /// 这份读数从哪来。
     pub(crate) from: ProbeFrom,
     /// 这台此刻的 unix 秒。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) now: u64,
     /// 读得懂（已记进额度账）· 输出对不上（不猜、不写账）。
     pub(crate) state: ProbeState,
@@ -246,8 +243,8 @@ pub(crate) struct Probed {
 
 /// [`Probed::from`]：恒是官方客户端报的用量。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ProbeFrom {
     Usage,
@@ -255,8 +252,8 @@ pub(crate) enum ProbeFrom {
 
 /// [`Probed::state`]。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ProbeState {
     Read,

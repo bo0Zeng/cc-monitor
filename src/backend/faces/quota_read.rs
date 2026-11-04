@@ -64,14 +64,14 @@ fn window_seen_shown(w: &WindowSeen, clock: &TextClock) -> WindowSeenShown {
 }
 
 /// 出过数的一个号交进出口的样子（时刻字还没写）。`agent` 是账上记的路由名，出口换成线上的 kind。
-pub(crate) struct Seen {
-    pub(crate) agent: String,
-    pub(crate) account: String,
-    pub(crate) seen_at: u64,
-    pub(crate) reading: QuotaReading,
+pub struct Seen {
+    pub agent: String,
+    pub account: String,
+    pub seen_at: u64,
+    pub reading: QuotaReading,
     /// 账上没记 ⇒ 空。
-    pub(crate) windows_seen: BTreeMap<String, WindowSeen>,
-    pub(crate) show: QuotaShow,
+    pub windows_seen: BTreeMap<String, WindowSeen>,
+    pub show: QuotaShow,
 }
 
 /// 顶上那几格交进出口的样子。
@@ -87,7 +87,7 @@ pub(crate) struct Base {
 }
 
 /// 出过数的一个号 ⇒ 成品那一条。
-pub(crate) fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
+pub fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
     let mut show = s.show;
     show.stamp(clock);
     let reading = reading_shown(&s.reading, clock);
@@ -243,7 +243,7 @@ pub(crate) fn specimen() -> QuotaRead {
     use crate::accounts::quota::ledger::Source;
     use crate::accounts::quota::show::{LoginState, QuotaState, SlotShow, WindowShow};
     use crate::agents::QuotaStatus;
-    let clock = TextClock::new(1_000, &crate::Tz::default());
+    let clock = TextClock::new(1_000, &crate::common::time::Tz::default());
     let show = QuotaShow {
         kind: Kind::Sub,
         state: QuotaState::Ok,

@@ -195,7 +195,7 @@ fn an_account_left_out_for_this_session_is_not_used() {
             hours: None,
         },
         now(),
-        &crate::Tz::default(),
+        &crate::common::time::Tz::default(),
         &home.alive(),
     )
     .expect("ok");

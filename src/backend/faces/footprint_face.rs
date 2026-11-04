@@ -10,11 +10,11 @@ use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `agent-home-check` 自己的码（只有入参不对那一种：判出来的四态都是回包）。
-    pub(crate) enum AgentHomeCheckErr {}
+    pub enum AgentHomeCheckErr {}
 }
 
 /// `agent-home-check`：那个目录能不能当 agent 家目录。
-pub(crate) struct AgentHomeCheckCmd;
+pub struct AgentHomeCheckCmd;
 
 impl Command for AgentHomeCheckCmd {
     const NAME: &'static str = "agent-home-check";
@@ -25,22 +25,18 @@ impl Command for AgentHomeCheckCmd {
 
 impl crate::wire::typed::Handle for AgentHomeCheckCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: agent_home_check::AgentHomeCheckReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<agent_home_check::AgentHomeCheck, AgentHomeCheckErr>>
-           + Send
-           + 'static {
-        async move {
-            agent_home_check::answer_check(&req)
-                .map_err(typed::of_fail_with(AgentHomeCheckErr::BadArgs))
-        }
+    ) -> Result<agent_home_check::AgentHomeCheck, AgentHomeCheckErr> {
+        agent_home_check::answer_check(&req)
+            .map_err(typed::of_fail_with(AgentHomeCheckErr::BadArgs))
     }
 }
 
 codes! {
     /// `chores-mark` 的码。
-    pub(crate) enum ChoresMarkErr {
+    pub enum ChoresMarkErr {
         /// 建那一层目录 · 拿锁 · 写没成。
         IoFailed = "io_failed",
         /// 盘上那一份读不懂（不覆盖）。
@@ -49,7 +45,7 @@ codes! {
 }
 
 /// `chores-mark`：记下「待办」里的一个选择。
-pub(crate) struct ChoresMarkCmd;
+pub struct ChoresMarkCmd;
 
 impl Command for ChoresMarkCmd {
     const NAME: &'static str = "chores-mark";
@@ -76,14 +72,14 @@ impl crate::wire::typed::Handle for ChoresMarkCmd {
 
 codes! {
     /// `last-seen-read` 的码。
-    pub(crate) enum LastSeenReadErr {
+    pub enum LastSeenReadErr {
         /// 这台的家目录解析不出来。
         IoFailed = "io_failed",
     }
 }
 
 /// `last-seen-read`：读离线那台的上次值。
-pub(crate) struct LastSeenReadCmd;
+pub struct LastSeenReadCmd;
 
 impl Command for LastSeenReadCmd {
     const NAME: &'static str = "last-seen-read";
@@ -94,21 +90,18 @@ impl Command for LastSeenReadCmd {
 
 impl crate::wire::typed::Handle for LastSeenReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: last_seen::LastSeenReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<last_seen::LastSeen, LastSeenReadErr>> + Send + 'static
-    {
-        async move {
-            last_seen::answer_read(&req, &cx.tz)
-                .map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
-        }
+    ) -> Result<last_seen::LastSeen, LastSeenReadErr> {
+        last_seen::answer_read(&req, &cx.tz)
+            .map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
     }
 }
 
 codes! {
     /// `last-seen-write` 的码。
-    pub(crate) enum LastSeenWriteErr {
+    pub enum LastSeenWriteErr {
         /// 建那一层目录 · 拿锁 · 写没成。
         IoFailed = "io_failed",
         /// 那一份序列化后超过 256 KiB。
@@ -117,7 +110,7 @@ codes! {
 }
 
 /// `last-seen-write`：记下一台这一次读成的那一份（或清掉那台）。
-pub(crate) struct LastSeenWriteCmd;
+pub struct LastSeenWriteCmd;
 
 impl Command for LastSeenWriteCmd {
     const NAME: &'static str = "last-seen-write";

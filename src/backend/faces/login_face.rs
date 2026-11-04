@@ -12,23 +12,23 @@ pub(crate) use cmd_wire::needs::{LoginStartReq, ManualFix, ManualItem};
 /// `login-start` 的整份入参：登录什么（[`LoginStartReq`]，与它同一层）＋ 发起这一趟的浏览器在不在后端这台（`browserHere`）。
 /// 那一格不进目标：同一个目标从哪台浏览器发起都是同一份作业（新开就替掉旧的），`login-finish` 交回的目标也不带它。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LoginStartArgs {
+pub struct LoginStartArgs {
     #[serde(flatten)]
     pub(crate) target: LoginStartReq,
     /// 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
     /// 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) browser_here: bool,
 }
 
 /// 粘回来的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum PasteKind {
     /// 登录页上给的那一段码（Claude：`码#state`）。
@@ -50,9 +50,9 @@ impl PasteKind {
 /// 会不会自己登完（发起它的浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推一帧 `changed {login}`，粘码框只是后备；
 /// 不在这台 ⇒ `false`，只能粘）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LoginStarted {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LoginStarted {
     pub(crate) job: String,
     pub(crate) url: String,
     pub(crate) paste: PasteKind,
@@ -67,9 +67,9 @@ pub(crate) use cmd_wire::quota::LoginAgainHow;
 /// 登录失败的 `data`：还能怎么办（每个码一个定值，写在码表那一行上；`bad_args` 不带：入参形状不对，不是一条能走的路）·
 /// 在终端窗口里登这条路在不在（只有号那一种目标、抽屉那一趟起不来时在：开终端窗口跑那台答的登录那一行）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LoginAgain {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LoginAgain {
     pub(crate) again: LoginAgainHow,
     pub(crate) terminal: bool,
 }
@@ -96,7 +96,7 @@ pub(crate) fn terminal_way(target: &LoginStartReq) -> bool {
 
 typed::codes! {
     /// `login-start` 可能回的码（每个码带 `data: {again, terminal}`，值写在各码那一行）。
-    pub(crate) enum LoginStartErr {
+    pub enum LoginStartErr {
         /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。`again: none`。
         NotFound = "not_found" => LoginAgain,
         /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。`again: none`。
@@ -125,7 +125,7 @@ impl LoginStartErr {
 }
 
 /// `login-start`（帧面硬臂：作业跟着发起它的那条连接走；起子命令 ＋ 等它打印链接 ⇒ 阻塞档，`dispatch` 带本连接的号调 [`start`]）。
-pub(crate) struct LoginStart;
+pub struct LoginStart;
 
 impl Command for LoginStart {
     const NAME: &'static str = "login-start";
@@ -159,7 +159,7 @@ fn accounts_product(agent: &str) -> crate::observe::accounts_query::AccountsList
 }
 
 /// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`on_end` ＝ 作业自己收了时推给本连接的那一帧）。
-pub(crate) fn start(
+pub fn start(
     args: &LoginStartArgs,
     conn: u64,
     on_end: sign_in::OnEnd,
@@ -265,10 +265,10 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
 }
 
 /// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`；线上形住 cmd-wire）。
-pub(crate) use cmd_wire::quota::SignInState;
+pub use cmd_wire::quota::SignInState;
 
 /// 作业收了 ⇒ 那一份小成品（扩展特征：孤儿规则不许在 cmd-wire 的类型上加固有方法）。
-pub(crate) trait SignInStateExt {
+pub trait SignInStateExt {
     fn of(e: &SignInEnd) -> SignInState;
 }
 
@@ -286,14 +286,14 @@ impl SignInStateExt for SignInState {
 }
 
 /// `login-finish`：把登录页上给的码交给那份作业，等那一家换完。
-pub(crate) struct LoginFinish;
+pub struct LoginFinish;
 
 /// `login-finish` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LoginFinishReq {
+pub struct LoginFinishReq {
     pub(crate) job: String,
     /// 登录页上给的那一段（原样；不进日志、不回显）。
     pub(crate) pasted: String,
@@ -301,15 +301,15 @@ pub(crate) struct LoginFinishReq {
 
 /// `login-finish` 的成品：登成了的那个目标（`login-start` 时交的那一份）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LoginDone {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LoginDone {
     pub(crate) target: LoginStartReq,
 }
 
 typed::codes! {
     /// `login-finish` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
-    pub(crate) enum LoginFinishErr {
+    pub enum LoginFinishErr {
         /// 粘的格式不对，或那一家说码不对：作业还在，可以再粘。`again: paste`。
         BadPaste = "bad_paste" => LoginAgain,
         /// 那一家换码没成：作业收了，要重来（原话里是它最后说的几行）。`again: restart`。
@@ -356,46 +356,44 @@ impl Command for LoginFinish {
 
 impl crate::wire::typed::Handle for LoginFinish {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: LoginFinishReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<LoginDone, LoginFinishErr>> + Send + 'static {
-        async move {
-            sign_in::finish(&req.job, &req.pasted)
-                .map_err(LoginFinishErr::of)
-                .and_then(|key| {
-                    // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
-                    serde_json::from_str(&key)
-                        .map(|target| LoginDone { target })
-                        .map_err(|_| LoginFinishErr::no_job())
-                })
-        }
+    ) -> Result<LoginDone, LoginFinishErr> {
+        sign_in::finish(&req.job, &req.pasted)
+            .map_err(LoginFinishErr::of)
+            .and_then(|key| {
+                // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
+                serde_json::from_str(&key)
+                    .map(|target| LoginDone { target })
+                    .map_err(|_| LoginFinishErr::no_job())
+            })
     }
 }
 
 /// `login-cancel`：收一份作业（杀那一家的登录子命令）。
-pub(crate) struct LoginCancel;
+pub struct LoginCancel;
 
 /// `login-cancel` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LoginCancelReq {
+pub struct LoginCancelReq {
     pub(crate) job: String,
 }
 
 /// `login-cancel` 的成品：有没有这一份（没有 ⇒ 早收了，照样算撤了）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LoginCancelled {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LoginCancelled {
     pub(crate) was: bool,
 }
 
 typed::codes! {
     /// `login-cancel` 自己没有别的码。
-    pub(crate) enum LoginCancelErr {}
+    pub enum LoginCancelErr {}
 }
 
 impl Command for LoginCancel {
@@ -407,16 +405,13 @@ impl Command for LoginCancel {
 
 impl crate::wire::typed::Handle for LoginCancel {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: LoginCancelReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<LoginCancelled, LoginCancelErr>> + Send + 'static
-    {
-        async move {
-            Ok(LoginCancelled {
-                was: sign_in::cancel(&req.job),
-            })
-        }
+    ) -> Result<LoginCancelled, LoginCancelErr> {
+        Ok(LoginCancelled {
+            was: sign_in::cancel(&req.job),
+        })
     }
 }
 
@@ -579,16 +574,16 @@ pub(crate) fn manual_of(
 
 /// 一个 MCP 服务器在一个号里要登录时怎么解（`sessions-needs` 会外那一项 · `mcp-read` 需登录那一格同一处写）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct McpLoginFix {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct McpLoginFix {
     /// 在哪个号里；没设账号的那一份 ⇒ `null`。
     pub(crate) account: Option<String>,
     /// 在 app 里登：`login-start {kind: mcp}`；那一家不在 app 里登 MCP ⇒ `null`。
     pub(crate) fix: Option<ManualFix>,
     /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) why: Option<String>,
 }
 

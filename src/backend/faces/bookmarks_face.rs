@@ -7,7 +7,7 @@ use cmd_wire::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 
 codes! {
     /// `bookmarks-read` 的码。
-    pub(crate) enum BookmarksReadErr {
+    pub enum BookmarksReadErr {
         /// 这台的家目录解析不出来。
         IoFailed = "io_failed",
         /// 盘上那一份读不懂（不覆盖）。
@@ -16,7 +16,7 @@ codes! {
 }
 
 /// `bookmarks-read`：这台此刻的书签。
-pub(crate) struct BookmarksReadCmd;
+pub struct BookmarksReadCmd;
 
 impl Command for BookmarksReadCmd {
     typed::by_call!(BookmarksReadReq);
@@ -42,7 +42,7 @@ impl crate::wire::typed::Handle for BookmarksReadCmd {
 
 codes! {
     /// `bookmarks-edit` 的码。
-    pub(crate) enum BookmarksEditErr {
+    pub enum BookmarksEditErr {
         /// 建那一层目录 · 拿锁 · 写没成。
         IoFailed = "io_failed",
         /// 盘上那一份读不懂（不覆盖）。
@@ -51,7 +51,7 @@ codes! {
 }
 
 /// `bookmarks-edit`：切换 · 删 · 加几条，回改完的整份。
-pub(crate) struct BookmarksEditCmd;
+pub struct BookmarksEditCmd;
 
 impl Command for BookmarksEditCmd {
     typed::by_call!(BookmarksEditReq);

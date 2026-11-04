@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 
 /// 路径里的一步。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Step {
+pub enum Step {
     /// `a`
     Key(String),
     /// `*`：以 id 为键的表的每一项。
@@ -42,10 +42,10 @@ pub(crate) enum Step {
 }
 
 /// 一条路径（解析过）。
-pub(crate) type Path = Vec<Step>;
+pub type Path = Vec<Step>;
 
 /// 解析一条路径。写坏了（括号不配 · 挑法里没有 `=` · 空段）⇒ `None`。
-pub(crate) fn parse_path(s: &str) -> Option<Path> {
+pub fn parse_path(s: &str) -> Option<Path> {
     let mut out = Vec::new();
     let b = s.as_bytes();
     let mut i = 0;
@@ -161,14 +161,14 @@ fn covers(p: &[Step], c: &[Step]) -> bool {
 
 /// 一份声明（解析、校验过）：成品名 → 那几条路径。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct View {
+pub struct View {
     pub(crate) cells: BTreeMap<String, Vec<Path>>,
     pub(crate) omit: BTreeMap<String, Vec<Path>>,
 }
 
 impl View {
     /// 声明里点到的成品（`cells` 与 `omit` 合起来）。
-    pub(crate) fn products(&self) -> BTreeSet<&str> {
+    pub fn products(&self) -> BTreeSet<&str> {
         self.cells
             .keys()
             .chain(self.omit.keys())
@@ -181,7 +181,7 @@ impl View {
 pub(crate) const WORDS: &[&str] = &["cells", "omit"];
 
 /// 解析、校验一份声明。缺 / `null` ⇒ `Ok(None)`（全量）。认不出的一处 ⇒ `Err(那几处，一行一处)`。
-pub(crate) fn parse_view(v: &Value) -> Result<Option<View>, String> {
+pub fn parse_view(v: &Value) -> Result<Option<View>, String> {
     let o = match v {
         Value::Null => return Ok(None),
         Value::Object(o) => o,
@@ -367,7 +367,7 @@ fn keep_at(v: &Value, paths: &[&[Step]]) -> Option<Value> {
 }
 
 /// **投影一件成品**：照声明里这件成品那一份先挑（`cells`）、后去（`omit`）。声明没点这件成品 ⇒ 原样。
-pub(crate) fn project(product: &str, v: &mut Value, view: &View) {
+pub fn project(product: &str, v: &mut Value, view: &View) {
     if let Some(paths) = view.cells.get(product) {
         let refs: Vec<&[Step]> = paths.iter().map(Vec::as_slice).collect();
         *v = keep_at(v, &refs).unwrap_or_else(|| Value::Object(Default::default()));
@@ -381,7 +381,7 @@ pub(crate) fn project(product: &str, v: &mut Value, view: &View) {
 
 /// 应答里成品住的那几处，逐处投影。`places` ＝ `(在应答里的路径, 成品名)`，按登记次序（外层的成品排在它里面那件之前）。
 /// 路径写法同上，只用 `a.b` 与 `a[]`；空串 ＝ 整份应答就是那件成品。
-pub(crate) fn project_reply(reply: &mut Value, places: &[(&str, &str)], view: &View) {
+pub fn project_reply(reply: &mut Value, places: &[(&str, &str)], view: &View) {
     for (at, product) in places {
         if !view.products().contains(product) {
             continue;
