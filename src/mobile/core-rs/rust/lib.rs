@@ -186,12 +186,9 @@ struct PhoneKeys;
 
 impl KeySource for PhoneKeys {
     fn credential(&self, key: &str) -> Result<Credential, Said> {
-        let unreadable = || copy_core::copy_text("beConnect.auth.keyLoad", &[("path", key)]);
         let table = keys().lock().unwrap_or_else(|e| e.into_inner());
         match table.get(key).map(|h| &h.key) {
-            Some(Key::Pem(pem, pass)) => russh::keys::decode_secret_key(pem, pass.as_deref())
-                .map(|k| Credential::Key(Box::new(k)))
-                .map_err(|e| Said::with_raw(unreadable(), &e)),
+            Some(Key::Pem(pem, pass)) => ssh_dial::env::key_from_pem(key, pem, pass.as_deref()),
             Some(Key::Password(p)) => Ok(Credential::Password(p.clone())),
             Some(Key::Keystore(alias, public)) => {
                 Ok(Credential::Signer(Arc::new(KeystoreSigner {
@@ -199,7 +196,7 @@ impl KeySource for PhoneKeys {
                     public: public.clone(),
                 })))
             }
-            None => Err(unreadable().into()),
+            None => Err(ssh_dial::env::key_unreadable(key).into()),
         }
     }
 }

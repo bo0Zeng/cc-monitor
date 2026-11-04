@@ -44,6 +44,9 @@ disallowed-methods = [
   { path = "tokio::fs::metadata", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
   { path = "tokio::fs::File::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
   { path = "tokio::fs::OpenOptions::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "russh::keys::load_secret_key", reason = "通信层不读盘：钥匙文本由宿主读好交进来，解码走 `env::key_from_pem`", allow-invalid = true },
+  { path = "russh::keys::load_public_key", reason = "通信层不读盘：钥匙文本由宿主读好交进来，解码走 `env::key_from_pem`", allow-invalid = true },
+  { path = "russh::keys::load_openssh_certificate", reason = "通信层不读盘：钥匙文本由宿主读好交进来，解码走 `env::key_from_pem`", allow-invalid = true },
 
   { path = "std::env::var", reason = "通信层不读环境：要的值由宿主交进来" },
   { path = "std::env::var_os", reason = "通信层不读环境：要的值由宿主交进来" },
