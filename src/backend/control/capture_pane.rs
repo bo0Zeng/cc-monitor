@@ -29,7 +29,7 @@
 //!
 //! # 只读
 //!
-//! 这一处起进程登记在 `readonly_guard::spawn_registry::ALLOWED`，但那张表分不出被调的是哪条 tmux 子命令 ⇒
+//! 这一处起进程在调用点放行（后端 `clippy.toml` 起进程那一组），但放行认不出被调的是哪条 tmux 子命令 ⇒
 //! 真正钉住「只读」的是 `readonly_guard::capture_is_read_only`：值级（发出去的 argv 逐元素就是那条只读形）＋
 //! 文本级（生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
@@ -166,6 +166,10 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, Said> {
 ///
 /// `socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；`Some(p)` = 显式 `-S <p>`，只为在隔离的 tmux server 上测得出内容。
 fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, Said> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "全 crate 唯一一处 `capture-pane -p`：把那个终端此刻那一屏打到 stdout，只读 tmux（不落 buffer、不写文件），只抓一次"
+    )]
     let out = crate::host::tmux::child(socket)
         .args(argv)
         .run(CAPTURE_WITHIN)

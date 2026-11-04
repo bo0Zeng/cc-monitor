@@ -22,6 +22,13 @@ pub mod powershell;
 /// 它还要往上挂环境变量（`UTF8_CLIENT_ENV` 那一族）与决定怎么读回来。
 ///
 /// ⚠ 本函数**不判脚本内容**：脚本是不是 POSIX 语法、跑不跑得动，那是调用方的事。
+#[cfg_attr(
+    unix,
+    expect(
+        clippy::disallowed_methods,
+        reason = "全 crate 唯一一处把命令串交给 POSIX shell：今天只送 `observe/watcher.rs` 那两跳只读的探测，加第三种用途先回来重读这一句"
+    )
+)]
 pub fn posix_shell(script: &str) -> Option<Child> {
     #[cfg(unix)]
     {
@@ -258,6 +265,10 @@ pub fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
 
 /// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。只 unix 那一臂问登录 shell（Windows 读注册表，见 [`fresh_terminal_path`]）。
 #[cfg(unix)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "问起会话那个 shell 的 `PATH`：用户的登录 shell 跑一句只 `printf` 出 `PATH` 的固定脚本、有期限；它读写什么由用户的 rc 定，后端进程自身不写"
+)]
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
     Child::new(shell)
         .args([
@@ -318,8 +329,11 @@ pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<Child> {
     speaks_powershell().then(|| powershell_command(host, script))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "起 PowerShell 只跑固定脚本：问内建别名 · 问执行策略 · 问连接表与进程表（只读）；唯一一种写是用户点了确认后设当前用户 `RemoteSigned`（值写死，不收界面给的策略值）"
+)]
 fn powershell_command(host: PsHost, script: &str) -> Child {
-    // 程序名写成字面量：起进程登记表（`tests/backend/readonly_guard.rs` 那张 `ALLOWED`）按它认是谁。
     let c = match host {
         PsHost::Desktop => Child::new("powershell.exe"),
         PsHost::Core => Child::new("pwsh.exe"),

@@ -279,6 +279,10 @@ pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, Said> {
             copy_text("beSshConfig.host.dashAlias", &[]),
         ));
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`ssh -G <别名>`：OpenSSH 只解析 `~/.ssh/config` 打出有效参数，不建连接、不写文件；别名先过 allowlist，argv 不过 shell"
+    )]
     let out = Child::new("ssh")
         .arg("-G")
         .arg(alias)

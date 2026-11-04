@@ -126,6 +126,10 @@ pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     };
     let at = crate::platform::shell::agent_launch(f.program, a.path.as_deref())
         .map_err(|why| Said::from(failed(&why)))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "在 app 里登录一个号：起那一家官方登录子命令（适配层登记的那一形，argv 不过 shell，stdin 只写人粘回来的码）；令牌由官方客户端写进那个号自己的配置目录，后端不写"
+    )]
     let mut child = Child::new(at.program)
         .args(at.lead)
         .args(f.args)
