@@ -151,7 +151,6 @@ class SentRequestsTest {
                     SessionOpen.newIn("/w", "t", "claude", "hi"),
                     SessionOpen.newIn("/w", "t", "claude", "hi", account = "a", rotation = SessionOpen.Rotation("x")),
                     SessionOpen.newIn("/w", "t", "claude", "hi", rotation = SessionOpen.Rotation(null)),
-                    SessionOpen.newInTmux("claude", "demo", "t"),
                     SessionOpen.resume("s"),
                     SessionOpen.look("demo"),
                     SessionOpen.shell("main", "~/w"),
@@ -168,6 +167,7 @@ class SentRequestsTest {
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
             SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s", "u")),
             SessionsNeeds.COMMAND to listOf(null),
+            SessionsWhere.COMMAND to listOf(SessionsWhere.args("s")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),
             TerminalsList.COMMAND to listOf(TerminalsList.args()),
         )

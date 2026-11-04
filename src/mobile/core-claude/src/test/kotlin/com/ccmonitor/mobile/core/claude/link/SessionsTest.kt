@@ -46,17 +46,7 @@ class SessionsTest {
     }
 
     @Test
-    fun `session-open 另三形：后台起在指名的会话里 · 恢复照 tmux · 接回与开 shell 不带 run`() {
-        assertEquals(
-            mapOf(
-                "what" to mapOf("kind" to "new", "agent" to "claude", "cwd" to "~", "tmuxName" to "work"),
-                "run" to "tmux",
-                "local" to false,
-                "ticket" to "t-2",
-                "client" to "mobile",
-            ),
-            SessionOpen.newInTmux(agent = "claude", name = "work", ticket = "t-2"),
-        )
+    fun `session-open 另几形：恢复照 tmux · 接回与开 shell 不带 run（放在哪由那台定）`() {
         assertEquals(
             mapOf("what" to mapOf("kind" to "resume", "sid" to "s1"), "run" to "tmux", "local" to false, "client" to "mobile"),
             SessionOpen.resume("s1"),
