@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.BookmarkShelf
@@ -79,6 +80,8 @@ import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
+import com.ccmonitor.mobile.ui.claude.highlighted
+import com.ccmonitor.mobile.ui.claude.rememberMdStyle
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
 import kotlinx.coroutines.launch
@@ -117,7 +120,7 @@ private sealed interface FilesDialog {
 
     data class Preview(
         val name: String,
-        val content: String,
+        val content: FilePreview.Text,
     ) : FilesDialog
 
     /** 编辑（[sha256] 是读时那一份的摘要，存回时交回去）。 */
@@ -243,7 +246,7 @@ private fun entryActions(
     return remember(vm) {
         EntryActions(
             download = download,
-            preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            preview = { e -> scope.launch { vm.preview(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it)) } } },
             startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
             startCopy = { es ->
@@ -677,15 +680,18 @@ private fun ChmodDialog(
 @Composable
 private fun PreviewDialog(
     name: String,
-    content: String,
+    content: FilePreview.Text,
     onDismiss: () -> Unit,
 ) {
+    // 那台上好的色照聊天里代码块那一种画（[highlighted]）；没色 ⇒ 纯字。
+    val style = rememberMdStyle()
+    val shown = remember(content, style) { highlighted(content.text, content.hl, style) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Text(
-                content.ifEmpty { copyText("rsFilewinChrome.command.newFile") },
+                if (content.text.isEmpty()) AnnotatedString(copyText("rsFilewinChrome.command.newFile")) else shown,
                 style = monoSmall,
                 modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )

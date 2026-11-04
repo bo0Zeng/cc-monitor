@@ -231,14 +231,15 @@ internal class FakeCoreLink :
         seq: Long,
     ) = fromFlow.emit(WatchFrom(sid, "/p/$sid.jsonl", seq))
 
-    /** 那台报一条会话；[path] 缺 ⇒ 记录还没落盘（那台宣告时就不带路径）。 */
+    /** 那台报一条会话；[path] 缺 ⇒ 记录还没落盘（那台宣告时就不带路径）。进程目录 [cwd] 与项目目录 [projectDir] 缺省同一个。 */
     fun report(
         sid: String,
         cwd: String,
         face: SessionFace = Faces.of("live-idle"),
         path: String? = "/p/$sid.jsonl",
+        projectDir: String? = cwd,
     ) {
-        table.value = table.value.copy(live = table.value.live + (sid to liveSeat(sid, face, path = path, cwd = cwd)))
+        table.value = table.value.copy(live = table.value.live + (sid to liveSeat(sid, face, path = path, cwd = cwd, projectDir = projectDir)))
     }
 
     /** 那台说这一条走了（去向那一张脸）。 */
@@ -383,7 +384,8 @@ internal fun liveSeat(
     face: SessionFace,
     path: String? = null,
     cwd: String? = null,
-) = SessionAdded(sid = sid, agentKind = "claude", cwd = cwd, path = path, face = face, pid = 0, label = sid, title = sid)
+    projectDir: String? = cwd,
+) = SessionAdded(sid = sid, agentKind = "claude", cwd = cwd, projectDir = projectDir, path = path, face = face, pid = 0, label = sid, title = sid)
 
 /** 簿里走了的一条（可重连那一种；测试只看脸）。 */
 internal fun leftSeat(

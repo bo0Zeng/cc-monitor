@@ -6,6 +6,9 @@ package com.ccmonitor.mobile.ui.chat
 object ChatTestTags {
     const val PANE = "chat-pane"
 
+    /** 往上翻着时来了新内容的那一颗「↓ 新内容」。 */
+    const val NEW_CONTENT = "chat-new-content"
+
     /** 一段过程的那一行 · 点开后「跳到第一处失败」。 */
     const val PROCESS = "chat-process"
     const val JUMP_FAIL = "chat-jump-fail"

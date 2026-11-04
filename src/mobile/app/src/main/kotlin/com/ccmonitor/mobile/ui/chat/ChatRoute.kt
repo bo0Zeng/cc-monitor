@@ -101,6 +101,8 @@ fun ChatRoute(
     onOpenAgents: (String) -> Unit = {},
     /** 顶栏「⋯」→ 计划：这台的计划页（sid 带过去认此会话接手的块）。 */
     onOpenPlan: (String) -> Unit = {},
+    /** 顶栏「⋯」→ 打开工作目录：文件屏开一个标签、落在这条会话的项目目录（那台上的全路径）。 */
+    onOpenDir: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
     /** 顶栏右上「需手动 n」：需手动屏。 */
@@ -148,6 +150,7 @@ fun ChatRoute(
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
                     onPlan = onOpenPlan,
+                    openDir = state.cwd?.let { dir -> { onOpenDir(dir) } },
                     rename = Renaming(state.label, vm::rename),
                     agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
@@ -323,7 +326,7 @@ private class Renaming(
 
 /**
  * 聊天屏的顶栏：左上 ☰ 拉出抽屉，标题是这条会话叫什么（那台定的）；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（点了终端屏先让那台恢复再附着；
- * 名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· agent · 改标题 · 轮换。
+ * 名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· agent · 改标题 · 轮换 · 计划 · 打开工作目录 · [ChatMoreItems] 那几项。
  * 还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -338,6 +341,8 @@ private fun ChatTopBar(
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
     onPlan: (String) -> Unit,
+    /** ⋯「打开工作目录」；这条会话的目录还不知道 ⇒ `null`、不出这一项。 */
+    openDir: (() -> Unit)?,
     rename: Renaming,
     /** ⋯「agent」那一项；这条会话没有运行表 ⇒ `null`、不出这一项。 */
     agents: MoreAgents?,
@@ -397,6 +402,7 @@ private fun ChatTopBar(
                         menu = false
                         onPlan(sid)
                     })
+                    openDir?.let { OpenDirItem(it) { menu = false } }
                     more { menu = false }
                 }
                 if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
@@ -406,6 +412,16 @@ private fun ChatTopBar(
 }
 
 private const val MORE_GLYPH = "⋯"
+
+/** ⋯「打开工作目录」那一项（字同桌面）：先收起菜单再去。 */
+@Composable
+private fun OpenDirItem(
+    go: () -> Unit,
+    close: () -> Unit,
+) = DropdownMenuItem(text = { Text(copyText("tabBarView.tab.cwdHint")) }, onClick = {
+    close()
+    go()
+})
 
 /** ⋯「agent」那一项：字是那台写好的那一句（[agentsEntry]），点了进这条会话的 agent 列表。 */
 private data class MoreAgents(
