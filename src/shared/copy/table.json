@@ -225,18 +225,6 @@
       "zh": "多账号账号库",
       "args": []
     },
-    "rsToolRegistry.tools.accountsWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "后端在该机上建的账号库\n每号一个配置目录 · 共享的东西链回 ~/.claude",
-      "args": []
-    },
-    "rsToolRegistry.tools.accountsVaultNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份\n.credentials.json 里只有 MCP 登录段会被同步改写 · 别的内容不碰",
-      "args": []
-    },
     "beAcctExec.apply.stopped": {
       "kind": "error",
       "role": "报错",
@@ -9033,44 +9021,6 @@
       "zh": "待处理命令已达上限 · 未执行 · 稍后重试",
       "args": []
     },
-    "rsConfigSurface.scope.projectNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "优先级最高",
-      "args": []
-    },
-    "rsConfigSurface.scope.projectNotChecked": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "项目级未查 · 本页不猜项目目录\n钩子定义在项目级时 · 上面两行的未装结论不作数",
-      "args": [],
-      "limited": ["hook"]
-    },
-    "rsConfigSurface.scope.projectPath": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "<项目目录>/.claude/settings.json 与 settings.local.json",
-      "args": []
-    },
-    "rsConfigSurface.scope.project": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "项目级",
-      "args": []
-    },
-    "rsConfigSurface.scope.userLocalNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "优先级高于上一行 · 此处定义的钩子同样生效",
-      "args": [],
-      "limited": ["hook"]
-    },
-    "rsConfigSurface.scope.userLocal": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "用户级 local",
-      "args": []
-    },
     "rsConfigSurface.scope.userNote": {
       "kind": "body",
       "role": "说明",
@@ -9096,12 +9046,6 @@
       "zh": "PATH 上有 {named}",
       "args": ["named"]
     },
-    "rsConfigSurface.onPath.resolved": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "PATH 上找得到 {named}",
-      "args": ["named"]
-    },
     "rsConfigSurface.onPath.noPath": {
       "kind": "error",
       "role": "报错",
@@ -9114,124 +9058,16 @@
       "zh": "无法获取起会话的 shell 的 PATH · 无法判断 {named} 是否已装",
       "args": ["named"]
     },
-    "rsConfigSurface.unmanaged.checkOnlyEffect": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 能查它在不在 · 但无法安装",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.checkOnlySource": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不由 cc-monitor 提供",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.owedEffect": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "此处无法安装它 · 只查它在不在",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.owedSource": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需手动装",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.promptEffect": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 不装它 · 只查它在不在 · 缺失时此行提示 · 装上即可",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.promptSource": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.appInstallsEffect": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "登记信息有误 · 此行显示不准",
-      "args": []
-    },
-    "rsConfigSurface.unmanaged.appInstallsSource": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "安装信息缺失 · 程序出错",
-      "args": []
-    },
     "rsConfigSurface.row.declMismatch": {
       "kind": "error",
       "role": "报错",
       "zh": "登记的路径与安装位置不一致 · {why}",
       "args": ["why"]
     },
-    "rsConfigSurface.effect.generateOnly": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "只生成待贴文本 · 手动粘贴 · cc-monitor 不写此文件",
-      "args": []
-    },
-    "rsConfigSurface.effect.ownedFile": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "整个文件归 cc-monitor · 部署时整体覆盖",
-      "args": []
-    },
-    "rsConfigSurface.effect.fencedBlock": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "插入或更新一段带标记的内容 · 卸载时只删此段",
-      "args": []
-    },
-    "rsConfigSurface.effect.readOnly": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "只读 · 诊断用 · cc-monitor 不写",
-      "args": []
-    },
-    "rsConfigSurface.host.projectDir": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "项目目录",
-      "args": []
-    },
-    "rsConfigSurface.host.either": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机或远端",
-      "args": []
-    },
     "rsConfigSurface.host.remote": {
       "kind": "body",
       "role": "片段",
       "zh": "远端",
-      "args": []
-    },
-    "rsConfigSurface.source.notOurs": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不由 cc-monitor 提供：{who}",
-      "args": ["who"]
-    },
-    "rsConfigSurface.source.generated": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "由 cc-monitor 现场生成的文本",
-      "args": []
-    },
-    "rsConfigSurface.source.embeddedBinary": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "随 cc-monitor 一起安装的程序",
-      "args": []
-    },
-    "rsConfigSurface.source.repoDir": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "随 cc-monitor 一起安装",
       "args": []
     },
     "rsConfigSurface.observe.profileNotWindows": {
@@ -11662,18 +11498,6 @@
       "zh": "账号功能不可用",
       "args": []
     },
-    "rsToolRegistry.environment.managedWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "谁来装看它装到哪台机器 · 此处能装的由 cc-monitor 装",
-      "args": []
-    },
-    "rsToolRegistry.env.mcpServerWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 只写配置 · 所指程序不装也不查",
-      "args": []
-    },
     "rsToolRegistry.env.mcpServerCannotProbe": {
       "kind": "body",
       "role": "说明",
@@ -11686,29 +11510,10 @@
       "zh": "MCP 程序",
       "args": []
     },
-    "rsToolRegistry.env.loginShellWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "查 ccm 时用登录 shell 读用户的 rc",
-      "args": [],
-      "limited": ["ccm"]
-    },
     "rsToolRegistry.env.loginShellName": {
       "kind": "title",
       "role": "标题",
       "zh": "bash 登录 shell",
-      "args": []
-    },
-    "rsToolRegistry.env.xdgOpenWhy": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "开链接与日志目录靠它",
-      "args": []
-    },
-    "rsToolRegistry.env.sshWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "连远端机器都经它 · cc-monitor 只查是否在 PATH · 不代装",
       "args": []
     },
     "rsToolRegistry.env.sshName": {
@@ -11718,35 +11523,10 @@
       "args": [],
       "limited": ["SSH"]
     },
-    "rsToolRegistry.env.gitWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "识别 skill 所在工作树与主检出",
-      "args": []
-    },
-    "rsToolRegistry.env.terminalExitWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Linux 开终端窗口首选 · 缺失时探常见终端",
-      "args": []
-    },
     "rsToolRegistry.env.terminalExitName": {
       "kind": "title",
       "role": "标题",
       "zh": "xdg-terminal-exec",
-      "args": []
-    },
-    "rsToolRegistry.env.tmuxWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在 tmux 里启动会话靠它 · 缺失则起会话被拒时提示",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "rsToolRegistry.env.agentCliWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "起会话直接拿它当启动器 · 不查是否装、哪个版本",
       "args": []
     },
     "rsToolRegistry.env.agentCliName": {
@@ -11774,12 +11554,6 @@
       "zh": "app 自带",
       "args": []
     },
-    "rsToolRegistry.tools.sessionRecordsNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "历史浏览与搜索索引的全部输入 · 每个会话一份会话记录\ncc-monitor 只读 · 不安装也不该由它安装",
-      "args": []
-    },
     "rsToolRegistry.tools.sessionRecordsWhose": {
       "kind": "body",
       "role": "说明",
@@ -11794,33 +11568,12 @@
       "args": [],
       "limited": ["Claude Code"]
     },
-    "rsToolRegistry.tools.sessionRecordsWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Claude Code 自己建、自己写的会话记录 · cc-monitor 只读",
-      "args": [],
-      "limited": ["Claude Code"]
-    },
     "rsToolRegistry.tools.sessionRecordsName": {
       "kind": "title",
       "role": "标题",
       "zh": "Claude Code 的会话记录",
       "args": [],
       "limited": ["Claude Code"]
-    },
-    "rsToolRegistry.tools.powershellNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Windows 客户端侧 · 具体路径由 PowerShell 决定",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsToolRegistry.tools.powershellWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "现场生成的 PowerShell 代码块 · 合进用户的 $PROFILE",
-      "args": [],
-      "limited": ["PowerShell"]
     },
     "rsToolRegistry.tools.powershellName": {
       "kind": "title",
@@ -11829,22 +11582,10 @@
       "args": [],
       "limited": ["PowerShell"]
     },
-    "rsToolRegistry.tools.posixAliasesNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机的 shell rc · 具体哪一份在界面上选\n本机与远端装进 rc 的是同一份内容",
-      "args": []
-    },
     "rsToolRegistry.tools.posixAliasesRcWhat": {
       "kind": "body",
       "role": "说明",
       "zh": "接上终端时选的 rc 文件 · .bashrc / .zshrc / .bash_profile / .profile",
-      "args": []
-    },
-    "rsToolRegistry.tools.posixAliasesWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 带着的别名脚本 · 合进界面上选的那份 rc",
       "args": []
     },
     "rsToolRegistry.tools.posixAliasesName": {
@@ -11854,34 +11595,10 @@
       "args": [],
       "limited": ["ccm"]
     },
-    "rsToolRegistry.tools.skillInstallNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "只写所选机器 skills 下此 skill 的目录\n已有且不同的列在确认卡 · 确认后才覆盖\n卸载只删装时写入的 · 非此处装的先备份再删",
-      "args": []
-    },
-    "rsToolRegistry.tools.skillInstallWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "从设置「扩展」装到该机用户级的 skill\n另一台机器上该 skill 目录里的文件照写进该机的用户级 skills 目录",
-      "args": []
-    },
     "rsToolRegistry.tools.skillInstallName": {
       "kind": "title",
       "role": "标题",
       "zh": "从别的机器装来的 skill",
-      "args": []
-    },
-    "rsToolRegistry.tools.mcpSyncNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "相对所选项目目录 · 项目在确认卡上选\n只加或覆盖该条 · 其余不动",
-      "args": []
-    },
-    "rsToolRegistry.tools.mcpSyncWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "从设置「扩展」装过来的 MCP\n另一台机器上的该条照合进该机选定项目的 .mcp.json\n带密钥的值不抄过来 · 在确认卡上填或沿用该机已有的",
       "args": []
     },
     "rsToolRegistry.tools.projectMcpName": {
@@ -11890,84 +11607,17 @@
       "zh": "项目 MCP 配置",
       "args": []
     },
-    "rsToolRegistry.tools.backendRemoteNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "固定放在该机的 ~/.cc-monitor/bin/ccm",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsToolRegistry.tools.backendRemoteWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "推到远端机器上跑的后端",
-      "args": []
-    },
     "rsToolRegistry.tools.backendName": {
       "kind": "title",
       "role": "标题",
       "zh": "cc-monitor 后端",
       "args": []
     },
-    "rsToolRegistry.tools.ccBusBinNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-bus 自己的安装脚本建的命令链接 · 非 cc-monitor 所建\n钩子诊断只查 cc-bus stop-hook 在不在\n计数按 cc- 前缀数 · 别的工具建的同前缀链接也算在内",
-      "args": [],
-      "limited": ["hook"]
-    },
-    "rsToolRegistry.tools.ccBusHooksNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "只涉及 hooks 段 · cc-monitor 不写 · 只生成待贴文本",
-      "args": []
-    },
-    "rsToolRegistry.tools.ccBusDirNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "部署时整个目录写入 · 覆盖前改名备份\n只能从本机装 · cc-bus 跟着 Claude Code 走",
-      "args": [],
-      "limited": ["Claude Code"]
-    },
-    "rsToolRegistry.tools.ccBusWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-bus 的 skill 目录 · 整个装进运行 Claude Code 的机器的 skills 下",
-      "args": [],
-      "limited": ["Claude Code"]
-    },
     "rsToolRegistry.tools.ccBusName": {
       "kind": "title",
       "role": "标题",
       "zh": "cc-bus 多实例消息总线",
       "args": []
-    },
-    "rsToolRegistry.tools.ccmLocalNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机的 ccm · 放在 cc-monitor 自己的目录里\n不碰 ~/.local/bin 下的旧 ccm · 删不删手动定",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsToolRegistry.tools.ccmLocalWhat": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机上的 ccm 命令",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsToolRegistry.tools.ccmRemoteProfileNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "或「别名」区选的其它 profile",
-      "args": []
-    },
-    "rsToolRegistry.tools.ccmRemoteWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端机器上的 ccm 命令",
-      "args": [],
-      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.ccmName": {
       "kind": "title",
@@ -12183,12 +11833,6 @@
       "role": "报错",
       "zh": "端口上的程序答的第一行不是后端的回答 · {bytes} 字节",
       "args": ["bytes"]
-    },
-    "rsToolRegistry.tools.skillInstallsLedgerNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "装到哪台就记在哪台 · 该机后端自己的安装记录\n记每个写入文件的摘要与装前在不在\n卸载只认此处记着的 · 卸掉的从此摘掉",
-      "args": []
     },
     "rsFilewinShell.mode.reading": {
       "kind": "body",
@@ -16724,12 +16368,6 @@
       "zh": "原目录已移到 {path}",
       "args": ["path"]
     },
-    "rsToolRegistry.tools.extBackupsNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "卸载非 cc-monitor 安装的 skill 或 MCP 前 · 在此备份一份",
-      "args": []
-    },
     "extPage.status.problems": {
       "kind": "body",
       "role": "说明",
@@ -16937,23 +16575,11 @@
       "zh": "{field} 里有绝对路径 {value} · {machine} 上也有此路径",
       "args": ["field", "value", "machine"]
     },
-    "rsToolRegistry.tools.projectSkillsNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "装进某项目的 skill 落在此处 · 在该项目的此目录下 · 以 skill 名为名",
-      "args": []
-    },
     "extPage.drawer.detailLine": {
       "kind": "body",
       "role": "片段",
       "zh": "{label} · {value}",
       "args": ["label", "value"]
-    },
-    "rsToolRegistry.tools.projectSkillInstallWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "从设置「扩展」装进某项目的 skill\n另一台机器上该 skill 目录里的文件照写进此项目的 skills 目录",
-      "args": []
     },
     "beExt.apply.needsValue": {
       "kind": "error",
@@ -17352,18 +16978,6 @@
       "role": "说明",
       "zh": "共用 MCP 同步失败 · {why}",
       "args": ["why"]
-    },
-    "rsToolRegistry.tools.accountsMcpStoreNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n另记各号 MCP 登录上次同步后的指纹（不含令牌）\n内含 MCP 密钥 · 仅本人可读",
-      "args": []
-    },
-    "rsToolRegistry.tools.accountsMcpBackupNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "同步改写前的原文 · 改写某号的 .claude.json 前留一份\n每号一份 · 下次改写前换新 · 要找回就从此处拿",
-      "args": []
     },
     "rsDataPaths.backend.accounts": {
       "kind": "body",
@@ -18470,12 +18084,6 @@
       "zh": "会话血缘 · 各会话的启动方",
       "args": []
     },
-    "rsToolRegistry.tools.quotaNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "额度账 · 经中转记录的各账号用量",
-      "args": []
-    },
     "beOauthStore.read.notJson": {
       "kind": "error",
       "role": "原因格",
@@ -18547,12 +18155,6 @@
       "role": "报错",
       "zh": "答题插件无法写入 · 此会话只能在终端里答 · {path} · {why}",
       "args": ["path", "why"]
-    },
-    "rsToolRegistry.tools.answerPluginNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "答题插件 · 自定义启动器起会话时用 · 由后端生成",
-      "args": []
     },
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
