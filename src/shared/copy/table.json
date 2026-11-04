@@ -4056,7 +4056,7 @@
     "front.body.detached": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 · 未接终端",
+      "zh": "会话在跑 · 未接终端",
       "args": [],
       "limited": ["tmux"]
     },

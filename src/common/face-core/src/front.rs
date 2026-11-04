@@ -72,7 +72,7 @@ pub enum TabMiss {
 pub enum Unplaced {
     /// 那台没有在跑的这个会话。
     NotLive,
-    /// 在 tmux 里、没终端连着。
+    /// 在 tmux 或托管终端里、没终端连着（能接回去 ⇒ 给［在终端里打开］）。
     Detached,
     /// 不在 tmux 里、进程没有终端。
     NoTerminal,
