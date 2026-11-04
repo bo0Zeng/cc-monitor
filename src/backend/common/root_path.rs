@@ -100,5 +100,10 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
             ],
         ));
     };
-    Resolved::walk(&real_root, inner, name).map_err(|e| unresolved(dir, e))
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "「已过路径解析」只由路径解析本身造：从根句柄逐段开（文件管理写面与传输台共用这一处）"
+    )]
+    let walked = Resolved::walk(&real_root, inner, name);
+    walked.map_err(|e| unresolved(dir, e))
 }

@@ -198,7 +198,11 @@ pub fn check(p: &Prefs) -> Result<(), String> {
         }
     }
     for (kind, l) in &p.launchers {
-        if let Some(c) = shell_quote_core::launcher_refused_char(l) {
+        // 偏好存在这一台、只在这一台起会话时用 ⇒ 照这一台的平台认。
+        if let Some(c) = shell_quote_core::launcher_refused_char(
+            l,
+            crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+        ) {
             return Err(format!("`launchers.{kind}` has {c:?}"));
         }
     }

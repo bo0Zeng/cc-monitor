@@ -115,6 +115,10 @@ pub mod needs {
             Some((h.files, h.own?.clone()))
         }
     }
+    #[expect(
+        clippy::disallowed_types,
+        reason = "那一种能力的定义本身：分派照它递文件管理写句柄"
+    )]
     impl Needs for Face {
         type Given = crate::platform::fs::Face;
         #[cfg(any(test, feature = "test-support"))]
@@ -133,6 +137,10 @@ pub mod needs {
 
 /// 文件管理写句柄只在这一处造、只活这一问：[`needs::Face`] 那一份（帧面 · CLI 面），
 /// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "文件管理写句柄只在分派那一层造：按档装处理器的那一档 · 资产域那扇门的进程内分派都经这一处，句柄只活那一问"
+)]
 fn issue_face() -> crate::platform::fs::Face {
     crate::platform::fs::Face::issue()
 }

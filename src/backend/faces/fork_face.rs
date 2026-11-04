@@ -32,7 +32,10 @@ impl crate::wire::typed::Handle for SessionFork {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<Forked, ForkErr> {
         let home = crate::history::listing::agent_home();
-        // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）"
+        )]
         let nf = crate::platform::fs::NewFile::issue();
         crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
             launch_of(&home, source, sid)
