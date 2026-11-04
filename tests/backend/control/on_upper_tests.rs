@@ -123,7 +123,7 @@ fn tl2_error_codes_in(src: &str) -> std::collections::BTreeSet<String> {
         };
         let Some(end) = rest.find('"') else { continue };
         let lit = &rest[..end];
-        if rest[end + 1..].trim_start().chars().next() == Some(',')
+        if rest[end + 1..].trim_start().starts_with(',')
             && lit.contains('_')
             && lit.chars().all(|c| c.is_ascii_lowercase() || c == '_')
         {

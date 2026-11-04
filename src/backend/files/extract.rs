@@ -587,6 +587,10 @@ fn undo(face: &Face, root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, O
 }
 
 /// 执行趟：照计划落（`into` 相对 `root`，已由调用方建好、记进 `made`）。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "只有解包那一处调它，参数就是那一趟手上的几样；收成结构只多一层拆装"
+)]
 fn execute(
     face: &Face,
     root: &Path,

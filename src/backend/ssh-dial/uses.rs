@@ -124,10 +124,8 @@ pub trait Closable: Send + 'static {
 }
 
 impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
-    fn close_it(self) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            self.close().await.discard(Why::Reap); // 放弃 / 提前收工时向远端发关通道：对端撤活只是尽力
-        }
+    async fn close_it(self) {
+        self.close().await.discard(Why::Reap); // 放弃 / 提前收工时向远端发关通道：对端撤活只是尽力
     }
 }
 
@@ -259,6 +257,10 @@ enum Answered {
 
 impl Lease {
     /// 拿一条连接。`probe` / `stages` ⇒ 不进池、就地拨；其余按身份在池里放置（`pool::Pool::place`：复用 / 按需多开）。
+    #[expect(
+        clippy::result_large_err,
+        reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+    )]
     pub async fn take(
         req: &DialRequest,
         stages: &StageSink,
@@ -279,6 +281,10 @@ impl Lease {
         Self::place(req, stages, pool::identity(req), lane).await
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+    )]
     async fn place(
         req: &DialRequest,
         stages: &StageSink,
@@ -289,6 +295,10 @@ impl Lease {
     }
 
     /// 同 [`Lease::place`]，拨号由调用方给（赛跑赢下来的那条：第一次要拨时交出它）。
+    #[expect(
+        clippy::result_large_err,
+        reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+    )]
     async fn place_with<F, Fut>(
         key: String,
         lane: Lane,
@@ -618,6 +628,10 @@ impl Opened {
 
 /// **开一条用法**：拿连接（池里复用或新拨）→ 开通道 → 等远端答应（[`granted`]）。开成 ⇒ [`Opened`]；没开成 ⇒ [`DialFail`]。
 /// 拨号每过一步（[`crate::step`]）当场交给 `on_step`；阶段（[`crate::Stage`]）记进 `stages`。被丢 ⇒ 这一拨一并收掉。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 pub async fn open(
     req: &DialRequest,
     stages: &StageSink,
@@ -641,6 +655,10 @@ pub async fn open(
 }
 
 /// **一次性收全**（`use: capture`）：开成之后收全 stdout / stderr / 退出码（[`Captured`]）。别的用法 ⇒ 请求格式不对。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
     if req.use_ != Use::Capture {
         return Err(crate::fail(
@@ -666,6 +684,10 @@ pub async fn capture(req: &DialRequest) -> Result<Captured, DialFail> {
 }
 
 /// [`open`] 的本体（进展只报进 `stages`，不另交）。
+#[expect(
+    clippy::result_large_err,
+    reason = "失败带着给人看的整句（`Said`）原样往上交，一次拨号只走一次；手机那一侧共用这一形"
+)]
 async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFail> {
     let mut lease = match Lease::take(req, stages, lane_of(req.use_)).await {
         Ok(l) => l,
@@ -794,6 +816,10 @@ where
 }
 
 /// 同 [`run`]，另带链路字节之外的那几样（[`Control`]：PTY 改窗口）。
+#[expect(
+    clippy::manual_async_fn,
+    reason = "`Send` 写在签名上：两个宿主都把它交给多线程运行时，写成 `async fn` 这条承诺就只剩推断、改坏了报在调用处"
+)]
 pub fn run_with<'a, R, W>(
     req: &'a DialRequest,
     stages: &'a StageSink,

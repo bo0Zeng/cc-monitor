@@ -15947,6 +15947,18 @@
       "zh": "  {said}",
       "args": ["said"]
     },
+    "beLinks.relay.line": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "中转 {endpoint} · 收 {in} · 发 {out}",
+      "args": ["endpoint", "in", "out"]
+    },
+    "beLinks.relay.failed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{line} · 上次卡在{hop}",
+      "args": ["line", "hop"]
+    },
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "role": "报错",

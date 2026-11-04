@@ -130,6 +130,10 @@ impl<R: std::io::Read> Blocks<R> {
     }
 
     /// 下一块整行（止于 `\n`）；读到尾 ⇒ `Ok(None)`（没写完的那截留给 [`Self::rest`]）；读出错 ⇒ `Err`，之后不再有块。
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "回的是 `io::Result<Option<…>>`、读错要带出来，不是 `Iterator` 那一形"
+    )]
     pub fn next(&mut self) -> std::io::Result<Option<Vec<u8>>> {
         while !self.done {
             let at = self.carry.len();

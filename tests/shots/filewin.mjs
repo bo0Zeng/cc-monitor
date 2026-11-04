@@ -79,14 +79,12 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
     return { results, problems };
   }
 
-  // 起法只住 tests/scripts/xvfb-free.sh 那一份（文件窗口台架同用它）：它挑空号、占住，号写在 Xvfb 标准输出第一行；收场用它的 release。
-  const xvfb = spawn("bash", [path.join(repo, XVFB_LAUNCHER)], { env, stdio: ["ignore", "pipe", "ignore"] });
-  children.push(xvfb);
-  const display = await displayOf(xvfb);
-  if (display === null) {
+  const x = await privateXvfb({ repo, env, children });
+  if (x === null) {
     problems.push("文件窗口：Xvfb 没报号就退了（起不来）");
     return { results, problems };
   }
+  const { display } = x;
 
   for (const s of scenes) {
     const file = path.join(out, s.dir, `${s.id}.png`);
@@ -113,14 +111,29 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
     results.push({ ...s, file: path.relative(out, file), ok });
     console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}`);
   }
-  try {
-    process.kill(xvfb.pid, "SIGTERM");
-  } catch {
-    // 已经退了
-  }
-  if (xvfb.exitCode === null && xvfb.signalCode === null) await new Promise((r) => xvfb.once("exit", r));
-  spawnSync("bash", [path.join(repo, XVFB_LAUNCHER), "release", String(display), String(xvfb.pid)], { stdio: "ignore" });
+  await x.stop();
   return { results, problems };
+}
+
+/**
+ * 起一台私有 Xvfb（文件窗口这一半与 WebKitGTK 那一份浏览器同用）。起法只住 tests/scripts/xvfb-free.sh 那一份：
+ * 它挑空号、占住，号写在 Xvfb 标准输出第一行；收场（`stop`）照它的 release 删自己那把锁。起不来 ⇒ `null`。
+ */
+export async function privateXvfb({ repo, env, children }) {
+  const xvfb = spawn("bash", [path.join(repo, XVFB_LAUNCHER)], { env, stdio: ["ignore", "pipe", "ignore"] });
+  children.push(xvfb);
+  const display = await displayOf(xvfb);
+  if (display === null) return null;
+  const stop = async () => {
+    try {
+      process.kill(xvfb.pid, "SIGTERM");
+    } catch {
+      // 已经退了
+    }
+    if (xvfb.exitCode === null && xvfb.signalCode === null) await new Promise((r) => xvfb.once("exit", r));
+    spawnSync("bash", [path.join(repo, XVFB_LAUNCHER), "release", String(display), String(xvfb.pid)], { stdio: "ignore" });
+  };
+  return { display, stop };
 }
 
 const CODE = `//! 库存客户端：统一的重试与超时。

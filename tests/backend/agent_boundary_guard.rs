@@ -366,7 +366,7 @@ mod tests {
 
         // ⚠ `@ccm_sid` **刻意不是针**：它是我们自己的 tmux 变量，不是任何 agent 的。
         let ours = "fn h() {\n    tmux(\"show-options\", \"@ccm_sid\");\n}\n";
-        let ours_hit = production_lines(&ours.to_string()).iter().any(|(_, l)| {
+        let ours_hit = production_lines(ours).iter().any(|(_, l)| {
             let low = l.to_lowercase();
             needles()
                 .iter()

@@ -21,6 +21,8 @@ ts = ["dep:ts-rs", "ssh-dial/ts", "cmd-wire/ts", "backend-common/ts"]
 backend-wire = { path = "../wire" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
+# 中转宿主：本进程起的中转去上游那一跳的读数归本机那台（`links::local`）。
+backend-relay = { path = "../relay" }
 # 拨号核心（多地址竞速 · 跳板 · host key · 鉴权 · 池 · SFTP；手机同一份）：本包是后端那一侧的宿主。
 ssh-dial = { path = "../ssh-dial" }
 # 帧的线上形（客户端按同一份解）。

@@ -58,10 +58,10 @@ fn scrub(v: &mut Value, root: &str) {
         Value::Array(a) => a.iter_mut().for_each(|x| scrub(x, root)),
         Value::Object(m) => {
             // 目录的大小看文件系统（tmpfs 与 ext4 不同），不是契约。
-            if m.get("kind") == Some(&json!("dir")) || m.get("link_to") == Some(&json!("dir")) {
-                if m.contains_key("size") {
-                    m.insert("size".to_string(), json!("<DIRSIZE>"));
-                }
+            if (m.get("kind") == Some(&json!("dir")) || m.get("link_to") == Some(&json!("dir")))
+                && m.contains_key("size")
+            {
+                m.insert("size".to_string(), json!("<DIRSIZE>"));
             }
             // 带键集合那一形的记号（进程号 · 备忘号 · 修订）每个进程不同，不是契约。
             if let Some(h) = m.get_mut("held") {

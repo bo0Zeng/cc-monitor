@@ -415,24 +415,21 @@ impl Command for FilesGrep {
 
 impl crate::wire::typed::Handle for FilesGrep {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: wire::GrepReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::GrepReply, FilesGrepErr>> + Send + 'static
-    {
-        async move {
-            crate::files::answer_grep_cancellable(req)
-                .await
-                .map_err(|f| {
-                    typed::of_fail(
-                        {
-                            let code = f.code_or_fallback().to_string();
-                            crate::wire::spec::fail(&code, f)
-                        },
-                        FilesGrepErr::BadArgs,
-                    )
-                })
-        }
+    ) -> Result<wire::GrepReply, FilesGrepErr> {
+        crate::files::answer_grep_cancellable(req)
+            .await
+            .map_err(|f| {
+                typed::of_fail(
+                    {
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
+                    FilesGrepErr::BadArgs,
+                )
+            })
     }
 }
 

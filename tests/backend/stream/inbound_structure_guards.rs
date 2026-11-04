@@ -270,7 +270,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         {
             let code = e.code_or_fallback();
             assert!(
-                spec.codes.iter().any(|c| *c == code),
+                spec.codes.contains(&code),
                 "`{name}` 回了一个它没登记的 code `{code}`（{}）",
                 e.said
             );

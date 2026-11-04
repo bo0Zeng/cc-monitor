@@ -126,6 +126,7 @@
 // 绑口 · 在途上界 · 两个期限值 · 钥匙落盘也不在这里：都归后端（`src/backend/relay/`），中转只收它交下来的。
 mod door; // 中转口的门：钥匙的形状 · 进门三问（Origin / Host / 钥匙）· 定长比对
 mod framer; // 唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
+mod hop; // 去上游那一跳的读数：经没经代理 · 进出字节 · 上次连上了还是卡在哪一步 ＋ 那一句
 mod http1;
 mod route;
 mod server; // 一条下游连接的一来一回（解析 → 问上游选择 → 连上游 → 逐块透传 ＋ tee）
@@ -135,7 +136,10 @@ mod upstream;
 /// 后端起中转那一侧用的：钥匙由后端读好，门上只拿两个比对口（[`Keys`] · [`KeyCheck`]）· 一条连接交给 [`serve_one`] ·
 /// 在途满了由后端回一声 [`refuse_busy`] · 接下连接先装下游期限（[`apply_downstream_deadline`]，值由后端给）。
 pub use door::{KeyCheck, Keys};
-pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
+pub use server::{apply_downstream_deadline, refuse_busy, serve_one, FailedAt, Relay};
+
+/// 去上游那一跳的读数（[`Relay::hop`] 那一份记账出的）与那一句（[`HopFacts::line`]）：宿主把它归到本机那台。
+pub use hop::{HopFacts, HopMeter, Last};
 
 /// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件拼成活卡）；
 /// [`TeeSink`] 是中转手里那个落点（后端起中转时用 `TeeSink::to_port` 把口交进来）。
@@ -151,7 +155,7 @@ pub use tee::{TapBody, TapEvent, TapPort, TeeSink};
 pub use route::segment_is_safe;
 /// 中转的**传输原语**：一行的上游是什么。上游选择解析它、焊进行里、原样交回（`Destination` 带着它）。
 /// ⚠ 它**经这里**交给上游选择（`upstream` 模块本身仍是私有的）—— 契约面上的每一样都住这个文件。
-pub use upstream::{fetch, Base, Fetched};
+pub use upstream::{fetch, Base, Fetched, Opened};
 
 /// 两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///

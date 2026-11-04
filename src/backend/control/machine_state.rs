@@ -4,7 +4,7 @@
 //! 后端重启表就空：各台的常驻流随后端一起重起，各自重报。
 //!
 //! 成品里到那台怎么连过去的（`route`）与每条 SSH 连接那一句（复制详情末尾）不是这一轮的事实，出成品时照机器表与本进程的连接池现填
-//! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
+//! （[`crate::dial::links`]；本进程起的中转去上游那一跳归本机那一行）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
 use crate::dial::links::Links;
 use cmd_wire::machine::{FleetLines, MachineRead, MachineReadReq, MachineState, Round};
@@ -149,7 +149,7 @@ pub(crate) fn read_in(hosts: &[(String, bool)], links: &Links) -> BTreeMap<Strin
             )
         })
         .collect();
-    out.insert(cmd_wire::machine::LOCAL.to_string(), local_row());
+    out.insert(cmd_wire::machine::LOCAL.to_string(), local_row(links));
     out
 }
 
@@ -163,7 +163,7 @@ pub fn fleet() -> FleetLines {
 
 /// [`fleet`] 照给的那一张表算（不碰进程里那一张）。
 fn fleet_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Links) -> FleetLines {
-    let local = local_row();
+    let local = local_row(links);
     let rows: Vec<(MachineState, bool)> = hosts
         .iter()
         .map(|(n, c)| {
@@ -177,8 +177,8 @@ fn fleet_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Lin
 }
 
 /// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`common::id::VERSION`）。
-/// 不经 SSH ⇒ 没有连接那一格。
-fn local_row() -> MachineState {
+/// 不经 SSH ⇒ 没有「怎么连过去的」；本进程起的中转去上游那一跳（连接表里本机那一项）进复制详情末尾那一段。
+fn local_row(links: &Links) -> MachineState {
     let mut e = Entry::default();
     fold(
         &mut e,
@@ -190,7 +190,11 @@ fn local_row() -> MachineState {
             version: Some(crate::common::id::VERSION.to_string()),
         },
     );
-    product(&e, &copy_core::local_machine(), true, true)
+    let mut p = product(&e, &copy_core::local_machine(), true, true);
+    if let Some(way) = links.get(cmd_wire::machine::LOCAL) {
+        way.put(&mut p);
+    }
+    p
 }
 
 crate::wire::typed::codes! {

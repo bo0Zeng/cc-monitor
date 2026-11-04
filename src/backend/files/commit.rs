@@ -211,8 +211,7 @@ pub fn stage_chunk(
         )));
     }
     let dir = ensure_staging(face, home)?;
-    let at =
-        walk_in_root(Last::Link, &dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
+    let at = walk_in_root(Last::Link, &dir, chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
     let mut f = face.create_new(&at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
@@ -349,6 +348,10 @@ pub fn drop_chunks(face: &Face, home: &Path, key: &str) {
 
 /// **提交存盘**：读回 `0..chunks` 块 ⇒ 覆盖写 `root/rel`（写面那一份原子换的原语，路径解析在它里面）。
 /// 回 `(落点, 字节数)`。**不论成败**都删掉这一次的块。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "参数就是那条提交请求的几格（块的账 · 落点 · CAS 期望）加两个句柄；收成结构只是换个地方摊开"
+)]
 pub fn commit_text(
     face: &Face,
     home: &Path,

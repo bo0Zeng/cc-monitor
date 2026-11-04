@@ -202,11 +202,9 @@ fn stopping_the_sync_leaves_each_account_alone_until_it_is_turned_back_on() {
     let v = t.ok("accounts-mcp-sync", json!({ "on": false }));
     assert_eq!(v["sync"], false, "{v}");
     assert_eq!(v["servers"], json!(["cclsp"]), "停了也照实说共享的那几条");
-    assert_eq!(
-        t.read(".cc-monitor/accounts-mcp.json")
-            .contains("\"sync\": false"),
-        true
-    );
+    assert!(t
+        .read(".cc-monitor/accounts-mcp.json")
+        .contains("\"sync\": false"));
     let z_new = claude_json(
         "z@example.test",
         &add_to(&cclsp(), "anysearch", anysearch()),

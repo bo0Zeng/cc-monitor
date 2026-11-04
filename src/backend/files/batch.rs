@@ -65,7 +65,7 @@ pub(crate) fn look(p: &Path) -> Option<(wire::FileKind, Option<u64>, Option<i64>
     } else {
         wire::FileKind::Other
     };
-    let size = t.is_file().then(|| m.len());
+    let size = t.is_file().then_some(m.len());
     Some((kind, size, mtime_secs(m.modified())))
 }
 

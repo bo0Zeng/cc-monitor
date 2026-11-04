@@ -532,23 +532,15 @@ impl Command for SessionAttachmentCheck {
 
 impl crate::wire::typed::Handle for SessionAttachmentCheck {
     type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
+    async fn run(
         req: cmd_wire::attachment::SessionAttachmentCheckReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<
-            cmd_wire::attachment::SessionAttachmentCheckReply,
-            SessionAttachmentCheckErr,
-        >,
-    > + Send
-           + 'static {
-        async move {
-            let items = match session_cwd(req.sid.as_str()) {
-                Some(cwd) => sa::check(&cwd, &req.items),
-                None => sa::check(std::path::Path::new(""), &req.items),
-            };
-            Ok(cmd_wire::attachment::SessionAttachmentCheckReply { items })
-        }
+    ) -> Result<cmd_wire::attachment::SessionAttachmentCheckReply, SessionAttachmentCheckErr> {
+        let items = match session_cwd(req.sid.as_str()) {
+            Some(cwd) => sa::check(&cwd, &req.items),
+            None => sa::check(std::path::Path::new(""), &req.items),
+        };
+        Ok(cmd_wire::attachment::SessionAttachmentCheckReply { items })
     }
 }
 
