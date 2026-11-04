@@ -269,7 +269,7 @@ export class FakeBackend {
    */
   hookAsk(origin: string, hook: Record<string, unknown>): void {
     // 答完 / 撤了才回；台架只记一笔（没挂上就看得见为什么）。
-    // 挂着等人答：这一跳的期限给到兜底上限（缺省 30 秒会在「没人答时自动答」到点之前把它撤掉）。
+    // 挂着等人答：这一跳的期限给到兜底上限（缺省 30 秒会在「无人答时自动答」到点之前把它撤掉）。
     void this.real(origin, "needs-ask", { agent: "claude", hook }, null, WALL_CEILING_MS).then(
       (b) => console.info("[shots] needs-ask 收场：", dec.decode(b)),
       (e: unknown) => console.warn("[shots] needs-ask 没成：", JSON.stringify(e)),
