@@ -134,6 +134,8 @@ fun ChatRoute(
     val findTerminal: suspend (String) -> TermEntry? = { s -> termEntry(terminals, s) }
     // 说不了时框旁［切到终端］：同 ⋯「在终端里打开」那一个去处。
     val toTerminal: () -> Unit = { state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } } }
+    // ⋯ 里的会话里找 · 大纲 · 结束会话 · 无人答时自动答（判定都在那台，见 [ChatMore]）。
+    val more = remember(open.key) { ChatMore(backends.of(hostId), host.machine, scope, { vm.state.value.sid }, vm::jump) }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -149,6 +151,7 @@ fun ChatRoute(
                     rename = Renaming(state.label, vm::rename),
                     agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
+                    more = { close -> ChatMoreItems(more, state.label.orEmpty(), close) },
                 )
             },
         ) { inner ->
@@ -162,6 +165,7 @@ fun ChatRoute(
                     .imePadding(),
             ) {
                 ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
+                ChatMorePanes(more)
                 ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
             }
         }
@@ -339,6 +343,8 @@ private fun ChatTopBar(
     agents: MoreAgents?,
     /** ⋯ 左边那颗「需手动 n」（0 不画；空的新建会话里同样有）。 */
     needs: @Composable () -> Unit,
+    /** ⋯ 里会话里找 · 大纲 · 无人答时自动答 · 结束会话那几项（[ChatMoreItems]；参数是收起菜单）。 */
+    more: @Composable (close: () -> Unit) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember(sid) { mutableStateOf(false) }
@@ -391,6 +397,7 @@ private fun ChatTopBar(
                         menu = false
                         onPlan(sid)
                     })
+                    more { menu = false }
                 }
                 if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
             }
