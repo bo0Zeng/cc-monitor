@@ -1873,8 +1873,8 @@ mod g6_dependency_signoff {
             "`--dial` 那条代理臂的 SSH 客户端（传输层握手 · publickey 鉴权 · \
              开 channel）。与 ssh-dial · 手机核心**同版本同 feature 集**（`0.65` / `ring` / \
              `flate2` / `rsa`），provider 就是本表上面 `rustls` 那条已经在用的 `ring`。\
-             ⚠ **本档是「未量」不是「没写面」**：私钥由 `russh::keys::load_secret_key` \
-             **读**一个路径（读不是写），而它建不建缓存 / 写不写 known_hosts \
+             ⚠ **本档是「未量」不是「没写面」**：私钥由后端经 `Ro` 读成文本、交 `decode_secret_key` \
+             解码（russh 不再碰路径），而它建不建缓存 / 写不写 known_hosts \
              **我没有扫过它的源码** —— backend 侧这条路不传 known_hosts 路径、\
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
