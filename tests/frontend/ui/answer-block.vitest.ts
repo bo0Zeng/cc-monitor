@@ -290,7 +290,7 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
   });
 
   it("★ 没人答、那台替人答了 ⇒ 留的那一行是核心那一句（不是「已在别处答过」）；切走再回来还在；下一条请求来了才换掉", () => {
-    const said = "核心·10 分钟没人答，已自动答：继续";
+    const said = "核心·10m 无人答 · 已自动答：继续";
     const auto = (n: Needs | null, sid = "s1"): Tab => ({ ...tab(n, sid), autoAnswered: n ? null : said }) as Tab;
     const r = rig(auto(needs(ASKS.question, { kind: "answer" })));
     r.set(auto(null));

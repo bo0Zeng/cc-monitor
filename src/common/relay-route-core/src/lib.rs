@@ -1237,9 +1237,8 @@ const STRATEGY_SOURCE_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 
-/// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
-#[cfg(test)]
-const OWN_FILES: &[Row] = &[
+/// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上 · 壳那一侧查「文件与数据」那一页列全了它）。
+pub const OWN_FILES: &[Row] = &[
     BACKEND_POLICY_FILE.row,
     PREFS_FILE.row,
     MACHINES_FILE.row,
@@ -1322,6 +1321,10 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("skeleton", SKELETON_DIR_REL, true, false),
     declared("listingCache", &LISTING_CACHE_FILE),
     ("remoteListing", REMOTE_LISTING_DIR_REL, true, false),
+    declared("setGroups", &SET_GROUPS_FILE),
+    declared("groupsOwed", &GROUPS_OWED_FILE),
+    ("strategies", ".cc-monitor/strategies", true, true),
+    ("hosts", ".cc-monitor/hosts", true, true),
 ];
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。

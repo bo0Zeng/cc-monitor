@@ -1134,7 +1134,7 @@ function saveRenderModePreference(toolName: string, mode: "text" | "md"): void {
   safeSet(LS_KEYS.toolRender(toolName), mode);
 }
 
-/** 「思考 · 没写进记录」那一行：与折叠步骤同一副框与行高，但不是 <details>，没有展开。 */
+/** 「思考 · 未写入记录」那一行：与折叠步骤同一副框与行高，但不是 <details>，没有展开。 */
 function buildUnrecordedThinking(): HTMLElement {
   const d = document.createElement("div");
   d.className = "block-collapsible block-thinking";

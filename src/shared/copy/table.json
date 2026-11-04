@@ -18575,6 +18575,30 @@
       "zh": "远端会话清单副本 · 一台一份 · 重启后增量同步 · 可重建",
       "args": []
     },
+    "rsDataPaths.backend.setGroups": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "补足会话建的组 · 组名与组的对应 · 改显示名不影响",
+      "args": []
+    },
+    "rsDataPaths.backend.groupsOwed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "组的待补 · 改名与解散未送到的机器 · 连上后补发",
+      "args": []
+    },
+    "rsDataPaths.backend.strategies": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换策略 · 一份一个文件 · 可手改",
+      "args": []
+    },
+    "rsDataPaths.backend.hosts": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "托管终端 · 各自的状态记录 · 程序副本",
+      "args": []
+    },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
       "role": "说明",

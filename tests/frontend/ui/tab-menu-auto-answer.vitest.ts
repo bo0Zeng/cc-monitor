@@ -1,5 +1,5 @@
 /**
- * 「没人答时自动答 ▸」那一组（`tab-menu.ts::autoAnswerItems`）：照会话事实 `autoAnswerChoices` 列档、字照抄，勾在 `min == autoAnswer` 那一项上；
+ * 「无人答时自动答 ▸」那一组（`tab-menu.ts::autoAnswerItems`）：照会话事实 `autoAnswerChoices` 列档、字照抄，勾在 `min == autoAnswer` 那一项上；
  * 点一档交那一档（`0` ＝ 关），点着勾的那一档不交。几档与字都是核心给的（`control::asks::auto_choices`），界面不自带表。
  */
 import { describe, it, expect, vi } from "vitest";
@@ -7,7 +7,7 @@ import { autoAnswerItems } from "../../../src/frontend/ui/tab-menu";
 
 const choice = (min: number) => ({ min, text: `核心·${min}` });
 
-describe("没人答时自动答 ▸", () => {
+describe("无人答时自动答 ▸", () => {
   it("关着 ⇒ 勾在 0 那一档；几档与字照事实列；点一档交那一档", () => {
     const set = vi.fn<(min: number) => void>();
     const autoAnswerChoices = [0, 5, 15, 30].map(choice);

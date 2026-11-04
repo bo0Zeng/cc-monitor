@@ -170,7 +170,7 @@ pub struct AnsweredRow {
     pub said: Words,
 }
 
-/// 一条会话「没人答时自动答」那一格（注解条目里那一份，也是 `history-annotate` 的 `patch.autoAnswer`）。
+/// 一条会话「无人答时自动答」那一格（注解条目里那一份，也是 `history-annotate` 的 `patch.autoAnswer`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -184,7 +184,7 @@ pub struct AutoAnswer {
     pub say: Option<String>,
 }
 
-/// 「没人答时自动答」可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
+/// 「无人答时自动答」可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
 /// 几档与字只由后端 `control::asks::auto_choices` 一处写；会话事实那一层只装它。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
