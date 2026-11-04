@@ -1,5 +1,5 @@
-//! 拨号核心（`src/backend/ssh-dial/`）判据共用的测试档那一套。整个模块只在 `cfg(test)` 下存在。
-//! 源码人群的根是**后端那个包**（`guard_core::addr::backend_src_root`）：本 crate 住它底下，从那里扫就连本 crate 一起扫到。
+//! 拨号核心（`src/comms/ssh-dial/`）判据共用的测试档那一套。整个模块只在 `cfg(test)` 下存在。
+//! 源码人群的根是**后端那个包**（`guard_core::addr::backend_src_root`）：本 crate 在它清单写的人群里（`population`），从那里扫就连本 crate 一起扫到。
 
 /// 测试档那一套建目录给的权限位（部署那种规矩；与后端交的 `own_dir::PRIVATE_DIR_MODE` 同值，后端那边另有一条核它真交了那一个）。
 pub(crate) const TEST_DIR_MODE: u32 = 0o700;

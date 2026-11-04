@@ -551,7 +551,7 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
 /// 且 `Extra(` 只在 `place` 里造。针运行时拼。
 #[test]
 fn the_multi_open_judge_lives_in_one_function() {
-    let src = guard_core::production_code(include_str!("../../src/backend/ssh-dial/pool.rs"));
+    let src = guard_core::production_code(include_str!("../../src/comms/ssh-dial/pool.rs"));
     let body = |name: &str| -> String {
         let at = src
             .find(&format!("fn {name}("))
@@ -648,7 +648,7 @@ async fn dropping_the_guard_closes_the_channel_exactly_once() {
 /// 那两处），只走读半边 —— 这一条由类型钉着（`collect` 只收 `ChannelReadHalf`），不在这里数字面量。
 #[test]
 fn the_capture_arm_holds_its_channel_under_the_close_guard() {
-    let src = guard_core::production_code(include_str!("../../src/backend/ssh-dial/uses.rs"));
+    let src = guard_core::production_code(include_str!("../../src/comms/ssh-dial/uses.rs"));
     let at = guard_core::find_pinned(&src, "Use::Capture => {")
         .unwrap_or_else(|e| panic!("capture 那一臂不是恰好一处：{e}"));
     let end = guard_core::find_pinned(&src, "Use::Forward => {")

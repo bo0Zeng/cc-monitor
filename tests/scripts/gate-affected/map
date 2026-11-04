@@ -109,6 +109,8 @@ src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链�
 
 # ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
 src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
+src/comms/ssh-dial/**           backendrs,e2e  拨号核心：住通信层目录、是后端那棵的成员，后端二进制链它（手机那一格由现算规则 ⑤ 另加）
+src/comms/egress/**             backendrs,e2e  出网口：住通信层目录、是后端那棵的成员，后端二进制链它（手机经拨号核心链它，同上）
 src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · russh 版本）：手机那份 .so 也照它编
 src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
 src/backend/common/id.rs        mobile  手机构建读 BUILD_ID

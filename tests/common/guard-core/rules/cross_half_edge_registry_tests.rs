@@ -62,31 +62,44 @@ fn half_of(rel: &str) -> &'static str {
     //   「读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边另有 13 处，
     //   它们不是这件的标的」。所以这里按 `tests/frontend/shell/` · `tests/backend/`
     //   **逐个前缀**认，不写成「凡是 `tests/` 都算」。
-    // 通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` 由后端编。
-    // monitor 源码树的人群声明（`guard_core::population_trees`：通道 · 宿主原语 · 开窗契约 · 文件窗口那几包）也归这一半，
-    //   文件窗口的判据住 `tests/frontend/filewin/`。
-    static POPULATION: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+    // 通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` · 拨号核心 · 出网口由后端编。
+    // 两个源码树的人群声明（`guard_core::population_trees`）各归各的一半：monitor 那边是通道 · 宿主原语 · 开窗契约 ·
+    //   文件窗口那几包（文件窗口的判据住 `tests/frontend/filewin/`），后端那边是中转 · 拨号核心 · 出网口。
+    // 包目录照 `population_trees` 的规矩取：源码住 `<包>/src/` 的取它的上一层，crate 根就在包目录里的取那棵树本身。
+    fn population_of(src_root: &std::path::Path) -> Vec<String> {
         let root = repo_root();
-        guard_core::population_trees(&guard_core::addr::shell_src_root())
+        guard_core::population_trees(src_root)
             .into_iter()
-            .map(|(_, src)| {
-                let pkg = src.parent().expect("人群树是 <包>/src").to_path_buf();
+            .map(|(_, tree)| {
+                let pkg = if tree.file_name().and_then(|n| n.to_str()) == Some("src") {
+                    tree.parent().expect("<包>/src 有上一层").to_path_buf()
+                } else {
+                    tree
+                };
                 let rel = pkg.strip_prefix(&root).expect("人群包住仓里");
                 format!("{}/", rel.to_string_lossy().replace('\\', "/"))
             })
             .collect()
-    });
+    }
+    static MONITOR_POPULATION: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| population_of(&guard_core::addr::shell_src_root()));
+    static BACKEND_POPULATION: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| population_of(&guard_core::addr::backend_src_root()));
     if rel.starts_with("src/frontend/shell/")
         || rel.starts_with("tests/frontend/shell/")
         || rel.starts_with("tests/frontend/filewin/")
-        || POPULATION.iter().any(|p| rel.starts_with(p.as_str()))
+        || MONITOR_POPULATION
+            .iter()
+            .any(|p| rel.starts_with(p.as_str()))
         || rel.starts_with("src/comms/inward/")
         || rel.starts_with("tests/comms/inward/")
     {
         "monitor"
     } else if rel.starts_with("src/backend/")
         || rel.starts_with("tests/backend/")
-        || rel.starts_with("src/comms/outward/")
+        || BACKEND_POPULATION
+            .iter()
+            .any(|p| rel.starts_with(p.as_str()))
         || rel.starts_with("tests/comms/outward/")
     {
         "backend"

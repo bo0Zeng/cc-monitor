@@ -61,12 +61,7 @@ fn homes_of(needle: &str) -> (std::collections::BTreeSet<String>, usize) {
     for (path, body) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         scanned += 1;
         if code_of(&body).contains(needle) {
-            homes.insert(
-                path.strip_prefix(&root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
+            homes.insert(guard_core::module_address(&root, &path));
         }
     }
     (homes, scanned)

@@ -796,7 +796,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     status: "zero",
     defs: [],
     needles: [],
-    rustGone: ["src/backend/egress/tunnel.rs::base64", "src/frontend/shell/src/platform/terminal.rs::base64_encode"],
+    rustGone: ["src/comms/egress/tunnel.rs::base64", "src/frontend/shell/src/platform/terminal.rs::base64_encode"],
   },
   J48: {
     what: "xterm 键码：一下 ⇒ 送进终端的字节，与反过来",

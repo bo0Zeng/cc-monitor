@@ -1031,7 +1031,7 @@ run_gate winchk-backend '不是数出来的数：`cargo clippy --all-targets --t
 run_gate muslbuild '不是数出来的数：`re-embed.sh --build-only` 编的那几个 musl target 各一份字节，只有绿/红两态。⚠ 买的是「发版那条配方在本机编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。每个 target 的字节里要认得出 mimalloc（远端版换过分配器：源码那一半由 `allocator_guard` 判，字节这一半本格判，认法是它自带的报错前缀 `mimalloc: `）。⚠ 用的是本机的 zig（版本印在末行），未必是 `release.yml` 钉的那一版' \
          bash -c 'out=$(bash tests/scripts/re-embed.sh --build-only 2>&1) || { printf "%s\n" "$out" | tail -20; echo "musl: re-embed.sh --build-only 编不过"; exit 1; }; ts=$(printf "%s\n" "$out" | sed -n "s/^==> cargo zigbuild .* --target \(.*\)$/\1/p"); [ -n "$ts" ] || { echo "musl: re-embed.sh --build-only 一个 target 都没编"; exit 1; }; n=0; for t in $ts; do grep -qa "mimalloc: " ".build/backend/$t/release/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（re-embed.sh --build-only 编的 %s 个 target，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n" "$n"'
 
-# ── `androidbuild`：拨号核心（`src/backend/ssh-dial`，手机也链）编得过手机那两个 target ──
+# ── `androidbuild`：拨号核心（`src/comms/ssh-dial`，手机也链）编得过手机那两个 target ──
 # android 不算 linux：拨号核心的平台分叉各臂穷举、不写「其余平台」那一臂（`tcp_rtt.rs`）⇒ 漏了 android 那一臂，本格编不过。以后新写的 `not(linux)` 兜底那一形本格认不出。
 # 工具链：NDK 版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`（手机构建同一份）；SDK 找法同 `mobile` 那一格（env.sh）。
 # API 级别 26 = 手机的 minSdk。`cargo check` 不链接，`ring` 的 build script 仍要 NDK 的 clang 编它那几份 C。
