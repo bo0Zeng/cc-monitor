@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.Wires
@@ -30,12 +31,13 @@ class ChatInfoTest {
         title: String = "proj · 订单服务重试",
         facts: Map<String, Any?> = Wires.facts("path" to "/p/s1.jsonl"),
         extra: (String, Map<String, Any?>?) -> Reply? = { _, _ -> null },
+        records: List<Map<String, Any?>> = listOf(FakeCoreLink.human("u0", "问")),
     ): Opened {
         val link = FakeCoreLink()
         link.report("s1", "/h/proj", Faces.of(face))
         val book = link.table.value
         link.table.value = book.copy(live = book.live.mapValues { (_, v) -> v.copy(title = title) })
-        val file = FakeCoreLink.File(mutableListOf(FakeCoreLink.human("u0", "问")))
+        val file = FakeCoreLink.File(records.toMutableList())
         link.answer = { cmd, args -> extra(cmd, args) ?: (if (cmd == "history-facts") Reply.Ok(facts) else null) ?: file.answer(cmd, args) ?: Reply.LinkDown }
         val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
         s.open()
@@ -111,6 +113,33 @@ class ChatInfoTest {
         }
 
     @Test
+    fun `重试细条与报错卡照会话事实 retries 那一串：没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡`() =
+        runTest {
+            val retry = mapOf("agent" to "claude", "id" to "r1", "t" to "retry", "draw" to "card", "human" to false, "reason" to "unknown", "text" to "rec-line")
+            val error =
+                mapOf(
+                    "agent" to "claude",
+                    "id" to "a-err",
+                    "t" to "reply",
+                    "autoReply" to false,
+                    "draw" to "card",
+                    "human" to false,
+                    "blocks" to listOf(FakeCoreLink.prose("raw")),
+                    "error" to mapOf("reason" to "quota", "title" to "err-title"),
+                )
+            val records = listOf(FakeCoreLink.human("u0", "问"), retry, error)
+            val calm = opened(records = records)
+            val strip = calm.chat.units.filterIsInstance<RenderUnit.Retry>().single()
+            assertEquals("事实里还没有 ⇒ 记录那一行", "rec-line", calm.chat.retryOf(strip)?.text)
+            assertNull("事实里还没有 ⇒ 报错卡照通用那一句", calm.chat.errorNextOf("a-err"))
+            assertEquals("err-title", calm.chat.units.filterIsInstance<RenderUnit.ApiError>().single().title)
+            val run = mapOf("id" to "r1", "outcome" to "failed", "text" to "run-text")
+            val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "retries" to listOf(run)), records = records)
+            assertNull("没接上 ⇒ 细条收起", o.chat.retryOf(strip))
+            assertEquals("run-text", o.chat.errorNextOf("a-err"))
+        }
+
+    @Test
     fun `信息抽屉：号与额度 · 几个进程在写 · 上下文 · 任务都照那台那几格原样摆`() =
         runTest {
             val account =
@@ -183,6 +212,8 @@ class ChatInfoTest {
                     "background" to bg,
                     "startedBy" to kin("s0", "发版前整理"),
                     "children" to listOf(kin("c1", "子一"), kin("c2", "子二")),
+                    "startedByText" to "由「发版前整理」启动",
+                    "childrenText" to "子会话 2",
                 )
             val o = opened(facts = facts, extra = quiet)
             val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
@@ -191,8 +222,10 @@ class ChatInfoTest {
             val ui = info.state.value!!
             assertEquals("~/work/orders · devbox", ui.where)
             assertEquals("后台任务运行中 · npm run dev · 18m", ui.background)
-            assertEquals("s0" to "发版前整理", ui.parent?.let { it.sid to it.title })
-            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children.map { it.sid to it.title })
+            assertEquals("抬头是那台写好的那一句", "由「发版前整理」启动", ui.parent?.head)
+            assertEquals(listOf("s0" to "发版前整理"), ui.parent?.kin?.map { it.sid to it.title })
+            assertEquals("子会话 2", ui.children?.head)
+            assertEquals(listOf("c1" to "子一", "c2" to "子二"), ui.children?.kin?.map { it.sid to it.title })
         }
 
     @Test
@@ -206,6 +239,6 @@ class ChatInfoTest {
             assertNull(ui.where)
             assertNull(ui.background)
             assertNull(ui.parent)
-            assertEquals(emptyList<Any>(), ui.children)
+            assertNull(ui.children)
         }
 }

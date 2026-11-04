@@ -54,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.RetryLook
+import com.ccmonitor.mobile.core.claude.model.RetryStrip
 import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.SaidPart
 import com.ccmonitor.mobile.core.claude.model.StreamItem
@@ -89,6 +91,10 @@ fun ClaudeReadingPane(
     stepBadge: (String) -> String? = { null },
     // 一次还没配上结果的工具调用此刻是什么样子（会话事实 `pending[]` 那一项）；事实里没有它 ⇒ null、不画状态。
     stepWait: (String) -> PendingCall? = { null },
+    // 一条重试细条此刻画什么（照会话事实那一串）；收起 ⇒ null。没有事实 ⇒ 记录那一行。
+    retry: (RenderUnit.Retry) -> RetryStrip? = { RetryLook.strip(it, emptyList()) },
+    // 报错卡（key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句；否则 null（画通用那一句）。
+    errorNext: (String) -> String? = { null },
     // 一段过程的那一行（聊天屏画它）。
     process: @Composable (StreamItem.Process) -> Unit = {},
     // 人说的那一句的长按与就地编辑（聊天屏给）；只读阅读面不给 ⇒ 不出。
@@ -112,7 +118,7 @@ fun ClaudeReadingPane(
                 // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
                 is StreamItem.Card ->
                     Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
-                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait), said)
+                        UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, Steps(stepBadge, stepWait, retry, errorNext), said)
                     }
             }
         }
@@ -140,10 +146,12 @@ class SaidHooks(
 /** 就地编辑时它后面那几项淡到多少。 */
 private const val EDIT_FADE = 0.35f
 
-/** 工具卡读的那两样：在等人那一枚的字 · 没配上结果时那一态（都按 tool_use id）。 */
+/** 卡上照会话事实摆的那几样：工具卡在等人那一枚的字 · 没配上结果时那一态（都按 tool_use id）· 重试细条 · 报错卡下一步那一句。 */
 private class Steps(
     val badge: (String) -> String?,
     val wait: (String) -> PendingCall?,
+    val retry: (RenderUnit.Retry) -> RetryStrip?,
+    val errorNext: (String) -> String?,
 )
 
 /** 一张卡（照它今天的样子）。 */
@@ -171,6 +179,67 @@ private fun UnitCard(
         is RenderUnit.Notice -> NoticeLine(unit, matched)
         is RenderUnit.Interrupt -> InterruptLine(unit)
         is RenderUnit.Unread -> UnreadLine(unit, matched)
+        is RenderUnit.Retry -> steps.retry(unit)?.let { RetryLine(it, matched) }
+        is RenderUnit.ApiError -> ApiErrorCard(unit, steps.errorNext(unit.key), matched)
+    }
+}
+
+/** 重试细条：左 2dp 琥珀、一行小字（那台写好的）；接上了 · 人打断了 ⇒ 竖线与字都淡下去。 */
+@Composable
+private fun RetryLine(
+    strip: RetryStrip,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    val bar = if (strip.faded) tokens.borderStrong else tokens.warn
+    Text(
+        strip.text,
+        Modifier
+            .fillMaxWidth()
+            .matchHighlight(matched)
+            .drawBehind { drawRect(bar, size = Size(2.dp.toPx(), size.height)) }
+            .padding(start = tokens.spacing.sm, top = tokens.spacing.xs, bottom = tokens.spacing.xs),
+        style = monoSmall,
+        color = if (strip.faded) tokens.textFaint else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * 报错卡（上游最终失败）：左 2dp 红；抬头是那台写好的卡头 ＋ 钟面；下一步那一句（[next]：紧跟着的那一串重试没接上 ⇒ 那一串的整句，
+ * 否则通用那一句）；「原文」点开是报错原文 ＋［复制详情］。
+ */
+@Composable
+private fun ApiErrorCard(
+    unit: RenderUnit.ApiError,
+    next: String?,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    var open by rememberExpandable(matched)
+    val bar = tokens.errorText
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .matchHighlight(matched)
+            .drawBehind { drawRect(bar, size = Size(2.dp.toPx(), size.height)) }
+            .padding(start = tokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            Text(unit.title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelLarge, color = tokens.errorText)
+            unit.timeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
+        }
+        Text(next ?: copyText("apiError.card.nextBare"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.clickable { open = !open }.padding(vertical = tokens.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            Caret(open)
+            Text(copyText("apiError.card.raw"), style = monoSmall, color = tokens.textFaint)
+        }
+        AnimatedVisibility(open) {
+            Column(Modifier.padding(bottom = tokens.spacing.xs)) {
+                Text(unit.raw.ifEmpty { copyText("apiError.card.noDetail") }, style = monoSmall, color = MaterialTheme.colorScheme.onSurface)
+                CopyDetailButton(unit.title, unit.raw)
+            }
+        }
     }
 }
 
@@ -228,8 +297,8 @@ private fun BriefCard(
 private const val BRIEF_LINES = 4
 
 /**
- * 另一个会话发来的话：左 2dp 琥珀条，抬头「消息」＋ 谁发的（记录里的 `from` 原样，没有 ⇒ 不写）＋ 钟面，下面是那台解析好的正文（照树排版）。
- * 「会话「from」」那一整句要那台写好成一格（同桌面那一条），手机不拼。
+ * 另一个会话发来的话：左 2dp 琥珀条，抬头是那台写好的那一句（`title`，「会话「X」」，同桌面那一条；没有 ⇒ 不写）＋「消息」＋ 钟面，
+ * 下面是那台解析好的正文（照树排版）。
  */
 @Composable
 private fun PeerBar(
@@ -247,8 +316,8 @@ private fun PeerBar(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-            Text(copyText("kit.toast.region"), style = MaterialTheme.typography.labelMedium)
-            unit.from?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            unit.title?.let { Text(it, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Text(copyText("kit.toast.region"), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             unit.timeText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         unit.doc?.let { MarkdownText(it, "", modifier = Modifier.fillMaxWidth()) }
@@ -646,8 +715,8 @@ private fun SaidPartView(
             var open by rememberExpandable(matched)
             Row(Modifier.clickable { open = !open }.padding(vertical = LocalAppTokens.current.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 Caret(open)
-                // 「粘贴的内容 · N 行」那一句后端还没写成一格（手机不拿行数自己拼）：收着时只露正文头一行。
-                if (!open) Text(part.body.lineSequence().first(), style = monoBody, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // 收着那一行是那台写好的（`foldText`，「粘贴的内容 · N 行」）。
+                Text(part.text, style = monoBody, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             AnimatedVisibility(open) { Text(part.body, style = monoBody, color = MaterialTheme.colorScheme.onSurface) }
         }

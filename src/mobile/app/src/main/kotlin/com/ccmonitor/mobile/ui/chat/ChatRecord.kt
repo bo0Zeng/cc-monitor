@@ -289,7 +289,11 @@ internal class ChatRecord(
                         cachedFrom = t.splitAt
                     } != null
             }
-        if (ok) heldLocked(anchor)
+        if (ok) {
+            // 变短 · 被改写那一句（那台写好的）：上 chip 上方那一行。
+            t.said?.let { state.value = state.value.copy(note = it) }
+            heldLocked(anchor)
+        }
         return ok
     }
 
