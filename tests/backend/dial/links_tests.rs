@@ -238,3 +238,30 @@ fn a_proxied_link_says_so_in_the_route_and_in_its_line() {
         }
     );
 }
+
+/// 中转去上游那一跳归本机：走过一发 ⇒ 一条连接那一句（就是读数自己出的那一句），不另起「怎么连过去的」；
+/// 没起中转 · 一发都没走过 ⇒ 本机没有这一段。
+#[test]
+fn the_relay_hop_lands_on_the_local_machine_as_one_link_line() {
+    let facts = relay::HopFacts {
+        endpoint: Some("api.example.test:443".to_string()),
+        via_proxy: true,
+        bytes_in: 4096,
+        bytes_out: 300,
+        last: Some(relay::Last::Up),
+    };
+    let line = facts.line().expect("走过一发 ⇒ 有那一句");
+    assert_eq!(
+        local_from(Some(facts)),
+        Some(Way {
+            route: None,
+            hops: vec![line],
+        })
+    );
+    assert_eq!(local_from(None), None, "没起中转 ⇒ 本机没有这一段");
+    assert_eq!(
+        local_from(Some(relay::HopFacts::default())),
+        None,
+        "一发都没走过 ⇒ 本机没有这一段"
+    );
+}

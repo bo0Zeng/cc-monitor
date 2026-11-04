@@ -9,6 +9,8 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::hop::HopMeter;
+
 /// 一条 `base_url` 进不了 `Base` 的理由。带一句话而不是一个 `None`：「不是个 URL」「协议不认识」「端口读不懂」「路径里带查询串」挤在一个 `None` 里，
 /// 调用方只能印一句万能的话，在后三形上都是假的指引。那句话是 `&'static str`（不含文件内容）⇒ 进日志安全（与 `table::Rejected::why` 同一条理由）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,8 +83,40 @@ impl BaseIssue {
 
 /// 一条上游连接。两个变体都实现 `Read`/`Write` ⇒ 转发循环对 TLS 与否**一无所知**。
 pub enum Conn {
-    Plain(TcpStream),
-    Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
+    Plain(Metered),
+    Tls(Box<rustls::StreamOwned<rustls::ClientConnection, Metered>>),
+}
+
+/// 出网口开出的一条 TCP 与它经没经代理（出网口开它那一刻说的；经代理时交回的是握手完了的隧道）。
+pub struct Opened {
+    pub tcp: TcpStream,
+    pub via_proxy: bool,
+}
+
+/// 上游连接底下那条 TCP：读写都照线上字节记进那一跳的读数（[`HopMeter`]；TLS 在它上面，数的是密文）。
+pub struct Metered {
+    tcp: TcpStream,
+    via_proxy: bool,
+    meter: Arc<HopMeter>,
+}
+
+impl Read for Metered {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.tcp.read(buf)?;
+        self.meter.heard(n);
+        Ok(n)
+    }
+}
+
+impl Write for Metered {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.tcp.write(buf)?;
+        self.meter.sent(n);
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.tcp.flush()
+    }
 }
 
 impl Read for Conn {
@@ -222,11 +256,21 @@ impl Pool {
 }
 
 impl Conn {
-    fn tcp(&self) -> &TcpStream {
+    fn wire(&self) -> &Metered {
         match self {
             Conn::Plain(s) => s,
             Conn::Tls(s) => &s.sock,
         }
+    }
+
+    /// 底下那条 TCP（装期限 · 探活 · 判据看 socket 选项用）。
+    pub fn tcp(&self) -> &TcpStream {
+        &self.wire().tcp
+    }
+
+    /// 这一条的 TCP 经没经代理（出网口开它那一刻说的）。
+    pub fn via_proxy(&self) -> bool {
+        self.wire().via_proxy
     }
 
     fn set_deadline(&self, deadline: Duration) -> std::io::Result<()> {
@@ -255,19 +299,26 @@ impl Conn {
     }
 }
 
-/// 开出站 TCP 的那一口：主机 · 端口 · 期限 ⇒ 一条到那里的 TCP。由宿主交进来（后端交的是它的出网口：直连或经代理），
+/// 开出站 TCP 的那一口：主机 · 端口 · 期限 ⇒ 一条到那里的 TCP 与它经没经代理（[`Opened`]）。由宿主交进来（后端交的是它的出网口：直连或经代理），
 /// 本 crate 自己不开 TCP（「测试档不许出网」那一句断言也住出网口，真开 TCP 的那一处）。
-pub type Open<'a> = dyn Fn(&str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync + 'a;
+pub type Open<'a> = dyn Fn(&str, u16, Duration) -> std::io::Result<Opened> + Send + Sync + 'a;
 
 /// 中转转发那一发时开上游 TCP 的那一口：多收这一发的来处（地址里的来处段那个号，[`crate::RouteOrigin::token`]；没有 ⇒ `None`）。
 /// 来处对本 crate 是不透明的串：宿主按它取那条会话的出网描述（起会话时接过来的代理），本 crate 不解释。
 pub type OpenFor =
-    dyn Fn(Option<&str>, &str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync;
+    dyn Fn(Option<&str>, &str, u16, Duration) -> std::io::Result<Opened> + Send + Sync;
 
 /// 期限的值由后端交进来（`UPSTREAM_DEADLINE` 住 `relay/listen.rs`）：值归后端 · 执行归通信层，本文件生产段零期限字面量。
 /// TCP 经 `open` 开（经代理时它交回的是握手完了的隧道），TLS 照旧在这里、在它里面：代理只看得到 `CONNECT 主机:端口`。
-pub fn connect(base: &Base, deadline: Duration, open: &Open<'_>) -> std::io::Result<Conn> {
-    let tcp = open(&base.host, base.port, deadline)?;
+/// 线上字节记进 `meter`（中转那一跳的读数；后端自己发的那几发交一份用完就丢的）。
+pub fn connect(
+    base: &Base,
+    deadline: Duration,
+    open: &Open<'_>,
+    meter: &Arc<HopMeter>,
+) -> std::io::Result<Conn> {
+    let Opened { tcp, via_proxy } = open(&base.host, base.port, deadline)?;
+    meter.opened(via_proxy);
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;
     // ★★ 读写期限：没有它，一条死了但没发 FIN 的上游会把一条连接线程**永久**钉在
@@ -275,6 +326,11 @@ pub fn connect(base: &Base, deadline: Duration, open: &Open<'_>) -> std::io::Res
     //    写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB，远超 socket 发送缓冲）。
     tcp.set_read_timeout(Some(deadline))?;
     tcp.set_write_timeout(Some(deadline))?;
+    let tcp = Metered {
+        tcp,
+        via_proxy,
+        meter: Arc::clone(meter),
+    };
     if !base.tls {
         return Ok(Conn::Plain(tcp));
     }
@@ -311,7 +367,7 @@ pub fn fetch(
     deadline: Duration,
     cap: usize,
 ) -> std::io::Result<Fetched> {
-    let mut up = connect(base, deadline, open)?;
+    let mut up = connect(base, deadline, open, &Arc::default())?;
     let mut head = format!(
         "{method} {} HTTP/1.1\r\nHost: {}\r\nAccept-Encoding: identity\r\nConnection: close\r\n",
         base.upstream_target(rest),

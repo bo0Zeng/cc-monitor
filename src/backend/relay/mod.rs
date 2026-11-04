@@ -28,6 +28,9 @@ mod listen; // 绑口 · accept · 在途上界 · 两个期限值 · 起监听�
 /// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）。
 pub use listen::{host, our_relay_listening, Hosted, ENV_PORT};
 
+/// 本进程起的那个中转去上游那一跳此刻的读数（没起中转 ⇒ `None`）；拨号层把它归到本机那台。
+pub use listen::hop_now;
+
 /// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段与 `ccm` exec 时用。只交插好的地址，不交钥匙本身。
 pub use key::{keyed_with_key_on_disk, pass_key_on_disk, KeyKind};
 
@@ -36,27 +39,22 @@ pub use key::key_path;
 
 /// 中转与上游选择之间的契约件 · tee 的第二个落点 · 一问一答的传输原语（都住 `comms_outward`）。
 pub use comms_outward::{
-    fetch, segment_is_safe, Ask, AuthSwap, Base, Destination, Destinations, Heard, Mode, Ready,
-    RouteKey, Startup, TapBody, TapEvent, TapPort,
+    fetch, segment_is_safe, Ask, AuthSwap, Base, Destination, Destinations, Heard, HopFacts, Last,
+    Mode, Opened, Ready, RouteKey, Startup, TapBody, TapEvent, TapPort,
 };
 
 /// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。后端自己发的那几发（续登录令牌）交它；
 /// 中转转发的那一发经 [`open_for`]（先按那条会话的描述）。
-pub fn open_here(
-    host: &str,
-    port: u16,
-    deadline: std::time::Duration,
-) -> std::io::Result<std::net::TcpStream> {
+pub fn open_here(host: &str, port: u16, deadline: std::time::Duration) -> std::io::Result<Opened> {
     open_by(egress::here(), host, port, deadline)
 }
 
 /// 来处 ⇒ 那条会话的出网描述（起会话时接过来的代理）；没有 ⇒ `None`。由宿主递进来（上游选择读它那一份），中转宿主不认识它住哪。
 pub type EgressOf = std::sync::Arc<dyn Fn(&str) -> Option<egress::Egress> + Send + Sync>;
 
-/// 中转转发那一发开上游 TCP 的那一口（来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP；同 `comms_outward` 里 `upstream::OpenFor` 的形状）。
-pub type OpenFor = dyn Fn(Option<&str>, &str, u16, std::time::Duration) -> std::io::Result<std::net::TcpStream>
-    + Send
-    + Sync;
+/// 中转转发那一发开上游 TCP 的那一口（来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP 与它经没经代理；同 `comms_outward` 里 `upstream::OpenFor` 的形状）。
+pub type OpenFor =
+    dyn Fn(Option<&str>, &str, u16, std::time::Duration) -> std::io::Result<Opened> + Send + Sync;
 
 /// 中转转发那一发开上游 TCP 的那一口：这一发带着来处、那条会话有描述 ⇒ 照它；否则照这台的出网描述。
 pub fn open_for(egress_of: EgressOf) -> std::sync::Arc<OpenFor> {
@@ -73,9 +71,12 @@ fn open_by(
     host: &str,
     port: u16,
     deadline: std::time::Duration,
-) -> std::io::Result<std::net::TcpStream> {
+) -> std::io::Result<Opened> {
     egress::open(e, host, port, Some(deadline))
-        .map(|o| o.tcp)
+        .map(|o| Opened {
+            tcp: o.tcp,
+            via_proxy: o.via_proxy,
+        })
         .map_err(Into::into)
 }
 

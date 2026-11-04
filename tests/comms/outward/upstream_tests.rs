@@ -249,8 +249,11 @@ fn answer_and_hold(
     (base, release, t)
 }
 
-fn open_loopback(host: &str, port: u16, _d: Duration) -> std::io::Result<TcpStream> {
-    TcpStream::connect((host, port))
+fn open_loopback(host: &str, port: u16, _d: Duration) -> std::io::Result<Opened> {
+    TcpStream::connect((host, port)).map(|tcp| Opened {
+        tcp,
+        via_proxy: false,
+    })
 }
 
 /// 对着 [`answer_and_hold`] 发一问一答。假上游在 `fetch` 返回之后才放行、才关连接 ⇒
@@ -299,6 +302,11 @@ fn idle_conn() -> (Conn, std::net::TcpStream) {
     let l = std::net::TcpListener::bind("127.0.0.1:0").expect("绑回环");
     let c = TcpStream::connect(l.local_addr().expect("地址")).expect("连");
     let (peer, _) = l.accept().expect("接");
+    let c = Metered {
+        tcp: c,
+        via_proxy: false,
+        meter: Arc::default(),
+    };
     (Conn::Plain(c), peer)
 }
 
