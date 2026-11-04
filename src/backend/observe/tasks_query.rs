@@ -204,10 +204,17 @@ pub fn tasks_list(tasks: Vec<Task>) -> TasksList {
     } else {
         let n = |x: usize| x.to_string();
         (
-            copy_text("statusBar.tasks.chip", &[("done", &n(done)), ("total", &n(total))]),
+            copy_text(
+                "statusBar.tasks.chip",
+                &[("done", &n(done)), ("total", &n(total))],
+            ),
             copy_text(
                 "statusBar.tasks.hint",
-                &[("done", &n(done)), ("active", &n(active)), ("open", &n(total - done - active))],
+                &[
+                    ("done", &n(done)),
+                    ("active", &n(active)),
+                    ("open", &n(total - done - active)),
+                ],
             ),
         )
     };
