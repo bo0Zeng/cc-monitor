@@ -231,7 +231,9 @@ async fn keep_on(disk: &Own, answered: Vec<(Machine, GroupsHere)>, now_ms: i64) 
         return;
     }
     let own = disk.clone();
-    let done = tokio::task::spawn_blocking(move || keep_on_disk(&own, &answered, now_ms.max(0) as u64)).await;
+    let done =
+        tokio::task::spawn_blocking(move || keep_on_disk(&own, &answered, now_ms.max(0) as u64))
+            .await;
     if let Ok(Err(e)) = done {
         tracing::warn!(target: "groups", reason = %e.said, "last-known groups not kept");
     }

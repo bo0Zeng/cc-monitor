@@ -860,7 +860,12 @@ async fn g14_a_failed_resend_stays_owed_and_a_stale_debt_is_dropped_unsent() {
 }
 
 /// 同 [`read_at`]，带这台的上次值那一份（`disk`）：问本机与 devbox。
-async fn read_on(own: &crate::platform::fs::Own, kept: &Kept, peers: &Peers, now_ms: i64) -> GroupsRead {
+async fn read_on(
+    own: &crate::platform::fs::Own,
+    kept: &Kept,
+    peers: &Peers,
+    now_ms: i64,
+) -> GroupsRead {
     read_with(
         &[m(cmd_wire::LOCAL), m("devbox")],
         std::future::ready(Ok(GroupsHere::default())),
@@ -886,7 +891,13 @@ async fn g15_last_known_survives_a_restart_and_the_pinned_one_still_shows() {
         vec![rec("g1", "开发", 7, 7)],
         vec![member("s-b", &["g1"], true, running())],
     );
-    let _ = read_on(&own, &Kept::default(), &Peers::new(&[("devbox", wire(&b))]), 1_000).await;
+    let _ = read_on(
+        &own,
+        &Kept::default(),
+        &Peers::new(&[("devbox", wire(&b))]),
+        1_000,
+    )
+    .await;
     // 进程新起：内存里那一份没了，devbox 这一问不答。
     let got = read_on(&own, &Kept::default(), &Peers::new(&[]), 61_000).await;
     assert!(
@@ -894,15 +905,23 @@ async fn g15_last_known_survives_a_restart_and_the_pinned_one_still_shows() {
         "照盘上那一份、标上次所知：{:?}",
         machine(&got, "devbox")
     );
-    assert!(got.pinned.iter().any(|x| x.sid == "s-b"), "B 上固定的那条照出：{got:?}");
+    assert!(
+        got.pinned.iter().any(|x| x.sid == "s-b"),
+        "B 上固定的那条照出：{got:?}"
+    );
     assert_eq!(got.groups[0].name.as_deref(), Some("开发"));
 
     // 盘上那一份不是这一版的形状 ⇒ 照没记过（读不到），不冒充。
     let file = d.join(".cc-monitor").join("cache").join("last-seen.json");
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&file).expect("记下了")).unwrap();
+    let mut v: Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).expect("记下了")).unwrap();
     v["origins"]["devbox"]["groups"]["shape"] = Value::from("00000000");
     std::fs::write(&file, v.to_string()).unwrap();
     let old = read_on(&own, &Kept::default(), &Peers::new(&[]), 62_000).await;
-    assert!(matches!(machine(&old, "devbox"), Read::Failed { .. }), "{:?}", machine(&old, "devbox"));
+    assert!(
+        matches!(machine(&old, "devbox"), Read::Failed { .. }),
+        "{:?}",
+        machine(&old, "devbox")
+    );
     assert!(old.pinned.is_empty(), "{old:?}");
 }

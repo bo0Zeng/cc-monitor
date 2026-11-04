@@ -61,7 +61,10 @@ pub fn entry<'a>(mine: Option<&'a Value>, kind: &str) -> Option<Entry<'a>> {
 }
 
 /// 一样是这一版（记下时的指纹与 `shape` 相同、严格解得回 `T`）⇒ 解出来；否则 `None`。
-pub fn this_version<T: DeserializeOwned + Serialize>(e: &Entry<'_>, shape: Option<&str>) -> Option<T> {
+pub fn this_version<T: DeserializeOwned + Serialize>(
+    e: &Entry<'_>,
+    shape: Option<&str>,
+) -> Option<T> {
     e.value.filter(|_| e.shape == shape).and_then(strict::<T>)
 }
 

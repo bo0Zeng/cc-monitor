@@ -59,6 +59,9 @@ pub mod id;
 /// 一份 JSON 原文里就地设一格 / 往数组加一项，别的字节不动（＋ 行号 ＋ diff）。① 足迹（「待办」要贴的改法）与适配层（settings 里就地补中转地址那一格）都用 ·
 /// ② 纯文本 ＋ `serde_json` · ③ 只认「JSON 原文 ＋ 一条键路径」，不认那是谁的设置。
 pub mod json_patch;
+/// 离线那台的上次值那一份（`~/.cc-monitor/cache/last-seen.json`）的存储。① footprint（界面那两样：账号清单 · 「文件与数据」）与 history（组的上次所知）都记进它 ·
+/// ② 读经 `own_state`，写经 `platform::fs::Own` 的锁与写口 · ③ 只认「一台几样、一样一份应答连形状指纹」，每样怎么核归记它的那一处。
+pub mod last_seen_store;
 /// 两份文本逐行比（行差的算法 ＋ 线上那一形 `LineDiff` 的拼法）。① 适配层（写类工具那一张卡的行差）与足迹（「待办」要贴的改法，经 [`json_patch`]）都用 ·
 /// ② 纯文本 · ③ 只认「改前 ＋ 改后两段文本」，不认那是谁的文件。
 pub mod line_diff;
@@ -73,9 +76,6 @@ pub mod own_dir;
 /// 后端自有状态文件的读三态与编码。① 写自家状态的各份（control · accounts · assets · history · relay · dial）读都经它 ·
 /// ② 读经 `platform::fs::Ro`，写不在这里（经 `platform::fs::Own::write`）· ③ 只认「一份文件整份读、整份换」。
 pub mod own_state;
-/// 离线那台的上次值那一份（`~/.cc-monitor/cache/last-seen.json`）的存储。① footprint（界面那两样：账号清单 · 「文件与数据」）与 history（组的上次所知）都记进它 ·
-/// ② 读经 `own_state`，写经 `platform::fs::Own` 的锁与写口 · ③ 只认「一台几样、一样一份应答连形状指纹」，每样怎么核归记它的那一处。
-pub mod last_seen_store;
 /// 一串互不相干的活分给几条线程、按原序交回（线程数只在这里算）· 常驻线程池。① observe（全文搜索 · 记录预读）与 history（历史清单按记录目录扫）都用 ·
 /// ② `std::thread` · ③ 只认「一串活」，不认活是什么（原 `observe/par.rs`）。
 pub mod par;
