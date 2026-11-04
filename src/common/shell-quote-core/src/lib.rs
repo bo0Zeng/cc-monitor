@@ -132,6 +132,8 @@ pub const AWAIT_SUBDIR: &str = "ps-await";
 // （`;` `|` `&` `$` `(` `)` `<` `>` `{` `}` `@` `#` `,` 反引号 · 引号 · 换行一个都不在），空格就是要拆的词界。
 // `~` 只许打头、紧跟 `/`：POSIX 展开成家目录，PowerShell 的文件系统路径也认它；别处的 `~` 两种 shell 语义不同，拒。
 //
+// 那一行只在 Windows 本机跑的（PowerShell）另有一形：多放路径分隔符 `\` 与词首的盘符根（见 [`launcher_refused_char`] 的 `windows`）。
+//
 // 本机远端起会话都调这一个。空串不在这里判：各调用处「空 ⇒ 默认启动器」是缺省，不是判定。
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -143,10 +145,26 @@ pub const LAUNCHER_HOME_PREFIX: &str = "~/";
 
 /// 启动器（命令片段）里**第一个不许有的字符**；`None` = 整串都在白名单里（ASCII 字母数字 ∪ [`LAUNCHER_EXTRA`]，
 /// 外加打头的 [`LAUNCHER_HOME_PREFIX`]）。回那个字符，好让调用处**说清是哪一个**（拒就说清、不静默换）。
-pub fn launcher_refused_char(s: &str) -> Option<char> {
+///
+/// `windows` ＝ 那一行在 Windows 本机跑（PowerShell · argv 直起，不过 bash）：另放行路径分隔符 `\`，每个词打头认盘符根
+/// （`X:\` / `X:/`：`C:\tools\claude.cmd`、`--settings D:\x.json`）；`:` 别处照拒（`C:rel` 落在哪看进程此刻的盘）。
+/// `\` 在 PowerShell 里不是元字符，在 bash 里是 —— 所以只在 Windows 那一形放。调用处照那一行在哪台平台上跑挑
+/// （同 [`posix_free_path_ok`] / [`windows_free_path_ok`] 的挑法：调用处手里那一格「Windows 本机」）。
+pub fn launcher_refused_char(s: &str, windows: bool) -> Option<char> {
     let body = s.strip_prefix(LAUNCHER_HOME_PREFIX).unwrap_or(s);
-    body.chars()
-        .find(|c| !(c.is_ascii_alphanumeric() || LAUNCHER_EXTRA.contains(*c)))
+    let plain = |c: char| c.is_ascii_alphanumeric() || LAUNCHER_EXTRA.contains(c);
+    if !windows {
+        return body.chars().find(|&c| !plain(c));
+    }
+    body.split(' ').find_map(|word| {
+        let b = word.as_bytes();
+        let drive_root = b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && matches!(b[2], b'\\' | b'/');
+        let rest = if drive_root { &word[2..] } else { word };
+        rest.chars().find(|&c| !(plain(c) || c == '\\'))
+    })
 }
 
 /// 一个词是不是 shell 变量赋值 `NAME=…`：名字首字是字母或 `_`，其余是字母数字下划线（首字是数字 · 没有名字 ⇒ 不是，shell 把它当要执行的词）。

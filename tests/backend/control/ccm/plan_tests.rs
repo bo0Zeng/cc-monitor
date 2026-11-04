@@ -1415,6 +1415,27 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
     }
 }
 
+/// `--launcher` 照 ccm 所在这一台的平台认：Windows 上 `C:\tools\claude.cmd` 这样的绝对路径建得出计划，POSIX 上照拒（`:`）。
+#[test]
+fn a_launcher_naming_a_windows_path_follows_this_machines_platform() {
+    let cwd = if cfg!(windows) { r"C:\p" } else { "/p" };
+    let a: Vec<String> = ["--cwd", cwd, "--launcher", r"C:\tools\claude.cmd"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let r = match parse(&a).expect("该解析得动") {
+        Parsed::Opts(o) => build(&o, &env(), &no_library, None),
+        other => panic!("{other:?}"),
+    };
+    match r {
+        Ok(_) => assert!(cfg!(windows), "POSIX 上带 `:` 的启动器拼进去了"),
+        Err(e) => {
+            assert!(!cfg!(windows), "Windows 上的绝对路径启动器被拒了：{}", e.0);
+            assert!(e.0.contains("':'"), "没说出是哪个字符：{}", e.0);
+        }
+    }
+}
+
 // ───────── 〔「ccm 只看不吃 `--resume` 以复用 tmux 名」〕resume 先查是否已在跑 ─────────
 // 守的要求：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；在跑 ⇒ 接上它，不另起。
 

@@ -134,7 +134,7 @@ fn spec_with<T>(
     use ccm_invocation as ci;
     let windows = here == Here::Local { windows: true };
     let attach = matches!(l.act, Act::Attach(_));
-    let launcher = checked_launcher(&l.launcher)?;
+    let launcher = checked_launcher(&l.launcher, windows)?;
     let tmux = l
         .tmux
         .as_deref()
@@ -181,9 +181,10 @@ fn spec_with<T>(
 }
 
 /// 启动命令：拼进命令之前过全仓那一张命令片段白名单（`shell_quote_core::launcher_refused_char`）。空 / 纯空白 = 没设。
-fn checked_launcher(launcher: &str) -> Result<&str, String> {
+/// `windows` ＝ 那一行在 Windows 本机跑（照那一形认绝对路径）。
+fn checked_launcher(launcher: &str, windows: bool) -> Result<&str, String> {
     let l = launcher.trim();
-    match shell_quote_core::launcher_refused_char(l) {
+    match shell_quote_core::launcher_refused_char(l, windows) {
         Some(c) if !l.is_empty() => Err(copy_core::copy_text(
             "rsHistory.launcher.badChars",
             &[("launcher", &format!("{l:?}")), ("c", &format!("{c:?}"))],
