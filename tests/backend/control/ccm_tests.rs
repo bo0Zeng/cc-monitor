@@ -679,7 +679,7 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
             .collect())
     });
     use crate::control::session_batch::NameBase;
-    let mint = |b: NameBase| terminal_name_mint_with(b, &snap);
+    let mint = |b: NameBase| terminal_name_mint_among(b, &snap, Vec::new());
     assert_eq!(mint(NameBase::Cwd("/home/u/proj")).unwrap(), "proj-cc-2");
     assert_eq!(mint(NameBase::Cwd("/home/u/other")).unwrap(), "other-cc");
     assert_eq!(mint(NameBase::ForkOf("proj-cc")).unwrap(), "proj-fork-cc-3");
@@ -694,8 +694,37 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
         ))
     });
     assert_eq!(
-        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
+        terminal_name_mint_among(NameBase::Cwd("/home/u/proj"), &no_tmux, Vec::new()).unwrap(),
         "proj-cc"
+    );
+}
+
+/// 同目录已有托管终端 `proj-cc` ⇒ 起会话铸的名字不取 `proj-cc`（起会话那一步 ccm 照显式名起，撞上托管名就退出码 3、报「名字已占用」）。
+/// tmux 装着（快照里没有它）· 没装 tmux 各一格：铸名与 ccm 算计划认同一份「已占用」（`taken_here`）。
+#[test]
+fn minting_steps_aside_from_live_hosted_terminals_too() {
+    use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
+    use crate::control::session_batch::NameBase;
+    let hosted = || {
+        vec![SessionRow {
+            name: "proj-cc".to_string(),
+            ccm_sid: String::new(),
+        }]
+    };
+    let tmux = SessionSnapshot::with_prober(|| Ok(Vec::new()));
+    assert_eq!(
+        terminal_name_mint_among(NameBase::Cwd("/home/u/proj"), &tmux, hosted()).unwrap(),
+        "proj-cc-2"
+    );
+    let no_tmux = SessionSnapshot::with_prober(|| {
+        Err(crate::common::said::Said::new(
+            "no_tmux",
+            "tmux: not found".to_string(),
+        ))
+    });
+    assert_eq!(
+        terminal_name_mint_among(NameBase::Cwd("/home/u/proj"), &no_tmux, hosted()).unwrap(),
+        "proj-cc-2"
     );
 }
 

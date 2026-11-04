@@ -511,6 +511,25 @@ export class SettingsPanel {
     if (meta !== undefined && meta !== null) page.setMeta(meta);
   }
 
+  /**
+   * 那台的页（或列表那一行）刚建好：照已到的画。先画通道那一路，有成品 ⇒ 再照成品画（成品说得更全，落在最后）。
+   * 成品先于页到时 `paintMachine` 找不到页、那一帧只记在 `stateOf` 里，靠这里补画。
+   */
+  private paintMachineNow(origin: string): void {
+    this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
+    const m = this.stateOf.get(origin);
+    if (!m) return;
+    // 卡上刚关了「连接该机」：已到的那份还是关之前的，等那台的下一份，不拿旧的盖回去。
+    const pageId = isLocalOrigin(origin) ? null : this.remoteSection?.pageIdOfMachine(origin);
+    if (pageId && this.remoteSection?.isDisabledPage(pageId) && m.state !== "disabled") return;
+    this.paintMachine(origin, m);
+  }
+
+  /** 每台都照已到的重画一遍（列表重建完 · 机器表改完）。 */
+  private repaintMachines(): void {
+    for (const origin of new Set([...this.channelOf.keys(), ...this.stateOf.keys()])) this.paintMachineNow(origin);
+  }
+
   /** 照壳那一格画本机后端没起来（导航点 · 列表那一行 · 卡头）；连着 ⇒ 不动，本机那一台的成品由本机后端推来。 */
   private paintLocalBackend(l: LocalBackend): void {
     const face = localBackendFace(l);
@@ -984,7 +1003,7 @@ export class SettingsPanel {
               // 本机页一出现就让那几块分节落在它上面（与 `machine-context` 的初始值本机对齐），否则用户点进某台之前它们不在文档里。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(pageEl, true, id);
               const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL : this.remoteSection?.originOfPage(id);
-              if (origin) this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
+              if (origin) this.paintMachineNow(origin);
               this.applyPendingTarget();
             },
             removeMachinePage: (id) => {
@@ -1009,7 +1028,7 @@ export class SettingsPanel {
             refreshMachine: (origin) => void this.backendSection?.refreshOrigin(origin),
             runFix: (id, fix) => void this.runFix(id, fix),
             machinesReconciled: () => {
-              for (const [origin, c] of this.channelOf) this.paintNavDot(origin, c);
+              this.repaintMachines();
               void this.backendSection?.refresh();
               // 「开始用」第三步看机器表台数：加完一台当场重读（带新台数）。
               void this.firstRun?.loadNow(this.remoteSection?.machineCount());
@@ -1235,6 +1254,8 @@ export class SettingsPanel {
   /** `RemoteSection` 那趟 `refresh()` 收尾了（成或败）：一个页都没来 ⇒ 兜底。 */
   private onMachinePagesSettled(): void {
     this.machinePagesSettled = true;
+    // 列表那几行此刻才都建好（页先注册、行后建）⇒ 已到的那几份再画一遍，行上落的才是成品。
+    this.repaintMachines();
     this.applyPendingTarget();
     if (this.machinePageRegistered) return;
     this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
