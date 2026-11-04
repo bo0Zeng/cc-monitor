@@ -27,12 +27,7 @@ static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> 
     });
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
-    std::sync::LazyLock::new(|| {
-        unmanaged_on(false)
-            .into_iter()
-            .cloned()
-            .collect()
-    });
+    std::sync::LazyLock::new(|| unmanaged_on(false).into_iter().cloned().collect());
 
 /// 下面 ③ 用的抽取器 —— **直接用盘上已有那一把**（`structural_scan::symbol_addresses`），不自己再写一个：
 /// 它还会去全仓解析那个符号今天在不在、在不在原处；抄一份被测逻辑就是两份实现。
@@ -405,8 +400,7 @@ fn nobody_declares_an_installer_for_something_we_should_not_install() {
                 !t.installable,
                 "`{}` 的落点说它「{:?}」，而 `installable: true` 说我们装得了 —— \
                      两句话有一句是假的",
-                t.id,
-                who
+                t.id, who
             );
         }
     }

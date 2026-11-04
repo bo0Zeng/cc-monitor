@@ -220,11 +220,7 @@ fn resolve_by_destination(
 
 /// 解析一个 `~/…` 形态的**本机**路径。抽出来是因为两条臂共用它
 /// （`LocalHomeRelative` 与 `NotInstalledByUs`）。
-fn resolve_local_home(
-    declared: &str,
-    home: &Path,
-    agent_home: &Path,
-) -> Option<PathResolution> {
+fn resolve_local_home(declared: &str, home: &Path, agent_home: &Path) -> Option<PathResolution> {
     let rest = declared.strip_prefix("~/")?;
     // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
     // 哪一段算「agent 家底下」是那一家的布局知识（注册表里的足迹面答，`agents/claudecode/footprint.rs`）。

@@ -43,12 +43,7 @@ static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> 
     });
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
-    std::sync::LazyLock::new(|| {
-        super::unmanaged_on(false)
-            .into_iter()
-            .cloned()
-            .collect()
-    });
+    std::sync::LazyLock::new(|| super::unmanaged_on(false).into_iter().cloned().collect());
 
 /// ★ **反向表不许变成许愿池：每条都要论证「为什么不属这张表的语义」。**
 ///
