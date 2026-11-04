@@ -11556,7 +11556,7 @@
     "rsHistory.launcher.badChars": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动命令 {launcher} 含 {c} · 未恢复 · 只许字母、数字、空格、-_./ 与开头的 ~/（Windows 本机另许 \\ 与词首盘符根 X:\\）",
+      "zh": "启动命令 {launcher} 含 {c} · 未恢复 · 只许字母、数字、空格、-_./ 与开头的 ~/",
       "args": ["launcher", "c"]
     },
     "rsFrameQuery.readPage.stuck": {
