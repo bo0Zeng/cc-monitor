@@ -64,7 +64,7 @@ pub(crate) fn tasks_at(
 ) -> Result<TasksList, TasksListErr> {
     let fail = of_fail_with(TasksListErr::Failed);
     let tasks = crate::observe::tasks_query::session_tasks(home, &req.sid).map_err(&fail)?;
-    let reply = TasksList { tasks };
+    let reply = crate::observe::tasks_query::tasks_list(tasks);
     let size = serde_json::to_vec(&reply).map_or(0, |b| b.len());
     if size > crate::faces::read_face::LINES_CAP_BYTES.as_len() {
         return Err(TasksListErr::TooLarge(too_large(size)));

@@ -189,13 +189,13 @@ export class TasksPanel {
       this.rows.set(t.id, row);
     }
     row.className = `tasks-item status-${cssStatus(t.status)}`;
-    const sig = JSON.stringify([t.status, t.subject, t.activeForm ?? null, t.description ?? null]);
+    const sig = JSON.stringify([t.status, t.statusText, t.subject, t.activeForm ?? null, t.description ?? null]);
     if (row.dataset.sig === sig) return row;
     row.dataset.sig = sig;
     const ic = icon(statusIconName(t.status), "compact");
     ic.setAttribute("aria-hidden", "false");
     ic.setAttribute("role", "img");
-    ic.setAttribute("aria-label", statusText(t.status));
+    ic.setAttribute("aria-label", t.statusText);
     const subject = document.createElement("span");
     subject.className = "tasks-subject one-line";
     subject.textContent = t.subject;
@@ -243,22 +243,6 @@ export async function fetchSessionTasks(
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
     return [];
-  }
-}
-
-/** 读屏念的状态名。 */
-function statusText(status: string): string {
-  switch (status) {
-    case "pending":
-      return copyText("tasksPanel.status.pending");
-    case "in_progress":
-      return copyText("tasksPanel.status.inProgress");
-    case "completed":
-      return copyText("runs.state.done");
-    case "deleted":
-      return copyText("tasksPanel.status.failed");
-    default:
-      return copyText("tasksPanel.status.other");
   }
 }
 

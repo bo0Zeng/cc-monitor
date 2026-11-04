@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 pub struct TasksList {
     /// `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
     pub tasks: Vec<Task>,
+    /// 状态栏那一枚的字（「任务 完成数/总数」）；没有任务 ⇒ 空串。
+    pub chip: String,
+    /// 那一枚的悬停分项（完成 · 进行 · 未开始）；没有任务 ⇒ 空串。
+    pub hint: String,
 }
 
 /// `tasks-list` 回包 `tasks[]` 里的一格（成品：字段语义只住这里，[`task_entry`] 从原文对象收）。
@@ -24,6 +28,8 @@ pub struct Task {
     pub subject: String,
     /// 同上。
     pub status: String,
+    /// `status` 写给人看的那一个字（读屏念它；界面照摆，不自己映）。
+    pub status_text: String,
     /// 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
     pub blocks: Vec<String>,
     /// 同上。

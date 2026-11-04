@@ -134,7 +134,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
 }
 
 /// `tasks-list` 回包 `tasks[]` 里的一格（线上形住 cmd-wire；字段语义只住这里，[`task_entry`] 从原文对象收）。
-pub(crate) use cmd_wire::tasks::Task;
+pub(crate) use cmd_wire::tasks::{Task, TasksList};
 
 /// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）；解不成任务 ⇒ `None`。**纯函数**。
 pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
@@ -158,6 +158,7 @@ pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
     Some(Task {
         id,
         subject,
+        status_text: status_text(&status),
         status,
         description: opt("description")?,
         active_form: opt("activeForm")?,
@@ -182,6 +183,41 @@ pub fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
         .collect())
 }
 
+/// 一格任务的状态字（`Task::status_text`）：已知的四种各一句，别的值照「其他」。
+fn status_text(status: &str) -> String {
+    match status {
+        "pending" => copy_text("tasksPanel.status.pending", &[]),
+        "in_progress" => copy_text("tasksPanel.status.inProgress", &[]),
+        "completed" => copy_text("runs.state.done", &[]),
+        "deleted" => copy_text("tasksPanel.status.failed", &[]),
+        _ => copy_text("tasksPanel.status.other", &[]),
+    }
+}
+
+/// 一个会话的任务成品 → `tasks-list` 的回包：数各状态，写好 `chip`（完成数 / 总数）与 `hint`（完成 · 进行 · 未开始，未开始含别的值）；空清单 ⇒ 两句都空。
+pub fn tasks_list(tasks: Vec<Task>) -> TasksList {
+    let count = |s: &str| tasks.iter().filter(|t| t.status == s).count();
+    let (done, active) = (count("completed"), count("in_progress"));
+    let total = tasks.len();
+    let (chip, hint) = if total == 0 {
+        (String::new(), String::new())
+    } else {
+        let n = |x: usize| x.to_string();
+        (
+            copy_text("statusBar.tasks.chip", &[("done", &n(done)), ("total", &n(total))]),
+            copy_text(
+                "statusBar.tasks.hint",
+                &[("done", &n(done)), ("active", &n(active)), ("open", &n(total - done - active))],
+            ),
+        )
+    };
+    TasksList { tasks, chip, hint }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/tasks_query_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/tasks_list_tests.rs"]
+mod list_tests;
