@@ -373,7 +373,7 @@ class SessionViewModel(
     }
 
     /**
-     * 连上之后进哪儿，一问那台（接回 · 恢复 · 进主机设置的那个会话或上次所在的 · 进默认目录），敲回来的那一行；没成 ⇒ 留在普通 shell、说那一句。
+     * 连上之后进哪儿，一问那台（接回 · 恢复 · 进上次所在的那个终端 · 进默认目录），敲回来的那一行；没成 ⇒ 留在普通 shell、说那一句。
      * 回 `true` ＝ 问了。
      */
     private suspend fun enter(ts: TerminalSession): Boolean {
@@ -384,9 +384,8 @@ class SessionViewModel(
             return true
         }
         val host = hostRepo.get(hostId)
-        val tmux = _tmuxSession.value ?: CONNECT_SESSION.takeIf { host?.sessionManager == "tmux" }
         val cwd = (cd ?: host?.defaultWorkingDir)?.trim()?.ifEmpty { null }
-        val r = terminals.enter(attachTo, resumeSid, tmux, cwd)
+        val r = terminals.enter(attachTo, resumeSid, _tmuxSession.value, cwd)
         r
             ?.onSuccess { a ->
                 a.session?.let { _tmuxSession.value = it }
@@ -469,8 +468,5 @@ class SessionViewModel(
 
     private companion object {
         const val TAG = "Session"
-
-        /** 主机设置里开了「连上就进 tmux」⇒ 进（没有就建）这个会话。 */
-        const val CONNECT_SESSION = "main"
     }
 }

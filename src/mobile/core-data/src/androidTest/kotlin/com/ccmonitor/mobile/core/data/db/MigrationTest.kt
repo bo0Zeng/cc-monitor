@@ -809,11 +809,34 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→25 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 25→26：机器表删「连上进 tmux」那一格（宿主由那台定）；别的格原样。 */
     @Test
-    fun migrateAll1To25Validates() {
+    fun migrate25To26DropsTheSessionManagerAndKeepsTheRest() {
+        helper.createDatabase(dbName, 25).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,jump,passwordEnc) " +
+                    "VALUES ('a','A','a.example',2222,'pi','k1','backup.example:22','g',3,99,'~/w','tmux',0,'B','ENC')",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 26, true, MIGRATION_25_26)
+        db.query("SELECT label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected,defaultWorkingDir,autoReconnect,jump,passwordEnc FROM hosts WHERE id='a'").use { c ->
+            assertTrue(c.moveToFirst())
+            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
+            assertEquals(listOf("A", "a.example", "2222", "pi", "k1", "backup.example:22", "g", "3", "99", "~/w", "0", "B", "ENC"), got)
+        }
+        db.query("PRAGMA table_info(hosts)").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
+            assertTrue("sessionManager 应已删掉：$names", "sessionManager" !in names)
+        }
+    }
+
+    /** 全链路 1→26 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To26Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 25, true, *allMigrations(crypto))
+        val db = helper.runMigrationsAndValidate(dbName, 26, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

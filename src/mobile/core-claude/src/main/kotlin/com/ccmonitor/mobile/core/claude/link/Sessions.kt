@@ -18,7 +18,6 @@ import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
 import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Landed
-import com.ccmonitor.mobile.core.wire.gen.Launch
 import com.ccmonitor.mobile.core.wire.gen.Line
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
@@ -57,7 +56,7 @@ import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
 
 /**
  * `session-open`：新起 · 恢复 · 接回 · 开一个 shell，都是这一问（那台定落在哪、渲好要在终端里敲的那一行）。
- * 手机的终端只是 ssh 那一屏：永远 `local: false`。新起 · 恢复交 `run: tmux`；开一个 shell 不带宿主，放在哪由那台定。
+ * 手机的终端只是 ssh 那一屏：永远 `local: false`。哪一问都不带宿主（`run`）：放在哪由那台定。
  */
 object SessionOpen {
     const val COMMAND: String = Commands.SessionOpen.NAME
@@ -79,7 +78,6 @@ object SessionOpen {
     ): Map<String, Any?> =
         ask(
             OpenWhat.New(agent = agent, cwd = cwd, prompt = prompt, rotation = rotation?.let { RotationPick(it.strategy) }),
-            run = true,
             ticket = ticket,
             account = account,
         )
@@ -90,7 +88,7 @@ object SessionOpen {
     )
 
     /** 恢复 [sid] 那条（终端没了 ⇒ 那台照记录起回来；已在跑 ⇒ 回它所在的那个）。 */
-    fun resume(sid: String): Map<String, Any?> = ask(OpenWhat.Resume(sid), run = true)
+    fun resume(sid: String): Map<String, Any?> = ask(OpenWhat.Resume(sid))
 
     /** 接回名叫 [session] 的那个终端（tmux 会话 · 托管终端都认；不在 ⇒ 那台拒，不建）。 */
     fun look(session: String): Map<String, Any?> = ask(OpenWhat.Look(session = session))
@@ -107,7 +105,6 @@ object SessionOpen {
 
     private fun ask(
         what: OpenWhat,
-        run: Boolean = false,
         ticket: String? = null,
         account: String? = null,
     ): Map<String, Any?> =
@@ -115,7 +112,6 @@ object SessionOpen {
             SessionOpenReq(
                 what = what,
                 account = account?.let { AccountAsk.Named(it) },
-                run = Launch.TMUX.takeIf { run },
                 local = false,
                 ticket = ticket,
                 client = CLIENT,

@@ -13,7 +13,7 @@ import com.ccmonitor.mobile.core.wire.gen.Host as WireHost
 const val HOSTS_TABLE = "hosts"
 const val IDENTITIES_TABLE = "identities"
 
-/** SSH 主机：地址与认证、tmux/Claude 面、重连策略。那台是什么系统 · shell 方言 · 有没有 tmux 都问那台，不存。 */
+/** SSH 主机：地址与认证、连上进哪个目录、重连策略。那台是什么系统 · shell 方言 · 有没有 tmux · 会话放在哪都问那台，不存。 */
 @Entity(tableName = HOSTS_TABLE)
 data class Host(
     @PrimaryKey val id: String,
@@ -27,9 +27,8 @@ data class Host(
     val groupId: String? = null,
     val sortOrder: Int = 0,
     val lastConnected: Long? = null,
-    // tmux / Claude 面
+    // 连上进哪个目录（空 ⇒ 不进）
     val defaultWorkingDir: String? = null,
-    val sessionManager: String? = null, // "tmux" | null
     // 断了要不要自己接回来（网络变了 · 重试几次不归这里：重连只有常驻流那一条循环）。
     val autoReconnect: Boolean = true,
     // 跳板：表里另一台的名字（同桌面那张表；空 = 直连）。多跳 · 成环 · 找不到怎么办都在拨号核心。

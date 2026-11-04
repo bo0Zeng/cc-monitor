@@ -379,7 +379,6 @@ fun HostEditorScreen(
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
     var addressText by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
-    var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
     var jump by remember { mutableStateOf("") } // 经跳板机（表里另一台的名字；空 = 直连）
@@ -403,7 +402,6 @@ fun HostEditorScreen(
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
                 addressText = h.addresses.joinToString("\n")
                 workingDir = h.defaultWorkingDir ?: ""
-                useTmux = h.sessionManager == "tmux"
                 autoReconnect = h.autoReconnect
                 group = h.groupId ?: ""
                 jump = h.jump
@@ -436,7 +434,6 @@ fun HostEditorScreen(
             authRef = if (authIsPassword) null else authRef, // 密码认证与 authRef 互斥
             addresses = addressText.lines().map { it.trim() }.filter { it.isNotEmpty() },
             defaultWorkingDir = workingDir.trim().ifBlank { null },
-            sessionManager = if (useTmux) "tmux" else null,
             autoReconnect = autoReconnect,
             groupId = group.trim().ifBlank { null },
             jump = jump,
@@ -486,8 +483,6 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // 开关即 useTmux；文案不说「连接」「tmux」。
-        SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
 
         // 认证方式：钥匙或密码，二选一。

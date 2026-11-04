@@ -478,6 +478,24 @@ val MIGRATION_24_25 =
         }
     }
 
+// 25 → 26：机器表删「连上进 tmux」那一格（会话放在哪由那台定）。照 23→24 重建（老 SQLite 没有 DROP COLUMN）；别的格 · 别的表一字不动。
+val MIGRATION_25_26 =
+    object : Migration(25, 26) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val cols =
+                "id,label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected,defaultWorkingDir,autoReconnect,jump,passwordEnc"
+            db.execSQL(
+                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `addresses` TEXT NOT NULL, " +
+                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                    "`autoReconnect` INTEGER NOT NULL, `jump` TEXT NOT NULL, `passwordEnc` TEXT, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("INSERT INTO `hosts_new` ($cols) SELECT $cols FROM `hosts`")
+            db.execSQL("DROP TABLE `hosts`")
+            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+        }
+    }
+
 /** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
 fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
@@ -505,4 +523,5 @@ fun allMigrations(crypto: CryptoBox): Array<Migration> =
         MIGRATION_22_23,
         MIGRATION_23_24,
         MIGRATION_24_25,
+        MIGRATION_25_26,
     )
