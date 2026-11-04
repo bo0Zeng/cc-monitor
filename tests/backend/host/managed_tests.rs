@@ -145,6 +145,35 @@ fn a_process_is_found_in_its_hosted_terminal_by_its_ancestors() {
     assert_eq!(host_by_ancestry(7, &hosts, parent), None, "父进程问不到");
 }
 
+/// 附着在托管终端上的那几端里，显示会话的只算真终端（后端那一端 —— 终端页 · 抓屏 · 打标 —— 不算）：
+/// 带上进程号（报不出 ⇒ `None`）与最近动静（秒），最近动静在前。
+#[test]
+fn only_the_real_terminals_attached_to_a_hosted_terminal_show_it() {
+    use super::wire::{ClientRow, WhoKind};
+    let row = |client: u64, kind: WhoKind, pid: Option<u32>, last_ms: i64| ClientRow {
+        client,
+        kind,
+        front: None,
+        pid,
+        since_ms: 1_000,
+        last_ms,
+        holder: false,
+        mine: false,
+    };
+    let ends = terminal_ends(vec![
+        row(1, WhoKind::Terminal, Some(11), 5_000),
+        row(2, WhoKind::Backend, Some(22), 9_000),
+        row(3, WhoKind::Terminal, None, 7_000),
+        row(4, WhoKind::Terminal, Some(44), 8_500),
+    ]);
+    assert_eq!(ends, vec![(Some(44), 8), (None, 7), (Some(11), 5)]);
+    assert_eq!(
+        terminal_ends(vec![row(2, WhoKind::Backend, Some(22), 9_000)]),
+        vec![],
+        "只有后端那一端连着 ⇒ 没有终端"
+    );
+}
+
 /// 父进程表成了环（进程号复用时快照里会有）⇒ 走到上限就停，不挂死、不瞎认。
 #[test]
 fn walking_the_ancestors_stops_on_a_loop() {
