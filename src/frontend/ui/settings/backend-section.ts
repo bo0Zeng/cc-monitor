@@ -13,7 +13,7 @@ import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import type { HealthFace } from "../generated/HealthFace";
-import { LOCAL, type Machine } from "../ipc/origin";
+import { LOCAL, isLocalOrigin, type Machine } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -588,7 +588,7 @@ export class BackendSection {
       const st = await commands.backend_status({ origin });
       // 本机：壳那条连接在不在；远端：后端推来的那台成品说它离不离线（与名字旁的点同一个源，壳不另答）。
       const m = this.stateOf?.(origin) ?? null;
-      const on = origin === LOCAL ? st.channel === true : m !== null && !m.offline;
+      const on = isLocalOrigin(origin) ? st.channel === true : m !== null && !m.offline;
       const word = on ? copyText("backend.status.connected") : copyText("machinePage.state.down");
       const ver = m?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
