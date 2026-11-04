@@ -37,7 +37,7 @@
  * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -379,6 +379,20 @@ export function backendPool({ repo, sandbox, disks = null }) {
   /** 世界还没起好就先连上的事件流（按世界的钥匙）：`makeWorld` 起好那一刻接上。 */
   const early = new Map();
 
+  /**
+   * 装到远端的那一份后端字节：`bin` 去掉调试段（`objcopy --strip-debug`，能照常跑），一趟只做一次、落在台架沙箱里。
+   * shots 那一档是 debug 构建，带着调试段整份超过后端整份读的上限（`control/place_self.rs::BACKEND_BYTES_CAP`）。
+   */
+  let slotCopy = null;
+  function slotBytes() {
+    if (slotCopy) return slotCopy;
+    const dest = path.join(sandbox, "backend-slot");
+    const r = spawnSync("objcopy", ["--strip-debug", bin, dest], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`装到远端的那一份后端字节没做出来（objcopy --strip-debug 退出码 ${r.status}）：${(r.stderr ?? r.error?.message ?? "").trim()}`);
+    slotCopy = dest;
+    return dest;
+  }
+
   function kill(key) {
     const w = worlds.get(key);
     if (!w) return;
@@ -498,10 +512,12 @@ export function backendPool({ repo, sandbox, disks = null }) {
         sh.push(askable(`${PEERS}/${p.k}`));
         sh.push(`n=0; until [ -S ${PEERS}/${p.k}/run/${DOER_SOCK} ]; do n=$((n+1)); [ $n -lt 1500 ] || { echo "第 ${p.k} 台的跑腿口 30 秒还没起" >&2; exit 1; }; sleep 0.02; done`);
       }
-      // 正在装的那台：本机 monitor 带着这一版的后端字节（`~/.cc-monitor/bin/slots/<系统>-<架构>`，后端装的时候现读），就是沙箱里那一份。
+      // 正在装的那台：本机 monitor 带着这一版的后端字节（`~/.cc-monitor/bin/slots/<系统>-<架构>`，后端装的时候现读）。
+      // 放的是去掉调试段的那一份（[`slotBytes`]）：shots 那一档是 debug 构建，原样超过后端整份读的上限（`BACKEND_BYTES_CAP`），会被当成没带。
       if (m.peers.some((p) => p.fake === "install")) {
-        mkdirSync(path.join(home, ".cc-monitor", "bin", "slots"), { recursive: true });
-        sh.push(`ln -sf ${BACKEND_IN_BOX} ${H}/.cc-monitor/bin/slots/linux-x86_64`);
+        const slots = path.join(home, ".cc-monitor", "bin", "slots");
+        mkdirSync(slots, { recursive: true });
+        copyFileSync(slotBytes(), path.join(slots, "linux-x86_64"));
       }
     }
     if (m.resident) {

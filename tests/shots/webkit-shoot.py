@@ -3,11 +3,14 @@
 
 用法：webkit-shoot.py <base-url> <out-dir> <boot.js> <上限毫秒> [正则]
 
-照清单页（`tests/shots/manifest.html`）逐幕开页，等 `window.__shots` 落定（做完 / 没做成），从 Xvfb 截那一块存 PNG。
+照清单页（`tests/shots/manifest.html`）逐幕开页，等 `window.__shots` 落定（做完 / 没做成），让 WebKit 自己画一张可见区（`webkit_web_view_get_snapshot`）存 PNG。
+不从 Xvfb 截：没有合成器的 Xvfb 上，WebKitGTK 往窗口上交帧到某一刻就停了、之后换页也不再交（页里照常画，自己那一张是对的），
+从 X 截到的是停住那一刻的旧帧，几幕逐字节相同。
 服务（`serve.mjs`：vite ＋ 真后端池 ＋ 假适配层）由外面起，本脚本只当浏览器。
 标准输出一行一个 JSON：先 `{"count": n}`，再每幕一行 `{"scene": 清单那一项, "state", "error", "layout", "unhandled", "real": [...]}`；
 `real` 列出这一幕要的真输入（`drag` · `pointer`：调试口那一套，这里没有），由 `webkit.mjs` 记成跳过。
 """
+import ctypes
 import json
 import os
 import re
@@ -18,7 +21,6 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import GLib, Gtk, WebKit2  # noqa: E402
-from PIL import ImageGrab  # noqa: E402
 
 base, out, boot_path, cap_ms = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 only = re.compile(sys.argv[5]) if len(sys.argv) > 5 else None
@@ -31,8 +33,23 @@ NO_MOTION = (
     "document.head.append(s);});"
 )
 POLL_MS = 200
-# 最后一帧落定（字体 · 重画）：Xvfb 上没有合成器，窗口那一帧可能停在早先，先逼一次重画再等这么久。
+# 场景报做完之后再等这么久才截（字体 · 最后一次重画落定）。
 SETTLE_MS = 1500
+
+# WebKit 自己画的那一张是 cairo 的面：python-gi 的 cairo 转换（python3-gi-cairo）这台不一定有 ⇒ 经 ctypes 直接调 C 那几个口。
+_wk = ctypes.CDLL("libwebkit2gtk-4.1.so.0")
+_cairo = ctypes.CDLL("libcairo.so.2")
+_READY = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+_wk.webkit_web_view_get_snapshot.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, _READY, ctypes.c_void_p]
+_wk.webkit_web_view_get_snapshot_finish.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+_wk.webkit_web_view_get_snapshot_finish.restype = ctypes.c_void_p
+_cairo.cairo_surface_write_to_png.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+_cairo.cairo_surface_write_to_png.restype = ctypes.c_int
+_cairo.cairo_surface_destroy.argtypes = [ctypes.c_void_p]
+ctypes.pythonapi.PyCapsule_GetPointer.restype = ctypes.c_void_p
+ctypes.pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+# 回调对象在 C 那一头回来之前不能被回收。
+_pending = []
 
 ucm = WebKit2.UserContentManager()
 ucm.add_script(
@@ -94,10 +111,26 @@ PROBE = (
 scenes = []
 
 
-def snap(sc):
+def snap(sc, then):
+    """WebKit 画这一页的可见区存成 PNG；`then(None)` 是存好了，`then(那一句)` 是没存成。"""
     f = os.path.join(out, sc["dir"], sc["id"] + ".png")
     os.makedirs(os.path.dirname(f), exist_ok=True)
-    ImageGrab.grab(bbox=(0, 0, sc["width"], sc["height"]), xdisplay=os.environ["DISPLAY"]).save(f)
+
+    def ready(src, res, _):
+        _pending.remove(cb)
+        err = ctypes.c_void_p()
+        surface = _wk.webkit_web_view_get_snapshot_finish(src, res, ctypes.byref(err))
+        if not surface:
+            then("WebKit 没交出这一页的画面")
+            return
+        status = _cairo.cairo_surface_write_to_png(surface, f.encode())
+        _cairo.cairo_surface_destroy(surface)
+        then(None if status == 0 else f"PNG 没写成（cairo 状态 {status}）")
+
+    cb = _READY(ready)
+    _pending.append(cb)
+    # 区域 0 ＝ 可见区（WEBKIT_SNAPSHOT_REGION_VISIBLE）；选项 0 ＝ 照原样（WEBKIT_SNAPSHOT_OPTIONS_NONE）。
+    _wk.webkit_web_view_get_snapshot(ctypes.pythonapi.PyCapsule_GetPointer(view.__gpointer__, None), 0, 0, None, cb, None)
 
 
 def shoot(i):
@@ -111,23 +144,19 @@ def shoot(i):
     polls = [0]
 
     def finish(r):
-        def back():
-            win.resize(sc["width"], sc["height"])
+        def grab():
+            row = {"scene": sc, **r}
 
-            def grab():
-                row = {"scene": sc, **r}
-                try:
-                    snap(sc)
-                except Exception as e:  # noqa: BLE001
+            def saved(err):
+                if err:
                     row["state"] = "failed"
-                    row["error"] = f"截不下来：{e}"
+                    row["error"] = f"截不下来：{err}"
                 say(row)
                 shoot(i + 1)
 
-            later(SETTLE_MS, grab)
+            snap(sc, saved)
 
-        win.resize(sc["width"], sc["height"] - 1)
-        later(300, back)
+        later(SETTLE_MS, grab)
 
     def poll():
         polls[0] += 1
