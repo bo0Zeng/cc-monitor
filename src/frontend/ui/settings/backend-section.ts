@@ -221,6 +221,11 @@ export class BackendSection {
     await this.paintStatus(origin);
   }
 
+  /** 那台的成品（`MachineState`）刚换了一份：重画它那一格（远端的在不在照这份成品，换了就要跟着变）。 */
+  machineChanged(origin: string): void {
+    if (this.cellHosts.has(origin)) void this.paintStatus(origin);
+  }
+
   /** 画一台：后端清单还没到 ⇒ 等 `refresh`；清单里没有 ⇒ 说没登记；有 ⇒ 问状态。 */
   private paintOne(origin: string): void {
     if (this.registered === null) return;
@@ -581,9 +586,11 @@ export class BackendSection {
     if (!state) return null;
     try {
       const st = await commands.backend_status({ origin });
-      const on = st.channel;
+      // 本机：壳那条连接在不在；远端：后端推来的那台成品说它离不离线（与名字旁的点同一个源，壳不另答）。
+      const m = this.stateOf?.(origin) ?? null;
+      const on = origin === LOCAL ? st.channel === true : m !== null && !m.offline;
       const word = on ? copyText("backend.status.connected") : copyText("machinePage.state.down");
-      const ver = this.stateOf?.(origin)?.version ?? null;
+      const ver = m?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";

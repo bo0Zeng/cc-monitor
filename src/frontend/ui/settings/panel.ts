@@ -492,6 +492,8 @@ export class SettingsPanel {
    */
   private paintMachine(origin: string, m: MachineState): void {
     this.stateOf.set(origin, m);
+    // 「该机的 cc-monitor」那一格的在不在照这份成品：换了一份就叫它重画（远端；本机那一格照壳那条连接，起停各有推送）。
+    if (!isLocalOrigin(origin)) this.backendSection?.machineChanged(origin);
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;

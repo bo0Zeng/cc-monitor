@@ -109,6 +109,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { BACKEND_COLUMNS, BackendSection, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
+import type { MachineState } from "../../../../src/frontend/ui/settings/machine-state";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { interruptRows, type Interrupts } from "../../../../src/frontend/ui/settings/interrupts";
 import type { DialogRow } from "../../../../src/frontend/ui/kit/dialog";
@@ -721,5 +722,28 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe(copyText("backend.log.none"));
     expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(copyPattern("backend.log.failed", {}, { whole: true }));
+  });
+
+  it("★ 远端那一格的在不在照后端推来的那台成品（`MachineState.offline`，与名字旁的点同一个源），成品一变这一格跟着重画", async () => {
+    // 壳那一问对远端不表态：在不在只看那台的成品。
+    status = { channel: null, pid: null, health: FACE["无记录"] };
+    let remote: Partial<MachineState> = { offline: true, version: "5.0.3" };
+    const s = new BackendSection({
+      headless: true,
+      stateOf: (origin) => (origin === "甲机" ? (remote as MachineState) : null),
+    });
+    await flush();
+    await flush();
+    const cell = (): string | null | undefined =>
+      [...s.element.querySelectorAll<HTMLElement>(".backend-row")]
+        .find((r) => r.dataset.origin === "甲机")
+        ?.querySelector(".backend-row-state")?.textContent;
+    expect(cell()).toContain(copyText("machinePage.state.down"));
+    // 那台连上了：后端推来一份新成品 ⇒ 这一格照它重画（不等人点刷新）。
+    remote = { offline: false, version: "5.0.3" };
+    s.machineChanged("甲机");
+    await flush();
+    await flush();
+    expect(cell(), "那台成品已经在线，这一格还写着离线").toContain(copyText("backend.status.connected"));
   });
 });
