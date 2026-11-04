@@ -46,7 +46,8 @@ fn addresses_in(why: &str) -> Vec<(usize, String, String, bool)> {
 /// 重了就等于同一个环境项有两个住址，而那正是这里要治的病。
 #[test]
 fn the_environment_is_one_closed_list() {
-    let env = environment();
+    // unix 那一台上每一条都有意义（`OnPlatform` 只有「每台」与「只 unix」两形）⇒ 人数是两半之和。
+    let env = environment_on(false);
     let ids: BTreeSet<&str> = env.iter().map(|e| e.id).collect();
     assert_eq!(
         ids.len(),
@@ -66,6 +67,29 @@ fn the_environment_is_one_closed_list() {
             u.id
         );
     }
+}
+
+/// 平台范围住登记那一处：Windows 那一台的闭集里没有 `xdg-terminal-exec` · `xdg-open` · 登录 bash 这三条
+/// （那台的终端是 PowerShell、开文件走系统那一口），unix 那一台上都在；别的一条不少。
+/// 页面人群与「待办 · 要装」都从这份闭集来（`the_view_population_is_exactly_the_closed_set` 钉着），显示侧不另判。
+#[test]
+fn a_windows_machine_is_not_asked_for_the_unix_only_tools() {
+    const UNIX_ONLY: [&str; 3] = ["terminal-exit", "xdg-open", "login-shell"];
+    let ids = |windows: bool| -> BTreeSet<&'static str> {
+        environment_on(windows).iter().map(|e| e.id).collect()
+    };
+    let (win, unix) = (ids(true), ids(false));
+    for id in UNIX_ONLY {
+        assert!(!win.contains(id), "Windows 那一台还要 `{id}`");
+        assert!(unix.contains(id), "unix 那一台少了 `{id}`");
+    }
+    let dropped: BTreeSet<&str> = unix.difference(&win).copied().collect();
+    assert_eq!(
+        dropped,
+        UNIX_ONLY.into_iter().collect::<BTreeSet<_>>(),
+        "Windows 那一台少掉的应恰是那三条"
+    );
+    assert!(win.is_subset(&unix), "Windows 那一台多出了 unix 没有的项");
 }
 
 /// 🔴 ②：**每一档都必须有人 —— 一档不许靠「没列出来」表示。**

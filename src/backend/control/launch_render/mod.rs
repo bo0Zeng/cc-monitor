@@ -119,7 +119,7 @@ pub(crate) fn hosted_argv_of(
     })
 }
 
-/// **唯一的映射**：[`Launch`] ＋ 判好的号 ⇒ 渲染器那份 spec。本机与远端只差三处，都写在这里：
+/// **唯一的映射**：[`Launch`] ＋ 判好的号 ⇒ 渲染器那份 spec。本机与远端只差这几处，都写在这里（工作目录按哪个平台认绝对路径也随 `windows`）：
 /// 不表态的号（本机继承 monitor 的环境 · 远端 ssh 过去的那台不是 monitor 的环境 ⇒ 落账号 0）·
 /// Windows 上没有 tmux（建进 tmux 的一律直路；接回只会是托管终端，`ccm -- --attach <名>` 先认托管名单）· 本机直路不带 `--cwd`（终端的工作目录由 monitor 开窗口时给）。
 fn spec_with<T>(
@@ -175,6 +175,7 @@ fn spec_with<T>(
         ccm_path,
         alias: l.alias.as_deref(),
         detach,
+        windows,
     };
     f(&spec).map_err(|r| r.reason())
 }
