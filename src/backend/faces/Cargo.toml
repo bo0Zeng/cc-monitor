@@ -58,7 +58,7 @@ guard-core = { path = "../../common/guard-core" }
 # 金样只比不写（住 dev 侧的量具包）。
 test-meters = { path = "../test-meters" }
 # 拨了必被拒、又不会被别人捡走的本机口（住拨号核心，经它的 `test-support`）。
-ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
+ssh-dial = { path = "../../comms/ssh-dial", features = ["test-support"] }
 comms-inward = { path = "../../comms/inward" }
 ts-rs.workspace = true
 cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }

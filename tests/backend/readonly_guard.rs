@@ -1944,8 +1944,8 @@ mod g6_dependency_signoff {
             "ssh-dial",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
-            "拨号核心（后端与手机同一份）：仓内 crate，**住本 crate 目录底下**（`ssh-dial/`）⇒ 它的源码就在本护栏的人群里\
-             （`src/backend` 下全部 `.rs`），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
+            "拨号核心（后端与手机同一份）：仓内 crate，住 `src/comms/ssh-dial/`，本 crate 清单的 `population` 写着它 ⇒ 它的源码就在本护栏的人群里\
+             （`src/backend` 下全部 `.rs` ＋ 人群里的兄弟包），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
              （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
              谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
@@ -1970,7 +1970,7 @@ mod g6_dependency_signoff {
             "egress",
             DEPS,
             MEASURED_CLEAN,
-            "出网口（这台所有出站 TCP 只在那里开：直连 · HTTP CONNECT · SOCKS5）：仓内 crate、只依赖标准库，住本 crate 目录底下（`egress/`）⇒ \
+            "出网口（这台所有出站 TCP 只在那里开：直连 · HTTP CONNECT · SOCKS5）：仓内 crate、只依赖标准库，住 `src/comms/egress/`，本 crate 清单的 `population` 写着它 ⇒ \
              源码在本护栏的人群里。现打 0 处写面：不开文件、不碰盘、不读环境（描述由宿主照它的环境造好装进来）",
         ),
         (

@@ -6,15 +6,15 @@
 # 后端不拉窗（拉窗只在 monitor 壳 `platform/`）：`windows-sys` · `windows` 两条路的拉窗那一族编不过，只在 Windows 那一支上认
 #   （`allow-invalid`：别的平台上没有那个 crate、路径解不出，不报；门禁 `winchk-backend` 那一格按 Windows target 跑 clippy）。
 #   手写 `extern "system"` 声明的认不出。
-# 出站 TCP 只在出网口开（`egress/lib.rs` 那一处放行）：中转去上游 · 拨 SSH · 探活都经 `egress::open`，别处自己开一条就绕过了代理。
-#   经第三方 crate 间接开的连接认不出。中转包（`src/comms/outward`）另有一份同组的 `clippy.toml`。
+# 出站 TCP 只在出网口开（出网口 `src/comms/egress` 那一处）：中转去上游 · 拨 SSH · 探活都经 `egress::open`，别处自己开一条就绕过了代理。
+#   经第三方 crate 间接开的连接认不出。通信层（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）各有同组的一份。
 # 起子进程只在起子进程原语开（`platform/child.rs` 那一处放行）：期限必填 · 杀整组 · 自有环境无条件摘都在那里做。
 # 进程 argv 只在 `main` 取一次（`main.rs` 那一处放行）：要它的模块由调用方交。
 # 异步读对端的字节只经带上限的那一份（`comms_inward::line`：读一行 · 读整份，收 `Cap`）：tokio 的整读先读完再判、对端一直发就一直涨，
 #   后端里一处都不放行（那一份住 `comms-inward` 包，不归本文件管）。
 # 同步整读一个句柄（文件 · 管子 · stdin · 压缩包里的一条）只经 `relay_route_core::read_capped_from`（收 `Cap`）或读一个窗口的
 #   `read_window`：标准库的 `read_to_end` · `read_to_string` 读到流尽才停、没有上限。后端里一处都不放行（那一份住 `relay-route-core`）。
-# 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管后端 · 拨号核心 · 出网口 · 部署四个包（各自的 `[lints.clippy]` 定成 deny）。
+# 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管 `src/backend/` 底下的各包（各自的 `[lints.clippy]` 定成 deny）；拨号核心 · 出网口住 `src/comms/`，读那边那一份。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
   { path = "jiff::Timestamp::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
