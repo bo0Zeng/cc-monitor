@@ -109,11 +109,13 @@ val appModule =
         single(createdAtStart = true) {
             val cache = get<LocalCache>()
             val attach = File(androidContext().filesDir, ATTACH_DIR)
+            // 开着的那几条会话的待发归各自的会话交（同一个编号只一处交）。
+            val chats = get<ChatController>()
             PendingResend(
                 get<HostBackends>().feeds,
                 { h -> hostOutbox(cache, h, AttachStore(File(attach, h))) },
                 CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            )
+            ) { chats.held }
         }
         // 跨会话的需手动板（进程级）：对起着的每条常驻流各问一份，总览 · 聊天屏入口 · 聊天屏那一块都读它。
         single {

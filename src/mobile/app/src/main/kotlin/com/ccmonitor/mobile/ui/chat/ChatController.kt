@@ -117,7 +117,13 @@ class ChatController(
      */
     private fun refreshInFlight() {
         _hasInFlightTurn.value = sessions.values.any { it.state.value.running }
+        held = sessions.values.mapNotNull { it.state.value.sid }.toSet()
     }
+
+    /** 此刻开着的那几条会话的 id（每次 state 一变就跟着重算）：接上那台时它们的待发归各自的 [ChatSession] 交，进程级的重交跳过它们。 */
+    @Volatile
+    var held: Set<String> = emptySet()
+        private set
 
     /**
      * 上限逐出，在飞的绝不逐。
@@ -130,6 +136,7 @@ class ChatController(
         watchers.remove(victim.key)?.cancel()
         heldHosts.remove(victim.key)?.let { connections?.release(it, chatHolder(victim.key)) }
         sessions.remove(victim.key)?.close()
+        refreshInFlight()
         evictedCount++
         // 逐出必须通报，否则「对话怎么没了」无从查起。
         onEvicted(victim.key, evictedCount)
