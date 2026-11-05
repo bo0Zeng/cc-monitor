@@ -1495,7 +1495,10 @@ fn the_endpoint_host_is_written_once_and_the_kind_line_reuses_it() {
     let sep = copy_text("kit.text.sep", &[]);
     assert_eq!(
         b["kindLine"],
-        format!("{}{sep}gw.example.com:8443", copy_text("acct.kind.api", &[]))
+        format!(
+            "{}{sep}gw.example.com:8443",
+            copy_text("acct.kind.api", &[])
+        )
     );
     let _ = fs::remove_dir_all(&root);
 }
