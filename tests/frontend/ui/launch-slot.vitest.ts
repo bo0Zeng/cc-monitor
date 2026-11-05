@@ -52,7 +52,7 @@ function make(): LaunchSlots {
   );
 }
 
-const ASK = { by: { kind: "cwd", cwd: "/home/u/srv/billing" }, since: 3, session: "billing-2" } as const;
+const ASK = { by: { kind: "cwd", cwd: "/home/u/srv/billing" }, since: 3, session: "billing-2", host: "tmux" } as const;
 const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", arrival: ASK };
 const TITLE = copyText("beSessionArrive.missed.title");
 const SAID = `${TITLE}\n已等 18s 未报到 · tmux 会话「billing-2」末几行\nclaude: error: unknown option '--modle'\n(Did you mean --model?)`;

@@ -44,6 +44,7 @@ const plan = (more: number): SetPlan => ({
 const opened = (cwd: string): Opened => ({
   landed: "started",
   session: "t",
+  host: "tmux",
   line: null,
   sid: "s1",
   agent: null,
@@ -51,7 +52,7 @@ const opened = (cwd: string): Opened => ({
   account: null,
   note: null,
   prompt: null,
-  arrival: { by: { kind: "sid", sid: "s1" }, since: 1, session: "t" } as Opened["arrival"],
+  arrival: { by: { kind: "sid", sid: "s1" }, since: 1, session: "t", host: "tmux" } as Opened["arrival"],
 });
 
 const host = (): SetMenuHost => ({ newSession: vi.fn(), editSets: vi.fn() });
