@@ -4,7 +4,8 @@ import type { NeedsDown } from "./NeedsDown";
 import type { NeedsUnreadable } from "./NeedsUnreadable";
 
 /**
- * `sessions-needs-merge` 的回包：各台需手动的每一项，先答的在前；`total` 是各台加起来几项（入口 · 窗口标题照它写）；
- * 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；没问到的那几台（不计，各带那一句）。
+ * `sessions-needs-merge` 的回包（几台合法只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台需手动的每一项，先答的在前；
+ * `total` 是各台加起来几项（入口 · 窗口标题照它写）；会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；
+ * 没问到的那几台（不计，各带那一句）。
  */
 export type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };

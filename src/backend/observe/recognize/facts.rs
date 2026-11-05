@@ -153,8 +153,8 @@ pub struct SessionFacts {
     /// 不累加，每次现给。
     #[serde(default)]
     pub auto_answer_choices: Vec<cmd_wire::needs::AutoChoice>,
-    /// 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟无人答 · 已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
-    pub auto_answered: Option<Words>,
+    /// 上一条请求怎么收的场（[`cmd_wire::needs::AskEnd`]：写好的那一句 · 留不留着；这条会话下一次挂上请求才换掉）；没有 ⇒ `null`。不累加，每次现查。
+    pub ask_end: Option<cmd_wire::needs::AskEnd>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub mcp: Vec<McpTrouble>,
     /// 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
@@ -857,7 +857,7 @@ pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
 /// 先答序里一档危险度占多宽（毫秒）：同一档里「已等多久」只在这一格里动，跨不到下一档（约 34 年）。
 const NEEDS_TIER_SPAN: u64 = 1 << 40;
 
-/// **几条「需手动」先答哪个**（[`Needs::rank`] 的唯一一处，小的先答；`sessions-needs` 与 [`merge_needs`] 都只按它排）：危险度那一档（[`NEEDS_BY_DANGER`]）在高位；
+/// **几条「需手动」先答哪个**（[`Needs::rank`] 的唯一一处，小的先答；`sessions-needs` 与 `face_core::needs::merge_needs` 都只按它排）：危险度那一档（[`NEEDS_BY_DANGER`]）在高位；
 /// 同一档里等得越久越小（已等多久在那台算）；不知道等了多久的排这一档最后。
 pub fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
     let tier = NEEDS_BY_DANGER
@@ -888,7 +888,7 @@ pub fn needs_list(
     sessions: Vec<cmd_wire::needs::NeedsRow>,
     plan: &[NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
-    answered: Vec<cmd_wire::needs::AnsweredRow>,
+    ended: Vec<cmd_wire::needs::AskEndRow>,
 ) -> cmd_wire::needs::NeedsList {
     use cmd_wire::needs::NeedsItem;
     let mut items: Vec<NeedsItem> = sessions
@@ -915,10 +915,10 @@ pub fn needs_list(
         }
         Err(why) => Some(Words(why)),
     };
-    items.sort_by_key(rank_of);
+    items.sort_by_key(face_core::needs::rank_of);
     cmd_wire::needs::NeedsList {
         items,
-        answered,
+        ended,
         manual_unreadable,
     }
 }
@@ -937,90 +937,6 @@ fn needs_clock(n: &Needs) -> Option<cmd_wire::needs::NeedsClock> {
         text: line(&n.text),
         head: line(&n.head),
     })
-}
-
-/// 一项的先后（三臂各带的那一格）。
-pub(crate) fn rank_of(item: &cmd_wire::needs::NeedsItem) -> u64 {
-    use cmd_wire::needs::NeedsItem;
-    match item {
-        NeedsItem::Session { rank, .. }
-        | NeedsItem::Plan { rank, .. }
-        | NeedsItem::Manual { rank, .. } => *rank,
-    }
-}
-
-/// `sessions-needs-merge` 的回包：各台需手动的每一项，先答的在前；`total` 是各台加起来几项（入口 · 窗口标题照它写）；
-/// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；没问到的那几台（不计，各带那一句）。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct NeedsMerged {
-    pub(crate) items: Vec<NeedsAt>,
-    pub total: u32,
-    pub(crate) unreadable: Vec<NeedsUnreadable>,
-    pub(crate) down: Vec<NeedsDown>,
-}
-
-/// 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct NeedsDown {
-    pub origin: cmd_wire::Machine,
-    pub said: String,
-}
-
-/// 合好的一项：哪台 · 那一项原样。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub(crate) struct NeedsAt {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) item: cmd_wire::needs::NeedsItem,
-}
-
-/// 会话外那一截读不出的一台：哪台 · 那台写的那一句。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub(crate) struct NeedsUnreadable {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) said: Words,
-}
-
-/// **各台的「需手动」合成一份**（`sessions-needs-merge`；`answered` ＝ 每台 `(名字, 它答回来的 sessions-needs)`，`down` ＝ 没问到的那几台原样带上）：
-/// 照各项的 `rank`（[`needs_rank`] · 计划 · 会外两档）排；并列 ⇒ 本机在前、再照给的台序、台内原来的先后。
-/// 各台的 `rank` 是同一回问回来的、已等多久各在那台的钟上量，跨台照样比。纯计算。
-pub fn merge_needs(
-    mut answered: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsList)>,
-    down: Vec<NeedsDown>,
-) -> NeedsMerged {
-    answered.sort_by_key(|(origin, _)| !origin.is_local());
-    let unreadable = answered
-        .iter()
-        .filter_map(|(origin, list)| {
-            list.manual_unreadable.clone().map(|said| NeedsUnreadable {
-                origin: origin.clone(),
-                said,
-            })
-        })
-        .collect();
-    let mut items: Vec<NeedsAt> = answered
-        .into_iter()
-        .flat_map(|(origin, list)| {
-            list.items.into_iter().map(move |item| NeedsAt {
-                origin: origin.clone(),
-                item,
-            })
-        })
-        .collect();
-    items.sort_by_key(|x| rank_of(&x.item));
-    NeedsMerged {
-        total: items.len() as u32,
-        items,
-        unreadable,
-        down,
-    }
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。

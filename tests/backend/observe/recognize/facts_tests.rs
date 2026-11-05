@@ -1647,7 +1647,7 @@ fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
     let names: Vec<String> = got.items.iter().map(item_name).collect();
     assert_eq!(names, ["s", "a@A2-1", "a@-", "@work"]);
     assert_eq!(got.manual_unreadable, None);
-    let ranks: Vec<u64> = got.items.iter().map(rank_of).collect();
+    let ranks: Vec<u64> = got.items.iter().map(face_core::needs::rank_of).collect();
     assert!(
         ranks.windows(2).all(|w| w[0] <= w[1]),
         "先后就是 rank 的先后：{ranks:?}"
@@ -1715,8 +1715,8 @@ fn a_waiting_session_item_carries_the_written_clock() {
     assert!(v.get("clock").is_none(), "没有 ⇒ 不带那一键：{v}");
 }
 
-/// ★ 各台合成一份只经 [`merge_needs`]（`sessions-needs-merge`）：跨台照 `rank` 比；并列 ⇒ 本机在前、再照给的台序与台内原来的先后；
-/// 每项带回它那台；`total` 是各台加起来几项；会外读不出的那几台各带那一句。每一例的几条拆在几台上交进来（期望手写）。
+/// ★ 这里写的 `rank`（[`needs_rank`] · 计划 · 会外两档）跨台照样比得通：几台的整份交合法那一处（`face_core::needs::merge_needs`，
+/// 合法本身的判据在 face-core）后，危险度 · 已等多久 · 会话先计划次会外最后照旧。每一例的几条拆在几台上交进来（期望手写）。
 #[test]
 fn needs_merge_orders_across_machines_by_the_one_rule() {
     type Case<'a> = (
@@ -1776,13 +1776,13 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
                     cmd_wire::Machine::named(m.to_string()),
                     cmd_wire::needs::NeedsList {
                         items: vec![item],
-                        answered: vec![],
+                        ended: vec![],
                         manual_unreadable: None,
                     },
                 )),
             }
         }
-        let got = merge_needs(machines, vec![]);
+        let got = face_core::needs::merge_needs(machines, vec![]);
         let sids: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
         assert_eq!(&sids, want, "{name}");
         assert_eq!(got.total as usize, rows.len(), "{name}");
@@ -1796,7 +1796,7 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
             );
         }
     }
-    // 两台各一份整份：会话先、计划次之、会外最后；计划 · 会外并列时本机在前；总数相加；读不出的那台各带那一句。
+    // 两台各一份整份：会话先、计划次之、会外最后；计划 · 会外并列时本机在前（读不出 · 没问到那几台的带法在 face-core 判）。
     let remote = needs_list(
         vec![waiting_row("r", 1, Some(5))],
         &[plan_at("/w", "x", None)],
@@ -1809,30 +1809,16 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         Ok(vec![account_item("home")]),
         vec![],
     );
-    let down = vec![NeedsDown {
-        origin: cmd_wire::Machine::named("pi"),
-        said: "那台没在跑".into(),
-    }];
-    let got = merge_needs(
+    let got = face_core::needs::merge_needs(
         vec![
             (cmd_wire::Machine::named("devbox"), remote),
             (cmd_wire::Machine::local(), local),
         ],
-        down,
+        vec![],
     );
     let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
     assert_eq!(names, ["r", "y@A1", "x@-", "@home"]);
     assert_eq!(got.total, 4);
-    let v = serde_json::to_value(&got).unwrap();
-    assert_eq!(
-        v["unreadable"],
-        json!([{"origin": "devbox", "said": "读不懂"}])
-    );
-    assert_eq!(
-        v["down"],
-        json!([{"origin": "pi", "said": "那台没在跑"}]),
-        "没问到的那几台原样带上"
-    );
 }
 
 /// 钉条第一行由核心写（`head`：种类 ＋ 工具名，「等批准 · Bash」），等宽那一段也由核心挑（`headCode`：批准 · 回答 · 放行带主参数，

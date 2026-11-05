@@ -877,7 +877,7 @@ pub(crate) fn needs_with(
         plan,
         manual,
         // 这台家里的会话才列（登记表是进程里一份）。
-        crate::control::asks::answered_rows()
+        crate::control::asks::ended_rows()
             .into_iter()
             .filter(|r| locate::session_record(home, &r.sid).is_ok())
             .collect(),
@@ -907,7 +907,7 @@ pub struct NeedsMergeCmd;
 impl Command for NeedsMergeCmd {
     const NAME: &'static str = "sessions-needs-merge";
     type Req = NeedsMergeReq;
-    type Reply = crate::observe::recognize::facts::NeedsMerged;
+    type Reply = cmd_wire::needs::NeedsMerged;
     type Err = NeedsMergeErr;
 }
 
@@ -916,7 +916,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
     async fn run(
         req: NeedsMergeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr> {
+    ) -> Result<cmd_wire::needs::NeedsMerged, NeedsMergeErr> {
         let tz = cx.tz.clone();
         let local = async move {
             tokio::task::spawn_blocking(move || {
@@ -949,7 +949,7 @@ pub(crate) async fn needs_merge_with(
     until: Option<crate::platform::child::Until>,
     table: &crate::dial::remote_ask::Table,
     remote: &dyn crate::dial::remote_ask::Remote,
-) -> Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr> {
+) -> Result<cmd_wire::needs::NeedsMerged, NeedsMergeErr> {
     let got = crate::dial::remote_ask::ask_each::<SessionsNeedsCmd, _>(
         machines,
         &SessionsNeedsReq {},
@@ -966,15 +966,13 @@ pub(crate) async fn needs_merge_with(
     for (origin, r) in got {
         match r {
             Ok(list) => answered.push((origin, list)),
-            Err(s) => down.push(crate::observe::recognize::facts::NeedsDown {
+            Err(s) => down.push(cmd_wire::needs::NeedsDown {
                 origin,
                 said: s.said,
             }),
         }
     }
-    Ok(crate::observe::recognize::facts::merge_needs(
-        answered, down,
-    ))
+    Ok(face_core::needs::merge_needs(answered, down))
 }
 
 // ───────────────────────── 出成品那几条的收集器 ─────────────────────────
@@ -1495,7 +1493,7 @@ pub(crate) fn facts_at(
     facts.auto_answer =
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
     facts.auto_answer_choices = crate::control::asks::auto_choices(facts.auto_answer);
-    facts.auto_answered = crate::control::asks::answered(sid);
+    facts.ask_end = crate::control::asks::ended(sid);
     facts.needs = dress_ask(
         facts::needs_of(
             crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),

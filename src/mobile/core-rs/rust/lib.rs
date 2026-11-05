@@ -468,6 +468,33 @@ pub fn groups_merge_json(data: &str) -> String {
     serde_json::to_string(&face_core::groups::merge(&halves, heads)).unwrap_or_default()
 }
 
+/// 几台的需手动合成一份：`{answered: [{origin, reply}]}`（`reply` ＝ 那台 `sessions-needs` 回包原样；当前那台在前、别的照机器表先后）⇒ `NeedsMerged`。
+/// 合的那一步是本机后端 `sessions-needs-merge` 调的同一份（`face_core::needs::merge_needs`）：手机逐台直连问完，在这里照各项的 `rank` 合一次、数总数。
+/// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句）、不计，别台照合；整份读不动 ⇒ 空串。
+pub fn needs_merge_json(data: &str) -> String {
+    let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
+        return String::new();
+    };
+    let Ok(all) = serde_json::from_value::<Vec<serde_json::Value>>(ask["answered"].take()) else {
+        return String::new();
+    };
+    let mut answered = Vec::new();
+    let mut down = Vec::new();
+    for mut one in all {
+        let Ok(origin) = serde_json::from_value::<cmd_wire::Machine>(one["origin"].take()) else {
+            return String::new();
+        };
+        match serde_json::from_value::<cmd_wire::needs::NeedsList>(one["reply"].take()) {
+            Ok(list) => answered.push((origin, list)),
+            Err(e) => down.push(cmd_wire::needs::NeedsDown {
+                origin,
+                said: e.to_string(),
+            }),
+        }
+    }
+    serde_json::to_string(&face_core::needs::merge_needs(answered, down)).unwrap_or_default()
+}
+
 /// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`face_core::column`）；读不动 ⇒ 空串。
 pub fn chats_column_json(ask: &str) -> String {
     serde_json::from_str::<face_core::column::ChatsColumnAsk>(ask)
@@ -1010,6 +1037,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_GroupsFace_mer
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
         env.new_string(groups_merge_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `NeedsFace.merge(data)`：几台的需手动合成一份（[`needs_merge_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_NeedsFace_merge<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    data: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &data).unwrap_or_default();
+        env.new_string(needs_merge_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -1852,5 +1894,55 @@ mod tests {
             "{got}"
         );
         assert_eq!(super::search_merge_json("不是 JSON"), "");
+    }
+
+    /// 需手动几台合一份：手机核心合出的就是 `face_core::needs::merge_needs` 那一份（本机后端 `sessions-needs-merge` 调的同一个）：
+    /// 跨台照 `rank` 排、总数是各台加起来；某台那一份解不开 ⇒ 那台进 `down`（serde 那一句）、不计，别台照合。
+    #[test]
+    fn the_phone_merges_needs_with_the_one_shared_merge() {
+        use serde_json::{json, Value};
+        let plan = |slice: &str, rank: u64| json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice});
+        let a = json!({"items": [plan("a1", 5), plan("a2", 9)], "ended": []});
+        let b = json!({"items": [plan("b1", 1)], "ended": [], "manualUnreadable": "读不懂"});
+        let text = json!({"answered": [
+            {"origin": "phone-a", "reply": a},
+            {"origin": "phone-b", "reply": b},
+            {"origin": "phone-c", "reply": {"items": 3}},
+        ]})
+        .to_string();
+        let got: Value = serde_json::from_str(&super::needs_merge_json(&text)).unwrap();
+        let order: Vec<&str> = got["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["item"]["slice"].as_str().unwrap())
+            .collect();
+        assert_eq!(order, ["b1", "a1", "a2"], "跨台照 rank：{got}");
+        assert_eq!(got["total"], 3, "总数是答了的几台加起来");
+        assert_eq!(
+            got["unreadable"],
+            json!([{"origin": "phone-b", "said": "读不懂"}])
+        );
+        assert_eq!(
+            got["down"][0]["origin"], "phone-c",
+            "解不开的那台照实进 down"
+        );
+        let want = face_core::needs::merge_needs(
+            vec![
+                (
+                    cmd_wire::Machine::named("phone-a"),
+                    serde_json::from_value(a).unwrap(),
+                ),
+                (
+                    cmd_wire::Machine::named("phone-b"),
+                    serde_json::from_value(b).unwrap(),
+                ),
+            ],
+            vec![],
+        );
+        let mut want = serde_json::to_value(&want).unwrap();
+        want["down"] = got["down"].clone();
+        assert_eq!(got, want, "手机核心合出的不是那一份合并");
+        assert_eq!(super::needs_merge_json("不是 JSON"), "");
     }
 }

@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 pub struct NeedsList {
     /// 依次：此刻活着、那台说在等人的会话 · 计划里要人看的格 · 会话外的（需登录的号 · MCP · 权限太宽的自家秘密文件）；一项都没有 ⇒ 空。
     pub items: Vec<NeedsItem>,
-    /// 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
-    pub answered: Vec<AnsweredRow>,
+    /// 上一条请求收了场的会话（各留最近一次，那条会话下一次挂上请求才换掉），按会话 id 排。
+    pub ended: Vec<AskEndRow>,
     /// 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -161,13 +161,65 @@ pub enum LoginStartReq {
     },
 }
 
-/// 替人答过的那一条：会话 id ＋ 写好的那一句（「10 分钟无人答 · 已自动答：…」）。
+/// `sessions-needs-merge` 的回包（几台合法只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台需手动的每一项，先答的在前；
+/// `total` 是各台加起来几项（入口 · 窗口标题照它写）；会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；
+/// 没问到的那几台（不计，各带那一句）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct AnsweredRow {
-    pub sid: String,
+pub struct NeedsMerged {
+    pub items: Vec<NeedsAt>,
+    pub total: u32,
+    pub unreadable: Vec<NeedsUnreadable>,
+    pub down: Vec<NeedsDown>,
+}
+
+/// 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsDown {
+    pub origin: crate::Machine,
+    pub said: String,
+}
+
+/// 合好的一项：哪台 · 那一项原样。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsAt {
+    pub origin: crate::Machine,
+    pub item: NeedsItem,
+}
+
+/// 会话外那一截读不出的一台：哪台 · 那台写的那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsUnreadable {
+    pub origin: crate::Machine,
     pub said: Words,
+}
+
+/// 一条会话上一条请求怎么收的场（后端 `control::asks` 那一本账写，会话事实 `askEnd` 与 `sessions-needs.ended` 同一份）：
+/// `said` 写好的那一句（替人答了 ⇒「10 分钟无人答 · 已自动答：…」· 别的出口答上了 ⇒「已有人答过」· 终端答了或关了 ⇒「已在终端答过或已关闭」）；
+/// `stays` ⇒ 请求没了之后那一行一直留着（切走再回来也在），只有替人答的那一种；别的只在画着的那条请求没了、不是这一端答掉的那一下说。
+/// 那条会话下一次挂上请求就换掉。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AskEnd {
+    pub said: Words,
+    pub stays: bool,
+}
+
+/// 收了场的一条：会话 id ＋ 那一格。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AskEndRow {
+    pub sid: String,
+    pub end: AskEnd,
 }
 
 /// 一条会话「无人答时自动答」那一格（注解条目里那一份，也是 `history-annotate` 的 `patch.autoAnswer`）。

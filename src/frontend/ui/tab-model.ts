@@ -22,6 +22,7 @@ import type { SessionFace } from "./generated/SessionFace";
 import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
 import type { AutoChoice } from "./generated/AutoChoice";
+import type { AskEnd } from "./generated/AskEnd";
 import type { BackgroundWork, Needs, PendingCall, UsageFact } from "./session-reads";
 import type { RetryRun } from "./generated/RetryRun";
 import type { SessionHidden, SessionLineage } from "./session-hidden";
@@ -111,8 +112,8 @@ export interface Tab {
   autoAnswer: number | null;
   /** 那一格可选的几档（后端 `history-facts` 的 `autoAnswerChoices`：几分钟 ＋ 写好的字，`0` 是关）；菜单照列。 */
   autoAnswerChoices: AutoChoice[];
-  /** 上一条提问没人答、已替人答过 ⇒ 后端写好的那一句（`history-facts` 的 `autoAnswered`）；没有 ⇒ `null`。 */
-  autoAnswered: string | null;
+  /** 上一条请求怎么收的场（`history-facts` 的 `askEnd`：后端写好的那一句 · 留不留着）；还没收过场 ⇒ `null`。 */
+  askEnd: AskEnd | null;
   /** 状态一句（后端 `history-facts` 的 `line`）：只在它的 `for` 与 `face` 上那一态相同时用；没有 ⇒ `null`。 */
   line: FactsLine | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */

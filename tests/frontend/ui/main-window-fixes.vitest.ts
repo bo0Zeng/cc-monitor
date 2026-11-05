@@ -524,7 +524,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     background: null,
     autoAnswer: null,
     autoAnswerChoices: [],
-    autoAnswered: null,
+    askEnd: null,
     quietUnread: null,
     usage: {
       promptTokens: 350_000,

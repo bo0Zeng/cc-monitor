@@ -1,18 +1,20 @@
 package com.ccmonitor.mobile.ui.needs
 
+import com.ccmonitor.mobile.core.claude.link.NeedsFace
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsCell
 import com.ccmonitor.mobile.core.wire.gen.NeedsClock
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsMerged
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chats.HostName
 
-/** 需手动屏的一行（照那台给的先后）。 */
+/** 需手动屏的一行（照核心合好的先后）。 */
 sealed interface NeedsLine {
     val host: HostName
 
@@ -72,8 +74,9 @@ data class Overview(
 }
 
 /**
- * 板 ⇒ 需手动屏。机器的先后：当前那台在前，别的照机器列表的先后；每台里的行照那台给的先后，不重排。
- * 这里只按台排、把条数相加；判 · 排 · 写字（连计划那一格的「编号 标题」）都在那台。
+ * 板 ⇒ 需手动屏。机器的先后（当前那台在前，别的照机器列表的先后）只用来排断着 · 读中 · 没问到那几行，和交核心时的台序；
+ * 需手动那几行的先后 · 总数 · 会外读不出的那几台都由核心合（[mergedOf]，本机后端 `sessions-needs-merge` 那一份合法）；
+ * 判 · 排 · 写字（连计划那一格的「编号 标题」）都在那台。
  */
 fun overviewOf(
     board: Map<String, MachineNeeds>,
@@ -83,30 +86,42 @@ fun overviewOf(
     val order = hosts.sortedBy { it.id != current }.filter { board.containsKey(it.id) }
     val of = { h: HostName -> board.getValue(h.id) }
     val up = order.filter { !of(it).down }
+    val byId = order.associateBy { it.id }
+    val merged = mergedOf(board, up.map { it.id })
     return Overview(
-        needs = up.flatMap { h -> linesOf(h, of(h).list?.items.orEmpty(), of(h).at) },
+        needs = merged?.items.orEmpty().mapNotNull { x -> byId[x.origin]?.let { h -> lineOf(h, x.item, of(h).at) } },
         down = order.filter { of(it).down },
-        unreadable = order.mapNotNull { h -> of(h).unreadable?.let { h to it } },
+        unreadable = merged?.unreadable.orEmpty().mapNotNull { u -> byId[u.origin]?.let { it to u.said } },
         failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, of(h).offline) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
         loading = order.filter { of(it).reading },
         readFrom = up.filter { of(it).list != null },
-        total = board.values.sumOf { it.counted },
+        total = merged?.total ?: 0,
         uncertain = board.values.any { it.unreadable != null || it.unread != null },
     )
 }
 
-/** 一台的几项 ⇒ 行（照那台的先后，一项一行；[at] ＝ 收到那一份的时刻）。 */
-private fun linesOf(
+/**
+ * 通着、手上有一份的那几台（照 [order] 的台序）交核心合一份（[NeedsFace]，`face_core::needs::merge_needs`）：
+ * 跨台照各项的 `rank` 排、数总数、带上会外读不出的那几台。一台都没有 ⇒ `null`（零项）。
+ */
+fun mergedOf(
+    board: Map<String, MachineNeeds>,
+    order: List<String>,
+): NeedsMerged? {
+    val answered = order.mapNotNull { id -> board[id]?.takeIf { !it.down }?.raw?.let { id to it } }
+    return if (answered.isEmpty()) null else NeedsFace.of(answered)
+}
+
+/** 合好的一项 ⇒ 一行（[at] ＝ 收到那台那一份的时刻）。 */
+private fun lineOf(
     h: HostName,
-    items: List<NeedsItem>,
+    item: NeedsItem,
     at: Long,
-): List<NeedsLine> =
-    items.map {
-        when (it) {
-            is NeedsItem.Session -> NeedsLine.Session(h, it.session, it.clock, at)
-            is NeedsItem.Manual -> NeedsLine.Manual(h, it.manual)
-            is NeedsItem.Plan -> NeedsLine.Plan(h, it.workspace, it.slice, it.cell)
-        }
+): NeedsLine =
+    when (item) {
+        is NeedsItem.Session -> NeedsLine.Session(h, item.session, item.clock, at)
+        is NeedsItem.Manual -> NeedsLine.Manual(h, item.manual)
+        is NeedsItem.Plan -> NeedsLine.Plan(h, item.workspace, item.slice, item.cell)
     }
 
 /**

@@ -1,7 +1,7 @@
 //! `sessions-needs-merge`（本机后端自己问到各台的需手动、合成一份）的判据。
 //!
 //! ★ 别的台经 `--resident-call` 问它的常驻 `sessions-needs`（期限是发起方的）；那台常驻不在 · 够不着 ⇒ 那台进 `down`、不计，别台照常；
-//! 问到别的台却没带期限 ⇒ `bad_args`。合的先后只在 `merge_needs` 一处（`facts_tests` 判）。
+//! 问到别的台却没带期限 ⇒ `bad_args`。合的先后只在 `face_core::needs::merge_needs` 一处（face-core `needs_tests` 判）。
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
@@ -14,7 +14,7 @@ fn plan(rank: u64, slice: &str) -> NeedsList {
             slice: slice.into(),
             cell: None,
         }],
-        answered: vec![],
+        ended: vec![],
         manual_unreadable: None,
     }
 }
