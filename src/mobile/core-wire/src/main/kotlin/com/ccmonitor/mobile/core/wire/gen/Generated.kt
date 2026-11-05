@@ -3683,6 +3683,71 @@ data class CancelReq(
     }
 }
 
+sealed interface CaptureEnd {
+    /** 判别格（`kind`）那个词。 */
+    val kind: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Exited(
+        val code: Int,
+    ) : CaptureEnd, Ordered {
+        override val kind: String get() = "exited"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Signaled(
+        val signal: String,
+    ) : CaptureEnd, Ordered {
+        override val kind: String get() = "signaled"
+        override var wireOrder: IntArray? = null
+    }
+    data object ClosedBare : CaptureEnd {
+        override val kind: String get() = "closed_bare"
+    }
+    data object Dropped : CaptureEnd {
+        override val kind: String get() = "dropped"
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<CaptureEnd> =
+            tagged<CaptureEnd>(
+                "kind",
+                listOf(
+                Variant("exited", CaptureEnd.Exited::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("exited") }, optional = false, nullable = false),
+                        Field("code", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> CaptureEnd.Exited(a[1] as Int) },
+                        { v -> arrayOf("exited", v.code) },
+                    )),
+                Variant("signaled", CaptureEnd.Signaled::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("signaled") }, optional = false, nullable = false),
+                        Field("signal", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> CaptureEnd.Signaled(a[1] as String) },
+                        { v -> arrayOf("signaled", v.signal) },
+                    )),
+                Variant("closed_bare", CaptureEnd.ClosedBare::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("closed_bare") }, optional = false, nullable = false),
+                        ),
+                        { CaptureEnd.ClosedBare },
+                        { arrayOf("closed_bare") },
+                    )),
+                Variant("dropped", CaptureEnd.Dropped::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("dropped") }, optional = false, nullable = false),
+                        ),
+                        { CaptureEnd.Dropped },
+                        { arrayOf("dropped") },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class CaptureOpts(
     val maxBytes: Long,
@@ -3708,7 +3773,7 @@ data class CaptureOpts(
 data class Captured(
     val stdout: String,
     val stderr: String,
-    val exitStatus: Int?,
+    val ended: CaptureEnd,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -3717,10 +3782,10 @@ data class Captured(
             listOf(
             Field("stdout", { Str }, optional = false, nullable = false),
             Field("stderr", { Str }, optional = false, nullable = false),
-            Field("exit_status", { opt(Int32) }, optional = false, nullable = true),
+            Field("ended", { CaptureEnd.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Captured(a[0] as String, a[1] as String, a[2] as Int?) },
-            { v -> arrayOf(v.stdout, v.stderr, v.exitStatus) },
+            { a -> Captured(a[0] as String, a[1] as String, a[2] as CaptureEnd) },
+            { v -> arrayOf(v.stdout, v.stderr, v.ended) },
         )
     }
 }

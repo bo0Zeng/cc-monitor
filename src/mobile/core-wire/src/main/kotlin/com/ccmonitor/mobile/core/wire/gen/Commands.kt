@@ -1604,6 +1604,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.CanSay::class.java to com.ccmonitor.mobile.core.wire.gen.CanSay.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CanTerm::class.java to com.ccmonitor.mobile.core.wire.gen.CanTerm.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CancelReq::class.java to com.ccmonitor.mobile.core.wire.gen.CancelReq.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.CaptureEnd::class.java to com.ccmonitor.mobile.core.wire.gen.CaptureEnd.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CaptureOpts::class.java to com.ccmonitor.mobile.core.wire.gen.CaptureOpts.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Captured::class.java to com.ccmonitor.mobile.core.wire.gen.Captured.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.CatalogAsset::class.java to com.ccmonitor.mobile.core.wire.gen.CatalogAsset.ADAPTER,
