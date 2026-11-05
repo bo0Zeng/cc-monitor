@@ -112,7 +112,7 @@ class ChatSessionTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "session-open" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null)))
+                    "session-open" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null, "note" to "N-ok")))
                     else -> Reply.LinkDown
                 }
             }
@@ -133,7 +133,7 @@ class ChatSessionTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "session-open" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "acts" to listOf("retry", "relist"))))
+                    "session-open" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "note" to "N-未送：终端已不在", "acts" to listOf("retry", "relist"))))
                     "session-queue-put" -> queued
                     else -> Reply.LinkDown
                 }
@@ -144,7 +144,7 @@ class ChatSessionTest {
             runCurrent()
             val o = s.box().single()
             assertTrue(o.failed && o.retry)
-            assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.said)
+            assertEquals("那一句照那台回包里的 note 原样摆", "N-未送：终端已不在", o.said)
             s.retry(o.id)
             runCurrent()
             assertEquals(listOf("pre" to "你好"), link.puts())
@@ -158,7 +158,7 @@ class ChatSessionTest {
             val file = FakeCoreLink.File()
             link.answer = { cmd, args ->
                 when (cmd) {
-                    "session-open" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null)))
+                    "session-open" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null, "note" to "N-ok")))
                     else -> file.answer(cmd, args) ?: Reply.LinkDown
                 }
             }
@@ -479,14 +479,14 @@ class ChatSessionTest {
     fun `停：中断那条会话这一轮（session-interrupt，不进队 · 不靠持有输入）；成了不说，没成照那台那一句`() =
         runTest {
             val link = FakeCoreLink()
-            link.answer = { _, _ -> ok(mapOf("result" to "delivered")) }
+            link.answer = { _, _ -> ok(mapOf("result" to "delivered", "note" to "N-ok")) }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
             s.stop()
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "s1", "client" to "mobile")), link.calls("session-interrupt"))
             assertEquals("不往终端里按 Esc", emptyList<Any>(), link.calls("terminal-input"))
             assertEquals(null, s.state.value.note)
-            link.answer = { _, _ -> ok(mapOf("result" to "refused", "why" to "host_outdated", "said" to "S-old")) }
+            link.answer = { _, _ -> ok(mapOf("result" to "refused", "why" to "host_outdated", "said" to "S-old", "note" to "N-old")) }
             s.stop()
             runCurrent()
             assertEquals("S-old", s.state.value.note)

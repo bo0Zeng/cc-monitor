@@ -34,6 +34,7 @@ class MachineSettingsTest {
         "label" to name,
         "selectable" to selectable,
         "plate" to name.take(2),
+        "kindLine" to "",
         "unselectable" to if (selectable) null else "需登录",
         "login" to !selectable,
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),

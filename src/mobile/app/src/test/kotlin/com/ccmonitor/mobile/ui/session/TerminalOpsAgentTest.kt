@@ -61,7 +61,7 @@ class TerminalOpsAgentTest {
                 "terminals-list" -> Reply.Ok(mapOf("terminals" to rows.toList(), "complete" to true))
                 "session-model" -> Reply.Ok(mapOf("result" to "done", "model" to "opus", "said" to "已换成 opus"))
                 "session-open" -> Reply.Ok(opened("idle"))
-                "authorized-keys-add" -> Reply.Ok(mapOf("outcome" to "already"))
+                "authorized-keys-add" -> Reply.Ok(mapOf("outcome" to "already", "said" to copyText("mobKeyPush.result.already")))
                 else -> Reply.LinkDown
             }
         }

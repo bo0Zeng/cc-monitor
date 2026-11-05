@@ -32,6 +32,7 @@ internal object Wires {
             "baseUrl" to null,
             "badge" to mapOf("text" to "已登录", "warn" to false, "title" to ""),
             "plate" to "",
+            "kindLine" to "",
             "quota" to null,
             "unselectable" to null,
             "login" to false,

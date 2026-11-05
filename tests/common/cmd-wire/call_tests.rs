@@ -520,7 +520,7 @@ fn a_missing_cell_is_refused_and_the_rewrite_is_the_same_bytes() {
     assert_eq!(round_trip("history-tail", tail.clone()), Some(Ok(tail)));
     let short = json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30});
     assert!(matches!(round_trip("history-tail", short), Some(Err(_))));
-    let refused = json!({"result": "refused", "why": "not_yours", "said": "x"});
+    let refused = json!({"result": "refused", "why": "not_yours", "said": "x", "note": "x-note"});
     assert_eq!(
         round_trip("terminal-input", refused.clone()),
         Some(Ok(refused))

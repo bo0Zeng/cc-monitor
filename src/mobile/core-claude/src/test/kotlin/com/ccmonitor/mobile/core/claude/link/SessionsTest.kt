@@ -58,10 +58,16 @@ class SessionsTest {
     @Test
     fun `session-open：第一句的结局照 terminal-input 那一形解；没交 ⇒ null，形不对 ⇒ 整份解不出`() {
         val base = opened + ("sid" to "s1")
-        assertEquals(TerminalInput.Result.Delivered, SessionOpen.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
+        assertEquals(TerminalInput.Result.Delivered, SessionOpen.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null, "note" to "N-ok")))?.prompt)
         assertEquals(
-            TerminalInput.Result.Refused("终端已不在", listOf(SentAct.RETRY, SentAct.RELIST)),
-            SessionOpen.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "acts" to listOf("retry", "relist"))))?.prompt,
+            TerminalInput.Result.Refused(note = "N-未送：终端已不在", said = "终端已不在", acts = listOf(SentAct.RETRY, SentAct.RELIST)),
+            SessionOpen.of(
+                base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "note" to "N-未送：终端已不在", "acts" to listOf("retry", "relist"))),
+            )?.prompt,
+        )
+        assertNull(
+            "结局那一句（note）缺 ⇒ 整份解不出",
+            SessionOpen.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null))),
         )
         assertNull(SessionOpen.of(base)?.prompt)
         assertNull("prompt 那一格认不出 ⇒ 解不出", SessionOpen.of(base + ("prompt" to mapOf("result" to "maybe"))))
@@ -88,10 +94,12 @@ class SessionsTest {
 
     @Test
     fun `terminal-input：金样三种回话都解得出，拒的那句照抄`() {
-        val replies = terminals.obj("terminal-input")!!.objs("replies")!!.map(TerminalInput::of)
+        val raw = terminals.obj("terminal-input")!!.objs("replies")!!
+        val note = raw.map { it.str("note") }
+        val replies = raw.map(TerminalInput::of)
         assertEquals(TerminalInput.Result.Delivered, replies[0])
-        assertEquals(TerminalInput.Result.Refused(said = "画面已变", acts = listOf(SentAct.RETRY, SentAct.RECAPTURE)), replies[1])
-        assertEquals(TerminalInput.Result.Unsure, replies[2])
+        assertEquals(TerminalInput.Result.Refused(note = note[1]!!, said = "画面已变", acts = listOf(SentAct.RETRY, SentAct.RECAPTURE)), replies[1])
+        assertEquals(TerminalInput.Result.Unsure(note = note[2]!!), replies[2])
         assertNull(TerminalInput.of(mapOf("result" to "refused")))
         assertNull(TerminalInput.of(mapOf("result" to "maybe")))
     }
