@@ -44,7 +44,6 @@ const plan = (more: number): SetPlan => ({
 const opened = (cwd: string): Opened => ({
   landed: "started",
   session: "t",
-  host: "tmux",
   line: null,
   sid: "s1",
   agent: null,

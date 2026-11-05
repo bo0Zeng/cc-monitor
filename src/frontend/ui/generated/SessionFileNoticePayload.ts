@@ -7,7 +7,7 @@ export type SessionFileNoticePayload = { session_id: string,
 /**
  * 那台机器（本机 `<local>`）—— 与行的 `origin` 同一格语义，订阅按它分流。
  */
-origin: string, path: string, 
+origin: string, 
 /**
  * `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）：前端只据它定什么时候收、要不要整份重来。
  */

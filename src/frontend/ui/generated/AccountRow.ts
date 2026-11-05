@@ -15,9 +15,9 @@ configDirShown: string | null,
  */
 keyMasked: string | null, 
 /**
- * 同上，那一行的端点。
+ * 同上，那一行端点的主机（带端口），后端写好、唯一一处（账号行第二行那一句里的主机也是它）；没配端点 ⇒ `null`。
  */
-baseUrl: string | null, 
+endpointHost: Words | null, 
 /**
  * 账号菜单每一项右边那一枚徽章。
  */

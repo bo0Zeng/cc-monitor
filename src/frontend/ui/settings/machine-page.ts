@@ -24,8 +24,6 @@ export interface MachineFacts {
   os: string | null;
   /** 产品版本号（与这一版同一份字节时才有）。 */
   version: string | null;
-  /** 开发构建（版本不可比）：版本那一段写「开发版」。 */
-  dev?: boolean;
 }
 
 export const NO_FACTS: MachineFacts = { os: null, version: null };
@@ -48,7 +46,6 @@ export function machineMeta(at: "list" | "head", who: string | null, facts: Mach
   const parts = [who ?? copyText("detail.label.local")];
   if (os) parts.push(os);
   if (at === "head" && facts.version) parts.push(copyText("machinePage.meta.version", { ver: facts.version }));
-  else if (at === "head" && facts.dev) parts.push(copyText("machineState.word.incomparable"));
   return parts.filter((p) => p !== "").join(copyText("kit.text.sep"));
 }
 

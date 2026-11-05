@@ -178,7 +178,7 @@ export const HISTORY_SCENES: Scene[] = [
       const w = defaultWorld();
       w.ops = {
         ...w.ops,
-        "session-open": (): Opened => ({ landed: "window", session: null, host: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "/home/user/notes", account: null, note: null, prompt: null, arrival: arrivalOf("s3", null) }),
+        "session-open": (): Opened => ({ landed: "window", session: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "/home/user/notes", account: null, note: null, prompt: null, arrival: arrivalOf("s3", null) }),
       };
       // 壳写好的那几句：截图照文案表里壳用的那几格摆。
       w.commands = {

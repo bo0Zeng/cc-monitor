@@ -632,7 +632,9 @@ pub struct Opened {
     pub landed: Landed,
     /// 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
     pub session: Option<String>,
-    /// `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
+    /// `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ 缺）。等报到那一问照抄这一格（`arrival.host`），下游不另猜；不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub host: Option<crate::frame::TerminalHost>,
     /// 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
     pub line: Option<String>,
