@@ -701,7 +701,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -942,7 +941,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -1161,7 +1159,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -1175,7 +1172,6 @@
             }
           }
         ],
-        "said": "said-x",
         "split_at": 7,
         "tail_from": 7,
         "total": 7
