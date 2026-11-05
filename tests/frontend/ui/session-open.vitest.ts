@@ -269,11 +269,11 @@ describe("开窗失败 · 在飞", () => {
 
   it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 也只给［复制命令］", async () => {
     reply = opened("window");
-    term.openLocalTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", "setMissing"));
+    term.openLocalTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", { said: "壳·一句", title: "壳·标题", detail: "壳·说明" }));
     await openSession("<local>", { ...RESUME, local: true });
     expect(clip.writeClipboard, "不许自动写剪贴板").not.toHaveBeenCalled();
-    const [title, , opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
-    expect(title).toBe(copyText("terminalOpen.setMissing.title"));
+    const [title, detail, opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
+    expect([title, detail], "壳写好的那两句照摆").toEqual(["壳·标题", "壳·说明"]);
     expect((opts.action ?? []).map((x) => x.label)).toEqual([copyText("mobDrawer.settings.aria"), copyText("terminalOpen.noTerminal.copy")]);
     vi.clearAllMocks();
     clip.writeClipboard.mockResolvedValue(undefined);

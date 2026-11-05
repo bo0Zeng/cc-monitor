@@ -81,6 +81,7 @@ import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import type { FilewinTotals } from "../generated/FilewinTotals";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
+import type { TerminalOpened } from "../generated/TerminalOpened";
 
 /** 「停」的结局：三个词 ＋ 被停的 pid（没在跑 ⇒ `null`）。与 Rust `remote_resident::StopAnswer` 同形。 */
 export interface StopAnswer {
@@ -88,8 +89,6 @@ export interface StopAnswer {
   pid: number | null;
 }
 
-/** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */
-export type TerminalOpened = "opened" | "noWindow" | "setMissing";
 
 /**
  * 命令表：键名逐字节等于 Rust 侧的命令名，也等于本条目传给 `invoke` 的字面量。
@@ -132,12 +131,12 @@ export const commands = {
   /** 这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`）。 */
 
   /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
-   *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */
+   *  结局同 `open_terminal_window`。只经 `src/frontend/ui/terminal-open.ts` 调。桶③。 */
   open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
     invoke<TerminalOpened>("open_local_terminal", args),
 
   /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
-   *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。
+   *  Rust 返回 `Result<TerminalOpened, Failed>`（`opened` / `noWindow` 带壳写好的那几句）⇒ 生成物（桶③）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
   open_terminal_window: (args: { command: string }) =>
     invoke<TerminalOpened>("open_terminal_window", args),

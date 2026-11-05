@@ -423,17 +423,9 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         Err(e) => return Err(backend_route::layer_call_error(&e, HOP).error),
     };
     match crate::launch::open_terminal_window(line).await {
-        Ok(crate::platform::terminal::TerminalOpen::Opened) => Ok(Body(b"{}".to_vec())),
-        // 这台找不到终端：窗口那一侧把这句当原话画出来（说去设置里指定）。
-        Ok(crate::platform::terminal::TerminalOpen::NoWindow) => Err(refused(
-            "no_window",
-            copy_text("rsLaunch.posix.noTerminalWindow", &[]),
-        )),
-        // 设置里指定的那个终端不在：同上，说去设置里改。
-        Ok(crate::platform::terminal::TerminalOpen::SetMissing) => Err(refused(
-            "no_window",
-            copy_text("rsLaunch.posix.setTerminalMissing", &[]),
-        )),
+        Ok(crate::launch::TerminalOpened::Opened) => Ok(Body(b"{}".to_vec())),
+        // 这台开不了终端窗口（没探到 · 设置里指定的不在）：窗口那一侧把开窗那一下写好的那句当原话画出来（说去设置里哪一格）。
+        Ok(crate::launch::TerminalOpened::NoWindow { said, .. }) => Err(refused("no_window", said)),
         Err(why) => Err(refused("terminal_failed", why.said)),
     }
 }
