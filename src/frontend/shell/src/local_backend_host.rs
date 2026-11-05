@@ -1241,10 +1241,11 @@ pub(crate) fn local_captured(
     cmd_wire::dial::Captured {
         stdout: String::from_utf8_lossy(stdout).into_owned(),
         stderr: String::from_utf8_lossy(stderr).into_owned(),
-        ended: code.and_then(|c| u32::try_from(c).ok()).map_or(
-            cmd_wire::dial::CaptureEnd::ClosedBare,
-            |code| cmd_wire::dial::CaptureEnd::Exited { code },
-        ),
+        ended: code
+            .and_then(|c| u32::try_from(c).ok())
+            .map_or(cmd_wire::dial::CaptureEnd::ClosedBare, |code| {
+                cmd_wire::dial::CaptureEnd::Exited { code }
+            }),
     }
 }
 
