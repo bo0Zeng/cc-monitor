@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.needs
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -98,7 +98,6 @@ class NeedsBoard(
         src: NeedsSource,
     ): Job {
         val wake = Channel<Unit>(Channel.CONFLATED).also { wakes[id] = it }
-        wake.trySend(Unit)
         return scope.launch {
             launch {
                 src.link.state
@@ -109,9 +108,7 @@ class NeedsBoard(
             launch {
                 merge(
                     src.pushes.filter { it.wholeMayChange() }.map { },
-                    src.link.epoch
-                        .drop(1)
-                        .map { },
+                    src.link.seen,
                 ).collect { wake.trySend(Unit) }
             }
             var backoff = 0L

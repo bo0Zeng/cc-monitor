@@ -5,11 +5,16 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Failed
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import com.ccmonitor.mobile.ui.chat.linkConnecting
+import com.ccmonitor.mobile.ui.chat.linkDown
+import com.ccmonitor.mobile.ui.chat.machineOf
 import com.ccmonitor.mobile.ui.usage.QuotaGolden
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,6 +39,7 @@ class MachineSettingsTest {
         "label" to name,
         "selectable" to selectable,
         "plate" to name.take(2),
+        "kindLine" to "",
         "unselectable" to if (selectable) null else "需登录",
         "login" to !selectable,
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
@@ -102,9 +108,25 @@ class MachineSettingsTest {
             changes.emit(Changed.Accounts)
             runCurrent()
             assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+            l.state.value = linkDown("x")
+            runCurrent()
+            l.state.value = LinkLine.Up(1L, machineOf(MachineStateKind.UP))
             l.epoch.value = 1
             runCurrent()
             assertEquals(listOf(3, 3, 2), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+        }
+
+    @Test
+    fun `那台接上之前开的屏：接上那一刻账号 · 用量 · 偏好各只读一次`() =
+        runTest {
+            val l = link()
+            l.state.value = linkConnecting()
+            open(l)
+            assertEquals(listOf(0, 0, 0), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
+            l.state.value = LinkLine.Up(1L, machineOf(MachineStateKind.UP))
+            l.epoch.value = 1
+            runCurrent()
+            assertEquals(listOf(1, 1, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
         }
 
     @Test

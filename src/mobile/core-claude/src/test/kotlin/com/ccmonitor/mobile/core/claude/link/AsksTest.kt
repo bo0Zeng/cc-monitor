@@ -1,7 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.AnsweredRow
+import com.ccmonitor.mobile.core.wire.gen.AskEnd
+import com.ccmonitor.mobile.core.wire.gen.AskEndRow
 import com.ccmonitor.mobile.core.wire.gen.AskKind
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
@@ -62,7 +63,7 @@ class AsksTest {
     fun `sessions-needs 一条带 ask · head · headCode；ask 为空时带 manualText`() {
         val data =
             mapOf(
-                "answered" to listOf(mapOf("sid" to "s9", "said" to "10m 无人答 · 已自动答：继续")),
+                "ended" to listOf(mapOf("sid" to "s9", "end" to mapOf("said" to "10m 无人答 · 已自动答：继续", "stays" to true))),
                 "items" to
                     sessionItems(
                         listOf(
@@ -104,7 +105,7 @@ class AsksTest {
                     ),
             )
         val rows = SessionsNeeds.of(data)!!
-        assertEquals(listOf(AnsweredRow("s9", "10m 无人答 · 已自动答：继续")), SessionsNeeds.list(data)!!.answered)
+        assertEquals(listOf(AskEndRow("s9", AskEnd("10m 无人答 · 已自动答：继续", stays = true))), SessionsNeeds.list(data)!!.ended)
         assertEquals("等批准 · Bash", rows[0].needs.head)
         assertEquals("touch a.txt", rows[0].needs.headCode)
         assertEquals("ask-1", rows[0].needs.ask?.id)

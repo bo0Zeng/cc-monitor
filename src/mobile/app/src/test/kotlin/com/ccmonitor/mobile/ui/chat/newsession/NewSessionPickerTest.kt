@@ -52,6 +52,7 @@ class NewSessionPickerTest {
         "selectable" to selectable,
         "color" to color,
         "plate" to name.take(2),
+        "kindLine" to "",
         "quota" to if (selectable) "5h ${name.length}%" else null,
         "unselectable" to if (selectable) null else "需登录",
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
