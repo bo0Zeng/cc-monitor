@@ -690,23 +690,27 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
 }
 
 /// 回包两端零读者的格（推出来的账号 id · 文件路径 · 端点）不上线：界面写完只重读那台，后端建号那一路只取掩码。
-/// 判据照 `typed_tests::cells_no_reader_reads_are_off_the_wire` 那一套：看生成类型的声明里还有没有那几格。
+/// 判据照 `typed_tests::cells_no_reader_reads_are_off_the_wire` 那一意思，按真回包的键判（带端点写一次：端点那一格若还在线上就有值）。
 #[test]
 fn key_set_cells_no_one_reads_are_off_the_wire() {
-    let d = <KeySet as ts_rs::TS>::decl(&ts_rs::Config::default());
-    let on: Vec<&str> = ["account", "path", "baseUrl"]
-        .into_iter()
-        .filter(|g| {
-            d.match_indices(*g).any(|(at, _)| {
-                let before = d[..at].chars().next_back();
-                let after = &d[at + g.len()..];
-                before.is_some_and(|c| c.is_whitespace() || c == '{')
-                    && (after.starts_with(':') || after.starts_with("?:"))
-            })
-        })
+    let home = test_home::scratch("off-wire");
+    let got = answer_set_at(
+        &crate::platform::fs::Own::issue_data_at(&home),
+        &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "https://api.example.com"}),
+    )
+    .expect("写");
+    let keys: Vec<&str> = got
+        .as_object()
+        .expect("回包是一个对象")
+        .keys()
+        .map(String::as_str)
         .collect();
-    assert!(on.is_empty(), "这几格还在线上：{on:?}\n{d}");
-    assert!(d.contains("masked: string"), "正控：掩码那一格该在（后端建号那一路读它）：{d}");
+    assert_eq!(
+        keys,
+        ["masked"],
+        "回包只许剩掩码（后端建号那一路读它）；账号 id · 路径 · 端点两端零读者"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key —— 回包都只剩掩码。

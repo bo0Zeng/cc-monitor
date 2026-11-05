@@ -359,7 +359,10 @@ fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
     );
     let more = copy_text("kit.dialog.more", &[("n", "2")]);
     let sep = copy_text("kit.text.sep", &[]);
-    assert_eq!(r.headline.as_deref(), Some(format!("{first}{sep}{more}").as_str()));
+    assert_eq!(
+        r.headline.as_deref(),
+        Some(format!("{first}{sep}{more}").as_str())
+    );
 
     let global = finish(Out {
         checks: vec![line(None, CheckLevel::Fail, "共享库里留着身份")],
