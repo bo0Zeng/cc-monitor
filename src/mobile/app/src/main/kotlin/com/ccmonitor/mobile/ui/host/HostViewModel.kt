@@ -18,9 +18,8 @@ import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import com.ccmonitor.mobile.core.wire.gen.Endpoint
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineCheck
-import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.link.HostBackends
-import com.ccmonitor.mobile.ui.common.MachineDot
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -169,18 +168,10 @@ data class HostRowLook(
 )
 
 /**
- * 核心交的那一行 ⇒ 行首那颗点与尾字：正在连 · 装 · 更新 ⇒ 空心点；通着 ⇒ 绿；那台旧了 ⇒ 琥珀（照常能用）；断着 · 做不了 ⇒ 红；
- * 核心还没交过（这台没起常驻流）⇒ 不画。只挑格，态与字都是成品的（`deploy::machine`，桌面同一份）。
+ * 核心交的那一行 ⇒ 行首那颗点与尾字：点是成品的 `dot`（`deploy::machine::dot`，桌面同一份），尾字是成品的 `word`；
+ * 核心还没交过（这台没起常驻流）⇒ 不画。手机不照态另挑。
  */
 internal fun hostRowLook(line: LinkLine?): HostRowLook {
     val m = line?.machine ?: return HostRowLook(null, null)
-    val dot =
-        when (m.state) {
-            MachineStateKind.CONNECTING, MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> MachineDot.CONNECTING
-            MachineStateKind.UP, MachineStateKind.NEWER -> MachineDot.UP
-            MachineStateKind.NEEDS_UPDATE -> MachineDot.WARN
-            MachineStateKind.DOWN, MachineStateKind.HOST_KEY_CHANGED, MachineStateKind.UNSUPPORTED, MachineStateKind.DISABLED -> MachineDot.FAILED
-            MachineStateKind.UNKNOWN -> if (line is LinkLine.Connecting) MachineDot.CONNECTING else null
-        }
-    return HostRowLook(dot, m.word.ifEmpty { null })
+    return HostRowLook(m.dot, m.word.ifEmpty { null })
 }

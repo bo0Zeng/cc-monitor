@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BranchRun
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
-import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.Inl
@@ -281,7 +280,7 @@ class ResidentFeedTest {
     /**
      * `state` 那一行读的是核心现产的那一份（跨语言金样 `mobile-state-line.golden.json`，Rust 那一侧逐字比）：[CoreLink.state] 就是那一行
      * （契约里的 [LinkLine]：通没通 ＋ 那台的 [MachineState]），手机不另抄一份；那一句 · 详情 · 修法 · 离线不离线都从成品取，
-     * 部署那一趟的几步（成品说正在问 / 装 / 更新）由 [busy] 照成品那一态取。
+     * 点画哪一档（`dot`）· 连着没有（`linked`）也是成品那一格，手机不照态另挑。
      */
     @Test
     fun `核心交的每一行状态原样落：通没通照标签、成品逐格不动，epoch 跟着变`() =
@@ -289,12 +288,6 @@ class ResidentFeedTest {
             val core = FakeCore()
             val f = feed(core)
             val cases = Fixtures.json(GOLDEN).objs("cases").need()
-            val busy =
-                mapOf(
-                    "部署在问那台" to Busy("连接 box · 核对版本", bar = false),
-                    "正在装" to Busy("安装 cc-monitor → box", bar = true),
-                    "正在更新" to Busy("更新 box · cc-monitor", bar = true),
-                )
             assertNull("核心还没交过 ⇒ 没有那一行（当正在连）", f.state.value)
             assertEquals("成品还没到 ⇒ 造它时给的那一句（未知不当离线）", UNKNOWN, f.offline.value)
             for (c in cases) {
@@ -310,11 +303,11 @@ class ResidentFeedTest {
                 assertEquals(name, m["offline"] as Boolean, got.machine.offline)
                 val fixes = m.objs("fixes").need().map { MachineFixButton(fixOf(it.str("fix").need()), it.str("label").need()) }
                 assertEquals(name, fixes, got.machine.fixes)
-                assertEquals(name, busy[name], got.busy())
+                assertEquals(name, m.str("dot").need(), got.machine.dot.name.lowercase())
+                assertEquals(name, m["linked"] as Boolean, got.machine.linked)
                 line.num("epoch")?.let { assertEquals(name, it, f.epoch.value) }
             }
             assertEquals(12, cases.size)
-            assertEquals(busy.keys, cases.map { it.str("name").need() }.filter { it in busy }.toSet())
         }
 
     /** 装一次会好的那一颗只照成品挑：没有后端 ⇒［安装］· 后端旧了 · 那台旧 ⇒［更新］；离线 · 密钥被拒 · 那台新 ⇒ 没有。 */
@@ -380,7 +373,7 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `装后端：包里那几格交给核心；核心交回的结局 · 失败原样落（话是核心写好的；走到哪一步在成品里）`() =
+    fun `装后端：包里那几格交给核心；做成了那一句原样落，没做成清掉（为什么没成 · 走到哪一步都在成品里）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
@@ -392,12 +385,14 @@ class ResidentFeedTest {
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("那台旧"))
             assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
+            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
             core.emit("deploy", """{"end":"failed","code":"io_failed","said":"上传后校验失败","detail":"d"}""")
-            assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
+            assertEquals("没做成 ⇒ 上一趟那一句收起", null, f.deploying.value)
             // 缺一格（详情）· 认不出的结局 ⇒ 不补默认、不动，报契约对不上。
+            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
             core.emit("deploy", """{"end":"failed","code":"io_failed","said":"别的"}""")
             core.emit("deploy", """{"what":1}""")
-            assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
+            assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
         }
 
     @Test

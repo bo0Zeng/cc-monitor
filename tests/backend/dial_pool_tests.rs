@@ -574,7 +574,7 @@ async fn a_finished_wait_takes_nobody_out() {
 /// 成品那一台的一份（判据只用到要看的那几格）。
 fn product_of(detail: Option<&str>) -> cmd_wire::machine::MachineState {
     serde_json::from_value(serde_json::json!({
-        "name": "box", "state": "up", "offline": false, "reason": null, "stage": null,
+        "name": "box", "state": "up", "dot": "up", "linked": true, "offline": false, "reason": null, "stage": null,
         "version": null, "versionRelation": null, "os": null, "word": "", "said": "",
         "offlineSaid": "box 离线", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
         "detail": detail,

@@ -9,7 +9,6 @@ import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MachineState
-import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionBranch
@@ -27,33 +26,19 @@ data class Busy(
  * 手机不另抄一份，下面几样只从成品里挑格。`null` ＝ 核心还没交过那一行（当正在连）。流自己在接（[LinkLine.Connecting]）时不另说。
  */
 
-/** 部署那一趟走到哪（成品说正在问那台 · 正在装 · 正在更新）；没在装 ⇒ `null`。 */
-fun LinkLine?.busy(): Busy? {
-    val m = machineSaying() ?: return null
-    return when (m.state) {
-        MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> Busy(m.said, bar = true)
-        // 流还通着 / 断着、成品已在连 ⇒ 部署那一趟在问那台 · 在换常驻。
-        MachineStateKind.CONNECTING -> Busy(m.said, bar = false)
-        else -> null
-    }
-}
-
 /** 装一次会好的那一颗（［安装］/［更新］：手机这一侧做得了的只有这两种）；成品没给 ⇒ `null`。 */
 fun LinkLine?.deployFix(): MachineFixButton? = machineSaying()?.fixes?.firstOrNull { it.fix == MachineFix.INSTALL || it.fix == MachineFix.UPDATE }
 
 /** 流通着或断着时那台的成品；正在连 · 还没交过 ⇒ `null`。 */
 private fun LinkLine?.machineSaying(): MachineState? = if (this is LinkLine.Up || this is LinkLine.Down) machine else null
 
-/** 给一台装 / 更新后端这一趟的结局（话都是核心写好的；走到哪一步在成品里，见 [busy]）。 */
+/**
+ * 给一台装 / 更新后端这一趟做成了的那一句（话都是核心写好的）。走到哪一步 · 没做成为什么都在成品里（成品条那一格 `strip` · 问题行那一句）。
+ */
 sealed interface Deploying {
     /** 做完了：那一句（装上了 · 已是这一版 · 那台不比这一版旧）。 */
     data class Done(
         val text: String,
-    ) : Deploying
-
-    /** 没做成：交出去那一形（码 · 那一句 · 复制详情，核心写好、手机原样上屏）。 */
-    data class Failed(
-        val failed: com.ccmonitor.mobile.core.wire.gen.Failed,
     ) : Deploying
 }
 

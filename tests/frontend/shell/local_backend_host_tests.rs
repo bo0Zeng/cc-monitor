@@ -3945,7 +3945,7 @@ fn the_local_backend_words_come_from_the_words_table() {
     assert_eq!(
         got,
         L::Down {
-            look: cmd_wire::machine::MachineStateKind::Down,
+            dot: cmd_wire::machine::MachineDot::Failed,
             tone: cmd_wire::cells::Tone::Fail,
             word: copy_text("machinePage.state.down", &[]),
             said: copy_text("machineState.down.local", &[]),
@@ -3958,41 +3958,41 @@ fn the_local_backend_words_come_from_the_words_table() {
     );
 }
 
-/// 没起来那几样各带画成哪一态（点照机器那一张表挑）与问题行的语气：壳写好，界面不按 `state` 另判。
+/// 没起来那几样各带点画哪一档（机器点同一套五档）与问题行的语气：壳写好，界面不按 `state` 另判。
 #[test]
-fn the_local_backend_says_its_look_and_tone() {
+fn the_local_backend_says_its_dot_and_tone() {
     use crate::ui_contract::LocalBackend as L;
     use cmd_wire::cells::Tone;
-    use cmd_wire::machine::MachineStateKind as K;
+    use cmd_wire::machine::MachineDot as D;
     let _g = crate::inbound_client::local_origin_test_lock();
-    let look = |l: &L| match l {
+    let face = |l: &L| match l {
         L::Up => None,
-        L::Starting { look, tone, .. }
-        | L::Down { look, tone, .. }
-        | L::Older { look, tone, .. }
-        | L::Newer { look, tone, .. } => Some((*look, *tone)),
+        L::Starting { dot, tone, .. }
+        | L::Down { dot, tone, .. }
+        | L::Older { dot, tone, .. }
+        | L::Newer { dot, tone, .. } => Some((*dot, *tone)),
     };
     note_local_foreign(None);
     note_local_starting(true);
     let starting = local_backend(false, Some("p8c-mine"));
     note_local_starting(false);
-    assert_eq!(look(&starting), Some((K::Connecting, Tone::Busy)));
+    assert_eq!(face(&starting), Some((D::Pending, Tone::Busy)));
     assert_eq!(
-        look(&local_backend(false, Some("p8c-mine"))),
-        Some((K::Down, Tone::Fail))
+        face(&local_backend(false, Some("p8c-mine"))),
+        Some((D::Failed, Tone::Fail))
     );
     note_local_foreign(Some("p7a-old"));
     assert_eq!(
-        look(&local_backend(false, Some("p8c-mine"))),
-        Some((K::NeedsUpdate, Tone::Warn))
+        face(&local_backend(false, Some("p8c-mine"))),
+        Some((D::Warn, Tone::Warn))
     );
-    // 口上占着更新的构建：没连着、出错 ⇒ 画成没连着（`Newer` 那一态的点是连着的绿点，与出错那一句对不上）。
+    // 口上占着更新的构建：没连着、出错 ⇒ 画成没连着（比这一版新而连着的那台是绿点，与出错那一句对不上）。
     note_local_foreign(Some("p9a-new"));
     let newer = local_backend(false, Some("p8c-mine"));
     assert!(matches!(newer, L::Newer { .. }), "{newer:?}");
-    assert_eq!(look(&newer), Some((K::Down, Tone::Fail)));
+    assert_eq!(face(&newer), Some((D::Failed, Tone::Fail)));
     note_local_foreign(None);
-    assert_eq!(look(&local_backend(true, Some("p8c-mine"))), None);
+    assert_eq!(face(&local_backend(true, Some("p8c-mine"))), None);
 }
 
 /// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着走，直到再起一次把它清掉；接上了不说。

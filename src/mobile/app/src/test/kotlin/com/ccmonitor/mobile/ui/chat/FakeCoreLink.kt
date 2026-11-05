@@ -17,6 +17,7 @@ import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MachineState
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
@@ -31,15 +32,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/** 那台的状态成品（测试摆，只填画到的那几格；机器名 · 那几句是结构夹具）。 */
+/** 那台的状态成品（测试摆，只填画到的那几格；机器名 · 那几句是结构夹具；点那一档 · 连着没有照测试给的摆，不照态推）。 */
 internal fun machineOf(
     state: MachineStateKind,
     said: String = "",
     detail: String = "",
     fixes: List<MachineFixButton> = emptyList(),
+    dot: MachineDot = MachineDot.UP,
+    linked: Boolean = true,
 ) = MachineState(
     name = "m",
     state = state,
+    dot = dot,
+    linked = linked,
     offline = false,
     reason = null,
     stage = null,
@@ -69,10 +74,10 @@ internal fun linkDown(
     detail: String = "",
     fixes: List<MachineFixButton> = emptyList(),
     state: MachineStateKind = MachineStateKind.DOWN,
-) = LinkLine.Down(machineOf(state, said, detail, fixes))
+) = LinkLine.Down(machineOf(state, said, detail, fixes, MachineDot.FAILED, linked = false))
 
 /** 核心交的那一行：正在连。 */
-internal fun linkConnecting() = LinkLine.Connecting(machineOf(MachineStateKind.CONNECTING))
+internal fun linkConnecting() = LinkLine.Connecting(machineOf(MachineStateKind.CONNECTING, dot = MachineDot.PENDING, linked = false))
 
 /** 一台核心的替身：会话表 · 记录行 · 一问一答都由测试摆；每一问记下来（命令名 ＋ 入参）。 */
 internal class FakeCoreLink :

@@ -68,7 +68,7 @@ export function machineBlock(hit: MachineHit, menu: MachineMenu, sessions: reado
     id: `machine-head-${origin}`,
     title: name,
     machine: menu.head
-      ? { dot: machineDot(menu.head.state), name, word: menu.head.word, said: menu.head.said, right: menu.head.os ?? "" }
+      ? { dot: machineDot(menu.head.dot), name, word: menu.head.word, said: menu.head.said, right: menu.head.os ?? "" }
       : { dot: null, name, word: copyText("commandBar.machine.unlisted"), said: "", right: copyText("commandBar.machine.fromSshConfig") },
     run: () => {},
   };
@@ -103,7 +103,7 @@ export function machineRows(states: Readonly<Record<string, MachineState>>): Com
       group: "machine",
       title: m.name,
       sub: m.word || undefined,
-      dot: machineDot(m.state),
+      dot: machineDot(m.dot),
       fill: m.name,
       run: () => {},
     };

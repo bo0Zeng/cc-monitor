@@ -1,11 +1,12 @@
 //! **每台机器的状态成品**：收事实（接常驻那一轮 · 部署走到哪一步 · 部署收了）成一态；名字旁那个词 · 问题行那一句 · 修法
-//! 照这里那几张「态 ⇒ 字」表（[`word`] · [`said`] · [`fixes`] · [`offline`] · [`label`]），本机远端同一份。
+//! 照这里那几张「态 ⇒ 字」表（[`word`] · [`said`] · [`fixes`] · [`offline`] · [`label`]），点画哪一档 · 连着没有照 [`dot`] · [`linked`]，
+//! 本机远端同一份。
 //! 桌面由本机后端跑（`control/machine_state.rs`），手机由 mobcore 跑同一份；两端照画。
 
 use cmd_wire::attach::Relation;
 use cmd_wire::cells::Tone;
 use cmd_wire::machine::{
-    Blocker, FixButton, FleetLines, MachineFix, MachineState, MachineStateKind as K,
+    Blocker, FixButton, FleetLines, MachineDot, MachineFix, MachineState, MachineStateKind as K,
     MachineStripLine, Round, RoundProblem, Stage, Why,
 };
 use copy_core::copy_text;
@@ -254,6 +255,8 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
     MachineState {
         name: machine.to_string(),
         offline: offline(state, why),
+        dot: dot(state),
+        linked: linked(state),
         state,
         reason: why,
         stage: if state == K::Connecting {
@@ -452,6 +455,23 @@ pub fn offline(state: K, why: Option<Why>) -> bool {
         | K::Disabled
         | K::Unknown => false,
     }
+}
+
+/// 那台的点画哪一档（两端都照它，不各自照态挑）：连着 · 比这一版新 ⇒ 连着；正在连 · 装 · 更新 · 还不知道 ⇒ 待定；
+/// 那台旧了 ⇒ 要留意；没连上 · 指纹不对 · 做不了 ⇒ 坏了；停用 ⇒ 关着。
+pub fn dot(state: K) -> MachineDot {
+    match state {
+        K::Up | K::Newer => MachineDot::Up,
+        K::Connecting | K::Installing | K::Updating | K::Unknown => MachineDot::Pending,
+        K::NeedsUpdate => MachineDot::Warn,
+        K::Down | K::HostKeyChanged | K::Unsupported => MachineDot::Failed,
+        K::Disabled => MachineDot::Off,
+    }
+}
+
+/// 那台连着没有：通着那几态（连着 · 那台旧了 · 那台比这一版新）⇒ 是。
+pub fn linked(state: K) -> bool {
+    matches!(state, K::Up | K::NeedsUpdate | K::Newer)
 }
 
 /// 修法按钮上的字。

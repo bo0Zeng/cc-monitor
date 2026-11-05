@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 
 /** 环线宽（同桌面 1.5px）。 */
@@ -59,12 +60,10 @@ fun StatusDot(
 }
 
 /**
- * 机器那一颗（照那台的状态成品挑）：正在连 · 装 · 更新（空心环 `--text-2`、呼吸）· 在线（实心 `--success`、不呼吸）·
- * 要更新（实心 `--warn`，照常能用）· 离线 · 做不了（实心 `--error`）。
+ * 机器那一颗点：画哪一档是那台成品的 `dot`（后端 `deploy::machine::dot` 定，桌面同一份），这里只挑样子，与桌面 `machine-dot.ts` 一档对一样：
+ * 在线（实心 `--success`、不呼吸）· 正在连 · 装 · 更新 · 还不知道（虚线环 `--text-2`）· 要更新（实心 `--warn`，照常能用）·
+ * 离线 · 做不了（实心 `--error`）· 停用（空心环 `--text-2`）。[dot] 为 `null`（核心还没交过那一行）⇒ 只占位不画。
  */
-enum class MachineDot { CONNECTING, UP, WARN, FAILED }
-
-/** 机器那一颗点；[dot] 为 `null`（核心还没交过那一行）⇒ 只占位不画。 */
 @Composable
 fun StatusDot(
     dot: MachineDot?,
@@ -72,15 +71,17 @@ fun StatusDot(
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalAppTokens.current
+    val text2 = MaterialTheme.colorScheme.onSurfaceVariant
     val face =
         when (dot) {
             null -> null
-            MachineDot.CONNECTING -> Face(DotForm.RING, MaterialTheme.colorScheme.onSurfaceVariant)
             MachineDot.UP -> Face(DotForm.SOLID, tokens.success)
+            MachineDot.PENDING -> Face(DotForm.DASHED, text2)
             MachineDot.WARN -> Face(DotForm.SOLID, tokens.warn)
             MachineDot.FAILED -> Face(DotForm.SOLID, MaterialTheme.colorScheme.error)
+            MachineDot.OFF -> Face(DotForm.RING, text2)
         }
-    Dot(face, label, breathing = dot == MachineDot.CONNECTING, modifier)
+    Dot(face, label, breathing = false, modifier)
 }
 
 @Composable

@@ -1,6 +1,6 @@
 /**
  * 本机后端没起来那一格怎么画（壳的 `local-backend`）：设置窗（导航点 · 列表那一行 · 卡头）与主窗口栏底机器条本机那一行共用这一份。
- * 字 · 修法 · 画成机器的哪一态 · 语气都是壳那一格写好的；点照机器那一张表挑（`machineDot`），这里只装成机器卡的样子。
+ * 字 · 修法 · 点画哪一档 · 语气都是壳那一格写好的；点的样子照机器那一张表（`machineDot`），这里只装成机器卡的样子。
  * 单住一份：主窗口引它不带进设置窗问题行的画法与样式。
  */
 import type { LocalBackend } from "./generated/LocalBackend";
@@ -17,7 +17,7 @@ export function localBackendFace(l: LocalBackend): MachineFace | null {
   const fixes = l.state === "starting" ? [] : l.fixes;
   const next = l.state === "starting" ? "" : (l.next ?? "");
   return {
-    dot: machineDot(l.look),
+    dot: machineDot(l.dot),
     tone: TONE[l.tone] ?? "error",
     word: l.word,
     problem: l.said,

@@ -1,25 +1,19 @@
 /**
- * 一台机器的状态点：照那台成品的态挑（判定在后端 `deploy::machine`，这里只挑样子）。
- * 设置 › 机器卡与命令面板的「机器」条目共用这一张表。
+ * 一台机器的状态点：后端给的那一档（`MachineDot`，判定在后端 `deploy::machine`）⇒ 点的样子名，一档对一样，这里不另判。
+ * 设置 › 机器卡、命令面板的「机器」条目与本机后端没起来那一格共用这一张表。
  */
-import type { MachineStateKind } from "./generated/MachineStateKind";
+import type { MachineDot } from "./generated/MachineDot";
 import type { MachineDotState } from "./kit/status-dot";
 
-const DOT: Record<MachineStateKind, MachineDotState> = {
+const DOT: Record<MachineDot, MachineDotState> = {
   up: "up",
-  newer: "up",
-  connecting: "unknown",
-  installing: "unknown",
-  updating: "unknown",
-  unknown: "unknown",
-  down: "failed",
-  host_key_changed: "failed",
-  unsupported: "failed",
-  needs_update: "needs-you",
-  disabled: "exited",
+  pending: "unknown",
+  warn: "needs-you",
+  failed: "failed",
+  off: "exited",
 };
 
-/** 那一态画哪种点。 */
-export function machineDot(state: MachineStateKind): MachineDotState {
-  return DOT[state];
+/** 那一档画哪种点。 */
+export function machineDot(dot: MachineDot): MachineDotState {
+  return DOT[dot];
 }

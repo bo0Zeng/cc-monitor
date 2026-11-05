@@ -82,7 +82,7 @@ interface MachineOpt {
 }
 
 /**
- * 机器清单：本机后端手上各台此刻的状态成品（`machine-read` 一问，一台都不问）；`up` 才算连着，「连接这台」关着的不列。
+ * 机器清单：本机后端手上各台此刻的状态成品（`machine-read` 一问，一台都不问）；连着没有照成品的 `linked`，「连接这台」关着的不列。
  * 本机在前；问不到 ⇒ 只有本机、灰着。
  */
 async function listMachines(): Promise<MachineOpt[]> {
@@ -92,7 +92,7 @@ async function listMachines(): Promise<MachineOpt[]> {
   } catch (e) {
     console.warn("[new-session] 问不到各台的状态成品：", e);
   }
-  const opts = got.map(([origin, m]) => ({ origin, up: m.state === "up" }));
+  const opts = got.map(([origin, m]) => ({ origin, up: m.linked }));
   const local = opts.filter((m) => isLocalOrigin(m.origin));
   return [...(local.length > 0 ? local : [{ origin: LOCAL, up: false }]), ...opts.filter((m) => !isLocalOrigin(m.origin))];
 }

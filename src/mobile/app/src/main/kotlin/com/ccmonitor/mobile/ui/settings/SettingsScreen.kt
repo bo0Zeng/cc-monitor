@@ -36,7 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.BuildConfig
 import com.ccmonitor.mobile.core.claude.link.TabKind
-import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -108,8 +107,8 @@ private fun MachineBody(
     Body(here, board, readable(link), onNavigate)
 }
 
-/** 读那台的几行此刻能不能读：离线 · 要装 / 要更新 · 正在装 ⇒ 不能（灰着、不画旧值）。 */
-private fun readable(link: LinkLine?): Boolean = link !is LinkLine.Down && link.deployFix() == null && link.busy() == null
+/** 读那台的几行此刻能不能读：离线 · 要装 / 要更新 · 正在连 / 装（成品条那一格是忙）⇒ 不能（灰着、不画旧值）。 */
+private fun readable(link: LinkLine?): Boolean = link !is LinkLine.Down && link.deployFix() == null && barOf(link)?.tone != Tone.BUSY
 
 @Composable
 private fun Body(

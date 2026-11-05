@@ -47,8 +47,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
@@ -70,13 +70,14 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineCheck
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.HostLink
-import com.ccmonitor.mobile.ui.common.MachineDot
 import com.ccmonitor.mobile.ui.common.StatusDot
+import com.ccmonitor.mobile.ui.common.barOf
 import com.ccmonitor.mobile.ui.common.deployLabel
 import com.ccmonitor.mobile.ui.common.rememberDeployPress
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
@@ -613,7 +614,8 @@ private fun BackendRow(hostId: String) {
     val deploy = rememberDeployPress(hostId)
     val conn = deploy.held
     val fix = link.deployFix()
-    val busy = link.busy()
+    // 忙不忙 · 带不带进度照成品条那一格（`strip`：正在连 · 装 · 更新 ⇒ 忙，装 / 更新那一段带进度），不照态另挑。
+    val busy = barOf(link)?.takeIf { it.tone == Tone.BUSY }?.let { Busy(it.text, it.progress) }
     Text(copyText("needs.windowTitle.base"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
         onClick = deploy.press,

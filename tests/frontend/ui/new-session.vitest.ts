@@ -119,8 +119,8 @@ const OK = {
   arrival: { by: { kind: "cwd", cwd: "/home/u/srv/orders" }, since: 5, session: "orders-cc" },
 };
 /** 一台的状态成品（结构夹具：只填界面读的那几格）。 */
-const machineOf = (name: string, state: string, offlineSaid = `${name} 离线`) => ({
-  name, state, offline: state !== "up", reason: null, stage: null, version: null, versionRelation: null, os: null,
+const machineOf = (name: string, state: string, offlineSaid = `${name} 离线`, linked = state === "up") => ({
+  name, state, dot: linked ? "up" : "failed", linked, offline: !linked, reason: null, stage: null, version: null, versionRelation: null, os: null,
   word: "", said: "", offlineSaid, fixes: [], seenHostKey: null, expectedHostKey: null, detail: null,
 });
 /** `machine-read` 的回包：本机与 devbox 都连着。 */
@@ -574,6 +574,15 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(items.some((t) => t.includes("old")), "关着的不列").toBe(false);
     expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("machinePage.state.down"));
     expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("machinePage.state.down"));
+  });
+
+  it("★ 连着没有照成品的 `linked`：那台旧了（还连着）⇒ 不标「未连接」、可选；框里不另照 `state` 判", async () => {
+    replies.set("machine-read", { machines: { ...MACHINES.machines, old: machineOf("old", "needs_update", "old 离线", true), gone: machineOf("gone", "up", "gone 离线", false) } });
+    void openNewSession({ origin: "<local>" });
+    await flush();
+    const items = optionsOf(sel(copyText("detail.label.machine")));
+    expect(items.find((t) => t.includes("old")), "要更新的那台照样连着").not.toContain(copyText("machinePage.state.down"));
+    expect(items.find((t) => t.includes("gone")), "成品说没连着就是没连着").toContain(copyText("machinePage.state.down"));
   });
 
   it("★ 机器那一格只写一处名字：远端那一台不另带一枚同名的标记（框上 · 下拉里一样）", async () => {

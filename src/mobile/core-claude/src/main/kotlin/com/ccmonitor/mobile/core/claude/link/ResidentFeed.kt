@@ -500,12 +500,15 @@ class ResidentFeed(
         }
     }
 
-    /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */
+    /**
+     * `deploy` 那一行落进 [deploying]：做成了 ⇒ 那一句；没做成 ⇒ 清掉上一趟那一句（为什么没成在成品的问题行里，核心收进那台的成品）。
+     * 认不出 ⇒ 报一次契约对不上、不动。
+     */
     private fun onDeployLine(body: String) {
         deployFlow.value =
             when (val e = Wire.read<DeployEnd>(body) ?: return broke("deploy", body)) {
                 is DeployEnd.Done -> Deploying.Done(e.text)
-                is DeployEnd.Failed -> Deploying.Failed(Failed(code = e.code, said = e.said, detail = e.detail, data = e.data))
+                is DeployEnd.Failed -> null
             }
     }
 

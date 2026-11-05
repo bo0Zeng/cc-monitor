@@ -767,6 +767,8 @@ fn wake_row(
     cmd_wire::machine::MachineState {
         name: "nas".into(),
         state: kind,
+        dot: deploy::machine::dot(kind),
+        linked: deploy::machine::linked(kind),
         offline: false,
         reason: None,
         stage: None,
