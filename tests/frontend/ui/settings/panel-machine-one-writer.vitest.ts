@@ -307,7 +307,7 @@ describe("设置窗那台的几格只由那台状态写", () => {
   it("★ 壳推了本机后端没起来之后，后端那一行问回来的旧「起着」不盖它", async () => {
     await mount();
     captured.local!({ state: "down", look: "down", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null });
-    // `backend_status` 的回包还是先前那一份（起着）：它不许写本机那一格。
+    // `backend_status` 的回包还是旧的那一份（起着）：它不许写本机那一格。
     captured.localBackend = { state: "up" };
     captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same", version: "1.2.3" }));
     await settle();
