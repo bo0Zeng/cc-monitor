@@ -9,6 +9,6 @@ export type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed"
  */
 said: string, 
 /**
- * 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
+ * 起在的那个终端此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
  */
 terminal: string | null, };

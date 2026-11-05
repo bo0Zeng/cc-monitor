@@ -102,6 +102,10 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<(), Said> {
             }
         }
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`kill-session` / `kill-pane`：破坏性，但改的是 tmux server 的运行期状态、不写文件，且先过三道门（单窗口）；本文件只这一处"
+    )]
     let out = crate::host::tmux::child(None)
         .args(&argv)
         .run(KILL_TMUX_WITHIN)

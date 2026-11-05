@@ -91,7 +91,7 @@ pub fn first_line(bytes: &[u8]) -> String {
         .to_string()
 }
 
-/// 本层唯一一处起进程（已登记进 `readonly_guard::spawn_registry::ALLOWED`）的构造：程序 · argv · 环境。
+/// 本层唯一一处起进程的构造：程序 · argv · 环境。
 ///
 /// `bin` 是已经找到的那个可执行文件（[`super::discover::find`] 的产出）；`args` 直传、不过 shell ⇒ 参数里的元字符不构成注入面；
 /// `env` 是额外的环境变量（有些插件的契约走 env 而不是参数）。stdin 是空设备。
@@ -99,6 +99,10 @@ pub fn first_line(bytes: &[u8]) -> String {
 /// 宿主没有的键子进程也没有（空的 `PATH` 会让子进程在当前目录里找命令，比没有更糟）。
 pub fn child_for(bin: &Path, args: &[&str], env: &[(&str, &str)]) -> Child {
     let keys: Vec<&'static str> = INHERITED_ENV_KEYS.iter().map(|(k, _)| *k).collect();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "插件通用调用口：起查出来的那个插件程序（argv 不过 shell、期限到点杀整组），写什么归被起的进程；今天经它的只有计划读面起 pb（只读），加一种被调命令先回来重读这一句"
+    )]
     let mut c = Child::new(bin).args(args).inherit_only(&keys);
     for (k, v) in env {
         c = c.env(k, v);

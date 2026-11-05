@@ -1316,6 +1316,7 @@ data class ArriveAsk(
     val by: ArriveBy,
     val since: Long,
     val session: String?,
+    val host: TerminalHost?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -1325,9 +1326,10 @@ data class ArriveAsk(
             Field("by", { ArriveBy.ADAPTER }, optional = false, nullable = false),
             Field("since", { U64 }, optional = false, nullable = false),
             Field("session", { opt(Str) }, optional = false, nullable = true),
+            Field("host", { opt(TerminalHost.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> ArriveAsk(a[0] as ArriveBy, a[1] as Long, a[2] as String?) },
-            { v -> arrayOf(v.by, v.since, v.session) },
+            { a -> ArriveAsk(a[0] as ArriveBy, a[1] as Long, a[2] as String?, a[3] as TerminalHost?) },
+            { v -> arrayOf(v.by, v.since, v.session, v.host) },
         )
     }
 }
@@ -15972,6 +15974,7 @@ data class OpenWindow(
 data class Opened(
     val landed: Landed,
     val session: String?,
+    val host: TerminalHost?,
     val line: String?,
     val sid: String?,
     val agent: String?,
@@ -15988,6 +15991,7 @@ data class Opened(
             listOf(
             Field("landed", { Landed.ADAPTER }, optional = false, nullable = false),
             Field("session", { opt(Str) }, optional = false, nullable = true),
+            Field("host", { opt(TerminalHost.ADAPTER) }, optional = false, nullable = true),
             Field("line", { opt(Str) }, optional = false, nullable = true),
             Field("sid", { opt(Str) }, optional = false, nullable = true),
             Field("agent", { opt(Str) }, optional = false, nullable = true),
@@ -15997,8 +16001,8 @@ data class Opened(
             Field("prompt", { opt(Sent.ADAPTER) }, optional = false, nullable = true),
             Field("arrival", { opt(ArriveAsk.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as LaunchedAccount?, a[7] as String?, a[8] as Sent?, a[9] as ArriveAsk?) },
-            { v -> arrayOf(v.landed, v.session, v.line, v.sid, v.agent, v.cwd, v.account, v.note, v.prompt, v.arrival) },
+            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as TerminalHost?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as LaunchedAccount?, a[8] as String?, a[9] as Sent?, a[10] as ArriveAsk?) },
+            { v -> arrayOf(v.landed, v.session, v.host, v.line, v.sid, v.agent, v.cwd, v.account, v.note, v.prompt, v.arrival) },
         )
     }
 }

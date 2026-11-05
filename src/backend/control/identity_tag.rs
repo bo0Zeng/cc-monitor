@@ -19,7 +19,7 @@
 //!
 //! # 起进程
 //!
-//! 探测复用 [`super::gate::probe`]，只有真要写时才多起一个 `tmux set-option`（已登记进 `readonly_guard::spawn_registry`）。
+//! 探测复用 [`super::gate::probe`]，只有真要写时才多起一个 `tmux set-option`（在调用点放行后端 clippy 起进程那一组）。
 //! 改的是 tmux server 的运行期状态，不是用户既有数据（同 `tmux_hook`）。
 
 /// 一次打标的结局。**返回而不是吞掉** —— 唯一调用点（`observe/watcher.rs::process_session_added`）

@@ -386,6 +386,10 @@ pub(crate) fn said_of(stderr: &[u8]) -> String {
 const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
+#[expect(
+    clippy::disallowed_methods,
+    reason = "建 tmux 会话 / 往已有会话送键：改的是 tmux server 的运行期状态、起的是用户自己要起的 agent，载荷落盘归那个进程；不许加第二种被起的程序"
+)]
 fn tmux(args: &[&str]) -> Result<Ran, Said> {
     ran(crate::host::tmux::child(None), args)
 }

@@ -615,6 +615,10 @@ fn spawn_detached(
     exe: &Path,
     env: &[(String, String)],
 ) -> Result<u32, (&'static str, copy_core::said::Said)> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`--resident-ensure` 起本二进制自己当远端那台的常驻载体（stdio 全空、自成进程组）：被起的流模式那一臂照样归本仓的守法管；不许加第二种用途"
+    )]
     let mut cmd = Child::new(exe).args(DEFAULT_STREAM_ARGS).env_remove("TMUX");
     for (k, v) in env {
         cmd = if OWN_ENVS.contains(&k.as_str()) {

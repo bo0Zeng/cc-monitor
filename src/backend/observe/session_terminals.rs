@@ -310,6 +310,10 @@ const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
 pub fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "点 ↗ 时答此刻谁在显示这个会话：只读 tmux，只在被问时起一次"
+    )]
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])

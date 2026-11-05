@@ -518,7 +518,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     assert_eq!(
         prod.matches("Child::new(").count(),
         4,
-        "本文件生产段的起进程口不是 4 处了（sh 收尾 · exec 那一家 · 脱离起托管进程 · 托管那一形的自检） —— `readonly_guard::spawn_registry` 那个数要一起看"
+        "本文件生产段的起进程口不是 4 处了（sh 收尾 · exec 那一家 · 脱离起托管进程 · 托管那一形的自检） —— 后端 clippy 起进程那一组的放行点要一起看"
     );
 }
 

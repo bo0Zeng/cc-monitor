@@ -41,9 +41,9 @@ fn key(r: &SurfaceRow) -> (String, String) {
 
 fn kind(s: &SurfaceState) -> &'static str {
     match s {
-        SurfaceState::Present { .. } => "present",
+        SurfaceState::Present => "present",
         SurfaceState::Absent => "absent",
-        SurfaceState::Undetermined { .. } => "undetermined",
+        SurfaceState::Undetermined => "undetermined",
     }
 }
 

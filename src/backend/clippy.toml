@@ -9,6 +9,8 @@
 # 出站 TCP 只在出网口开（出网口 `src/comms/egress` 那一处）：中转去上游 · 拨 SSH · 探活都经 `egress::open`，别处自己开一条就绕过了代理。
 #   经第三方 crate 间接开的连接认不出。通信层（`src/comms/clippy.toml` · `src/comms/outward/clippy.toml`）各有同组的一份。
 # 起子进程只在起子进程原语开（`platform/child.rs` 那一处放行）：期限必填 · 杀整组 · 自有环境无条件摘都在那里做。
+#   经原语起（`Child::new`）· 经宿主口起 tmux（`host::tmux::child`）也逐处放行：每一处写清起的是什么、为什么不算后端进程自身写用户既有数据
+#   （被起的程序写什么归它自己）。认不出的：放行理由说得对不对 · 同一处底下换了被调的子命令。
 # 进程 argv 只在 `main` 取一次（`main.rs` 那一处放行）：要它的模块由调用方交。
 # 异步读对端的字节只经带上限的那一份（`comms_inward::line`：读一行 · 读整份，收 `Cap`）：tokio 的整读先读完再判、对端一直发就一直涨，
 #   后端里一处都不放行（那一份住 `comms-inward` 包，不归本文件管）。
@@ -75,6 +77,8 @@ disallowed-methods = [
   { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
   { path = "std::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`" },
   { path = "tokio::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`", allow-invalid = true },
+  { path = "backend_platform::child::Child::new", reason = "每一处起进程在调用点放行、写清起什么、为什么不算后端进程自身写用户既有数据" },
+  { path = "backend_host::tmux::child", reason = "经宿主口起 tmux 算调用方那一处起进程：在调用点放行、写清发的是哪几条子命令、改不改 tmux 状态" },
   { path = "std::env::args", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
   { path = "std::env::args_os", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
   { path = "tokio::io::AsyncBufReadExt::read_line", reason = "异步读一行只经 `comms_inward::line::read_capped_line`（收 `Cap`，超了回超限、不截断）" },

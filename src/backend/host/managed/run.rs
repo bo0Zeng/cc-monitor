@@ -182,6 +182,10 @@ pub(crate) async fn run(
             return Err(said);
         }
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "托管终端在自己的伪终端里起 ccm 交来的那一行（`--host-run` 之后的 argv，不过 shell）：同 tmux 在窗格里起它，里面的程序写什么归它自己"
+    )]
     let mut child = crate::platform::child::Child::new(&spec.argv[0])
         .args(&spec.argv[1..])
         .env(HOST_ENV, &spec.id);

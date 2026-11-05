@@ -157,6 +157,10 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
         )
         .and_raw(Some(&e.to_string()))
     })?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "开窗：起本二进制自己当 ccm 跑一发适配层登记的那一句（`--account` 点名、不轮换、期限 120 秒），被起的那一趟照样归本仓的守法管；不许加第二种用途"
+    )]
     let mut child = Child::new(me)
         .args(line(&face, account, cwd.as_path()))
         .current_dir(cwd.as_path())
