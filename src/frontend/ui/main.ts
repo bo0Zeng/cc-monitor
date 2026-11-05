@@ -326,7 +326,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     pokeBoard();
     void chores.refreshAll();
     void needsBook.refresh(origin);
-    void groupBook.refreshAll([origin]);
     if (isLocalOrigin(origin)) void start.refresh();
   });
   // 窗口标题的 N 同侧栏入口（后端合好的总数）。
