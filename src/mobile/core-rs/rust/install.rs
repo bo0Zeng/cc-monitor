@@ -44,14 +44,21 @@ pub fn done_json(plan: &deploy::Plan) -> String {
 
 /// 没做成 ⇒ 那一行（详情：命令 · 码 · 原话，钟是这台手机的）。
 pub fn failed_json(code: &str, said: &str, raw: Option<&str>) -> String {
-    let detail = ssh_dial::env::get().facts.detail("deploy", Some(code), raw);
-    serde_json::to_string(&DeployEnd::Failed(cmd_wire::failed::Failed {
+    ended_failed(failed_of(code, said, raw))
+}
+
+/// 没做成那一份（结局那一行与那台的成品用同一份）。
+fn failed_of(code: &str, said: &str, raw: Option<&str>) -> cmd_wire::failed::Failed {
+    cmd_wire::failed::Failed {
         code: code.to_string(),
         said: said.to_string(),
-        detail,
+        detail: ssh_dial::env::get().facts.detail("deploy", Some(code), raw),
         data: None,
-    }))
-    .unwrap_or_default()
+    }
+}
+
+fn ended_failed(f: cmd_wire::failed::Failed) -> String {
+    serde_json::to_string(&DeployEnd::Failed(f)).unwrap_or_default()
 }
 
 /// `slots` 那一段：`[{os, arch, id, path}]`（Kotlin 交：包里带的那几格、各自构建时扫出来的身份、解到哪个文件）。
@@ -169,28 +176,28 @@ async fn run(
             on(h, kind, body);
         }
     };
-    // 结局那一行 ＋ 没做成那一句（记进那台的成品，机器条照它说）。
-    let (ended, failed) = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
-        Err(f) => (
-            failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
-            Some(f.said),
-        ),
+    // 结局：做完了那一份 · 没做成那一份（那一句与详情也记进那台的成品，机器条照它说）。
+    let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
+        Err(f) => Err(failed_of(f.code_or_fallback(), &f.said, f.raw.as_deref())),
         Ok(plan) => {
             // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
             step(deploy::Step::Restart);
             match feed.replace().await {
-                Ok(_) => (done_json(&plan), None),
+                Ok(_) => Ok(plan),
                 Err(p) => {
                     let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-                    (failed_json("restart_failed", &p.said, raw), Some(p.said))
+                    Err(failed_of("restart_failed", &p.said, raw))
                 }
             }
         }
     };
-    for (kind, body) in resident::note(h, |f| f.settle(machine, failed.as_deref())) {
+    for (kind, body) in resident::note(h, |f| f.settle(machine, ended.as_ref().err())) {
         on(h, kind, body);
     }
-    emit(ended);
+    emit(match ended {
+        Ok(plan) => done_json(&plan),
+        Err(f) => ended_failed(f),
+    });
 }
 
 #[cfg(test)]

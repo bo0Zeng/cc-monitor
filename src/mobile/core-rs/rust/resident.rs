@@ -294,15 +294,16 @@ impl Facts {
     }
 
     /// 部署收了（成没成都算）⇒ 成品回到那条流最新那一轮；换了常驻的，接下来那几轮照常交。
-    /// `failed` ⇒ 那一趟没做成那一句记进成品（同桌面 `Fact::UpdateFailed`：机器条那一句只由成品说）。
-    pub fn settle(&mut self, machine: &str, failed: Option<&str>) -> String {
+    /// `failed` ⇒ 那一趟没做成那一句与复制详情记进成品（同桌面 `Fact::UpdateFailed`：机器条那一句只由成品说）。
+    pub fn settle(&mut self, machine: &str, failed: Option<&cmd_wire::failed::Failed>) -> String {
         let last = self.last.clone().unwrap_or(State::Connecting);
         self.fold_round(&last);
-        if let Some(said) = failed {
+        if let Some(f) = failed {
             fold(
                 &mut self.entry,
                 Fact::UpdateFailed {
-                    said: said.to_string(),
+                    said: f.said.clone(),
+                    detail: f.detail.clone(),
                 },
             );
         }
@@ -1091,13 +1092,27 @@ mod tests {
         let mut f = Facts::default();
         f.round(old(), "box");
         f.step(deploy::Step::Place { updating: true }, "box");
-        let settled = v(f.settle("box", Some("上传后校验失败")));
+        let end = cmd_wire::failed::Failed {
+            code: "io_failed".into(),
+            said: "上传后校验失败".into(),
+            detail: "命令：deploy\n码：io_failed\n原话：sha 不符".into(),
+            data: None,
+        };
+        let settled = v(f.settle("box", Some(&end)));
         assert_eq!(
             (
                 settled["machine"]["state"].as_str(),
-                settled["machine"]["said"].as_str()
+                settled["machine"]["said"].as_str(),
+                settled["machine"]["detail"].as_str()
             ),
-            (Some("needs_update"), Some(failed.as_str()))
+            (
+                Some("needs_update"),
+                Some(failed.as_str()),
+                Some(
+                    "命令：deploy\n对象：box\n断在：上传后校验失败\n码：io_failed\n原话：sha 不符"
+                )
+            ),
+            "那一句与复制详情都是那一趟的"
         );
         assert_eq!(v(f.round(old(), "box"))["machine"]["said"], failed);
         let again = v(f.step(deploy::Step::Plan, "box"));
