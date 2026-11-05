@@ -807,6 +807,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "askEnd.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "askEnd.stays",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "autoAnswer",
           "type": "number"
@@ -821,12 +833,6 @@
           "frozen": false,
           "kind": "text",
           "path": "autoAnswerChoices[].text",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "autoAnswered",
           "type": "string"
         },
         {

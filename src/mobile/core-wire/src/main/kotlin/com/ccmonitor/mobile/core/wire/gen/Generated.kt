@@ -1268,25 +1268,6 @@ data class Answered(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-data class AnsweredRow(
-    val sid: String,
-    val said: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<AnsweredRow> = obj(
-            listOf(
-            Field("sid", { Str }, optional = false, nullable = false),
-            Field("said", { Str }, optional = false, nullable = false),
-            ),
-            { a -> AnsweredRow(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.sid, v.said) },
-        )
-    }
-}
-
 enum class ApiReason(val wire: String) {
     OVERLOADED("overloaded"),
     QUOTA("quota"),
