@@ -1172,7 +1172,7 @@
       }
     },
     "machine-read": {
-      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\"}}",
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\"}}",
       "sample": {
         "empty": {
           "count": "count-x",
@@ -1182,6 +1182,7 @@
         "machines": {
           "k": {
             "detail": "detail-x",
+            "dot": "up",
             "expectedHostKey": "expectedHostKey-x",
             "fixes": [
               {
@@ -1189,6 +1190,7 @@
                 "label": "label-x"
               }
             ],
+            "linked": true,
             "name": "name-x",
             "offline": true,
             "offlineSaid": "offlineSaid-x",
@@ -1218,9 +1220,10 @@
       }
     },
     "machine-wake": {
-      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}",
+      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}",
       "sample": {
         "detail": "detail-x",
+        "dot": "up",
         "expectedHostKey": "expectedHostKey-x",
         "fixes": [
           {
@@ -1228,6 +1231,7 @@
             "label": "label-x"
           }
         ],
+        "linked": true,
         "name": "name-x",
         "offline": true,
         "offlineSaid": "offlineSaid-x",
