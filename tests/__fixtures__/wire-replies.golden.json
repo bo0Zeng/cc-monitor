@@ -1,7 +1,7 @@
 {
   "cases": {
     "accounts-list": {
-      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
+      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"kindLine\":\"kindLine-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
       "sample": {
         "accounts": [
           {
@@ -20,6 +20,7 @@
             "exists": true,
             "isDefault": true,
             "keyMasked": "keyMasked-x",
+            "kindLine": "kindLine-x",
             "label": "label-x",
             "loggedIn": true,
             "login": true,
@@ -179,19 +180,25 @@
       }
     },
     "bookmarks-edit": {
-      "rust": "{\"dirs\":[\"dirs-x\"]}",
+      "rust": "{\"dirs\":[\"dirs-x\"],\"here\":{\"k\":7}}",
       "sample": {
         "dirs": [
           "dirs-x"
-        ]
+        ],
+        "here": {
+          "k": 7
+        }
       }
     },
     "bookmarks-read": {
-      "rust": "{\"dirs\":[\"dirs-x\"]}",
+      "rust": "{\"dirs\":[\"dirs-x\"],\"here\":{\"k\":7}}",
       "sample": {
         "dirs": [
           "dirs-x"
-        ]
+        ],
+        "here": {
+          "k": 7
+        }
       }
     },
     "deploy-install": {
@@ -694,6 +701,7 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
+                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -713,7 +721,7 @@
       }
     },
     "history-list": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"forkedFromMessageUuid\":\"forkedFromMessageUuid-x\",\"forkedFrom\":{\"label\":\"label-x\"},\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"managed\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"everywhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"lastActivity\":7,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
       "sample": {
         "head": {
           "info": {
@@ -764,7 +772,7 @@
               "can": {
                 "attach": {
                   "can": "yes",
-                  "from": "elsewhere"
+                  "from": "everywhere"
                 },
                 "close": {
                   "can": "quiet"
@@ -786,14 +794,14 @@
                 },
                 "say": {
                   "can": "yes",
-                  "hint": "发消息…"
+                  "hint": "hint-x"
                 },
                 "stop": {
                   "can": "yes"
                 },
                 "term": {
                   "can": "yes",
-                  "host": "tmux"
+                  "host": "managed"
                 }
               },
               "dot": "running",
@@ -934,6 +942,7 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
+                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -950,7 +959,7 @@
       }
     },
     "history-search": {
-      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"tsMs\":7,\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"forkedFrom\":{\"label\":\"label-x\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
+      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"tsMs\":7,\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"forkedFrom\":{\"label\":\"label-x\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"managed\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"everywhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
       "sample": {
         "sessions": [
           {
@@ -967,7 +976,7 @@
               "can": {
                 "attach": {
                   "can": "yes",
-                  "from": "elsewhere"
+                  "from": "everywhere"
                 },
                 "close": {
                   "can": "quiet"
@@ -989,14 +998,14 @@
                 },
                 "say": {
                   "can": "yes",
-                  "hint": "发消息…"
+                  "hint": "hint-x"
                 },
                 "stop": {
                   "can": "yes"
                 },
                 "term": {
                   "can": "yes",
-                  "host": "tmux"
+                  "host": "managed"
                 }
               },
               "dot": "running",
@@ -1152,6 +1161,7 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
+                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -1165,13 +1175,14 @@
             }
           }
         ],
+        "said": "said-x",
         "split_at": 7,
         "tail_from": 7,
         "total": 7
       }
     },
     "machine-read": {
-      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\"}}",
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\"}}",
       "sample": {
         "empty": {
           "count": "count-x",
@@ -1198,6 +1209,10 @@
             "seenHostKey": "seenHostKey-x",
             "stage": "deploy",
             "state": "up",
+            "strip": {
+              "progress": true,
+              "tone": "plain"
+            },
             "version": "version-x",
             "versionRelation": "same",
             "word": "word-x"
@@ -1213,7 +1228,7 @@
       }
     },
     "machine-wake": {
-      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}",
+      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}",
       "sample": {
         "detail": "detail-x",
         "expectedHostKey": "expectedHostKey-x",
@@ -1233,15 +1248,20 @@
         "seenHostKey": "seenHostKey-x",
         "stage": "deploy",
         "state": "up",
+        "strip": {
+          "progress": true,
+          "tone": "plain"
+        },
         "version": "version-x",
         "versionRelation": "same",
         "word": "word-x"
       }
     },
     "needs-answer": {
-      "rust": "{\"result\":\"answered\"}",
+      "rust": "{\"result\":\"answered\",\"said\":\"said-x\"}",
       "sample": {
-        "result": "answered"
+        "result": "answered",
+        "said": "said-x"
       }
     },
     "plan-files": {
@@ -1515,8 +1535,7 @@
             ],
             "rev": "rev-x",
             "summary": "summary-x",
-            "tzUnknown": true,
-            "wordsBad": true
+            "tzUnknown": true
           }
         ]
       }
@@ -1565,7 +1584,6 @@
       "sample": {
         "decision": {
           "fromTemp": true,
-          "holdAccount": "holdAccount-x",
           "holdUntil": 7,
           "nextNode": 7,
           "order": [
@@ -1621,7 +1639,6 @@
           "uses": [
             {
               "account": "account-x",
-              "capUnknown": true,
               "from": 7,
               "fromTemp": true,
               "skipped": [
@@ -1644,7 +1661,7 @@
       "sample": {}
     },
     "rotation-view": {
-      "rust": "{\"now\":7,\"nowText\":\"nowText-x\",\"title\":\"title-x\",\"strategy\":{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"inUse\":[\"inUse-x\"],\"forNew\":true,\"tzUnknown\":true,\"hand\":true},\"board\":{\"all\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\"}],\"rows\":[{\"account\":\"account-x\",\"row\":7,\"line\":\"line-x\",\"hover\":\"hover-x\",\"cells\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\"}],\"rules\":[\"rules-x\"],\"marks\":[{\"glyph\":\"glyph-x\",\"dashed\":true,\"tip\":\"tip-x\"}]}]},\"start\":\"start-x\",\"current\":\"current-x\",\"lineup\":[{\"account\":\"account-x\",\"group\":\"use\",\"state\":\"state-x\",\"why\":\"why-x\",\"movable\":true,\"stay\":\"stay-x\"}],\"manual\":true,\"off\":[\"off-x\"],\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"seenAt\":7,\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"},\"plate\":{\"color\":7,\"label\":\"label-x\",\"text\":\"text-x\"},\"full\":[\"full-x\"]}],\"listed\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]},\"log\":[{\"at\":7,\"from\":\"from-x\",\"to\":\"to-x\",\"cause\":{\"k\":\"order\"},\"why\":\"why-x\",\"because\":\"because-x\"}],\"hints\":[{\"hint\":{\"k\":\"hold\",\"until\":7,\"account\":\"account-x\",\"untilText\":\"untilText-x\"},\"tone\":\"plain\",\"text\":\"text-x\",\"detail\":\"detail-x\"}]}",
+      "rust": "{\"now\":7,\"nowText\":\"nowText-x\",\"title\":\"title-x\",\"strategy\":{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"inUse\":[\"inUse-x\"],\"forNew\":true,\"tzUnknown\":true,\"hand\":true},\"board\":{\"all\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rows\":[{\"account\":\"account-x\",\"row\":7,\"line\":\"line-x\",\"hover\":\"hover-x\",\"cells\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rules\":[\"rules-x\"],\"marks\":[{\"glyph\":\"glyph-x\",\"dashed\":true,\"tip\":\"tip-x\"}],\"missing\":true}]},\"start\":\"start-x\",\"current\":\"current-x\",\"lineup\":[{\"account\":\"account-x\",\"group\":\"use\",\"state\":\"state-x\",\"why\":\"why-x\",\"movable\":true,\"stay\":\"stay-x\"}],\"manual\":true,\"off\":[\"off-x\"],\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"resetsText\":\"resetsText-x\",\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"seenAt\":7,\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"},\"plate\":{\"color\":7,\"label\":\"label-x\",\"text\":\"text-x\"},\"full\":[\"full-x\"]}],\"listed\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]},\"log\":[{\"at\":7,\"from\":\"from-x\",\"to\":\"to-x\",\"cause\":{\"k\":\"order\"},\"why\":\"why-x\",\"saw\":{\"accounts\":[{\"id\":\"id-x\",\"used5h\":1.5,\"resets5h\":7,\"rate5h\":1.5,\"others\":1.5}],\"pace\":1.5,\"spread\":1.5,\"context\":7},\"because\":\"because-x\"}],\"hints\":[{\"hint\":{\"k\":\"hold\",\"until\":7,\"account\":\"account-x\",\"untilText\":\"untilText-x\"},\"tone\":\"plain\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"can\":{\"reorder\":true,\"off\":true,\"edit\":true}}",
       "sample": {
         "accounts": [
           {
@@ -1703,6 +1720,7 @@
               "min": 1.5,
               "nullable": "nullable-x",
               "num": 1.5,
+              "reset": true,
               "same": "same-x",
               "segs": [
                 {
@@ -1741,6 +1759,7 @@
                   "min": 1.5,
                   "nullable": "nullable-x",
                   "num": 1.5,
+                  "reset": true,
                   "same": "same-x",
                   "segs": [
                     {
@@ -1767,6 +1786,7 @@
                   "tip": "tip-x"
                 }
               ],
+              "missing": true,
               "row": 7,
               "rules": [
                 "rules-x"
@@ -1774,10 +1794,14 @@
             }
           ]
         },
+        "can": {
+          "edit": true,
+          "off": true,
+          "reorder": true
+        },
         "current": "current-x",
         "decision": {
           "fromTemp": true,
-          "holdAccount": "holdAccount-x",
           "holdUntil": 7,
           "nextNode": 7,
           "order": [
@@ -1830,6 +1854,20 @@
               "k": "order"
             },
             "from": "from-x",
+            "saw": {
+              "accounts": [
+                {
+                  "id": "id-x",
+                  "others": 1.5,
+                  "rate5h": 1.5,
+                  "resets5h": 7,
+                  "used5h": 1.5
+                }
+              ],
+              "context": 7,
+              "pace": 1.5,
+              "spread": 1.5
+            },
             "to": "to-x",
             "why": "why-x"
           }
@@ -1855,8 +1893,7 @@
           ],
           "rev": "rev-x",
           "summary": "summary-x",
-          "tzUnknown": true,
-          "wordsBad": true
+          "tzUnknown": true
         },
         "timeline": {
           "lanes": [
@@ -1890,7 +1927,6 @@
           "uses": [
             {
               "account": "account-x",
-              "capUnknown": true,
               "from": 7,
               "fromTemp": true,
               "skipped": [
@@ -1955,7 +1991,6 @@
             "confirm": true,
             "confirmText": "confirmText-x",
             "name": "name-x",
-            "needsArgs": true,
             "needsArgsText": "needsArgsText-x",
             "scope": "builtin",
             "scopeText": "scopeText-x",
@@ -1989,7 +2024,7 @@
       }
     },
     "session-open": {
-      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"host\":null,\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\",\"host\":null}}",
+      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"host\":\"tmux\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"note\":\"note-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\",\"host\":\"tmux\"}}",
       "sample": {
         "account": {
           "configDir": "configDir-x",
@@ -2002,10 +2037,12 @@
             "kind": "sid",
             "sid": "sid-x"
           },
+          "host": "tmux",
           "session": "session-x",
           "since": 7
         },
         "cwd": "cwd-x",
+        "host": "tmux",
         "landed": "started",
         "line": "line-x",
         "note": "note-x",
@@ -2013,8 +2050,8 @@
           "acts": [
             "retry"
           ],
+          "note": "note-x",
           "result": "delivered",
-          "resumed": true,
           "said": "said-x",
           "screen": "screen-x",
           "why": "not_yours"
@@ -2024,7 +2061,7 @@
       }
     },
     "session-open-facts": {
-      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"hosts\":[\"tmux\"],\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}]}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
+      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"hosts\":[\"managed\"],\"run\":\"managed\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}]}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
       "sample": {
         "agents": [
           {
@@ -2040,10 +2077,6 @@
                 "value": "value-x"
               }
             ],
-            "permissionDefault": {
-              "text": "text-x",
-              "value": "value-x"
-            },
             "permissionModes": [
               {
                 "text": "text-x",
@@ -2079,7 +2112,7 @@
           "turn": 7
         },
         "hosts": [
-          "tmux"
+          "managed"
         ],
         "recent": [
           {
@@ -2089,7 +2122,7 @@
             "shown": "shown-x"
           }
         ],
-        "run": "tmux"
+        "run": "managed"
       }
     },
     "session-permission": {
@@ -2191,16 +2224,23 @@
       }
     },
     "sessions-needs": {
-      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"tmux\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"elsewhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"answered\":[{\"sid\":\"sid-x\",\"said\":\"said-x\"}],\"manualUnreadable\":\"manualUnreadable-x\"}",
+      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"clock\":{\"text\":\"text-x\",\"head\":\"head-x\"},\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"host\":\"managed\"},\"reattach\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\",\"from\":\"everywhere\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"ended\":[{\"sid\":\"sid-x\",\"end\":{\"said\":\"said-x\",\"stays\":true}}],\"manualUnreadable\":\"manualUnreadable-x\"}",
       "sample": {
-        "answered": [
+        "ended": [
           {
-            "said": "said-x",
+            "end": {
+              "said": "said-x",
+              "stays": true
+            },
             "sid": "sid-x"
           }
         ],
         "items": [
           {
+            "clock": {
+              "head": "head-x",
+              "text": "text-x"
+            },
             "kind": "session",
             "rank": 7,
             "session": {
@@ -2209,7 +2249,7 @@
                 "can": {
                   "attach": {
                     "can": "yes",
-                    "from": "elsewhere"
+                    "from": "everywhere"
                   },
                   "close": {
                     "can": "quiet"
@@ -2231,14 +2271,14 @@
                   },
                   "say": {
                     "can": "yes",
-                    "hint": "发消息…"
+                    "hint": "hint-x"
                   },
                   "stop": {
                     "can": "yes"
                   },
                   "term": {
                     "can": "yes",
-                    "host": "tmux"
+                    "host": "managed"
                   }
                 },
                 "dot": "running",
@@ -2318,13 +2358,13 @@
       }
     },
     "terminal-input": {
-      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]}",
+      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"note\":\"note-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]}",
       "sample": {
         "acts": [
           "retry"
         ],
+        "note": "note-x",
         "result": "delivered",
-        "resumed": true,
         "said": "said-x",
         "screen": "screen-x",
         "why": "not_yours"

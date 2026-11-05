@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.claude.link.canStop
 import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.fileNotice
 import com.ccmonitor.mobile.core.claude.link.generation
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -285,17 +286,14 @@ class ChatSession(
             queue.watch(queueMoved) { sid }
             // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
             scope.launch { combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } }.collect { off -> _state.value = _state.value.copy(offline = off) } }
-            // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）；名单问一次（断着时漏了的推送补上）。
+            // 输入队名单：接上的每一回问一次（核心那一格，断着时漏了的推送补上）。
+            scope.launch { link.seen.collect { sid?.let { s -> queue.read(s) } } }
+            // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）。
             scope.launch {
                 link.state
                     .map { it is LinkLine.Up }
                     .distinctUntilChanged()
-                    .collect { up ->
-                        if (up) {
-                            resend()
-                            sid?.let { queue.read(it) }
-                        }
-                    }
+                    .collect { up -> if (up) resend() }
             }
         }
         val s = sid ?: return
