@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.data.crypto.SshWire
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
 import com.ccmonitor.mobile.core.wire.gen.CaptureOpts
 import com.ccmonitor.mobile.core.wire.gen.Captured
 import com.ccmonitor.mobile.core.wire.gen.DialAck
@@ -133,7 +134,7 @@ class RustTransport(
                 // 收全的那一行认不出 ⇒ 两端契约对不上（不补默认、不当成功）。
                 val got = Wire.read<Captured>(line) ?: throw IOException(copyText("beServer.words.cantConnect"))
                 ExecResult(
-                    exitStatus = got.exitStatus,
+                    exitStatus = (got.ended as? CaptureEnd.Exited)?.code,
                     stdout = got.stdout,
                     stderrTail = got.stderr.takeLast(STDERR_TAIL),
                 )

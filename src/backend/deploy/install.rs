@@ -152,7 +152,7 @@ async fn run_staged(
             .next()
             .and_then(|l| serde_json::from_str::<Value>(l).ok())
     };
-    if got.exit_status == Some(0) {
+    if got.exit_code() == Some(0) {
         if let Some(v) = line(&got.stdout) {
             return Ok(v);
         }

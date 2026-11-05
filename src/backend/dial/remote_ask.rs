@@ -23,7 +23,7 @@
 //! 另记一样：对面的资产目录 id（按名字，只在本进程里，后端重启就空；`assets-sync` 拉过那台才有）。
 
 use crate::common::said::Said;
-use cmd_wire::dial::OLD_BACKEND_MARKER;
+use cmd_wire::dial::{CaptureEnd, OLD_BACKEND_MARKER};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -547,6 +547,14 @@ pub async fn capture_full(dial: &Value, command: String) -> Result<crate::dial::
 /// ssh 自己出错（没连上 · 认证没过 · 中途断开）的退出码（`man ssh`：「exits with 255 if an error occurred」）。
 const SSH_OWN_FAILURE: u32 = 255;
 
+/// 「连接失败 · 链路中途中断」那一句。
+fn hop_dropped() -> String {
+    copy_text(
+        "beRemoteAsk.run.unreachable",
+        &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
+    )
+}
+
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
 /// 非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
 fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
@@ -558,8 +566,22 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
             copy_core::backend_old(&copy_core::peer_machine()),
         ));
     }
-    if got.exit_status != Some(0) {
+    if got.exit_code() != Some(0) {
         let stderr = got.stderr.as_str();
+        // 照通道怎么收尾先说的那一句（信封之后、原样 stderr 之前）。
+        let by_end = match &got.ended {
+            // 这一跳的连接断了，不是那台的命令失败：拨号核心没等到 Close 链路就没了；
+            // 或 ssh 自己出错退 255、那台一个字不回（没连上 · 中途断开）。
+            CaptureEnd::Dropped => Some(hop_dropped()),
+            CaptureEnd::Exited { code: SSH_OWN_FAILURE } if stderr.trim().is_empty() => {
+                Some(hop_dropped())
+            }
+            // 那台的进程被信号杀掉 ⇒ 照信号说。
+            CaptureEnd::Signaled { signal } => {
+                Some(copy_text("beRemoteAsk.run.signaled", &[("sig", signal)]))
+            }
+            CaptureEnd::Exited { .. } | CaptureEnd::ClosedBare => None,
+        };
         // 那台 CLI 面的失败信封（`stream::cli::emit_err` 那一份）：读得出来就把码与原话都取出来。
         #[derive(serde::Deserialize)]
         struct Envelope {
@@ -569,13 +591,9 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
         // 那台答了一个错误 ⇒ 就说它那一句（码随 `Said.code` 走，不进话里）；不是信封的原样 stderr 才加一个短头。
         let envelope = serde_json::from_str::<Envelope>(stderr.trim()).ok();
         let code = envelope.as_ref().and_then(|e| e.code.clone());
-        let message = match envelope.and_then(|e| e.message) {
-            Some(m) if !m.trim().is_empty() => m,
-            // ssh 自己出错退 255、那台一个字不回 ⇒ 是这一跳的连接断了（没连上 · 中途断开），不是那台的命令失败。
-            _ if stderr.trim().is_empty() && got.exit_status == Some(SSH_OWN_FAILURE) => copy_text(
-                "beRemoteAsk.run.unreachable",
-                &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
-            ),
+        let message = match (envelope.and_then(|e| e.message), by_end) {
+            (Some(m), _) if !m.trim().is_empty() => m,
+            (_, Some(said)) => said,
             _ if stderr.trim().is_empty() => copy_text("beRemoteAsk.run.failedNoReason", &[]),
             // 不是信封的原样 stderr：句子只说「后端报错」，那台的原话记一行日志（这一跳的失败形没有原话位）。
             _ => crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(

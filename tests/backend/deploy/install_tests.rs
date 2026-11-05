@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use deploy_contract::DeployAction;
 use ssh_dial::sftp::rig;
 use ssh_dial::sftp::Session;
+use cmd_wire::dial::CaptureEnd;
 use ssh_dial::Captured;
 
 use crate::{Facing, Fut, Place, Slot, Step};
@@ -82,7 +83,7 @@ impl Facing for Rig {
             Captured {
                 stdout: self.uname.clone(),
                 stderr: String::new(),
-                exit_status: Some(0),
+                ended: CaptureEnd::Exited { code: 0 },
             }
         } else if command
             == deploy_contract::stamp_scan_cmd(
@@ -101,12 +102,12 @@ impl Facing for Rig {
                         deploy_contract::STAMP_CLOSE
                     ),
                     stderr: String::new(),
-                    exit_status: Some(0),
+                    ended: CaptureEnd::Exited { code: 0 },
                 },
                 _ => Captured {
                     stdout: String::new(),
                     stderr: String::new(),
-                    exit_status: Some(1),
+                    ended: CaptureEnd::Exited { code: 1 },
                 },
             }
         } else if let Some(name) = command
@@ -126,13 +127,13 @@ impl Facing for Rig {
                     Captured {
                         stdout: "{\"placed\":true,\"build_id\":\"x\"}\n".into(),
                         stderr: String::new(),
-                        exit_status: Some(0),
+                        ended: CaptureEnd::Exited { code: 0 },
                     }
                 }
                 None => Captured {
                     stdout: String::new(),
                     stderr: "{\"code\":\"place_failed\",\"message\":\"不在\"}\n".into(),
-                    exit_status: Some(2),
+                    ended: CaptureEnd::Exited { code: 2 },
                 },
             }
         } else if let Some(name) = command
@@ -151,13 +152,13 @@ impl Facing for Rig {
                     Captured {
                         stdout: format!("{{\"removed\":{removed}}}\n"),
                         stderr: String::new(),
-                        exit_status: Some(0),
+                        ended: CaptureEnd::Exited { code: 0 },
                     }
                 }
                 None => Captured {
                     stdout: String::new(),
                     stderr: "{\"code\":\"place_failed\",\"message\":\"不在\"}\n".into(),
-                    exit_status: Some(2),
+                    ended: CaptureEnd::Exited { code: 2 },
                 },
             }
         } else {
