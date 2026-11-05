@@ -54,6 +54,18 @@ export class Refuse {
   ) {}
 }
 
+/** 机器表里的一台（形状照本机后端 `machines.json` 的 `hosts[]`）。 */
+export interface HostRow {
+  label: string;
+  host: string;
+  port?: number;
+  user: string;
+  keyPath: string;
+  addresses: string[];
+  jump: string;
+  connect: boolean;
+}
+
 export interface World {
   /** 每台机器家目录里的原始文件（真后端读它们答 `REAL_OPS` 那几条；`../disk`）。缺 ⇒ 空家目录。 */
   disk: Record<string, import("../disk").MachineDisk>;
@@ -85,6 +97,9 @@ export interface World {
   installingMachines?: string[];
   /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];
+  /** 本机后端那张机器表（`diskOf` 写成本机的 `~/.cc-monitor/machines.json` 与 `known_hosts`）；空 ⇒ 不写。 */
+  hosts: HostRow[];
+  /** 界面的 `config.json`（假壳 `load_config` 原样交给界面）：只放界面登记过的顶层键，机器表不住这里。 */
   config: Record<string, unknown>;
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */

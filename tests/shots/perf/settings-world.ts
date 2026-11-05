@@ -6,7 +6,7 @@
  */
 import { putAccounts, putQuota, putRotation } from "../disk";
 import type { OpHandler, World } from "../fake/types";
-import { defaultConfig, defaultDisk, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
+import { defaultDisk, defaultHosts, defaultWorld, LOCAL, session, sidOf } from "../fake/world";
 import { Convo } from "../fake/records";
 
 /** 规模表（改它就改整个世界的量级）。 */
@@ -29,9 +29,8 @@ export function settingsPerfWorld(): World {
   const remotes = remoteNames();
   const accts = acctNames();
   w.machines = [LOCAL, ...remotes];
-  const base = defaultConfig() as { remote: { hosts: Record<string, unknown>[] } };
-  const tmpl = base.remote.hosts[0];
-  w.config = { ...w.config, remote: { hosts: remotes.map((label, i) => ({ ...tmpl, label, host: `10.0.1.${11 + i}` })) } };
+  const tmpl = defaultHosts()[0];
+  w.hosts = remotes.map((label, i) => ({ ...tmpl, label, host: `10.0.1.${11 + i}` }));
   w.sessions = Array.from({ length: SETTINGS_SCALE.sessions }, (_, k) => {
     const n = 0x200 + k;
     const origin = w.machines[k % w.machines.length];

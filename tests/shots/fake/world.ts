@@ -2,7 +2,7 @@
  * 默认的合成世界：本机 ＋ 三台远端、十来个会话，覆盖卡片的各种样子。场景在它上面改。
  */
 import { Convo } from "./records";
-import type { SessionSpec, World } from "./types";
+import type { HostRow, SessionSpec, World } from "./types";
 import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
 import { putHistory } from "./history";
@@ -212,7 +212,9 @@ export function defaultWorld(): World {
     unseenMachines: [],
     closedMachines: [],
     staleMachines: [],
-    config: defaultConfig(),
+    hosts: defaultHosts(),
+    // 界面的 `config.json` 缺省一个键都不放：机器表是本机后端的（`hosts`），不是界面的配置。
+    config: {},
     sessions,
     ops: { ...defaultOps(), ...machineOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
@@ -263,8 +265,8 @@ export function diskOf(w: World): Record<string, MachineDisk> {
       const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
       if (shown) shown.windows = 1;
       if (m !== LOCAL) return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
-      // 本机后端那张机器表（场景那份 `config.remote.hosts`）。
-      const hosts = ((w.config.remote ?? {}) as { hosts?: { label: string; host: string; port?: number }[] }).hosts ?? [];
+      // 本机后端那张机器表（场景那份 `world.hosts`）。
+      const hosts = w.hosts;
       if (hosts.length > 0) files[".cc-monitor/machines.json"] = JSON.stringify({ version: 1, hosts }, null, 2) + "\n";
       // 一般只写地址不带口（＝ 22 口那一条）：对不上表里那几台的口，真拨号照首见收下假 sshd 那把钥匙，不撞这几把合成的。
       // 指纹变了的那几台记在它那个口上（`[地址]:口`）：真拨号见假 sshd 出示的那把与库里这一把对不上。
@@ -331,19 +333,16 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
   );
 }
 
-export function defaultConfig(): Record<string, unknown> {
-  return {
-    remote: {
-      hosts: REMOTES.map((label) => ({
-        label,
-        host: HOST,
-        port: portOf(label),
-        user: "user",
-        keyPath: "~/.ssh/id_ed25519",
-        addresses: [],
-        jump: "",
-        connect: true,
-      })),
-    },
-  };
+/** 本机后端那张机器表：每台远端一行，地址是本机沙箱里那个假 ssh 的一个口。 */
+export function defaultHosts(): HostRow[] {
+  return REMOTES.map((label) => ({
+    label,
+    host: HOST,
+    port: portOf(label),
+    user: "user",
+    keyPath: "~/.ssh/id_ed25519",
+    addresses: [],
+    jump: "",
+    connect: true,
+  }));
 }

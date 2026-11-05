@@ -44,6 +44,8 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - Edit a sent message in place, then rewind and resend using the rewind options the machine offers
 - Start a group of sessions: save a group and start it in one click, filling in whatever is missing; rename a tab in place (`F2`)
 
+![Start a group: the "⌄" at the top of the sidebar lists saved groups; hover one to see which directories it starts](docs/screenshots/group-start.png)
+
 ### Terminals
 - Hosted terminals: sessions run by default in a terminal hosted by cc-monitor and survive closing the window; take over input · hand back · end, and a terminal window attached to it can still type
 - Terminal view: every machine's terminals, grouped by machine; pick one to see it drawn; any terminal can also open in its own window
@@ -54,7 +56,13 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - Fork from any turn: the original stays untouched and the new session starts right away
 - Star, rename, hide
 
-![History: search sessions across machines](docs/screenshots/history.png)
+![History: sessions from every machine by time; open one to read it on the right](docs/screenshots/history.png)
+
+### Plan page
+- Reads a planned-build plan graph: outline, block table (can be viewed by group), cell detail; rules show which cells they cover, and evidence such as acceptance records has a look of its own
+- "Ask the graph…" in a cell's detail header opens the ask box; "New plan…" sits in the page header; the group menu jumps to the blocks that group has taken on
+
+![Plan page: the plan graph's outline on the left, scopes and top-level progress on the right](docs/screenshots/plan.png)
 
 ### Machines
 - Add SSH machines (or import from `~/.ssh/config`), with jump hosts and automatic choice of the fastest address
@@ -62,12 +70,12 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - Start remote sessions (in a hosted terminal or tmux), open a terminal, forward ports
 - Every connection lists readings for each hop and marks hops through a jump host or a proxy; typing a machine name in the command palette goes straight to what can be done on it
 - Machine strip at the bottom of the sidebar: one line per machine that is not connected, with the reason and the first fix
-- "Diagnostics" lists what each machine is missing; "Footprint" lists everything cc-monitor wrote on that machine and whether it can be undone
-- Local paths listed in Settings can be shown in the system file manager; a remote machine's footprint opens straight in the file window
+- Settings → "Files and data": "To do" lists what each machine is missing; "Files cc-monitor placed" lists, machine by machine, what cc-monitor put there and whether it can be recreated if missing
+- Local paths listed in Settings can be shown in the system file manager; files placed on a remote machine open straight in the file window
 
 ![Settings → Machines](docs/screenshots/machines.png)
 
-![A machine's Footprint: every file cc-monitor wrote on that machine](docs/screenshots/footprint.png)
+![Files and data: the files cc-monitor placed on devbox](docs/screenshots/footprint.png)
 
 ### File manager
 - A separate window for files on a remote machine (a local session's working directory opens in the system file manager)
@@ -91,7 +99,8 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - A mailbox with a doorbell between sessions (Claude Code · Codex): one entry point, `cc-bus <verb>`; the inbox and the delivery rules live in the backend, messages only reach sessions in the same tab group, and they can cross machines
 
 ### Phone app (Android)
-- Connects to the same machines: read sessions, keep chatting, open a terminal, manage files (with multi-select)
+- Connects to the same machines: read sessions, keep chatting, open a terminal, manage files (with multi-select, and search by file name or content)
+- The chat screen's top bar shows the session name and "machine · directory"; the session info drawer shows where it runs, which account it uses, who is writing and what is running in the background
 - Approve steps, answer questions and approve plans on the phone; see each account's usage and change rotation
 - Overview: one list per machine of everything waiting on a person (sessions waiting · plan items to review · accounts and MCP servers that need a sign-in), one tap away from the top-right of the chat screen
 - Install or upgrade the backend on a machine; SSH runs on the same core as the desktop (jump hosts · passwords · host key checks)
@@ -100,6 +109,7 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 
 ### Assets
 - Push and pull skills and MCP servers between machines; review the differences first, and uninstall what was installed
+- The extensions page recognises planned-build and code-picture
 
 ### Aliases and `ccm`
 - The machine page's Terminal tab first shows whether this machine's shell is hooked up; aliases are listed in two groups (accounts, others), added in place and saved in one step (bash, zsh, PowerShell)
@@ -234,7 +244,7 @@ The "Data locations" page in Settings shows the full path of every file.
 - Windows has no tmux: sessions run in hosted terminals there (they can still go to the background, be re-attached, be viewed and be typed into), and the plan page's "Ask the graph…" is not available on a Windows machine.
 - macOS is not supported, neither as the local machine nor as a remote one; Linux arm64 works as a remote machine only.
 - Multi-account on Windows needs permission to create symbolic links: turn on Developer Mode (Settings → System → For developers) or run cc-monitor as administrator; without either the account store cannot be set up, and the accounts page says so.
-- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward, terminals opened as administrator).
+- The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, hosted terminals, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward, terminals opened as administrator).
 - ↗ only brings the window forward (and says why) when the tab name does not follow the program title (renamed by hand, or "suppress title changes" is set) or the tabs cannot be read; terminals connected through a jump host or port translation cannot be matched.
 - The signed Android app ships with each Release (`cc-monitor-<version>.apk`) under the same version number as the desktop; the backend on a machine it connects to must be the same version, otherwise it says the machine needs an update and installs only when asked.
 - Sessions started through a custom launcher (`--launcher` and the like) can answer approvals in the message stream on Linux only; on Windows they still answer in the terminal.

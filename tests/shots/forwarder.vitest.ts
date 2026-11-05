@@ -220,7 +220,7 @@ describe("交本机后端的机器表", () => {
   it("从没见过的那台照样在表里、停用开关原样带过去；问得到的那几台拨的就是假 ssh 听的口", () => {
     const w = defaultWorld();
     w.unseenMachines = ["gpu-01"];
-    for (const h of (w.config.remote as { hosts: Row[] }).hosts) if (h.label === "gpu-01") h.connect = false;
+    for (const h of w.hosts) if (h.label === "gpu-01") h.connect = false;
     const { hosts, peers } = tableOf(w);
     expect(hosts.map((h) => h.label)).toEqual(REMOTES);
     expect(hosts.find((h) => h.label === "gpu-01")?.connect).toBe(false);
@@ -247,7 +247,8 @@ describe("交本机后端的机器表", () => {
       const w = s.world();
       try {
         const { hosts, peers } = tableOf(w);
-        const labels = ((w.config.remote as { hosts?: Row[] } | undefined)?.hosts ?? []).map((h) => h.label);
+        const labels = w.hosts.map((h) => h.label);
+        if (Object.keys(w.config).includes("remote")) bad.push(`${s.id}：config.json 里又写了机器表（界面不认 remote 这一格）`);
         if (hosts.map((h) => h.label).join() !== labels.join()) bad.push(`${s.id}：表里 ${hosts.map((h) => h.label).join()}，场景写的 ${labels.join()}`);
         if (new Set(peers.map((p) => p.port)).size !== peers.length) bad.push(`${s.id}：两台问得到的同一个口`);
       } catch (e) {

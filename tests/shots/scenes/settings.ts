@@ -206,8 +206,7 @@ function troubleWorld(): World {
 
 function disabledWorld(): World {
   const w = defaultWorld();
-  const hosts = (w.config.remote as { hosts: { label: string; connect: boolean }[] }).hosts;
-  for (const h of hosts) if (h.label === "gpu-01") h.connect = false;
+  for (const h of w.hosts) if (h.label === "gpu-01") h.connect = false;
   w.unseenMachines = ["gpu-01"];
   return w;
 }
@@ -216,6 +215,7 @@ function freshWorld(): World {
   const w = defaultWorld();
   w.machines = ["<local>"];
   w.sessions = w.sessions.filter((s) => s.origin === "<local>");
+  w.hosts = [];
   w.config = {};
   return w;
 }
