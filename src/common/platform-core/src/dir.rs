@@ -130,6 +130,22 @@ pub fn hold(dir: &Path) -> Result<DirLock, HoldError> {
     const WAIT_OBJECT_0: u32 = 0;
     /// 上一个持有者没放就没了 ⇒ 这把锁照样归我们（它那一趟没做完，但盘上仍是原子换之前或之后的某一份）。
     const WAIT_ABANDONED: u32 = 0x80;
+    // 锁是按路径起名的互斥量、不打开目录本身 ⇒ 目录在不在先看一眼，与 unix 那一份同一结局（目录不在 ⇒ 打开那一步就失败）。
+    match std::fs::metadata(dir) {
+        Ok(m) if m.is_dir() => {}
+        Ok(_) => {
+            return Err(HoldError {
+                stage: LockStage::Open,
+                err: io::Error::other("不是目录"),
+            })
+        }
+        Err(err) => {
+            return Err(HoldError {
+                stage: LockStage::Open,
+                err,
+            })
+        }
+    }
     let mut handle = std::ptr::null_mut();
     for ns in ["Global", "Local"] {
         let name = mutex_name(ns, dir);

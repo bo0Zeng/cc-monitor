@@ -171,6 +171,7 @@ import {
   withSessionReads,
   recordReadCalls,
   recordReadOf,
+  type ChanCallArgs,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -2113,6 +2114,9 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       ["l1", LOCAL],
       ["r1", "devbox"],
     ] as const) {
+      // 建标签页那几下各自起的读（骨架 · 会话事实 …）先落完，量的只是 ↗ 那一下发了什么（慢机器上它们会晚到、混进下面那一段）。
+      answer({ labels: [], chain: CHAIN, tmux: false });
+      for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0));
       mockInvoke.mockReset();
       const placed = { labels: ["600-639150434950992340"], chain: CHAIN, tmux: sid === "r1" };
       answer(placed, () => Promise.resolve({ kind: "switched" }));
@@ -2123,7 +2127,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       ).toEqual([[LOCAL, { machine, sid }]]);
       expect(shellCalls(), sid).toEqual([placed]);
       const others = (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => !(isChanCall(c, a, "session-window") || c === "bring_terminal_to_front"));
-      expect(others.map(([c]) => c), `${sid}：↗ 只该有那一问、那一条壳命令`).toEqual([]);
+      expect(others.map(([c, a]) => (c === "chan_call" ? `chan_call:${(a as ChanCallArgs).op}` : c)), `${sid}：↗ 只该有那一问、那一条壳命令`).toEqual([]);
       expect(pop(), `${sid}：切过去了，不出浮层`).toBeNull();
     }
   });

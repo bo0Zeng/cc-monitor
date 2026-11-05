@@ -549,10 +549,13 @@ fn a_body_is_allocated_once_at_its_declared_length() {
 }
 
 /// 子进程里那一半的记号：父进程起同一个测试二进制、只跑本条，带上它。
+#[cfg(unix)]
 const FD_CHILD: &str = "CCM_SERVE_ONE_FD_CHILD";
 
 /// ★ 连接线程一上来要 `dup` 下游那条（读写各拿一份）；那一刻 fd 用尽 ⇒ 下游照样拿到 503（原因头 `busy`），
 /// 不是一个没有任何 HTTP 回应的 FIN。fd 用尽只在子进程里造（占满本进程的 fd 会连累同一进程里别的判据）。
+/// 只在 unix：fd 是靠反复打开 `/dev/null` 占满的；Windows 没有那份文件、句柄也没有这一道每进程上限可占。
+#[cfg(unix)]
 #[test]
 fn a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it() {
     if std::env::var_os(FD_CHILD).is_none() {

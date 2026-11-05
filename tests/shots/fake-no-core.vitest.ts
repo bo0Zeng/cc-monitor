@@ -88,7 +88,8 @@ const files = [
   ...unitFakeDirs.flatMap((d) => filePaths(d, { ext: "-fake.ts", shallow: true }).map((f) => path.resolve(repo, f))),
 ];
 /** 名单里的键：台架那几份写 `fake/` 下的相对路径，界面测试的替身写仓相对路径。 */
-const keyOf = (f: string) => (f.startsWith(fakeDir + path.sep) ? path.relative(fakeDir, f) : path.relative(repo, f));
+// 键一律写 `/`（Windows 上 `path.relative` 交的是 `\`，名单照仓里的写法记）。
+const keyOf = (f: string) => (f.startsWith(fakeDir + path.sep) ? path.relative(fakeDir, f) : path.relative(repo, f)).split(path.sep).join("/");
 
 describe("测试替身不写核心成品", () => {
   it("人群不空：fake/ 下有那几份，核心的键也读到了", () => {
