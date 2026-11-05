@@ -113,12 +113,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.error.reason",
-          "type": "enum"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "{t=reply}.error.status",
           "type": "number"
         },
@@ -307,24 +301,6 @@
           "kind": "value",
           "path": "{t=reply}.steps.*.tool",
           "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=retry}.attempt",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=retry}.max",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=retry}.reason",
-          "type": "enum"
         },
         {
           "frozen": true,
@@ -589,18 +565,6 @@
           "kind": "text",
           "path": "{t=said}.who.pasted[].foldText",
           "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].id",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.who.pasted[].lines",
-          "type": "number"
         },
         {
           "frozen": true,
