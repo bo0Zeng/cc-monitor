@@ -212,7 +212,7 @@ describe("粘贴 · 提交 · 结果照 again", () => {
     const answerAll = async (cmd: string, a: ChanCallArgs & { command?: string }) => {
       if (cmd === "open_terminal_window") {
         terms.push(a.command ?? "");
-        return "opened";
+        return { outcome: "opened" };
       }
       return cmd === "chan_call" ? chanReply(answer[a.op](chanArgsJson(a))) : null;
     };

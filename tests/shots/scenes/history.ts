@@ -180,7 +180,16 @@ export const HISTORY_SCENES: Scene[] = [
         ...w.ops,
         "session-open": (): Opened => ({ landed: "window", session: null, host: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "/home/user/notes", account: null, note: null, prompt: null, arrival: arrivalOf("s3", null) }),
       };
-      w.commands = { ...w.commands, open_local_terminal: () => "noWindow" };
+      // 壳写好的那几句：截图照文案表里壳用的那几格摆。
+      w.commands = {
+        ...w.commands,
+        open_local_terminal: () => ({
+          outcome: "noWindow",
+          said: copyText("rsLaunch.posix.noTerminalWindow"),
+          title: copyText("terminalOpen.noTerminal.title"),
+          detail: copyText("terminalOpen.noTerminal.detail"),
+        }),
+      };
       return w;
     },
   },

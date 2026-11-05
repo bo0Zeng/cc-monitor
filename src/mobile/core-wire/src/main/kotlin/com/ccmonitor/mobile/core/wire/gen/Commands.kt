@@ -2513,6 +2513,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.TerminalHost::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalHost.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalInputReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalInputReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalItem::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalItem.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalOpened::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalOpened.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalOutcome::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalOutcome.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalScreen::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalScreen.ADAPTER,

@@ -15,7 +15,7 @@ use face_core::live::{Board, LiveCards};
 use face_core::record::OrUnread;
 use resident_client::client::CallError;
 use resident_client::feed::{
-    sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
+    sink, Boxed, Config, Event, Feed, Problem, Progress, State, Transport,
 };
 use resident_client::watch::Desk;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -90,19 +90,14 @@ impl Transport for PhoneLink {
         })
     }
 
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, command: String) -> Boxed<'_, Result<ssh_dial::Captured, Problem>> {
         Box::pin(async move {
             let req = self.request(serde_json::json!({
                 "use": "capture",
                 "command": command,
                 "capture": { "max_bytes": CAPTURE_MAX },
             }))?;
-            let got = ssh_dial::uses::capture(&req).await.map_err(problem_of)?;
-            Ok(Exec {
-                exit_status: got.exit_code(),
-                stdout: got.stdout,
-                stderr: got.stderr,
-            })
+            ssh_dial::uses::capture(&req).await.map_err(problem_of)
         })
     }
 

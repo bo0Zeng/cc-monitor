@@ -265,21 +265,45 @@ fn the_terminal_is_picked_by_setting_then_system_exits_then_common_ones() {
     );
 }
 
-/// 「这台找不到终端」是一个**结局**（[`TerminalOpen::NoWindow`]，线上 `"noWindow"`），不是一句话里的标记：
+/// 「这台找不到终端」是一个**结局**（线上 `outcome: "noWindow"`），不是一句话里的标记：
 /// 结局按码说、前端按码判 —— 改了那条文案，判断照样对；前端源码里不许按哪句话找字。
+/// 句子由壳写好带上（没探到 · 设置里指定的不在各一套：一句 · 标题 · 说明），界面照摆、不照结局挑句子。
 #[test]
 fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
+    let words = |said: &str, title: &str, detail: &str| TerminalOpened::NoWindow {
+        said: copy_text(said, &[]),
+        title: copy_text(title, &[]),
+        detail: copy_text(detail, &[]),
+    };
+    assert_eq!(opened_of(TerminalOpen::Opened), TerminalOpened::Opened);
     assert_eq!(
-        serde_json::to_value(TerminalOpen::NoWindow).unwrap(),
-        serde_json::json!("noWindow")
+        opened_of(TerminalOpen::NoWindow),
+        words(
+            "rsLaunch.posix.noTerminalWindow",
+            "terminalOpen.noTerminal.title",
+            "terminalOpen.noTerminal.detail"
+        )
     );
     assert_eq!(
-        serde_json::to_value(TerminalOpen::Opened).unwrap(),
-        serde_json::json!("opened")
+        opened_of(TerminalOpen::SetMissing),
+        words(
+            "rsLaunch.posix.setTerminalMissing",
+            "terminalOpen.setMissing.title",
+            "terminalOpen.setMissing.detail"
+        )
     );
     assert_eq!(
-        serde_json::to_value(TerminalOpen::SetMissing).unwrap(),
-        serde_json::json!("setMissing")
+        serde_json::to_value(opened_of(TerminalOpen::NoWindow)).unwrap(),
+        serde_json::json!({
+            "outcome": "noWindow",
+            "said": copy_text("rsLaunch.posix.noTerminalWindow", &[]),
+            "title": copy_text("terminalOpen.noTerminal.title", &[]),
+            "detail": copy_text("terminalOpen.noTerminal.detail", &[]),
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(opened_of(TerminalOpen::Opened)).unwrap(),
+        serde_json::json!({ "outcome": "opened" })
     );
     const SESSION_OPEN: &str = include_str!("../../../src/frontend/ui/session-open.ts");
     const LOGIN: &str = include_str!("../../../src/frontend/ui/login-drawer.ts");
