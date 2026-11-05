@@ -224,7 +224,6 @@ pub struct VerifyReport {
     /// 没有一条 `fail`。
     pub pass: bool,
     pub fails: u32,
-    pub warns: u32,
     pub checks: Vec<VerifyCheck>,
 }
 
@@ -496,8 +495,6 @@ pub struct SessionAccountReply {
     pub differs: bool,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]
     pub badge: Option<SessionAccountBadge>,
-    /// 那台的号查得了（账号库启用了）。
-    pub queryable: bool,
     /// 上游是自设的（用户自己的网关）⇒ 写好的那一句（额度看不到 · 换号不适用）：这时不画用量、不出徽章，面板照它出一条提示。不是 ⇒ 不上线。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

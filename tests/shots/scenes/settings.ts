@@ -142,7 +142,7 @@ function acctWorld(verifyFail = false): () => World {
       { account: "api", seenAt: now - 120, status: "allowed", windows: [] },
     ]);
     if (verifyFail) {
-      w.ops["accounts-verify"] = () => ({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+      w.ops["accounts-verify"] = () => ({ pass: false, fails: 1, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     }
     return w;
   };

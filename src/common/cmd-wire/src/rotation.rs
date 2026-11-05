@@ -319,13 +319,10 @@ pub struct RotTryDecision {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub pick: Option<String>,
-    /// 停发到几点 · 到时恢复的号（停发才有）。
+    /// 停发到几点（停发才有）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub hold_until: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub hold_account: Option<String>,
     /// 策略交的先后（此刻愿意用的号）。
     pub order: Vec<String>,
     /// 每个号一句（策略写的）。
@@ -357,8 +354,6 @@ pub struct RotTryUse {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub account: Option<String>,
     pub from_temp: bool,
-    /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
-    pub cap_unknown: bool,
     pub skipped: Vec<String>,
     /// 这一段写的字：号名 · 停发那一句。
     pub text: String,
@@ -481,7 +476,9 @@ pub struct RotStrategyItem {
     /// 此刻还活着、用着它的会话。
     pub in_use: Vec<String>,
     pub for_new: bool,
-    /// 这份的设置说明写法不合文案规矩（设置照样能用）。
+    /// 这份的设置说明写法不合文案规矩（设置照样能用）：只用来出 `RotHint::WordsBad` 那一条提示，不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub words_bad: bool,
     /// 文件头里没写时区（分时段按 UTC 算）。
     pub tz_unknown: bool,

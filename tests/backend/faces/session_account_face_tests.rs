@@ -137,7 +137,6 @@ fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
             title: copy_text("tabBar.hover.account", &[("name", "work")]),
         })
     );
-    assert!(got.queryable);
     assert_eq!(
         got.account_line,
         Some(copy_text("tabBar.hover.account", &[("name", "work")]))
@@ -287,8 +286,7 @@ fn unknown_default_or_unqueryable_host_draws_no_badge() {
     };
     let got = product(&closed, &q);
     assert!(got.differs);
-    assert!(!got.queryable);
-    assert_eq!(got.badge, None);
+    assert_eq!(got.badge, None, "号查不了 ⇒ 不出徽章");
 }
 
 /// ★ 上游是自设的（用户自己的网关）：那一格写上；不画那个号的用量（额度账上有也不画）；悬停写看不到 · 不适用；

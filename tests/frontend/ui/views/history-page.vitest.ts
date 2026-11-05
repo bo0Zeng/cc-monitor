@@ -258,7 +258,6 @@ beforeEach(() => {
       );
       return chanReply({
         totalHits: ss.reduce((n, x) => n + (x.hits as unknown[]).length + (x.moreHits as number), 0),
-        sessionCount: ss.length,
         truncated: false,
         sessions: ss,
         // 头底下那几句由核心写好（替身写成认得出的样子：界面只照摆、不按数取字）。

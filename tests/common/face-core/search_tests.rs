@@ -102,7 +102,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         ]
     );
     // 金样那一行自己摆着 1 处命中：4 行 × 1 ＋ moreHits 2 ＋ 2。
-    assert_eq!((m.total_hits, m.session_count, m.truncated), (8, 4, true));
+    assert_eq!((m.total_hits, m.sessions.len(), m.truncated), (8, 4, true));
     assert_eq!(
         m.notes,
         [
@@ -119,7 +119,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     );
     let empty = merge("q", vec![], vec![]);
     assert_eq!(
-        (empty.total_hits, empty.session_count, empty.truncated),
+        (empty.total_hits, empty.sessions.len(), empty.truncated),
         (0, 0, false)
     );
 }
@@ -164,7 +164,7 @@ fn the_head_line_is_written_here_once_with_the_word_and_the_counts() {
         )],
         vec![],
     );
-    let args = |m: &Merged| (m.total_hits.to_string(), m.session_count.to_string());
+    let args = |m: &Merged| (m.total_hits.to_string(), m.sessions.len().to_string());
     let (n, m) = args(&plain);
     assert_eq!(
         plain.summary,

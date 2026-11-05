@@ -280,10 +280,7 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
 pub(crate) use cmd_wire::session::{AgentFacts, AgentPick, ForkFacts, OpenFacts, RecentDir};
 
 /// 一家的起会话事实（名字 · 可选的模型与权限档）；`kind` 认不出 ⇒ 名字照 kind、两张表空。
-pub(crate) fn agent_facts(
-    kind: &'static str,
-    prefs: &crate::common::machine_prefs::Prefs,
-) -> AgentFacts {
+pub(crate) fn agent_facts(kind: &'static str) -> AgentFacts {
     let face = crate::agents::pick_kind(Some(kind)).ok().map(|(_, f)| f);
     let picks = |cs: &[crate::agents::Choice]| {
         cs.iter()
@@ -309,14 +306,6 @@ pub(crate) fn agent_facts(
             .and_then(|f| f.permission)
             .map(|p| picks(p.modes))
             .unwrap_or_default(),
-        permission_default: prefs
-            .permission_modes
-            .get(kind)
-            .and_then(|m| crate::control::machine_prefs::offered(kind, m))
-            .map(|c| AgentPick {
-                value: c.value.to_string(),
-                text: (c.text)(),
-            }),
     }
 }
 
@@ -481,13 +470,10 @@ pub(crate) fn facts(
         ),
         hosts: facts_hosts(tmux, managed),
         run,
-        agents: {
-            let prefs = crate::common::machine_prefs::read_now().prefs();
-            launchable_here(&launcher_found)
-                .into_iter()
-                .map(|k| agent_facts(k, &prefs))
-                .collect()
-        },
+        agents: launchable_here(&launcher_found)
+            .into_iter()
+            .map(agent_facts)
+            .collect(),
         fork,
     })
 }

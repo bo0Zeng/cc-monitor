@@ -64,7 +64,7 @@ describe("账号面板", () => {
 
   it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过，也不画轮换那几块", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: null }]]));
-    const own = { account: "work", name: "work", when: "now" as const, from: null, accountLine: "自设那一句", fromLine: null, usage: null, stale: false, hover: [], sampled: null, differs: false, badge: null, queryable: true, ownUpstream: "自设那一句" };
+    const own = { account: "work", name: "work", when: "now" as const, from: null, accountLine: "自设那一句", fromLine: null, usage: null, stale: false, hover: [], sampled: null, differs: false, badge: null, ownUpstream: "自设那一句" };
     appStore.sessionAccount.set(new Map([["s1", { origin: "<local>", read: own }]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().textContent).toContain("自设那一句");

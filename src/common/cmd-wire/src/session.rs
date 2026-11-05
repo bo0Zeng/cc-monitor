@@ -782,8 +782,6 @@ pub struct AgentFacts {
     pub model_note: Option<String>,
     /// 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
     pub permission_modes: Vec<AgentPick>,
-    /// 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
-    pub permission_default: Option<AgentPick>,
 }
 
 /// 一个可选值：交回去的原值 ＋ 写给人看的字。
@@ -1064,11 +1062,9 @@ pub struct SessionCommand {
     /// 同一格写给人看的字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub scope_text: String,
-    /// 要跟参数（填进去停住等补）。
-    pub needs_args: bool,
     /// 发之前先确认。
     pub confirm: bool,
-    /// `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+    /// 要跟参数（填进去停住等补）时那一格的字（「带参数」）；不要 ⇒ `null`。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
     pub needs_args_text: Option<String>,
     /// `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。

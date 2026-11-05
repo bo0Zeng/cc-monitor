@@ -53,8 +53,7 @@ pub fn merge(
         .into_iter()
         .cloned()
         .collect();
-    let session_count = sessions.len();
-    let (n, m) = (total_hits.to_string(), session_count.to_string());
+    let (n, m) = (total_hits.to_string(), sessions.len().to_string());
     let summary = if truncated {
         copy_text(
             "history.search.summaryTruncated",
@@ -80,7 +79,6 @@ pub fn merge(
     Merged {
         summary,
         total_hits,
-        session_count,
         truncated,
         sessions,
         notes,

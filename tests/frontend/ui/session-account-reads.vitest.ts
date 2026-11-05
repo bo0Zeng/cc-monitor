@@ -33,7 +33,6 @@ describe("session-account 问会话所在那台", () => {
       sampled: null,
       differs: false,
       badge: null,
-      queryable: true,
     };
     invokeMock.mockImplementation(() => Promise.resolve(chanReply(reply)));
     expect(await readSessionAccount("b", "s1")).toEqual(reply);
