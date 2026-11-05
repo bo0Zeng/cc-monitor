@@ -237,12 +237,16 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
     let blocker = problem.and(e.blocker);
     // 上一趟部署没做成、那台还是那个样子（还旧 · 还没有后端）⇒ 问题行说那一趟为什么没成、详情是那一趟的（不另弹 toast）。
     let failed = e.update_failed.as_ref().and_then(|f| {
-        let args = [("machine", machine), ("why", f.said.as_str())];
+        let why = f.said.as_str();
         let said = match (state, blocker) {
-            (K::NeedsUpdate, _) => copy_text("machineState.problem.updateFailed", &args),
-            (K::Down, Some(Blocker::NoBackend)) => {
-                copy_text("machineState.problem.installFailed", &args)
-            }
+            (K::NeedsUpdate, _) => copy_text(
+                "machineState.problem.updateFailed",
+                &[("machine", machine), ("why", why)],
+            ),
+            (K::Down, Some(Blocker::NoBackend)) => copy_text(
+                "machineState.problem.installFailed",
+                &[("machine", machine), ("why", why)],
+            ),
             _ => return None,
         };
         Some((said, detail(machine, &f.detail, &f.said, None)))

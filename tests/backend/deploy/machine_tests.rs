@@ -598,11 +598,11 @@ fn a_failed_install_is_said_while_the_backend_is_still_missing() {
     };
     for (end, p, fixes) in [
         (
-            "桌面",
+            "desktop",
             of(facts(), true),
             vec![MachineFix::Retry, MachineFix::ConnSettings],
         ),
-        ("手机", phone(facts()), vec![MachineFix::Install]),
+        ("phone", phone(facts()), vec![MachineFix::Install]),
     ] {
         assert_eq!(p.state, K::Down, "{end}");
         assert_ne!(p.said, NO_BACKEND, "{end}：装失败了还只说没有后端");
