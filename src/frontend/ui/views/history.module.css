@@ -498,10 +498,4 @@
   .hvFilterHead:empty {
     display: none;
   }
-
-  .hvFilterWarn {
-    margin-left: auto;
-    color: var(--warn);
-    font-size: var(--font-size-small);
-  }
 }
