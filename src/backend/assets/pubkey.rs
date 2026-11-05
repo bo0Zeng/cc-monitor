@@ -181,7 +181,18 @@ pub(crate) fn answer_add(
         .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
     door::chmod(d, &home, &rel, 0o600)
         .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
-    Ok(KeyAdded { outcome })
+    Ok(KeyAdded {
+        outcome,
+        said: added_said(outcome),
+    })
+}
+
+/// 被写那台说的那一句（不带路径：手机推的是手上那把，没有本机文件）。**纯函数**。
+pub(crate) fn added_said(outcome: PushOutcome) -> String {
+    match outcome {
+        PushOutcome::Added => copy_text("mobKeyPush.result.added", &[]),
+        PushOutcome::Already => copy_text("mobKeyPush.result.already", &[]),
+    }
 }
 
 /// `authorized-keys-add` 的入参：一行公钥（本条自己也校验一遍）。
@@ -198,7 +209,10 @@ pub struct KeyAddReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct KeyAdded {
+    /// 加上了 · 本来就有：本机后端照它配带路径的那一句（[`pushed_said`]）。
     pub(crate) outcome: PushOutcome,
+    /// 屏上那一句（不带路径，[`added_said`]）：手机照摆。
+    pub(crate) said: String,
 }
 
 crate::wire::typed::codes! {
@@ -345,16 +359,6 @@ pub struct PubkeyPushReq {
     pub(crate) pub_key_path: Option<String>,
 }
 
-/// 走了哪条：那台后端的文件管理面 · 那一次 exec。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum PushVia {
-    Backend,
-    Exec,
-}
-
 /// `pubkey-push` 的应答。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -363,8 +367,6 @@ pub(crate) enum PushVia {
 pub struct PubkeyPushed {
     /// 屏上那一句：加上了 · 本来就有，都带推的是哪一份（[`pushed_said`]）；界面照摆。
     pub(crate) said: String,
-    /// 走了哪条。
-    pub(crate) via: PushVia,
 }
 
 crate::wire::typed::codes! {
@@ -420,25 +422,20 @@ pub(crate) async fn answer_push(
         Err(e) => return Err(crate::common::said::Said::new("refused", e.into_said())),
     };
     let name = machine.name().to_string();
-    let (outcome, via) = if reach.backend_up(&name) {
-        let outcome = reach
+    let outcome = if reach.backend_up(&name) {
+        reach
             .ask_add(&name, &key)
             .await
-            .map_err(|e| crate::common::said::Said::new("failed", e))?;
-        (outcome, PushVia::Backend)
+            .map_err(|e| crate::common::said::Said::new("failed", e))?
     } else {
         let out = reach
             .exec_once(&dial, authorized_keys_cmd(&key))
             .await
             .map_err(|e| crate::common::said::Said::new("failed", e))?;
-        (
-            parse_push_outcome(&out).map_err(|e| crate::common::said::Said::new("failed", e))?,
-            PushVia::Exec,
-        )
+        parse_push_outcome(&out).map_err(|e| crate::common::said::Said::new("failed", e))?
     };
     Ok(PubkeyPushed {
         said: pushed_said(outcome, &path),
-        via,
     })
 }
 

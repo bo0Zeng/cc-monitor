@@ -18,7 +18,6 @@ import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
-import com.ccmonitor.mobile.core.wire.gen.PushOutcome
 import com.ccmonitor.mobile.core.wire.gen.Whereabout
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -90,14 +89,8 @@ class TerminalOps(
 
     private suspend fun open(args: Map<String, Any?>): Result<SessionOpen.Answer> = ask(SessionOpen.COMMAND, args, SessionOpen::of)
 
-    /** 把 [key]（一行 OpenSSH 公钥）并进那台的 `authorized_keys`；回屏上那一句（被拒 ⇒ 那台写好的那一句）。 */
-    suspend fun pushKey(key: String): Result<String> =
-        ask(KeyAdd.COMMAND, KeyAdd.args(key), KeyAdd::of).map {
-            when (it) {
-                PushOutcome.ADDED -> copyText("mobKeyPush.result.added")
-                PushOutcome.ALREADY -> copyText("mobKeyPush.result.already")
-            }
-        }
+    /** 把 [key]（一行 OpenSSH 公钥）并进那台的 `authorized_keys`；回那台写好的那一句（成了 · 被拒都是）。 */
+    suspend fun pushKey(key: String): Result<String> = ask(KeyAdd.COMMAND, KeyAdd.args(key), KeyAdd::of)
 
     /** 名叫 [name] 的那个终端里跑着的那一家能换的模型（那台给的）；里面没跑会话 ⇒ 空。 */
     suspend fun modelsIn(name: String): List<AgentPick> {
