@@ -201,11 +201,12 @@ export class Composer {
     this.paint();
   }
 
-  /** 一台接上了：断着的附件接着传、名单重问（待发的重交在 `outbox` 那一份，宿主另叫）。 */
+  /**
+   * 一台接上了：断着的附件接着传（本机上传只有这一端管）。名单不在这里问：那台断开又接上，订着的 `changed {session_queue}`
+   * 收一格 `seen`（⇒ all ⇒ {@link queueMoved} 重问）；待发的重交在 `outbox` 那一份，宿主另叫。
+   */
   machineUp(origin: string): void {
     for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
-    const t = this.host.active();
-    if (t && t.origin === origin) void this.readQueue();
   }
 
   /** 一台的状态成品来了（宿主跟着机器条一起交）：离线 ⇒ 记下连接层那句离线，名单照手上那一份淡着画；连着 ⇒ 拿掉。 */
