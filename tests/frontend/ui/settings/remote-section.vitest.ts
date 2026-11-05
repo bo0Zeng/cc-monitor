@@ -740,6 +740,44 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(count()).toBe("核心·又一句");
   });
 
+  it("★ 那一行的词 · 问题行只由那台成品写：通道随后报连着 · 断着都不清、不改，只换点", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    const row = () => sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
+    const word = () => row().querySelector(".remote-machine-word")!.textContent;
+    const problem = () => row().querySelector<HTMLElement>(".machine-problem")!;
+    const dotState = () => row().querySelector<HTMLElement>(".remote-machine-dot")!.dataset.state;
+    const m: MachineState = {
+      name: "a",
+      state: "installing",
+      offline: false,
+      reason: null,
+      stage: null,
+      version: null,
+      versionRelation: null,
+      os: null,
+      word: "核心·安装中",
+      said: "核心·正在装",
+      offlineSaid: "核心·a 离线",
+      fixes: [],
+      seenHostKey: null,
+      expectedHostKey: null,
+      detail: null,
+      strip: { tone: "busy", progress: true },
+    };
+    sec.setMachine("machine:a", m);
+    sec.setConnected("machine:a", true, "核心·a 离线");
+    expect(word(), "通道报连着把成品写的词清了").toBe("核心·安装中");
+    expect(problem().hidden).toBe(false);
+    expect(problem().textContent).toContain("核心·正在装");
+    expect(dotState()).toBe("up");
+    sec.setConnected("machine:a", false, "核心·a 离线");
+    expect(word(), "通道报断着另写了一个词").toBe("核心·安装中");
+    expect(problem().textContent).toContain("核心·正在装");
+    expect(problem().textContent).not.toContain("核心·a 离线");
+    expect(dotState()).toBe("failed");
+  });
+
   it("★ 点机器名 → 跳到它那一页", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
