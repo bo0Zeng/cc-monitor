@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1574,
+  "ceiling": 1573,
   "groups": [
     {
       "kind": "首登",
@@ -276,7 +276,7 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/host/HostScreens.kt", "key", 5],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/identity/IdentityScreen.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/identity/IdentityViewModel.kt", "key", 1],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/needs/OverviewScreen.kt", "key", 6],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/needs/OverviewScreen.kt", "key", 5],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotSettings.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotSim.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotTop.kt", "key", 3],

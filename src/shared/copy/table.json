@@ -18955,11 +18955,11 @@
       "zh": "无需手动事项",
       "args": []
     },
-    "needs.panel.offline": {
+    "beNeedsMerge.down.said": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 离线 · 未计入",
-      "args": ["machine"]
+      "zh": "{machine} · {said}",
+      "args": ["machine", "said"]
     },
     "needs.panel.unreadable": {
       "kind": "error",
