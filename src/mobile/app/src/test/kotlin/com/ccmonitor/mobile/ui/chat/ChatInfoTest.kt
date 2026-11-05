@@ -132,7 +132,7 @@ class ChatInfoTest {
             val units = calm.chat.units
             val strip = units.filterIsInstance<RenderUnit.Retry>().single()
             assertEquals("事实里还没有 ⇒ 记录那一行", "rec-line", calm.chat.retryOf(strip)?.text)
-            assertNull("事实里还没有 ⇒ 报错卡照通用那一句", calm.chat.errorNextOf("a-err"))
+            assertNull("事实里还没有 ⇒ 报错卡不画下一步那一行", calm.chat.errorNextOf("a-err"))
             assertEquals(listOf("err-title"), units.filterIsInstance<RenderUnit.ApiError>().map { it.title })
             val run = mapOf("id" to "r1", "outcome" to "failed", "text" to "run-text")
             val o = opened(facts = Wires.facts("path" to "/p/s1.jsonl", "retries" to listOf(run)), records = records)
@@ -204,7 +204,7 @@ class ChatInfoTest {
             val tasks = mapOf("tasks" to listOf(task), "chip" to "任务 0/1", "hint" to "完成 0 · 进行 1 · 未开始 0")
             val facts = Wires.facts("path" to "/p/s1.jsonl", "writersLine" to "2 个进程在写这份记录", "usage" to usage("上下文 86%", "warn"))
             val o = opened(facts = facts, extra = { cmd, _ -> mapOf("session-account" to Reply.Ok(account), "tasks-list" to Reply.Ok(tasks))[cmd] })
-            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            val info = ChatInfo(o.link, "box", backgroundScope, { "s1" }) { o.chat.facts }
             info.open()
             runCurrent()
             val ui = info.state.value!!
@@ -225,7 +225,7 @@ class ChatInfoTest {
         runTest {
             val noTasks = Reply.Ok(mapOf("tasks" to emptyList<Any>(), "chip" to "", "hint" to ""))
             val o = opened(extra = { cmd, _ -> mapOf("session-account" to FakeCoreLink.failed("那台不认"), "tasks-list" to noTasks)[cmd] })
-            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            val info = ChatInfo(o.link, "box", backgroundScope, { "s1" }) { o.chat.facts }
             info.open()
             runCurrent()
             val ui = info.state.value!!
@@ -258,10 +258,12 @@ class ChatInfoTest {
                     "childrenText" to "子会话 2",
                 )
             val o = opened(facts = facts, extra = quiet)
-            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            val info = ChatInfo(o.link, "box", backgroundScope, { "s1" }) { o.chat.facts }
+            val asked = o.link.calls("history-facts").size
             info.open()
             runCurrent()
             val ui = info.state.value!!
+            assertEquals("会话手上已有会话事实 ⇒ 抽屉不另问", asked, o.link.calls("history-facts").size)
             assertEquals("~/work/orders · devbox", ui.where)
             assertEquals("后台任务运行中 · npm run dev · 18m", ui.background)
             assertEquals("抬头是那台写好的那一句", "由「发版前整理」启动", ui.parent?.head)
@@ -274,7 +276,7 @@ class ChatInfoTest {
     fun `信息抽屉：没有血缘 · 不在后台 · 不知在哪 ⇒ 那几段不画`() =
         runTest {
             val o = opened(extra = quiet)
-            val info = ChatInfo(o.link, "box", backgroundScope) { "s1" }
+            val info = ChatInfo(o.link, "box", backgroundScope, { "s1" }) { o.chat.facts }
             info.open()
             runCurrent()
             val ui = info.state.value!!

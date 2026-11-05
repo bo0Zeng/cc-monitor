@@ -73,7 +73,7 @@ class ChatSessionMidTest {
             assertNull(chip.pending)
             assertEquals("会话事实那一个字", "Opus 5.5 (1M context)", chip.text)
             assertEquals("opus", chip.value)
-            assertNull(s.state.value.note)
+            assertEquals("那台带了那一句 ⇒ 照摆（读回了字也不吞）", "已换成", s.state.value.note)
             assertEquals(listOf(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile")), link.calls("session-model"))
             assertTrue(link.calls("session-permission").isEmpty())
         }

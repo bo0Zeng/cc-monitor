@@ -100,7 +100,7 @@ fun ClaudeReadingPane(
     stepWait: (String) -> PendingCall? = { null },
     // 一条重试细条此刻画什么（照会话事实那一串）；收起 ⇒ null。没有事实 ⇒ 记录那一行。
     retry: (RenderUnit.Retry) -> RetryStrip? = { RetryLook.strip(it, emptyList()) },
-    // 报错卡（key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句；否则 null（画通用那一句）。
+    // 报错卡（key）下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句；否则 null（不画那一行）。
     errorNext: (String) -> String? = { null },
     // 一张收场通知卡此刻画什么（照会话事实那一组）；并进别的组 · 整组不露 ⇒ null。没有事实 ⇒ 它自己那一行。
     notice: (RenderUnit.Notice) -> NoticeCard? = { NoticeLook.card(it, emptyList(), emptyList()) },
@@ -274,7 +274,7 @@ private fun RetryLine(
 
 /**
  * 报错卡（上游最终失败）：左 2dp 红；抬头是那台写好的卡头 ＋ 钟面；下一步那一句（[next]：紧跟着的那一串重试没接上 ⇒ 那一串的整句，
- * 否则通用那一句）；「原文」点开是报错原文 ＋［复制详情］。
+ * 会话事实里没有 ⇒ 不画那一行）；「原文」点开是报错原文 ＋［复制详情］。
  */
 @Composable
 private fun ApiErrorCard(
@@ -297,7 +297,7 @@ private fun ApiErrorCard(
             Text(unit.title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelLarge, color = tokens.errorText)
             unit.timeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
         }
-        Text(next ?: copyText("apiError.card.nextBare"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        next?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         Row(Modifier.clickable { open = !open }.padding(vertical = tokens.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
             Caret(open)
             Text(copyText("apiError.card.raw"), style = monoSmall, color = tokens.textFaint)

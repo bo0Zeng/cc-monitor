@@ -67,6 +67,91 @@ async fn the_local_backend_asks_each_machine_its_needs_and_merges() {
     );
 }
 
+/// 那台答了一个错（CLI 信封里的码与那一句原样转回来）的替身。
+struct Erring;
+
+/// 替身答回来的那一趟。
+type Answer<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+impl crate::dial::remote_ask::Remote for Erring {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Answer<'a, Result<String, String>> {
+        unreachable!("问常驻走 run_coded")
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Answer<'a, Result<String, crate::common::said::Said>> {
+        Box::pin(async {
+            Err(crate::common::said::Said::new(
+                "io",
+                "记录读取失败".to_string(),
+            ))
+        })
+    }
+}
+
+/// ★ 本机答失败 · 那台答了一个错 ⇒ 那一句只说了原因，`down` 那一行补上是哪台；常驻不在那一句自己叫出了那台 ⇒ 照原样（不叫两遍）。
+#[tokio::test]
+async fn a_machine_that_answered_a_failure_is_named_in_its_down_line() {
+    let machines: Vec<cmd_wire::Machine> = [cmd_wire::LOCAL, "devbox"]
+        .iter()
+        .map(|m| cmd_wire::Machine::named(*m))
+        .collect();
+    let got = needs_merge_with(
+        &machines,
+        std::future::ready(Err(crate::common::said::Said::from("清单读取失败"))),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["devbox"]),
+        &Erring,
+    )
+    .await
+    .expect("合得出");
+    let said = |m: &str| {
+        got.down
+            .iter()
+            .find(|d| d.origin == cmd_wire::Machine::named(m))
+            .map(|d| d.said.clone())
+            .unwrap_or_else(|| panic!("{m} 不在 down 里：{got:?}"))
+    };
+    let named = |machine: &str, s: &str| {
+        copy_core::copy_text(
+            "beNeedsMerge.down.said",
+            &[("machine", machine), ("said", s)],
+        )
+    };
+    assert_eq!(said("devbox"), named("devbox", "记录读取失败"));
+    assert_eq!(
+        said(cmd_wire::LOCAL),
+        named(&copy_core::local_machine(), "清单读取失败")
+    );
+    assert!(said("devbox").contains("devbox"), "{got:?}");
+
+    let absent = needs_merge_with(
+        &machines[1..],
+        std::future::ready(Ok(plan(1, "本机的"))),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["devbox"]),
+        &Peers::new(&[]),
+    )
+    .await
+    .expect("合得出");
+    assert_eq!(
+        absent.down[0].said,
+        crate::wire::listen::call_absent("devbox"),
+        "常驻不在那一句已叫出那台"
+    );
+}
+
 /// 界面测试的需手动替身交的那几份合并的金样（`tests/test-support/needs-fake.ts` 只照它回）。
 const REPLAYED: &str = "tests/__fixtures__/needs-merged.golden.json";
 /// 替身遇到金样里没有的输入记在这里（本树、不进仓）；这条判据读一次就收走（收进现打的那份）。

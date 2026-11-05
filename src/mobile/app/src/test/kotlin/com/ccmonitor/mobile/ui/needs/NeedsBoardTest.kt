@@ -150,12 +150,13 @@ class NeedsBoardTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf(session("b1"), manual("t")))
             val board = boardOf("a" to a, "b" to b)
+            b.link.offline.value = "gpu-01 离线"
             b.link.state.value = linkConnecting()
             settle()
             val down = overviewOf(board.state.value, hosts, current = "a")
             assertEquals(listOf("a1"), down.needs.map(::name))
             assertEquals(1, down.total)
-            assertEquals(listOf("gpu-01"), down.down.map { it.label })
+            assertEquals("断着那台那一行是那条链上那台写好的那一句", listOf("gpu-01" to "gpu-01 离线"), down.down.map { (h, said) -> h.label to said })
             b.items = listOf(session("b2"))
             b.link.state.value = linkUp()
             b.link.epoch.value = 1L
@@ -186,6 +187,7 @@ class NeedsBoardTest {
             settle()
             val ov = overviewOf(board.state.value, hosts, current = "a")
             assertTrue(ov.uncertain)
+            assertTrue("入口那一格与总览同一份（核心合的 unreadable）", board.uncertain())
             assertEquals(listOf("gpu-01" to "账号库无法解析"), ov.unreadable.map { (h, s) -> h.label to s })
         }
 

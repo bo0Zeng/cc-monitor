@@ -137,7 +137,7 @@ fun ChatRoute(
     // ⋯ 里的会话里找 · 大纲 · 结束会话 · 无人答时自动答（判定都在那台，见 [ChatMore]）。
     val more = remember(open.key) { ChatMore(backends.of(hostId), host.machine, scope, { vm.state.value.sid }, vm::jump) }
     // 点标题出的「会话信息」（只读，字都是那台写的，见 [ChatInfo]）。
-    val info = remember(open.key) { ChatInfo(backends.of(hostId), host.machine, scope) { vm.state.value.sid } }
+    val info = remember(open.key) { ChatInfo(backends.of(hostId), host.machine, scope, { vm.state.value.sid }) { vm.state.value.facts } }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,

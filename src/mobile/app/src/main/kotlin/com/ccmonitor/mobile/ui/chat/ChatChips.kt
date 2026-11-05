@@ -56,7 +56,7 @@ internal class ChatChips(
             val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value), SWITCH_MS)
             when {
                 r is Reply.Ok ->
-                    SessionModel.of(r.data)?.let { Switched(it.result, it.model, it.said) }
+                    SessionModel.of(r.data)?.let { Switched(it.result, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
                 r is Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
                 else -> Switched.failed(r.problem(machine, SessionModel.COMMAND, link.offline.value)?.text)
@@ -86,24 +86,23 @@ internal class ChatChips(
             val r = link.call(SessionPermission.COMMAND, SessionPermission.args(s, pick.value), SWITCH_MS)
             when {
                 r is Reply.Ok ->
-                    SessionPermission.of(r.data)?.let { Switched(it.result, it.modeText, it.said) }
+                    SessionPermission.of(r.data)?.let { Switched(it.result, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionPermission.COMMAND, r.data.toString()).text)
                 r is Reply.TimedOut -> Switched.failed(copyText("session.permission.unsure"))
                 else -> Switched.failed(r.problem(machine, SessionPermission.COMMAND, link.offline.value)?.text)
             }.orUnsure(copyText("session.permission.unsure"))
         }
 
-    /** 一趟换的结局：[text] 读回的字，[said] 那台那一句。 */
+    /** 一趟换的结局：[said] 那台那一句（有就照摆；字只照会话事实）。 */
     private data class Switched(
         val result: ModeSwitchResult,
-        val text: String?,
         val said: String?,
     ) {
         /** 没成却没那一句 ⇒ 补上「结果未知」那一句（unsure 时那台多半带着自己的那一句）。 */
         fun orUnsure(unsure: String): Switched = if (result != ModeSwitchResult.DONE && said == null) copy(said = unsure) else this
 
         companion object {
-            fun failed(said: String?) = Switched(ModeSwitchResult.UNSURE, null, said)
+            fun failed(said: String?) = Switched(ModeSwitchResult.UNSURE, said)
         }
     }
 
@@ -119,10 +118,10 @@ internal class ChatChips(
         state.value = put(st, chipOf(st).copy(pending = pick)).copy(note = null)
         scope.launch {
             val r = ask(s)
-            // 换成了：字与抽屉勾哪一项只照会话事实，回包不写字。
+            // 换成了：字与抽屉勾哪一项只照会话事实，回包不写字；那台那一句有就照摆。
             if (r.result == ModeSwitchResult.DONE) path()?.let { readFacts(it) }
             val now = state.value
-            state.value = put(now, chipOf(now).copy(pending = null)).copy(note = if (r.result == ModeSwitchResult.DONE) r.said.takeIf { r.text == null } else r.said)
+            state.value = put(now, chipOf(now).copy(pending = null)).copy(note = r.said)
         }
     }
 

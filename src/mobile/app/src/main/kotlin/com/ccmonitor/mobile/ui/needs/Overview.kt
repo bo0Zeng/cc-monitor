@@ -53,7 +53,8 @@ sealed interface NeedsLine {
  */
 data class Overview(
     val needs: List<NeedsLine>,
-    val down: List<HostName>,
+    /** 断着的那几台（那条链上那台写好的离线那一句）。 */
+    val down: List<Pair<HostName, String>>,
     val unreadable: List<Pair<HostName, String>>,
     /** 整份没问到的那几台（那一问的那一句）：一台一行 ＋［重试］。 */
     val failed: List<Pair<HostName, Problem>>,
@@ -90,15 +91,21 @@ fun overviewOf(
     val merged = mergedOf(board, up.map { it.id })
     return Overview(
         needs = merged?.items.orEmpty().mapNotNull { x -> byId[x.origin]?.let { h -> lineOf(h, x.item, of(h).at) } },
-        down = order.filter { of(it).down },
+        down = order.filter { of(it).down }.map { it to of(it).offline },
         unreadable = merged?.unreadable.orEmpty().mapNotNull { u -> byId[u.origin]?.let { it to u.said } },
         failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, of(h).offline) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
         loading = order.filter { of(it).reading },
         readFrom = up.filter { of(it).list != null },
         total = merged?.total ?: 0,
-        uncertain = board.values.any { it.unreadable != null || it.unread != null },
+        uncertain = uncertainOf(board, merged),
     )
 }
+
+/** 数说不准：核心合的那一份（[merged]）里有会外读不出的那台，或有哪台整份没问到（总览 · 入口同这一处）。 */
+fun uncertainOf(
+    board: Map<String, MachineNeeds>,
+    merged: NeedsMerged?,
+): Boolean = merged?.unreadable.orEmpty().isNotEmpty() || board.values.any { it.unread != null }
 
 /**
  * 通着、手上有一份的那几台（照 [order] 的台序）交核心合一份（[NeedsFace]，`face_core::needs::merge_needs`）：

@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -41,14 +40,11 @@ data class MachineNeeds(
     val raw: Any? = null,
     val down: Boolean = false,
     val failed: Reply? = null,
-    /** 最近那一问没问到时那条链上的离线那一句（[CoreLink.offline]，[failed] 是断着时照摆它）。 */
+    /** 那条链上那台写好的离线那一句（[CoreLink.offline]）：断着那一行照摆它，[failed] 是断着时也照摆它。 */
     val offline: String = "",
     /** 收到 [list] 那一刻（本机单调钟）：会走的那一句从它起接着走。 */
     val at: Long = 0L,
 ) {
-    /** 会外那一截读不出（那台那一句）；断着不说。 */
-    val unreadable: String? get() = list?.manualUnreadable?.takeIf { !down }
-
     /** 整份没问到（那台报错 · 回包解不开 · 无应答）；断着不说（断着那一句另有）。 */
     val unread: Reply? get() = failed?.takeIf { !down }
 
@@ -88,6 +84,9 @@ class NeedsBoard(
     /** 各台加起来几项（断着的不算）：核心合好的那一份的总数（[mergedOf]），这里不自己加。 */
     fun total(all: Map<String, MachineNeeds> = _state.value): Int = mergedOf(all, all.keys.toList())?.total ?: 0
 
+    /** 数说不准（入口不带数字）：核心合的那一份里有会外读不出的那台，或有哪台整份没问到；总览同一处（[overviewOf]）。 */
+    fun uncertain(all: Map<String, MachineNeeds> = _state.value): Boolean = uncertainOf(all, mergedOf(all, all.keys.toList()))
+
     /** 那一台重问一次（去抖照常）。 */
     fun reask(hostId: String) {
         wakes[hostId]?.trySend(Unit)
@@ -100,10 +99,8 @@ class NeedsBoard(
         val wake = Channel<Unit>(Channel.CONFLATED).also { wakes[id] = it }
         return scope.launch {
             launch {
-                src.link.state
-                    .map { it is LinkLine.Up }
-                    .distinctUntilChanged()
-                    .collect { up -> put(id) { it.copy(down = !up) } }
+                // 那一句跟着那台的状态成品走（核心在同一行里先交它），每一行都照抄一次。
+                src.link.state.collect { line -> put(id) { it.copy(down = line !is LinkLine.Up, offline = src.link.offline.value) } }
             }
             launch {
                 merge(
