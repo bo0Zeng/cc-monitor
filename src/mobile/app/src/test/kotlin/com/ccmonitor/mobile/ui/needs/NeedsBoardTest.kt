@@ -77,7 +77,7 @@ class NeedsBoardTest {
 
         init {
             link.answer = { cmd, _ ->
-                if (cmd == "sessions-needs") Reply.Ok(mapOf("items" to items, "answered" to emptyList<Any>(), "manualUnreadable" to unreadable)) else Reply.LinkDown
+                if (cmd == "sessions-needs") Reply.Ok(mapOf("items" to items, "ended" to emptyList<Any>(), "manualUnreadable" to unreadable)) else Reply.LinkDown
             }
         }
 

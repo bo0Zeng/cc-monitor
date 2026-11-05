@@ -85,7 +85,7 @@ internal object Wires {
                 "cost",
                 "background",
                 "autoAnswer",
-                "autoAnswered",
+                "askEnd",
                 "startedBy",
                 "line",
                 "quietUnread",

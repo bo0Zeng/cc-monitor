@@ -158,7 +158,7 @@ class ProductsTest {
     fun `sessions-needs：照核心的先后，不另排；字照抄，已等读毫秒`() {
         val data =
             mapOf(
-                "answered" to emptyList<Any>(),
+                "ended" to emptyList<Any>(),
                 "items" to
                     sessionItems(
                         listOf(
@@ -172,7 +172,7 @@ class ProductsTest {
         assertEquals("等批准 · Bash", rows[0].needs.text)
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
-        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("items" to sessionItems(emptyList()), "answered" to emptyList<Any>())))
+        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("items" to sessionItems(emptyList()), "ended" to emptyList<Any>())))
         assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0)))))))
         assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0)))))))
     }

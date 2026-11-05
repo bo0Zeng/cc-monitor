@@ -69,8 +69,9 @@ class NeedsDeskTest {
     private class Board {
         var mine: Map<String, Any?>? = null
 
-        /** 这一条会话上一条提问替人答过的那一句（`null` ＝ 没有）。 */
+        /** 这一条会话上一条请求怎么收的场：那台那一句（`null` ＝ 没有 `ended` 那一行）· 留不留着。 */
         var answered: String? = null
+        var stays: Boolean = true
 
         /** 这一条那一项上那台写好的会走的那一句（`{dur}` 空位）。 */
         val clock: Map<String, Any?> = mapOf("text" to "核心·t {dur}", "head" to "核心·h {dur}")
@@ -78,10 +79,10 @@ class NeedsDeskTest {
         fun reply(): Reply =
             Reply.Ok(
                 mapOf(
-                    "answered" to
+                    "ended" to
                         listOfNotNull(
-                            answered?.let { mapOf("sid" to "s1", "said" to it) },
-                            mapOf("sid" to "other", "said" to "别的会话那一句"),
+                            answered?.let { mapOf("sid" to "s1", "end" to mapOf("said" to it, "stays" to stays)) },
+                            mapOf("sid" to "other", "end" to mapOf("said" to "别的会话那一句", "stays" to true)),
                         ),
                     "items" to
                         sessionItems(
@@ -282,19 +283,29 @@ class NeedsDeskTest {
         }
 
     @Test
-    fun `别处先答了（没点、重问里那条请求没了）：同一态，那一句同桌面`() =
+    fun `别处先答了（没点、重问里那条请求没了）：那台给了 ended ⇒ 同一态、那一句照那台；没给 ⇒ 抽屉照旧开着，不兜底`() =
         runTest {
             val r = rig(needs("approve"))
             r.desk.open()
             r.board.mine = null
             r.pushes.emit(Changed.Needs("s1"))
             settle()
-            assertEquals(
-                copyText("askBlock.gone.elsewhere"),
+            assertNull(
+                "那台没说怎么收的场 ⇒ 不转 gone、不另写一句",
                 r.desk.state.value.sheet!!
                     .gone,
             )
             assertNull("钉条随重问消失", r.desk.state.value.bar)
+            r.board.answered = "N-别处已答"
+            r.board.stays = false
+            r.pushes.emit(Changed.Needs("s1"))
+            settle()
+            assertEquals(
+                "N-别处已答",
+                r.desk.state.value.sheet!!
+                    .gone,
+            )
+            assertNull("不留着的那一句不另画一行", r.desk.state.value.answered)
         }
 
     @Test
