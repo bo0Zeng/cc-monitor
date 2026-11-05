@@ -101,23 +101,18 @@ pub enum TerminalOpened {
 /// 开窗那一下的结局 ⇒ 交出去的那一形（句子在这里写好，只此一处）。
 pub(crate) fn opened_of(o: crate::platform::terminal::TerminalOpen) -> TerminalOpened {
     use crate::platform::terminal::TerminalOpen;
-    let words = |said: &str, title: &str, detail: &str| TerminalOpened::NoWindow {
-        said: copy_text(said, &[]),
-        title: copy_text(title, &[]),
-        detail: copy_text(detail, &[]),
-    };
     match o {
         TerminalOpen::Opened => TerminalOpened::Opened,
-        TerminalOpen::NoWindow => words(
-            "rsLaunch.posix.noTerminalWindow",
-            "terminalOpen.noTerminal.title",
-            "terminalOpen.noTerminal.detail",
-        ),
-        TerminalOpen::SetMissing => words(
-            "rsLaunch.posix.setTerminalMissing",
-            "terminalOpen.setMissing.title",
-            "terminalOpen.setMissing.detail",
-        ),
+        TerminalOpen::NoWindow => TerminalOpened::NoWindow {
+            said: copy_text("rsLaunch.posix.noTerminalWindow", &[]),
+            title: copy_text("terminalOpen.noTerminal.title", &[]),
+            detail: copy_text("terminalOpen.noTerminal.detail", &[]),
+        },
+        TerminalOpen::SetMissing => TerminalOpened::NoWindow {
+            said: copy_text("rsLaunch.posix.setTerminalMissing", &[]),
+            title: copy_text("terminalOpen.setMissing.title", &[]),
+            detail: copy_text("terminalOpen.setMissing.detail", &[]),
+        },
     }
 }
 
