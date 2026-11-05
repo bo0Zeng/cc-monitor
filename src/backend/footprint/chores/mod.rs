@@ -180,17 +180,17 @@ pub(crate) enum ChoreTone {
 
 /// 类 · 态定了之后那一件的小标签与点色（[`chores`] 末尾一处填）。
 fn face(kind: ChoreKind, state: ChoreState) -> (ChoreTag, ChoreTone) {
-    let key = match (state, kind) {
-        (ChoreState::Expired, _) => "dataPage.state.expired",
-        (ChoreState::Blocked, _) => "dataPage.state.blocked",
-        (_, ChoreKind::Must) => "dataPage.kind.must",
-        (_, ChoreKind::Install) => "dataPage.install.kind",
-        (_, ChoreKind::Decide) => "dataPage.kind.decide",
-        (_, ChoreKind::InstallOptional) => "dataPage.install.kindOptional",
-        (_, ChoreKind::Optional) => "dataPage.kind.optional",
+    let text = match (state, kind) {
+        (ChoreState::Expired, _) => copy_text("dataPage.state.expired", &[]),
+        (ChoreState::Blocked, _) => copy_text("dataPage.state.blocked", &[]),
+        (_, ChoreKind::Must) => copy_text("dataPage.kind.must", &[]),
+        (_, ChoreKind::Install) => copy_text("dataPage.install.kind", &[]),
+        (_, ChoreKind::Decide) => copy_text("dataPage.kind.decide", &[]),
+        (_, ChoreKind::InstallOptional) => copy_text("dataPage.install.kindOptional", &[]),
+        (_, ChoreKind::Optional) => copy_text("dataPage.kind.optional", &[]),
     };
     let tag = ChoreTag {
-        text: copy_text(key, &[]),
+        text,
         kind: if state == ChoreState::Expired {
             ChoreKind::Must
         } else {
