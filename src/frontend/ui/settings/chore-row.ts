@@ -2,14 +2,14 @@
  * 「待办」里的一件：收着时一行（状态点 · 名字 · 类 / 态的小标签 · 下一行 位置小标签 ＋ 一句现状 · 主按钮 · 展开钮），
  * 点开依次 为什么 · 怎么做（编号步骤）· diff（上下各一行原文，删红加绿）· 按钮（复制这几行 · 复制改好的整份文件 · 打开 · 不用了）·
  * 一句「存盘后这里自己认出」＋［再查一遍］。
- * 每一格都照那台后端的成品画（类 · 态 · 字 · 行号 · diff · 要复制的原文），界面只多记一个「已复制」。
+ * 每一格都照那台后端的成品画（小标签的字与类 · 点色 · 字 · 行号 · diff · 要复制的原文），界面只多记一个「已复制」。
  */
 import { el } from "../kit/el";
 import { button } from "../kit/button";
 import { foldCaret } from "../kit/fold";
 import { tag } from "../kit/badge";
 import { copyText } from "../copy-table";
-import type { Chore, ChoreKind } from "./data-reads";
+import type { Chore } from "./data-reads";
 
 export interface ChoreRowHost {
   open: boolean;
@@ -24,32 +24,10 @@ export interface ChoreRowHost {
   onRecheck: () => void;
 }
 
-const KIND_LABEL: Record<ChoreKind, () => string> = {
-  must: () => copyText("dataPage.kind.must"),
-  install: () => copyText("dataPage.install.kind"),
-  decide: () => copyText("dataPage.kind.decide"),
-  installOptional: () => copyText("dataPage.install.kindOptional"),
-  optional: () => copyText("dataPage.kind.optional"),
-};
-
-/** 状态点的色：要做 / 过期 红 · 待定 / 要装 琥珀 · 可选 空心 · 已做 绿。 */
-function tone(c: Chore): string {
-  if (c.state === "done") return "ok";
-  if (c.state === "expired" || c.kind === "must") return "bad";
-  if (c.kind === "decide" || c.kind === "install") return "warn";
-  return "muted";
-}
-
+/** 小标签照后端写好的字与类摆；只有「已复制」是界面自己记的（点了复制的那一刻）。 */
 function stateTag(c: Chore, copied: boolean): HTMLElement {
-  const t =
-    c.state === "expired"
-      ? tag(copyText("dataPage.state.expired"))
-      : c.state === "blocked"
-        ? tag(copyText("dataPage.state.blocked"))
-        : copied && c.state === "todo"
-          ? tag(copyText("dataPage.state.copied"))
-          : tag(KIND_LABEL[c.kind]());
-  t.dataset.kind = c.state === "expired" ? "must" : c.kind;
+  const t = tag(copied && c.state === "todo" ? copyText("dataPage.state.copied") : c.tag.text);
+  t.dataset.kind = c.tag.kind;
   return t;
 }
 
@@ -80,7 +58,7 @@ export function choreRow(c: Chore, host: ChoreRowHost): HTMLElement {
   row.dataset.state = c.state;
   const top = el("div", "chore-top");
   const dot = el("span", "data-dot");
-  dot.dataset.tone = tone(c);
+  dot.dataset.tone = c.tone;
   const body = el("div", "data-item-body");
   const title = el("div", "data-item-title", c.name);
   title.appendChild(stateTag(c, host.copied));

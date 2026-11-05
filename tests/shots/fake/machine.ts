@@ -282,15 +282,17 @@ export function machineCommands(): Record<string, CommandHandler> {
 
 /** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */
 function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
-  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
+  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet", tag: { text: copyText("dataPage.kind.optional"), kind: "optional" }, tone: "muted", ...over } as Record<string, unknown> & { kind: string; state: string };
 }
 
 const SETTINGS = `${HOME}/.claude/settings.json`;
+/** 待定那一类的小标签（同名两件共用）。 */
+const DECIDE_TAG = () => ({ tag: { text: copyText("dataPage.kind.decide"), kind: "decide" }, tone: "warn" });
 const WHOLE = '{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",\n    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"\n  }\n}\n';
 const DEVBOX_CHORES = [
-  chore({ id: "stale-ccm", kind: "must", name: copyText("beChore.staleCcm.name"), loc: "/usr/local/bin/ccm", said: copyText("beChore.staleCcm.said"), why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 无法管理", steps: [copyText("beChore.staleCcm.step")], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
-  chore({ id: "clash:cc", kind: "decide", name: copyText("beChore.clash.name", { name: "cc" }), loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
-  chore({ id: "clash:cct", kind: "decide", name: copyText("beChore.clash.name", { name: "cct" }), loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "stale-ccm", kind: "must", name: copyText("beChore.staleCcm.name"), loc: "/usr/local/bin/ccm", said: copyText("beChore.staleCcm.said"), why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 无法管理", steps: [copyText("beChore.staleCcm.step")], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand", tag: { text: copyText("dataPage.kind.must"), kind: "must" }, tone: "bad" }),
+  chore({ id: "clash:cc", kind: "decide", name: copyText("beChore.clash.name", { name: "cc" }), loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide", ...DECIDE_TAG() }),
+  chore({ id: "clash:cct", kind: "decide", name: copyText("beChore.clash.name", { name: "cct" }), loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide", ...DECIDE_TAG() }),
   chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: copyText("beChore.dead.said"), why: copyText("beChore.dead.why"), steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
   chore({
     id: "relay:claude-code",
@@ -328,6 +330,6 @@ const DEVBOX_CHORES = [
   chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks"], file: SETTINGS }),
 ];
 const LOCAL_CHORES = [
-  chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: copyText("beChore.install.saidOptional"), action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications" }),
-  chore({ id: "relay:claude-code", state: "done", name: copyText("beChore.relay.name", { agent: "Claude Code" }), loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidDone"), file: SETTINGS }),
+  chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: copyText("beChore.install.saidOptional"), action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications", tag: { text: copyText("dataPage.install.kindOptional"), kind: "installOptional" } }),
+  chore({ id: "relay:claude-code", state: "done", name: copyText("beChore.relay.name", { agent: "Claude Code" }), loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidDone"), file: SETTINGS, tone: "ok" }),
 ];
