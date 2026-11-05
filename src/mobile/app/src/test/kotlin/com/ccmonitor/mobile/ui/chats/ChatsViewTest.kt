@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chats
 
-import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
@@ -18,6 +17,7 @@ import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.core.wire.gen.MachineStripLine
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
@@ -32,6 +32,7 @@ import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
 import com.ccmonitor.mobile.ui.chat.liveSeat
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.barOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -118,6 +119,21 @@ class ChatsViewTest {
         face: String,
     ) = EMPTY_BOOK.copy(live = mapOf(sid to liveSeat(sid, Faces.of(face))))
 
+    /** 成品带上条那一格（`deploy::machine::strip` 写的语气）· 名字旁那个词 · 算不算离线。 */
+    private fun LinkLine.striped(
+        tone: Tone?,
+        progress: Boolean = false,
+        word: String = "",
+        offline: Boolean = false,
+    ): LinkLine {
+        val m = machine.copy(strip = tone?.let { MachineStripLine(it, progress) }, word = word, offline = offline)
+        return when (this) {
+            is LinkLine.Up -> copy(machine = m)
+            is LinkLine.Down -> copy(machine = m)
+            is LinkLine.Connecting -> copy(machine = m)
+        }
+    }
+
     private fun view(
         vararg parts: HostPart,
         current: String = "h1",
@@ -134,23 +150,60 @@ class ChatsViewTest {
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
         val update = MachineFixButton(MachineFix.UPDATE, copyText("front.act.update"))
-        val down = hostPart(snap(linkDown("远端 cc-monitor 未装", fixes = listOf(install))))
+        val down = hostPart(snap(linkDown("远端 cc-monitor 未装", fixes = listOf(install)).striped(Tone.FAIL)))
         assertEquals(install, down.bar?.fix)
-        assertEquals("装一次会好 ⇒ 红条（不是断线那一条）", false, down.bar?.offline)
-        assertNull(down.bar?.busy)
+        assertEquals("装一次会好 ⇒ 成品给的红条语气", Tone.FAIL, down.bar?.tone)
+        assertEquals(false, down.bar?.progress)
         val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")))
-        assertNull(hostPart(snap(linkDown("m 离线", fixes = retry))).bar?.fix)
-        val old = hostPart(snap(linkUp("box 后端要更新", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE)))
+        assertNull(hostPart(snap(linkDown("m 离线", fixes = retry).striped(Tone.OFFLINE))).bar?.fix)
+        val old = hostPart(snap(linkUp("box 后端要更新", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN)))
         assertEquals(update, old.bar?.fix)
         assertEquals(Problem("box 后端要更新", ""), old.bar?.problem)
-        val installing = Busy("安装 cc-monitor → m", bar = true)
-        assertEquals(installing, hostPart(snap(linkDown(installing.text, state = MachineStateKind.INSTALLING))).bar?.busy)
-        val updating = Busy("更新 m · cc-monitor", bar = true)
-        assertEquals(updating, hostPart(snap(linkUp(updating.text, state = MachineStateKind.UPDATING))).bar?.busy)
+        val installing = hostPart(snap(linkDown("安装 cc-monitor → m", state = MachineStateKind.INSTALLING).striped(Tone.BUSY, progress = true))).bar
+        assertEquals(Tone.BUSY, installing?.tone)
+        assertEquals("安装 cc-monitor → m", installing?.problem?.text)
+        assertEquals(true, installing?.progress)
+        val updating = hostPart(snap(linkUp("更新 m · cc-monitor", state = MachineStateKind.UPDATING).striped(Tone.BUSY, progress = true))).bar
+        assertEquals(Tone.BUSY, updating?.tone)
+        assertEquals(true, updating?.progress)
         val done = Deploying.Done("已装上")
         val connecting = view(hostPart(snap(linkConnecting(), deploying = done)))
         assertEquals("连着的那一会儿条上没东西 ⇒ 结局单独一行", done, connecting.deploying.single().deploying)
         assertNull(hostPart(snap()).bar)
+    }
+
+    @Test
+    fun `★ 顶条照成品条那一格：成品不带条 ⇒ 不出条（停用 · 还不知道的那台）；出条时语气 · 进度与机器条同一份`() {
+        assertNull("停用那台断着 ⇒ 成品不带条、不出条", hostPart(snap(linkDown("m 已停用", state = MachineStateKind.DISABLED))).bar)
+        assertNull("通着、成品不带条 ⇒ 有那一句也不出条", hostPart(snap(linkUp("m 比这一版新", state = MachineStateKind.NEWER))).bar)
+        val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
+        val lines =
+            listOf(
+                linkDown("m 离线", "boom").striped(Tone.OFFLINE),
+                linkDown("m 未装", fixes = listOf(install)).striped(Tone.OFFLINE),
+                linkDown("m 未装", fixes = listOf(install)).striped(Tone.FAIL),
+                linkDown("m 指纹不对", state = MachineStateKind.HOST_KEY_CHANGED).striped(Tone.FAIL),
+                linkUp("m 要更新", state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN),
+                linkUp("正在问 m", state = MachineStateKind.CONNECTING).striped(Tone.BUSY),
+                linkDown("安装 → m", state = MachineStateKind.INSTALLING).striped(Tone.BUSY, progress = true),
+            )
+        for (l in lines) {
+            val bar = hostPart(snap(l)).bar
+            val look = barOf(l)
+            assertEquals("${l.machine.said}：语气同机器条", look?.tone, bar?.tone)
+            assertEquals("${l.machine.said}：进度同机器条", look?.progress, bar?.progress)
+            assertEquals("${l.machine.said}：那一句同机器条", look?.text, bar?.problem?.text)
+        }
+    }
+
+    @Test
+    fun `★ 筛选抽屉：那台成品说离线 ⇒ 摆成品的词（指纹不对的不说成离线）；没离线 ⇒ 不写`() {
+        val key = hostPart(snap(linkDown("m 指纹不对", state = MachineStateKind.HOST_KEY_CHANGED).striped(Tone.FAIL, word = "指纹不对", offline = true)))
+        assertEquals("指纹不对", view(key).choices.single().word)
+        val down = hostPart(snap(linkDown("m 离线").striped(Tone.OFFLINE, word = "离线", offline = true)))
+        assertEquals("离线", view(down).choices.single().word)
+        val old = hostPart(snap(linkUp("m 要更新", state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN, word = "要更新")))
+        assertNull("没离线 ⇒ 抽屉不写词", view(old).choices.single().word)
     }
 
     @Test
@@ -171,16 +224,16 @@ class ChatsViewTest {
 
     @Test
     fun `流走不通只说核心那一句；问失败的单独说；通着但那台后端旧了照列、多一句`() {
-        val down = hostPart(snap(linkDown("m 离线", "boom")))
+        val down = hostPart(snap(linkDown("m 离线", "boom").striped(Tone.OFFLINE)))
         assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
-        assertEquals(true, down.bar?.offline)
+        assertEquals(Tone.OFFLINE, down.bar?.tone)
         assertTrue(down.rows.isEmpty())
         val p = Problem("那一句", "详情")
         val failed = hostPart(snap(got = Fetched.Failed(p)))
         assertEquals(p, failed.bar?.problem)
-        assertEquals(false, failed.bar?.offline)
+        assertEquals(Tone.FAIL, failed.bar?.tone)
         assertEquals(false, failed.loading)
-        val old = hostPart(snap(linkUp("m 后端要更新", "theirs: p9", state = MachineStateKind.NEEDS_UPDATE)))
+        val old = hostPart(snap(linkUp("m 后端要更新", "theirs: p9", state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN)))
         assertEquals(Problem("m 后端要更新", "theirs: p9"), old.bar?.problem)
         assertEquals(4, old.rows.size)
     }
@@ -212,7 +265,7 @@ class ChatsViewTest {
     @Test
     fun `没筛选：断着 · 还在接 · 在问都先画缓存；问到了换成那台这一份`() {
         val cached = page(row("1", "昨天"), row("2", "昨天"))
-        val down = hostPart(snap(linkDown("m 离线", "boom"), got = Fetched.Loading, cached = cached))
+        val down = hostPart(snap(linkDown("m 离线", "boom").striped(Tone.OFFLINE), got = Fetched.Loading, cached = cached))
         assertEquals(listOf("1", "2"), down.rows.map { it.sessionId })
         assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
         assertEquals(listOf("1", "2"), hostPart(snap(linkConnecting(), got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
@@ -223,7 +276,7 @@ class ChatsViewTest {
     @Test
     fun `带了筛选：缓存不画；那台断着 ⇒ 零行、那一句是离线 · 未列出（在搜 ⇒ 未搜索）`() {
         val cached = page(row("1", "昨天"))
-        val downLink = linkDown("m 离线", "boom")
+        val downLink = linkDown("m 离线", "boom").striped(Tone.OFFLINE)
         val week = hostPart(snap(downLink, got = Fetched.Loading, cached = cached, ask = ListAsk(withinDays = 7)))
         assertTrue(week.rows.isEmpty())
         assertEquals(copyText("history.list.machineDown", "machine" to "m"), week.bar?.problem?.text)
@@ -232,7 +285,7 @@ class ChatsViewTest {
         assertTrue("在问、带着筛选 ⇒ 不先画缓存", hostPart(snap(got = Fetched.Loading, cached = cached, ask = ListAsk(hidden = true))).rows.isEmpty())
         val plain = hostPart(snap(downLink, got = Fetched.Loading, cached = cached))
         assertEquals(listOf("1"), plain.rows.map { it.sessionId })
-        assertTrue(view(plain).bars.single().offline)
+        assertEquals(Tone.OFFLINE, view(plain).bars.single().tone)
     }
 
     @Test

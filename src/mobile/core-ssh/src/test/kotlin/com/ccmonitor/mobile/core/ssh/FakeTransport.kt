@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.wire.gen.Captured
 import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -84,7 +85,7 @@ class FakeTransport(
         rows: Int,
     ): ShellChannel = nope()
 
-    override suspend fun execCapture(command: String): ExecResult = nope()
+    override suspend fun execCapture(command: String): Captured = nope()
 
     private companion object {
         val NEXT_IDENTITY = AtomicInteger(0)

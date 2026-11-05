@@ -69,12 +69,12 @@ data class Filters(
     fun banded(query: String?): Boolean = view == ChatsView.TIME && !active && query == null
 }
 
-/** 筛选抽屉里机器那一勾：名字 · 勾没勾 · 断没断。 */
+/** 筛选抽屉里机器那一勾：名字 · 勾没勾 · 那台成品说离线时名字旁那个词（没离线 ⇒ `null`）。 */
 data class HostChoice(
     val id: String,
     val label: String,
     val checked: Boolean,
-    val offline: Boolean,
+    val word: String?,
 )
 
 /** 一个目录一行（按目录）：那台的组 ＋ 是哪台的 ＋ 机器小标签。 */
@@ -370,14 +370,14 @@ internal fun chatsView(
     }
     val sections = column.sections.map { s -> ChatSection(s.title, s.rows.map(row)) }
     val groups = column.groups.map { a -> parts[a.host].let { p -> ChatGroup(p.hostId, p.groups[a.at], tag(p)) } }
-    val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
+    val words = parts.associate { it.hostId to it.word }
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
     val loading = parts.any { it.loading } || (parts.isEmpty() && !filters.active)
     val empty = emptyOf(none, loading, filters.active || query != null, face)
     return ChatsUi(
         filters = filters,
         query = query,
-        choices = table.map { HostChoice(it.id, it.label, it.id !in filters.unchecked, it.id in down) },
+        choices = table.map { HostChoice(it.id, it.label, it.id !in filters.unchecked, words[it.id]) },
         sections = sections,
         groups = groups,
         pinned = pinned,

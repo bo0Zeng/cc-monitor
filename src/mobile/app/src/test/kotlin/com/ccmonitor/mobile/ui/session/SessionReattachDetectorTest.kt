@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
-import com.ccmonitor.mobile.core.ssh.ExecResult
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshTransport
+import com.ccmonitor.mobile.core.wire.gen.Captured
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -42,7 +42,7 @@ class SessionReattachDetectorTest {
             rows: Int,
         ): ShellChannel = error("unused")
 
-        override suspend fun execCapture(command: String): ExecResult = error("unused")
+        override suspend fun execCapture(command: String): Captured = error("unused")
     }
 
     /** 接线脚手架：可变 live/opened + 输入流 + detector；后台常订 reattachNeeded 保 WhileSubscribed 计算。 */

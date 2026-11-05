@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
 import com.ccmonitor.mobile.core.wire.gen.DialPlan
 import com.ccmonitor.mobile.core.wire.gen.Host
 import com.ccmonitor.mobile.core.wire.gen.arr
@@ -68,8 +69,8 @@ class RustTransportTest {
         assertTrue(t.isConnected)
         val r = runBlocking { t.execCapture("echo hi; echo oops 1>&2; exit 3") }
         assertEquals("hi\n", r.stdout)
-        assertEquals(3, r.exitStatus)
-        assertTrue(r.stderrTail, r.stderrTail.contains("oops"))
+        assertEquals(CaptureEnd.Exited(3), r.ended)
+        assertTrue(r.stderr, r.stderr.contains("oops"))
     }
 
     /**
@@ -141,7 +142,7 @@ class RustTransportTest {
             val admin = connected()
             // 台架 sshd 认的是台架家里的 ~/.ssh/authorized_keys（台架的登录壳把 HOME 换成台架的家）。
             val add = runBlocking { admin.execCapture("printf '%s\\n' '${key.publicKeyOpenSsh}' >> ~/.ssh/authorized_keys") }
-            assertEquals(0, add.exitStatus)
+            assertEquals(CaptureEnd.Exited(0), add.ended)
             val t = connected(auth = AuthMethod.KeystoreSigner(alias))
             assertEquals("ks\n", runBlocking { t.execCapture("echo ks") }.stdout)
         } finally {

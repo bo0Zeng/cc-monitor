@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.Toned
@@ -492,24 +493,27 @@ internal fun MachineTag(name: String) {
     )
 }
 
-/** 一台顶上那一条：正在装 / 更新 ⇒ 成品那一句 ＋ 进度条；断着 ⇒ 虚线条 ＋［重试］（重接那台；核心点名能装 ⇒ 红条 ＋［安装］）；读不出 ⇒ 红条 ＋［重试］［复制详情］。 */
+/** 一台顶上那一条，样子照语气：忙 ⇒ 那一句（＋ 进度条）；离线 ⇒ 虚线条 ＋［重试］（重接那台）；警示 ⇒ 琥珀那一句；故障 ⇒ 红条；后两样带［安装］/［更新］·［重试］·［复制详情］。 */
 @Composable
 private fun HostBarView(
     b: HostBar,
     act: ChatsActions,
 ) {
-    // 正在装 / 更新 ⇒ 整条只是成品那一句（＋ 进度条）。
-    b.busy?.let { busy ->
-        Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) { BusyLine(busy) }
+    if (b.tone == Tone.BUSY) {
+        Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) { BusyLine(Busy(b.problem.text, b.progress)) }
         return
     }
-    if (b.offline && b.fix == null) {
+    if (b.tone == Tone.OFFLINE) {
         DashedBar(b.problem.text, copyText("front.act.retry"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
         Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) {
-        ErrorLine(b.problem.text)
+        if (b.tone == Tone.WARN || b.tone == Tone.NEED) {
+            Text(b.problem.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
+        } else {
+            ErrorLine(b.problem.text)
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             b.fix?.let { fix ->
                 Button(onClick = { act.deploy(b.hostId) }, modifier = Modifier.testTag(ChatsTags.DEPLOY)) { Text(deployLabel(fix)) }

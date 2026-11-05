@@ -83,7 +83,7 @@ fun FilterSheet(
                 ) {
                     Checkbox(checked = c.checked, onCheckedChange = null)
                     Text(c.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                    if (c.offline) Text(copyText("machinePage.state.down"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    c.word?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
             Head(copyText("history.filter.time"))
