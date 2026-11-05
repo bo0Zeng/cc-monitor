@@ -550,6 +550,8 @@ class ChatSessionTest {
                             ),
                         )
                     "session-open" -> start
+                    // 起好之后目录照会话事实的项目目录。
+                    "history-facts" -> ok(Wires.facts("projectDir" to "/h/proj"))
                     else -> Reply.LinkDown
                 }
             }
@@ -569,6 +571,7 @@ class ChatSessionTest {
             start = ok(started + ("sid" to "pre"))
             s.retry(s.box().single().id)
             link.arrive("pre")
+            link.report("pre", "/h/proj/sub")
             runCurrent()
             assertEquals("pre", s.state.value.sid)
             assertEquals(false, s.state.value.drafting)

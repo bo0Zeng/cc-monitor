@@ -87,7 +87,7 @@ fun overviewOf(
         needs = up.flatMap { h -> linesOf(h, of(h).list?.items.orEmpty(), of(h).at) },
         down = order.filter { of(it).down },
         unreadable = order.mapNotNull { h -> of(h).unreadable?.let { h to it } },
-        failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, null) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
+        failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, of(h).offline) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
         loading = order.filter { of(it).reading },
         readFrom = up.filter { of(it).list != null },
         total = board.values.sumOf { it.counted },

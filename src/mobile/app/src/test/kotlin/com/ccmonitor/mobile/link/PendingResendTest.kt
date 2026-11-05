@@ -79,4 +79,17 @@ class PendingResendTest {
             runCurrent()
             assertEquals(mapOf("p1" to PendingOutcome.REFUSED), box.settled)
         }
+
+    @Test
+    fun `那条会话开着 ⇒ 它的待发归它自己交，这里不交；没开的照交`() =
+        runTest {
+            val link = FakeCoreLink().apply { state.value = linkConnecting() }
+            link.answer = { cmd, _ -> if (cmd == "session-queue-put") receipt else Reply.LinkDown }
+            val box = Box(listOf(Pending("p1", "s1", "t-1", PendingOutcome.PENDING, 1), Pending("p2", "s2", "t-2", PendingOutcome.PENDING, 1)))
+            PendingResend(MutableStateFlow(mapOf<String, CoreLink>("h" to link)), { box }, backgroundScope) { setOf("s1") }
+            link.state.value = linkUp()
+            runCurrent()
+            assertEquals(listOf("p2"), link.calls("session-queue-put").map { it?.get("id") })
+            assertEquals(mapOf("p2" to PendingOutcome.DELIVERED), box.settled)
+        }
 }

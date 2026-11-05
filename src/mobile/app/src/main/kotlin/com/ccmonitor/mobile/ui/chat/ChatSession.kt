@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
@@ -73,7 +74,7 @@ data class ChatUiState(
     val outbox: List<OutboxLine> = emptyList(),
     /** 输入框上方那一排的名单：会话那台那份输入队（哪一端投的都在；自己的回执到了就只在这里）· 每条可撤。 */
     val queue: List<QueueLine> = emptyList(),
-    /** 会话那台此刻离线那一句（机器成品写好的，[CoreLink.offline]）；连着 ⇒ `null`：那一排照它淡着、说名单是上次所知。 */
+    /** 会话那台断着时那台离线那一句（[CoreLink.offline]）；没断 ⇒ `null`：那一排照它淡着、说名单是上次所知。 */
     val offline: String? = null,
     /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
@@ -103,8 +104,6 @@ data class ChatUiState(
     val commands: CommandsView = CommandsView.Idle,
     /** 新建会话还没发第一条（或起不来、回到草稿）：选项那两排 chip 在。 */
     val drafting: Boolean = false,
-    /** 这条会话的工作目录（在它里面点「新建会话」⇒ 新的那张用它）；还不知道 ⇒ `null`。 */
-    val cwd: String? = null,
     /** 叫这条会话什么（那台定的：会话簿那一格，状态帧来了就换）；簿里还没有它 ⇒ `null`。 */
     val label: String? = null,
     /** 顶栏那一行：会话簿那一条那台写好的整行标题（`title`）；簿里还没有它 ⇒ `null`。 */
@@ -121,7 +120,10 @@ data class ChatUiState(
     val landing: String? = null,
     /** 流里画的那几项：[units] 照那台 `history-turns` 的分段折好（[ChatTurns]）；分段还没问到 · 问不到 ⇒ 逐条摊开。 */
     val stream: List<StreamItem> = emptyList(),
-)
+) {
+    /** 这条会话的工作目录（在它里面点「新建会话」⇒ 新的那张用它）：只照会话事实的项目目录；还没问到 ⇒ `null`。 */
+    val cwd: String? get() = facts?.projectDir
+}
 
 /**
  * 一颗「换」的 chip：模型 · 权限档。字只写那台读回来的；判「此刻能不能换」也归那台（它拒了就照它那句说），
@@ -214,7 +216,7 @@ class ChatSession(
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val draft = target as? ChatTarget.Draft
-    private val chips = ChatChips(link, machine, scope, _state) { sid }
+    private val chips = ChatChips(link, machine, scope, _state, { record.path }) { sid }
     val attach: AttachTray? = attachOf?.takeIf { draft == null }?.invoke(scope) { sid }
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
@@ -282,7 +284,7 @@ class ChatSession(
             // 那台推来的输入队名单（这一条的）照画。
             queue.watch(queueMoved) { sid }
             // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
-            scope.launch { link.offline.collect { off -> _state.value = _state.value.copy(offline = off) } }
+            scope.launch { combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } }.collect { off -> _state.value = _state.value.copy(offline = off) } }
             // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）；名单问一次（断着时漏了的推送补上）。
             scope.launch {
                 link.state
@@ -590,10 +592,10 @@ class ChatSession(
         p.settled()
         val c = p.chosen()
         val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
-        val (answer, cwd) =
+        val answer =
             when (val r = link.call(SessionOpen.COMMAND, args, NEW_MS)) {
                 is Reply.Ok ->
-                    SessionOpen.of(r.data)?.let { a -> a.cwd?.let { a to it } }
+                    SessionOpen.of(r.data)
                         ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionOpen.COMMAND, link.offline.value)?.text)
             }
@@ -615,7 +617,7 @@ class ChatSession(
         }
         sid = arrived
         cache.bind(outgoing.map { it.localId }, arrived)
-        _state.value = _state.value.copy(sid = arrived, cwd = cwd)
+        _state.value = _state.value.copy(sid = arrived)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
     }

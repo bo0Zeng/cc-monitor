@@ -20,7 +20,7 @@ import org.junit.Test
 
 /**
  * 聊天屏输入那一圈的会话中途四样 ＋ 逐字流：
- * 换模型 · 切权限档读回才换字、没读回回原字 ＋ 一句；［+］面板的清单 · 动作都问那台；活卡照那台的帧长、撤。
+ * 换模型 · 切权限档换成了才照会话事实换字、没读回字不动 ＋ 一句；［+］面板的清单 · 动作都问那台；活卡照那台的帧长、撤。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionMidTest {
@@ -41,11 +41,28 @@ class ChatSessionMidTest {
     private val opus = AgentPick("opus", "Opus")
     private val plan = AgentPick("plan", "规划模式")
 
+    /** 会话事实那一问：字照此刻 [model] · [mode] 那几格（换成了之后再问一次就是新的）。 */
+    private class Facts {
+        var model: Pair<String, String>? = null
+        var mode: Pair<String, String>? = null
+
+        fun reply(): Reply =
+            Reply.Ok(Wires.facts("modelText" to model?.second, "modelPick" to model?.first, "permissionMode" to mode?.first, "permissionModeText" to mode?.second))
+    }
+
     @Test
-    fun `换模型：转圈期间两颗都在换、读回 done 才换成读回的字；勾上换成的那一项`() =
+    fun `换模型：转圈期间两颗都在换、读回 done 才再问会话事实、字照它；勾上事实那一项`() =
         runTest {
             val link = FakeCoreLink()
-            val s = existing(link) { cmd, _ -> if (cmd == "session-model") Reply.Ok(mapOf("result" to "done", "model" to "Opus 5.5 (1M context)", "said" to "已换成")) else null }
+            val facts = Facts()
+            val s =
+                existing(link) { cmd, _ ->
+                    when (cmd) {
+                        "session-model" -> Reply.Ok(mapOf("result" to "done", "model" to "Opus 5.5 (1M context)", "said" to "已换成")).also { facts.model = "opus" to "Opus 5.5 (1M context)" }
+                        "history-facts" -> facts.reply()
+                        else -> null
+                    }
+                }
             runCurrent()
             s.switchModel(opus)
             assertEquals("点了当场转圈、写换成的那一项", opus, s.state.value.model.pending)
@@ -54,7 +71,7 @@ class ChatSessionMidTest {
             runCurrent()
             val chip = s.state.value.model
             assertNull(chip.pending)
-            assertEquals("读回的字，不是抽屉里那一项的字", "Opus 5.5 (1M context)", chip.text)
+            assertEquals("会话事实那一个字", "Opus 5.5 (1M context)", chip.text)
             assertEquals("opus", chip.value)
             assertNull(s.state.value.note)
             assertEquals(listOf(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile")), link.calls("session-model"))
@@ -62,11 +79,20 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `换模型没读回（unsure · 超时）⇒ 回原字 ＋ 一句；那台带了那一句就照它`() =
+    fun `换模型没读回（unsure · 超时）⇒ 字不动 ＋ 一句；那台带了那一句就照它`() =
         runTest {
             val link = FakeCoreLink()
+            val facts = Facts()
             val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("result" to "done", "model" to "Sonnet", "said" to null)), Reply.TimedOut("t-said", ""), Reply.Ok(mapOf("result" to "unsure", "model" to null, "said" to "结果未知，看一眼终端"))))
-            val s = existing(link) { cmd, _ -> if (cmd == "session-model") replies.removeFirst() else null }
+            val s =
+                existing(link) { cmd, _ ->
+                    when (cmd) {
+                        // 头一趟换成了：那台记录里此刻是 Sonnet；后两趟没读回，记录不变。
+                        "session-model" -> replies.removeFirst().also { if (facts.model == null) facts.model = "sonnet" to "Sonnet" }
+                        "history-facts" -> facts.reply()
+                        else -> null
+                    }
+                }
             runCurrent()
             s.switchModel(AgentPick("sonnet", "Sonnet"))
             runCurrent()
@@ -83,9 +109,10 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `切权限档：done ⇒ 换成那一档写好的字；那台拒（在等人）⇒ 回原字 ＋ 它那一句`() =
+    fun `切权限档：done ⇒ 再问会话事实、字照它；那台拒（在等人）⇒ 字不动 ＋ 它那一句`() =
         runTest {
             val link = FakeCoreLink()
+            val facts = Facts()
             val replies =
                 ArrayDeque(
                     listOf(
@@ -93,7 +120,15 @@ class ChatSessionMidTest {
                         mapOf("result" to "refused", "mode" to null, "modeText" to null, "why" to "waiting", "said" to "先答完需手动"),
                     ),
                 )
-            val s = existing(link) { cmd, _ -> if (cmd == "session-permission") Reply.Ok(replies.removeFirst()) else null }
+            val s =
+                existing(link) { cmd, _ ->
+                    when (cmd) {
+                        // 头一趟换成了：那台记录里此刻是规划模式。
+                        "session-permission" -> Reply.Ok(replies.removeFirst()).also { if (facts.mode == null) facts.mode = "plan" to "规划模式" }
+                        "history-facts" -> facts.reply()
+                        else -> null
+                    }
+                }
             runCurrent()
             s.switchPermission(plan)
             runCurrent()
@@ -107,7 +142,7 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `chip 的字：打开时照 history-facts 那台写好的两个字、模型抽屉勾 modelPick；换成过就以读回的为准`() =
+    fun `chip 的字：打开时照 history-facts 那台写好的两个字、模型抽屉勾 modelPick`() =
         runTest {
             val link = FakeCoreLink()
             val s =

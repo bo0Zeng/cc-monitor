@@ -39,6 +39,8 @@ data class MachineNeeds(
     val list: NeedsList? = null,
     val down: Boolean = false,
     val failed: Reply? = null,
+    /** 最近那一问没问到时那条链上的离线那一句（[CoreLink.offline]，[failed] 是断着时照摆它）。 */
+    val offline: String = "",
     /** 收到 [list] 那一刻（本机单调钟）：会走的那一句从它起接着走。 */
     val at: Long = 0L,
 ) {
@@ -140,7 +142,7 @@ class NeedsBoard(
         val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
         val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) }
         if (list == null) {
-            put(id) { it.copy(failed = if (r is Reply.Ok) Reply.Unreadable(r.data.toString()) else r) }
+            put(id) { it.copy(failed = if (r is Reply.Ok) Reply.Unreadable(r.data.toString()) else r, offline = link.offline.value) }
             return false
         }
         put(id) { it.copy(list = list, failed = null, at = now()) }

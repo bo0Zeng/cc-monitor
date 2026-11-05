@@ -23,14 +23,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
- * 一条会话输入框里那两颗 chip（模型 · 权限档）：字（读回的 · 那台从记录里读的）· 能不能换（那台判的、离线照连接那一层）· 换 · 抽屉里列什么。
- * 状态写进 [ChatSession] 的那一份 [state]；[sid] 给此刻对着的那条会话。
+ * 一条会话输入框里那两颗 chip（模型 · 权限档）：字只照会话事实（那台从记录里读的此刻的模型 · 权限档）· 能不能换（那台判的、离线照连接那一层）· 换 · 抽屉里列什么。
+ * 状态写进 [ChatSession] 的那一份 [state]；[path] 给这条会话的记录文件（换成了就照它再问一次会话事实），[sid] 给此刻对着的那条会话。
  */
 internal class ChatChips(
     private val link: CoreLink,
     private val machine: String,
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<ChatUiState>,
+    private val path: () -> String?,
     private val sid: () -> String?,
 ) {
     /**
@@ -47,7 +48,7 @@ internal class ChatChips(
     }
 
     /**
-     * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` 才换字；没读回（`unsure` · 超时）· 被拒 ⇒ 回原字 ＋ chip 上方那一句。
+     * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` ⇒ 再问一次会话事实、字照它；没读回（`unsure` · 超时）· 被拒 ⇒ 字不动 ＋ chip 上方那一句。
      * 已经在换（模型或权限档）⇒ 不再起一趟。
      */
     fun switchModel(pick: AgentPick) =
@@ -118,10 +119,10 @@ internal class ChatChips(
         state.value = put(st, chipOf(st).copy(pending = pick)).copy(note = null)
         scope.launch {
             val r = ask(s)
+            // 换成了：字与抽屉勾哪一项只照会话事实，回包不写字。
+            if (r.result == ModeSwitchResult.DONE) path()?.let { readFacts(it) }
             val now = state.value
-            val was = chipOf(now).copy(pending = null)
-            val chip = if (r.result == ModeSwitchResult.DONE && r.text != null) was.copy(text = r.text, value = pick.value) else was
-            state.value = put(now, chip).copy(note = if (r.result == ModeSwitchResult.DONE) r.said.takeIf { r.text == null } else r.said)
+            state.value = put(now, chipOf(now).copy(pending = null)).copy(note = if (r.result == ModeSwitchResult.DONE) r.said.takeIf { r.text == null } else r.said)
         }
     }
 
@@ -142,8 +143,7 @@ internal class ChatChips(
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写那台成品的离线那一句
-     * （成品还没到 ⇒ 状态不明：未知不当离线）。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。输入框照同一张脸的 `can.say`（[sayLook]）。
+     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写链上交的离线那一句。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。输入框照同一张脸的 `can.say`（[sayLook]）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
@@ -152,7 +152,7 @@ internal class ChatChips(
                 val can = t.face(s)?.can
                 val (model, permission) =
                     if (down) {
-                        (off ?: copyText("runs.state.unknown")).let { it to it }
+                        off to off
                     } else {
                         can?.model?.blocked() to can?.permission?.blocked()
                     }
@@ -190,17 +190,16 @@ internal class ChatChips(
     private var factsDirty = false
 
     /**
-     * 会话事实落进屏上：整份留着（顶栏第二行 · 工具步骤那一态读它）；chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）
-     * 与模型抽屉勾哪一项（`modelPick`）还没换过才用它；目录还不知道 ⇒ 取那台读记录开头给的项目目录。
+     * 会话事实落进屏上：整份留着（顶栏第二行 · 工具步骤那一态 · 工作目录读它）；chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）
+     * 与模型抽屉勾哪一项（`modelPick`）每次都照它写。
      */
     fun take(f: FactsReply) {
         val now = state.value
         state.value =
             now.copy(
                 facts = f,
-                model = now.model.copy(text = now.model.text ?: f.modelText, value = now.model.value ?: f.modelPick),
-                permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
-                cwd = now.cwd ?: f.projectDir,
+                model = now.model.copy(text = f.modelText, value = f.modelPick),
+                permission = now.permission.copy(text = f.permissionModeText, value = f.permissionMode),
             )
     }
 

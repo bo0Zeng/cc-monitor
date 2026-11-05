@@ -356,7 +356,7 @@ class AttachTray(
         val want =
             AttachWant(
                 cards = cards.map { AttachWantCard(it.name, wireOf(it.phase)) },
-                offline = if (offline) link.offline.value ?: machine else null,
+                offline = if (offline) link.offline.value else null,
                 local = local?.let(::wireOf),
             )
         val line = face(Wire.line(want))

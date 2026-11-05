@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.LocalSaves
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CoroutineScope
@@ -81,6 +82,7 @@ class HostBackends(
             ssh = connector.dialOf(hostId),
             mine = EmbeddedBuild.ID,
             tz = ZoneId.systemDefault().id,
+            unknown = copyText("runs.state.unknown"),
             kept = keptOf(hostId),
             saves = saves,
             onBreak = ::onBreak,

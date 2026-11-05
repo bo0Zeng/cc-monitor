@@ -62,8 +62,8 @@ interface CoreLink {
     /** 核心交的那一行（通没通 ＋ 那台的状态成品）：断着 ⇒ 屏上那几颗要连着那台的按钮都灰；核心还没交过 ⇒ `null`。 */
     val state: StateFlow<LinkLine?>
 
-    /** 那台离线那一句（那台状态成品里连接层写好的，出口照摆）；成品还没到 ⇒ `null`（未知不当离线）。 */
-    val offline: StateFlow<String?>
+    /** 那台离线那一句，恒有：那台状态成品里连接层写好的那一句；成品还没到 ⇒ 状态不明那一句（未知不当离线）。出口照摆，不另补。 */
+    val offline: StateFlow<String>
 
     /** 这台的会话簿：核心折好的整份（`face_core::book`，桌面同一份折法）。 */
     val table: StateFlow<SessionBook>

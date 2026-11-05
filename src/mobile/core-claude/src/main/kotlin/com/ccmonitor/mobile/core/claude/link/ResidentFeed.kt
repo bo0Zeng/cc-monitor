@@ -153,6 +153,8 @@ class ResidentFeed(
     private val mine: String,
     /** 看的这一台的时区（IANA 名）。 */
     private val tz: String,
+    /** 那台状态成品还没到时 [offline] 那一句（状态不明；取字在造它的那一侧）。 */
+    unknown: String,
     /** 这一台在做的几组落盘的那一份（核心交 `batch_keep` 时写 · 删；开起来交回核心再问）。 */
     private val kept: KeptBatches,
     /** 下到本机那一侧（核心经 `batch_local` 要本机那一份时在这里开 · 删）。 */
@@ -164,8 +166,8 @@ class ResidentFeed(
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkLine?>(null)
     override val state: StateFlow<LinkLine?> = stateFlow.asStateFlow()
-    private val offlineFlow = MutableStateFlow<String?>(null)
-    override val offline: StateFlow<String?> = offlineFlow.asStateFlow()
+    private val offlineFlow = MutableStateFlow(unknown)
+    override val offline: StateFlow<String> = offlineFlow.asStateFlow()
 
     private val sshFlow = MutableStateFlow(false)
 
