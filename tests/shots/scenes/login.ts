@@ -106,7 +106,7 @@ export const LOGIN_SCENES: Scene[] = [
   scene(
     "needs-panel-offline",
     "需手动浮层 · 一台断开",
-    "devbox 那一问够不着：底部一条中性灰虚线「devbox 离线 · 未计入」，数里不算它",
+    "devbox 那一问够不着：底部一条中性灰虚线写后端那一句（够不着 · 未计入），数里不算它",
     () => openPanel(["team", "linear"]),
     () => {
       const w = busyWorld();
