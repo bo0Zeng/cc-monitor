@@ -987,6 +987,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // xterm 键码那一张表（`keys.rs`）：编码 · 解码两个口 ＋ 键的线上名 · 一下的记号（JNI 两侧与金样同一形）。界面不送键码，TS 侧没有孪生。
     presses_bytes: "J48",
     presses_of: "J48",
+    // 一趟 capture 的退出码（`dial.rs::Captured::exit_code`）：界面不拿 capture，TS 侧没有孪生。
+    exit_code: "J49",
     ALL: NONE,
     wire: NONE,
     from_wire: NONE,
