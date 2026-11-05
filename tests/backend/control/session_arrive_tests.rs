@@ -209,16 +209,16 @@ fn missed_in_a_managed_terminal_never_says_tmux() {
         _ => unreachable!(),
     });
     for (got, key, extra) in [
-        (&gone, "beSessionArrive.missed.managed.gone", None),
+        (&gone, "beSessionArrive.managedMissed.gone", None),
         (
             &unread,
-            "beSessionArrive.missed.managed.noScreen",
+            "beSessionArrive.managedMissed.noScreen",
             Some(("why", "读不动")),
         ),
-        (&empty, "beSessionArrive.missed.managed.emptyScreen", None),
+        (&empty, "beSessionArrive.managedMissed.emptyScreen", None),
         (
             &words,
-            "beSessionArrive.missed.managed.words",
+            "beSessionArrive.managedMissed.words",
             Some(("words", last.as_str())),
         ),
     ] {

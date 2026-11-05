@@ -68,19 +68,19 @@ fn missed_in(dur: &str, name: &str, host: TerminalHost, screen: &Screen) -> Stri
             &[("dur", dur), ("name", name), ("why", why.as_str())],
         ),
         (Managed, Screen::There { .. }) if w.is_empty() => copy_text(
-            "beSessionArrive.missed.managed.emptyScreen",
+            "beSessionArrive.managedMissed.emptyScreen",
             &[("dur", dur), ("name", name)],
         ),
         (Managed, Screen::There { .. }) => copy_text(
-            "beSessionArrive.missed.managed.words",
+            "beSessionArrive.managedMissed.words",
             &[("dur", dur), ("name", name), ("words", w)],
         ),
         (Managed, Screen::Gone) => copy_text(
-            "beSessionArrive.missed.managed.gone",
+            "beSessionArrive.managedMissed.gone",
             &[("dur", dur), ("name", name)],
         ),
         (Managed, Screen::Unread(why)) => copy_text(
-            "beSessionArrive.missed.managed.noScreen",
+            "beSessionArrive.managedMissed.noScreen",
             &[("dur", dur), ("name", name), ("why", why.as_str())],
         ),
     }
