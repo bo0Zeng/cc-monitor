@@ -6,7 +6,7 @@ use crate::agents::AskIn;
 use crate::agents::{AskKind, AskOption, AskQuestion, AskSuggestion};
 use crate::control::asks::*;
 use crate::history::history_annotations::AUTO_MAX_MIN;
-use cmd_wire::needs::{AnswerReq, AutoAnswer, AutoChoice};
+use cmd_wire::needs::{AnswerReq, AskEnd, AutoAnswer, AutoChoice};
 use copy_core::copy_text;
 use serde_json::json;
 use serde_json::Value;
@@ -47,6 +47,14 @@ fn ids(a: &Ask) -> Vec<&str> {
 /// 别处先答了 / 那一头撤了的那一份回包：结局 `gone` ＋ 后端那一句。
 fn gone(said: &str) -> Value {
     json!({"result": "gone", "said": said})
+}
+
+/// 上一条请求收场的那一格（`said` 后端写好 · `stays` 切走再回来还留不留着）。
+fn end(said: &str, stays: bool) -> AskEnd {
+    AskEnd {
+        said: cmd_wire::cells::Words(said.into()),
+        stays,
+    }
 }
 
 fn answer_of(sid: &str, ask: &str, choice: &str) -> Result<Value, crate::common::said::Said> {
@@ -127,6 +135,11 @@ fn the_first_answer_lands_and_the_rest_are_gone() {
         "别处先答了是一种结局，不是错"
     );
     assert!(pending(sid).is_empty(), "答掉 ⇒ 不再挂着");
+    assert_eq!(
+        ended(sid),
+        Some(end(&copy_text("beAsk.answer.already", &[]), false)),
+        "别的出口看到的那一句后端写好"
+    );
 }
 
 #[test]
@@ -137,6 +150,11 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_later_answers_are_g
     let a = pending(sid).pop().unwrap();
     drop(desk); // hook 那条连接断了（终端先答了 · 被打断 · 到点）
     assert!(pending(sid).is_empty());
+    assert_eq!(
+        ended(sid),
+        Some(end(&copy_text("askBlock.gone.elsewhere", &[]), false)),
+        "别处先答了 ⇒ 会话事实里有写好的那一句"
+    );
     assert_eq!(
         answer_of(sid, &a.id, "allow").unwrap(),
         gone(&copy_text("askBlock.gone.elsewhere", &[]))
@@ -511,15 +529,15 @@ async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
             ("say", "照推荐的来"),
         ],
     );
-    assert_eq!(answered(sid).map(|w| w.0), Some(said.clone()));
-    assert!(answered_rows()
+    assert_eq!(ended(sid), Some(end(&said, true)), "替人答的那一句留着");
+    assert!(ended_rows()
         .iter()
-        .any(|r| r.sid == sid && r.said.0 == said));
+        .any(|r| r.sid == sid && r.end == end(&said, true)));
     // 之后桌面 · 手机再答：已有人答过，那一句是记录那一句。
     assert_eq!(answer_of(sid, &id, "dismiss").unwrap(), gone(&said));
     // 下一次挂上提问 ⇒ 那条记录换掉。
     let _rx = open_id(AGENT, approve(sid), 9102).1;
-    assert_eq!(answered(sid), None);
+    assert_eq!(ended(sid), None);
 }
 
 #[tokio::test(start_paused = true)]
@@ -551,7 +569,11 @@ async fn a_human_who_answers_first_wins_and_nothing_is_said_for_them() {
         got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"], "A",
         "人的答案"
     );
-    assert_eq!(answered(sid), None, "人答了 ⇒ 不留自动答的记录");
+    assert_eq!(
+        ended(sid),
+        Some(end(&copy_text("beAsk.answer.already", &[]), false)),
+        "人答了 ⇒ 别的出口照「已有人答过」那一句，不留着"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -562,7 +584,11 @@ async fn the_terminal_answering_first_means_no_decision_and_no_record() {
     drop(desk); // 终端那边先答了：hook 退了、连接断了
     pass(6, 0).await;
     assert_eq!(h.await.unwrap().decision, None);
-    assert_eq!(answered(sid), None);
+    assert_eq!(
+        ended(sid),
+        Some(end(&copy_text("askBlock.gone.elsewhere", &[]), false)),
+        "终端先答了 ⇒ 那一句后端写好，不替人答"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -574,7 +600,7 @@ async fn approvals_and_plans_are_never_answered_for_anyone() {
         pass(AUTO_MAX_MIN.into(), 1).await;
         assert!(!h.is_finished(), "{tool}：安全闸不自动答");
         assert_eq!(pending(&sid).len(), 1, "{tool}");
-        assert_eq!(answered(&sid), None, "{tool}");
+        assert_eq!(ended(&sid), None, "{tool}：还挂着 ⇒ 没有收场那一句");
         drop(desk);
         assert_eq!(h.await.unwrap().decision, None);
     }
@@ -590,7 +616,10 @@ async fn with_the_setting_off_a_question_just_waits() {
         assert!(!h.is_finished(), "设置关着不答（第 {i} 种）");
         drop(desk);
         assert_eq!(h.await.unwrap().decision, None);
-        assert_eq!(answered(&sid), None);
+        assert_eq!(
+            ended(&sid),
+            Some(end(&copy_text("askBlock.gone.elsewhere", &[]), false))
+        );
     }
 }
 

@@ -177,17 +177,20 @@
     ],
     "replies": [
       {
-        "result": "delivered"
+        "result": "delivered",
+        "note": "已送达"
       },
       {
         "result": "refused",
         "why": "screen_changed",
         "said": "画面已变",
+        "note": "未送达 · 画面已变 · 内容保留",
         "screen": "0000000000000000",
         "acts": ["retry", "recapture"]
       },
       {
         "result": "unsure",
+        "note": "送达未知 · 无应答 · 未重发 · 先看画面",
         "acts": ["recapture"]
       }
     ],

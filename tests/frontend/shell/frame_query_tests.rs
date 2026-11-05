@@ -530,7 +530,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "sessions-needs-merge",
-        "`BORN_ON_FRAME` 那一条：本机后端问到各台的需手动整份、合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
+        "`BORN_ON_FRAME` 那一条：本机后端问到各台的需手动整份、合成一份 ＋ 总数（`face_core::needs::merge_needs`，照各项的 `rank`；手机核心逐台问完调同一份）；\
          前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
     ),
     (

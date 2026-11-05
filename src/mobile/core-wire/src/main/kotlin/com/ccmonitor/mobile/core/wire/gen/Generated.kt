@@ -1426,6 +1426,44 @@ sealed interface ArriveEnd {
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class AskEnd(
+    val said: String,
+    val stays: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AskEnd> = obj(
+            listOf(
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("stays", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> AskEnd(a[0] as String, a[1] as Boolean) },
+            { v -> arrayOf(v.said, v.stays) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AskEndRow(
+    val sid: String,
+    val end: AskEnd,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AskEndRow> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("end", { AskEnd.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> AskEndRow(a[0] as String, a[1] as AskEnd) },
+            { v -> arrayOf(v.sid, v.end) },
+        )
+    }
+}
+
 enum class AskKind(val wire: String) {
     APPROVE("approve"),
     ANSWER("answer"),
@@ -6708,7 +6746,7 @@ data class FactsReply(
     val background: FactsBackground?,
     val autoAnswer: Int?,
     val autoAnswerChoices: List<AutoChoice>,
-    val autoAnswered: String?,
+    val askEnd: AskEnd?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
     val children: List<Kin>,
@@ -6745,7 +6783,7 @@ data class FactsReply(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Int32) }, optional = false, nullable = true),
             Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
-            Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
+            Field("askEnd", { opt(AskEnd.ADAPTER) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
             Field("children", { arr(Kin.ADAPTER) }, optional = false, nullable = false),
@@ -6754,8 +6792,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as List<PendingCall>, a[12] as LastSay?, a[13] as Needs?, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as FactsBackground?, a[21] as Int?, a[22] as List<AutoChoice>, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as String?, a[28] as String?, a[29] as FactsLine?, a[30] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as List<PendingCall>, a[12] as LastSay?, a[13] as Needs?, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as FactsBackground?, a[21] as Int?, a[22] as List<AutoChoice>, a[23] as AskEnd?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as String?, a[28] as String?, a[29] as FactsLine?, a[30] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }
@@ -15565,7 +15603,7 @@ enum class NeedsKind(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class NeedsList(
     val items: List<NeedsItem>,
-    val answered: List<AnsweredRow>,
+    val ended: List<AskEndRow>,
     val manualUnreadable: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15574,11 +15612,11 @@ data class NeedsList(
         val ADAPTER: JsonAdapter<NeedsList> = obj(
             listOf(
             Field("items", { arr(NeedsItem.ADAPTER) }, optional = false, nullable = false),
-            Field("answered", { arr(AnsweredRow.ADAPTER) }, optional = false, nullable = false),
+            Field("ended", { arr(AskEndRow.ADAPTER) }, optional = false, nullable = false),
             Field("manualUnreadable", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> NeedsList(a[0] as List<NeedsItem>, a[1] as List<AnsweredRow>, a[2] as String?) },
-            { v -> arrayOf(v.items, v.answered, v.manualUnreadable) },
+            { a -> NeedsList(a[0] as List<NeedsItem>, a[1] as List<AskEndRow>, a[2] as String?) },
+            { v -> arrayOf(v.items, v.ended, v.manualUnreadable) },
         )
     }
 }
@@ -23806,7 +23844,7 @@ data class SessionFacts(
     val background: FactsBackground?,
     val autoAnswer: Int?,
     val autoAnswerChoices: List<AutoChoice>,
-    val autoAnswered: String?,
+    val askEnd: AskEnd?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
     val children: List<Kin>,
@@ -23842,7 +23880,7 @@ data class SessionFacts(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Int32) }, optional = false, nullable = true),
             Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
-            Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
+            Field("askEnd", { opt(AskEnd.ADAPTER) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
             Field("children", { arr(Kin.ADAPTER) }, optional = false, nullable = false),
@@ -23851,8 +23889,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as FactsBackground?, a[20] as Int?, a[21] as List<AutoChoice>, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as String?, a[27] as String?, a[28] as FactsLine?, a[29] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as FactsBackground?, a[20] as Int?, a[21] as List<AutoChoice>, a[22] as AskEnd?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as String?, a[27] as String?, a[28] as FactsLine?, a[29] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }

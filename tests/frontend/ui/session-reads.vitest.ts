@@ -237,7 +237,7 @@ describe("〔STC〕第五问：会话事实", () => {
         { min: 15, text: "15m" },
         { min: 30, text: "30m" },
       ],
-      autoAnswered: null,
+      askEnd: null,
       startedBy: null,
       children: [],
       startedByText: null,
