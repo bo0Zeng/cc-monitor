@@ -366,10 +366,23 @@ SA=aaaaaaaa-0000-4000-8000-00000000000a
 SB=bbbbbbbb-0000-4000-8000-00000000000b
 SC=cccccccc-0000-4000-8000-00000000000c
 pane_alive() { "$TMUX_BIN" list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qxF -- "$1"; }
+# 停之前先问这台的会话脸（活不活照活会话表）：活会话表还没认出它时答 not_endable（跳过、什么都不动）⇒ 照问，直到不是这一答。
 stop_sid() { # <sid> <序号> ⇒ 应答
-  send "{\"id\":\"e2e-stop-$2\",\"cmd\":\"sessions-stop\",\"args\":{\"sids\":[\"$1\"]}}"
-  wait_for "\"id\":\"e2e-stop-$2\"" || { echo "<5s 内无应答>"; return; }
-  reply_of "e2e-stop-$2"
+  local _n=0 _r _end=$((SECONDS + WALL_CEILING_S))
+  while :; do
+    _n=$((_n + 1))
+    send "{\"id\":\"e2e-stop-$2-$_n\",\"cmd\":\"sessions-stop\",\"args\":{\"sids\":[\"$1\"]}}"
+    wait_for "\"id\":\"e2e-stop-$2-$_n\"" || { echo "<5s 内无应答>"; return; }
+    _r="$(reply_of "e2e-stop-$2-$_n")"
+    case "$_r" in *'"why":"not_endable"'*) [ "$SECONDS" -lt "$_end" ] && { sleep 0.05; continue; } ;; esac
+    printf '%s' "$_r"; return
+  done
+}
+# 会话脸照活会话表判（没有活进程 ＝ 已结束、结束不了）⇒ 每个挂 sid 的窗格里那个进程登一份活会话 pidfile（同 claude 落的那一形）。
+live_in() { # <窗格> <sid>
+  local pid; pid="$("$TMUX_BIN" display-message -p -t "$1" '#{pane_pid}')"
+  mkdir -p "$WORK/claude/sessions"
+  printf '{"pid":%s,"sessionId":"%s","kind":"interactive","procStart":"%s"}\n' "$pid" "$2" "$(proc_start "$pid")" > "$WORK/claude/sessions/$pid.json"
 }
 fresh_tmux
 PA="$("$TMUX_BIN" new-session -d -s dual-cc -P -F '#{pane_id}')"
@@ -377,6 +390,7 @@ PB="$("$TMUX_BIN" split-window -t '=dual-cc:' -P -F '#{pane_id}')"
 "$TMUX_BIN" set-option -p -t "$PA" @ccm_sid "$SA" >/dev/null 2>&1
 "$TMUX_BIN" set-option -p -t "$PB" @ccm_sid "$SB" >/dev/null 2>&1
 "$TMUX_BIN" select-pane -t "$PB" >/dev/null 2>&1
+live_in "$PA" "$SA"; live_in "$PB" "$SB"
 R="$(stop_sid "$SA" 1)"
 wall_until '! pane_alive "$PA"' || true
 if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! pane_alive "$PA" && pane_alive "$PB"; then
@@ -391,6 +405,7 @@ PC="$("$TMUX_BIN" new-session -d -s box -P -F '#{pane_id}')"
 PD="$("$TMUX_BIN" split-window -t '=box:' -P -F '#{pane_id}')"
 "$TMUX_BIN" set-option -p -t "$PC" @ccm_sid "$SC" >/dev/null 2>&1
 "$TMUX_BIN" select-pane -t "$PD" >/dev/null 2>&1
+live_in "$PC" "$SC"
 R="$(stop_sid "$SC" 3)"
 wall_until '! "$TMUX_BIN" has-session -t "=box:" 2>/dev/null' || true
 if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -t '=box:' 2>/dev/null; then

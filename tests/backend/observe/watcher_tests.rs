@@ -4899,3 +4899,58 @@ fn the_needs_bell_goes_out_as_one_changed_needs_on_the_watcher_path() {
     );
     assert_eq!(needs(&mut rx), vec![None], "不带会话 ⇒ 不带 key");
 }
+
+/// 〔后建的 `sessions/`〕目录在后端起来之后才建出来、pidfile 落在「建出来 → 挂上耳朵」那段窗里 ⇒ 由挂上那一下的重扫宣告。
+/// 那一下也改了活会话表（`sessions-stop` 等冷路读的那一份），必须标脏 —— 否则表一直是起步时那份空表，宣告了的会话停不掉。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_sessions_dir_created_after_start_marks_the_live_table_dirty_on_rescan() {
+    let root = std::env::temp_dir().join(format!("ccm-late-sessdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let home = root.join("claude-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let projects = crate::agents::claudecode::paths::projects_root(&home);
+    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
+
+    let (etx, _erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let (mut fs_watch, _pending) = fs_ears(etx).expect("文件耳朵起不来");
+    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    ears.arm(&mut fs_watch);
+    assert!(
+        !ears.sessions_watched,
+        "夹具坏了：`sessions/` 一开始就挂上了"
+    );
+
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(projects.clone());
+    state.table_dirty = false; // 起步那一份已发布过
+
+    // 建目录、写 pidfile，再把「目录出现」那一个事件交给耳朵（pidfile 自己的事件不会来：那时还没挂上）。
+    let mut kid = vis2_sleeper();
+    std::fs::create_dir_all(&sessions).unwrap();
+    pidfile_of(&sessions, kid.id(), "late-sessdir");
+    ears.on_path(&mut fs_watch, &sessions, &mut state, &mut sink);
+
+    let mut added = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) = f {
+            added.push(sid);
+        }
+    }
+    let dirty = state.table_dirty;
+    let _ = kid.kill();
+    let _ = kid.wait();
+    drop(fs_watch);
+    std::fs::remove_dir_all(&root).ok();
+
+    assert_eq!(
+        added,
+        vec!["late-sessdir".to_string()],
+        "夹具坏了：重扫没宣告"
+    );
+    assert!(
+        dirty,
+        "后建的 `sessions/` 挂上时重扫宣告了会话，却没把活会话表标脏 —— `sessions-stop` 一直答「会话已结束」"
+    );
+}

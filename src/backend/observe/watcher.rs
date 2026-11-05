@@ -1676,7 +1676,6 @@ fn watch_loop(
                         // process_jsonl skips sids not in active_sids.
                         process_jsonl(p, &mut state, &mut sink);
                     } else if is_session_json(p) {
-                        state.table_dirty = true;
                         // notify coalesces to "something happened to this path";
                         // decide add vs remove by current existence on disk.
                         //
@@ -3464,6 +3463,8 @@ fn rewatch_sessions(
 /// so a modify event does not re-announce an existing session.
 /// 回真 = 这一次真往 tmux 里写了身份标签（首次宣告或对账纠正）。
 fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> bool {
+    // 盘上这份 pidfile 被读了一回（事件 · 后建目录挂上时的重扫 · 起步初扫 · 对齐都经这里）⇒ 活会话表照盘上重造。
+    state.table_dirty = true;
     let key = path_key(path);
     // PID is the sessions/<PID>.json filename stem.
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
@@ -4301,6 +4302,7 @@ fn reconcile_sessions(
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
 /// gone, so we cannot read it now) and retire the sid if unreferenced.
 fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+    state.table_dirty = true;
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
         // pidfile 从盘上没了 = 真死。
