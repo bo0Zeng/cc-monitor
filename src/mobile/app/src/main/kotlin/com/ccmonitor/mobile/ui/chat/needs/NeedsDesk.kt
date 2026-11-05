@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.NeedsPick
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.AskEnd
 import com.ccmonitor.mobile.core.wire.gen.Needs
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoice
@@ -154,8 +155,8 @@ private const val ANSWER = "answer"
  * 什么时候重问归板管，这里答完叫它重问一次。答走 `needs-answer`（同桌面那一条，不送键）：
  * - 答上了 ⇒ 抽屉收起，那一份不再给［答］，钉条等重问里没了才消失；
  * - 回包是「别处已答」那一种结局（`result: gone`）⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
- * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句同桌面（替人答的那一种照那台那一句）；
- * - 没在等、那台说上一条提问已替人答过 ⇒ 那一句（[NeedsUi.answered]），下一次挂上提问那台才换掉；
+ * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句照那台 `sessions-needs.ended`（同桌面，不在这里兜底）；
+ * - 没在等、那台说上一条请求收场那一句留着（替人答过）⇒ 那一句（[NeedsUi.answered]），下一次挂上请求那台才换掉；
  * - 别的失败 ⇒ 那一句 ＋ 详情，照旧可点。
  * 字 · 选项 · 次序 · 附话要求全照那台（[NeedsAsk]）；这里只记这边答到哪了。
  */
@@ -182,8 +183,8 @@ class NeedsDesk(
     /** 那一项上那台写好的钉条第一行（[NeedsBar.clock]）。 */
     private var clock: String? = null
 
-    /** 那台说这条会话的上一条提问已替人答过 ⇒ 那一句（`sessions-needs.answered`）。 */
-    private var answered: String? = null
+    /** 那台说这条会话的上一条请求怎么收的场（`sessions-needs.ended`：那一句 · 留不留着）。 */
+    private var ended: AskEnd? = null
     private var receivedAt = 0L
 
     /** 这边答过 / 别处先答了的那一份：重问里还在也不再给［答］。 */
@@ -307,15 +308,16 @@ class NeedsDesk(
         val item = list.items.firstNotNullOfOrNull { (it as? NeedsItem.Session)?.takeIf { i -> i.session.sid == s } }
         needs = item?.session?.needs
         clock = item?.clock?.head
-        answered = list.answered.firstOrNull { it.sid == s }?.said
+        ended = list.ended.firstOrNull { it.sid == s }?.end
         receivedAt = now()
         val ask = needs?.ask
         // 答过的那一份不在了 ⇒ 忘掉它（下一份照常给［答］）。
         if (ask?.id != settled) settled = null
         update { ui ->
             val sheet = ui.sheet
-            // 抽屉开着、那一份不在了、不是这里答掉的 ⇒ 别处先答了。
-            sheet?.takeIf { it.lostTo(ask) }?.let { ui.copy(sheet = it.copy(gone = answered ?: copyText("askBlock.gone.elsewhere"), noteFor = null, failed = null)) } ?: ui
+            // 抽屉开着、那一份不在了、不是这里答掉的 ⇒ 别处先答了：那台写好的那一句（那台没说 ⇒ 抽屉照旧，再点由那台答 gone）。
+            val said = ended?.said
+            sheet?.takeIf { said != null && it.lostTo(ask) }?.let { ui.copy(sheet = it.copy(gone = said, noteFor = null, failed = null)) } ?: ui
         }
         publish()
     }
@@ -337,7 +339,7 @@ class NeedsDesk(
                         )
                     },
                 awaiting = n?.call?.let { AwaitingStep(it, n.text) },
-                answered = if (n == null) answered else null,
+                answered = if (n == null) ended?.takeIf { it.stays }?.said else null,
             )
         }
 

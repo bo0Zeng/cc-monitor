@@ -1077,7 +1077,10 @@ mod specimens {
                         min: 1,
                         text: Words(s("m")),
                     }],
-                    auto_answered: Some(Words(s("a"))),
+                    ask_end: Some(cmd_wire::needs::AskEnd {
+                        said: Words(s("a")),
+                        stays: true,
+                    }),
                     mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
                         .into_iter()
                         .map(|status| McpTrouble {

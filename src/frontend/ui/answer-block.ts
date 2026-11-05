@@ -12,8 +12,8 @@
  *   ［看终端］，能去它的终端时再多一颗（Windows ↗［切到终端］· 远端 tmux［在终端里打开］）。
  *
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
- * 下一条请求来了 / 切走才没）：点了才知道的（回包 `result: "gone"`）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
- * 没人答、那台替人答了（会话事实 `autoAnswered`）⇒ 同一行写核心那一句，切走再回来也在，那条会话下一次挂上提问才换掉。
+ * 下一条请求来了 / 切走才没）：点了才知道的（回包 `result: "gone"`）那一行照核心那一句；没点、重读里那条请求没了的照会话事实 `askEnd` 那一句
+ * （后端没说 ⇒ 块收起、不补字）。`askEnd.stays`（替人答了那一种）⇒ 同一行切走再回来也在，那条会话下一次挂上请求才换掉。
  *
  * 限高与收起（只是这个块的视图状态，不进后端）：
  * - 块最高约会话区四成（CSS），头一行不滚，底下那一截（全文 · 题 · 选项）块内滚；`room` 报的就是封顶后的高；
@@ -109,11 +109,12 @@ export class AnswerBlock {
     const n = tab ? needsOf(tab) : null;
     const sid = tab?.sessionId ?? null;
     if (this.goneLine && this.goneLine.sid !== sid) this.goneLine = null;
-    // 画着的那条请求没了、不是这里答掉的 ⇒ 别处先答了（终端那边 · 另一个窗口）：块收起、留一行，直到下一条请求来或切走。
+    // 画着的那条请求没了、不是这里答掉的 ⇒ 别处先答了（终端那边 · 另一个窗口 · 替人答了）：块收起、留后端写好的那一行，直到下一条请求来或切走。
     const shown = this.shown;
     if (shown && (shown.sid !== sid || n?.ask?.id !== shown.id)) {
       this.shown = null;
-      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: tab?.autoAnswered ?? copyText("askBlock.gone.elsewhere") };
+      const end = tab?.askEnd;
+      if (shown.sid === sid && !shown.ours && !this.goneLine && end) this.goneLine = { sid: shown.sid, ask: shown.id, said: end.said };
     }
     if (this.goneLine) {
       // 点了才知道的那一种：请求还在（等重读）⇒ 淡出的块 ＋ 那一行照旧。
@@ -124,9 +125,9 @@ export class AnswerBlock {
       }
       this.goneLine = null;
     }
-    // 上一条提问没人答、那台替人答过：同一行（核心那一句），下一条请求来了才换掉。
-    if (tab && !n && tab.autoAnswered) {
-      this.drawGone(tab.autoAnswered);
+    // 上一条请求收场那一格说留着（替人答过）：同一行（后端那一句），切走再回来也在，下一条请求来了才换掉。
+    if (tab && !n && tab.askEnd?.stays) {
+      this.drawGone(tab.askEnd.said);
       return;
     }
     if (!tab || !n) {

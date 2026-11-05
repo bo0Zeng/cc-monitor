@@ -1848,7 +1848,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"bytes":1,"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"doc":{"blocks":[{"k":["a"],"t":"p"}],"segs":[]},"more":"〈more〉","type":"prose"}],"draw":"card","human":false,"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
             .replace("〈more〉", &more)
     );
-    assert_eq!(needs, r#"{"answered":[],"items":[]}"#);
+    assert_eq!(needs, r#"{"ended":[],"items":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::recognize::facts::{needs_of, PidWait};
@@ -1874,9 +1874,12 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
             }],
             &[],
             Ok(Vec::new()),
-            vec![cmd_wire::needs::AnsweredRow {
+            vec![cmd_wire::needs::AskEndRow {
                 sid: "s-2".into(),
-                said: crate::common::cells::Words("w".into()),
+                end: cmd_wire::needs::AskEnd {
+                    said: crate::common::cells::Words("w".into()),
+                    stays: true,
+                },
             }],
         )
     };
@@ -1895,7 +1898,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"answered":[{"said":"w","sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"face":{"can":{"attach":{"can":"yes","from":"elsewhere"},"close":{"can":"no","why":"运行中"},"end":{"can":"yes"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"say":{"can":"yes","hint":"发消息…"},"stop":{"can":"no","why":"需手动"},"term":{"can":"yes","host":"direct"}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
+        r#"{"ended":[{"end":{"said":"w","stays":true},"sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"face":{"can":{"attach":{"can":"yes","from":"elsewhere"},"close":{"can":"no","why":"运行中"},"end":{"can":"yes"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"say":{"can":"yes","hint":"发消息…"},"stop":{"can":"no","why":"需手动"},"term":{"can":"yes","host":"direct"}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
     );
 }
 
@@ -2131,7 +2134,7 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     let row = |name: &str| {
         serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
             "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
-            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null, "login": false, "newSession": true})
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "kindLine": "", "quota": null, "unselectable": null, "login": false, "newSession": true})
     };
     let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
         "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,
