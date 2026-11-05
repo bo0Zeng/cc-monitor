@@ -139,7 +139,7 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     const asked: { origin: string; op: string; args: unknown }[] = [];
     const call = vi.fn(async (origin: string, op: string, args: unknown) => {
       asked.push({ origin, op, args });
-      return { items: [], total: 5, unreadable: [], down: [{ origin: "gpu-01", said: "gpu-01 后端未在运行" }] };
+      return { items: [], total: 5, unreadable: [], down: [{ origin: "gpu-01", said: "gpu-01 后端未在运行", detail: "" }], head: "", sure: true };
     });
     typed.fake = call as never;
     const book = new NeedsBook();
@@ -266,7 +266,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, (await bar([])).host);
-    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [] }));
+    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [], head: "", sure: true }));
     view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => view.planNeedsChanged());
     await needs.book.refresh(LOCAL);

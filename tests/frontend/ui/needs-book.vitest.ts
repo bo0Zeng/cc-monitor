@@ -10,7 +10,7 @@ import { NeedsBook } from "../../../src/frontend/ui/needs-book";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { NeedsMerged } from "../../../src/frontend/ui/generated/NeedsMerged";
 
-const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [] };
+const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [], head: "", sure: true };
 
 describe("NeedsBook 读失败退避再问", () => {
   beforeEach(() => vi.useFakeTimers());
