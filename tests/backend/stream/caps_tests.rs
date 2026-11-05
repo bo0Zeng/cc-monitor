@@ -44,11 +44,19 @@ fn every_capped_command_is_a_registered_blocking_command() {
 
 /// 装了总期限的命令，到点回的码只有一种（`child_timed_out`），并且登记在它的码表里：发起方（手机 · CLI · 界面）
 /// 按这一个码认「后端在我放手之前答了：超时」，不按命令各认一套。
-/// 例外只有这三条，各自的超时不整条失败：`aliases-read` / `powershell-policy-set` 落在成品那一格 `policy.error`（逐份说）、
-/// `ssh-config-import` 到点交已解析的那几个（尽力而为，见 `dial::ssh_config::SSH_IMPORT_CAP`）。
+/// 例外只有这五条，各自的超时不整条失败：`aliases-read` / `powershell-policy-set` 落在成品那一格 `policy.error`（逐份说）、
+/// `ssh-config-import` 到点交已解析的那几个（尽力而为，见 `dial::ssh_config::SSH_IMPORT_CAP`）、
+/// `plan-list` · `plan-read` 照 pb 读不成那一路说（有上一份好的 ⇒ 给它 ＋ 过期那一句；`plan-list` 那个工作区不列；
+/// `plan-read` 没有 ⇒ `failed` 带「读计划超时」那一句，界面正文照写 ＋［重试］）。
 #[test]
 fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
-    const IN_PRODUCT: &[&str] = &["aliases-read", "powershell-policy-set", "ssh-config-import"];
+    const IN_PRODUCT: &[&str] = &[
+        "aliases-read",
+        "powershell-policy-set",
+        "ssh-config-import",
+        "plan-list",
+        "plan-read",
+    ];
     let mut missing = Vec::new();
     for (name, _) in caps::CAPS {
         if IN_PRODUCT.contains(name) {
@@ -74,6 +82,15 @@ fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
             caps::CAPS.iter().any(|(n, _)| n == name),
             "例外表里的 {name} 不在上限表里了，删掉这一项"
         );
+    }
+}
+
+/// ★ 开计划页那两问装总期限：pb 期限取 20 秒与发起方剩下的里小的那个（客户端放弃了，后端不再空跑 pb）。
+#[test]
+fn the_plan_reads_carry_the_pb_deadline_as_their_cap() {
+    let pb = crate::platform::child::Deadline::secs(20);
+    for name in ["plan-list", "plan-read"] {
+        assert_eq!(caps::cap_of(name), Some(pb), "{name} 没装 20 秒的总期限");
     }
 }
 

@@ -92,7 +92,13 @@ interface SliceRef {
 const refKey = (r: SliceRef): string => `${r.origin}\u0000${r.workspace}\u0000${r.name}`;
 
 /** 一个工作区读到的那一份（选中的片所在的那一个才读）。 */
-type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: PlanRead } | { state: "failed"; prev: PlanRead | null };
+type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: PlanRead } | { state: "failed"; prev: PlanRead | null; said: string };
+
+/** 记住的那一片（`refKey` 的反面）；形状不对 ⇒ `null`。 */
+function refOf(key: string | undefined): SliceRef | null {
+  const parts = key?.split("\u0000");
+  return parts?.length === 3 && parts[1] && parts[2] ? { origin: parts[0]!, workspace: parts[1], name: parts[2] } : null;
+}
 
 export class PlanView {
   /** 主窗口里这个会话的标签页（拿标题、状态点）；不在 ⇒ `null`。 */
@@ -190,6 +196,9 @@ export class PlanView {
     document.body.appendChild(this.root);
     this.isOpen = true;
     dispatcher.pushOverlay(this.layer);
+    // 要看的那一片（点进来指定的 · 上次看的）当场就读，与 `plan-list` 并行，不等清单回来。
+    this.current ??= refOf(this.prefs.last);
+    if (this.current && !this.reads.has(`${this.current.origin}\u0000${this.current.workspace}`)) this.read(this.current.origin, this.current.workspace);
     this.render();
     this.machines = [LOCAL, ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
     // 关着时「需手动」的账已问过各台：先拿那一份画（问回来再换；那台这会儿离线就留着它、整体变淡）。
@@ -197,7 +206,8 @@ export class PlanView {
       const known = this.book?.list(m);
       if (known && !this.per.has(m)) this.per.set(m, { state: "ok", list: known, at: Date.now() });
     }
-    this.refresh(true);
+    // 认过的目录照后端本子里那一份（盯盘那一路保鲜），不重起 pb；重问只在添加工作区 · 新建计划之后。
+    this.refresh(false);
   }
 
   /** 开计划页并选中某一片的某一格（会话头那一枚标 · 文件窗口「在计划里看」）。 */
@@ -360,8 +370,8 @@ export class PlanView {
         this.takePending();
         this.render();
       },
-      () => {
-        this.reads.set(key, { state: "failed", prev });
+      (e: unknown) => {
+        this.reads.set(key, { state: "failed", prev, said: saidOf(e) });
         this.render();
       },
     );
@@ -842,6 +852,15 @@ export class PlanView {
     const pane = document.createElement("div");
     pane.className = `${s.pvPane} plan-pane`;
     if (!slice) {
+      // 读不成、手上又没有上一份 ⇒ 写后端那一句 ＋［重试］（不一直转）；还在读 ⇒ 骨架。
+      const r = this.currentRead();
+      if (r?.state === "failed" && !r.prev) {
+        const ref = this.current!;
+        const again = button({ label: copyText("front.act.retry"), kind: "ghost", onClick: () => this.read(ref.origin, ref.workspace) });
+        this.bodyEl.className = s.pvWhole;
+        morph(this.bodyEl, [emptyState({ icon: "warning", text: r.said, action: again })]);
+        return;
+      }
       tree.appendChild(skeletonRows(8));
       morph(this.bodyEl, [tree, pane]);
       return;
@@ -871,7 +890,8 @@ export class PlanView {
   /** 整页一句的几种：首次加载 · pb 没装 / 太旧 · 没有计划。`null` ＝ 有片可画。 */
   private wholeState(): HTMLElement | null {
     const any = this.allSlices().length > 0;
-    if (any && this.current) return null;
+    // 清单还没回来、要看的那一片已经在读（或读完了）⇒ 照那一份画，不等清单。
+    if ((any || this.currentRead()) && this.current) return null;
     const states = this.machines.map((m) => this.per.get(m));
     if (states.some((x) => x === undefined || x.state === "loading") && !any) {
       const box = document.createElement("div");
