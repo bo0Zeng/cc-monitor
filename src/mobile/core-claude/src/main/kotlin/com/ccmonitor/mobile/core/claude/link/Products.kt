@@ -6,6 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.Annotated
+import com.ccmonitor.mobile.core.wire.gen.Branch
+import com.ccmonitor.mobile.core.wire.gen.BranchReq
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.GroupsHere
 import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.Hide
@@ -132,6 +135,21 @@ enum class ListSort(
 ) {
     ACTIVITY("activity"),
     CREATED("created"),
+}
+
+/**
+ * `history-branch`：一份记录的主线外清单（Esc 回退掉的那几条记录的 `id`）与后端分好的段，一页：清单里从第 [from] 条起的那几条。
+ * 下一页从回包的 `next` 起；之后的由流上 `session_branch` 接着说（[CoreLink.branches]）。
+ */
+object HistoryBranch {
+    const val COMMAND: String = Commands.HistoryBranch.NAME
+
+    fun args(
+        path: String,
+        from: Long,
+    ): Map<String, Any?> = Commands.HistoryBranch.args(BranchReq(path = path, from = from))
+
+    fun of(data: Any?): Branch? = Commands.HistoryBranch.reply(data)
 }
 
 /** `history-annotate`：改那台注解里单个隐藏那一格（与桌面历史 · 标签栏同一条命令）。 */
