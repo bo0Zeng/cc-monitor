@@ -37,7 +37,6 @@ import {
   type MachineCardParts,
 } from "./machine-card";
 import { button } from "../kit/button";
-import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { toast, undoToast } from "../kit/toast";
@@ -361,8 +360,9 @@ export class RemoteSection {
   }
 
   /**
-   * 宿主照后端的回答喂进来：那一行的点 · 词 · 问题行。断着时 `offlineLine` 是那台成品写的离线那一句（照摆）；
-   * 没有那一句（成品还没到，不知道 ≠ 离线）⇒ 照没问到画。
+   * 宿主照通道那一路喂进来：只换那一行的点。词 · 问题行只由那台的成品写（[`setMachine`]），这里不碰。
+   * 断着时 `offlineLine` 是那台成品写的离线那一句（点的读屏名照摆）；没有那一句（成品还没到，不知道 ≠ 离线）⇒ 照没问到画。
+   * 刚从停用开回来 ⇒ 停用那一刻当场写的词与问题行撤下，等那台的下一份成品。
    */
   setConnected(pageId: string, given: boolean | null, offlineLine = this.offlineLines.get(pageId) ?? "", disabled = this.isDisabledPage(pageId)): void {
     const row = this.findMachineRow(pageId);
@@ -370,6 +370,16 @@ export class RemoteSection {
     if (disabled) {
       this.paintRowDisabled(row, pageId);
       return;
+    }
+    if (row.dataset.disabledPainted) {
+      delete row.dataset.disabledPainted;
+      const word = row.querySelector<HTMLElement>(".remote-machine-word");
+      if (word) word.textContent = "";
+      const problem = row.querySelector<HTMLElement>(".machine-problem");
+      if (problem) {
+        problem.replaceChildren();
+        problem.hidden = true;
+      }
     }
     this.offlineLines.set(pageId, offlineLine);
     const connected = given === false && offlineLine === "" ? null : given;
@@ -379,26 +389,6 @@ export class RemoteSection {
       if (connected === true) setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
       else if (connected === false) setDot(dot, "failed", offlineLine);
       else setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
-    }
-    const word = row.querySelector<HTMLElement>(".remote-machine-word");
-    if (word) word.textContent = connected === false ? copyText("machinePage.state.down") : "";
-    const problem = row.querySelector<HTMLElement>(".machine-problem");
-    if (problem) {
-      problem.replaceChildren();
-      problem.hidden = connected !== false;
-      if (connected === false) {
-        const text = document.createElement("span");
-        text.textContent = offlineLine;
-        problem.append(icon("error", "compact"), text);
-        if (pageId !== LOCAL_MACHINE_PAGE_ID) {
-          problem.appendChild(
-            button({ label: copyText("machinePage.conn.toggle"), size: "compact", onClick: (ev) => {
-              ev.stopPropagation();
-              this.pages?.openMachineSection?.(pageId, "conn");
-            } }),
-          );
-        }
-      }
     }
     this.connected.set(pageId, connected);
     if (connected === true) void this.loadSummary(row, "up");
@@ -413,6 +403,8 @@ export class RemoteSection {
     if (pageId === LOCAL_MACHINE_PAGE_ID) this.retitleLocal(m.name);
     const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
     this.paintFace(pageId, machineFace(m), up, m.state !== "disabled" && m.state !== "unknown");
+    const row = this.findMachineRow(pageId);
+    if (row && m.state === "disabled") row.dataset.disabledPainted = "1";
   }
 
   /** 本机那一行与那一页的标题换成 `name`（同名 ⇒ 不动）。 */
@@ -438,6 +430,7 @@ export class RemoteSection {
   private paintFace(pageId: string, face: MachineFace, up: boolean, summary: boolean): void {
     const row = this.findMachineRow(pageId);
     if (!row) return;
+    delete row.dataset.disabledPainted;
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
     if (dot) setDot(dot, face.dot, face.word ? `${name} · ${face.word}` : copyText("settingsNav.dot.up", { machine: name }));
@@ -476,6 +469,7 @@ export class RemoteSection {
   }
 
   private paintRowDisabled(row: HTMLElement, pageId: string): void {
+    row.dataset.disabledPainted = "1";
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
     if (dot) setDot(dot, "exited", copyText("settingsNav.dot.disabled", { machine: name }));
