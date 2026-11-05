@@ -322,6 +322,12 @@ data class HostBar(
     val progress: Boolean = false,
 )
 
+/** 那台成品说离线时名字旁那个词；没离线 · 没交过 · 没写词 ⇒ `null`。 */
+private fun offlineWord(line: LinkLine?): String? {
+    val m = line?.machine ?: return null
+    return m.word.takeIf { m.offline && it.isNotEmpty() }
+}
+
 /** 成品条那一格 ⇒ 顶条；成品不带条 ⇒ `null`。 */
 private fun productBar(
     hostId: String,
@@ -360,7 +366,7 @@ internal fun hostPart(
         truncated = answer?.truncated == true,
         loading = down == null && ssh !is HostLink.Failed && s.list is Fetched.Loading && answer == null,
         deploying = s.deploying,
-        word = s.link?.machine?.takeIf { it.offline }?.word?.ifEmpty { null },
+        word = offlineWord(s.link),
         slice = sliceOf(s, rows, ssh),
         groupLines = listOfNotNull(s.groupsProblem?.text),
     )
