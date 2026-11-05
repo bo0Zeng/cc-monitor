@@ -141,7 +141,7 @@ export function accountsFakeInvoke(args: ChanCallArgs, over: Record<string, unkn
   const name = typeof a.name === "string" ? a.name : "";
   if (args.op === "accounts-verify") {
     return Promise.resolve(
-      chanReply({ pass: true, fails: 0, warns: 0, checks: [{ level: "ok", account: null, text: "（罐头）核对通过" }], ...over }),
+      chanReply({ pass: true, fails: 0, checks: [{ level: "ok", account: null, text: "（罐头）核对通过" }], ...over }),
     );
   }
   if (args.op === "accounts-login-cmd") return Promise.resolve(chanReply({ cmd: fakeLoginCmd(name) }));
@@ -349,7 +349,7 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   // 能不能选是那台后端写好的格（`acct_core::account_selectable`）：夹具不写 ⇒ 当选得了（这里不另判，选不了的判据自己写 `selectable: false`）。
   out.selectable = a.selectable ?? true;
   out.keyMasked = a.keyMasked ?? null;
-  out.baseUrl = a.baseUrl ?? null;
+  out.endpointHost = a.endpointHost ?? null;
   // 徽章是那台后端写好的一枚（`accounts_query::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
   out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
   // 号色是那台账号库里的一格（`Manifest::with_colors`）：夹具不写 ⇒ 第 0 格占位（判号色的判据自己写）。

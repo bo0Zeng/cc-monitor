@@ -25,7 +25,7 @@ class UsageViewTest {
         color: Int,
     ) = AccountRow(
         keyMasked = null,
-        baseUrl = null,
+        endpointHost = null,
         badge = Badge("已登录", false, "已登录"),
         plate = plate,
         kindLine = "",

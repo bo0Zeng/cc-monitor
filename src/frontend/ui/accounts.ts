@@ -13,7 +13,7 @@ import type { AuthKind } from "./generated/judgment-rules";
 // ---- 账号的形状：后端 `accounts-list` 的成品（生成类型，`observe/accounts_query.rs::list_product` 出）----
 // 号色 · 号牌字 · 那几句写好的字线上恒有，本地造的夹具可以不写（不写 ⇒ 号色画中性、号牌画「—」）。
 
-type FixtureOptional = "label" | "configDirShown" | "keyMasked" | "baseUrl" | "color" | "plate" | "kindLine" | "quota" | "unselectable" | "login" | "newSession";
+type FixtureOptional = "label" | "configDirShown" | "keyMasked" | "endpointHost" | "color" | "plate" | "kindLine" | "quota" | "unselectable" | "login" | "newSession";
 /** manifest 里的一个账号（后端已剔除 configDir 不安全的条目）。 */
 export type Account = Omit<AccountRow, FixtureOptional> & Partial<Pick<AccountRow, FixtureOptional>>;
 

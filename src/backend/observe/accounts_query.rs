@@ -438,7 +438,7 @@ pub(crate) fn badge_of(
 /// [`list_product`] 的全参本体（账号库目录是参数：判据拿夹具喂它，不碰真家目录）。
 ///
 /// - 每个号 `configDirShown`：号目录的显示形，按 `home`（这台的家目录）写（[`crate::platform::paths::home_short`]），界面照抄。
-/// - 每个号 `keyMasked` · `baseUrl`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点；
+/// - 每个号 `keyMasked` · `endpointHost`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点的主机（`name_words::endpoint_host` 写）；
 ///   订阅号 / 表里没有它那一行 / 没配 key ⇒ `null`。key 本体从不出后端。
 pub fn list_product_with(
     accts_dir: &Path,
@@ -472,7 +472,9 @@ pub fn list_product_with(
                 a.config_dir.as_deref().map(&routed),
                 relay_running,
             );
-            let base_url = fact.and_then(|k| k.base_url.clone());
+            let endpoint_host = fact
+                .and_then(|k| k.base_url.as_deref())
+                .map(crate::accounts::quota::name_words::endpoint_host);
             AccountRow {
                 kind_line: crate::accounts::quota::name_words::kind_line(
                     if api_key {
@@ -482,14 +484,14 @@ pub fn list_product_with(
                     },
                     a.logged_in,
                     &a.email,
-                    base_url.as_deref(),
+                    endpoint_host.as_ref(),
                 ),
                 config_dir_shown: a
                     .config_dir
                     .as_deref()
                     .map(|d| crate::platform::paths::home_short(d, home)),
                 key_masked: fact.and_then(|k| k.masked.clone()),
-                base_url,
+                endpoint_host,
                 badge,
                 plate: Words(crate::accounts::quota::name_words::plate_text(&a.name)),
                 quota: None,

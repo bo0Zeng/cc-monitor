@@ -505,7 +505,7 @@ export class SettingsPanel {
     }
     const m = this.stateOf.get(origin) ?? null;
     const face = m ? machineFace(m) : UNKNOWN_FACE;
-    if (m) this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
+    if (m) this.remoteSection?.setFacts(origin, { os: m.os, version: m.version });
     this.remoteSection?.setMachine(pageId, m);
     this.router.setNavDot(pageId, face.dot, dotLabel(m?.name ?? name, face));
     if (!page) return;
@@ -925,7 +925,6 @@ export class SettingsPanel {
         headless: true,
         hosted: true,
         onSummary: (origin, text) => this.machinePages.get(isLocalOrigin(origin) ? LOCAL_MACHINE_PAGE_ID : (this.remoteSection?.pageIdOfMachine(origin) ?? ""))?.setCcSummary(text),
-        onLocal: (l) => this.paintLocalBackend(l),
         stateOf: (origin) => this.stateOf.get(origin) ?? null,
       });
       this.backendSection = backend;
