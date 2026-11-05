@@ -44,8 +44,6 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
         &json!({"configDir": "/h/accts/work", "key": PLAIN}),
     )
     .expect("写应当成功");
-    assert_eq!(got["account"], "work");
-    assert_eq!(got["path"], f.display().to_string());
     assert_eq!(
         got["masked"],
         SecretKey::new(PLAIN).masked(),
@@ -316,26 +314,36 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     let home = test_home::scratch("baseurl");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
-    let got = answer_set_at(&crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
+    // 端点照盘上那一行看（回包不带端点：两端零读者）。
+    let base_on_disk = || {
+        let doc = store::parse(&std::fs::read_to_string(&f).unwrap()).expect("解析");
+        store::read_accounts(&doc)
+            .into_iter()
+            .find(|e| e.id == "work")
+            .and_then(|e| e.base_url)
+    };
+    answer_set_at(&crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
         &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": " https://up.example.invalid/v1 "}),
     )
     .expect("带 Base URL 的写应当成功");
     assert_eq!(
-        got["baseUrl"], "https://up.example.invalid/v1",
-        "读回的端点不对：{got}"
+        base_on_disk().as_deref(),
+        Some("https://up.example.invalid/v1"),
+        "写下的端点不对"
     );
     for only_key in [
         json!({"configDir": "/h/accts/work", "key": "sk-SECOND-FIXTURE"}),
         json!({"configDir": "/h/accts/work", "key": "sk-THIRD-FIXTURE", "baseUrl": null}),
         json!({"configDir": "/h/accts/work", "key": "sk-FOURTH-FIXTURE", "baseUrl": "  "}),
     ] {
-        let got = answer_set_at(
+        answer_set_at(
             &crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
             &only_key,
         )
         .expect("只配 key 应当成功");
         assert_eq!(
-            got["baseUrl"], "https://up.example.invalid/v1",
+            base_on_disk().as_deref(),
+            Some("https://up.example.invalid/v1"),
             "只配 key 把已有端点动了：{only_key}"
         );
     }
@@ -623,12 +631,11 @@ fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
     let f = file_in(&home);
     let dir = "/home/u/.claude-alt/team-work";
     let want = acct_core::apikey_account_id_of_dir(dir).expect("规则推得出");
-    let got = answer_set_at(
+    answer_set_at(
         &crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
         &json!({"configDir": dir, "key": PLAIN}),
     )
     .expect("写应当成功");
-    assert_eq!(got["account"], want.as_str());
     assert_eq!(
         rows_at(&f),
         vec![want.clone()],
@@ -682,7 +689,27 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key（端点照留）。
+/// 回包两端零读者的格（推出来的账号 id · 文件路径 · 端点）不上线：界面写完只重读那台，后端建号那一路只取掩码。
+/// 判据照 `typed_tests::cells_no_reader_reads_are_off_the_wire` 那一套：看生成类型的声明里还有没有那几格。
+#[test]
+fn key_set_cells_no_one_reads_are_off_the_wire() {
+    let d = <KeySet as ts_rs::TS>::decl(&ts_rs::Config::default());
+    let on: Vec<&str> = ["account", "path", "baseUrl"]
+        .into_iter()
+        .filter(|g| {
+            d.match_indices(*g).any(|(at, _)| {
+                let before = d[..at].chars().next_back();
+                let after = &d[at + g.len()..];
+                before.is_some_and(|c| c.is_whitespace() || c == '{')
+                    && (after.starts_with(':') || after.starts_with("?:"))
+            })
+        })
+        .collect();
+    assert!(on.is_empty(), "这几格还在线上：{on:?}\n{d}");
+    assert!(d.contains("masked: string"), "正控：掩码那一格该在（后端建号那一路读它）：{d}");
+}
+
+/// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key —— 回包都只剩掩码。
 #[test]
 fn the_key_set_reply_keeps_its_wire_bytes() {
     let home = test_home::scratch("bytes");
@@ -709,8 +736,8 @@ fn the_key_set_reply_keeps_its_wire_bytes() {
         .unwrap()
     });
     let want = [
-        r##"{"account":"work","baseUrl":"https://api.example.com","masked":"••••••••-KEY","path":"<root>/apikey-credentials.json"}"##,
-        r##"{"account":"work","baseUrl":"https://api.example.com","masked":"••••••••-KEY","path":"<root>/apikey-credentials.json"}"##,
+        r##"{"masked":"••••••••-KEY"}"##,
+        r##"{"masked":"••••••••-KEY"}"##,
     ];
     assert_eq!(
         [a.as_str(), b.as_str()],

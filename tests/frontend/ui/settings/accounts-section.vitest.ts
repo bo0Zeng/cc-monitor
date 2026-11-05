@@ -398,13 +398,24 @@ describe("各态", () => {
     expect(buttonNamed(el, copyText("acctPage.notEnabled.enable"))).toBeDefined();
   });
 
-  it("打开时核一次：有对不上的才出警告条（说那个号 ＋［修复…］）；都对得上 ⇒ 不占地方", async () => {
+  it("打开时核一次：回包里有写好的那一句才出警告条（原样摆那一句 ＋［修复…］）；没有那一句 ⇒ 不占地方", async () => {
     let el = await mount();
     expect(el.textContent).not.toContain(copyText("acctPage.verify.fix"));
-    accountsVerify.mockResolvedValue({ pass: false, fails: 1, checks:[{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+    // 三条对不上（两条带号名）：那一句由后端写好；前端不数、不挑、不拼 —— 逐条明细与写好的那一句故意不一样。
+    const checks = [
+      { level: "fail", account: "personal", text: "登录信息缺失" },
+      { level: "fail", account: null, text: "共享库里留着身份" },
+      { level: "fail", account: "work", text: "权限不对" },
+    ];
+    accountsVerify.mockResolvedValue({ pass: false, fails: 3, checks, headline: "后端写好的那一句-xyz" });
     el = await mount();
-    expect(el.textContent).toContain("personal：登录信息缺失");
     expect(buttonNamed(el, copyText("acctPage.verify.fix"))).toBeDefined();
+    expect(el.textContent).toContain("后端写好的那一句-xyz");
+    expect(el.textContent).not.toContain("personal：登录信息缺失");
+    expect(el.textContent).not.toContain(copyText("kit.dialog.more", { n: 2 }));
+    accountsVerify.mockResolvedValue({ pass: false, fails: 3, checks });
+    el = await mount();
+    expect(el.textContent, "没有那一句 ⇒ 前端不自己拼一条").not.toContain(copyText("acctPage.verify.fix"));
   });
 });
 
@@ -474,7 +485,7 @@ describe("动作", () => {
   });
 
   it("警告条［修复…］：预演出几步 ⇒ 确认框列出来，确认后才修；修过之后条上 ⋯ 里才有「恢复到修复之前」", async () => {
-    accountsVerify.mockResolvedValue({ pass: false, fails: 1, checks:[{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+    accountsVerify.mockResolvedValue({ pass: false, fails: 1, checks:[{ level: "fail", account: "personal", text: "登录信息缺失" }], headline: "personal：登录信息缺失" });
     const el = await mount();
     expect(buttonNamed(el, copyText("history.row.more"))).toBeUndefined();
     buttonNamed(el, copyText("acctPage.verify.fix")).click();
@@ -515,7 +526,7 @@ describe("动作", () => {
   });
 
   it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完重读那台、照新那一行摆掩码与主机、框清空", async () => {
-    writeApikeyKey.mockResolvedValue({ account: "api", path: "/p", masked: "••••••••c3d4", baseUrl: "https://gw.example.com" });
+    writeApikeyKey.mockResolvedValue({ masked: "••••••••c3d4" });
     const el = await mount();
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••c3d4", endpointHost: "GW-BY-BACKEND" })] }));
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
