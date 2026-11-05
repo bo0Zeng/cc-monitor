@@ -28,12 +28,12 @@
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
 //! | `retries` | 一串相邻的上游重试（一拍的 `Retry`）按首条的 id 记一件，结局看它后面第一条代理那侧 / 人发的（不是注入、不带工具结果）用户那侧（[`RetryOutcome`]）；别的系统记录不算下文。原因与次数取一串里最后一条说了的，首末两条的时刻记下（[`RetrySeen`]，累加在 `retryLog`）；出口那一下照结局写整句（[`settle_retries`]）。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
-//! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
+//! | `bg_tasks`（不上线） | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `quietUnread` | 认不出、又不成卡的行（适配层 `agents::quiet_unread_of` 判：没见过的顶层类型 ＋ 没有链上身份 ⇒ 那一家的簿记行）：几行 · 哪几种（首见序，至多 [`QUIET_KINDS_KEEP`] 种，再多只加数）· 写好的一句；一行都没有 ⇒ `null` |
-//! | `notices` | 收场通知一组一组记（[`note_notice`]，吃那一行翻成的通用记录）：两条中间只隔着画成旁注细条 · 不画的记录 ⇒ 同一组，按首条的记录 id 记；主线外的剔掉。出口那一下照 `handedBack` 定哪几条不露、写组头（[`settle_notices`]）。文件序，至多 [`NOTICE_KEEP`] 组 |
-//! | `handedBack` | 交回了的子运行：用户那侧「谁说的」是 agent 交回（一拍的 `Said` 是 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
+//! | `notices` | 收场通知一组一组记（[`note_notice`]，吃那一行翻成的通用记录）：两条中间只隔着画成旁注细条 · 不画的记录 ⇒ 同一组，按首条的记录 id 记；主线外的剔掉。出口那一下照 `handed_back` 定哪几条不露、写组头（[`settle_notices`]）。文件序，至多 [`NOTICE_KEEP`] 组 |
+//! | `handed_back`（不上线） | 交回了的子运行：用户那侧「谁说的」是 agent 交回（一拍的 `Said` 是 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
 //!
@@ -109,7 +109,10 @@ pub struct SessionFacts {
     pub last_say: Option<LastSay>,
     /// **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
     pub needs: Option<Needs>,
-    /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
+    /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次（[`settle_notices`] 读）。
+    /// 不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub handed_back: Vec<String>,
     /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。出口那一下照 [`SessionFacts::retry_log`] 写（[`settle_retries`]）。
     pub retries: Vec<RetryRun>,
@@ -132,12 +135,17 @@ pub struct SessionFacts {
     pub tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
     pub cost: Option<Cost>,
-    /// 还没收场的后台命令（文件序）：累加的那一份账。
+    /// 还没收场的后台命令（文件序）：累加的那一份账，写 `background` 那一句用。不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub bg_tasks: Vec<BgTask>,
     /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
     pub background: Option<Background>,
     /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
-    /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
+    /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `None`。
+    /// 不上线：那一句经 `needs.manualText` 出。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub answer_off: Option<Words>,
     /// **无人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
     pub auto_answer: Option<u32>,
@@ -1805,9 +1813,10 @@ fn short_tokens(n: u64) -> String {
     }
 }
 
-/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] · [`SessionFacts::retry_log`] 另落一格，读回来放回去。
+/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] · [`SessionFacts::retry_log`] ·
+/// [`SessionFacts::handed_back`] · [`SessionFacts::bg_tasks`] 另落一格，读回来放回去。
 pub(crate) mod skel {
-    use super::{LastRequest, NoticeLog, RetrySeen, SessionFacts};
+    use super::{BgTask, LastRequest, NoticeLog, RetrySeen, SessionFacts};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize)]
@@ -1816,6 +1825,8 @@ pub(crate) mod skel {
         last: Option<&'a LastRequest>,
         notices: &'a NoticeLog,
         retries: &'a [RetrySeen],
+        handed_back: &'a [String],
+        bg_tasks: &'a [BgTask],
     }
 
     #[derive(Deserialize)]
@@ -1825,6 +1836,8 @@ pub(crate) mod skel {
         last: Option<LastRequest>,
         notices: NoticeLog,
         retries: Vec<RetrySeen>,
+        handed_back: Vec<String>,
+        bg_tasks: Vec<BgTask>,
     }
 
     pub(crate) fn serialize<S: Serializer>(f: &&SessionFacts, s: S) -> Result<S::Ok, S::Error> {
@@ -1833,6 +1846,8 @@ pub(crate) mod skel {
             last: f.tokens.as_ref().and_then(|t| t.last.as_ref()),
             notices: &f.notice_log,
             retries: &f.retry_log,
+            handed_back: &f.handed_back,
+            bg_tasks: &f.bg_tasks,
         }
         .serialize(s)
     }
@@ -1843,12 +1858,16 @@ pub(crate) mod skel {
             last,
             notices,
             retries,
+            handed_back,
+            bg_tasks,
         } = Owned::deserialize(d)?;
         facts.retry_log = retries;
         if let Some(t) = facts.tokens.as_mut() {
             t.last = last;
         }
         facts.notice_log = notices;
+        facts.handed_back = handed_back;
+        facts.bg_tasks = bg_tasks;
         Ok(facts)
     }
 }

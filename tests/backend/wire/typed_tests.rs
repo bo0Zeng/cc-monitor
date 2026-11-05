@@ -241,6 +241,53 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     );
 }
 
+/// 线上那一形里没有两端都不读的格：桌面 · 壳 · 手机 · 文件窗口都不读、给 AI 读的说明也没点名的格不上线。
+/// 后端自己还要用的那几格留在类型里、不出帧（`serde(skip)`）；照生成的 TS 声明认（与线上 `serde_json` 同一套属性）。
+#[test]
+fn cells_no_reader_reads_are_off_the_wire() {
+    fn decl<T: ts_rs::TS>() -> String {
+        T::decl(&ts_rs::Config::default())
+    }
+    let cases: Vec<(&str, String, &[&str])> = vec![
+        ("PlanStale", decl::<cmd_wire::plan::PlanStale>(), &["sinceText"]),
+        ("PlanArchived", decl::<cmd_wire::plan::PlanArchived>(), &["replacedBy"]),
+        ("PlanPendingSet", decl::<cmd_wire::plan::PlanPendingSet>(), &["blockedCode"]),
+        (
+            "TurnRow",
+            decl::<crate::observe::recognize::turns::TurnRow>(),
+            &["endText", "peers"],
+        ),
+        ("Merged", decl::<cmd_wire::search::Merged>(), &["sessionCount"]),
+        ("AgentFacts", decl::<cmd_wire::session::AgentFacts>(), &["permissionDefault"]),
+        ("SessionCommand", decl::<cmd_wire::session::SessionCommand>(), &["needsArgs"]),
+        ("SessionAccountReply", decl::<cmd_wire::accounts::SessionAccountReply>(), &["queryable"]),
+        ("VerifyReport", decl::<cmd_wire::accounts::VerifyReport>(), &["warns"]),
+        (
+            "SessionFacts",
+            decl::<crate::observe::recognize::facts::SessionFacts>(),
+            &["handedBack", "bgTasks", "answerOff"],
+        ),
+        ("RotTryDecision", decl::<cmd_wire::rotation::RotTryDecision>(), &["holdAccount"]),
+        ("RotTryUse", decl::<cmd_wire::rotation::RotTryUse>(), &["capUnknown"]),
+        ("RotStrategyItem", decl::<cmd_wire::rotation::RotStrategyItem>(), &["wordsBad"]),
+    ];
+    let mut on: Vec<String> = Vec::new();
+    for (ty, d, gone) in &cases {
+        for g in *gone {
+            let named = d.match_indices(*g).any(|(at, _)| {
+                let before = d[..at].chars().next_back();
+                let after = &d[at + g.len()..];
+                before.is_some_and(|c| c.is_whitespace() || c == '{')
+                    && (after.starts_with(':') || after.starts_with("?:"))
+            });
+            if named {
+                on.push(format!("{ty}.{g}"));
+            }
+        }
+    }
+    assert!(on.is_empty(), "这几格还在线上：{on:?}");
+}
+
 /// 失败只一种值（`Said`）：经 `spec::fail` 带码，投出去那一下码缺 ⇒ 兜底码。
 #[test]
 fn a_failure_settles_with_its_code_or_the_fallback() {

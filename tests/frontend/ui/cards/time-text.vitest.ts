@@ -1,4 +1,4 @@
-// 卡上的时刻照抄后端写好的钟面（记录的 `timeText` · 轮次的 `startText` / `endText`），界面不从原始时刻换算（子运行那一句见 `agent-window.vitest.ts`）。
+// 卡上的时刻照抄后端写好的钟面（记录的 `timeText` · 轮次的 `startText`），界面不从原始时刻换算（子运行那一句见 `agent-window.vitest.ts`）。
 // 夹具故意让原始时刻与钟面对不上（原始是 UTC 02:01，钟面写 17:45）：界面若还在自己换算，这几条就红。
 import { describe, it, expect } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";

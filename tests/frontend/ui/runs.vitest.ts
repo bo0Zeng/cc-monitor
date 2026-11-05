@@ -297,7 +297,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(notices()).toEqual(["后台任务 扫目录 完成 · 14:02", "后台任务 别的 完成 · 14:03"]);
     // 后端说这两条是一组、w6 那条交回过不露（`notices` 那一格）。
     const notice = { id: "u2", members: ["u2", "u3"], hidden: ["u2"], head: null, failed: false };
-    const facts = { agent: "claude", forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], notices: [notice], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
+    const facts = { agent: "claude", forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, retries: [], notices: [notice], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
     expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");

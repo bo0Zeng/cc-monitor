@@ -40,21 +40,18 @@ pub struct TurnRow {
     /// 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
     pub(crate) start: String,
     pub(crate) end: String,
-    /// 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
+    /// 起在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
     #[serde(rename = "startText")]
     pub(crate) start_text: String,
-    #[serde(rename = "endText")]
-    pub(crate) end_text: String,
     /// 你那句的第一行（≤ [`SAID_MAX`] 字）。
     pub(crate) said: String,
     /// 整轮合计：工具调用几次（派 agent 不算）· 思考几段 · 派出几个 agent · 后台任务通知几条（交回过的子 agent 的收场通知不算）·
-    /// API 重试几次 · 另一会话 / 子 agent 来话几段（交回不算）。
+    /// API 重试几次（另一会话 / 子 agent 来话几段只写进过程段那一行）。
     pub(crate) tools: u32,
     pub(crate) thinking: u32,
     pub(crate) agents: u32,
     pub(crate) background: u32,
     pub(crate) retries: u32,
-    pub(crate) peers: u32,
     /// 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
     pub(crate) fails: u32,
     /// 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
@@ -304,12 +301,11 @@ struct Open {
 }
 
 impl TurnRow {
-    /// 答的那一下按看的那一台的时区写起止的钟面与每段右端那一截（扫出来的那一份进了索引缓存、不带钟面：几个看的人时区可能不同）。
+    /// 答的那一下按看的那一台的时区写起的钟面与每段右端那一截（扫出来的那一份进了索引缓存、不带钟面：几个看的人时区可能不同）。
     /// 在 [`dress_live`] 之前调（还在跑的那一段的右端由它按钟面改写）。
     pub(crate) fn stamp(&mut self, tz: &crate::common::time::Tz) {
         let face = |t: &str| crate::common::time::iso_hm(t, tz).unwrap_or_default();
         self.start_text = face(&self.start);
-        self.end_text = face(&self.end);
         for f in &mut self.folds {
             f.start_text = face(&f.start);
             f.span = done_span(&f.start, &f.end, &f.start_text, &face(&f.end));
@@ -334,7 +330,6 @@ impl Open {
             r.agents,
             r.background,
             r.retries,
-            r.peers,
             r.fails,
         ) = (
             total.tools,
@@ -342,7 +337,6 @@ impl Open {
             total.agents,
             total.background,
             total.retries,
-            total.peers,
             total.fails,
         );
         r.reply = reply_head(&self.reply_text);

@@ -49,15 +49,12 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
     );
     let raw = raw_scan(&body, 0);
     assert!(
-        raw[0].start_text.is_empty() && raw[0].end_text.is_empty(),
+        raw[0].start_text.is_empty(),
         "扫描那一层不写钟面"
     );
     let mut sh = raw[0].clone();
     sh.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
-    assert_eq!(
-        (sh.start_text.as_str(), sh.end_text.as_str()),
-        ("04:30", "04:31")
-    );
+    assert_eq!(sh.start_text, "04:30");
     assert!(
         sh.folds[0].span.text.contains("04:31"),
         "右端那一截随钟面写：{}",
@@ -149,9 +146,9 @@ fn turn_at_counts_your_sentences_up_to_that_record() {
     assert_eq!(at("nope"), None);
 }
 
-/// 起止时刻旁边各有一格钟面（这台本地钟 `HH:MM`，界面照抄）：起 ＝ 你那句、止 ＝ 这一轮最后一条主线记录；解不出 ⇒ 空串。
+/// 起的时刻旁边有一格钟面（这台本地钟 `HH:MM`，界面照抄）：起 ＝ 你那句、止 ＝ 这一轮最后一条主线记录的时刻；解不出 ⇒ 空串。
 #[test]
-fn start_and_end_carry_their_clock_faces() {
+fn the_start_carries_its_clock_face() {
     let (a, b) = ("2026-10-07T08:01:00.000Z", "2026-10-07T09:42:30.000Z");
     let lines = [
         format!(r#"{{"type":"user","uuid":"a","timestamp":"{a}","message":{{"content":"q"}}}}"#),
@@ -165,14 +162,10 @@ fn start_and_end_carry_their_clock_faces() {
     let face =
         |t: &str| crate::common::time::iso_hm(t, &crate::common::time::Tz::default()).unwrap();
     assert_eq!(
-        (all[0].start_text.as_str(), all[0].end_text.as_str()),
-        (face(a).as_str(), face(b).as_str())
+        (all[0].start_text.as_str(), all[0].end.as_str()),
+        (face(a).as_str(), b)
     );
-    assert_eq!(
-        (all[1].start_text.as_str(), all[1].end_text.as_str()),
-        ("", ""),
-        "解不出 ⇒ 空串"
-    );
+    assert_eq!(all[1].start_text, "", "解不出 ⇒ 空串");
 }
 
 fn body_of(lines: &[serde_json::Value]) -> String {
@@ -344,10 +337,9 @@ fn counts_split_agents_background_retries_and_total_fails() {
             row.thinking,
             row.background,
             row.retries,
-            row.peers,
             row.fails
         ),
-        (1, 2, 1, 2, 2, 1, 2)
+        (1, 2, 1, 2, 2, 2)
     );
     assert_eq!(row.shown, ["a1", "a4"]);
     assert_eq!(afters(&row), ["u1", "a1"]);

@@ -40,7 +40,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "第一句说明\n后面还有一段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false, hand: false }], forNew: "按权重轮换", oldScripts: 0 };
+const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "第一句说明\n后面还有一段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, tzUnknown: false, hand: false }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00",

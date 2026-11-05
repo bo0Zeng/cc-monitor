@@ -328,7 +328,7 @@ async fn asking_other_machines_needs_the_askers_deadline_and_the_local_one_must_
         &peers,
     )
     .await;
-    assert_eq!(only_here.expect("只问本机").session_count, 1);
+    assert_eq!(only_here.expect("只问本机").sessions.len(), 1);
     let broke = merge_with(
         search_req(&[cmd_wire::LOCAL]),
         std::future::ready(Err(HistorySearchErr::Failed("读不了".into()))),

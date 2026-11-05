@@ -743,7 +743,6 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             id: s(a, "id").unwrap_or_default(),
             title: s(a, "title"),
             kind: s(a, "kind"),
-            replaced_by: s(a, "replaced_by"),
         })
         .collect();
     out.labels = nodes

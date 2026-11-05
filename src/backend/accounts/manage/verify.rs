@@ -429,15 +429,9 @@ fn finish(o: Out) -> VerifyReport {
         .iter()
         .filter(|c| c.level == CheckLevel::Fail)
         .count();
-    let warns = o
-        .checks
-        .iter()
-        .filter(|c| c.level == CheckLevel::Warn)
-        .count();
     VerifyReport {
         pass: fails == 0,
         fails: fails as u32,
-        warns: warns as u32,
         checks: o.checks,
     }
 }

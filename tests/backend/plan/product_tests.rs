@@ -352,9 +352,14 @@ fn pending_sets_carry_op_reason_and_code() {
     let sl = &m.doc["slices"][0];
     assert_eq!(
         sl["pendingSets"][0],
-        json!({"source": "A1-5", "target": "A1-2", "value": "已签收", "op": "add", "blockedReason": null, "blockedCode": null})
+        json!({"source": "A1-5", "target": "A1-2", "value": "已签收", "op": "add", "blockedReason": null})
     );
-    assert_eq!(sl["pendingSets"][1]["blockedCode"], "source_delegated");
+    let read = super::make(&dump("/w"), &who, "r0".into(), 0);
+    assert_eq!(
+        read.slices[0].pending_sets[1].blocked_code.as_deref(),
+        Some("source_delegated"),
+        "代号只留在后端里判 whyCode"
+    );
     assert!(sl["pendingSets"][1]["blockedReason"]
         .as_str()
         .unwrap()
@@ -525,7 +530,10 @@ fn every_slice_has_a_label_per_id_built_by_the_backend() {
         json!([{"id": "A9", "title": "旧的", "kind": "能力", "replaced_by": "A7"}]);
     let m = make(&d, &who);
     assert_eq!(m.doc["slices"][0]["labels"]["A9"], "A9 旧的");
-    assert_eq!(m.doc["slices"][0]["archived"][0]["replacedBy"], "A7");
+    assert_eq!(
+        m.doc["slices"][0]["archived"][0],
+        json!({"id": "A9", "title": "旧的", "kind": "能力"})
+    );
     let mut d = dump("/w");
     node_mut(&mut d, "A1")["title"] = json!("");
     assert_eq!(make(&d, &who).doc["slices"][0]["labels"]["A1"], "A1");
@@ -624,7 +632,8 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     with_time_texts(&mut r, now, &Default::default());
     let v = as_json(&r);
     assert_eq!(v["readAtText"], "03:09");
-    assert_eq!(v["stale"]["sinceText"], "01-01 03:10");
+    assert_eq!(r.stale.as_ref().unwrap().since_text.as_deref(), Some("01-01 03:10"));
+    assert!(v["stale"].get("sinceText").is_none(), "那一刻的字只拼进那一句，不上线");
     assert_eq!(v["slices"][0]["cells"][1]["returned"]["atText"], "02:10");
     assert!(v["slices"][0]["blocks"][1].get("atText").is_none());
     shanghai.read_at = u64::try_from(now).unwrap();

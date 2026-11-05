@@ -111,7 +111,6 @@ pub(crate) fn commands_of(
         text: Some((b.text)()),
         scope: CommandScope::Builtin,
         scope_text: scope_text(CommandScope::Builtin),
-        needs_args: b.needs_args,
         confirm: b.confirm,
         needs_args_text: b
             .needs_args
@@ -131,7 +130,6 @@ pub(crate) fn commands_of(
             text: c.description,
             scope,
             scope_text: scope_text(scope),
-            needs_args: c.needs_args,
             confirm: false,
             needs_args_text: c
                 .needs_args

@@ -48,7 +48,6 @@ function lastAccount(account: string): SessionAccountReply {
     sampled: null,
     differs: true,
     badge: { ghost: true, title: `账号 ${account}` },
-    queryable: true,
   };
 }
 import { goldenFace, liveFace } from "../../test-support/session-faces";

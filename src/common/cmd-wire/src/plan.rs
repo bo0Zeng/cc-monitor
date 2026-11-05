@@ -264,7 +264,9 @@ pub struct PlanPendingSet {
     pub op: String,
     /// pb 那一句。
     pub blocked_reason: Option<String>,
-    /// pb 给程序的代号（`source_delegated` …）。
+    /// pb 给程序的代号（`source_delegated` …）：只用来判节点为什么开着（`whyCode`），不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub blocked_code: Option<String>,
 }
 
@@ -625,8 +627,9 @@ pub struct PlanStale {
     pub raw: Option<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub since: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    /// `since` 写成的字：只拼读不成那一句（`said` 里），不上线。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub since_text: Option<String>,
 }
 
@@ -639,7 +642,6 @@ pub struct PlanArchived {
     pub id: String,
     pub title: Option<String>,
     pub kind: Option<String>,
-    pub replaced_by: Option<String>,
 }
 
 /// 一片（pb 的一个仓库）。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。

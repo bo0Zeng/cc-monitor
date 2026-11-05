@@ -1622,8 +1622,8 @@ fn held(cmd: &mut std::process::Command) -> std::process::Child {
     c
 }
 
-/// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
-/// 在等批准时 `needs.manualText` 也是这一句（没带那个变量的进程见下一条：看它是不是 ccm 起的）。
+/// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 在等批准时 `needs.manualText` 写明只能在终端里答批准
+/// （后端里那一格 `answer_off` 不上线；没带那个变量的进程见下一条：看它是不是 ccm 起的）。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
@@ -1701,7 +1701,7 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     let mut seen = Vec::new();
     for (off, said) in cases {
         let v = facts_with(Some(off.env_value()));
-        assert_eq!(v["answerOff"], serde_json::json!(said), "{off:?}");
+        assert!(v.get("answerOff").is_none(), "{off:?}");
         assert_eq!(v["needs"]["manualText"], serde_json::json!(said), "{off:?}");
         seen.push(said);
     }
@@ -1712,7 +1712,7 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
 }
 
 /// 不是 ccm 起的会话（持着它的进程身上看不出挂过答题口：命令行里没有 hook 客户端那个旗标 · 插件目录变量里没有我们那个目录 ·
-/// ccm 没给它留过便条）⇒ `answerOff` 与 `needs.manualText` 写明「别处起的会话，没挂答题口」；看得出挂过的 ⇒ `answerOff` 是 `null`、
+/// ccm 没给它留过便条）⇒ `needs.manualText` 写明「别处起的会话，没挂答题口」；看得出挂过的 ⇒
 /// 只说「只能在终端里答」（那一步不是答题口管得着的框）。
 #[cfg(target_os = "linux")]
 #[test]
@@ -1780,11 +1780,9 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
     let noted = facts_with(&[], true);
     let _ = std::fs::remove_dir_all(&home);
     let said = copy_core::copy_text("beAsk.manual.offElsewhere", &[]);
-    assert_eq!(elsewhere["answerOff"], serde_json::json!(said));
     assert_eq!(elsewhere["needs"]["manualText"], serde_json::json!(said));
     let terminal = serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]));
     for (what, v) in [("命令行里挂着 hook", &hooked), ("ccm 留过便条", &noted)] {
-        assert_eq!(v["answerOff"], serde_json::Value::Null, "{what}");
         assert_eq!(v["needs"]["manualText"], terminal, "{what}");
     }
 }
@@ -1996,7 +1994,7 @@ fn phone_wire(home: &Path, cmd: &str, args: serde_json::Value) -> serde_json::Va
 }
 
 /// 换了启动器那一支：ccm 给那个进程留的便条说「走的是环境那一路」，而持着会话的进程环境里没有我们那个插件目录
-/// （启动器把环境清掉了）⇒ `answerOff` 写明启动器没把环境传下去；带着那个目录 ⇒ 接上了（`null`）。按进程的实际环境判，不按声明。
+/// （启动器把环境清掉了）⇒ `needs.manualText` 写明启动器没把环境传下去；带着那个目录 ⇒ 接上了（只说只能在终端里答）。按进程的实际环境判，不按声明。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_whose_launcher_dropped_the_environment_says_so() {
@@ -2058,12 +2056,11 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
     let mine = facts_with(Some(format!("/u/mine:{ours}")));
     let _ = std::fs::remove_dir_all(&home);
     let said = copy_core::copy_text("beAsk.manual.offEnvLost", &[]);
-    assert_eq!(lost["answerOff"], serde_json::json!(said));
     assert_eq!(lost["needs"]["manualText"], serde_json::json!(said));
     assert_eq!(
-        mine["answerOff"],
-        serde_json::Value::Null,
-        "带着我们的目录 ⇒ 接上了"
+        mine["needs"]["manualText"],
+        serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[])),
+        "带着我们的目录 ⇒ 接上了，只说只能在终端里答"
     );
 }
 

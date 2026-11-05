@@ -363,7 +363,7 @@ describe("点［新建］：交那台的那一份", () => {
 
   it("★ 轮换：缺省新会话用的那份（不写进请求）；选「不轮换」⇒ 请求带 `rotation: {strategy: null}`", async () => {
     replies.set("rotation-strategies", {
-      strategies: [{ id: "按权重轮换", description: "第一行说明\n第二行", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }],
+      strategies: [{ id: "按权重轮换", description: "第一行说明\n第二行", rev: "h:1", inUse: [], forNew: true, tzUnknown: false }],
       forNew: "按权重轮换",
       oldScripts: 0,
     });

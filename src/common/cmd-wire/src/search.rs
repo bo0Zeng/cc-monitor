@@ -117,7 +117,6 @@ pub struct Merged {
     /// 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub total_hits: u64,
-    pub session_count: usize,
     /// 任一行 `hitsTruncated`（每一台都被自己的 `limit` 砍过）。
     pub truncated: bool,
     /// 各台的会话行，按 `updatedAt` 倒序（同一刻照台的先后）。

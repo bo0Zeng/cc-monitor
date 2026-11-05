@@ -112,7 +112,7 @@ fn a_windows_launcher_counts_the_powershell_forms() {
 /// 字由后端写（界面零拼）；没声明的那一家 ⇒ 两张表都空（不是 `null`：界面照空表不画那颗 chip）。
 #[test]
 fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
-    let claude = agent_facts("claude", &Default::default());
+    let claude = agent_facts("claude");
     assert_eq!(claude.kind, "claude");
     assert_eq!(claude.text, "Claude Code");
     let t = |k: &str| copy_core::copy_text(k, &[]);
@@ -150,7 +150,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     for c in &claude.models {
         assert!(shell_quote_core::model_name_ok(&c.value), "{}", c.value);
     }
-    let codex = agent_facts("codex", &Default::default());
+    let codex = agent_facts("codex");
     assert_eq!(codex.text, "Codex");
     assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
 }
@@ -160,7 +160,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
 #[test]
 fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_changes() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    let claude = agent_facts("claude", &Default::default());
+    let claude = agent_facts("claude");
     let d = claude.model_default.expect("Claude 有「默认」那一项");
     assert_eq!(
         (d.value.as_str(), d.text),
@@ -174,14 +174,14 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
         claude.model_note,
         Some(t("beSessionModel.note.savesDefault"))
     );
-    let codex = agent_facts("codex", &Default::default());
+    let codex = agent_facts("codex");
     assert!(codex.model_default.is_none() && codex.model_note.is_none());
 }
 
-/// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes, permissionDefault}`，`recent` 每项 `{cwd, shown, lastMs, lastText}`。
+/// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes}`（这台偏好里设的默认档起会话时后端自己套，不上线），`recent` 每项 `{cwd, shown, lastMs, lastText}`。
 #[test]
 fn the_new_session_facts_wire_names_its_cells() {
-    let v = serde_json::to_value(agent_facts("claude", &Default::default())).unwrap();
+    let v = serde_json::to_value(agent_facts("claude")).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
@@ -190,7 +190,6 @@ fn the_new_session_facts_wire_names_its_cells() {
             "modelDefault",
             "modelNote",
             "models",
-            "permissionDefault",
             "permissionModes",
             "text"
         ]
@@ -207,30 +206,6 @@ fn the_new_session_facts_wire_names_its_cells() {
     assert_eq!(
         r,
         serde_json::json!({"cwd": "/home/x/a", "shown": "~/a", "lastMs": 1, "lastText": "00:00"})
-    );
-}
-
-/// ★ **P3** 每家的 `permissionDefault`：这台偏好里设了、且还在那一家清单里 ⇒ 那一项；没设 · 清单里没了 · 那一家没有权限档 ⇒ `null`。
-#[test]
-fn the_permission_default_follows_the_preference_while_the_agent_still_offers_it() {
-    let prefs = |kind: &str, mode: &str| crate::common::machine_prefs::Prefs {
-        permission_modes: [(kind.to_string(), mode.to_string())].into_iter().collect(),
-        ..Default::default()
-    };
-    let got = agent_facts("claude", &prefs("claude", "plan")).permission_default;
-    assert_eq!(got.map(|p| p.value), Some("plan".to_string()));
-    assert_eq!(
-        agent_facts("claude", &Default::default()).permission_default,
-        None
-    );
-    assert_eq!(
-        agent_facts("claude", &prefs("claude", "yolo")).permission_default,
-        None,
-        "清单里没了 ⇒ 当没设"
-    );
-    assert_eq!(
-        agent_facts("codex", &prefs("codex", "plan")).permission_default,
-        None
     );
 }
 

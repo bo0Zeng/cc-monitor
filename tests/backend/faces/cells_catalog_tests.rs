@@ -170,9 +170,13 @@ fn corpus(name: &str) -> Vec<Value> {
                 Some(&wait),
             ))
             .unwrap();
-            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
-            let tasks: Vec<crate::observe::recognize::facts::BgTask> =
-                serde_json::from_value(f["bgTasks"].clone()).unwrap();
+            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（一条没收场的后台命令；那份账不上线）。
+            let tasks = vec![crate::observe::recognize::facts::BgTask {
+                call: "tu-b1".into(),
+                task: Some("bb1".into()),
+                cmd: Some("make test-all".into()),
+                at: Some("2026-10-09T08:00:00.000Z".into()),
+            }];
             f["background"] = serde_json::to_value(
                 crate::observe::recognize::facts::background_of(&tasks, None, u64::MAX / 2),
             )
@@ -232,9 +236,7 @@ fn corpus(name: &str) -> Vec<Value> {
             let base: Option<crate::observe::recognize::facts::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
-            // 答题口没接上那一格：真跑要一个带那个变量的活进程，这里照它写好的那一句配一份。
             let mut off = f.clone();
-            off["answerOff"] = serde_json::json!(copy_core::copy_text("beAsk.manual.noHook", &[]));
             // 无人答时自动答那两格：注解里设了 · 上一条替人答过（真跑要一条挂过的提问），照写好的那一句配一份。
             off["autoAnswer"] = serde_json::json!(10);
             off["autoAnswered"] = serde_json::json!(copy_core::copy_text(
