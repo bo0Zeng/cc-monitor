@@ -242,7 +242,7 @@ sealed interface RenderUnit {
 
     /**
      * 上游最终失败写的那一条回复（`reply.error`）：报错卡。卡头 [title] 是核心写好的（`error.title`），[raw] 是报错原文（进「原文」折叠）；
-     * 下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]），否则通用那一句。
+     * 下一步那一句：紧跟在一串没接上的重试后面 ⇒ 那一串的整句（[RetryLook.next]），否则不画那一行（不补通用那一句）。
      */
     data class ApiError(
         override val key: String,
@@ -298,7 +298,7 @@ object RetryLook {
         }
     }
 
-    /** 报错卡 [error]（它的 key）下一步那一句：紧挨着它的上一张是一串没接上的重试 ⇒ 那一串的整句；否则 `null`（画通用那一句）。 */
+    /** 报错卡 [error]（它的 key）下一步那一句：紧挨着它的上一张是一串没接上的重试 ⇒ 那一串的整句；否则 `null`（不画那一行，不补通用那一句）。 */
     fun next(
         units: List<RenderUnit>,
         error: String,
