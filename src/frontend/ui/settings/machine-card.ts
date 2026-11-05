@@ -695,7 +695,6 @@ export class MachineCard {
     // 本机后端边拨边推（进度流 `probe-progress/<票>`）：每一格照画（那一句与四段都是后端写好的）。
     this.testResult.replaceChildren();
     this.testResult.style.display = "block";
-    this.testResult.dataset.tested = "true";
     const segs = this.segLine();
     this.testResult.appendChild(segs.el);
     try {
@@ -878,20 +877,6 @@ export class MachineCard {
       }
       this.testResult.appendChild(gaps);
     }
-  }
-
-  /** 已连着（会话在流）：那一行几段直接打 ✓，不要求先点「测试连接」。测过之后以测的为准。 */
-  showLive(on: boolean): void {
-    if (this.testResult.dataset.tested === "true") return;
-    if (!on) {
-      this.testResult.replaceChildren();
-      this.testResult.style.display = "none";
-      return;
-    }
-    const segs = this.segLine();
-    segs.paint({ resolve: "ok", connect: "ok", auth: "ok", ready: "ok" }, "");
-    this.testResult.replaceChildren(segs.el);
-    this.testResult.style.display = "block";
   }
 
   /**

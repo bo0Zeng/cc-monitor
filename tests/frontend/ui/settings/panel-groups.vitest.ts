@@ -37,7 +37,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     headActions = (): HTMLElement[] => [];
     menuFor = (): unknown[] => [];
     metaOfPage = (): string | null => null;
-    setConnected = (): void => {};
+    setMachine = (): void => {};
     originOfPage = (): string | null => null;
     pageIdOfMachine = (o: string): string | null => (o === "devbox" ? "machine:devbox" : null);
     isUnconfiguredPage = (id: string): boolean => (globalThis as { __blankPage?: string }).__blankPage === id;

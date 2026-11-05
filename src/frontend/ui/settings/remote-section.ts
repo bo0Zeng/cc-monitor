@@ -43,7 +43,7 @@ import { toast, undoToast } from "../kit/toast";
 import { write } from "../ipc/write";
 import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
-import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
+import { dotLabel, localMeta, machineMeta, NO_FACTS, UNKNOWN_FACE, type MachineFacts, type MachineSection } from "./machine-page";
 import { fetchAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { localBackendFace } from "../local-backend-face";
@@ -199,10 +199,6 @@ export class RemoteSection {
   private readonly facts = new Map<string, MachineFacts>();
   /** 每台最近一帧的状态成品（比对指纹要那台出示的那一枚）。 */
   private readonly states = new Map<string, MachineState>();
-  /** 各页最近一次喂进来的连接（照「连接这台」重画那一行用）。 */
-  private readonly connected = new Map<string, boolean | null>();
-  /** 各页最近一次喂进来的离线那一句（那台成品写的；没有 ⇒ 空串）。 */
-  private readonly offlineLines = new Map<string, string>();
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
   private original: RemoteConfig = { hosts: [] };
@@ -360,51 +356,21 @@ export class RemoteSection {
   }
 
   /**
-   * 宿主照通道那一路喂进来：只换那一行的点。词 · 问题行只由那台的成品写（[`setMachine`]），这里不碰。
-   * 断着时 `offlineLine` 是那台成品写的离线那一句（点的读屏名照摆）；没有那一句（成品还没到，不知道 ≠ 离线）⇒ 照没问到画。
-   * 刚从停用开回来 ⇒ 停用那一刻当场写的词与问题行撤下，等那台的下一份成品。
+   * 宿主照那台的状态成品喂进来：那一行的点 · 词 · 问题行 ＋ 修法（停用也是那一份写的）。那一行这几格只由这里与 [`setLocalBackend`] 写，
+   * 哪一个由宿主定；`null` ＝ 那台还没有状态 ⇒「说不清」那一形。
    */
-  setConnected(pageId: string, given: boolean | null, offlineLine = this.offlineLines.get(pageId) ?? "", disabled = this.isDisabledPage(pageId)): void {
-    const row = this.findMachineRow(pageId);
-    if (!row) return;
-    if (disabled) {
-      this.paintRowDisabled(row, pageId);
+  setMachine(pageId: string, m: MachineState | null): void {
+    if (m === null) {
+      this.states.delete(pageId);
+      this.paintFace(pageId, UNKNOWN_FACE, false, false);
       return;
     }
-    if (row.dataset.disabledPainted) {
-      delete row.dataset.disabledPainted;
-      const word = row.querySelector<HTMLElement>(".remote-machine-word");
-      if (word) word.textContent = "";
-      const problem = row.querySelector<HTMLElement>(".machine-problem");
-      if (problem) {
-        problem.replaceChildren();
-        problem.hidden = true;
-      }
-    }
-    this.offlineLines.set(pageId, offlineLine);
-    const connected = given === false && offlineLine === "" ? null : given;
-    const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
-    const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
-    if (dot) {
-      if (connected === true) setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
-      else if (connected === false) setDot(dot, "failed", offlineLine);
-      else setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
-    }
-    this.connected.set(pageId, connected);
-    if (connected === true) void this.loadSummary(row, "up");
-    [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(connected === true);
-  }
-
-  /** 宿主照后端的状态成品喂进来：那一行的点 · 词 · 问题行 ＋ 修法。 */
-  setMachine(pageId: string, m: MachineState): void {
     this.states.set(pageId, m);
     // 本机那一行建页时成品多半还没到（标题是「机器不明」）⇒ 成品到一份、标题照成品的 `name` 换一次（先换、点那一句才叫对名字）。
     // 远端那几行的标题是机器表里的键（编辑那台时跟着卡片改），不归这里。
     if (pageId === LOCAL_MACHINE_PAGE_ID) this.retitleLocal(m.name);
     const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
     this.paintFace(pageId, machineFace(m), up, m.state !== "disabled" && m.state !== "unknown");
-    const row = this.findMachineRow(pageId);
-    if (row && m.state === "disabled") row.dataset.disabledPainted = "1";
   }
 
   /** 本机那一行与那一页的标题换成 `name`（同名 ⇒ 不动）。 */
@@ -430,18 +396,15 @@ export class RemoteSection {
   private paintFace(pageId: string, face: MachineFace, up: boolean, summary: boolean): void {
     const row = this.findMachineRow(pageId);
     if (!row) return;
-    delete row.dataset.disabledPainted;
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
-    if (dot) setDot(dot, face.dot, face.word ? `${name} · ${face.word}` : copyText("settingsNav.dot.up", { machine: name }));
+    if (dot) setDot(dot, face.dot, dotLabel(name, face));
     const word = row.querySelector<HTMLElement>(".remote-machine-word");
     if (word) word.textContent = face.word;
     const problem = row.querySelector<HTMLElement>(".machine-problem");
     if (problem) paintProblem(problem, face, (fix) => this.runFix(pageId, fix));
-    this.connected.set(pageId, up);
     // 连着 ⇒ 问那台；没连着 ⇒ 问一次拿「上次的」（壳记的最近一次）。连没连着一变就重问。
     if (summary) void this.loadSummary(row, up ? "up" : "down");
-    [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
   }
 
   /** 问题行的修法（列表那一行与机器单页卡头同一个口子）：连接这台 / 连接设置 / 比对指纹 / 推送公钥在这里就做得了，其余交宿主。 */
@@ -466,31 +429,6 @@ export class RemoteSection {
   /** 问题行［更新］：把这一版换到那台上（那一颗住机器卡）。 */
   async updateMachine(pageId: string): Promise<void> {
     await this.cardOfPage(pageId)?.update();
-  }
-
-  private paintRowDisabled(row: HTMLElement, pageId: string): void {
-    row.dataset.disabledPainted = "1";
-    const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
-    const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
-    if (dot) setDot(dot, "exited", copyText("settingsNav.dot.disabled", { machine: name }));
-    const word = row.querySelector<HTMLElement>(".remote-machine-word");
-    if (word) word.textContent = copyText("machinePage.state.disabled");
-    const problem = row.querySelector<HTMLElement>(".machine-problem");
-    if (!problem) return;
-    const text = document.createElement("span");
-    text.textContent = copyText("machinePage.problem.disabled");
-    problem.replaceChildren(
-      text,
-      button({
-        label: copyText("machinePage.problem.connect"),
-        size: "compact",
-        onClick: (ev) => {
-          ev.stopPropagation();
-          this.setConnect(pageId, true);
-        },
-      }),
-    );
-    problem.hidden = false;
   }
 
   /** 拨那台的「连接这台」（问题行［连接］· 连接设置里的开关）。 */
@@ -941,22 +879,9 @@ export class RemoteSection {
       this.showBanner(copyText("remote.save.done"));
     }
     // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
+    // 停用 · 开回来由那台的下一份状态画（后端照存下的机器表写「已停用」），这里不照表单先画一遍。
     if (changed) this.pages?.machinesReconciled?.();
-    for (const c of saving) this.repaintRow(c);
     return null;
-  }
-
-  /** 照这台现在的「连接这台」重画那一行（停用 ⇒ 空心点 ＋「已停用」＋［连接］；开着 ⇒ 照上次问到的连接）。 */
-  private repaintRow(card: MachineCard): void {
-    const pageId = this.pageIdFor(card);
-    if (!pageId) return;
-    this.setConnected(pageId, this.connected.get(pageId) ?? null);
-  }
-
-  /** 这一页是不是停用了连接的那台。 */
-  isDisabledPage(pageId: string): boolean {
-    const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
-    return card ? !card.collect().connect : false;
   }
 
   private showBanner(text: string): void {
