@@ -28,10 +28,17 @@ pub struct Entry {
     blocker: Option<Blocker>,
     /// 这一条连接上那台说过「活会话清单报完了」（[`Fact::Listed`]；又在连 · 断了 ⇒ 作废）。
     listed: bool,
-    /// 上一趟更新没换上那一句（再起一趟部署 · 换上了 ⇒ 摘掉）。
-    update_failed: Option<String>,
+    /// 上一趟部署（装 · 更新）没做成那一句与详情（再起一趟部署 · 换上了 ⇒ 摘掉）。
+    update_failed: Option<Failed>,
     /// 接上过那台（有过一轮 `Up`）：之后再在接常驻 ⇒ 说「正在重新连接」。
     was_up: bool,
+}
+
+/// 部署那一趟没做成：那一句（原因）· 那一端排好的复制详情。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Failed {
+    said: String,
+    detail: String,
 }
 
 /// 一件事实。
@@ -46,8 +53,9 @@ pub enum Fact {
     Step(Step),
     /// 部署那一趟收了（成没成都算）；问到了那台的系统就带上。
     Deployed { os: Option<String> },
-    /// 那一趟没换上：那一句（紧跟在 [`Fact::Deployed`] 后面记；再起一趟部署 · 换上了 ⇒ 摘掉）。
-    UpdateFailed { said: String },
+    /// 那一趟没做成（装 · 更新都算）：那一句与那一端排好的复制详情（命令 · 码 · 原话）；
+    /// 紧跟在 [`Fact::Deployed`] 后面记；再起一趟部署 · 换上了 ⇒ 摘掉。
+    UpdateFailed { said: String, detail: String },
     /// 那台在这一条连接上说活会话清单报完了（`sessions_replayed`）。
     Listed,
 }
@@ -100,7 +108,7 @@ pub fn fold(e: &mut Entry, fact: Fact) {
             e.update_failed = None;
         }
         Fact::Listed => e.listed = true,
-        Fact::UpdateFailed { said } => e.update_failed = Some(said),
+        Fact::UpdateFailed { said, detail } => e.update_failed = Some(Failed { said, detail }),
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
@@ -227,6 +235,18 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         )
     });
     let blocker = problem.and(e.blocker);
+    // 上一趟部署没做成、那台还是那个样子（还旧 · 还没有后端）⇒ 问题行说那一趟为什么没成、详情是那一趟的（不另弹 toast）。
+    let failed = e.update_failed.as_ref().and_then(|f| {
+        let args = [("machine", machine), ("why", f.said.as_str())];
+        let said = match (state, blocker) {
+            (K::NeedsUpdate, _) => copy_text("machineState.problem.updateFailed", &args),
+            (K::Down, Some(Blocker::NoBackend)) => {
+                copy_text("machineState.problem.installFailed", &args)
+            }
+            _ => return None,
+        };
+        Some((said, detail(machine, &f.detail, &f.said, None)))
+    });
     MachineState {
         name: machine.to_string(),
         offline: offline(state, why),
@@ -242,20 +262,13 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         os: e.os.clone(),
         word: word(state, e.relation),
         said: match (state, blocker, problem) {
+            _ if let Some((said, _)) = &failed => said.clone(),
             // 没有后端：是哪一种（没装 · 起不了 · 不是我们的）只有通信层那一句说得清。
             (K::Down, Some(Blocker::NoBackend), Some(p)) => p.said.clone(),
             // 接上过、又在接常驻（不是部署那一步）⇒ 重连那一句。
             (K::Connecting, _, _) if e.was_up && e.stage != Some(Stage::Deploy) => {
                 copy_text("machineState.busy.reconnecting", &[("machine", machine)])
             }
-            // 还旧、上一趟更新没换上 ⇒ 说那一趟为什么没成（不另弹 toast）。
-            (K::NeedsUpdate, _, _) if e.update_failed.is_some() => copy_text(
-                "machineState.problem.updateFailed",
-                &[
-                    ("machine", machine),
-                    ("why", e.update_failed.as_deref().unwrap_or_default()),
-                ],
-            ),
             _ => said(state, e.stage, why, machine),
         },
         offline_said: comms_inward::chan::said::offline(machine),
@@ -272,7 +285,10 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         expected_host_key: problem
             .filter(|_| state == K::HostKeyChanged)
             .and_then(|p| p.expected_key.clone()),
-        detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
+        detail: match failed {
+            Some((_, d)) => Some(d),
+            None => problem.map(|p| detail(machine, &p.detail, &p.said, Some(&code(why, blocker)))),
+        },
         // 到这台怎么连过去的不是这一轮的事实：宿主照机器表与它自己的连接池填（`ssh_dial::pool::Way::put`）。
         route: None,
         strip: strip(state, blocker, installs),
@@ -305,9 +321,9 @@ fn code(why: Option<Why>, blocker: Option<Blocker>) -> String {
     .unwrap_or_default()
 }
 
-/// 那一轮的复制详情：那一句进「断在」、连的是哪台进「对象」、码是这一轮的；其余照那一句带的那份。
-fn detail(machine: &str, p: &RoundProblem, code: &str) -> String {
-    let d = Detail::parse(&p.detail);
+/// 复制详情：那一句（`hop`）进「断在」、连的是哪台进「对象」、码是给的那个（不给 ⇒ 照那份里写的）；其余照那份（`written`）。
+fn detail(machine: &str, written: &str, hop: &str, code: Option<&str>) -> String {
+    let d = Detail::parse(written);
     if d.has_block() {
         return d.render();
     }
@@ -319,15 +335,15 @@ fn detail(machine: &str, p: &RoundProblem, code: &str) -> String {
     let d = if d.has(Label::Hop) {
         d
     } else {
-        d.insert(Label::Hop, &p.said)
+        d.insert(Label::Hop, hop)
     };
-    let d = if d.has(Label::Code) {
-        d
-    } else {
-        d.insert(Label::Code, code)
+    let d = match code {
+        Some(code) if !d.has(Label::Code) => d.insert(Label::Code, code),
+        _ => d,
     };
     d.render()
 }
+
 /// 名字旁那个词（连着时空；版本不可比的那台说「开发版」）。
 pub fn word(state: K, relation: Option<Relation>) -> String {
     match state {

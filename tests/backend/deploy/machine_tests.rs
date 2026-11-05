@@ -518,9 +518,7 @@ fn the_os_from_the_deploy_stays_across_rounds() {
 /// 再起一趟部署 · 换上了 ⇒ 那一句不再挂着（A2-17-14-2：不弹红 toast，写在机器条那一行）。
 #[test]
 fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
-    let failed = || Fact::UpdateFailed {
-        said: "推不上去-甲".into(),
-    };
+    let failed = || deploy_failed("推不上去-甲");
     let p = of(
         vec![
             up(Relation::Older, &[]),
@@ -539,6 +537,11 @@ fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
         )
     );
     assert_eq!(
+        p.detail.as_deref(),
+        Some(deploy_failed_detail("推不上去-甲").as_str()),
+        "复制详情是那一趟的"
+    );
+    assert_eq!(
         p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),
         vec![MachineFix::Update]
     );
@@ -554,12 +557,76 @@ fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
         true,
     );
     assert_eq!(p.said, copy_text("front.title.update", &[("machine", M)]));
+    assert_eq!(p.detail, None, "再起一趟 ⇒ 那一趟的详情摘掉");
     // 换上了：同一版连上 ⇒ 没有问题行。
     let p = of(
         vec![failed(), up(Relation::Same, &[]), up(Relation::Older, &[])],
         true,
     );
     assert_eq!(p.said, copy_text("front.title.update", &[("machine", M)]));
+}
+
+/// 部署那一趟没做成：那一句 ＋ 那一端排好的那份详情（命令 · 码 · 原话）。
+fn deploy_failed(said: &str) -> Fact {
+    Fact::UpdateFailed {
+        said: said.into(),
+        detail: "命令：deploy\n码：io_failed\n原话：sftp 断了".into(),
+    }
+}
+
+/// 没做成那一趟的复制详情：连的是哪台进「对象」、那一句进「断在」，码与原话照那一端排的那份。
+fn deploy_failed_detail(said: &str) -> String {
+    format!("命令：deploy\n对象：{M}\n断在：{said}\n码：io_failed\n原话：sftp 断了")
+}
+
+/// 刚装的那台装失败（部署收了、带着那一句，下一轮仍是「没有后端」）⇒ 问题行写「上次安装失败」＋ 那一句、复制详情是那一趟的，
+/// 不说「没有后端」；桌面（自己会装）与手机（给［安装］）同一句，修法照各自那一份；再起一趟部署 ⇒ 摘掉、照旧说没有后端那一句。
+#[test]
+fn a_failed_install_is_said_while_the_backend_is_still_missing() {
+    let want = copy_text(
+        "machineState.problem.installFailed",
+        &[("machine", M), ("why", "推不上去-乙")],
+    );
+    let facts = || {
+        vec![
+            blocked(Blocker::NoBackend),
+            Fact::Step(Step::Plan),
+            Fact::Deployed { os: None },
+            deploy_failed("推不上去-乙"),
+            blocked(Blocker::NoBackend),
+        ]
+    };
+    for (end, p, fixes) in [
+        (
+            "桌面",
+            of(facts(), true),
+            vec![MachineFix::Retry, MachineFix::ConnSettings],
+        ),
+        ("手机", phone(facts()), vec![MachineFix::Install]),
+    ] {
+        assert_eq!(p.state, K::Down, "{end}");
+        assert_ne!(p.said, NO_BACKEND, "{end}：装失败了还只说没有后端");
+        assert_eq!(p.said, want, "{end}");
+        assert_eq!(
+            p.detail.as_deref(),
+            Some(deploy_failed_detail("推不上去-乙").as_str()),
+            "{end}"
+        );
+        assert_eq!(
+            p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),
+            fixes,
+            "{end}"
+        );
+    }
+    let mut again = facts();
+    again.extend([Fact::Step(Step::Plan), blocked(Blocker::NoBackend)]);
+    let p = phone(again);
+    assert_eq!(p.said, NO_BACKEND, "再起一趟部署 ⇒ 那一句摘掉");
+    assert_eq!(
+        p.detail,
+        Some(format!("对象：{M}\n断在：{NO_BACKEND}\n码：no_backend")),
+        "再起一趟部署 ⇒ 详情回到那一轮的"
+    );
 }
 
 /// 两枚指纹（那台出示的 · 库里记下的）只在「指纹变了」那一态带；下一轮换成别的原因就不挂着。

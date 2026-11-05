@@ -70,6 +70,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineCheck
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -622,13 +623,18 @@ private fun BackendRow(hostId: String) {
     (conn as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
     routeLine(link)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint) }
     busy?.let { return BusyLine(it) }
-    when (val d = deploying) {
-        is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)
-        is Deploying.Failed ->
-            Column {
-                Text(d.failed.said, color = MaterialTheme.colorScheme.error)
-                CopyDetailButton(d.failed.said, d.failed.detail)
-            }
-        null -> Unit
+    (deploying as? Deploying.Done)?.let { Text(it.text, style = monoSmall, color = LocalAppTokens.current.textFaint) }
+    // 给了［安装］/［更新］⇒ 成品那一句（没有后端 · 要更新 · 上次没做成为什么）与复制详情，语气照成品机器条那一行。
+    if (fix != null) link?.machine?.takeIf { it.said.isNotEmpty() }?.let { m ->
+        val tokens = LocalAppTokens.current
+        val color = when (m.strip?.tone) {
+            Tone.FAIL -> tokens.errorText
+            Tone.WARN -> tokens.warn
+            else -> tokens.textFaint
+        }
+        Column {
+            Text(m.said, color = color)
+            CopyDetailButton(m.said, m.detail)
+        }
     }
 }
