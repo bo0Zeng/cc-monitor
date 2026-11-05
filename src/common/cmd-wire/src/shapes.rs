@@ -5,7 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("accounts-add", "ffb62a67"),
     ("accounts-init", "6b5379da"),
-    ("accounts-list", "8e84c18f"),
+    ("accounts-list", "86b4ad6e"),
     ("accounts-login-cmd", "a6d298b1"),
     ("accounts-mcp-pick", "fc80a269"),
     ("accounts-mcp-read", "ff26131b"),
@@ -110,7 +110,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("history-user-inputs", "b9add7d3"),
     ("hooks-diag", "66035168"),
     ("host-keys-forget", "33b9ede1"),
-    ("last-seen-read", "6fa808a4"),
+    ("last-seen-read", "f98e0f21"),
     ("last-seen-write", "63b6c9b9"),
     ("login-cancel", "3578d171"),
     ("login-finish", "d0225ff4"),

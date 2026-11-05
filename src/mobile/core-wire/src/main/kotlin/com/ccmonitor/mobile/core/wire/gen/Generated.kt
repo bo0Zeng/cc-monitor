@@ -694,7 +694,7 @@ data class AccountRollbackArgs(
 data class AccountRow(
     val configDirShown: String?,
     val keyMasked: String?,
-    val baseUrl: String?,
+    val endpointHost: String?,
     val badge: Badge,
     val plate: String,
     val kindLine: String,
@@ -722,7 +722,7 @@ data class AccountRow(
             listOf(
             Field("configDirShown", { opt(Str) }, optional = false, nullable = true),
             Field("keyMasked", { opt(Str) }, optional = false, nullable = true),
-            Field("baseUrl", { opt(Str) }, optional = false, nullable = true),
+            Field("endpointHost", { opt(Str) }, optional = false, nullable = true),
             Field("badge", { Badge.ADAPTER }, optional = false, nullable = false),
             Field("plate", { Str }, optional = false, nullable = false),
             Field("kindLine", { Str }, optional = false, nullable = false),
@@ -744,7 +744,7 @@ data class AccountRow(
             Field("color", { Int32 }, optional = false, nullable = false),
             ),
             { a -> AccountRow(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Badge, a[4] as String, a[5] as String, a[6] as String?, a[7] as String?, a[8] as Boolean, a[9] as Boolean, a[10] as String, a[11] as String, a[12] as String, a[13] as String?, a[14] as Boolean, a[15] as String, a[16] as Boolean, a[17] as Boolean, a[18] as String, a[19] as Boolean, a[20] as Boolean, a[21] as Int) },
-            { v -> arrayOf(v.configDirShown, v.keyMasked, v.baseUrl, v.badge, v.plate, v.kindLine, v.quota, v.unselectable, v.login, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
+            { v -> arrayOf(v.configDirShown, v.keyMasked, v.endpointHost, v.badge, v.plate, v.kindLine, v.quota, v.unselectable, v.login, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
         )
     }
 }

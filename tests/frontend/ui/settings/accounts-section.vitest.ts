@@ -95,7 +95,7 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
     error: null,
     notice: null,
     meta: META,
-    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true, kindLine: "line-work" }), acct({ name: "personal", email: "me@example.com", kindLine: "line-personal" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", baseUrl: "https://api.example.com/v1", kindLine: "line-api" })],
+    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true, kindLine: "line-work" }), acct({ name: "personal", email: "me@example.com", kindLine: "line-personal" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", endpointHost: "HOST-BY-BACKEND", kindLine: "line-api" })],
     ...p,
   };
 }
@@ -241,9 +241,10 @@ describe("账号表", () => {
     await settle();
     const key = rowOf(el, "api").querySelector(".acct-key")!;
     expect(key.querySelector(".acct-detail-mono")!.textContent).toBe("••••••••a1b2");
-    expect(key.querySelector(".acct-key-host")!.textContent).toBe("api.example.com");
+    // 主机那一格照那台写好的 `endpointHost` 原样摆，界面不解析地址。
+    expect(key.querySelector(".acct-key-host")!.textContent).toBe("HOST-BY-BACKEND");
     expect(buttonNamed(rowOf(el, "api"), copyText("acctPage.detail.keyChange"))).toBeDefined();
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: null, baseUrl: null })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: null, endpointHost: null })] }));
     const el2 = await mount();
     (rowOf(el2, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
@@ -513,9 +514,10 @@ describe("动作", () => {
     expect(vi.mocked(toast).mock.calls.some((c) => String(c[1]).includes("已开的终端要重读别名-xyz")), "后端回的提示没上屏").toBe(true);
   });
 
-  it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完只显示掩码、框清空", async () => {
+  it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完重读那台、照新那一行摆掩码与主机、框清空", async () => {
     writeApikeyKey.mockResolvedValue({ account: "api", path: "/p", masked: "••••••••c3d4", baseUrl: "https://gw.example.com" });
     const el = await mount();
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••c3d4", endpointHost: "GW-BY-BACKEND" })] }));
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     const row = rowOf(el, "api");
@@ -525,7 +527,8 @@ describe("动作", () => {
     buttonNamed(row, copyText("rsFilewinShell.editor.save")).click();
     await settle();
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", undefined);
-    expect(row.querySelector(".acct-key")!.textContent).toContain("••••••••c3d4gw.example.com");
+    expect(rowOf(el, "api").querySelector(".acct-key")!.textContent).toContain("••••••••c3d4GW-BY-BACKEND");
+    expect(rowOf(el, "api").querySelector<HTMLElement>(".acct-key-form")!.hidden, "写完框收起").toBe(true);
     expect(key.value).toBe("");
   });
 
@@ -561,6 +564,13 @@ describe("key 的纪律（源码扫描：账号栏 ＋ 新建表单）", () => {
     expect([...code.matchAll(/\bwriteApikeyKey\(/g)].length).toBe(1);
     expect(/\bpatchConfig\b|patch_config/.test(code)).toBe(false);
     expect(code.includes("api_key")).toBe(false);
+  });
+
+  it("端点的主机只由后端写（`endpointHost`）：账号栏不解析地址", () => {
+    const section = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/settings/accounts-section.ts"), "utf8");
+    expect(/\bhostOf\b/.test(section), "账号栏还在自己算主机").toBe(false);
+    expect(/new URL\(/.test(section), "账号栏还在解析地址").toBe(false);
+    expect(/\.baseUrl\b/.test(section), "账号栏还在读原地址").toBe(false);
   });
 
   it("KH2C1：前端不从 configDir 推账号 id（那条规则只在 Rust）", () => {

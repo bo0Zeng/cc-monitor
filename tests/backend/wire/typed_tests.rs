@@ -314,6 +314,22 @@ fn cells_no_reader_reads_are_off_the_wire() {
             decl::<cmd_wire::rotation::RotStrategyItem>(),
             &["wordsBad"],
         ),
+        (
+            "ReplyError",
+            decl::<cmd_wire::record::ReplyError>(),
+            &["reason"],
+        ),
+        (
+            "Body",
+            decl::<cmd_wire::record::Body>(),
+            &["reason", "attempt", "max"],
+        ),
+        (
+            "Pasted",
+            decl::<cmd_wire::record::Pasted>(),
+            &["id", "lines"],
+        ),
+        ("Opened", decl::<cmd_wire::session::Opened>(), &["host"]),
     ];
     let mut on: Vec<String> = Vec::new();
     for (ty, d, gone) in &cases {

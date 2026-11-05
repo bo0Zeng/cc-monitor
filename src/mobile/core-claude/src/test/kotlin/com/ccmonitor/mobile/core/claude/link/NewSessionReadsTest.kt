@@ -72,7 +72,7 @@ class NewSessionReadsTest {
                 "badge" to mapOf("text" to if (ok) "已登录" else "需登录", "warn" to !ok, "title" to ""),
                 "login" to !ok,
                 "keyMasked" to null,
-                "baseUrl" to null,
+                "endpointHost" to null,
                 "email" to "",
                 "configDir" to null,
                 "configDirShown" to null,

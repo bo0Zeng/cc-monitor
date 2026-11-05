@@ -769,12 +769,10 @@ mod specimens {
             speaker,
             text: s("x"),
             pasted: vec![Pasted {
-                id: some("p"),
                 start: 0,
                 end: 1,
                 body_start: 0,
                 body_end: 1,
-                lines: 1,
                 fold: true,
                 fold_text: Some(Words(s("f"))),
             }],
@@ -929,7 +927,6 @@ mod specimens {
                     },
                 ),
                 error: Some(ReplyError {
-                    reason: ApiReason::Overloaded,
                     status: Some(529),
                     title: Words(s("t")),
                 }),

@@ -9,10 +9,10 @@ import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecor
 const ctx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false });
 const said = (text: string, pasted: object[]): LineRecord =>
   ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted }, draw: "card", human: true }) as never;
-const span = (text: string, open: string, body: string, close: string, lines: number, fold: boolean) => {
+const span = (text: string, open: string, body: string, close: string, fold: boolean) => {
   const start = text.indexOf(open);
   const bodyStart = start + open.length;
-  return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, lines, fold, ...(fold ? { foldText: "FOLD-LINE" } : {}) };
+  return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, fold, ...(fold ? { foldText: "FOLD-LINE" } : {}) };
 };
 
 describe("粘贴块：折不折与折起那一行只读后端的", () => {
@@ -20,7 +20,7 @@ describe("粘贴块：折不折与折起那一行只读后端的", () => {
     const folded = "甲\n乙\n丙";
     const open = Array.from({ length: 40 }, (_, i) => `行${i}`).join("\n");
     const text = `看这段：<P1>${folded}</P1>再看<P2>${open}</P2>完`;
-    const r = renderMessage(said(text, [span(text, "<P1>", folded, "</P1>", 3, true), span(text, "<P2>", open, "</P2>", 40, false)]), ctx());
+    const r = renderMessage(said(text, [span(text, "<P1>", folded, "</P1>", true), span(text, "<P2>", open, "</P2>", false)]), ctx());
     if (r.kind !== "card") throw new Error(r.kind);
     const folds = r.element.querySelectorAll<HTMLDetailsElement>(".paste-fold");
     expect(folds.length).toBe(1);

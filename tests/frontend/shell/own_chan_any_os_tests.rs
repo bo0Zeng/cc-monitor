@@ -172,11 +172,7 @@ fn e2e_the_local_backend_outlives_the_monitor() {
         .expect("起 --resident-stop");
     // 结局照生产那一个读法读（`remote_resident::read_stop`）。
     let answer = crate::remote_resident::read_stop(
-        &crate::stream_source::RemoteExec {
-            stdout: String::from_utf8_lossy(&stop.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&stop.stderr).into_owned(),
-            exit_status: stop.status.code().and_then(|c| u32::try_from(c).ok()),
-        },
+        &crate::local_backend_host::local_captured(stop.status.code(), &stop.stdout, &stop.stderr),
         &copy_core::local_machine(),
     )
     .unwrap_or_else(|e| panic!("停那一下没答成：{}", e.said));

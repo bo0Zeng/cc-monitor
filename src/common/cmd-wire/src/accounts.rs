@@ -410,8 +410,8 @@ pub struct AccountRow {
     pub config_dir_shown: Option<String>,
     /// API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
     pub key_masked: Option<String>,
-    /// 同上，那一行的端点。
-    pub base_url: Option<String>,
+    /// 同上，那一行端点的主机（带端口），后端写好、唯一一处（账号行第二行那一句里的主机也是它）；没配端点 ⇒ `null`。
+    pub endpoint_host: Option<crate::cells::Words>,
     /// 账号菜单每一项右边那一枚徽章。
     pub badge: Badge,
     /// 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。

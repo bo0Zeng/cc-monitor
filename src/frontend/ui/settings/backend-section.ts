@@ -33,7 +33,6 @@ import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import type { MachineState } from "./machine-state";
-import type { LocalBackend } from "../generated/LocalBackend";
 import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
@@ -145,8 +144,9 @@ export class BackendSection {
   /** 寄居模式：四格挂在机器列表那一行上（`cellsFor`），本块自己的 `element` 只装后端清单里有、机器列表里没有的那几台。 */
   private readonly hosted: boolean;
   private readonly onSummary: ((origin: string, text: string) => void) | undefined;
-  private readonly onLocal: ((local: LocalBackend) => void) | undefined;
   private readonly stateOf: ((origin: string) => MachineState | null) | undefined;
+  /** origin → 状态格上次照的那两样（离不离线 · 版本）：成品换了一份、这两样没变 ⇒ 不重问。 */
+  private readonly paintedOf = new Map<string, string>();
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -162,14 +162,11 @@ export class BackendSection {
       interrupts?: (origin: Machine) => Promise<Interrupts | null>;
       /** 状态格每写一次（「这台上的 cc-monitor」折叠头照摆同一句，不另拼）。 */
       onSummary?: (origin: string, text: string) => void;
-      /** 每次问完本机后端起没起来（只本机那一行带）。 */
-      onLocal?: (local: LocalBackend) => void;
       /** 那台手上最新那一份成品（各台含本机由本机后端推，`backend_status` 不带）。 */
       stateOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
     this.onSummary = opts.onSummary;
-    this.onLocal = opts.onLocal;
     this.stateOf = opts.stateOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
@@ -221,9 +218,20 @@ export class BackendSection {
     await this.paintStatus(origin);
   }
 
-  /** 那台的成品（`MachineState`）刚换了一份：重画它那一格（远端的在不在 · 各台的版本照这份成品，换了就要跟着变）。 */
+  /**
+   * 那台的成品（`MachineState`）刚换了一份：状态格读的那两样（离不离线 · 版本）真变了才重画、重问；
+   * 每一帧都来，别的格变了不关这一格的事。
+   */
   machineChanged(origin: string): void {
-    if (this.cellHosts.has(origin)) void this.paintStatus(origin);
+    if (!this.cellHosts.has(origin)) return;
+    if (this.paintedOf.get(origin) === this.paintKey(origin)) return;
+    void this.paintStatus(origin);
+  }
+
+  /** 状态格照那台成品读的那两样，拼成一个键（还没有成品 ⇒ 空）。 */
+  private paintKey(origin: string): string {
+    const m = this.stateOf?.(origin) ?? null;
+    return m === null ? "" : `${m.offline}|${m.version ?? ""}`;
   }
 
   /** 画一台：后端清单还没到 ⇒ 等 `refresh`；到了 ⇒ `paintStatus`（清单里没有的它只说没登记）。 */
@@ -595,6 +603,7 @@ export class BackendSection {
       this.paintUnregistered(origin);
       return null;
     }
+    this.paintedOf.set(origin, this.paintKey(origin));
     try {
       const st = await commands.backend_status({ origin });
       // 本机：壳那条连接在不在；远端：后端推来的那台成品说它离不离线（与名字旁的点同一个源，壳不另答）。
@@ -607,7 +616,6 @@ export class BackendSection {
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
-      if (st.local) this.onLocal?.(st.local);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

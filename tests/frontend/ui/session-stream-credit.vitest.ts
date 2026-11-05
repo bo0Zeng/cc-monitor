@@ -24,7 +24,7 @@ type Kind = SessionStreamFrame extends infer F ? (F extends unknown ? keyof F : 
 const ONE: { [K in Kind]: unknown } = {
   line: { session_id: "s", cwd: "/p", path: "/p/s.jsonl", seq: 1, record: { type: "assistant", uuid: "u" } },
   batch: "start",
-  file_notice: { session_id: "s", origin: "<local>", path: "/p/s.jsonl", change: "gone" },
+  file_notice: { session_id: "s", origin: "<local>", change: "gone", said: "" },
   added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" } },
   status: { sid: "s" },
   left: { sid: "s", face: { life: { is: "ended" } } },
