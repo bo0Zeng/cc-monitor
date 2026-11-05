@@ -28,6 +28,7 @@ class UsageViewTest {
         baseUrl = null,
         badge = Badge("已登录", false, "已登录"),
         plate = plate,
+        kindLine = "",
         quota = null,
         unselectable = null,
         login = false,
