@@ -724,10 +724,10 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(copyPattern("backend.log.failed", {}, { whole: true }));
   });
 
-  it("★ 远端那一格的在不在照后端推来的那台成品（`MachineState.offline`，与名字旁的点同一个源），成品一变这一格跟着重画", async () => {
+  it("★ 远端那一格的在不在照后端推来的那台成品（`MachineState.linked`，与名字旁的点同一个源），成品一变这一格跟着重画", async () => {
     // 壳那一问对远端不表态：在不在只看那台的成品。
     status = { channel: null, pid: null, health: FACE["无记录"] };
-    let remote: Partial<MachineState> = { offline: true, version: "5.0.3" };
+    let remote: Partial<MachineState> = { offline: true, linked: false, version: "5.0.3" };
     const s = new BackendSection({
       headless: true,
       stateOf: (origin) => (origin === "甲机" ? (remote as MachineState) : null),
@@ -740,7 +740,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
         ?.querySelector(".backend-row-state")?.textContent;
     expect(cell()).toContain(copyText("machinePage.state.down"));
     // 那台连上了：后端推来一份新成品 ⇒ 这一格照它重画（不等人点刷新）。
-    remote = { offline: false, version: "5.0.3" };
+    remote = { offline: false, linked: true, version: "5.0.3" };
     s.machineChanged("甲机");
     await flush();
     await flush();

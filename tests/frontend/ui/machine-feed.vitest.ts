@@ -54,7 +54,7 @@ import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 import { SUBSCRIBE_COALESCE_MS } from "../../../src/frontend/ui/events";
 
 // 金样里的成品各取几形（哪一形不要紧：这里只核原样交到）。
-const [up, connecting, installing, , , , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
+const [up, connecting, installing, , keyRejected, , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
 const frame = (seq: number, body: unknown) => ({ t: "frame", seq, body: JSON.stringify(body) });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -94,14 +94,14 @@ describe("机器状态成品的推送", () => {
     const states: string[] = [];
     onLocalBackend((l) => got.push(l));
     onMachineState((o) => states.push(o));
-    const down: LocalBackend = { state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null };
+    const down: LocalBackend = { state: "down", dot: "failed", tone: "fail", word: "w", said: "s", fixes: [], next: null };
     listeners.get(LOCAL_BACKEND)!({ payload: down });
     expect(got).toEqual([down]);
     expect(states).toEqual([]);
   });
 
   it("★ 订上就问一次壳那一格（`backend_status` 本机的 `local`）：订上之前起不来的那几帧收不到，问回来的照交（A2-17-15-1-1）", async () => {
-    const down: LocalBackend = { state: "down", look: "down", tone: "fail", word: "w", said: "起不来那一句", fixes: [], next: null };
+    const down: LocalBackend = { state: "down", dot: "failed", tone: "fail", word: "w", said: "起不来那一句", fixes: [], next: null };
     status.asked.length = 0;
     status.reply = Promise.resolve({ local: down });
     const got: LocalBackend[] = [];
@@ -122,7 +122,7 @@ describe("机器状态成品的推送", () => {
     const off = onLocalBackend((l) => got.push(l));
     await flush();
     listeners.get(LOCAL_BACKEND)!({ payload: pushed });
-    answer({ local: { state: "down", look: "down", tone: "fail", word: "w", said: "旧的", fixes: [], next: null } });
+    answer({ local: { state: "down", dot: "failed", tone: "fail", word: "w", said: "旧的", fixes: [], next: null } });
     await flush();
     status.reply = null;
     expect(got).toEqual([pushed]);
@@ -182,7 +182,10 @@ describe("onMachineUp", () => {
       await push("<local>", up, 1);
       await push("<local>", up, 1);
       await push("pi", up, 2);
+      // 那台旧了照样连着（成品的 `linked`）⇒ 不算断开、回来不再叫。
       await push("<local>", needsUpdate, 2);
+      await push("<local>", up, 2);
+      await push("<local>", keyRejected, 2);
       await push("<local>", up, 3);
     } finally {
       vi.useRealTimers();

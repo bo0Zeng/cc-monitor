@@ -23,6 +23,8 @@ const up = (more: Partial<MachineState> = {}): MachineState => ({
   name: "deep",
   offline: false,
   state: "up",
+  dot: "up",
+  linked: true,
   reason: null,
   stage: null,
   version: null,

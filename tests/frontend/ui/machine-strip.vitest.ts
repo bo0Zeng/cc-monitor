@@ -16,6 +16,8 @@ const m = (name: string, over: Partial<MachineState> = {}): MachineState =>
   ({
     name,
     state: "down",
+    dot: "failed",
+    linked: false,
     offline: true,
     reason: "unreachable",
     stage: null,
@@ -34,7 +36,7 @@ const m = (name: string, over: Partial<MachineState> = {}): MachineState =>
   }) as MachineState;
 
 /** 连着那一份（核心不给 `strip`）。 */
-const UP: Partial<MachineState> = { state: "up", offline: false, word: "", said: "", fixes: [], strip: undefined };
+const UP: Partial<MachineState> = { state: "up", dot: "up", linked: true, offline: false, word: "", said: "", fixes: [], strip: undefined };
 
 const rows = (s: MachineStrip): string[] => [...s.el.querySelectorAll<HTMLElement>(".machine-strip-row")].map((r) => r.dataset.machine ?? "");
 
@@ -55,7 +57,7 @@ describe("机器条", () => {
 
   it("★ 连上那一下当场摘掉；在连的照那台的词与那一句摆（不按 stage 自己取字）", () => {
     const s = new MachineStrip({ fix: vi.fn() });
-    s.set("gpu-01", m("gpu-01", { state: "connecting", offline: false, stage: "deploy", word: "核心·连接中", said: "核心·核对版本", fixes: [], strip: { tone: "busy", progress: false } }));
+    s.set("gpu-01", m("gpu-01", { state: "connecting", dot: "pending", linked: false, offline: false, stage: "deploy", word: "核心·连接中", said: "核心·核对版本", fixes: [], strip: { tone: "busy", progress: false } }));
     expect(s.el.querySelector(".machine-strip-word")?.textContent).toBe("核心·连接中");
     expect(s.el.querySelector(".machine-strip-said")?.textContent).toBe("核心·核对版本");
     expect(s.el.querySelectorAll("button")).toHaveLength(0);
@@ -68,8 +70,8 @@ describe("机器条", () => {
     s.set("a", m("a", UP));
     s.set("b", m("b", { said: "核心·没进条", strip: undefined }));
     expect(rows(s)).toEqual([]);
-    s.set("c", m("c", { state: "newer", word: "核心·较新", said: "核心·那台较新", strip: { tone: "warn", progress: false } }));
-    s.set("d", m("d", { state: "connecting", word: "核心·连接中", said: "核心·在连", fixes: [], strip: { tone: "busy", progress: false } }));
+    s.set("c", m("c", { state: "newer", dot: "up", linked: true, word: "核心·较新", said: "核心·那台较新", strip: { tone: "warn", progress: false } }));
+    s.set("d", m("d", { state: "connecting", dot: "pending", linked: false, word: "核心·连接中", said: "核心·在连", fixes: [], strip: { tone: "busy", progress: false } }));
     expect(rows(s)).toEqual(["c", "d"]);
     const dot = (o: string): string => s.el.querySelector<HTMLElement>(`[data-machine="${o}"] > :first-child`)?.dataset.state ?? "";
     expect([dot("c"), dot("d")], "点照语气挑，不照态").toEqual(["needs-you", "unknown"]);
@@ -92,7 +94,7 @@ describe("机器条", () => {
 describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
   const down = (said: string): LocalBackend => ({
     state: "down",
-    look: "down",
+    dot: "failed",
     tone: "fail",
     word: "壳·未连上",
     said,
@@ -126,7 +128,7 @@ describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
 
   it("正在起 ⇒ 那一行写正在起那一句、不给修法", () => {
     const s = new MachineStrip({ fix: vi.fn() });
-    s.local({ state: "starting", look: "connecting", tone: "busy", word: "壳·连接中", said: "壳·启动 cc-monitor" });
+    s.local({ state: "starting", dot: "pending", tone: "busy", word: "壳·连接中", said: "壳·启动 cc-monitor" });
     expect(s.el.querySelector(".machine-strip-said")?.textContent).toBe("壳·启动 cc-monitor");
     expect(s.el.querySelectorAll("button")).toHaveLength(0);
   });

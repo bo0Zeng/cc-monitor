@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.data.repo.HostRepository
-import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
@@ -85,7 +84,7 @@ fun NewSessionPane(
     }
 }
 
-/** 手机上的机器表，每台带那台常驻流此刻通不通（还没连过 ⇒ 不画点）。 */
+/** 手机上的机器表，每台带那台成品的点那一档与连着没有（核心还没交过那一行 ⇒ 不画点、不说离线）。 */
 @Composable
 private fun rememberMachines(): List<MachineRow> {
     val hosts by koinInject<HostRepository>().observeAll().collectAsState(initial = emptyList())
@@ -93,15 +92,7 @@ private fun rememberMachines(): List<MachineRow> {
     return hosts.map { h ->
         key(h.id) {
             val st by backends.of(h.id).state.collectAsState()
-            MachineRow(h.id, h.label, upOf(st))
+            MachineRow(h.id, h.label, st?.machine?.dot, st?.machine?.linked)
         }
     }
 }
-
-/** 通着 ⇒ 真；断着 ⇒ 假；在接 · 还没接过 ⇒ 说不出（不画点）。 */
-internal fun upOf(s: LinkLine?): Boolean? =
-    when (s) {
-        is LinkLine.Up -> true
-        is LinkLine.Down -> false
-        is LinkLine.Connecting, null -> null
-    }
