@@ -45,7 +45,7 @@ function tab(over: Partial<Tab> = {}): Tab {
     needs: null,
     autoAnswer: null,
     autoAnswerChoices: [],
-    autoAnswered: null,
+    askEnd: null,
     backgroundWork: null,
     pending: [],
     lastSay: null,

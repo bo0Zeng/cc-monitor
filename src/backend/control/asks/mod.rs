@@ -7,7 +7,10 @@
 //!
 //! **无人答时自动答**（只管提问；批准工具 · 批计划是安全闸，一律不自动答 —— 只此一处判，[`auto_of`]）：这条会话的注解开着
 //! `autoAnswer` ⇒ 挂上的提问自己带期限（`needs-ask` 那条在等的，零定时器：期限跟着这一次挂着的走），等满了还没人答就替人答 ——
-//! 每一题答成「其他」＋ 那一句；留一条记录（`sessions-needs.answered` · 会话事实 `autoAnswered`），这条会话下一次挂上提问才换掉。
+//! 每一题答成「其他」＋ 那一句。
+//!
+//! **上一条请求怎么收的场**（答上了 · 替人答了 · hook 那头先走了）都在这里写成那一句（[`Settled::end`]），记在会话上
+//! （`sessions-needs.ended` · 会话事实 `askEnd`），这条会话下一次挂上请求才换掉；两端照摆，不各自兜底。
 //!
 //! 那一家的字段名不进这里：读 hook 输入 · 写决定都经注册表 `Adapter.asks`（[`crate::agents::AskFace`]）。
 
@@ -20,7 +23,7 @@ use crate::common::said::Said;
 /// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
 use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
-    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer, AutoChoice,
+    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AskEnd, AutoAnswer, AutoChoice,
 };
 use copy_core::copy_text;
 use serde::Serialize;
@@ -74,39 +77,65 @@ struct Open {
     tx: tokio::sync::oneshot::Sender<Option<Value>>,
 }
 
-/// 收了场的那几条（「已经有人答过」与「在别处关掉了」分得清）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 一条请求怎么收的场（收场那一句只在 [`Settled::end`] 写）。
 enum Settled {
+    /// 某个出口答上了。
     Answered,
-    /// 没人答、替人答了（那一句在 [`Book::answered`]）。
-    Auto,
+    /// 没人答、替人答了：那一句（「{dur}无人答 · 已自动答：…」）。
+    Auto(Words),
+    /// hook 那头先走了（终端那边答了 · 被打断 · 到点）。
     Closed,
+}
+
+impl Settled {
+    /// **收场那一句的唯一一处**：会话事实 `askEnd` · `sessions-needs.ended` · 之后再答回的 `gone` 那一句都照它。
+    fn end(self) -> AskEnd {
+        match self {
+            Settled::Answered => AskEnd {
+                said: Words(copy_text("beAsk.answer.already", &[])),
+                stays: false,
+            },
+            Settled::Auto(said) => AskEnd { said, stays: true },
+            Settled::Closed => AskEnd {
+                said: Words(copy_text("askBlock.gone.elsewhere", &[])),
+                stays: false,
+            },
+        }
+    }
 }
 
 #[derive(Default)]
 struct Book {
     open: BTreeMap<String, Open>,
-    settled: VecDeque<(String, Settled)>,
-    /// 会话 id ⇒ 最近一次替人答的那一句（这条会话下一次挂上提问就摘掉）。
-    answered: BTreeMap<String, Words>,
+    /// 收了场的那几条（请求 id ⇒ 那一格），之后再答照它回 `gone`。
+    settled: VecDeque<(String, AskEnd)>,
+    /// 会话 id ⇒ 上一条请求收场的那一格（这条会话下一次挂上请求就摘掉）。
+    ended: BTreeMap<String, AskEnd>,
 }
 
-/// 收了场的记几条（够分「答过 / 关了」；再早的答回 `not_found`）。
+/// 收了场的记几条（再早的答回 `not_found`）；收场那一格也只留这么多条会话。
 const SETTLED_KEEP: usize = 256;
 
 impl Book {
-    fn settle(&mut self, id: String, how: Settled) {
-        self.settled.push_back((id, how));
+    /// 收场：那条请求记下那一格、那条会话的「上一条请求怎么了」换成它；回那一格。
+    fn settle(&mut self, id: String, sid: String, how: Settled) -> AskEnd {
+        let end = how.end();
+        self.settled.push_back((id, end.clone()));
         while self.settled.len() > SETTLED_KEEP {
             self.settled.pop_front();
         }
+        self.ended.insert(sid, end.clone());
+        while self.ended.len() > SETTLED_KEEP {
+            self.ended.pop_first();
+        }
+        end
     }
-    fn settled(&self, id: &str) -> Option<Settled> {
+    fn settled(&self, id: &str) -> Option<&AskEnd> {
         self.settled
             .iter()
             .rev()
             .find(|(i, _)| i == id)
-            .map(|(_, h)| *h)
+            .map(|(_, e)| e)
     }
 }
 
@@ -216,7 +245,7 @@ pub fn open_id(
     let sid = asked.sid.clone();
     {
         let mut b = book();
-        b.answered.remove(&sid);
+        b.ended.remove(&sid);
         b.open.insert(
             id.clone(),
             Open {
@@ -294,41 +323,35 @@ fn answer_for_nobody(id: &str, auto: &AutoAnswer) -> Option<Value> {
     let decision = crate::agents::ask_face(&o.agent).and_then(|f| (f.decide)(&o.ask, &verdict))?;
     let o = b.open.remove(id).expect("刚找到的那一条");
     let sid = o.ask.sid;
-    b.settle(id.to_string(), Settled::Auto);
-    b.answered.insert(
-        sid.clone(),
-        Words(copy_text(
-            "beAsk.auto.answered",
-            &[
-                (
-                    "dur",
-                    &copy_core::format_duration(u64::from(auto.after_min) * 60_000),
-                ),
-                ("say", &say),
-            ],
-        )),
-    );
-    while b.answered.len() > SETTLED_KEEP {
-        b.answered.pop_first();
-    }
+    let said = Words(copy_text(
+        "beAsk.auto.answered",
+        &[
+            (
+                "dur",
+                &copy_core::format_duration(u64::from(auto.after_min) * 60_000),
+            ),
+            ("say", &say),
+        ],
+    ));
+    b.settle(id.to_string(), sid.clone(), Settled::Auto(said));
     drop(b);
     moved(&sid);
     Some(decision)
 }
 
-/// 这条会话最近一次替人答的那一句（下一次挂上提问前一直在）。
-pub fn answered(sid: &str) -> Option<Words> {
-    book().answered.get(sid).cloned()
+/// 这条会话上一条请求收场的那一格（会话事实 `askEnd`；下一次挂上请求前一直在）；还没收过场 ⇒ `None`。
+pub fn ended(sid: &str) -> Option<AskEnd> {
+    book().ended.get(sid).cloned()
 }
 
-/// 替人答过的那几条（`sessions-needs.answered`），按会话 id 排。
-pub fn answered_rows() -> Vec<cmd_wire::needs::AnsweredRow> {
+/// 收了场的那几条（`sessions-needs.ended`），按会话 id 排。
+pub fn ended_rows() -> Vec<cmd_wire::needs::AskEndRow> {
     book()
-        .answered
+        .ended
         .iter()
-        .map(|(sid, said)| cmd_wire::needs::AnsweredRow {
+        .map(|(sid, end)| cmd_wire::needs::AskEndRow {
             sid: sid.clone(),
-            said: said.clone(),
+            end: end.clone(),
         })
         .collect()
 }
@@ -346,8 +369,8 @@ pub(crate) fn withdraw_conn(conn: u64) {
         let mut out = Vec::new();
         for id in ids {
             if let Some(o) = b.open.remove(&id) {
-                out.push((id.clone(), o.ask.sid));
-                b.settle(id, Settled::Closed);
+                out.push((id.clone(), o.ask.sid.clone()));
+                b.settle(id, o.ask.sid, Settled::Closed);
             }
         }
         out
@@ -505,10 +528,10 @@ impl crate::wire::typed::Handle for NeedsAnswerCmd {
 }
 
 /// 别处已答那一种结局 ＋ 那一句。
-fn gone(said: String) -> Answered {
+fn gone(said: Words) -> Answered {
     Answered {
         result: AnswerResult::Gone,
-        said: Some(Words(said)),
+        said: Some(said),
     }
 }
 
@@ -519,13 +542,7 @@ pub fn answer(req: AnswerReq) -> Result<Answered, Said> {
     let mut b = book();
     let Some(o) = b.open.get(id).filter(|o| o.ask.sid == sid) else {
         return match b.settled(id) {
-            Some(Settled::Answered) => Ok(gone(copy_text("beAsk.answer.already", &[]))),
-            Some(Settled::Auto) => Ok(gone(
-                b.answered
-                    .get(sid)
-                    .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
-            )),
-            Some(Settled::Closed) => Ok(gone(copy_text("askBlock.gone.elsewhere", &[]))),
+            Some(end) => Ok(gone(end.said.clone())),
             None => Err(Said::new(
                 "not_found",
                 copy_text("beAsk.answer.notFound", &[]),
@@ -553,14 +570,12 @@ pub fn answer(req: AnswerReq) -> Result<Answered, Said> {
     };
     let o = b.open.remove(id).expect("刚找到的那一条");
     let delivered = o.tx.send(decision).is_ok();
-    b.settle(
-        id.to_string(),
-        if delivered {
-            Settled::Answered
-        } else {
-            Settled::Closed
-        },
-    );
+    let how = if delivered {
+        Settled::Answered
+    } else {
+        Settled::Closed
+    };
+    let end = b.settle(id.to_string(), o.ask.sid, how);
     drop(b);
     moved(sid);
     Ok(if delivered {
@@ -569,6 +584,6 @@ pub fn answer(req: AnswerReq) -> Result<Answered, Said> {
             said: None,
         }
     } else {
-        gone(copy_text("askBlock.gone.elsewhere", &[]))
+        gone(end.said)
     })
 }

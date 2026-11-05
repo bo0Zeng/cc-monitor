@@ -38,6 +38,11 @@ function tab(n: Needs | null, sid = "s1"): Tab {
   return { sessionId: sid, origin: LOCAL, ...(n ? waiting : { face: liveFace("working"), line: null }), needs: n } as unknown as Tab;
 }
 
+/** 会话事实里上一条请求收场的那一格（后端写好的那一句 · 留不留着）。 */
+function ended(t: Tab, said: string, stays: boolean): Tab {
+  return { ...t, askEnd: { said, stays } } as Tab;
+}
+
 function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
   let cur = t;
   const answers: unknown[] = [];
@@ -270,12 +275,12 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
     expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe("核心·已在终端答过或已关闭");
   });
 
-  it("★ 没点、请求在别处被答掉（重读里没了它）⇒ 块收起、留一行「已在别处答过」；下一条请求来了 ⇒ 换上来；切走 ⇒ 不留", () => {
+  it("★ 没点、请求在别处被答掉（重读里没了它）⇒ 块收起、留一行会话事实里后端写好的那一句；下一条请求来了 ⇒ 换上来；切走 ⇒ 不留", () => {
     const r = rig(tab(needs(ASKS.approve)));
-    r.set(tab(null));
+    r.set(ended(tab(null), "核心·已在终端答过或已关闭", false));
     r.b.render(NOW);
     expect([r.b.el.hidden, r.b.el.querySelectorAll("button").length]).toEqual([false, 0]);
-    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe(copyText("askBlock.gone.elsewhere"));
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent, "照后端那一句，不在这里兜底").toBe("核心·已在终端答过或已关闭");
     r.b.render(NOW + 5_000);
     expect(r.b.el.querySelector("[data-part=gone]"), "一直留着").not.toBeNull();
     r.set(tab(needs(ASKS.plan, { kind: "plan" })));
@@ -291,7 +296,7 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
 
   it("★ 没人答、那台替人答了 ⇒ 留的那一行是核心那一句（不是「已在别处答过」）；切走再回来还在；下一条请求来了才换掉", () => {
     const said = "核心·10m 无人答 · 已自动答：继续";
-    const auto = (n: Needs | null, sid = "s1"): Tab => ({ ...tab(n, sid), autoAnswered: n ? null : said }) as Tab;
+    const auto = (n: Needs | null, sid = "s1"): Tab => (n ? tab(n, sid) : ended(tab(n, sid), said, true));
     const r = rig(auto(needs(ASKS.question, { kind: "answer" })));
     r.set(auto(null));
     r.b.render(NOW);
@@ -308,11 +313,30 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
     expect(r.b.el.querySelector("[data-part=gone]")).toBeNull();
   });
 
-  it("★ 自己答出去的那一条被收了 ⇒ 块收起、不留那一行", async () => {
+  it("★ 自己答出去的那一条被收了 ⇒ 块收起、不留那一行（会话事实里那一句是给别的出口的，不留着）", async () => {
     const r = rig(tab(needs(ASKS.approve)));
     btn(r.b, ASKS.approve.choices[0].text).click();
     await flush();
+    r.set(ended(tab(null), "核心·已有人答过", false));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.childElementCount]).toEqual([true, 0]);
+  });
+
+  it("★ 后端没说那条请求怎么收的场 ⇒ 块收起、什么都不留（不自己补一句）", () => {
+    const r = rig(tab(needs(ASKS.approve)));
     r.set(tab(null));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.childElementCount]).toEqual([true, 0]);
+  });
+
+  it("★ 不留着的那一句只在画着的那条没了的那一下说：切走再回来不再画", () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    r.set(ended(tab(null), "核心·已有人答过", false));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe("核心·已有人答过");
+    r.set(tab(null, "s2"));
+    r.b.render(NOW);
+    r.set(ended(tab(null), "核心·已有人答过", false));
     r.b.render(NOW);
     expect([r.b.el.hidden, r.b.el.childElementCount]).toEqual([true, 0]);
   });

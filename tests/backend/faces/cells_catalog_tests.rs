@@ -237,15 +237,24 @@ fn corpus(name: &str) -> Vec<Value> {
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
             let mut off = f.clone();
-            // 无人答时自动答那两格：注解里设了 · 上一条替人答过（真跑要一条挂过的提问），照写好的那一句配一份。
+            // 无人答时自动答那一格 · 上一条请求收场那一格（真跑要一条挂过的请求）：替人答过的那一句（留着）配一份，
+            // 终端先答了的那一句（不留着）配一份。
             off["autoAnswer"] = serde_json::json!(10);
-            off["autoAnswered"] = serde_json::json!(copy_core::copy_text(
-                "beAsk.auto.answered",
-                &[
-                    ("dur", &copy_core::format_duration(600_000)),
-                    ("say", &crate::control::asks::auto_say())
-                ]
-            ));
+            off["askEnd"] = serde_json::json!({
+                "said": copy_core::copy_text(
+                    "beAsk.auto.answered",
+                    &[
+                        ("dur", &copy_core::format_duration(600_000)),
+                        ("say", &crate::control::asks::auto_say())
+                    ]
+                ),
+                "stays": true,
+            });
+            out.push(off.clone());
+            off["askEnd"] = serde_json::json!({
+                "said": copy_core::copy_text("askBlock.gone.elsewhere", &[]),
+                "stays": false,
+            });
             out.push(off);
             for n in dressed_needs(base) {
                 let mut g = f.clone();

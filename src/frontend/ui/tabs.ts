@@ -751,7 +751,7 @@ export class TabManager {
       needs: null,
       autoAnswer: null,
       autoAnswerChoices: [],
-      autoAnswered: null,
+      askEnd: null,
       line: null,
       backgroundWork: null,
       pending: [],
