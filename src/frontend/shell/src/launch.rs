@@ -78,25 +78,68 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
 // 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe`）搬进 `platform/terminal.rs`，
 //   头注逐字随之；本文件只剩「跑什么」的校验与两条 Tauri 命令。
 
+/// 两条开窗命令交出去的结局：开了 · 这台开不了终端窗口（壳写好的那几句，界面照摆）。调用方按 `outcome` 判，不按哪句话里的字判。
+/// 远端窗口那一问（`chan/host.rs`）开不了窗时回的也是这里的 `said`。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(tag = "outcome", rename_all = "camelCase")]
+pub enum TerminalOpened {
+    /// 开了一个终端窗口。
+    Opened,
+    /// 这台开不了终端窗口（一个都没探到 · 设置里指定的那个不在）：照实说、给设置入口。
+    NoWindow {
+        /// 一句（当错的原话：远端窗口那一问的拒绝 · 抛出去的那一句）。
+        said: String,
+        /// 提示那一条的标题。
+        title: String,
+        /// 提示那一条的说明（说去设置里哪一格）。
+        detail: String,
+    },
+}
+
+/// 开窗那一下的结局 ⇒ 交出去的那一形（句子在这里写好，只此一处）。
+pub(crate) fn opened_of(o: crate::platform::terminal::TerminalOpen) -> TerminalOpened {
+    use crate::platform::terminal::TerminalOpen;
+    let words = |said: &str, title: &str, detail: &str| TerminalOpened::NoWindow {
+        said: copy_text(said, &[]),
+        title: copy_text(title, &[]),
+        detail: copy_text(detail, &[]),
+    };
+    match o {
+        TerminalOpen::Opened => TerminalOpened::Opened,
+        TerminalOpen::NoWindow => words(
+            "rsLaunch.posix.noTerminalWindow",
+            "terminalOpen.noTerminal.title",
+            "terminalOpen.noTerminal.detail",
+        ),
+        TerminalOpen::SetMissing => words(
+            "rsLaunch.posix.setTerminalMissing",
+            "terminalOpen.setMissing.title",
+            "terminalOpen.setMissing.detail",
+        ),
+    }
+}
+
 /// 〔「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
 ///
 /// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 按本机终端方言渲好（`ssh -t …` 外壳），本机那一串由本机后端交回 ——
 /// 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（本地半，后端渲）。这里不判、不拼。
 /// 本机有没有 ssh 客户端由本机后端渲那一行时查（`terminal-ssh`，用找到的全路径；没有 / 判不了 ⇒ 不出那一行）。
 ///
-/// 能不能开、用哪个只问 [`open_local`](crate::platform::terminal::open_local)（与本机起会话同一处）：开了回 `"opened"`；
-/// 这台找不到终端回 `"noWindow"`（[`TerminalOpen::NoWindow`](crate::platform::terminal::TerminalOpen)），前端照实说并给设置入口
+/// 能不能开、用哪个只问 [`open_local`](crate::platform::terminal::open_local)（与本机起会话同一处）：开了回 `opened`；
+/// 这台开不了终端窗口回 `noWindow` 带写好的那几句（[`TerminalOpened`]），前端照摆并给设置入口
 /// （账号登录另给「在 tmux 里登录」）。真失败回 `Err`（一句人话）。
 #[tauri::command]
 pub async fn open_terminal_window(
     command: String,
-) -> Result<crate::platform::terminal::TerminalOpen, cmd_wire::failed::Failed> {
-    let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
+) -> Result<TerminalOpened, cmd_wire::failed::Failed> {
+    let r: Result<TerminalOpened, Said> = async move {
         // 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
         Ok(tokio::task::spawn_blocking(move || {
             let opened = crate::platform::terminal::open_local(&command, None)?;
             tracing::info!("launch: terminal window {opened:?}");
-            Ok::<_, Said>(opened)
+            Ok::<_, Said>(opened_of(opened))
         })
         .await
         .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)
@@ -120,10 +163,10 @@ pub async fn terminal_choices() -> crate::platform::terminal::TerminalChoices {
 pub async fn open_local_terminal(
     cmd: String,
     cwd: Option<String>,
-) -> Result<crate::platform::terminal::TerminalOpen, cmd_wire::failed::Failed> {
-    let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
+) -> Result<TerminalOpened, cmd_wire::failed::Failed> {
+    let r: Result<TerminalOpened, Said> = async move {
         Ok(tokio::task::spawn_blocking(move || {
-            crate::platform::terminal::open_local(&cmd, cwd.as_deref())
+            crate::platform::terminal::open_local(&cmd, cwd.as_deref()).map(opened_of)
         })
         .await
         .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)

@@ -15,8 +15,8 @@ export function defaultCommands(): Record<string, CommandHandler> {
     // 写剪贴板（经壳）：截图里没有剪贴板 ⇒ 当作写不进，点［复制详情］就地展开那一段（看得见复制出去的是什么）。
     clipboard_write: () => Promise.reject({ said: copyText("rsShellCmd.clipboard.failed"), detail: "原话：截图里没有剪贴板" }),
     // 本机开一个终端窗口跑那一行：截图里不真开，当作开了。
-    open_local_terminal: () => "opened",
-    open_terminal_window: () => "opened",
+    open_local_terminal: () => ({ outcome: "opened" }),
+    open_terminal_window: () => ({ outcome: "opened" }),
     // 在新窗口里看一个会话：截图里不真开窗。
     open_session_in_new_window: () => null,
     // 设置 → 通用「终端」那一行的事实（Linux 桌面：自动挑到 ptyxis）。

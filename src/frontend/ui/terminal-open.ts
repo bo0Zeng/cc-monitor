@@ -5,10 +5,11 @@
  * - 远端：① 本机后端 `terminal-ssh` 只收那台的名字，照它的机器表渲出这台终端方言的那一行
  *   （Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行；本机没装 ssh 客户端 / 判不了 ⇒ 后端不出那一行、说一句）→ ② monitor 开窗。
  *
- * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端时壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；
+ * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台开不了终端窗口时壳回 `noWindow`（带写好的那几句）⇒ 抛 {@link NoTerminalWindow}；
  * 调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
  */
-import { commands, type TerminalOpened } from "./ipc/commands";
+import { commands } from "./ipc/commands";
+import type { TerminalOpened } from "./generated/TerminalOpened";
 import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { TerminalSshReq } from "./generated/TerminalSshReq";
@@ -31,32 +32,30 @@ async function lineOf(req: TerminalSshReq): Promise<SshCommand> {
   }
 }
 
-/** 为什么没开窗：一个终端都没探到（`none`）· 设置里指定的那个不在（`setMissing`）。 */
-export type NoTerminalWhy = "none" | "setMissing";
+/** 壳回「开不了窗」时带的那几句（壳写好：一句 · 标题 · 说明）。 */
+export type NoWindowWords = Omit<Extract<TerminalOpened, { outcome: "noWindow" }>, "outcome">;
 
-/** 这台开不了终端窗口（壳回 `"noWindow"` / `"setMissing"`）。`message` 是给人看的那一句（说去设置里哪一格）；判只认类型。
- *  `command` 是本来要在窗口里跑的那一行（用户点［复制命令］时才进剪贴板）。 */
+/** 这台开不了终端窗口（壳回 `noWindow`：没探到 · 设置里指定的不在）。`message` 是壳写好的那一句；判只认类型。
+ *  `command` 是本来要在窗口里跑的那一行（用户点［复制命令］时才进剪贴板）；`title` · `detail` 是提示那一条照摆的两句。 */
 export class NoTerminalWindow extends Error {
   readonly command: string;
-  readonly why: NoTerminalWhy;
-  constructor(command: string, why: NoTerminalWhy = "none") {
-    super(why === "setMissing" ? copyText("rsLaunch.posix.setTerminalMissing") : copyText("rsLaunch.posix.noTerminalWindow"));
+  readonly title: string;
+  readonly detail: string;
+  constructor(command: string, words: NoWindowWords) {
+    super(words.said);
     this.name = "NoTerminalWindow";
     this.command = command;
-    this.why = why;
+    this.title = words.title;
+    this.detail = words.detail;
   }
 }
 
 /** 设置里指定终端的那一格（通用页 · 恢复组）。 */
 const TERMINAL_SETTING = { page: "general", anchor: "terminal" } as const;
 
-/** 开不了终端窗口时说的那一条（没探到 / 指定的不在）：照实说 ＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
+/** 开不了终端窗口时说的那一条（壳写好的标题 · 说明照摆）＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
 export function sayNoTerminal(err: NoTerminalWindow): void {
-  const [title, detail] =
-    err.why === "setMissing"
-      ? [copyText("terminalOpen.setMissing.title"), copyText("terminalOpen.setMissing.detail")]
-      : [copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail")];
-  toast(title, detail, {
+  toast(err.title, err.detail, {
     level: "error",
     action: [{ label: copyText("mobDrawer.settings.aria"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) }, copyCommand(err.command)],
   });
@@ -73,11 +72,10 @@ export function copyCommand(command: string): ToastAction {
   };
 }
 
-/** 壳回的结局：`"noWindow"` / `"setMissing"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
+/** 壳回的结局：`noWindow` ⇒ 抛 {@link NoTerminalWindow}（带壳写好的那几句）；真失败壳那边抛一句人话，原样往上走。 */
 async function opened(command: string, got: Promise<TerminalOpened>): Promise<void> {
   const r = await got;
-  if (r === "noWindow") throw new NoTerminalWindow(command, "none");
-  if (r === "setMissing") throw new NoTerminalWindow(command, "setMissing");
+  if (r.outcome === "noWindow") throw new NoTerminalWindow(command, r);
 }
 
 /** 开窗跑本机后端拼好的 `window`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
