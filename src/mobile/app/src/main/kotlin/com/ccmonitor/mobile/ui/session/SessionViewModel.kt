@@ -19,6 +19,7 @@ import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import com.ccmonitor.mobile.core.ssh.forgetHostKey
 import com.ccmonitor.mobile.core.terminal.TerminalSession
+import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.JumpBroken
@@ -167,7 +168,7 @@ class SessionViewModel(
             terminalDropped,
             status,
             { hostConnector.connection(hostId) },
-            { t -> runCatching { t.execCapture("true").exitStatus == 0 }.getOrDefault(false) },
+            { t -> runCatching { t.execCapture("true").ended == CaptureEnd.Exited(0) }.getOrDefault(false) },
         ) { shellOpenedOn }
 
     private val rejoined = MutableStateFlow(false)

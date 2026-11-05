@@ -7,11 +7,11 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
-import com.ccmonitor.mobile.core.ssh.ExecResult
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
+import com.ccmonitor.mobile.core.wire.gen.Captured
 import com.ccmonitor.mobile.core.wire.gen.DialPlan
 import com.ccmonitor.mobile.core.wire.gen.DialRequest
 import com.ccmonitor.mobile.core.wire.gen.DialUse
@@ -274,7 +274,7 @@ private class LifecycleFakeTransport : SshTransport {
         rows: Int,
     ): ShellChannel = nope()
 
-    override suspend fun execCapture(command: String): ExecResult = nope()
+    override suspend fun execCapture(command: String): Captured = nope()
 }
 
 private class LifecycleFakeHostDao(

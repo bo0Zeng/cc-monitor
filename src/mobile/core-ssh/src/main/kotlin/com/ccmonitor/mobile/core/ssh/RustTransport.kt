@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.data.crypto.SshWire
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
 import com.ccmonitor.mobile.core.wire.gen.CaptureOpts
 import com.ccmonitor.mobile.core.wire.gen.Captured
 import com.ccmonitor.mobile.core.wire.gen.DialAck
@@ -126,18 +125,13 @@ class RustTransport(
         }
     }
 
-    override suspend fun execCapture(command: String): ExecResult =
+    override suspend fun execCapture(command: String): Captured =
         withContext(Dispatchers.IO) {
             val link = child { it.copy(use = DialUse.CAPTURE, command = command, capture = CaptureOpts(CAPTURE_MAX.toLong(), null, null)) }
             try {
                 val line = link.readLine() ?: throw IOException(copyText("reason.link.lost"))
                 // 收全的那一行认不出 ⇒ 两端契约对不上（不补默认、不当成功）。
-                val got = Wire.read<Captured>(line) ?: throw IOException(copyText("beServer.words.cantConnect"))
-                ExecResult(
-                    exitStatus = (got.ended as? CaptureEnd.Exited)?.code,
-                    stdout = got.stdout,
-                    stderrTail = got.stderr.takeLast(STDERR_TAIL),
-                )
+                Wire.read<Captured>(line) ?: throw IOException(copyText("beServer.words.cantConnect"))
             } finally {
                 link.close()
             }
@@ -264,7 +258,6 @@ class RustTransport(
     internal companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val CAPTURE_MAX = 16 * 1024 * 1024
-        const val STDERR_TAIL = 4096
     }
 }
 

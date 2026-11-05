@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.wire.gen.Captured
 import java.io.Closeable
 import java.io.IOException
 
@@ -13,14 +14,14 @@ interface SshTransport : Closeable {
     val isConnected: Boolean
 
     /**
-     * 跑一条一次性命令并等它结束（带退出码与 stderr 尾巴）。实现方必须守的两条：
+     * 跑一条一次性命令并等它结束，回拨号核心收好的那一份 [Captured]（stdout · stderr · 收尾：退出码 · 信号 · 没送就关 · 链路断分开说）。实现方必须守的两条：
      * 1. 无条件排空 stderr：stderr 与 stdout 共用同一个通道窗口，不读 stderr 会耗尽窗口、把 stdout 一起拖停。
      * 2. 绝不分配 PTY：PTY 的 ONLCR 会污染字节流。
      *
      * @return 永远返回结果对象；**命令失败不抛异常** —— 调用方常常需要区分「失败了但可以保守降级」与「失败了必须告诉用户」。
      *   连接不可用等**传输层**故障仍然抛（[ConnectionDeadException]）。
      */
-    suspend fun execCapture(command: String): ExecResult
+    suspend fun execCapture(command: String): Captured
 
     /**
      * 照 [config] 那一份请求连接并认证（多地址竞速 · 跳板都在核心里）。[onEvent] 非空时按阶段发 [SshConnectEvent]。
@@ -51,18 +52,6 @@ interface SshTransport : Closeable {
     /** 握着的那条被核心收了（对端断 · 保活判死）时叫 [f] 一次；自己 [close] 的不叫。 */
     fun onDrop(f: () -> Unit) = Unit
 }
-
-/**
- * 一次远端命令的完整结果。
- *
- * [stderrTail] 只保尾部若干字节（错误定位够用，防大 stderr 占内存）。
- */
-data class ExecResult(
-    /** `null` = 远端**没回**退出码（连接中断、命令被杀）。**不要**把它当成 0。 */
-    val exitStatus: Int?,
-    val stdout: String,
-    val stderrTail: String,
-)
 
 /**
  * 底层连接不可用（连接对象不存在 / 未连上）时抛这个异常。是 IOException 子类，只 `catch (IOException)` 的地方行为不变；

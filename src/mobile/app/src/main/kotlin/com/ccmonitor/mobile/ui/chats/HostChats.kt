@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.cache.LocalCache
-import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Groups
@@ -12,7 +11,6 @@ import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.retry
@@ -28,13 +26,14 @@ import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
-import com.ccmonitor.mobile.link.notice
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.barOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -285,8 +284,10 @@ data class HostPart(
     val notice: String?,
     val truncated: Boolean,
     val loading: Boolean,
-    /** 装 / 更新后端这一趟的结局（条上没画它时单独一行；走到哪一步在成品里，见 [HostBar.busy]）。 */
+    /** 装 / 更新后端这一趟的结局（条上没画它时单独一行；走到哪一步在成品条那一格里，见 [HostBar]）。 */
     val deploying: Deploying? = null,
+    /** 那台成品说离线时名字旁那个词（筛选抽屉照摆）；没离线 ⇒ `null`。 */
+    val word: String? = null,
     /** 这台组那一片（交核心几台合一次）；断着 · 还没答过组 ⇒ `null`。 */
     val slice: Slice? = null,
     /** 组那一问没成的那一句（那台写的）。 */
@@ -307,18 +308,25 @@ data class Slice(
 }
 
 /**
- * 一台顶上那一条：[offline] ＝ 那台断着（虚线条 ＋［重新连接］），否则红条 ＋［重试］［复制详情］；
+ * 一台顶上那一条。那台通着或断着时整条是成品条那一格（[barOf]，机器条同一份）：语气 [tone] · 那一句 · 进度 [progress]；
+ * 语气 busy ⇒ 只摆那一句；offline ⇒ 虚线条 ＋［重试］；别的 ⇒ 红 / 琥珀那一句 ＋［重试］［复制详情］。
+ * 手机这一侧的三样（SSH 那层接不上 · 带筛选时那台断着 ⇒ offline；清单读不出 ⇒ fail）不在成品里，这里照那一侧给。
  * [fix] 是成品给的「装一次会好」那一颗；[edit] 是改哪一台的设置能修好（跳板坏了）⇒ 条下给［编辑］。
  */
 data class HostBar(
     val hostId: String,
     val problem: Problem,
-    val offline: Boolean,
+    val tone: Tone,
     val fix: MachineFixButton? = null,
     val edit: String? = null,
-    /** 正在装 / 更新那一句（成品写好的；条上只画它）；没在装 ⇒ `null`。 */
-    val busy: Busy? = null,
+    val progress: Boolean = false,
 )
+
+/** 成品条那一格 ⇒ 顶条；成品不带条 ⇒ `null`。 */
+private fun productBar(
+    hostId: String,
+    line: LinkLine,
+): HostBar? = barOf(line)?.let { l -> HostBar(hostId, Problem(l.text, l.detail), l.tone, line.deployFix(), progress = l.progress) }
 
 /**
  * 一台 ⇒ 要画的那一份。[ssh] 是这台 SSH 那一层（接不上 ⇒ 那一句当这台的条）。
@@ -334,11 +342,11 @@ internal fun hostPart(
     val answer = if (down != null) s.cached.takeIf { plain } else got ?: s.cached.takeIf { plain }
     val bar =
         when {
-            ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true, edit = ssh.edit)
-            down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), offline = true)
-            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), busy = down.busy())
-            s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, offline = false)
-            s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), busy = s.link.busy()) }
+            ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), Tone.OFFLINE, edit = ssh.edit)
+            down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), Tone.OFFLINE)
+            down != null -> productBar(s.hostId, down)
+            s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, Tone.FAIL)
+            s.link is LinkLine.Up -> productBar(s.hostId, s.link)
             else -> null
         }
     val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, r, s.table) }
@@ -352,6 +360,7 @@ internal fun hostPart(
         truncated = answer?.truncated == true,
         loading = down == null && ssh !is HostLink.Failed && s.list is Fetched.Loading && answer == null,
         deploying = s.deploying,
+        word = s.link?.machine?.takeIf { it.offline }?.word?.ifEmpty { null },
         slice = sliceOf(s, rows, ssh),
         groupLines = listOfNotNull(s.groupsProblem?.text),
     )
