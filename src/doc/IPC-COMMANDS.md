@@ -12400,9 +12400,13 @@ by: ArriveBy,
  */
 since: number, 
 /**
- * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ * 起在哪个终端里（tmux 会话名 · 托管终端的句柄；没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
-session: string | null, };
+session: string | null, 
+/**
+ * `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+ */
+host: TerminalHost | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type Failed = { code: string, said: string, detail: string, data?: unknown, };
 type GroupRef = { id: string, name: string, };
@@ -12418,9 +12422,13 @@ type Opened = {
  */
 landed: Landed, 
 /**
- * 落在哪个 tmux 会话（`window` ⇒ `null`）。
+ * 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
  */
 session: string | null, 
+/**
+ * `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
+ */
+host: TerminalHost | null, 
 /**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
@@ -12493,6 +12501,7 @@ said: string,
  */
 detail: string, };
 type Sid = string;
+type TerminalHost = "tmux" | "managed";
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_set` · `refused`
@@ -14239,9 +14248,13 @@ by: ArriveBy,
  */
 since: number, 
 /**
- * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ * 起在哪个终端里（tmux 会话名 · 托管终端的句柄；没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
-session: string | null, };
+session: string | null, 
+/**
+ * `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+ */
+host: TerminalHost | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type ForkFrom = { 
 /**
@@ -14317,9 +14330,13 @@ type Opened = {
  */
 landed: Landed, 
 /**
- * 落在哪个 tmux 会话（`window` ⇒ `null`）。
+ * 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
  */
 session: string | null, 
+/**
+ * `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
+ */
+host: TerminalHost | null, 
 /**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
@@ -14408,6 +14425,7 @@ ticket?: string,
  */
 client?: string, };
 type Sid = string;
+type TerminalHost = "tmux" | "managed";
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_hosted` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
@@ -14433,9 +14451,13 @@ by: ArriveBy,
  */
 since: number, 
 /**
- * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ * 起在哪个终端里（tmux 会话名 · 托管终端的句柄；没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
-session: string | null, };
+session: string | null, 
+/**
+ * `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+ */
+host: TerminalHost | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed", 
 /**
@@ -14443,10 +14465,11 @@ type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed",
  */
 said: string, 
 /**
- * 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
+ * 起在的那个终端此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
  */
 terminal: string | null, };
 type Sid = string;
+type TerminalHost = "tmux" | "managed";
 ```
 
 码：`bad_args`

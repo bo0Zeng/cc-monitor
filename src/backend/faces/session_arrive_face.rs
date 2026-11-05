@@ -1,6 +1,7 @@
 //! 帧面 `session-arrive` 的宿主壳：认报到交观测层（`observe::arrivals`），抓那一屏交 `terminals`（阻塞线程上）。
 
 use crate::control::session_arrive::{self as arrive, Host, Screen};
+use cmd_wire::frame::TerminalHost;
 use cmd_wire::session::{ArriveAsk, ArriveBy, ArriveEnd};
 use std::future::Future;
 
@@ -17,12 +18,18 @@ impl Host for Prod {
         crate::observe::one_wait::bounded(heard, ms)
     }
 
-    fn screen(&self, session: &str) -> impl Future<Output = Screen> + Send {
+    fn screen(&self, session: &str, host: TerminalHost) -> impl Future<Output = Screen> + Send {
         let session = session.to_string();
         async move {
-            tokio::task::spawn_blocking(move || crate::control::terminals::screen_of(&session))
+            match host {
+                // 托管终端那一屏还没接（`terminals::screen_of` 只问 tmux）：照不在说，不去问 tmux。
+                TerminalHost::Managed => Screen::Gone,
+                TerminalHost::Tmux => tokio::task::spawn_blocking(move || {
+                    crate::control::terminals::screen_of(&session)
+                })
                 .await
-                .unwrap_or_else(|e| Screen::Unread(e.to_string()))
+                .unwrap_or_else(|e| Screen::Unread(e.to_string())),
+            }
         }
     }
 }
