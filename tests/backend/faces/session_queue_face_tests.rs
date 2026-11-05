@@ -139,8 +139,13 @@ fn owner_refusal_is_the_whole_undelivered_sentence() {
         .unwrap()
     };
     let whole = |why: &str| copy_text("terminal.input.failed", &[("why", why)]);
-    let no = owner_put(&own, &req("看图", &["1027-1201-e95b"]), 100, &|_: &str| None)
-        .expect_err("附件不在 ⇒ 拒");
+    let no = owner_put(
+        &own,
+        &req("看图", &["1027-1201-e95b"]),
+        100,
+        &|_: &str| None,
+    )
+    .expect_err("附件不在 ⇒ 拒");
     assert_eq!(no.code.as_deref(), Some("attachment_gone"));
     assert_eq!(
         no.said,
