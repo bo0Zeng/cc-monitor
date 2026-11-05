@@ -310,6 +310,7 @@ async fn the_same_sid_on_two_machines_is_held_apart() {
             origin: "pi".into(),
             path: "/p".into(),
             change: "truncated".into(),
+            said: String::new(),
         })
         .await;
     assert_eq!(held("pi"), None, "那台从头重读，旧的一代该丢");
@@ -1044,6 +1045,7 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
         origin: crate::origin::LOCAL.into(),
         path: "/p/s.jsonl".into(),
         change: "gone".into(),
+        said: "甲句".into(),
     })
     .await;
     let got = rec.all();
@@ -1053,6 +1055,7 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
             let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
             assert_eq!(v["file_notice"]["session_id"], "s");
             assert_eq!(v["file_notice"]["change"], "gone");
+            assert_eq!(v["file_notice"]["said"], "甲句", "那一句原样交前端");
         }
         other => panic!("{other:?}"),
     }
@@ -1076,6 +1079,7 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
                 origin: crate::origin::LOCAL.into(),
                 path: "/p/s.jsonl".into(),
                 change: change.into(),
+                said: String::new(),
             })
             .await;
         assert_eq!(seqs_of(&replay, "s"), s_left, "{change}");

@@ -953,9 +953,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionBranch: (p) => tabs.onSessionBranch(p),
     onLiveCardsLost: (origin) => tabs.dropLiveCards(origin),
     // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
-    onSessionFileNotice: (sessionId, change) => {
+    onSessionFileNotice: (sessionId, change, said) => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
-      recordFile.onSessionFileNotice(sessionId, change);
+      recordFile.onSessionFileNotice(sessionId, change, said);
     },
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {

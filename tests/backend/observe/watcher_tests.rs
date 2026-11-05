@@ -160,6 +160,7 @@ fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
         path: "/w/a.jsonl".into(),
         why: crate::wire::RereadWhy::Rewritten,
         lines: 0,
+        said: Default::default(),
     }));
     assert!(list_rang(&mut list), "答过清单之后同一个会话再变 ⇒ 再响");
     sink.send(Frame::SessionRuns(crate::wire::SessionRuns {
@@ -3302,20 +3303,38 @@ fn loc1b_the_pid_rides_the_session_added_frame() {
 // 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 /// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<行号>`（帧上不再带原文），出声帧给它的 kind（重读带 why）。
+/// 出声那两帧带的那一句当场核：就是文案表里那一句（不见了 · 改短 · 改过各一句），两端照摆。
 fn fw1_drain(rx: &mut FrameRx) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         out.push(match f {
             Frame::Line(crate::wire::Line { seq, .. }) => format!("line:{seq}"),
-            Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. }) => {
+            Frame::SessionFileGone(crate::wire::SessionFileGone {
+                session_id, said, ..
+            }) => {
+                assert_eq!(
+                    said.0,
+                    copy_core::copy_text("sessionState.recordFile.gone", &[]),
+                    "「不见了」那一帧没带写好的那一句"
+                );
                 format!("gone:{session_id}")
             }
             Frame::SessionFileReread(crate::wire::SessionFileReread {
                 session_id,
                 why,
                 lines,
+                said,
                 ..
             }) => {
+                let key = match why {
+                    crate::wire::RereadWhy::Truncated => "sessionState.recordFile.truncated",
+                    crate::wire::RereadWhy::Rewritten => "sessionState.recordFile.rewritten",
+                };
+                assert_eq!(
+                    said.0,
+                    copy_core::copy_text(key, &[]),
+                    "「已从头重读」那一帧没带写好的那一句（{why:?}）"
+                );
                 format!("reread:{session_id}:{why:?}:{lines}")
             }
             other => format!("other:{}", kind_of(&other)),
@@ -3438,10 +3457,11 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
     let gone = Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
+        said: crate::common::cells::Words("那一句".into()),
     });
     assert_eq!(
         to_line(&gone).unwrap(),
-        "{\"kind\":\"session_file_gone\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\"}\n"
+        "{\"kind\":\"session_file_gone\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"said\":\"那一句\"}\n"
     );
     for (why, lit) in [
         (RereadWhy::Truncated, "truncated"),
@@ -3452,10 +3472,11 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
             path: "/p/s.jsonl".into(),
             why,
             lines: 7,
+            said: crate::common::cells::Words("那一句".into()),
         });
         assert_eq!(
             to_line(&f).unwrap(),
-            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\",\"lines\":7}}\n")
+            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\",\"lines\":7,\"said\":\"那一句\"}}\n")
         );
         assert!(!f.loss_is_recoverable());
     }
@@ -4568,6 +4589,7 @@ fn the_outbound_channel_holds_at_most_its_byte_cap() {
     sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: "x".into(),
         path: "p".into(),
+        said: Default::default(),
     }));
     assert!(
         matches!(rx.try_recv(), Ok(Frame::Overflow(_))),

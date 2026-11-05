@@ -83,9 +83,9 @@ export interface EventHandlers {
   onLiveCardsLost?: (origin: Machine) => void;
   /**
    * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
-   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。
+   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。`said` 是那台写好的那一句。
    */
-  onSessionFileNotice?: (sessionId: string, change: string) => void;
+  onSessionFileNotice?: (sessionId: string, change: string, said: string) => void;
   /**
    * 启动重放的第一块到达时调一次：TabManager 进批模式、开惰性高亮。
    * 整个重放期间只调一次（多块在 300ms grace 续期下视作连续的一批）。
@@ -169,7 +169,7 @@ type Queued =
   | { kind: "watch"; origin: Machine; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
-  | { kind: "file-notice"; sessionId: string; change: string };
+  | { kind: "file-notice"; sessionId: string; change: string; said: string };
 
 /**
  * drain 用的 FIFO：**数组 ＋ 头下标**，出队 O(1)。
@@ -435,7 +435,7 @@ export async function bindEvents(
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin, item.all);
       } else if (item.kind === "file-notice") {
-        handlers.onSessionFileNotice?.(item.sessionId, item.change);
+        handlers.onSessionFileNotice?.(item.sessionId, item.change, item.said);
       } else if (item.kind === "gap") {
         handlers.onStreamGap?.(item.origin);
       }
@@ -526,7 +526,12 @@ export async function bindEvents(
             queue.pushFront({ kind: "batch-start" });
           }
         } else if (f !== null && typeof f === "object" && "file_notice" in f) {
-          take({ kind: "file-notice", sessionId: f.file_notice.session_id, change: f.file_notice.change });
+          take({
+            kind: "file-notice",
+            sessionId: f.file_notice.session_id,
+            change: f.file_notice.change,
+            said: f.file_notice.said,
+          });
         } else if (f !== null && typeof f === "object" && "added" in f) {
           // 活会话（那台的 `session_added`）：与行同一条流、同序。本机远端同一形，只差建 tab 那一跳；哪台由订阅说。
           const p = f.added;

@@ -407,18 +407,15 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         tz,
         handshake: HANDSHAKE,
     };
-    // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。手机不读主线外清单 ⇒ 一份都不要。
+    // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
     let rows_to = Arc::clone(&on_event);
-    let desk = Desk::new(
-        |_| Vec::new(),
-        move |rows| {
-            rows_to(
-                id,
-                "watch_from",
-                serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
-            );
-        },
-    );
+    let desk = Desk::new(branch_held, move |rows| {
+        rows_to(
+            id,
+            "watch_from",
+            serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+        );
+    });
     let mine = Arc::new(Mutex::new(Facts {
         id,
         ..Facts::named(&name)
@@ -704,9 +701,40 @@ pub(crate) fn cut(machine: &str, e: &CallError) -> (String, String) {
     (said, e.to_string())
 }
 
+/// 报名单时每条在看的会话手上那份主线外清单有什么：手机不留那一份、每条都交 `at: 0` ⇒ 那台每次报名单都从头发整份
+/// （流上 `session_branch`），Kotlin 那一侧照 `at` 接（`BranchFolds.put`）。
+fn branch_held(sids: &BTreeSet<String>) -> Vec<cmd_wire::watch::BranchHeld> {
+    sids.iter()
+        .map(|sid| cmd_wire::watch::BranchHeld {
+            sid: sid.clone(),
+            ..Default::default()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ 报名单时每条在看的会话都要主线外清单（不交 ⇒ 那台一帧 `session_branch` 都不发，Esc 回退框只剩冷读那一半）：每条一格、手上什么都没有。
+    #[test]
+    fn every_watched_session_asks_for_its_whole_branch_list() {
+        let sids: BTreeSet<String> = ["s1", "s2"].iter().map(|s| s.to_string()).collect();
+        let got = branch_held(&sids);
+        assert_eq!(
+            got,
+            vec![
+                cmd_wire::watch::BranchHeld {
+                    sid: "s1".into(),
+                    ..Default::default()
+                },
+                cmd_wire::watch::BranchHeld {
+                    sid: "s2".into(),
+                    ..Default::default()
+                },
+            ]
+        );
+    }
 
     /// 🔴 两端契约对不上时说契约错：一问一答的入参读不动 ⇒ 读不动那一行（不当 `null` 照发）；拨号请求拼不成 ⇒ 契约错那一句（不说「连接断了」）。
     #[test]

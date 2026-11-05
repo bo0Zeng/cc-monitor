@@ -97,3 +97,21 @@ fn going_unseen_folds_the_open_ones_into_the_one_unseen_face_and_the_replay_clea
     b.fold(&decode::<serde_json::Value>(r#"{"kind":"sessions_replayed"}"#).unwrap());
     assert!(b.unseen.is_none(), "报完清单 ⇒ 看得见了");
 }
+
+/// ★ 记录文件那两帧带的那一句照记（两端照摆，不照 `why` 自己映）：后来的盖前面的；关掉那一条 ⇒ 不再记。
+#[test]
+fn the_record_file_frames_leave_their_written_sentence_on_the_session() {
+    let mut b = folded(FRAMES);
+    let gone = r#"{"kind":"session_file_gone","session_id":"d","path":"/p/d.jsonl","said":"甲句"}"#;
+    assert!(b.fold(&decode::<serde_json::Value>(gone).unwrap()));
+    assert_eq!(b.file_said.get("d").map(|w| w.0.as_str()), Some("甲句"));
+    let reread = r#"{"kind":"session_file_reread","session_id":"d","path":"/p/d.jsonl","why":"rewritten","lines":3,"said":"乙句"}"#;
+    assert!(b.fold(&decode::<serde_json::Value>(reread).unwrap()));
+    assert_eq!(
+        b.file_said.get("d").map(|w| w.0.as_str()),
+        Some("乙句"),
+        "后来的那一句盖前面的"
+    );
+    b.forget("d");
+    assert!(!b.file_said.contains_key("d"), "关掉的那一条不再记");
+}

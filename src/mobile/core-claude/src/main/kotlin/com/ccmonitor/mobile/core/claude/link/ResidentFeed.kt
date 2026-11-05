@@ -18,6 +18,7 @@ import com.ccmonitor.mobile.core.wire.gen.LocalOpened
 import com.ccmonitor.mobile.core.wire.gen.Moved
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import com.ccmonitor.mobile.core.wire.gen.arr
 import com.ccmonitor.mobile.core.wire.gen.dict
 import kotlinx.coroutines.CancellationException
@@ -190,8 +191,8 @@ class ResidentFeed(
     private val liveFlow = MutableSharedFlow<LiveCards>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val live: SharedFlow<LiveCards> = liveFlow.asSharedFlow()
 
-    private val branchFlow = MutableSharedFlow<BranchFrame>(extraBufferCapacity = BUFFER)
-    override val branches: SharedFlow<BranchFrame> = branchFlow.asSharedFlow()
+    private val branchFlow = MutableSharedFlow<SessionBranch>(extraBufferCapacity = BUFFER)
+    override val branches: SharedFlow<SessionBranch> = branchFlow.asSharedFlow()
 
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
@@ -427,7 +428,7 @@ class ResidentFeed(
     private suspend fun onFrame(frame: Map<String, Any?>) {
         if (frame["kind"] == CHANGED) Wire.bind<Changed>(frame)?.let(changedFlow::tryEmit) ?: broke("frame", frame.toString())
         // 一截接一截（前 `at` 条照旧）：丢一截账就错 ⇒ 满了在这里等，不丢。
-        if (frame["kind"] == BRANCH) Wire.bind(BranchFrame.ADAPTER, frame)?.let { branchFlow.emit(it) } ?: broke("frame", frame.toString())
+        if (frame["kind"] == BRANCH) Wire.bind<SessionBranch>(frame)?.let { branchFlow.emit(it) } ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
     }

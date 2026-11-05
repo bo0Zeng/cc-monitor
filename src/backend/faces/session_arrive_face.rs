@@ -21,15 +21,11 @@ impl Host for Prod {
     fn screen(&self, session: &str, host: TerminalHost) -> impl Future<Output = Screen> + Send {
         let session = session.to_string();
         async move {
-            match host {
-                // 托管终端那一屏还没接（`terminals::screen_of` 只问 tmux）：照不在说，不去问 tmux。
-                TerminalHost::Managed => Screen::Gone,
-                TerminalHost::Tmux => tokio::task::spawn_blocking(move || {
-                    crate::control::terminals::screen_of(&session)
-                })
-                .await
-                .unwrap_or_else(|e| Screen::Unread(e.to_string())),
-            }
+            tokio::task::spawn_blocking(move || {
+                crate::control::terminals::screen_of(&session, host)
+            })
+            .await
+            .unwrap_or_else(|e| Screen::Unread(e.to_string()))
         }
     }
 }

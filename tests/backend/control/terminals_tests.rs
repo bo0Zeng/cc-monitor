@@ -1592,3 +1592,49 @@ fn after_an_upgrade_a_tmux_session_stays_tmux_and_an_old_hosted_terminal_stays_m
     );
     assert!(heard.iter().any(|h| h == "end"), "结束经托管口：{heard:?}");
 }
+
+/// ★ 起在托管终端里、没报到：那个终端在、画面有字 ⇒ 那一句带它末几行、回它的句柄（经托管口抓屏，不问 tmux）；
+/// 名单里没有那个名字 ⇒ 已不在。真起托管进程（假子进程 `sh`），沙箱数据目录，不起真 claude。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_hosted_terminal_that_never_arrived_is_read_off_its_screen() {
+    use crate::control::session_arrive::{missed, Screen};
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec, start,
+    };
+    use crate::host::managed::wire::{write_frame, Frame, Want};
+    use crate::wire::TerminalHost;
+    use cmd_wire::session::ArriveEnd;
+    let (own, _data) = sandbox_own("term-scr");
+    let script = "printf 'boot\\r\\nError: unknown flag --zz\\r\\n'; read x";
+    let (sock, task) = start(&own, spec("t-scr", script)).await;
+    let mut t = hello(&sock, Want::Input).await;
+    read_until_out(&mut t, "--zz").await;
+
+    let o = own.clone();
+    let screen = tokio::task::spawn_blocking(move || hosted_screen_in(&o, "name-t-scr"))
+        .await
+        .expect("没崩");
+    let ArriveEnd::Missed { said, terminal } =
+        missed(1_000, Some(("name-t-scr", TerminalHost::Managed, screen)))
+    else {
+        panic!("应是没见到");
+    };
+    assert!(
+        said.contains("Error: unknown flag --zz") && said.contains("boot"),
+        "那一句带末几行：{said}"
+    );
+    assert!(!said.contains("tmux"), "托管那几句不提 tmux：{said}");
+    assert_eq!(terminal.as_deref(), Some("t-scr"), "回托管终端的句柄");
+
+    let o = own.clone();
+    let gone = tokio::task::spawn_blocking(move || hosted_screen_in(&o, "name-nobody"))
+        .await
+        .expect("没崩");
+    assert!(matches!(gone, Screen::Gone), "名单里没有 ⇒ 已不在");
+
+    write_frame(&mut t, &Frame::In(b"\r".to_vec()))
+        .await
+        .expect("收尾");
+    drop(t);
+    task.await.expect("任务没崩").expect("跑完");
+}

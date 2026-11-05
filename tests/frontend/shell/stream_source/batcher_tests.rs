@@ -65,10 +65,10 @@ async fn a_reread_queues_a_fresh_tail_snapshot_and_gone_does_not() {
     let first = snapshots.pop(None).await.unwrap();
     assert_eq!(first.expected_lines, Some(10), "宣告那一份");
     intake
-        .notice("s", "/p/s.jsonl", FileChange::Gone, None)
+        .notice("s", "/p/s.jsonl", FileChange::Gone, "", None)
         .await;
     intake
-        .notice("s", "/p/s.jsonl", FileChange::Truncated, Some(3))
+        .notice("s", "/p/s.jsonl", FileChange::Truncated, "", Some(3))
         .await;
     let again = tokio::time::timeout(guard_core::wall::CEILING, snapshots.pop(None))
         .await

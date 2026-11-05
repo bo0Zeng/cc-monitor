@@ -16,6 +16,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
@@ -579,7 +580,7 @@ class ResidentFeedTest {
             val core = FakeCore()
             val breaks = mutableListOf<String>()
             val f = feed(core, onBreak = { breaks += it })
-            val got = mutableListOf<BranchFrame>()
+            val got = mutableListOf<SessionBranch>()
             backgroundScope.launch { f.branches.collect { got += it } }
             core.emit(
                 "frame",
@@ -587,7 +588,7 @@ class ResidentFeedTest {
                     """"runs":[{"at":2,"n":2,"said":"已被 Esc 回退 · 消息 ×2"}],"sum":"x"}""",
             )
             core.emit("frame", """{"kind":"session_branch","sid":"s1"}""")
-            assertEquals(listOf(BranchFrame("s1", "/p/s1.jsonl", 2, listOf("e", "g"), listOf(BranchRun(2, 2, "已被 Esc 回退 · 消息 ×2")))), got)
+            assertEquals(listOf(SessionBranch("s1", "/p/s1.jsonl", 2, listOf("e", "g"), listOf(BranchRun(2, 2, "已被 Esc 回退 · 消息 ×2")), "x")), got)
             assertEquals(1, breaks.size)
         }
 
@@ -674,7 +675,7 @@ class ResidentFeedTest {
                     .single(),
             )
             assertEquals(1, broken.size)
-            core.emit("book", """{"live":{},"left":{},"runs":{},"successors":{"a":"d"},"rereads":{},"listed":true}""")
+            core.emit("book", """{"live":{},"left":{},"runs":{},"successors":{"a":"d"},"rereads":{},"file_said":{},"listed":true}""")
             assertEquals(mapOf("a" to "d"), f.table.value.successors)
             core.emit("book", """{"live":{}}""")
             assertEquals("认不出的簿不换", mapOf("a" to "d"), f.table.value.successors)
