@@ -126,3 +126,36 @@ fn attachments_are_checked_on_the_owner_before_anything_is_written() {
         ["1027-1200-a3f2"]
     );
 }
+
+/// 主人那台拒了（附件不在 · 太长）⇒ 回的那一句就是发件端照摆的整句（未送达 · 原因 · 内容保留），码 · 原话不动；收下的照常回执。
+#[test]
+fn owner_refusal_is_the_whole_undelivered_sentence() {
+    let h = home("refused");
+    let own = crate::platform::fs::Own::issue_at(&h);
+    let req = |text: &str, ids: &[&str]| {
+        put_req(json!({
+            "machine": "<local>", "sid": "s1", "id": "m1", "end": "phone", "atMs": 5, "text": text, "attachments": ids
+        }))
+        .unwrap()
+    };
+    let whole = |why: &str| copy_text("terminal.input.failed", &[("why", why)]);
+    let no = owner_put(&own, &req("看图", &["1027-1201-e95b"]), 100, &|_: &str| None)
+        .expect_err("附件不在 ⇒ 拒");
+    assert_eq!(no.code.as_deref(), Some("attachment_gone"));
+    assert_eq!(
+        no.said,
+        whole(&copy_text(
+            "beQueue.put.attachmentGone",
+            &[("ids", "1027-1201-e95b")]
+        ))
+    );
+    // 比一句的上限（64 KiB）长。
+    let long = "x".repeat(64 * 1024 + 1);
+    let no = owner_put(&own, &req(&long, &[]), 100, &|_: &str| None).expect_err("太长 ⇒ 拒");
+    assert_eq!(no.code.as_deref(), Some("text_too_long"));
+    let bare = put_here(&own, &req(&long, &[]), 100, &|_: &str| None).unwrap_err();
+    assert_eq!(no.said, whole(&bare.said));
+    assert_eq!(no.raw, bare.raw, "原话不动");
+    let got = owner_put(&own, &req("hi", &[]), 100, &|_: &str| None).expect("收下");
+    assert_eq!(got.outcome, QueuePutOutcome::Queued);
+}
