@@ -114,18 +114,14 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
         vec![("dev".to_string(), KEY.to_string())]
     );
     assert!(up.execs.lock().unwrap().is_empty(), "后端在还去 exec 了");
-    // 那一句后端写好（本来就有 · 带推的那一份），界面照摆；结局只住这一句里，回包不另带一格。
+    // 那一句后端写好（本来就有 · 带推的那一份），界面照摆；回包只这一格（结局 · 走了哪条都不另带）。
     assert_eq!(
-        (v["said"].clone(), v["via"].clone()),
-        (
-            json!(copy_text(
-                "machineCard.pushKey.already",
-                &[("path", "/k/id_ed25519.pub")]
-            )),
-            json!("backend")
-        )
+        v,
+        json!({ "said": copy_text(
+            "machineCard.pushKey.already",
+            &[("path", "/k/id_ed25519.pub")]
+        ) })
     );
-    assert!(v.get("outcome").is_none(), "{v}");
 
     let down = FakeReach::new(false);
     let v = answer_push(&args(), &down, &read).await.unwrap();
@@ -143,18 +139,14 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
     );
     assert!(execs[0].0.get("machine").is_none(), "{}", execs[0].0);
     assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
-    assert_eq!(
-        (v["said"].clone(), v["via"].clone()),
-        (
-            json!(copy_text(
-                "machineCard.pushKey.added",
-                &[("path", "/k/id_ed25519.pub")]
-            )),
-            json!("exec")
-        )
-    );
     // 推的是哪一份只住那一句里（界面除了摆它不读别的）。
-    assert!(v.get("pubPath").is_none(), "{v}");
+    assert_eq!(
+        v,
+        json!({ "said": copy_text(
+            "machineCard.pushKey.added",
+            &[("path", "/k/id_ed25519.pub")]
+        ) })
+    );
 }
 
 /// 被写那台：经这台自己的文件管理面写 —— 落在 `<home>/.ssh/authorized_keys`（建父目录）、700 / 600；
@@ -187,9 +179,13 @@ fn the_key_lands_through_this_backends_file_face() {
     };
     let (dm, fm) = (mode(".ssh"), mode(".ssh/authorized_keys"));
     let _ = std::fs::remove_dir_all(&home);
+    // 结局（本机后端配带路径那一句用）＋ 写好的那一句（不带路径，手机照摆）。
     assert_eq!(
-        (first["outcome"].clone(), second["outcome"].clone()),
-        (json!("added"), json!("already"))
+        (first, second),
+        (
+            json!({ "outcome": "added", "said": copy_text("mobKeyPush.result.added", &[]) }),
+            json!({ "outcome": "already", "said": copy_text("mobKeyPush.result.already", &[]) })
+        )
     );
     assert_eq!(text, format!("{KEY}\n"));
     assert_eq!(
