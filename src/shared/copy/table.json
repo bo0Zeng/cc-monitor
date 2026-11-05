@@ -201,6 +201,12 @@
       "zh": " · ",
       "args": []
     },
+    "kit.text.machineSaid": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} · {said}",
+      "args": ["machine", "said"]
+    },
     "peerVersion.said.old": {
       "kind": "error",
       "role": "报错",
@@ -15568,12 +15574,6 @@
       "zh": "无打开的标签页",
       "args": []
     },
-    "resync.machines.ok": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} · {said}",
-      "args": ["machine", "said"]
-    },
     "resync.machines.failed": {
       "kind": "body",
       "role": "说明",
@@ -18954,12 +18954,6 @@
       "role": "空态",
       "zh": "无需手动事项",
       "args": []
-    },
-    "beNeedsMerge.down.said": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} · {said}",
-      "args": ["machine", "said"]
     },
     "needs.panel.unreadable": {
       "kind": "error",

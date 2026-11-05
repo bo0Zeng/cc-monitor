@@ -991,7 +991,7 @@ fn down_said(origin: &cmd_wire::Machine, s: crate::common::said::Said) -> String
         .host_name()
         .map_or_else(copy_core::local_machine, str::to_string);
     copy_core::copy_text(
-        "beNeedsMerge.down.said",
+        "kit.text.machineSaid",
         &[("machine", &machine), ("said", &s.said)],
     )
 }

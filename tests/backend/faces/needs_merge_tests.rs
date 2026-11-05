@@ -124,7 +124,7 @@ async fn a_machine_that_answered_a_failure_is_named_in_its_down_line() {
     };
     let named = |machine: &str, s: &str| {
         copy_core::copy_text(
-            "beNeedsMerge.down.said",
+            "kit.text.machineSaid",
             &[("machine", machine), ("said", s)],
         )
     };

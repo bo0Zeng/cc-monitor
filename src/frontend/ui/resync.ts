@@ -47,7 +47,7 @@ export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
     .map((m) => {
       const machine = isLocalOrigin(m.origin) ? copyText("detail.label.local") : m.origin;
       return "r" in m
-        ? copyText("resync.machines.ok", { machine, said: resyncSaid(m.r) })
+        ? copyText("kit.text.machineSaid", { machine, said: resyncSaid(m.r) })
         : copyText("resync.machines.failed", { machine, why: m.why });
     })
     .join("\n");

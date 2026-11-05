@@ -1366,8 +1366,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(lines).toHaveLength(3);
     expect(lines).toEqual(
       expect.arrayContaining([
-        copyText("resync.machines.ok", { machine: copyText("detail.label.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
-        copyText("resync.machines.ok", { machine: "laptop", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
+        copyText("kit.text.machineSaid", { machine: copyText("detail.label.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
+        copyText("kit.text.machineSaid", { machine: "laptop", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
         expect.stringMatching(copyPattern("resync.machines.failed", { machine: "box" }, { whole: true })),
       ]),
     );

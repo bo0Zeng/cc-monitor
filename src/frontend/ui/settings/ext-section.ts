@@ -806,8 +806,8 @@ export class ExtSection {
         } else if (m.card?.unchanged) line.textContent = copyText("extPage.install.filesSame", { machine: m.name });
         else line.textContent = copyText("extPage.install.filesLine", { machine: m.name, files: m.files.join(copyText("kit.text.sep")) });
         box.appendChild(line);
-        for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("resync.machines.ok", { machine: m.name, said: x })));
-        if (m.card?.stop) box.appendChild(el("div", "ext-error", copyText("resync.machines.ok", { machine: m.name, said: m.card.stop })));
+        for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("kit.text.machineSaid", { machine: m.name, said: x })));
+        if (m.card?.stop) box.appendChild(el("div", "ext-error", copyText("kit.text.machineSaid", { machine: m.name, said: m.card.stop })));
       }
     }
     for (const [key, res] of inst.results) {
