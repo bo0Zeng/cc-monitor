@@ -1114,7 +1114,10 @@ impl Child {
     pub fn converse_in_terminal(self) -> Result<Conversation, ChildFail> {
         let (master, mut child) = self.spawn_in_pty(TERMINAL_SIZE)?;
         let reader = master.try_clone_reader().map_err(pty_fail)?;
-        let writer = master.take_writer().map_err(pty_fail)?;
+        // 写口两头共用：`say` 写话 · 读的那一侧答光标位置（见 [`read_terminal`]）。
+        let writer = TerminalWriter(Arc::new(Mutex::new(
+            master.take_writer().map_err(pty_fail)?,
+        )));
         // Windows 上句柄占着进程，不用 pid 去等、去杀 ⇒ 只在 Unix 上取。
         #[cfg(unix)]
         let pid = child.process_id();
@@ -1133,7 +1136,8 @@ impl Child {
         let (tx, rx) = mpsc::channel::<Heard>();
         let reader = {
             let tx = tx.clone();
-            std::thread::spawn(move || read_terminal(reader, tx))
+            let answer = writer.clone();
+            std::thread::spawn(move || read_terminal(reader, tx, answer))
         };
         let reaped = Arc::new(Mutex::new(false));
         let reaped_w = Arc::clone(&reaped);
@@ -1155,7 +1159,7 @@ impl Child {
             .discard(Why::PeerGone);
         });
         Ok(Conversation {
-            stdin: Some(writer),
+            stdin: Some(Box::new(writer)),
             group,
             reaped,
             heard: Some(rx),
@@ -1336,15 +1340,51 @@ fn pty_fail(e: impl std::fmt::Display) -> ChildFail {
     ChildFail::Io(std::io::Error::other(e.to_string()))
 }
 
+/// 一问一答那一种伪终端的写口（[`Child::converse_in_terminal`]）：`say` 与读的那一侧各拿一份，一把锁。
+#[derive(Clone)]
+struct TerminalWriter(Arc<Mutex<Box<dyn std::io::Write + Send>>>);
+
+impl std::io::Write for TerminalWriter {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).write(b)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).flush()
+    }
+}
+
+/// 光标位置查询（DSR 6）。
+const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+/// 答它的那一句：光标在第 1 行第 1 列（只是要个答复；这一头不画屏，不记真位置）。
+const CURSOR_REPORT: &[u8] = b"\x1b[1;1R";
+
 /// 终端那一端逐行读（按 `\n` 切），每行交 [`plain_line`] 之后的样子；读到头时没收尾的那半行也交（提示符那一类）。
-fn read_terminal(mut r: impl Read, tx: mpsc::Sender<Heard>) {
+/// 这一头就是它的终端：它问光标在哪（[`CURSOR_QUERY`]）⇒ 经 `answer` 答一句 —— Windows 的伪终端（ConPTY）一起来先问，
+/// 不答就压着它的全部输出不放。
+fn read_terminal(mut r: impl Read, tx: mpsc::Sender<Heard>, mut answer: TerminalWriter) {
+    use std::io::Write;
     let mut buf: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 4096];
+    // 上一块的尾巴（比一句查询短一字节）：查询被两次读切开也认得出，又不会认两回。
+    let mut tail: Vec<u8> = Vec::new();
     loop {
         let n = match r.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(n) => n,
         };
+        tail.extend_from_slice(&chunk[..n]);
+        let asked = tail
+            .windows(CURSOR_QUERY.len())
+            .filter(|w| *w == CURSOR_QUERY)
+            .count();
+        for _ in 0..asked {
+            // 它已经退了 · 终端关了 ⇒ 没人等这一句
+            answer
+                .write_all(CURSOR_REPORT)
+                .and_then(|()| answer.flush())
+                .discard(Why::PeerGone);
+        }
+        tail.drain(..tail.len().saturating_sub(CURSOR_QUERY.len() - 1));
         buf.extend_from_slice(&chunk[..n]);
         while let Some(at) = buf.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = buf.drain(..=at).collect();

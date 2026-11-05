@@ -974,17 +974,21 @@ fn window_half(
     Box::pin(w.window_change(cols, rows, 0, 0))
 }
 
-/// 收全 stdout / stderr / 退出码。EOF 之后服务端才送 exit-status ⇒ **不能见 Eof 就收**，
-/// 收到 Close / 通道关闭才算完。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
-/// `early` ＝ 等 exec 答复时先到的那几条（[`granted`]），照序先收。
+/// 收全 stdout / stderr / 这一趟怎么收尾（[`cmd_wire::dial::CaptureEnd`]）。EOF 之后服务端才送 exit-status ⇒ **不能见 Eof 就收**，
+/// 收到 Close / 通道关闭才算完：见过 Close ⇒ 退出码 · 信号 · 两样都没给；没等到 Close 通道就没了 ⇒ 链路断了
+/// （先送了退出码 · 信号的照它记，进程那一头的结局已经知道）。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF），
+/// 记作正常收尾。`early` ＝ 等 exec 答复时先到的那几条（[`granted`]），照序先收。
 async fn collect(
     channel: &mut russh::ChannelReadHalf,
     opts: &CaptureOpts,
     early: Vec<russh::ChannelMsg>,
 ) -> Captured {
+    use cmd_wire::dial::CaptureEnd;
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
     let mut status: Option<u32> = None;
+    let mut signal: Option<String> = None;
+    let mut closed = false;
     // 收一条；回「收全了」。
     let mut take = |msg: russh::ChannelMsg| -> bool {
         match msg {
@@ -992,9 +996,12 @@ async fn collect(
                 if out.len() < opts.max_bytes {
                     out.extend_from_slice(&data);
                 }
-                opts.abort_marker
+                let aborted = opts
+                    .abort_marker
                     .as_deref()
-                    .is_some_and(|marker| String::from_utf8_lossy(&out).contains(marker))
+                    .is_some_and(|marker| String::from_utf8_lossy(&out).contains(marker));
+                closed |= aborted;
+                aborted
             }
             russh::ChannelMsg::ExtendedData { data, .. } => {
                 if err.len() < opts.max_bytes {
@@ -1006,7 +1013,14 @@ async fn collect(
                 status = Some(exit_status);
                 false
             }
-            russh::ChannelMsg::Close => true,
+            russh::ChannelMsg::ExitSignal { signal_name, .. } => {
+                signal = Some(signal_word(&signal_name));
+                false
+            }
+            russh::ChannelMsg::Close => {
+                closed = true;
+                true
+            }
             _ => false,
         }
     };
@@ -1023,11 +1037,38 @@ async fn collect(
             None => done = true,
         }
     }
+    let ended = match (status, signal) {
+        (Some(code), _) => CaptureEnd::Exited { code },
+        (None, Some(signal)) => CaptureEnd::Signaled { signal },
+        (None, None) if closed => CaptureEnd::ClosedBare,
+        (None, None) => CaptureEnd::Dropped,
+    };
     Captured {
         stdout: String::from_utf8_lossy(&out).into_owned(),
         stderr: String::from_utf8_lossy(&err).into_owned(),
-        exit_status: status,
+        ended,
     }
+}
+
+/// exit-signal 里的信号名（RFC 4254 §6.10：不带 `SIG` 前缀，如 `KILL`）。
+fn signal_word(sig: &russh::Sig) -> String {
+    use russh::Sig;
+    match sig {
+        Sig::ABRT => "ABRT",
+        Sig::ALRM => "ALRM",
+        Sig::FPE => "FPE",
+        Sig::HUP => "HUP",
+        Sig::ILL => "ILL",
+        Sig::INT => "INT",
+        Sig::KILL => "KILL",
+        Sig::PIPE => "PIPE",
+        Sig::QUIT => "QUIT",
+        Sig::SEGV => "SEGV",
+        Sig::TERM => "TERM",
+        Sig::USR1 => "USR1",
+        Sig::Custom(name) => name,
+    }
+    .to_string()
 }
 
 /// 端口转发：每接进一条连接开一条 direct-tcpip、双向对拷，并往下行报一行 `{"accepted":n}`。

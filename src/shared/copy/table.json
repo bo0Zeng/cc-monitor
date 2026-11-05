@@ -12705,6 +12705,12 @@
       "zh": "后端报错 · 原因不明",
       "args": []
     },
+    "beRemoteAsk.run.signaled": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "后端报错 · 进程被信号 {sig} 终止",
+      "args": ["sig"]
+    },
     "beRemoteAsk.run.unreachable": {
       "kind": "error",
       "role": "原因格",

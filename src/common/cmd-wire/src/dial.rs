@@ -194,8 +194,37 @@ pub struct DialFail {
 pub struct Captured {
     pub stdout: String,
     pub stderr: String,
-    /// `None` = 远端没送 exit-status（连接被掐 / 服务端不守规矩）。**不许把 `None` 当成 0**。
-    pub exit_status: Option<u32>,
+    /// 这一趟通道怎么收尾（拨号核心照收到的通道消息记）。退出码只在 [`CaptureEnd::Exited`] 里，取它用 [`Captured::exit_code`]。
+    pub ended: CaptureEnd,
+}
+
+impl Captured {
+    /// 远端进程的退出码：只有正常退出、送了 exit-status 才有；被信号杀 · 没送 · 链路断了 ⇒ `None`。**不许把 `None` 当成 0**。
+    pub fn exit_code(&self) -> Option<u32> {
+        match self.ended {
+            CaptureEnd::Exited { code } => Some(code),
+            _ => None,
+        }
+    }
+}
+
+/// 一趟 capture 的通道怎么收尾。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CaptureEnd {
+    /// 送了 exit-status。
+    Exited { code: u32 },
+    /// 送了 exit-signal：进程被信号杀掉（`signal` 是不带 `SIG` 前缀的信号名，如 `KILL`）。
+    Signaled { signal: String },
+    /// 通道正常 Close，退出码与信号都没送（服务端不守规矩，或 `abort_marker` 提前收了）。
+    ClosedBare,
+    /// 没等到 Close 链路就断了（那一跳中途断开）。
+    Dropped,
 }
 
 // ───── 拨号请求（界面 · 手机 Kotlin 交给拨号核心的那一份） ─────

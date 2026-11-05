@@ -318,6 +318,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     (f) => empty.face(f),
   );
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
+  //   订着 `changed/<topic>` 的那几样（需手动 · 组 · 输入队 …）不在这里问：那台断开又接上，订阅原位收一格 `seen`（⇒ all）自己重问。
   onMachineUp((origin) => {
     outbox.machineUp(origin);
     composer.machineUp(origin);
@@ -325,7 +326,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     boardFace.machineUp(origin);
     pokeBoard();
     void chores.refreshAll();
-    void needsBook.refresh(origin);
     if (isLocalOrigin(origin)) void start.refresh();
   });
   // 窗口标题的 N 同侧栏入口（后端合好的总数）。

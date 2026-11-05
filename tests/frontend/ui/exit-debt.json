@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1613,
+  "ceiling": 1612,
   "groups": [
     {
       "kind": "首登",
@@ -156,7 +156,7 @@
         ["src/frontend/ui/session-switch.ts", "key", 2],
         ["src/frontend/ui/sessions-where.ts", "key", 1],
         ["src/frontend/ui/settings/account-new-form.ts", "key", 2],
-        ["src/frontend/ui/settings/accounts-section.ts", "branch", 15],
+        ["src/frontend/ui/settings/accounts-section.ts", "branch", 14],
         ["src/frontend/ui/settings/accounts-section.ts", "key", 37],
         ["src/frontend/ui/settings/add-machine.ts", "branch", 2],
         ["src/frontend/ui/settings/add-machine.ts", "key", 7],

@@ -789,7 +789,8 @@ function kindLine(a: Account): string {
 function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null): void {
   if (!q) return;
   if (q.kind === "api") {
-    u5.textContent = copyText("acct.kind.api");
+    // 按量号那一格（`按量` · 被拒那一句）是额度账写好的（`usage_of`），照抄。
+    u5.textContent = q.usage.text;
     if (q.state === "refused") u5.dataset.shade = "refused";
     return;
   }

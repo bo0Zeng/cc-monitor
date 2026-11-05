@@ -299,7 +299,7 @@ fn captured(stdout: &str, stderr: &str, exit_status: u32) -> crate::dial::Captur
     crate::dial::Captured {
         stdout: stdout.into(),
         stderr: stderr.into(),
-        exit_status: Some(exit_status),
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: exit_status },
     }
 }
 

@@ -316,7 +316,7 @@ impl Reach for Wire {
     {
         Box::pin(async move {
             let got = crate::dial::remote_ask::capture_full(dial, command).await?;
-            match got.exit_status {
+            match got.exit_code() {
                 Some(0) => Ok(got.stdout),
                 // 那台 shell 的 stderr 是原话：记一行日志，句子只说没成（这一跳的失败形没有原话位）。
                 _ => Err(crate::common::said::IntoNote::into_note(
