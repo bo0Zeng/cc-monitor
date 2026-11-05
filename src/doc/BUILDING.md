@@ -10,15 +10,15 @@
 
 | 件 | 是什么 | 怎么来 |
 |---|---|---|
-| 前端 | 三个入口页（主窗 · 设置 · 只读窗）的 JS / CSS | `npm run build`（`tsc && vite build`），产物在 `.build/dist/` |
+| 前端 | 四个入口页（主窗 · 设置 · 只读窗 · 终端窗）的 JS / CSS | `npm run build`（`tsc && vite build`），产物在 `.build/dist/` |
 | 远端用的字节 | 后端的 musl 静态二进制，x86_64 / aarch64 各一份，编进 monitor，第一次连上远端时部署过去 | `cargo zigbuild --release --locked --target <arch>-unknown-linux-musl`，铺进 `src/frontend/shell/embedded-backends/` |
-| 本机后端 | 本机原生 target 的后端，编进 monitor；起它之前先放到 `~/.cc-monitor/bin/ccm`（Linux 用上面 x86_64 那份 musl，不另编） | Windows：`cargo build --release --locked`，铺进 `src/frontend/shell/native-backend/` |
+| 本机后端 | 本机原生 target 的后端，编进 monitor；起它之前先放到 `~/.cc-monitor/bin/ccm`；有原生的先用原生，没有才用上面 x86_64 那份 musl | 发版：Windows 原生编（`--stage-native`），Linux 用 musl 那份不另编；开发树两边都可以 `re-embed.sh --native` 编一份本机原生的，铺进 `src/frontend/shell/native-backend/` |
 | 文件窗口程序 | 文件窗口包自己的二进制 `cc-monitor-filewin`，编进 monitor；第一次开文件窗口时放到 `~/.cc-monitor/bin/` 再起 | 先 `cargo build --release --locked -p cc-monitor-filewin --bin cc-monitor-filewin`、铺进 `src/frontend/shell/native-backend/`，再编 monitor |
 | monitor 本体 | Tauri 壳 ＋ 打包 | `npx tauri build`（先跑上面的 `npm run build`，再 `cargo build --release`，最后打包） |
 
 - 那两个落点目录都在 `.gitignore` 里，干净 clone 里没有。没有时 monitor 照样编得过，只是那一份能力诚实关闭（不能部署远端 / 起不了本机后端），不会编出一份假装能用的包。
 - 安装包里只有 monitor 一个程序（外加第三方许可声明）：本机后端与文件窗口程序都只在 monitor 里内嵌一份，不在安装目录旁边另放（`src/frontend/shell/tauri.sidecar.conf.json` 只带许可声明，打包那一步用 `--config` 注入）。
-- Cargo 的输出不落在源码树里：壳在 `.build/shell/`，后端在 `.build/backend/`（各自的 `.cargo/config.toml` 定）。
+- Cargo 的输出不落在源码树里：壳在 `.build/shell/`，后端在 `.build/backend/`（壳的由仓根 `.cargo/config.toml` 定，后端的由 `src/backend/.cargo/config.toml` 定）。
 
 ### 内嵌字节与 `BUILD_ID`
 
@@ -30,6 +30,7 @@
 bash tests/scripts/re-embed.sh            # 重编两个 musl arch 并铺回落点（要 cargo-zigbuild 与 zig）
 bash tests/scripts/re-embed.sh --native   # 编本机原生后端与文件窗口程序，铺进 native-backend/
 bash tests/scripts/re-embed.sh --check    # 只查：盘上的字节与源码的 BUILD_ID 对不对得上，不产字节
+bash tests/scripts/re-embed.sh --check-dev   # 同 --check，但本机那一份没铺即红（开发构建起不起得来本机后端）
 bash tests/scripts/re-embed.sh --clean    # 删掉落点：自动部署诚实关闭，编译立刻恢复
 ```
 

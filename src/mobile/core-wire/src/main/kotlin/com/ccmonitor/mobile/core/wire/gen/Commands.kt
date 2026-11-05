@@ -1509,7 +1509,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.AnswerReq::class.java to com.ccmonitor.mobile.core.wire.gen.AnswerReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AnswerResult::class.java to com.ccmonitor.mobile.core.wire.gen.AnswerResult.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Answered::class.java to com.ccmonitor.mobile.core.wire.gen.Answered.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.ApiReason::class.java to com.ccmonitor.mobile.core.wire.gen.ApiReason.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Arrival::class.java to com.ccmonitor.mobile.core.wire.gen.Arrival.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ArriveAsk::class.java to com.ccmonitor.mobile.core.wire.gen.ArriveAsk.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ArriveBy::class.java to com.ccmonitor.mobile.core.wire.gen.ArriveBy.ADAPTER,

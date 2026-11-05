@@ -323,9 +323,9 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ## 30. tmux ↔ 会话精确映射靠 `@ccm_sid`，不靠名字/目录反推
 
-`/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位、对会话句柄打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的是终端名单 `terminals-list`（`host/tmux.rs::parse_rows`）。`@ccm_sid_expect` 是起会话时声明的意图，**任何破坏性判断只认 `@ccm_sid`**。
+`/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位窗格、对那个窗格打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的有三处：终端名单 `terminals-list`（`host::list`，tmux 那一臂是 `host/tmux.rs::parse_rows`）· 身份门 `control/gate.rs` · ccm 的会话快照 `common/session_snapshot.rs`；托管终端那一形由托管进程带着同一个 sid。`@ccm_sid_expect` 是起会话时声明的意图，**任何破坏性判断只认 `@ccm_sid`**。
 
-**铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作警告并按第一个继续，破坏性动作（kill · 换号重启）拒绝。没有后端时在 tmux 里起有身份的 agent ⇒ `ccm` 响亮失败。
+**铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作按第一个继续（界面写明命中几个；`ccm` 接回不另说），破坏性动作（kill · 换号重启）拒绝。
 
 ## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令
 
