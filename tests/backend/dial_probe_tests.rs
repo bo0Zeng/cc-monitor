@@ -476,7 +476,7 @@ async fn not_our_backend_ensures_like_the_real_connection_then_says_why() {
     let fake = Fake::new(vec![Open::Up(Peer::NotOurs)]).ensure_says(Captured {
         stdout: String::new(),
         stderr: "sh: ccm: not found".into(),
-        exit_status: Some(127),
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: 127 },
     });
     let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(
@@ -550,7 +550,7 @@ async fn an_absent_resident_is_ensured_then_attached() {
     let fake = Fake::new(vec![Open::Up(Peer::Absent), serving(None)]).ensure_says(Captured {
         stdout: "{\"pid\":7,\"replaced\":false}".into(),
         stderr: String::new(),
-        exit_status: Some(0),
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: 0 },
     });
     let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(

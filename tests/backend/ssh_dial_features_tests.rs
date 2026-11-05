@@ -31,6 +31,12 @@ enum Answer {
     No,
     /// exec 的输出先到、答应在后（规矩不禁的那一形：答复之前的字节也得交）。
     TalksFirst,
+    /// 答应、出字节，进程被信号杀掉（送 exit-signal、不送 exit-status），再 EOF ＋ Close。
+    Killed,
+    /// 答应、出字节，EOF ＋ Close，退出码与信号都不送。
+    Bare,
+    /// 答应、出字节，不送退出码、不 Close，整条连接直接断掉（那一跳中途断了的那一形）。
+    Drops,
 }
 
 impl Door {
@@ -163,6 +169,21 @@ impl russh::server::Handler for Door {
             Answer::Yes => {
                 session.channel_success(channel)?;
                 session.data(channel, b"ran\n".to_vec())?;
+            }
+            Answer::Killed | Answer::Bare | Answer::Drops => {
+                session.channel_success(channel)?;
+                session.data(channel, b"ran\n".to_vec())?;
+                match self.answer {
+                    Answer::Drops => {
+                        return session.disconnect(russh::Disconnect::ByApplication, "", "")
+                    }
+                    Answer::Killed => {
+                        session.exit_signal_request(channel, russh::Sig::KILL, false, "", "")?
+                    }
+                    _ => {}
+                }
+                session.eof(channel)?;
+                return session.close(channel);
             }
         }
         session.exit_status_request(channel, 0)?;
@@ -484,7 +505,10 @@ async fn a_password_from_the_host_logs_in_and_a_wrong_one_is_refused() {
     rd.read_line(&mut line).await.expect("读结果行");
     let got: serde_json::Value = serde_json::from_str(&line).expect("结果行");
     assert_eq!(got["stdout"], "ran\n");
-    assert_eq!(got["exit_status"], 0);
+    assert_eq!(
+        got["ended"],
+        serde_json::json!({"kind": "exited", "code": 0})
+    );
     assert!(log.lock().unwrap().iter().any(|l| l == "exec echo"));
 
     let (ack, ..) = open(req("pw-bad"), crate::uses::Control::none()).await;
@@ -753,7 +777,41 @@ async fn a_granted_exec_keeps_the_bytes_around_the_reply() {
         assert_eq!(ack["ok"], true, "{ack}");
         let got = line_of(&mut rd).await;
         assert_eq!(got["stdout"], "ran\n", "{got}");
-        assert_eq!(got["exit_status"], 0, "{got}");
+        assert_eq!(
+            got["ended"],
+            serde_json::json!({"kind": "exited", "code": 0}),
+            "{got}"
+        );
+    }
+}
+
+/// ★ capture 照通道怎么收尾记那一格（`ended`）：有退出码 · 被信号杀 · 正常 Close 但两样都没给 · 没等到 Close 链路就断了，
+/// 四样分得开；字节照样交。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_capture_records_how_its_channel_ended() {
+    register("ended-pw", TestCred::Password("p".into()));
+    for (answer, want) in [
+        (
+            Answer::Yes,
+            serde_json::json!({"kind": "exited", "code": 0}),
+        ),
+        (
+            Answer::Killed,
+            serde_json::json!({"kind": "signaled", "signal": "KILL"}),
+        ),
+        (Answer::Bare, serde_json::json!({"kind": "closed_bare"})),
+        (Answer::Drops, serde_json::json!({"kind": "dropped"})),
+    ] {
+        let port = door_answering("p", answer).await;
+        let req = request(serde_json::json!({
+            "host": "127.0.0.1", "port": port, "user": "u", "key_path": "ended-pw",
+            "use": "capture", "command": "ccm", "capture": {"max_bytes": 1024}
+        }));
+        let (ack, mut rd, _up, _run) = open(req, crate::uses::Control::none()).await;
+        assert_eq!(ack["ok"], true, "{ack}");
+        let got = line_of(&mut rd).await;
+        assert_eq!(got["stdout"], "ran\n", "{got}");
+        assert_eq!(got["ended"], want, "{got}");
     }
 }
 

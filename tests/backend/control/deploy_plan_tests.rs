@@ -49,7 +49,7 @@ fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
     Ok(crate::dial::Captured {
         stdout: stdout.to_string(),
         stderr: String::new(),
-        exit_status: Some(exit),
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: exit },
     })
 }
 
@@ -215,7 +215,7 @@ async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
         Ok(crate::dial::Captured {
             stdout: String::new(),
             stderr: "uname : The term 'uname' is not recognized\n".into(),
-            exit_status: Some(1),
+            ended: cmd_wire::dial::CaptureEnd::Exited { code: 1 },
         }),
     );
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
