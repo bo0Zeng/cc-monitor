@@ -65,11 +65,11 @@ describe("报错卡「下一步」那一格只一条路写", () => {
 describe("记录 ⇒ 卡：只摆后端那一格", () => {
   const at = "2026-01-01T14:02:00.000Z";
   it("★ 报错回复的卡头 · 重试那一条的那一行 · 来话条抬头都照记录里写好的", () => {
-    const err = renderMessage({ agent: "claude", t: "reply", id: "e", at, timeText: "14:02", blocks: [{ type: "text", text: "boom" }], autoReply: false, draw: "card", human: false, error: { reason: "quota", status: 429, title: "CARD-HEAD" } } as never as LineRecord, ctx());
+    const err = renderMessage({ agent: "claude", t: "reply", id: "e", at, timeText: "14:02", blocks: [{ type: "text", text: "boom" }], autoReply: false, draw: "card", human: false, error: { status: 429, title: "CARD-HEAD" } } as never as LineRecord, ctx());
     if (err.kind !== "card") throw new Error(err.kind);
     expect(err.element.querySelector(".api-error-label")?.textContent).toBe("CARD-HEAD");
 
-    const retry = renderMessage({ agent: "claude", t: "retry", id: "r", at, timeText: "14:02", reason: "overloaded", attempt: 2, max: 10, text: "REC-LINE", draw: "card", human: false } as never as LineRecord, ctx());
+    const retry = renderMessage({ agent: "claude", t: "retry", id: "r", at, timeText: "14:02", text: "REC-LINE", draw: "card", human: false } as never as LineRecord, ctx());
     if (retry.kind !== "card") throw new Error(retry.kind);
     expect(retry.element.textContent).toBe("REC-LINE");
 
