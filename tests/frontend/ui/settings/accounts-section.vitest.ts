@@ -206,6 +206,18 @@ describe("账号表", () => {
     expect(cell.dataset.shade).toBe("refused");
   });
 
+  it("★ 按量号那一格照额度账写好的那一句（usage.text），界面不照 kind 另取字；被拒那一句也照抄", async () => {
+    const q = quota();
+    const api = (q.accounts as unknown as { account: string; state: string; usage: unknown }[]).find((a) => a.account === "api")!;
+    api.state = "refused";
+    api.usage = { value: "R-VAL", text: "R-VAL ↻19:00", tone: "fail" };
+    readQuota.mockResolvedValue(q);
+    const el = await mount();
+    const cell = rowOf(el, "api").querySelectorAll<HTMLElement>(".acct-row-slot")[0];
+    expect(cell.textContent).toBe("R-VAL ↻19:00");
+    expect(cell.dataset.shade).toBe("refused");
+  });
+
   it("非默认号那一行有［设为默认］，点了问那台 accounts-set-default 并说「新会话默认 X」", async () => {
     const el = await mount();
     expect(buttonNamed(rowOf(el, "work"), copyText("acctPage.row.setDefault"))).toBeUndefined();
