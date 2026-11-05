@@ -1092,6 +1092,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     took: NONE,
     missed: NONE,
     file_stem: NONE,
+    // 几台的需手动合成一份（`face-core/src/needs.rs`：照 rank 排 · 数总数；本机后端 `sessions-needs-merge` · 手机核心 `NeedsFace.merge` 同一份）：界面照抄合好的那一份，TS 侧没有孪生。
+    merge_needs: NONE,
+    rank_of: NONE,
   },
   "md-core": {
     // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
