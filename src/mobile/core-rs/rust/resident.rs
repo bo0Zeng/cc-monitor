@@ -409,16 +409,13 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
     };
     // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
     let rows_to = Arc::clone(&on_event);
-    let desk = Desk::new(
-        branch_held,
-        move |rows| {
-            rows_to(
-                id,
-                "watch_from",
-                serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
-            );
-        },
-    );
+    let desk = Desk::new(branch_held, move |rows| {
+        rows_to(
+            id,
+            "watch_from",
+            serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+        );
+    });
     let mine = Arc::new(Mutex::new(Facts {
         id,
         ..Facts::named(&name)
