@@ -11677,9 +11677,6 @@ sealed interface LineRecord {
         override val atMs: Long? = null,
         override val draw: Draw,
         override val human: Boolean,
-        val reason: ApiReason,
-        val attempt: Int? = null,
-        val max: Int? = null,
         val text: String? = null,
     ) : LineRecord, Ordered {
         override val t: String get() = "retry"
@@ -11775,13 +11772,10 @@ sealed interface LineRecord {
                         Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
                         Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("retry") }, optional = false, nullable = false),
-                        Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
-                        Field("attempt", { opt(Int32) }, optional = true, nullable = true),
-                        Field("max", { opt(Int32) }, optional = true, nullable = true),
                         Field("text", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as ApiReason, a[9] as Int?, a[10] as Int?, a[11] as String?) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "retry", v.reason, v.attempt, v.max, v.text) },
+                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as String?) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "retry", v.text) },
                     )),
                 Variant("title", LineRecord.Title::class.java, obj(
                         listOf(
@@ -11854,9 +11848,6 @@ sealed interface LineRecordBody {
     }
     @Suppress("UNCHECKED_CAST")
     data class Retry(
-        val reason: ApiReason,
-        val attempt: Int? = null,
-        val max: Int? = null,
         val text: String? = null,
     ) : LineRecordBody, Ordered {
         override val t: String get() = "retry"
@@ -11917,13 +11908,10 @@ sealed interface LineRecordBody {
                 Variant("retry", LineRecordBody.Retry::class.java, obj(
                         listOf(
                         Field("t", { tag("retry") }, optional = false, nullable = false),
-                        Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
-                        Field("attempt", { opt(Int32) }, optional = true, nullable = true),
-                        Field("max", { opt(Int32) }, optional = true, nullable = true),
                         Field("text", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecordBody.Retry(a[1] as ApiReason, a[2] as Int?, a[3] as Int?, a[4] as String?) },
-                        { v -> arrayOf("retry", v.reason, v.attempt, v.max, v.text) },
+                        { a -> LineRecordBody.Retry(a[1] as String?) },
+                        { v -> arrayOf("retry", v.text) },
                     )),
                 Variant("title", LineRecordBody.Title::class.java, obj(
                         listOf(
@@ -16087,7 +16075,6 @@ data class OpenWindow(
 data class Opened(
     val landed: Landed,
     val session: String?,
-    val host: TerminalHost?,
     val line: String?,
     val sid: String?,
     val agent: String?,
@@ -16104,7 +16091,6 @@ data class Opened(
             listOf(
             Field("landed", { Landed.ADAPTER }, optional = false, nullable = false),
             Field("session", { opt(Str) }, optional = false, nullable = true),
-            Field("host", { opt(TerminalHost.ADAPTER) }, optional = false, nullable = true),
             Field("line", { opt(Str) }, optional = false, nullable = true),
             Field("sid", { opt(Str) }, optional = false, nullable = true),
             Field("agent", { opt(Str) }, optional = false, nullable = true),
@@ -16114,8 +16100,8 @@ data class Opened(
             Field("prompt", { opt(Sent.ADAPTER) }, optional = false, nullable = true),
             Field("arrival", { opt(ArriveAsk.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as TerminalHost?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as LaunchedAccount?, a[8] as String?, a[9] as Sent?, a[10] as ArriveAsk?) },
-            { v -> arrayOf(v.landed, v.session, v.host, v.line, v.sid, v.agent, v.cwd, v.account, v.note, v.prompt, v.arrival) },
+            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as LaunchedAccount?, a[7] as String?, a[8] as Sent?, a[9] as ArriveAsk?) },
+            { v -> arrayOf(v.landed, v.session, v.line, v.sid, v.agent, v.cwd, v.account, v.note, v.prompt, v.arrival) },
         )
     }
 }
@@ -16225,12 +16211,10 @@ enum class PasteKind(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class Pasted(
-    val id: String? = null,
     val start: Int,
     val end: Int,
     val bodyStart: Int,
     val bodyEnd: Int,
-    val lines: Int,
     val fold: Boolean,
     val foldText: String? = null,
 ) : Ordered {
@@ -16239,17 +16223,15 @@ data class Pasted(
     companion object {
         val ADAPTER: JsonAdapter<Pasted> = obj(
             listOf(
-            Field("id", { opt(Str) }, optional = true, nullable = true),
             Field("start", { Int32 }, optional = false, nullable = false),
             Field("end", { Int32 }, optional = false, nullable = false),
             Field("bodyStart", { Int32 }, optional = false, nullable = false),
             Field("bodyEnd", { Int32 }, optional = false, nullable = false),
-            Field("lines", { Int32 }, optional = false, nullable = false),
             Field("fold", { Bool }, optional = false, nullable = false),
             Field("foldText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Pasted(a[0] as String?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Int, a[5] as Int, a[6] as Boolean, a[7] as String?) },
-            { v -> arrayOf(v.id, v.start, v.end, v.bodyStart, v.bodyEnd, v.lines, v.fold, v.foldText) },
+            { a -> Pasted(a[0] as Int, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as Boolean, a[5] as String?) },
+            { v -> arrayOf(v.start, v.end, v.bodyStart, v.bodyEnd, v.fold, v.foldText) },
         )
     }
 }
@@ -20456,7 +20438,6 @@ enum class Refused(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class ReplyError(
-    val reason: ApiReason,
     val status: Int? = null,
     val title: String,
 ) : Ordered {
@@ -20465,12 +20446,11 @@ data class ReplyError(
     companion object {
         val ADAPTER: JsonAdapter<ReplyError> = obj(
             listOf(
-            Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
             Field("status", { opt(Int32) }, optional = true, nullable = true),
             Field("title", { Str }, optional = false, nullable = false),
             ),
-            { a -> ReplyError(a[0] as ApiReason, a[1] as Int?, a[2] as String) },
-            { v -> arrayOf(v.reason, v.status, v.title) },
+            { a -> ReplyError(a[0] as Int?, a[1] as String) },
+            { v -> arrayOf(v.status, v.title) },
         )
     }
 }
@@ -23880,7 +23860,6 @@ data class SessionFacts(
 data class SessionFileNoticePayload(
     val sessionId: String,
     val origin: String,
-    val path: String,
     val change: String,
     val said: String,
 ) : Ordered {
@@ -23891,12 +23870,11 @@ data class SessionFileNoticePayload(
             listOf(
             Field("session_id", { Str }, optional = false, nullable = false),
             Field("origin", { Str }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
             Field("change", { Str }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionFileNoticePayload(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String) },
-            { v -> arrayOf(v.sessionId, v.origin, v.path, v.change, v.said) },
+            { a -> SessionFileNoticePayload(a[0] as String, a[1] as String, a[2] as String, a[3] as String) },
+            { v -> arrayOf(v.sessionId, v.origin, v.change, v.said) },
         )
     }
 }
