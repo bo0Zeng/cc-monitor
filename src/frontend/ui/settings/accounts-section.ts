@@ -575,19 +575,15 @@ export class AccountsSection {
     return box;
   }
 
-  /** API key 那一格：［更换…］就地展开 地址 ＋ key；保存失败错误句落在框下、填的不丢。key 只显示那台写完回的掩码（末四位）。 */
+  /** API key 那一格：［更换…］就地展开 地址 ＋ key；保存失败错误句落在框下、填的不丢。掩码（末四位）与端点的主机照那台写好的那一行摆，写完重读那台。 */
   private keyEditor(origin: Machine, a: Account, readonly: boolean): HTMLElement {
     const box = document.createElement("div");
     box.className = "acct-key";
-    const shown = mono("");
+    const shown = mono(a.keyMasked ?? copyText("acctPage.row.keyNotSaved"));
     const host = document.createElement("span");
     host.className = "acct-key-host";
-    const show = (masked: string | null, baseUrl: string | null): void => {
-      shown.textContent = masked ?? copyText("acctPage.row.keyNotSaved");
-      host.textContent = baseUrl ? hostOf(baseUrl) : "";
-      host.hidden = !baseUrl;
-    };
-    show(a.keyMasked ?? null, a.baseUrl ?? null);
+    host.textContent = a.endpointHost ?? "";
+    host.hidden = !a.endpointHost;
     const change = button({ label: copyText("acctPage.detail.keyChange"), size: "compact" });
     if (readonly) setDisabled(change, copyText("acctPage.offline.hover"));
     const form = document.createElement("div");
@@ -620,10 +616,10 @@ export class AccountsSection {
       void (async () => {
         setBusy(save, copyText("acctPage.detail.keySaving"));
         try {
-          const w = await writeApikeyKey(origin, dir, k, b);
+          await writeApikeyKey(origin, dir, k, b);
           keyIn.value = "";
           form.hidden = true;
-          show(w.masked || null, w.baseUrl);
+          await this.reload(true);
         } catch (e) {
           // 挑格照那台回的码：`bad_args` 是地址那一格（空 key 这里先挡了），其余落在 key 上。
           (refusalIn(e)?.code === "bad_args" ? base : keyF).setError(saidOf(e));
@@ -799,13 +795,5 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null): void 
     if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
-  }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
   }
 }

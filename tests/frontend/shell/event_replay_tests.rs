@@ -308,7 +308,6 @@ async fn the_same_sid_on_two_machines_is_held_apart() {
         .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
             session_id: "s".into(),
             origin: "pi".into(),
-            path: "/p".into(),
             change: "truncated".into(),
             said: String::new(),
         })
@@ -1043,7 +1042,6 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
     r.on_session_notice(crate::ui_contract::SessionFileNoticePayload {
         session_id: "s".into(),
         origin: crate::origin::LOCAL.into(),
-        path: "/p/s.jsonl".into(),
         change: "gone".into(),
         said: "甲句".into(),
     })
@@ -1056,6 +1054,18 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
             assert_eq!(v["file_notice"]["session_id"], "s");
             assert_eq!(v["file_notice"]["change"], "gone");
             assert_eq!(v["file_notice"]["said"], "甲句", "那一句原样交前端");
+            let mut keys: Vec<&str> = v["file_notice"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys,
+                ["change", "origin", "said", "session_id"],
+                "格里只带界面与分流读的那几样"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -1077,7 +1087,6 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
             .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: "s".into(),
                 origin: crate::origin::LOCAL.into(),
-                path: "/p/s.jsonl".into(),
                 change: change.into(),
                 said: String::new(),
             })

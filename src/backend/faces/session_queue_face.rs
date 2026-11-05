@@ -55,7 +55,7 @@ impl typed::Handle for SessionQueuePutCmd {
             route::<Self, _>(
                 &req,
                 move || {
-                    let put = put_here(&own, &r, crate::common::time::now_ms() as i64, &cwd_here);
+                    let put = owner_put(&own, &r, crate::common::time::now_ms() as i64, &cwd_here);
                     // 投进来了 ⇒ 叫一声这台的投递那一侧（这一个进程没起它 ⇒ 不做什么，常驻那一份由 watcher 看见队目录动了叫醒）。
                     q::moved();
                     put
@@ -103,6 +103,18 @@ pub(crate) fn put_here(
         }
     }
     q::put(own, req, now_ms)
+}
+
+/// `session-queue-put` 在主人这台的那一下：[`put_here`]，拒了 ⇒ 那一句换成发件端照摆的整句（未送达 · 原因 · 内容保留），码 · 原话不动。
+/// 只在主人这台套：跨台那一跳原样转回那台写好的；够不到（`offline`）不是拒，不套。
+pub(crate) fn owner_put(
+    own: &Own,
+    req: &SessionQueuePutReq,
+    now_ms: i64,
+    cwd_of: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+) -> Result<QueuePut, Said> {
+    put_here(own, req, now_ms, cwd_of)
+        .map_err(|no| no.wrap(|why| copy_text("terminal.input.failed", &[("why", why)])))
 }
 
 codes! {

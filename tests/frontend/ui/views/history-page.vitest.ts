@@ -1025,14 +1025,15 @@ describe("内容搜索的其余几态", () => {
 describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
   beforeEach(() => localStorage.clear());
 
-  it("那台读不到 ⇒ 机器那一格标「离线」；勾回一台 ⇒ 带它的 fresh 再问；搜内容时改「谁说的」/ 含工具输出 ⇒ 当场重搜", async () => {
+  it("★ 那台读不到 ⇒ 列表顶上那条提示说，机器那一格不另标「离线」；勾回一台 ⇒ 带它的 fresh 再问；搜内容时改「谁说的」/ 含工具输出 ⇒ 当场重搜", async () => {
     world.local = [row({ sessionId: "a" })];
     world.fail.add("dev");
     const v = await opened();
     byText("button", copyText("history.page.filter"))!.click();
     await flush();
     const box = (label: string) => byText("label", label)!.querySelector("input")!;
-    expect(byText("label", "dev")!.textContent).toContain(copyText("machinePage.state.down"));
+    expect(byText("label", "dev")!.textContent, "那一格只有机器名").toBe("dev");
+    expect(document.body.textContent, "列表顶上那条提示在").toContain(copyText("history.list.machineDown", { machine: "dev" }));
     box("dev").click();
     await flush();
     invokeMock.mock.calls.length = 0;

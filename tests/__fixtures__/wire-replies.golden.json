@@ -1,7 +1,7 @@
 {
   "cases": {
     "accounts-list": {
-      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"kindLine\":\"kindLine-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
+      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"endpointHost\":\"endpointHost-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"kindLine\":\"kindLine-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
       "sample": {
         "accounts": [
           {
@@ -12,11 +12,11 @@
               "title": "title-x",
               "warn": true
             },
-            "baseUrl": "baseUrl-x",
             "color": 7,
             "configDir": "configDir-x",
             "configDirShown": "configDirShown-x",
             "email": "email-x",
+            "endpointHost": "endpointHost-x",
             "exists": true,
             "isDefault": true,
             "keyMasked": "keyMasked-x",
@@ -701,7 +701,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -942,7 +941,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -1161,7 +1159,6 @@
                     "bodyStart": 7,
                     "end": 7,
                     "fold": true,
-                    "foldText": "foldText-x",
                     "id": "id-x",
                     "lines": 7,
                     "start": 7
@@ -1175,7 +1172,6 @@
             }
           }
         ],
-        "said": "said-x",
         "split_at": 7,
         "tail_from": 7,
         "total": 7

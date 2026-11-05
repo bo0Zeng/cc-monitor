@@ -1184,7 +1184,7 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
         // 家目录说不出 ⇒ 显示形就是原样那一格。
         assert_eq!(o.remove("configDirShown").as_ref(), o.get("configDir"));
         assert_eq!(o.remove("keyMasked"), Some(serde_json::Value::Null));
-        assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
+        assert_eq!(o.remove("endpointHost"), Some(serde_json::Value::Null));
         assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
         assert!(o.remove("plate").is_some(), "帧面每个号带号牌字");
         assert!(o.remove("kindLine").is_some(), "帧面每个号带第二行那一句");
@@ -1344,9 +1344,11 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
             .unwrap()
     };
     assert_eq!(row("b")["keyMasked"], "••••••••a1b2");
-    assert_eq!(row("b")["baseUrl"], "https://api.example.com");
+    // 端点只出写好的主机那一格（账号行第二行那一句里的主机也照它），原地址不出帧面。
+    assert_eq!(row("b")["endpointHost"], "api.example.com");
+    assert!(row("b").get("baseUrl").is_none(), "原地址还在帧面上");
     assert!(
-        row("a")["keyMasked"].is_null() && row("a")["baseUrl"].is_null(),
+        row("a")["keyMasked"].is_null() && row("a")["endpointHost"].is_null(),
         "订阅号不带"
     );
     // 号目录的显示形由这台按自己的家目录写（家 ＝ `root/home`，号目录不在它下面 ⇒ 原样）；只为缩写带的 `meta.home` 不再出。
@@ -1402,7 +1404,9 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
         .find(|a| a["name"] == "b")
         .cloned()
         .unwrap();
-    assert!(b["keyMasked"].is_null() && b["baseUrl"].is_null() && none["meta"]["home"].is_null());
+    assert!(
+        b["keyMasked"].is_null() && b["endpointHost"].is_null() && none["meta"]["home"].is_null()
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -1457,6 +1461,45 @@ fn each_account_row_carries_its_written_kind_line() {
         false,
     );
     assert_eq!(line(&bare, "b"), api, "按量号没配端点 ⇒ 只有类型字");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★★ 端点的主机只在后端写一处：`endpointHost` 去掉 scheme · 路径 · 查询，留端口；账号行第二行那一句里的主机就是这一格。
+#[test]
+fn the_endpoint_host_is_written_once_and_the_kind_line_reuses_it() {
+    let (root, accts) = c4c_fixture("c4c-endpoint-host", true);
+    let p = root.join("apikey-credentials.json");
+    fs::write(
+        &p,
+        r#"{"accounts":{"acct-b":{"api_key":"sk-ant-0123456789-a1b2","base_url":"https://gw.example.com:8443/v1?x=1#f"}}}"#,
+    )
+    .unwrap();
+    let facts = crate::accounts::upstream_select::file_face::key_facts_at(&p);
+    let v = list_product_with(
+        &accts,
+        None,
+        &["acct-b".to_string()],
+        &facts,
+        "claude-code",
+        "claude-code",
+        false,
+    );
+    let b = v["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "b")
+        .cloned()
+        .unwrap();
+    assert_eq!(b["endpointHost"], "gw.example.com:8443");
+    let sep = copy_text("kit.text.sep", &[]);
+    assert_eq!(
+        b["kindLine"],
+        format!(
+            "{}{sep}gw.example.com:8443",
+            copy_text("acct.kind.api", &[])
+        )
+    );
     let _ = fs::remove_dir_all(&root);
 }
 

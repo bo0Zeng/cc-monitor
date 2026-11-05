@@ -105,7 +105,7 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
         config_dir_shown: a.config_dir.clone(),
         scanned: a,
         key_masked: None,
-        base_url: None,
+        endpoint_host: None,
         badge: Badge {
             text: Words::default(),
             warn: false,

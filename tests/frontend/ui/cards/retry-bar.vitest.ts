@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard } from "../../../../src/frontend/ui/cards/api-error";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { RetryRun } from "../../../../src/frontend/ui/generated/RetryRun";
@@ -49,14 +50,26 @@ describe("重试细条：字照后端那一行 · 一串照会话事实的整句
   });
 });
 
+describe("报错卡「下一步」那一格只一条路写", () => {
+  it("★ 建卡时空着：不写前端自己那一句；事实没说那一串 ⇒ 一直空着", () => {
+    const card = buildApiErrorCard({ timeLabel: "02:12", title: "CARD-HEAD", text: "boom" });
+    const next = card.querySelector(".api-error-next-text");
+    expect(next, "那一格还在（事实到了往里写）").not.toBeNull();
+    expect(next?.textContent).toBe("");
+    expect(card.textContent).not.toContain(copyText("apiError.card.nextBare"));
+    applyRetries(stream(card), runs({ id: "r1", outcome: "failed", text: "RUN-NEXT" }));
+    expect(next?.textContent, "前面没有那一串的细条 ⇒ 不写").toBe("");
+  });
+});
+
 describe("记录 ⇒ 卡：只摆后端那一格", () => {
   const at = "2026-01-01T14:02:00.000Z";
   it("★ 报错回复的卡头 · 重试那一条的那一行 · 来话条抬头都照记录里写好的", () => {
-    const err = renderMessage({ agent: "claude", t: "reply", id: "e", at, timeText: "14:02", blocks: [{ type: "text", text: "boom" }], autoReply: false, draw: "card", human: false, error: { reason: "quota", status: 429, title: "CARD-HEAD" } } as never as LineRecord, ctx());
+    const err = renderMessage({ agent: "claude", t: "reply", id: "e", at, timeText: "14:02", blocks: [{ type: "text", text: "boom" }], autoReply: false, draw: "card", human: false, error: { status: 429, title: "CARD-HEAD" } } as never as LineRecord, ctx());
     if (err.kind !== "card") throw new Error(err.kind);
     expect(err.element.querySelector(".api-error-label")?.textContent).toBe("CARD-HEAD");
 
-    const retry = renderMessage({ agent: "claude", t: "retry", id: "r", at, timeText: "14:02", reason: "overloaded", attempt: 2, max: 10, text: "REC-LINE", draw: "card", human: false } as never as LineRecord, ctx());
+    const retry = renderMessage({ agent: "claude", t: "retry", id: "r", at, timeText: "14:02", text: "REC-LINE", draw: "card", human: false } as never as LineRecord, ctx());
     if (retry.kind !== "card") throw new Error(retry.kind);
     expect(retry.element.textContent).toBe("REC-LINE");
 

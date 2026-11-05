@@ -35,21 +35,8 @@ pub struct StopAnswer {
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟经它，`local_backend_host::run_resident_stop`）。
 /// 没成的那几形（老后端 · 没装 · 非 unix · 那台的失败信封）照循环那一份读（`resident_client::feed::read_one_shot`）。
 /// `machine` 是那台给人看的称呼（老后端 ⇒「{machine} 后端要更新」）。
-pub(crate) fn read_stop(
-    exec: &crate::stream_source::RemoteExec,
-    machine: &str,
-) -> Result<StopAnswer, Said> {
-    // 本机那一趟是本机进程：有码 ⇒ 正常退出；没码 ⇒ 没给码的收尾（不是链路断）。
-    let got = cmd_wire::dial::Captured {
-        ended: exec
-            .exit_status
-            .map_or(cmd_wire::dial::CaptureEnd::ClosedBare, |code| {
-                cmd_wire::dial::CaptureEnd::Exited { code }
-            }),
-        stdout: exec.stdout.clone(),
-        stderr: exec.stderr.clone(),
-    };
-    let v = resident_client::feed::read_one_shot(&got, machine)
+pub(crate) fn read_stop(got: &cmd_wire::dial::Captured, machine: &str) -> Result<StopAnswer, Said> {
+    let v = resident_client::feed::read_one_shot(got, machine)
         .map_err(|f| crate::stream_source::said_of(&f.problem))?;
     stop_answer_of(&v)
 }

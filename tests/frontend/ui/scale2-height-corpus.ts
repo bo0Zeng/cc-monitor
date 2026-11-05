@@ -114,15 +114,13 @@ function userText(text: string, at: string, id: string, speaker: Record<string, 
   } as unknown as LineRecord;
 }
 
-/** `card-api-retry`：`t: "retry"`（`cards/index.ts` 的重试那一支）。原因种类不给（同真语料里认不出原因的那一形）。 */
+/** `card-api-retry`：`t: "retry"`（`cards/index.ts` 的重试那一支）。写好的那一行不给（卡照空串摆）。 */
 function apiRetry(i: number, _formatted: string): LineRecord {
   return {
     agent: "claude",
     t: "retry",
     id: `syn-retry-${i}`,
     at: "2026-09-18T12:34:56.000Z",
-    attempt: (i % 5) + 1,
-    max: 5,
   } as unknown as LineRecord;
 }
 

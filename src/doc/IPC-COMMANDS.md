@@ -3340,9 +3340,9 @@ configDirShown: string | null,
  */
 keyMasked: string | null, 
 /**
- * 同上，那一行的端点。
+ * 同上，那一行端点的主机（带端口），后端写好、唯一一处（账号行第二行那一句里的主机也是它）；没配端点 ⇒ `null`。
  */
-baseUrl: string | null, 
+endpointHost: Words | null, 
 /**
  * 账号菜单每一项右边那一枚徽章。
  */
@@ -5937,7 +5937,6 @@ type Words = string;
 type AgentKind = string;
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
-type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
 type AskQuestion = { 
 /**
@@ -6177,7 +6176,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+error?: ReplyError, } | { "t": "retry", 
 /**
  * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
  * 一串的结局与整句另在会话事实 `retries[]`。
@@ -6211,11 +6210,7 @@ type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 正文的行数（两头的空行不算）。
- */
-lines: number, 
+type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
@@ -6237,7 +6232,7 @@ approved: string,
  * 没批（接着规划）。
  */
 kept: string, };
-type ReplyError = { reason: ApiReason, 
+type ReplyError = { 
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
@@ -6446,7 +6441,6 @@ root: string, };
 type AgentKind = string;
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
-type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
 type AskQuestion = { 
 /**
@@ -6670,7 +6664,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+error?: ReplyError, } | { "t": "retry", 
 /**
  * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
  * 一串的结局与整句另在会话事实 `retries[]`。
@@ -6704,11 +6698,7 @@ type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 正文的行数（两头的空行不算）。
- */
-lines: number, 
+type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
@@ -6755,7 +6745,7 @@ cwd: string | null,
  * 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
  */
 record: LineRecord, };
-type ReplyError = { reason: ApiReason, 
+type ReplyError = { 
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
@@ -6979,7 +6969,6 @@ type SegHl = { hl: Array<Array<number>>, };
 type AgentKind = string;
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
-type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
 type AskQuestion = { 
 /**
@@ -7195,7 +7184,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+error?: ReplyError, } | { "t": "retry", 
 /**
  * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
  * 一串的结局与整句另在会话事实 `retries[]`。
@@ -7229,11 +7218,7 @@ type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 正文的行数（两头的空行不算）。
- */
-lines: number, 
+type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
@@ -7272,7 +7257,7 @@ record?: LineRecord,
  * 那一行记的工作目录（只在有记录时带）。
  */
 cwd?: string, };
-type ReplyError = { reason: ApiReason, 
+type ReplyError = { 
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
@@ -7441,7 +7426,6 @@ type Words = string;
 type AgentKind = string;
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
-type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
 type AskQuestion = { 
 /**
@@ -7665,7 +7649,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+error?: ReplyError, } | { "t": "retry", 
 /**
  * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
  * 一串的结局与整句另在会话事实 `retries[]`。
@@ -7699,11 +7683,7 @@ type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 正文的行数（两头的空行不算）。
- */
-lines: number, 
+type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
@@ -7750,7 +7730,7 @@ cwd: string | null,
  * 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
  */
 record: LineRecord, };
-type ReplyError = { reason: ApiReason, 
+type ReplyError = { 
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
@@ -9541,7 +9521,6 @@ limit?: number | null, };
 type AgentKind = string;
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
-type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
 type AskQuestion = { 
 /**
@@ -9806,7 +9785,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, 
+error?: ReplyError, } | { "t": "retry", 
 /**
  * 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
  * 一串的结局与整句另在会话事实 `retries[]`。
@@ -9840,11 +9819,7 @@ type MdAlign = "none" | "left" | "center" | "right";
 type MdBlock = { "t": "p", k: Array<Inl>, } | { "t": "h", level: number, k: Array<Inl>, } | { "t": "code", lang: string | null, x: string, cont: boolean, } | { "t": "math", tex: string, m: MathBox | null, } | { "t": "list", start: number | null, tight: boolean, items: Array<MdItem>, } | { "t": "quote", blocks: Array<MdBlock>, } | { "t": "alert", kind: AlertKind, blocks: Array<MdBlock>, } | { "t": "table", align: Array<MdAlign>, head: Array<Array<Inl>>, rows: Array<Array<Array<Inl>>>, } | { "t": "rule" } | { "t": "notes", items: Array<MdNote>, };
 type MdItem = { task: boolean | null, blocks: Array<MdBlock>, };
 type MdNote = { n: number, blocks: Array<MdBlock>, };
-type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
-/**
- * 正文的行数（两头的空行不算）。
- */
-lines: number, 
+type Pasted = { start: number, end: number, bodyStart: number, bodyEnd: number, 
 /**
  * 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
  */
@@ -9883,7 +9858,7 @@ record?: LineRecord,
  * 那一行记的工作目录（只在有记录时带）。
  */
 cwd?: string, };
-type ReplyError = { reason: ApiReason, 
+type ReplyError = { 
 /**
  * HTTP 状态码（只有 HTTP 类错误有）。
  */
@@ -10402,9 +10377,9 @@ configDirShown: string | null,
  */
 keyMasked: string | null, 
 /**
- * 同上，那一行的端点。
+ * 同上，那一行端点的主机（带端口），后端写好、唯一一处（账号行第二行那一句里的主机也是它）；没配端点 ⇒ `null`。
  */
-baseUrl: string | null, 
+endpointHost: Words | null, 
 /**
  * 账号菜单每一项右边那一枚徽章。
  */
@@ -12418,10 +12393,6 @@ landed: Landed,
  */
 session: string | null, 
 /**
- * `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
- */
-host: TerminalHost | null, 
-/**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
 line: string | null, 
@@ -14333,10 +14304,6 @@ landed: Landed,
  * 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
  */
 session: string | null, 
-/**
- * `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
- */
-host: TerminalHost | null, 
 /**
  * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */

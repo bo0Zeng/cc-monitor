@@ -1226,14 +1226,27 @@ fn run_resident_stop_within(
         }
     };
     crate::remote_resident::read_stop(
-        &crate::stream_source::RemoteExec {
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-            exit_status: out.code.and_then(|c| u32::try_from(c).ok()),
-        },
+        &local_captured(out.code, &out.stdout, &out.stderr),
         &copy_core::local_machine(),
     )
     .map_err(Said::from)
+}
+
+/// 本机跑完的一趟 ⇒ 与远端 exec 同一形：有码 ⇒ 正常退出；没码 ⇒ 没给码的收尾（本机进程，不是链路断）。
+pub(crate) fn local_captured(
+    code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> cmd_wire::dial::Captured {
+    cmd_wire::dial::Captured {
+        stdout: String::from_utf8_lossy(stdout).into_owned(),
+        stderr: String::from_utf8_lossy(stderr).into_owned(),
+        ended: code
+            .and_then(|c| u32::try_from(c).ok())
+            .map_or(cmd_wire::dial::CaptureEnd::ClosedBare, |code| {
+                cmd_wire::dial::CaptureEnd::Exited { code }
+            }),
+    }
 }
 
 /// backend 那条监护路的 `on_event` —— ★ **判与记都在这个闭包里**。

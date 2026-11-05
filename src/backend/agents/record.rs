@@ -69,10 +69,9 @@ pub fn reason_word(reason: crate::agents::ApiReason) -> String {
     }
 }
 
-/// 报错回复那一格（两家适配层都经它）：原因 · 状态码 ＋ 写好的卡头那一句。
+/// 报错回复那一格（两家适配层都经它）：状态码 ＋ 照原因写好的卡头那一句（原因本身不上线）。
 pub fn reply_error(reason: crate::agents::ApiReason, status: Option<u32>) -> ReplyError {
     ReplyError {
-        reason,
         status,
         title: crate::common::cells::Words(copy_core::copy_text(
             "apiError.card.title",

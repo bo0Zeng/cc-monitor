@@ -145,12 +145,15 @@ pub enum Body {
     },
     /// 一次上游失败、将重试（「重试中 N/M」那条细条）。
     Retry {
+        /// 原因 · 第几次 · 最多几次：出口那一下写 `text` 用，不上线。
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         reason: ApiReason,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         attempt: Option<u32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         max: Option<u32>,
         /// 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
         /// 一串的结局与整句另在会话事实 `retries[]`。
@@ -198,7 +201,6 @@ pub enum UnreadWhy {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct ReplyError {
-    pub reason: ApiReason,
     /// HTTP 状态码（只有 HTTP 类错误有）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -626,10 +628,8 @@ pub enum Answer {
     Picked { options: Vec<String> },
 }
 
-/// 报错 / 重试的原因种类（B6）：界面按它出一词（服务器过载 · 额度满 · 网络中断 · 需登录 · 上下文超长 · 原因不明），不认状态码与报错原文。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+/// 报错 / 重试的原因种类：后端照它出一词（服务器过载 · 额度满 · 网络中断 · 需登录 · 上下文超长 · 原因不明）写进卡头与重试那一行，不上线。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApiReason {
     Overloaded,
@@ -637,6 +637,7 @@ pub enum ApiReason {
     Network,
     Auth,
     Context,
+    #[default]
     Unknown,
 }
 
@@ -767,22 +768,17 @@ pub struct UserText {
     pub pasted: Vec<Pasted>,
 }
 
-/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标，含两头的标记）＋ 正文那一截（`[bodyStart, bodyEnd)`）与它的行数。
+/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标，含两头的标记）＋ 正文那一截（`[bodyStart, bodyEnd)`）。
 /// 界面只露正文（不认标记的写法）；折不折照 `fold`，不自己数行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Pasted {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub id: Option<String>,
     pub start: u32,
     pub end: u32,
     pub body_start: u32,
     pub body_end: u32,
-    /// 正文的行数（两头的空行不算）。
-    pub lines: u32,
     /// 这一块要折成一行「粘贴的内容 · N 行」（点开就地展开）；否则照排。阈值只住产出那一处。
     pub fold: bool,
     /// 折起那一行写好的字（「粘贴的内容 · N 行」，产出那一处写）；不折 ⇒ 缺。

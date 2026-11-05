@@ -11,7 +11,6 @@ declare const classes: {
   readonly hvFilterBtn: string;
   readonly hvFilterGroup: string;
   readonly hvFilterHead: string;
-  readonly hvFilterWarn: string;
   readonly hvForks: string;
   readonly hvGroup: string;
   readonly hvGroupCount: string;

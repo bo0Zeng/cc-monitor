@@ -181,10 +181,10 @@ describe("用户气泡里的编号", () => {
     if (r.kind !== "card") throw new Error(r.kind);
     return r.element;
   };
-  const span = (text: string, open: string, body: string, close: string, lines: number, fold = false) => {
+  const span = (text: string, open: string, body: string, close: string, fold = false) => {
     const start = text.indexOf(open);
     const bodyStart = start + open.length;
-    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, lines, fold };
+    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, fold };
   };
 
   it("气泡与回复同一批问一次；编号原样跟标题，星号照原文不变粗，点了开计划页", async () => {
@@ -216,7 +216,7 @@ describe("用户气泡里的编号", () => {
     const long = Array.from({ length: 13 }, (_, i) => `A9-${i}`).join("\n");
     const short = "见 A2";
     const text = `先 A1：<P1>${long}</P1>再<P2>${short}</P2>完`;
-    const u = said(text, [span(text, "<P1>", long, "</P1>", 13, true), span(text, "<P2>", short, "</P2>", 1)]);
+    const u = said(text, [span(text, "<P1>", long, "</P1>", true), span(text, "<P2>", short, "</P2>")]);
     fetchMock.mockImplementationOnce(async (_o: string, _s: string, texts: string[]) => ({
       workspace: "/w",
       slice: "alpha",
