@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43" | "J44" | "J45" | "J46" | "J47" | "J48";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43" | "J44" | "J45" | "J46" | "J47" | "J48" | "J49";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -803,6 +803,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 唯一的家是 `cmd_wire::keys` 那一张表：后端托管终端送键（`key_bytes` 只认 tmux 键名）· 手机经 JNI（`TermKeys`）都从它出。
     //   Kotlin 零键码表由 `xterm-keys-one-home.vitest.ts` 钉。
     homes: ["cmd-wire::presses_bytes", "cmd-wire::presses_of"],
+    status: "zero",
+    defs: [],
+    needles: [],
+  },
+  J49: {
+    what: "一趟 capture 的退出码（只有正常退出才有）",
+    // 唯一的家是 `Captured::exit_code`：收尾那一格（`ended`）四种里只有 `Exited` 带码，各处要码都问它。
+    homes: ["cmd-wire::exit_code"],
     status: "zero",
     defs: [],
     needles: [],
