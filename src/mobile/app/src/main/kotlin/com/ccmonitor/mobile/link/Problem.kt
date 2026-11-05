@@ -25,19 +25,19 @@ fun LinkLine.Up.notice(): Problem? = problem().takeIf { it.text.isNotEmpty() }
 /**
  * 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。
  * 期限到 · 撤了：核心照通道那一份写好的那一句与详情原样（桌面同一句），手机不另取字。
- * [offline] 是那条链上那台成品写的离线那一句（[CoreLink.offline]）：断着就照摆它；成品还没到 ⇒ 状态不明（未知不当离线）。
+ * [offline] 是那条链上的离线那一句（[CoreLink.offline]，恒有）：断着就照摆它。
  */
 fun Reply.problem(
     machine: String,
     command: String,
-    offline: String?,
+    offline: String,
 ): Problem? =
     when (this) {
         is Reply.Ok -> null
         is Reply.Failed -> core(failure)
         is Reply.TimedOut -> Problem(said, detail)
         is Reply.Cancelled -> Problem(said, detail)
-        Reply.LinkDown -> Problem(offline ?: copyText("runs.state.unknown"), "")
+        Reply.LinkDown -> Problem(offline, "")
         is Reply.Unreadable -> unreadableReply(machine, command, raw)
     }
 

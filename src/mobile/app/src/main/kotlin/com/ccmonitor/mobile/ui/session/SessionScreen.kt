@@ -372,11 +372,11 @@ private fun ConnectedScaffold(
     }
 }
 
-/** 掉线条幅与重连按钮。[offline] 是那台成品写的离线那一句（成品还没到 ⇒ 状态不明：未知不当离线）。 */
+/** 掉线条幅与重连按钮。[offline] 是链上交的离线那一句（核心恒给）。 */
 @Composable
 private fun DroppedBanner(
     status: SessionStatus?,
-    offline: String?,
+    offline: String,
     onReconnect: () -> Unit,
 ) {
     // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色。
@@ -386,7 +386,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("runs.state.unknown"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline,
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("history.list.reconnect")) }

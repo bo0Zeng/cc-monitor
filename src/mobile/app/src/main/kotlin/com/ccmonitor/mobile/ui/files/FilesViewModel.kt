@@ -97,8 +97,8 @@ class FilesViewModel(
     /** 那台此刻通着（断着 ⇒ 选中照留、能做的那几件由核心灰掉，列表顶一条说离线）。 */
     val online: StateFlow<Boolean> = feed.state.map { it is LinkLine.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** 那台成品写的离线那一句（屏上那一条照摆；成品还没到 ⇒ `null`，未知不当离线）。 */
-    val offline: StateFlow<String?> = feed.offline
+    /** 链上交的离线那一句（屏上那一条照摆；核心恒给）。 */
+    val offline: StateFlow<String> = feed.offline
 
     /** 选中那几项此刻能做什么（核心照那几行与此刻那一台判；不在选择模式 ⇒ 空）。 */
     val menu: StateFlow<PhoneMenu> =
@@ -328,7 +328,7 @@ class FilesViewModel(
         viewModelScope.launch {
             val id = start(dir)
             if (id == 0L) {
-                _events.tryEmit(Notice(offline.value ?: copyText("runs.state.unknown")))
+                _events.tryEmit(Notice(offline.value))
             } else {
                 mine += id
                 early.remove(id)?.let(::onBatch)

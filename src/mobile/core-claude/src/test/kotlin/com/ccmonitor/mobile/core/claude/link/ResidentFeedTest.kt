@@ -231,6 +231,7 @@ class ResidentFeedTest {
             ssh = ssh,
             mine = "p10g-mine",
             tz = "Asia/Shanghai",
+            unknown = UNKNOWN,
             kept = disk,
             saves = saves,
             onBreak = onBreak,
@@ -295,7 +296,7 @@ class ResidentFeedTest {
                     "正在更新" to Busy("更新 box · cc-monitor", bar = true),
                 )
             assertNull("核心还没交过 ⇒ 没有那一行（当正在连）", f.state.value)
-            assertNull("成品还没到 ⇒ 没有离线那一句（未知不当离线）", f.offline.value)
+            assertEquals("成品还没到 ⇒ 造它时给的那一句（未知不当离线）", UNKNOWN, f.offline.value)
             for (c in cases) {
                 val name = c.str("name").need()
                 val line = c.obj("line").need()
@@ -352,6 +353,7 @@ class ResidentFeedTest {
                 ssh = MutableStateFlow(null),
                 mine = "p10g-mine",
                 tz = "Asia/Shanghai",
+                unknown = UNKNOWN,
                 kept = Disk(),
                 saves = Saves(),
                 onBreak = { breaks += it },
@@ -654,6 +656,7 @@ class ResidentFeedTest {
                     ssh = MutableStateFlow("""{"host":"h"}"""),
                     mine = "p10g-mine",
                     tz = "Asia/Shanghai",
+                    unknown = UNKNOWN,
                     kept = Disk(),
                     saves = Saves(),
                     onBreak = { broken += it },
@@ -684,5 +687,8 @@ class ResidentFeedTest {
 
     private companion object {
         const val GOLDEN = "mobile-state-line.golden.json"
+
+        /** 成品还没到时那一句（结构夹具，生产上由造它的那一侧取字）。 */
+        const val UNKNOWN = "夹具·状态不明"
     }
 }

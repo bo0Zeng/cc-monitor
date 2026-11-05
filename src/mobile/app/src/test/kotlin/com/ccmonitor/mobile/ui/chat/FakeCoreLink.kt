@@ -81,7 +81,7 @@ internal class FakeCoreLink :
     override val state = MutableStateFlow<LinkLine?>(linkUp())
 
     /** 那台成品写的离线那一句（假的那台的成品一开始就到了）。 */
-    override val offline = MutableStateFlow<String?>(OFFLINE)
+    override val offline = MutableStateFlow(OFFLINE)
     override val table = MutableStateFlow(EMPTY_BOOK)
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()

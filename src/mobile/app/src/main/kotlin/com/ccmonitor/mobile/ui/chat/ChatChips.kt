@@ -142,8 +142,7 @@ internal class ChatChips(
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写那台成品的离线那一句
-     * （成品还没到 ⇒ 状态不明：未知不当离线）。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。输入框照同一张脸的 `can.say`（[sayLook]）。
+     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写链上交的离线那一句。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。输入框照同一张脸的 `can.say`（[sayLook]）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
@@ -152,7 +151,7 @@ internal class ChatChips(
                 val can = t.face(s)?.can
                 val (model, permission) =
                     if (down) {
-                        (off ?: copyText("runs.state.unknown")).let { it to it }
+                        off to off
                     } else {
                         can?.model?.blocked() to can?.permission?.blocked()
                     }

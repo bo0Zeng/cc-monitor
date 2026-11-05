@@ -433,14 +433,14 @@ private fun picked(
     }
 }
 
-/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）；字照那台成品写的离线那一句（成品还没到 ⇒ 状态不明）。 */
+/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）；字照链上交的离线那一句。 */
 @Composable
 private fun OfflineBand(vm: FilesViewModel) {
     val tokens = LocalAppTokens.current
     val offline by vm.offline.collectAsState()
     val line = tokens.borderStrong
     Text(
-        offline ?: copyText("runs.state.unknown"),
+        offline,
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier =
