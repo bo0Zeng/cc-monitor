@@ -706,12 +706,10 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
         let lines = u32::try_from(inner.lines().count()).unwrap_or(u32::MAX);
         let fold = lines > PASTE_FOLD_LINES;
         out.push(Pasted {
-            id,
             start: utf16(start),
             end: utf16(end),
             body_start: utf16(body),
             body_end: utf16(body + j),
-            lines,
             fold,
             fold_text: fold.then(|| {
                 crate::common::cells::Words(copy_core::copy_text(

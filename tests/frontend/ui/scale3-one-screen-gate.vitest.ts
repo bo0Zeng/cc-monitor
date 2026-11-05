@@ -97,7 +97,7 @@ describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）
 
   const retry = (seq: number): RigPayload =>
     withSession(
-      rigLine(seq, { t: "retry", id: `r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: (seq % 5) + 1, max: 5 }),
+      rigLine(seq, { t: "retry", id: `r${seq}`, at: "2026-09-10T00:00:00.000Z" }),
       "s2",
     );
   const skip = (seq: number): RigPayload =>
@@ -225,7 +225,7 @@ describe("秤 3 · 戊：切进钉过水位、没满一屏的 tab 按真实布�
       rigLine(
         seq,
         retryCard
-          ? { t: "retry", id: `${sid}-r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: 1, max: 5, draw: "card", human: false }
+          ? { t: "retry", id: `${sid}-r${seq}`, at: "2026-09-10T00:00:00.000Z", draw: "card", human: false }
           : { t: "reply", id: `${sid}-k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true, draw: "none", human: false },
       ),
       sid,

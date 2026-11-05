@@ -106,7 +106,7 @@ describe("正文卡读树", () => {
       ],
       segs: [],
     };
-    const el = cardOf(reply(doc, "", { error: { reason: "overloaded" } }));
+    const el = cardOf(reply(doc, "", { error: { status: 529, title: "CARD-HEAD" } }));
     expect(el.querySelector(".api-error-body")?.textContent).toBe("上游 过载，529\nretry later");
   });
 });

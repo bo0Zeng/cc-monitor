@@ -301,7 +301,6 @@ async fn fetch_snapshot(
             .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: sid.to_string(),
                 origin: host_label.to_string(),
-                path: path.to_string(),
                 change: change.as_wire().to_string(),
                 said: tail.said.clone(),
             })
