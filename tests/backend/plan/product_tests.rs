@@ -632,8 +632,14 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     with_time_texts(&mut r, now, &Default::default());
     let v = as_json(&r);
     assert_eq!(v["readAtText"], "03:09");
-    assert_eq!(r.stale.as_ref().unwrap().since_text.as_deref(), Some("01-01 03:10"));
-    assert!(v["stale"].get("sinceText").is_none(), "那一刻的字只拼进那一句，不上线");
+    assert_eq!(
+        r.stale.as_ref().unwrap().since_text.as_deref(),
+        Some("01-01 03:10")
+    );
+    assert!(
+        v["stale"].get("sinceText").is_none(),
+        "那一刻的字只拼进那一句，不上线"
+    );
     assert_eq!(v["slices"][0]["cells"][1]["returned"]["atText"], "02:10");
     assert!(v["slices"][0]["blocks"][1].get("atText").is_none());
     shanghai.read_at = u64::try_from(now).unwrap();

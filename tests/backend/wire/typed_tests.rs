@@ -249,27 +249,71 @@ fn cells_no_reader_reads_are_off_the_wire() {
         T::decl(&ts_rs::Config::default())
     }
     let cases: Vec<(&str, String, &[&str])> = vec![
-        ("PlanStale", decl::<cmd_wire::plan::PlanStale>(), &["sinceText"]),
-        ("PlanArchived", decl::<cmd_wire::plan::PlanArchived>(), &["replacedBy"]),
-        ("PlanPendingSet", decl::<cmd_wire::plan::PlanPendingSet>(), &["blockedCode"]),
+        (
+            "PlanStale",
+            decl::<cmd_wire::plan::PlanStale>(),
+            &["sinceText"],
+        ),
+        (
+            "PlanArchived",
+            decl::<cmd_wire::plan::PlanArchived>(),
+            &["replacedBy"],
+        ),
+        (
+            "PlanPendingSet",
+            decl::<cmd_wire::plan::PlanPendingSet>(),
+            &["blockedCode"],
+        ),
         (
             "TurnRow",
             decl::<crate::observe::recognize::turns::TurnRow>(),
             &["endText", "peers"],
         ),
-        ("Merged", decl::<cmd_wire::search::Merged>(), &["sessionCount"]),
-        ("AgentFacts", decl::<cmd_wire::session::AgentFacts>(), &["permissionDefault"]),
-        ("SessionCommand", decl::<cmd_wire::session::SessionCommand>(), &["needsArgs"]),
-        ("SessionAccountReply", decl::<cmd_wire::accounts::SessionAccountReply>(), &["queryable"]),
-        ("VerifyReport", decl::<cmd_wire::accounts::VerifyReport>(), &["warns"]),
+        (
+            "Merged",
+            decl::<cmd_wire::search::Merged>(),
+            &["sessionCount"],
+        ),
+        (
+            "AgentFacts",
+            decl::<cmd_wire::session::AgentFacts>(),
+            &["permissionDefault"],
+        ),
+        (
+            "SessionCommand",
+            decl::<cmd_wire::session::SessionCommand>(),
+            &["needsArgs"],
+        ),
+        (
+            "SessionAccountReply",
+            decl::<cmd_wire::accounts::SessionAccountReply>(),
+            &["queryable"],
+        ),
+        (
+            "VerifyReport",
+            decl::<cmd_wire::accounts::VerifyReport>(),
+            &["warns"],
+        ),
         (
             "SessionFacts",
             decl::<crate::observe::recognize::facts::SessionFacts>(),
             &["handedBack", "bgTasks", "answerOff"],
         ),
-        ("RotTryDecision", decl::<cmd_wire::rotation::RotTryDecision>(), &["holdAccount"]),
-        ("RotTryUse", decl::<cmd_wire::rotation::RotTryUse>(), &["capUnknown"]),
-        ("RotStrategyItem", decl::<cmd_wire::rotation::RotStrategyItem>(), &["wordsBad"]),
+        (
+            "RotTryDecision",
+            decl::<cmd_wire::rotation::RotTryDecision>(),
+            &["holdAccount"],
+        ),
+        (
+            "RotTryUse",
+            decl::<cmd_wire::rotation::RotTryUse>(),
+            &["capUnknown"],
+        ),
+        (
+            "RotStrategyItem",
+            decl::<cmd_wire::rotation::RotStrategyItem>(),
+            &["wordsBad"],
+        ),
     ];
     let mut on: Vec<String> = Vec::new();
     for (ty, d, gone) in &cases {

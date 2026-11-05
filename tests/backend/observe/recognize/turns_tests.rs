@@ -48,10 +48,7 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
         line("2026-10-07T20:40:00.000Z", "user", "c"),
     );
     let raw = raw_scan(&body, 0);
-    assert!(
-        raw[0].start_text.is_empty(),
-        "扫描那一层不写钟面"
-    );
+    assert!(raw[0].start_text.is_empty(), "扫描那一层不写钟面");
     let mut sh = raw[0].clone();
     sh.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
     assert_eq!(sh.start_text, "04:30");
