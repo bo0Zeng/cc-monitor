@@ -1037,7 +1037,7 @@ export class TabManager {
 
   /**
    * 各台都报完了活会话清单 ⇒ 旧的分组三格迁一次（`tab-groups-migrate.ts`：组员照此刻标签在哪台写；只做一次）。
-   * 5.0.3 之后第一版带它，再下一版连同迁移一起删。
+   * 5.1.0 带它，5.1.1 连同迁移一起删。
    */
   private settleUnarrivedOnce(): void {
     if (this.unarrivedSettled || !this.listed.settled || this.groupBook === null) return;

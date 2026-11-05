@@ -35,7 +35,7 @@ export const CONFIG_KEY_OWNERS = {
   keybindings: "src/frontend/ui/keybindings/store.ts",
   // src/frontend/ui/tab-bar-state.ts（旧的分组 · 固定那两格只剩迁移那一段读、迁完删）
   tabBar: "src/frontend/ui/tab-bar-state.ts",
-  // 旧的组表（组如今住各台后端）：只剩迁移那一段读、迁完删。5.0.3 之后第一版带它，再下一版连同迁移一起删。
+  // 旧的组表（组如今住各台后端）：只剩迁移那一段读、迁完删。5.1.0 带它，5.1.1 连同迁移一起删。
   tabCollections: "src/frontend/ui/tab-groups-migrate.ts",
   // src/frontend/ui/session-head.ts：会话头上放哪几颗按钮（`sessionHead.buttons`，这扇界面自己的偏好；没有 ＝ 默认）。
   sessionHead: "src/frontend/ui/session-head.ts",

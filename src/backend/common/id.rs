@@ -12,7 +12,7 @@
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
 /// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。
-pub const BUILD_ID: &str = "p11g-terminals-end";
+pub const BUILD_ID: &str = "p11h-one-core";
 
 /// 这份二进制的名字（`[[bin]]` 那一格）：落盘的 `cc-monitor-backend-<build>` 也以它打头。
 /// 写成字面量而不读 `env!("CARGO_PKG_NAME")`：那读的是编进这一段的包叫什么，代码换了包它就静默变成别的名字。

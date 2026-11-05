@@ -93,7 +93,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
     "src/frontend/ui/app-store.ts", // 会话的号那一份（`appStore.sessionAccount`）换了 ⇒ 重画徽章；e2e 探针的「不一致」照那台写的
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
-    "src/frontend/ui/config.ts", // 旧分组三格迁一次：读整份 `config.json`、迁完删那三格（5.0.3 之后第一版带它，再下一版连同迁移一起删）
+    "src/frontend/ui/config.ts", // 旧分组三格迁一次：读整份 `config.json`、迁完删那三格（5.1.0 带它，5.1.1 连同迁移一起删）
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/end-confirm.ts", // 隐藏 · 取消隐藏：照本机后端合好的回包出那一条（`sayReply`，经 `tab-hide` 的宿主）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
