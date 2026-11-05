@@ -478,8 +478,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
         "pubkey-push",
-        "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/frontend/ui/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
-         （金样 `pubkey-push.golden.json`），monitor 这一侧零发送点（那条 Tauri 命令与它的两条路删了）",
+        "后端出成品 `{said}`（`assets/pubkey.rs`，金样 `pubkey-push.golden.json`）；前端 `src/frontend/ui/pubkey-push.ts::pushPublicKey` 问、原样交出\
+         （形状由握手指纹核过），monitor 这一侧零发送点",
     ),
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (

@@ -189,17 +189,11 @@ fn face(kind: ChoreKind, state: ChoreState) -> (ChoreTag, ChoreTone) {
         (_, ChoreKind::InstallOptional) => copy_text("dataPage.install.kindOptional", &[]),
         (_, ChoreKind::Optional) => copy_text("dataPage.kind.optional", &[]),
     };
-    let tag = ChoreTag {
-        text,
-        kind: if state == ChoreState::Expired {
-            ChoreKind::Must
-        } else {
-            kind
-        },
-    };
+    // 过期的那一件类已升成要做，小标签的类 · 点色照类走就是要做那一色。
+    let tag = ChoreTag { text, kind };
     let tone = match (state, kind) {
         (ChoreState::Done, _) => ChoreTone::Ok,
-        (ChoreState::Expired, _) | (_, ChoreKind::Must) => ChoreTone::Bad,
+        (_, ChoreKind::Must) => ChoreTone::Bad,
         (_, ChoreKind::Decide | ChoreKind::Install) => ChoreTone::Warn,
         _ => ChoreTone::Muted,
     };
@@ -276,8 +270,8 @@ pub(crate) struct Chore {
 }
 
 impl Chore {
+    /// 小标签与点色留空，[`chores`] 末尾照定下的类 · 态一处填。
     pub(crate) fn new(id: impl Into<String>, kind: ChoreKind, action: ChoreAction) -> Chore {
-        let (tag, tone) = face(kind, ChoreState::Todo);
         Chore {
             id: id.into(),
             kind,
@@ -295,8 +289,11 @@ impl Chore {
             go: None,
             how_url: None,
             action,
-            tag,
-            tone,
+            tag: ChoreTag {
+                text: String::new(),
+                kind,
+            },
+            tone: ChoreTone::Muted,
         }
     }
 }

@@ -311,7 +311,7 @@ impl Reach for Wire {
             crate::dial::remote_ask::ask_json::<AuthorizedKeysAdd>(
                 machine,
                 &req,
-                // 回包里没有时刻（只回 `outcome`）。
+                // 回包里没有时刻（只有 `outcome` 与 `said`）。
                 &crate::common::time::Tz::default(),
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,

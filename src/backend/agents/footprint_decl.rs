@@ -389,8 +389,7 @@ pub struct UnmanagedEnv {
 ///
 /// 它是「**查了，查不动**」。两者在这一页上显示成两回事：
 /// 「查了、确认没有」= `SurfaceState::Absent`；「查不动」= `SurfaceState::Undetermined`。
-/// 这条分法**是现成的** —— 前端 `readiness.ts` 的 `missing` / `unknown` 就是它，
-/// **不许再造一套**。
+/// 这条分法只住一处（`footprint/rows.rs::observe_unmanaged`），**不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvProbe {
     /// 这个后端进程 `PATH` 上的一个裸命令 —— 走 `platform::shell::find_session_command`（按 `PATH` 找命令只住那一处：
