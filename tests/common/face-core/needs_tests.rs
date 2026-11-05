@@ -82,10 +82,19 @@ fn items_are_ordered_across_machines_by_rank_alone() {
         let got = merge_needs(split(rows), vec![]);
         let names: Vec<String> = got.items.iter().map(name).collect();
         assert_eq!(&names, want, "{title}");
-        assert_eq!(got.total as usize, rows.len(), "{title}：总数是各台加起来几项");
+        assert_eq!(
+            got.total as usize,
+            rows.len(),
+            "{title}：总数是各台加起来几项"
+        );
         for x in &got.items {
             let (m, ..) = rows.iter().find(|r| r.1 == name(x)).unwrap();
-            assert_eq!(x.origin.to_string(), *m, "{title}：{} 带回的台不对", name(x));
+            assert_eq!(
+                x.origin.to_string(),
+                *m,
+                "{title}：{} 带回的台不对",
+                name(x)
+            );
         }
     }
 }
@@ -103,7 +112,10 @@ fn unreadable_and_down_machines_are_carried_with_their_sentence() {
     );
     assert_eq!(got.total, 2, "没问到的那台不计");
     let v = serde_json::to_value(&got).unwrap();
-    assert_eq!(v["unreadable"], json!([{"origin": "devbox", "said": "读不懂"}]));
+    assert_eq!(
+        v["unreadable"],
+        json!([{"origin": "devbox", "said": "读不懂"}])
+    );
     assert_eq!(
         v["down"],
         json!([{"origin": "pi", "said": "那台没在跑"}]),

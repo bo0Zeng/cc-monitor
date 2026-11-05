@@ -1901,9 +1901,7 @@ mod tests {
     #[test]
     fn the_phone_merges_needs_with_the_one_shared_merge() {
         use serde_json::{json, Value};
-        let plan = |slice: &str, rank: u64| {
-            json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice})
-        };
+        let plan = |slice: &str, rank: u64| json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice});
         let a = json!({"items": [plan("a1", 5), plan("a2", 9)], "ended": []});
         let b = json!({"items": [plan("b1", 1)], "ended": [], "manualUnreadable": "读不懂"});
         let text = json!({"answered": [
@@ -1921,8 +1919,14 @@ mod tests {
             .collect();
         assert_eq!(order, ["b1", "a1", "a2"], "跨台照 rank：{got}");
         assert_eq!(got["total"], 3, "总数是答了的几台加起来");
-        assert_eq!(got["unreadable"], json!([{"origin": "phone-b", "said": "读不懂"}]));
-        assert_eq!(got["down"][0]["origin"], "phone-c", "解不开的那台照实进 down");
+        assert_eq!(
+            got["unreadable"],
+            json!([{"origin": "phone-b", "said": "读不懂"}])
+        );
+        assert_eq!(
+            got["down"][0]["origin"], "phone-c",
+            "解不开的那台照实进 down"
+        );
         let want = face_core::needs::merge_needs(
             vec![
                 (

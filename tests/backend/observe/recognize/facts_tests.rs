@@ -1647,7 +1647,7 @@ fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
     let names: Vec<String> = got.items.iter().map(item_name).collect();
     assert_eq!(names, ["s", "a@A2-1", "a@-", "@work"]);
     assert_eq!(got.manual_unreadable, None);
-    let ranks: Vec<u64> = got.items.iter().map(rank_of).collect();
+    let ranks: Vec<u64> = got.items.iter().map(face_core::needs::rank_of).collect();
     assert!(
         ranks.windows(2).all(|w| w[0] <= w[1]),
         "先后就是 rank 的先后：{ranks:?}"
