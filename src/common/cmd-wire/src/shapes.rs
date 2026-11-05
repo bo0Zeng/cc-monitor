@@ -157,7 +157,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("profiles-resolve", "3bc75e15"),
     ("profiles-write", "24e27574"),
     ("prose-hl", "5e0af9c5"),
-    ("pubkey-push", "ce94d9e0"),
+    ("pubkey-push", "e0f1ec68"),
     ("quota-probe", "01aaf184"),
     ("quota-read", "e60fa242"),
     ("quota-warm", "9443b1a7"),
