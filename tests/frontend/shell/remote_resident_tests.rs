@@ -9,11 +9,13 @@ fn hello(build: &str) -> String {
     )
 }
 
-fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::RemoteExec {
-    crate::stream_source::RemoteExec {
+fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> cmd_wire::dial::Captured {
+    cmd_wire::dial::Captured {
         stdout: stdout.into(),
         stderr: stderr.into(),
-        exit_status: code,
+        ended: code.map_or(cmd_wire::dial::CaptureEnd::ClosedBare, |code| {
+            cmd_wire::dial::CaptureEnd::Exited { code }
+        }),
     }
 }
 

@@ -175,7 +175,6 @@ impl LineIntake {
             .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: sid.to_string(),
                 origin: self.origin_label.clone(),
-                path: path.to_string(),
                 change: change.as_wire().to_string(),
                 said: said.to_string(),
             })

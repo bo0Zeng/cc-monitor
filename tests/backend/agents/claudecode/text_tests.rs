@@ -475,22 +475,18 @@ fn pasted_blocks_are_human_with_their_bounds() {
         u.pasted,
         vec![
             Pasted {
-                id: Some("p1".into()),
                 start: at("<pasted_content id"),
                 end: first_end,
                 body_start: at("甲"),
                 body_end: at("</pasted_content id"),
-                lines: 2,
                 fold: false,
                 fold_text: None,
             },
             Pasted {
-                id: None,
                 start: at("<pasted_content>"),
                 end: t.encode_utf16().count() as u32,
                 body_start: at("丙"),
                 body_end: at("</pasted_content>"),
-                lines: 1,
                 fold: false,
                 fold_text: None,
             },
@@ -525,13 +521,12 @@ fn a_paste_over_twelve_lines_folds() {
         let t = format!("看：<pasted_content id=\"p\">\n{body}\n\n</pasted_content id=\"p\">");
         let u = said(&rec(&t, json!({"origin": {"kind": "human"}})));
         let p = &u.pasted[0];
-        (p.lines, p.fold, p.fold_text.as_ref().map(|w| w.0.clone()))
+        (p.fold, p.fold_text.as_ref().map(|w| w.0.clone()))
     };
-    assert_eq!(paste(12), (12, false, None));
+    assert_eq!(paste(12), (false, None));
     assert_eq!(
         paste(13),
         (
-            13,
             true,
             Some(copy_core::copy_text("speaker.paste.fold", &[("n", "13")]))
         )

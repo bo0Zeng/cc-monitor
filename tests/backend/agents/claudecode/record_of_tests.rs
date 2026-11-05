@@ -875,7 +875,6 @@ fn the_retry_line_the_error_head_and_the_peer_head_are_written_here() {
     let Body::Reply { error: Some(e), .. } = &err.body else {
         panic!("{err:?}")
     };
-    assert_eq!(e.reason, ApiReason::Quota);
     assert_eq!(
         e.title.0,
         t(
