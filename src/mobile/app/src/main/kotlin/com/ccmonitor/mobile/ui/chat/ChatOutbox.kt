@@ -46,8 +46,8 @@ internal class ChatOutbox(
         when {
             r is Reply.Ok ->
                 SessionQueuePut.of(r.data)?.let { received(o) }
-                    ?: mark(o, DeliveryState.FAILED, failed(unreadableReply(machine, SessionQueuePut.COMMAND, r.data.toString()).text).second)
-            r is Reply.Failed && r.failure.code != OFFLINE -> mark(o, DeliveryState.FAILED, failed(r.problem(machine, SessionQueuePut.COMMAND, link.offline.value)?.text).second)
+                    ?: mark(o, DeliveryState.FAILED, unreadableReply(machine, SessionQueuePut.COMMAND, r.data.toString()).text)
+            r is Reply.Failed && r.failure.code != OFFLINE -> mark(o, DeliveryState.FAILED, r.problem(machine, SessionQueuePut.COMMAND, link.offline.value)?.text)
             else -> Unit
         }
     }
@@ -113,7 +113,12 @@ internal class ChatOutbox(
         val (landed, waiting) = cache.pending(s).filterNot { it.id in known }.partition { it.outcome == PendingOutcome.DELIVERED }
         if (landed.isNotEmpty()) cache.forget(landed.map { it.id })
         for (p in waiting) {
-            val (d, text) = if (p.outcome == PendingOutcome.REFUSED) failed(null) else DeliveryState.SENDING to copyText("mobChat.delivery.sending")
+            val (d, text) =
+                if (p.outcome == PendingOutcome.REFUSED) {
+                    DeliveryState.FAILED to copyText("mobChat.delivery.refused")
+                } else {
+                    DeliveryState.SENDING to copyText("mobChat.delivery.sending")
+                }
             lines += Outgoing(p.id, p.text, d, text, p.attempts, attach?.handedOf(p.id).orEmpty())
         }
     }
@@ -170,9 +175,6 @@ internal class Outgoing(
     /** 正在交（同一句不同时交两遍）。 */
     var inFlight = false
 }
-
-/** 没送到的那一句（那台写的原因）。 */
-internal fun failed(why: String?) = DeliveryState.FAILED to copyText("terminal.input.failed", "why" to why.orEmpty())
 
 /** 气泡下的标 ⇒ 落盘的那几种结局之一：回执到了（排着）记 `delivered`，还没回执记 `pending`。 */
 private fun outcomeOf(d: DeliveryState?): String =
