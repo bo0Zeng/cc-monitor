@@ -136,7 +136,7 @@ pub fn hold(dir: &Path) -> Result<DirLock, HoldError> {
         Ok(_) => {
             return Err(HoldError {
                 stage: LockStage::Open,
-                err: io::Error::other("不是目录"),
+                err: io::ErrorKind::NotADirectory.into(),
             })
         }
         Err(err) => {
