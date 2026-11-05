@@ -472,13 +472,24 @@ pub fn list_product_with(
                 a.config_dir.as_deref().map(&routed),
                 relay_running,
             );
+            let base_url = fact.and_then(|k| k.base_url.clone());
             AccountRow {
+                kind_line: crate::accounts::quota::name_words::kind_line(
+                    if api_key {
+                        cmd_wire::quota::Kind::Api
+                    } else {
+                        cmd_wire::quota::Kind::Sub
+                    },
+                    a.logged_in,
+                    &a.email,
+                    base_url.as_deref(),
+                ),
                 config_dir_shown: a
                     .config_dir
                     .as_deref()
                     .map(|d| crate::platform::paths::home_short(d, home)),
                 key_masked: fact.and_then(|k| k.masked.clone()),
-                base_url: fact.and_then(|k| k.base_url.clone()),
+                base_url,
                 badge,
                 plate: Words(crate::accounts::quota::name_words::plate_text(&a.name)),
                 quota: None,

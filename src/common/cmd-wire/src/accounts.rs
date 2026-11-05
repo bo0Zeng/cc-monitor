@@ -416,6 +416,8 @@ pub struct AccountRow {
     pub badge: Badge,
     /// 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。
     pub plate: crate::cells::Words,
+    /// 账号行第二行那一句：类型字（同额度卡首行那一格）· 这个号的那一格（邮箱 · 需登录 · 端点的主机），后端写好，两端照摆。
+    pub kind_line: crate::cells::Words,
     /// 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
     pub quota: Option<crate::cells::Words>,
     /// 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
