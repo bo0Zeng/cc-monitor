@@ -184,7 +184,8 @@ impl TopicExt for Topic {
                 body_cap: 0,
                 reask: "history-list",
             },
-            // 走 watcher 的出方向（不可丢）：注解文件重读时组那一半变了才推（`observe/watcher.rs::reload_annotations`）。
+            // 走 watcher 的出方向（不可丢）：注解文件重读时组那一半变了才推（`observe/watcher.rs::reload_annotations`）；
+            // 本机后端那几条常驻流里哪台接上 · 断了也推一声（`control/feeds.rs::start_one`，经转出口进出方向）。
             Topic::Groups => TopicSpec {
                 name: "groups",
                 lossy: false,
