@@ -3,11 +3,10 @@
  *
  * 卡头：名字 · 状态点与状态词 · 一行地址与系统 · 怎么连过去的那一行（有才出）· 掉线时的问题行；右上「连接设置」（只远端）与 ⋯（成品有复制详情 ⇒ 末尾「复制详情」）。
  * 「连接设置」在卡头里就地展开；「这台上的 cc-monitor」是卡头里的一折（起停 · 退出时 · 恢复命令 · 输出）。
- * 状态由宿主照后端的回答喂进来（`setConnected`），本模块不判。
+ * 状态由宿主照后端的回答喂进来，本模块不判：点随通道（`setConnected`），词与问题行只由那台状态（`setMachine`）写。
  */
 import { button } from "../kit/button";
 import { fold, setFoldSummary } from "../kit/fold";
-import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
@@ -71,7 +70,10 @@ export interface MachinePage {
   tabs: SettingsRouter;
   setTitle(name: string): void;
   setMeta(meta: string): void;
-  /** 连着 · 断着 · 没问到；断着时 `offlineLine` 是那台成品写的离线那一句（照摆，没有 ⇒ 照没问到画：不知道 ≠ 离线）。 */
+  /**
+   * 通道那一路：连着 · 断着 · 没问到，只换点（词与问题行只由 `setMachine` 写）。
+   * 断着时 `offlineLine` 是那台成品写的离线那一句（点的读屏名照摆；没有 ⇒ 照没问到画：不知道 ≠ 离线）。
+   */
   setConnected(connected: boolean | null, offlineLine?: string): void;
   /** 停用了连接：空心点 ＋「已停用」，问题行「连接已停用」（开关在连接设置里）。 */
   setDisabled(on: boolean): void;
@@ -180,6 +182,9 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   let connected: boolean | null = null;
   let offlineLine = "";
   let disabled = false;
+  /** 词与问题行此刻是停用那一刻当场写的（不是那台状态写的）⇒ 开回来时撤下。 */
+  let disabledPainted = false;
+  /** 通道那一路只换点；词与问题行只由那台状态写（`setMachine`）。停用时整块照停用画。 */
   const paint = (): void => {
     if (disabled) {
       setDot(dot, "exited", copyText("settingsNav.dot.disabled", { machine: name }));
@@ -189,30 +194,12 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       problem.replaceChildren(text);
       if (connFold) problem.appendChild(button({ label: copyText("machinePage.conn.toggle"), size: "compact", onClick: () => connFold!.open() }));
       problem.hidden = false;
+      disabledPainted = true;
       return;
     }
-    if (connected === true) {
-      setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
-      word.textContent = copyText("ccBus.check.online");
-    } else if (connected === false) {
-      setDot(dot, "failed", offlineLine);
-      word.textContent = copyText("machinePage.state.down");
-    } else {
-      setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
-      word.textContent = "";
-    }
-    problem.replaceChildren();
-    problem.hidden = connected !== false;
-    if (connected === false) {
-      const err = icon("error", "compact");
-      const text = document.createElement("span");
-      text.textContent = offlineLine;
-      problem.append(err, text);
-      if (connFold) {
-        const fix = button({ label: copyText("machinePage.conn.toggle"), size: "compact", onClick: () => connFold!.open() });
-        problem.appendChild(fix);
-      }
-    }
+    if (connected === true) setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
+    else if (connected === false) setDot(dot, "failed", offlineLine);
+    else setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
   };
   paint();
 
@@ -234,6 +221,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       paint();
     },
     setMachine(f) {
+      disabledPainted = false;
       setDot(dot, f.dot, f.word || copyText("settingsNav.dot.up", { machine: name }));
       word.textContent = f.word;
       paintProblem(problem, f, (fix) => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)));
@@ -246,6 +234,13 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     setDisabled(on) {
       if (disabled === on) return;
       disabled = on;
+      // 刚开回来：停用那一刻当场写的词与问题行撤下，等那台的下一份状态。
+      if (!on && disabledPainted) {
+        disabledPainted = false;
+        word.textContent = "";
+        problem.replaceChildren();
+        problem.hidden = true;
+      }
       paint();
     },
     open(section) {
