@@ -1614,10 +1614,9 @@ async fn a_hosted_terminal_that_never_arrived_is_read_off_its_screen() {
     let screen = tokio::task::spawn_blocking(move || hosted_screen_in(&o, "name-t-scr"))
         .await
         .expect("没崩");
-    let ArriveEnd::Missed { said, terminal } = missed(
-        1_000,
-        Some(("name-t-scr", TerminalHost::Managed, screen)),
-    ) else {
+    let ArriveEnd::Missed { said, terminal } =
+        missed(1_000, Some(("name-t-scr", TerminalHost::Managed, screen)))
+    else {
         panic!("应是没见到");
     };
     assert!(

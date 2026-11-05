@@ -594,10 +594,10 @@ pub fn screen_of(
     use crate::wire::TerminalHost;
     match host {
         TerminalHost::Tmux => screen_on(On::default(), session),
-        TerminalHost::Managed => crate::host::managed::installed().map_or(
-            crate::control::session_arrive::Screen::Gone,
-            |own| hosted_screen_in(own, session),
-        ),
+        TerminalHost::Managed => crate::host::managed::installed()
+            .map_or(crate::control::session_arrive::Screen::Gone, |own| {
+                hosted_screen_in(own, session)
+            }),
     }
 }
 
