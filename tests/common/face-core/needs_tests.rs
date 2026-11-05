@@ -1,8 +1,9 @@
 //! 几台的需手动合成一份（`face_core::needs::merge_needs`）的判据：本机后端 `sessions-needs-merge` 与手机核心 `NeedsFace.merge` 调的是这一份。
 //!
 //! 1. 跨台只照各项的 `rank` 比；并列 ⇒ 本机在前、再照给的台序与台内原来的先后；每项带回它那台；`total` 是各台加起来几项。
-//! 2. 会外读不出的那几台各带那一句（本机在前）；没问到的那几台原样带上、不计。
-//! 3. 回包那一形照类型解得开（手机核心交 Kotlin 的就是这一形）。
+//! 2. 会外读不出的那几台各带那一句 ＋ 写好的那一行（本机在前）；没问到的那几台原样带上、不计。
+//! 3. 头那一句 · 说得准说不准由这里写：说得准才带数。
+//! 4. 回包那一形照类型解得开（手机核心交 Kotlin 的就是这一形）。
 //!
 //! 每一例的几项写成计划那一臂（合法不看是哪一臂，只看 `rank`），期望手写。
 
@@ -79,7 +80,7 @@ fn items_are_ordered_across_machines_by_rank_alone() {
         ("一台都没有 ⇒ 空", &[], &[]),
     ];
     for (title, rows, want) in cases {
-        let got = merge_needs(split(rows), vec![]);
+        let got = merge_needs(split(rows), vec![], false, label);
         let names: Vec<String> = got.items.iter().map(name).collect();
         assert_eq!(&names, want, "{title}");
         assert_eq!(
@@ -108,24 +109,78 @@ fn unreadable_and_down_machines_are_carried_with_their_sentence() {
         vec![NeedsDown {
             origin: Machine::named("pi"),
             said: "那台没在跑".into(),
+            detail: "细节".into(),
         }],
+        false,
+        label,
     );
     assert_eq!(got.total, 2, "没问到的那台不计");
     let v = serde_json::to_value(&got).unwrap();
     assert_eq!(
         v["unreadable"],
-        json!([{"origin": "devbox", "said": "读不懂"}])
+        json!([{"origin": "devbox", "said": "读不懂",
+            "line": copy_core::copy_text("needs.panel.unreadable", &[("machine", "开发机")])}]),
+        "那一行由合的那一下写好、叫出那台（照给的称呼）"
     );
     assert_eq!(
         v["down"],
-        json!([{"origin": "pi", "said": "那台没在跑"}]),
+        json!([{"origin": "pi", "said": "那台没在跑", "detail": "细节"}]),
         "没问到的那几台原样带上"
     );
 }
 
+/// 称呼替身：devbox ⇒「开发机」，别的照名字。
+fn label(m: &Machine) -> String {
+    match m.to_string().as_str() {
+        "devbox" => "开发机".into(),
+        other => other.into(),
+    }
+}
+
+/// ★ 头那一句 · 说得准说不准在合的那一下写好：说得准 ⇒ 带数；有哪台会外读不出 · 调用方说有哪台说不准（读中 · 答失败）⇒ 不带数。
+#[test]
+fn the_head_carries_the_count_only_when_the_count_is_sure() {
+    let count = |n: &str| copy_core::copy_text("beGroups.count.needs", &[("n", n)]);
+    let unknown = copy_core::copy_text("beSession.needs.unknown", &[]);
+    let two = || split(&[("devbox", "a", 1), ("<local>", "b", 2)]);
+
+    let got = merge_needs(two(), vec![], false, label);
+    assert!(got.sure);
+    assert_eq!(got.head.0, count("2"));
+
+    let got = merge_needs(two(), vec![], true, label);
+    assert!(!got.sure, "调用方说有哪台说不准");
+    assert_eq!(got.head.0, unknown);
+    assert_eq!(got.total, 2, "说不准也照数（只是头那一句不带）");
+
+    let mut odd = two();
+    odd[0].1.manual_unreadable = Some(Words("读不懂".into()));
+    let got = merge_needs(odd, vec![], false, label);
+    assert!(!got.sure, "会外读不出 ⇒ 说不准");
+    assert_eq!(got.head.0, unknown);
+
+    let got = merge_needs(
+        vec![],
+        vec![NeedsDown {
+            origin: Machine::named("pi"),
+            said: "pi 离线".into(),
+            detail: String::new(),
+        }],
+        false,
+        label,
+    );
+    assert!(got.sure, "只是断着 ⇒ 照样说得准（断着的本来不计）");
+    assert_eq!(got.head.0, count("0"));
+}
+
 #[test]
 fn the_merged_shape_reads_back() {
-    let got = merge_needs(split(&[("<local>", "a", 1), ("devbox", "b", 2)]), vec![]);
+    let got = merge_needs(
+        split(&[("<local>", "a", 1), ("devbox", "b", 2)]),
+        vec![],
+        false,
+        label,
+    );
     let text = serde_json::to_string(&got).unwrap();
     let back: NeedsMerged = serde_json::from_str(&text).expect("回包那一形解得开");
     assert_eq!(back, got);

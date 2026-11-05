@@ -49,7 +49,7 @@ export function planCellIn(slice: { cells: readonly { id: string }[] }, it: Plan
   return id !== null && slice.cells.some((c) => c.id === id) ? id : null;
 }
 
-const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [] };
+const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [], head: "", sure: true };
 
 export class NeedsBook {
   /** 要问的那几台（问过的都记着，照先来的先后）。 */

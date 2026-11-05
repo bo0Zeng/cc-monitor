@@ -32,7 +32,7 @@ class NeedsSource(
 )
 
 /**
- * 板上一台此刻：那台最后一份整份（还没读到过 ⇒ `null`）· 流断着没有 · 最近那一问没问到的结局（问到了 ⇒ `null`）。断着的那台不进数。
+ * 板上一台此刻：那台最后一份整份（还没读到过 ⇒ `null`）· 流断着没有 · 最近那一问没问到的结局（问到了 ⇒ `null`）。断着 · 没问到的那台不进数。
  */
 data class MachineNeeds(
     val list: NeedsList? = null,
@@ -40,7 +40,7 @@ data class MachineNeeds(
     val raw: Any? = null,
     val down: Boolean = false,
     val failed: Reply? = null,
-    /** 那条链上那台写好的离线那一句（[CoreLink.offline]）：断着那一行照摆它，[failed] 是断着时也照摆它。 */
+    /** 那条链上那台写好的离线那一句（[CoreLink.offline]）：断着那台交核心时带它（核心照原样摆）。 */
     val offline: String = "",
     /** 收到 [list] 那一刻（本机单调钟）：会走的那一句从它起接着走。 */
     val at: Long = 0L,
@@ -50,13 +50,16 @@ data class MachineNeeds(
 
     /** 还在读：通着、还没问到过、也还没没问到过。 */
     val reading: Boolean get() = !down && list == null && failed == null
+
+    /** 答了：通着、最近那一问问到了（[raw] 交核心合）。 */
+    val answered: Boolean get() = !down && failed == null && list != null
 }
 
 /**
  * 跨会话的需手动板（进程级一份）：对此刻起着的每条常驻流（[sources]，不为它另连）各持那台最后一份 `sessions-needs` 整份。
  * 什么时候问那一台：那条流一挂上来 · 换了一条流 · 那台推 `changed {needs}`（那台的需手动只这一个铃；去抖合成一次）· 没问到之后退避再问
  * （[RETRY_FIRST_MS] 起、翻倍、封顶；问到了归零）；别处答完 / 登完也可以叫它重问（[reask]）。会话进出需手动由那台照它的活会话表推 `needs`，这里不看点。总览照它画、聊天屏右上那颗入口数它、聊天屏那一块需手动读它里面那一条 —— 别处都不再自己问。
- * 判 · 排 · 写字全在那台，几台合一份 · 总数在核心（[mergedOf]）；这里只记。
+ * 判 · 排 · 写字全在那台，几台合一份 · 总数 · 头那一句 · 没答上那几台那一句在核心（[mergedOf]）；这里只记。
  */
 @OptIn(FlowPreview::class)
 class NeedsBoard(
@@ -80,12 +83,6 @@ class NeedsBoard(
             }
         }
     }
-
-    /** 各台加起来几项（断着的不算）：核心合好的那一份的总数（[mergedOf]），这里不自己加。 */
-    fun total(all: Map<String, MachineNeeds> = _state.value): Int = mergedOf(all, all.keys.toList())?.total ?: 0
-
-    /** 数说不准（入口不带数字）：核心合的那一份里有会外读不出的那台，或有哪台整份没问到；总览同一处（[overviewOf]）。 */
-    fun uncertain(all: Map<String, MachineNeeds> = _state.value): Boolean = uncertainOf(all, mergedOf(all, all.keys.toList()))
 
     /** 那一台重问一次（去抖照常）。 */
     fun reask(hostId: String) {

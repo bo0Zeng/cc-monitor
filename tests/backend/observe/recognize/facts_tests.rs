@@ -1782,7 +1782,7 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
                 )),
             }
         }
-        let got = face_core::needs::merge_needs(machines, vec![]);
+        let got = face_core::needs::merge_needs(machines, vec![], false, |m| m.to_string());
         let sids: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
         assert_eq!(&sids, want, "{name}");
         assert_eq!(got.total as usize, rows.len(), "{name}");
@@ -1815,6 +1815,8 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
             (cmd_wire::Machine::local(), local),
         ],
         vec![],
+        false,
+        |m| m.to_string(),
     );
     let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
     assert_eq!(names, ["r", "y@A1", "x@-", "@home"]);

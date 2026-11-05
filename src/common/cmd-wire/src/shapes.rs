@@ -201,7 +201,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-window", "3e86d7b3"),
     ("sessions-batch", "b8230c09"),
     ("sessions-needs", "1525a0b0"),
-    ("sessions-needs-merge", "27723916"),
+    ("sessions-needs-merge", "954a7beb"),
     ("sessions-stop", "00013205"),
     ("sessions-where", "df18d571"),
     ("set-launch", "dc1a6a13"),

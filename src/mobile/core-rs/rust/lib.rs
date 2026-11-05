@@ -468,31 +468,115 @@ pub fn groups_merge_json(data: &str) -> String {
     serde_json::to_string(&face_core::groups::merge(&halves, heads)).unwrap_or_default()
 }
 
-/// 几台的需手动合成一份：`{answered: [{origin, reply}]}`（`reply` ＝ 那台 `sessions-needs` 回包原样；当前那台在前、别的照机器表先后）⇒ `NeedsMerged`。
-/// 合的那一步是本机后端 `sessions-needs-merge` 调的同一份（`face_core::needs::merge_needs`）：手机逐台直连问完，在这里照各项的 `rank` 合一次、数总数。
-/// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句）、不计，别台照合；整份读不动 ⇒ 空串。
+/// 手机交来的一台（[`needs_merge_json`]）：哪台 · 给人看的称呼 · 那一格（答了 ⇒ 回包原样；没答上 ⇒ 那一问的结局）。缺格 ⇒ `None`。
+fn needs_one(one: &serde_json::Value) -> Option<(cmd_wire::Machine, String, &serde_json::Value)> {
+    let origin = serde_json::from_value::<cmd_wire::Machine>(one.get("origin")?.clone()).ok()?;
+    Some((
+        origin,
+        one.get("label")?.as_str()?.to_string(),
+        one.get("reply")?,
+    ))
+}
+
+/// 没答上那一问的结局：`{kind: "link", said, detail, down}`（连接层没走通：断着 · 期限到 · 撤了；那一句是连接层写好的，句里已叫出那台 ⇒ 照原样；
+/// `down` ＝ 那台断着，断着不让数说不准，断着的本来不计）· `{kind: "failed", code, said, detail}`（那台答了一个错，核心写好的失败原样）·
+/// `{kind: "unreadable", raw}`（回包解不开，原文）。
+/// ⇒ `(那一句, 详情, 让不让数说不准)`；认不出 ⇒ `None`。
+fn needs_miss(label: &str, r: &serde_json::Value) -> Option<(String, String, bool)> {
+    let s = |k: &str| r.get(k)?.as_str().map(str::to_string);
+    match r.get("kind")?.as_str()? {
+        "link" => Some((s("said")?, s("detail")?, !r.get("down")?.as_bool()?)),
+        "failed" => Some((
+            needs_failed_said(label, &s("code")?, s("said")?),
+            s("detail")?,
+            true,
+        )),
+        "unreadable" => {
+            let (said, detail) = needs_unreadable(label, &s("raw")?);
+            Some((said, detail, true))
+        }
+        _ => None,
+    }
+}
+
+/// 那台回包解不开（帧上缺格 · 形对不上）那一句（叫出那台）与详情（命令名 ＋ 原文）：同手机 `unreadableReply` 那一句。
+fn needs_unreadable(label: &str, raw: &str) -> (String, String) {
+    (
+        copy_core::copy_text("peerVersion.said.unreadable", &[("machine", label)]),
+        format!("command: sessions-needs\nreply: {raw}"),
+    )
+}
+
+/// 没答上那台那一句（同本机后端 `history_face::down_said`）：码说是两端对不上 · 那台不认这条命令的 ⇒ 句里已叫出那台、照原样；
+/// 别的只说了原因 ⇒「<那台> · <那一句>」。
+fn needs_failed_said(label: &str, code: &str, said: String) -> String {
+    if [cmd_wire::SHAPE_DIFFERS, "unknown_command"].contains(&code) {
+        return said;
+    }
+    copy_core::copy_text(
+        "kit.text.machineSaid",
+        &[("machine", label), ("said", &said)],
+    )
+}
+
+/// 几台的需手动合成一份：`{answered: [{origin, label, reply}], unanswered: [{origin, label, reply}], reading: [origin]}` ⇒ `NeedsMerged`。
+/// 合的那一步是本机后端 `sessions-needs-merge` 调的同一份（`face_core::needs::merge_needs`）：手机逐台直连问完，在这里照各项的 `rank` 合一次、数总数，
+/// 头那一句 · 读屏那一句 · 读不出那一行 · 没答上那几台那一句（叫出那台，称呼照 `label`）都在这里写好。
+/// 答了的那一份照类型解不开 ⇒ 读不出那台回复那一句进 `down`、不计；答失败 · 还在读 ⇒ 数说不准；整份读不动 ⇒ 空串。
 pub fn needs_merge_json(data: &str) -> String {
-    let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
+    let Ok(ask) = serde_json::from_str::<serde_json::Value>(data) else {
         return String::new();
     };
-    let Ok(all) = serde_json::from_value::<Vec<serde_json::Value>>(ask["answered"].take()) else {
+    let list = |k: &str| ask.get(k).and_then(serde_json::Value::as_array).cloned();
+    let (Some(given), Some(missed), Some(reading)) =
+        (list("answered"), list("unanswered"), list("reading"))
+    else {
         return String::new();
     };
+    let mut labels: Vec<(cmd_wire::Machine, String)> = Vec::new();
     let mut answered = Vec::new();
     let mut down = Vec::new();
-    for mut one in all {
-        let Ok(origin) = serde_json::from_value::<cmd_wire::Machine>(one["origin"].take()) else {
+    let mut unsure = !reading.is_empty();
+    for one in &given {
+        let Some((origin, label, reply)) = needs_one(one) else {
             return String::new();
         };
-        match serde_json::from_value::<cmd_wire::needs::NeedsList>(one["reply"].take()) {
+        labels.push((origin.clone(), label.clone()));
+        match serde_json::from_value::<cmd_wire::needs::NeedsList>(reply.clone()) {
             Ok(list) => answered.push((origin, list)),
-            Err(e) => down.push(cmd_wire::needs::NeedsDown {
-                origin,
-                said: e.to_string(),
-            }),
+            Err(e) => {
+                unsure = true;
+                let (said, detail) = needs_unreadable(&label, &format!("{reply}\n{e}"));
+                down.push(cmd_wire::needs::NeedsDown {
+                    origin,
+                    said,
+                    detail,
+                });
+            }
         }
     }
-    serde_json::to_string(&face_core::needs::merge_needs(answered, down)).unwrap_or_default()
+    for one in &missed {
+        let Some((origin, label, reply)) = needs_one(one) else {
+            return String::new();
+        };
+        let Some((said, detail, doubt)) = needs_miss(&label, reply) else {
+            return String::new();
+        };
+        unsure |= doubt;
+        down.push(cmd_wire::needs::NeedsDown {
+            origin,
+            said,
+            detail,
+        });
+    }
+    let name = |m: &cmd_wire::Machine| {
+        labels
+            .iter()
+            .find(|(o, _)| o == m)
+            .map_or_else(|| m.to_string(), |(_, l)| l.clone())
+    };
+    serde_json::to_string(&face_core::needs::merge_needs(answered, down, unsure, name))
+        .unwrap_or_default()
 }
 
 /// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`face_core::column`）；读不动 ⇒ 空串。
@@ -1897,7 +1981,7 @@ mod tests {
     }
 
     /// 需手动几台合一份：手机核心合出的就是 `face_core::needs::merge_needs` 那一份（本机后端 `sessions-needs-merge` 调的同一个）：
-    /// 跨台照 `rank` 排、总数是各台加起来；某台那一份解不开 ⇒ 那台进 `down`（serde 那一句）、不计，别台照合。
+    /// 跨台照 `rank` 排、总数是各台加起来；会外读不出那一行照那台的称呼（`label`）写好。
     #[test]
     fn the_phone_merges_needs_with_the_one_shared_merge() {
         use serde_json::{json, Value};
@@ -1905,10 +1989,9 @@ mod tests {
         let a = json!({"items": [plan("a1", 5), plan("a2", 9)], "ended": []});
         let b = json!({"items": [plan("b1", 1)], "ended": [], "manualUnreadable": "读不懂"});
         let text = json!({"answered": [
-            {"origin": "phone-a", "reply": a},
-            {"origin": "phone-b", "reply": b},
-            {"origin": "phone-c", "reply": {"items": 3}},
-        ]})
+            {"origin": "phone-a", "label": "甲", "reply": a},
+            {"origin": "phone-b", "label": "乙", "reply": b},
+        ], "unanswered": [], "reading": []})
         .to_string();
         let got: Value = serde_json::from_str(&super::needs_merge_json(&text)).unwrap();
         let order: Vec<&str> = got["items"]
@@ -1921,11 +2004,8 @@ mod tests {
         assert_eq!(got["total"], 3, "总数是答了的几台加起来");
         assert_eq!(
             got["unreadable"],
-            json!([{"origin": "phone-b", "said": "读不懂"}])
-        );
-        assert_eq!(
-            got["down"][0]["origin"], "phone-c",
-            "解不开的那台照实进 down"
+            json!([{"origin": "phone-b", "said": "读不懂",
+                "line": copy_core::copy_text("needs.panel.unreadable", &[("machine", "乙")])}])
         );
         let want = face_core::needs::merge_needs(
             vec![
@@ -1939,10 +2019,113 @@ mod tests {
                 ),
             ],
             vec![],
+            false,
+            |m| {
+                if m.to_string() == "phone-a" {
+                    "甲".into()
+                } else {
+                    "乙".into()
+                }
+            },
         );
-        let mut want = serde_json::to_value(&want).unwrap();
-        want["down"] = got["down"].clone();
-        assert_eq!(got, want, "手机核心合出的不是那一份合并");
+        assert_eq!(
+            got,
+            serde_json::to_value(&want).unwrap(),
+            "手机核心合出的不是那一份合并"
+        );
         assert_eq!(super::needs_merge_json("不是 JSON"), "");
+    }
+
+    /// ★ 没答上的那几台也交进核心合：断着 · 期限到 · 撤了（连接层那一句已叫出那台）照原样；那台答了一个错 ⇒「<那台> · <那一句>」；
+    /// 回包解不开 ⇒ 读不出那台回复那一句（叫出那台）＋ 详情带命令与原文。都进 `down`、不计；有哪台答失败 · 还在读 ⇒ 数说不准、头那一句不带数；
+    /// 只是断着 ⇒ 照样说得准。称呼照给的 `label`。
+    #[test]
+    fn machines_that_did_not_answer_go_into_the_core_merge_named() {
+        use serde_json::{json, Value};
+        let plan = |slice: &str, rank: u64| json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice});
+        let a = json!({"items": [plan("a1", 5)], "ended": []});
+        let merge = |v: Value| -> Value {
+            serde_json::from_str(&super::needs_merge_json(&v.to_string())).unwrap()
+        };
+        let got = merge(json!({
+            "answered": [
+                {"origin": "phone-a", "label": "甲", "reply": a},
+                {"origin": "phone-d", "label": "丁", "reply": {"items": 3}},
+            ],
+            "unanswered": [
+                {"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 离线", "detail": "", "down": true}},
+                {"origin": "phone-c", "label": "丙", "reply": {"kind": "failed", "code": "io", "said": "记录读取失败", "detail": "原话"}},
+            ],
+            "reading": [],
+        }));
+        assert_eq!(got["total"], 1, "没答上的不计：{got}");
+        let down = |m: &str| {
+            got["down"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["origin"] == m)
+                .cloned()
+                .unwrap_or_else(|| panic!("{m} 不在 down：{got}"))
+        };
+        assert_eq!(
+            down("phone-b")["said"],
+            "乙 离线",
+            "连接层那一句已叫出那台 ⇒ 照原样"
+        );
+        assert_eq!(
+            down("phone-c")["said"],
+            copy_core::copy_text(
+                "kit.text.machineSaid",
+                &[("machine", "丙"), ("said", "记录读取失败")]
+            ),
+            "答了一个错 ⇒ 补上是哪台"
+        );
+        assert_eq!(down("phone-c")["detail"], "原话");
+        assert_eq!(
+            down("phone-d")["said"],
+            copy_core::copy_text("peerVersion.said.unreadable", &[("machine", "丁")])
+        );
+        assert!(
+            down("phone-d")["detail"]
+                .as_str()
+                .unwrap()
+                .contains("sessions-needs"),
+            "{got}"
+        );
+        assert_eq!(got["sure"], false, "有哪台答失败 ⇒ 数说不准");
+        assert_eq!(
+            got["head"],
+            copy_core::copy_text("beSession.needs.unknown", &[])
+        );
+
+        let only_down = merge(json!({
+            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
+            "unanswered": [{"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 离线", "detail": "", "down": true}}],
+            "reading": [],
+        }));
+        assert_eq!(only_down["sure"], true, "只是断着 ⇒ 说得准：{only_down}");
+        assert_eq!(
+            only_down["head"],
+            copy_core::copy_text("beGroups.count.needs", &[("n", "1")])
+        );
+
+        let reading = merge(json!({
+            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
+            "unanswered": [],
+            "reading": ["phone-b"],
+        }));
+        assert_eq!(reading["sure"], false, "还在读 ⇒ 说不准：{reading}");
+
+        let timed = merge(json!({
+            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
+            "unanswered": [{"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 回复超时", "detail": "d", "down": false}}],
+            "reading": [],
+        }));
+        assert_eq!(
+            timed["sure"], false,
+            "通着却没答上（期限到 · 撤了）⇒ 说不准：{timed}"
+        );
+        assert_eq!(timed["down"][0]["said"], "乙 回复超时");
     }
 }

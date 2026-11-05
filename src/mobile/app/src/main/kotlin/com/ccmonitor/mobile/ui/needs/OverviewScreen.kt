@@ -34,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
@@ -66,41 +64,40 @@ const val NEEDS_ENTRY_TAG = "needs-entry"
 const val NEEDS_SKELETON_TAG = "needs-skeleton"
 
 /**
- * 「需手动 n」那一颗（聊天屏顶栏 ⋯ 左边 · 会话列表顶栏，同一份）：n ＝ 板上各台加起来（断着的不算）；0 ⇒ 不画；
- * 有哪台没读全（会外那一截读不出 · 整份没问到）⇒ 不带数字、虚线框。点了进需手动屏。
+ * 「需手动 n」那一颗（聊天屏顶栏 ⋯ 左边 · 会话列表顶栏，同一份）：板上各台交核心合的那一份（[mergedOf]，总览同一份）照摆 ——
+ * 字是核心写好的头那一句；数说得准且 0 ⇒ 不画；说不准（读中 · 答失败 · 会外读不出）⇒ 虚线框。点了进需手动屏。
  */
 @Composable
 fun NeedsEntry(onOpen: () -> Unit) {
     val board = koinInject<NeedsBoard>()
+    val hostRepo = koinInject<HostRepository>()
+    val names = remember(hostRepo) { hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } } }
+    val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
-    NeedsEntryView(board.total(all), board.uncertain(all), onOpen)
+    val m = mergedOf(all, hosts)
+    NeedsEntryView(entryText(m.head, m.total, m.sure), uncertain = !m.sure, onOpen)
 }
 
-/** 入口那颗写什么：0 且数说得准 ⇒ 不画（`null`）；数说不准 ⇒ 只写「需手动」；否则「需手动 n」。 */
+/** 入口那颗写什么：数说得准且 0 ⇒ 不画（`null`）；别的照核心写好的头那一句 [head]。 */
 fun entryText(
-    n: Int,
-    uncertain: Boolean,
-): String? =
-    when {
-        uncertain -> copyText("beSession.needs.unknown")
-        n == 0 -> null
-        else -> copyText("beGroups.count.needs", "n" to n)
-    }
+    head: String,
+    total: Int,
+    sure: Boolean,
+): String? = head.takeUnless { sure && total == 0 }
 
-/** [NeedsEntry] 的样子。 */
+/** [NeedsEntry] 的样子（[text] ＝ `null` ⇒ 不画；读屏读的就是这一句）。 */
 @Composable
 fun NeedsEntryView(
-    n: Int,
+    text: String?,
     uncertain: Boolean,
     onOpen: () -> Unit,
 ) {
-    val text = entryText(n, uncertain) ?: return
+    text ?: return
     val warn = LocalAppTokens.current.warn
     val shape = RoundedCornerShape(6.dp)
     val base =
         Modifier
             .testTag(NEEDS_ENTRY_TAG)
-            .semantics { contentDescription = copyText("tabBar.needs.aria", "n" to n) }
             .padding(horizontal = 4.dp)
             .clip(shape)
             .clickable(onClick = onOpen)
@@ -114,7 +111,8 @@ fun NeedsEntryView(
 
 /**
  * 需手动屏（列表 · 聊天屏顶栏「需手动 n」进）：顶栏 ← · 需手动；那几行（会话 · 计划 · 会话外，照板上那几台、当前那台在前）＋ 各台读的结局。
- * 读中 ⇒ 骨架、组头不带数；整份没问到 ⇒ 那台一行 ＋［重试］；断着 ⇒「X 离线 · 未计入」；各台都读到且 0 件 ⇒「无需手动事项」＋ 读到了哪几台。
+ * 组头 · 没答上 · 会外读不出那几句都是核心合好写好的（[overviewOf]），这里只摆：读中 ⇒ 骨架；通着却没答上 ⇒ 那一句 ＋［重试］；
+ * 断着 ⇒ 链上那台写好的离线那一句；各台都读到且 0 件 ⇒「无需手动事项」＋ 读到了哪几台。
  * 点会话行 ⇒ 打开那条会话；点计划行 ⇒ 那一格（没有格 ⇒ 那一片的大纲）；点会话外那一行或［登录…］⇒ 登录抽屉（目标 ＝ 那一项的 `fix.args` 原样）。
  */
 @Composable
@@ -147,7 +145,7 @@ fun OverviewScreen(
             Text(copyText("beSession.needs.unknown"), style = MaterialTheme.typography.titleMedium)
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            item { Head(if (ov.uncertain || ov.loading.isNotEmpty()) copyText("beSession.needs.unknown") else copyText("beGroups.count.needs", "n" to ov.total)) }
+            item { Head(ov.head) }
             items(ov.needs) { line ->
                 when (line) {
                     is NeedsLine.Session -> SessionLine(line, tick) { onOpen(line.host.id, line.row.sid) }
@@ -159,13 +157,13 @@ fun OverviewScreen(
                 }
             }
             items(ov.loading) { SkeletonLine() }
-            items(ov.failed) { (h, p) -> FailedLine(copyText("needs.panel.unreadable", "machine" to h.label), p.text) { board.reask(h.id) } }
+            items(ov.down.filter { it.retry }) { d -> FailedLine(d.said, d.detail) { board.reask(d.host.id) } }
             if (ov.empty) {
                 item { Note(copyText("needs.panel.empty")) }
                 item { Note(ov.readFrom.joinToString(copyText("kit.text.sep")) { it.label }) }
             }
-            items(ov.down) { (_, said) -> Note(said, dashed = true) }
-            items(ov.unreadable) { (h, said) -> Note(copyText("needs.panel.unreadable", "machine" to h.label), dashed = true, more = said) }
+            items(ov.down.filterNot { it.retry }) { d -> Note(d.said, dashed = true, more = d.detail.ifEmpty { null }) }
+            items(ov.unreadable) { u -> Note(u.line, dashed = true, more = u.said) }
         }
     }
     login?.let { (h, f) ->
@@ -189,17 +187,19 @@ private fun SkeletonLine() {
     )
 }
 
-/** 整份没问到那一台：红字 ＋ 那一问的那一句 ＋［重试］。 */
+/** 通着却没答上那一台：红字那一句（核心写好、已叫出那台）＋［重试］；长按看详情。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FailedLine(
-    text: String,
     said: String,
+    detail: String,
     onRetry: () -> Unit,
 ) {
+    var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
-            if (said.isNotEmpty()) Text(said, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f).combinedClickable(onClick = {}, onLongClick = { open = !open })) {
+            Text(said, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+            if (open && detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
     }

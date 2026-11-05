@@ -2,10 +2,19 @@
 import type { NeedsAt } from "./NeedsAt";
 import type { NeedsDown } from "./NeedsDown";
 import type { NeedsUnreadable } from "./NeedsUnreadable";
+import type { Words } from "./Words";
 
 /**
  * `sessions-needs-merge` 的回包（几台合法只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台需手动的每一项，先答的在前；
  * `total` 是各台加起来几项（入口 · 窗口标题照它写）；会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；
- * 没问到的那几台（不计，各带那一句）。
+ * 没问到的那几台（不计，各带那一句）。头那一句 · 数说得准说不准都在合的那一下写好，出口照摆。
  */
-export type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
+export type NeedsMerged = { items: Array<NeedsAt>, total: number, 
+/**
+ * 头那一句（入口 · 总览组头）：数说得准 ⇒「需手动 n」；说不准 ⇒「需手动」（不带数）。
+ */
+head: Words, 
+/**
+ * 数说得准：没有哪台还在读 · 答失败 · 会外读不出（断着不算，断着的那台本来就不计）。
+ */
+sure: boolean, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };

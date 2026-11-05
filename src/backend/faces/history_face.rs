@@ -967,12 +967,27 @@ pub(crate) async fn needs_merge_with(
         match r {
             Ok(list) => answered.push((origin, list)),
             Err(s) => down.push(cmd_wire::needs::NeedsDown {
+                detail: s.raw.clone().unwrap_or_default(),
                 said: down_said(&origin, s),
                 origin,
             }),
         }
     }
-    Ok(face_core::needs::merge_needs(answered, down))
+    // 没问到的那几台不计 ⇒ 数说不准（桌面不分断着与答失败：都是这一问没问到）。
+    let unsure = !down.is_empty();
+    Ok(face_core::needs::merge_needs(
+        answered,
+        down,
+        unsure,
+        machine_name,
+    ))
+}
+
+/// 给人看的那台的称呼：本机 ⇒「本机」，远端 ⇒ 它的名字。
+fn machine_name(origin: &cmd_wire::Machine) -> String {
+    origin
+        .host_name()
+        .map_or_else(copy_core::local_machine, str::to_string)
 }
 
 /// 没问到那台那一句（`NeedsDown.said`，出口照摆）：常驻那一层说的那几种（常驻不在 · 回复超时 · 后端要更新 · 后端版本不同）
@@ -987,12 +1002,9 @@ fn down_said(origin: &cmd_wire::Machine, s: crate::common::said::Said) -> String
     if s.code.as_deref().is_some_and(|c| NAMED.contains(&c)) {
         return s.said;
     }
-    let machine = origin
-        .host_name()
-        .map_or_else(copy_core::local_machine, str::to_string);
     copy_core::copy_text(
         "kit.text.machineSaid",
-        &[("machine", &machine), ("said", &s.said)],
+        &[("machine", &machine_name(origin)), ("said", &s.said)],
     )
 }
 

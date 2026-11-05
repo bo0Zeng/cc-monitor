@@ -8470,7 +8470,7 @@ text: Words,
  * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
  */
 head: Words, };
-type NeedsDown = { origin: Machine, said: string, };
+type NeedsDown = { origin: Machine, said: string, detail: string, };
 type NeedsItem = { "kind": "session", rank: number, 
 /**
  * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
@@ -8478,7 +8478,15 @@ type NeedsItem = { "kind": "session", rank: number,
 clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsMergeReq = { machines: Array<Machine>, };
-type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
+type NeedsMerged = { items: Array<NeedsAt>, total: number, 
+/**
+ * 头那一句（入口 · 总览组头）：数说得准 ⇒「需手动 n」；说不准 ⇒「需手动」（不带数）。
+ */
+head: Words, 
+/**
+ * 数说得准：没有哪台还在读 · 答失败 · 会外读不出（断着不算，断着的那台本来就不计）。
+ */
+sure: boolean, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -8507,7 +8515,7 @@ face: SessionFace, needs: Needs,
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
-type NeedsUnreadable = { origin: Machine, said: Words, };
+type NeedsUnreadable = { origin: Machine, said: Words, line: Words, };
 type SessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type SessionCan = { 
 /**

@@ -24,6 +24,8 @@ const merged: NeedsMerged = {
   total: 3,
   unreadable: [],
   down: [],
+  head: "",
+  sure: true,
 };
 
 async function book(): Promise<NeedsBook> {
