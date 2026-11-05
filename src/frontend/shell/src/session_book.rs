@@ -24,7 +24,7 @@ use face_core::book::{Seat, SessionBook};
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum In {
-    /// 那台说的一帧会话帧（`session_added` · `session_status` · `session_left` · `session_file_reread` ·
+    /// 那台说的一帧会话帧（`session_added` · `session_status` · `session_left` · `session_file_gone` · `session_file_reread` ·
     /// `sessions_replayed` · `session_runs`），原样交进来。
     Told {
         origin: String,

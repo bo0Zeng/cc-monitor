@@ -6,6 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.Annotated
+import com.ccmonitor.mobile.core.wire.gen.Branch
+import com.ccmonitor.mobile.core.wire.gen.BranchReq
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.GroupsHere
 import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.Hide
@@ -42,11 +45,11 @@ fun Allow.blocked(): String? =
 
 /*
  * 会话簿（[SessionBook]）是嵌的 Rust 核心折好交来的整份（`face_core::book`，桌面壳同一份折法）：活着的（[SessionBook.live]）·
- * 走了的（[SessionBook.left]）· 顶替 · 重读几回 · 清单报完没有。这里只有几个读法，不折。
+ * 走了的（[SessionBook.left]）· 顶替 · 重读几回 · 记录文件那一句 · 清单报完没有。这里只有几个读法，不折。
  */
 
 /** 还没有一帧的那一本（连上之前 · 换了一条流）。 */
-val EMPTY_BOOK: SessionBook = SessionBook(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), false)
+val EMPTY_BOOK: SessionBook = SessionBook(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), false)
 
 /** 那一条此刻的整份脸：活的 ⇒ 最新状态那一张；走了的 ⇒ 去向那一张；簿里没有 ⇒ `null`。 */
 fun SessionBook.face(sid: String): SessionFace? = live[sid]?.face ?: left[sid]?.face
@@ -56,6 +59,9 @@ fun SessionBook.faces(): Map<String, SessionFace> = left.mapValues { it.value.fa
 
 /** 那一条的记录被从头重读过几回（`session_file_reread`）：值变了 ⇒ 读过的那一代作废、整份重来。 */
 fun SessionBook.generation(sid: String): Long = rereads[sid] ?: 0L
+
+/** 那一条的记录文件最近怎么了，那台写好的那一句（`session_file_gone` · `session_file_reread`）；没说过 ⇒ `null`。出口照摆。 */
+fun SessionBook.fileNotice(sid: String): String? = fileSaid[sid]
 
 /** 那台说那一条此刻停得下（`face.can.stop`，一轮在跑时才是；聊天屏的停止键只认它）；不在 ⇒ 不算。 */
 fun SessionBook.canStop(sid: String): Boolean = face(sid)?.can?.stop == Allow.Yes
@@ -129,6 +135,21 @@ enum class ListSort(
 ) {
     ACTIVITY("activity"),
     CREATED("created"),
+}
+
+/**
+ * `history-branch`：一份记录的主线外清单（Esc 回退掉的那几条记录的 `id`）与后端分好的段，一页：清单里从第 [from] 条起的那几条。
+ * 下一页从回包的 `next` 起；之后的由流上 `session_branch` 接着说（[CoreLink.branches]）。
+ */
+object HistoryBranch {
+    const val COMMAND: String = Commands.HistoryBranch.NAME
+
+    fun args(
+        path: String,
+        from: Long,
+    ): Map<String, Any?> = Commands.HistoryBranch.args(BranchReq(path = path, from = from))
+
+    fun of(data: Any?): Branch? = Commands.HistoryBranch.reply(data)
 }
 
 /** `history-annotate`：改那台注解里单个隐藏那一格（与桌面历史 · 标签栏同一条命令）。 */

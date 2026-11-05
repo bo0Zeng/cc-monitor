@@ -639,6 +639,8 @@ pub struct SessionFileGone {
     pub session_id: String,
     /// 不见了的那份记录文件。
     pub path: String,
+    /// 给人看的那一句（后端写好，两端照摆）。
+    pub said: Words,
 }
 
 /// **活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
@@ -657,6 +659,8 @@ pub struct SessionFileReread {
     /// 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub lines: u64,
+    /// 给人看的那一句（照 `why` 写好，两端照摆）。
+    pub said: Words,
 }
 
 /// **一趟传输此刻的样子**（`transfer-start` 之后才出现）。每一帧都是一整份快照；带 `end` 的那一帧是这一趟的最后一帧。
@@ -824,7 +828,7 @@ pub struct RunEndLine {
 /// `at` 恒落在段首：起在第 `at` 条之前的段照旧，其后的段换成 `runs`（客户端不并段）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionBranch {
     /// 会话 id。
     pub sid: String,

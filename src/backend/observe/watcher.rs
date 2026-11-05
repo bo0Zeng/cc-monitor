@@ -2764,7 +2764,12 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.branches.remove(key);
 }
 
-/// 记录文件被改短 / 改过、已从头重显那一句（`history-tail` 回包带它；界面照摆）。
+/// 记录文件不见了那一句（`session_file_gone` 带它；两端照摆）。
+pub fn gone_said() -> crate::common::cells::Words {
+    crate::common::cells::Words(copy_core::copy_text("sessionState.recordFile.gone", &[]))
+}
+
+/// 记录文件被改短 / 改过、已从头重显那一句（`session_file_reread` 帧与 `history-tail` 回包都带它；两端照摆）。
 pub fn reread_said(why: RereadWhy) -> crate::common::cells::Words {
     crate::common::cells::Words(match why {
         RereadWhy::Truncated => copy_core::copy_text("sessionState.recordFile.truncated", &[]),
@@ -2801,6 +2806,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
                 sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
                     session_id,
                     path: path_str,
+                    said: gone_said(),
                 }));
             }
             return 0;
@@ -2848,6 +2854,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             path: path_str.clone(),
             why,
             lines: state.seqs.peek(&key_str),
+            said: reread_said(why),
         }));
     }
     branch_changed |= settle_chain(state, path);

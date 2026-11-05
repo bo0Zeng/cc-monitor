@@ -115,7 +115,7 @@
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read`）。
 3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.life.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带；一轮在跑时 `face.can.stop` 是 `yes`，停止键照它画）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
 4. 离开：只一帧 `session_left {sid, face}`，去向在 `face.life`（`reconnectable` 容器还在、接得回去 · `ended` 只能 resume，同一个 pidfile 原地换了 sid ⇒ `ended {by}` 带顶替它的那条 · `gone` 记录也不在了）。这台后端自己裁：宣告时就知道不在 tmux 里 ⇒ 当场发；在 tmux 里 · 判不了 ⇒ 等摘除之后那份 tmux 观测回来再发。
-5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
+5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。两帧都带后端写好的那一句 `said`，两端照摆、不照 `why` 自己映。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`，只带那台写好的一句 `said`（丢了约几行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了可以从记录文件补；会话状态那一类（`session_added` / `session_status` / `session_left`）与不可丢主题的 `changed` 丢了，那台紧跟着在同一条连接上把此刻的样子整份重报一次（`changed` 再发一帧、不带体，客户端重问），客户端不判、不重接。
 7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分三形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行）· `ended`（那台这一条连接断了，下一条从 hello 起）。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
 

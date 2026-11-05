@@ -36,7 +36,14 @@ class ProductsTest {
                 ),
             left = mapOf("c" to SessionLeft("c", face("ended"))),
             rereads = mapOf("a" to 1L),
+            fileSaid = mapOf("a" to "甲句"),
         )
+
+    @Test
+    fun `会话簿：记录文件那一句照核心记的原样读，没说过 ⇒ 没有`() {
+        assertEquals("甲句", book.fileNotice("a"))
+        assertNull(book.fileNotice("d"))
+    }
 
     @Test
     fun `会话簿：脸照活的那一张 · 走了的照去向那一张，簿里没有 ⇒ 没有`() {

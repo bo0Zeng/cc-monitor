@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.canStop
 import com.ccmonitor.mobile.core.claude.link.face
+import com.ccmonitor.mobile.core.claude.link.fileNotice
 import com.ccmonitor.mobile.core.claude.link.generation
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
@@ -78,6 +79,8 @@ data class ChatUiState(
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
     val failedWhy: String? = null,
+    /** 这条会话的记录文件最近怎么了（不见了 · 从头重读过），那台写好的那一句（会话簿那一格）；没说过 ⇒ `null`。 */
+    val fileNotice: String? = null,
     val canLoadOlder: Boolean = false,
     val loadingOlder: Boolean = false,
     /** 往上翻没读成的那一句（不崩页面、再上滑一次重试）。 */
@@ -730,7 +733,15 @@ class ChatSession(
                 // 叫它什么 · 顶栏那一行照会话簿那几格（那台定的）；簿里没有 ⇒ 留着上一个。脸照簿里此刻那一张（走了的也在簿里）。
                 val now = _state.value
                 val seat = t.live[s]
-                val next = now.copy(running = running, label = seat?.label ?: now.label, title = seat?.title ?: now.title, face = t.face(s) ?: now.face)
+                // 记录文件那一句照簿里那台写好的摆（簿里没说过 ⇒ 不画）。
+                val next =
+                    now.copy(
+                        running = running,
+                        label = seat?.label ?: now.label,
+                        title = seat?.title ?: now.title,
+                        face = t.face(s) ?: now.face,
+                        fileNotice = t.fileNotice(s),
+                    )
                 if (next != now) _state.value = next
             }
         }
