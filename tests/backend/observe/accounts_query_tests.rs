@@ -1432,7 +1432,11 @@ fn each_account_row_carries_its_written_kind_line() {
         "claude-code",
         false,
     );
-    assert_eq!(line(&routed, "a"), format!("{sub}{sep}a@x"), "订阅已登录 ⇒ 邮箱");
+    assert_eq!(
+        line(&routed, "a"),
+        format!("{sub}{sep}a@x"),
+        "订阅已登录 ⇒ 邮箱"
+    );
     assert_eq!(
         line(&routed, "b"),
         format!("{api}{sep}api.example.com"),
