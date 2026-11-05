@@ -551,7 +551,7 @@ pub fn preview_on(
     let asked = req.scrollback.unwrap_or(0);
     let back = asked.min(u64::from(MAX_SCROLLBACK)) as u32;
     if let Some(row) = managed_row(&target)? {
-        let view = managed_view(&row.id, color, back)?;
+        let view = managed_view(managed_own()?, &row.id, color, back)?;
         let at = now_secs();
         return Ok(preview_reply(
             &view,
@@ -585,9 +585,39 @@ pub fn preview_on(
     ))
 }
 
-/// 名叫 `session` 的那个 tmux 会话此刻的样子（`session-arrive` 没见到时抓原话）：在 ⇒ 句柄 ＋ 那一屏原文（不带颜色）。
-pub fn screen_of(session: &str) -> crate::control::session_arrive::Screen {
-    screen_on(On::default(), session)
+/// 名叫 `session`、住在 `host` 里的那个终端此刻的样子（`session-arrive` 没见到时抓原话）：在 ⇒ 句柄 ＋ 那一屏原文（不带颜色）。
+/// tmux 那一形问 tmux；托管那一形经托管口抓（托管名单没装 ⇒ 不在）。
+pub fn screen_of(
+    session: &str,
+    host: crate::wire::TerminalHost,
+) -> crate::control::session_arrive::Screen {
+    use crate::wire::TerminalHost;
+    match host {
+        TerminalHost::Tmux => screen_on(On::default(), session),
+        TerminalHost::Managed => crate::host::managed::installed().map_or(
+            crate::control::session_arrive::Screen::Gone,
+            |own| hosted_screen_in(own, session),
+        ),
+    }
+}
+
+/// [`screen_of`] 托管那一形：`own` 底下名叫 `session` 的托管终端（同预览那一屏，经 [`managed_view`]）。
+pub(crate) fn hosted_screen_in(
+    own: &crate::platform::fs::Own,
+    session: &str,
+) -> crate::control::session_arrive::Screen {
+    use crate::control::session_arrive::Screen;
+    let rows = crate::host::managed::rows_at(own);
+    let Some(row) = rows.iter().find(|r| r.name == session) else {
+        return Screen::Gone;
+    };
+    match managed_view(own, &row.id, false, 0) {
+        Ok(v) => Screen::There {
+            terminal: row.handle(),
+            text: v.text,
+        },
+        Err(e) => Screen::Unread(e.said),
+    }
 }
 
 /// [`screen_of`] 问 `on` 那台 tmux。
@@ -905,11 +935,25 @@ fn managed_gone(e: &std::io::Error) -> Said {
     .and_raw(Some(&e.to_string()))
 }
 
-/// 托管终端的一屏（托管口 `capture`）⇒ 与 tmux 那一形同一份 [`View`]（之后的成品 · 指纹同一套）。
-fn managed_view(id: &str, color: bool, back: u32) -> Result<View, Said> {
+/// 托管终端的一屏（`own` 底下 `id` 的托管口 `capture`）⇒ 与 tmux 那一形同一份 [`View`]（之后的成品 · 指纹同一套）。
+/// 读托管终端画面只这一个口（预览 · 送字前核屏 · 等报到超时抓原话）。
+fn managed_view(
+    own: &crate::platform::fs::Own,
+    id: &str,
+    color: bool,
+    back: u32,
+) -> Result<View, Said> {
+    let sock = crate::host::managed::home::sock_of(own, id)
+        .map_err(|s| managed_gone(&std::io::Error::other(s.logged())))?;
     view_of_captured(
-        crate::host::managed::capture(id, back as usize, color).map_err(|e| managed_gone(&e))?,
+        crate::host::managed::client::capture(&sock, back as usize, color)
+            .map_err(|e| managed_gone(&e))?,
     )
+}
+
+/// 名单里那一行托管终端所在的家（托管行只从装好的家里列出来 ⇒ 没装就没有这一行，照不认得）。
+fn managed_own() -> Result<&'static crate::platform::fs::Own, Said> {
+    crate::host::managed::installed().ok_or_else(|| not_known("not_known"))
 }
 
 /// 名单里对上的托管那一行 ⇒ 它的托管口（实时预览经它开一条只看的连接）；不是托管那一形 ⇒ `None`（交 tmux 那一形）。
@@ -1117,7 +1161,7 @@ fn send_managed(
         return Ok(refused(Refused::HeldElsewhere));
     }
     if let Some(seen) = &req.seen_screen {
-        let v = managed_view(&row.id, false, 0)?;
+        let v = managed_view(managed_own()?, &row.id, false, 0)?;
         let mut style = Style::default();
         let plain: Vec<String> = split_lines(&v.text)
             .into_iter()
