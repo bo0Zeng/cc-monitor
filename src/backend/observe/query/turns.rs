@@ -44,7 +44,7 @@ pub struct HistoryTurns {
     /// 下一页从哪个字节起（＝ 下一页第一轮的 `at`）；没有下一页 ⇒ `null`。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub next: Option<u64>,
-    /// 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+    /// 这一段里的每一轮，文件序；`startText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
     pub turns: Vec<crate::observe::recognize::turns::TurnRow>,
 }
 

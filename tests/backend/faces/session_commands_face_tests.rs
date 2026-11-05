@@ -36,7 +36,7 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
                 c.name.as_str(),
                 c.scope,
                 c.scope_text.as_str(),
-                c.needs_args,
+                c.needs_args_text.is_some(),
                 c.confirm,
             )
         })
@@ -77,7 +77,6 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
             "confirm",
             "confirmText",
             "name",
-            "needsArgs",
             "needsArgsText",
             "scope",
             "scopeText",
@@ -116,12 +115,9 @@ fn each_command_carries_the_words_for_its_marks() {
     let got = commands_of(&face, None, std::path::Path::new(""));
     let t = |k: &str| copy_core::copy_text(k, &[]);
     for c in &got.commands {
-        assert_eq!(
-            c.needs_args_text.clone(),
-            c.needs_args.then(|| t("beSessionCommands.mark.needsArgs")),
-            "{}",
-            c.name
-        );
+        if let Some(text) = &c.needs_args_text {
+            assert_eq!(*text, t("beSessionCommands.mark.needsArgs"), "{}", c.name);
+        }
         assert_eq!(
             c.confirm_text.clone(),
             c.confirm.then(|| t("beSessionCommands.mark.confirm")),
@@ -129,7 +125,10 @@ fn each_command_carries_the_words_for_its_marks() {
             c.name
         );
     }
-    assert!(got.commands.iter().any(|c| c.needs_args) && got.commands.iter().any(|c| c.confirm));
+    assert!(
+        got.commands.iter().any(|c| c.needs_args_text.is_some())
+            && got.commands.iter().any(|c| c.confirm)
+    );
 }
 
 /// ★ ［+］面板分隔线下那两个一次性动作：送进会话的那一句与先不先确认由后端给（压缩不确认 · 清空先确认）；
@@ -167,7 +166,7 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
     (got.compact, got.clear) = one_shots("claude");
     let t = |k: &str| copy_core::copy_text(k, &[]);
     let want = format!(
-        r#"{{"commands":[{{"name":"clear","text":"{text}","scope":"builtin","scopeText":"{scope}","needsArgs":false,"confirm":true,"needsArgsText":null,"confirmText":"{confirm}"}}],"skills":[],"problems":[],"compact":{{"say":"/compact","confirm":false}},"clear":{{"say":"/clear","confirm":true}}}}"#,
+        r#"{{"commands":[{{"name":"clear","text":"{text}","scope":"builtin","scopeText":"{scope}","confirm":true,"needsArgsText":null,"confirmText":"{confirm}"}}],"skills":[],"problems":[],"compact":{{"say":"/compact","confirm":false}},"clear":{{"say":"/clear","confirm":true}}}}"#,
         text = t("beSessionCommands.builtin.clear"),
         scope = t("beSessionCommands.scope.builtin"),
         confirm = t("beSessionCommands.mark.confirm"),

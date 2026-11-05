@@ -130,14 +130,13 @@ pub(crate) fn try_with(
 
 /// 一判写成线上的形（`rotation-try` · `rotation-view` 同用）。
 pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
-    let (pick, hold_until, hold_account) = match &d.pick {
-        Pick::Use(a) => (Some(a.clone()), None, None),
-        Pick::Hold { until, account } => (None, *until, account.clone()),
+    let (pick, hold_until) = match &d.pick {
+        Pick::Use(a) => (Some(a.clone()), None),
+        Pick::Hold { until, .. } => (None, *until),
     };
     RotTryDecision {
         pick,
         hold_until,
-        hold_account,
         order: d.order.clone(),
         why: d
             .why
@@ -188,7 +187,6 @@ pub(crate) fn timeline_of(
                     text: use_text(account.as_deref()),
                     account,
                     from_temp: u.from_temp,
-                    cap_unknown: u.cap_unknown,
                     skipped: u.skipped.clone(),
                 }
             })

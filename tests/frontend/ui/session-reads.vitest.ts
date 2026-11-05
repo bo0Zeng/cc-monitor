@@ -206,7 +206,6 @@ describe("〔STC〕第五问：会话事实", () => {
       ],
       lastSay: { text: "done", at: "t5", atMs: null },
       needs: null,
-      handedBack: ["ag-7"],
       retries: [
         { id: "rt-1", outcome: "recovered", text: copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.overloaded"), a: "1", time: "07:34" }) },
         { id: "rt-2", outcome: "retrying", text: copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: "1", maxRetries: "10" }), time: "08:30" }) },
@@ -226,13 +225,11 @@ describe("〔STC〕第五问：会话事实", () => {
         text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
       },
       cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
-      bgTasks: [{ call: "tu-b1", task: "bb1", cmd: "make test-all", at: "2026-10-09T08:00:00.000Z" }],
       background: null,
       mcp: [
         { name: "m-f", status: "failed", detail: "e-f", at: null },
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
-      answerOff: null,
       autoAnswer: null,
       autoAnswerChoices: [
         { min: 0, text: copyText("beAsk.auto.off") },
@@ -327,9 +324,9 @@ describe("主窗口第 2 批：每轮的摘要", () => {
   it("★★ 金样：两轮 —— 第一轮收尾（思考 1 · 中间的话 · 调用 2 · 失败 1〔被拒不算〕· 结论 · 回复头三行 · 两段过程各自的字与语气），第二轮还在跑", () => {
     const t = golden["history-turns"] as HistoryTurns;
     expect(t.from).toBe(0);
-    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.agents, x.background, x.retries, x.peers, x.fails, x.shown, x.reply, x.done, x.phase])).toEqual([
-      ["t-1", "first line", 2, 1, 0, 0, 0, 0, 1, ["t-3", "t-8"], "r1\nr2\nr3", true, "idle"],
-      ["t-9", "next", 1, 0, 0, 0, 0, 0, 0, [], "", false, "idle"],
+    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.agents, x.background, x.retries, x.fails, x.shown, x.reply, x.done, x.phase])).toEqual([
+      ["t-1", "first line", 2, 1, 0, 0, 0, 1, ["t-3", "t-8"], "r1\nr2\nr3", true, "idle"],
+      ["t-9", "next", 1, 0, 0, 0, 0, 0, [], "", false, "idle"],
     ]);
     expect(t.turns[0].folds.map((f) => [f.after, f.parts.map((p) => p.tone), f.phase])).toEqual([
       ["t-1", ["plain", "plain"], "idle"],

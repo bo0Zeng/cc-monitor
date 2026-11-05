@@ -97,7 +97,6 @@ function reply(p: Partial<SessionAccountReply>): SessionAccountReply {
     sampled: null,
     differs: false,
     badge: null,
-    queryable: true,
     ...p,
   };
 }

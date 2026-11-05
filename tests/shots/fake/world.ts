@@ -98,7 +98,7 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     { child: childA2(c) },
   );
   c.from({ kind: "agentMessage", from: "a1", name: "补重试的单元测试", handback: true, body: "测试已写好：`tests/test_inventory_client.py`，成功、重试后成功、重试耗尽三个用例全部通过。" });
-  // 同一个子运行的收场通知（以交回为准：会话事实 handedBack 说它交回了 ⇒ 消息流里不画这一条）。
+  // 同一个子运行的收场通知（以交回为准：后端把它记进通知组的 `hidden` ⇒ 消息流里不画这一条）。
   c.from({ kind: "taskNotification", taskId: "a1", status: "completed", summary: "补重试的单元测试" });
   c.from({ kind: "taskNotification", taskId: "b1", status: "completed", summary: "lint" });
   c.from({ kind: "taskNotification", taskId: "b2", status: "failed", summary: "类型检查" });

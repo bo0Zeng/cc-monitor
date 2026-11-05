@@ -45,7 +45,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
   return {
     now: NOW,
     nowText: "14:30", title: null,
-    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false, hand: false },
+    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, tzUnknown: false, hand: false },
     board: BOARD,
     start: "",
     current: "",
@@ -58,9 +58,9 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     timeline: {
       switches: [{ at: NOW + 5400, atText: "16:00", account: "lab" }],
       uses: [
-        { from: NOW, to: NOW + 5400, account: "team", fromTemp: false, capUnknown: false, skipped: [], text: "team" },
-        { from: NOW + 5400, to: NOW + 9000, account: "lab", fromTemp: true, capUnknown: false, skipped: ["work"], text: "lab" },
-        { from: NOW + 9000, to: NOW + 43_200, fromTemp: false, capUnknown: false, skipped: [], text: copyText("rot.sim.hold") },
+        { from: NOW, to: NOW + 5400, account: "team", fromTemp: false, skipped: [], text: "team" },
+        { from: NOW + 5400, to: NOW + 9000, account: "lab", fromTemp: true, skipped: ["work"], text: "lab" },
+        { from: NOW + 9000, to: NOW + 43_200, fromTemp: false, skipped: [], text: copyText("rot.sim.hold") },
       ],
       lanes: [
         { account: "team", segs: [{ from: NOW, to: NOW + 3600, sendable: true, reset: false, text: "夹具·剩 42" }, { from: NOW + 3600, to: NOW + 43_200, sendable: true, reset: true, text: "夹具·↻15:30" }] },
@@ -77,8 +77,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
 
 const LIST: RotationStrategiesReply = {
   strategies: [
-    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, wordsBad: false, tzUnknown: false, hand: false },
-    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, wordsBad: false, tzUnknown: false, hand: true },
+    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, tzUnknown: false, hand: false },
+    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, tzUnknown: false, hand: true },
   ],
   forNew: "按权重轮换",
   oldScripts: 0,

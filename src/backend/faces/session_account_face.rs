@@ -242,7 +242,6 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         sampled,
         differs,
         badge,
-        queryable: f.queryable,
         own_upstream,
     }
 }
