@@ -37,8 +37,8 @@ class SessionsMidTest {
                 mapOf(
                     "commands" to
                         listOf(
-                            mapOf("name" to "clear", "text" to "清空", "scope" to "builtin", "scopeText" to "内置","confirm" to true, "needsArgsText" to null, "confirmText" to "先确认"),
-                            mapOf("name" to "deploy", "text" to null, "scope" to "project", "scopeText" to "本项目","confirm" to false, "needsArgsText" to "带参数", "confirmText" to null),
+                            mapOf("name" to "clear", "text" to "清空", "scope" to "builtin", "scopeText" to "内置", "confirm" to true, "needsArgsText" to null, "confirmText" to "先确认"),
+                            mapOf("name" to "deploy", "text" to null, "scope" to "project", "scopeText" to "本项目", "confirm" to false, "needsArgsText" to "带参数", "confirmText" to null),
                         ),
                     "skills" to listOf(mapOf("name" to "pdf", "text" to null, "say" to "用 pdf 这个 Skill")),
                     "problems" to listOf("读不出 x"),
@@ -53,7 +53,7 @@ class SessionsMidTest {
         assertNull("那一家不支持清空 ⇒ 没有那一项", r.clear)
         assertEquals("用 pdf 这个 Skill", r.skills.single().say)
         assertEquals(listOf("读不出 x"), r.problems)
-        assertNull("scope 认不出 ⇒ 解不出", SessionCommandList.of(mapOf("commands" to listOf(mapOf("name" to "x", "text" to null, "scope" to "team", "scopeText" to "","confirm" to false, "needsArgsText" to null, "confirmText" to null)), "skills" to emptyList<Any>(), "problems" to emptyList<Any>(), "compact" to null, "clear" to null)))
+        assertNull("scope 认不出 ⇒ 解不出", SessionCommandList.of(mapOf("commands" to listOf(mapOf("name" to "x", "text" to null, "scope" to "team", "scopeText" to "", "confirm" to false, "needsArgsText" to null, "confirmText" to null)), "skills" to emptyList<Any>(), "problems" to emptyList<Any>(), "compact" to null, "clear" to null)))
     }
 
     @Test
