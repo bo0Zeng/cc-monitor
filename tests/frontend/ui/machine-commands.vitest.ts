@@ -13,6 +13,8 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 const state = (name: string, over: Partial<MachineState> = {}): MachineState => ({
   name,
   state: "up",
+  dot: "up",
+  linked: true,
   offline: false,
   reason: null,
   stage: null,
@@ -40,7 +42,7 @@ const to = (): MachineActions => ({ openTerminal: vi.fn(), newSession: vi.fn(), 
 
 const menu: MachineMenu = {
   from: "table",
-  head: state("nas", { state: "down", offline: true, word: "w-down", said: "said-down" }),
+  head: state("nas", { state: "down", dot: "failed", linked: false, offline: true, word: "w-down", said: "said-down" }),
   actions: [
     { act: "open_terminal", sub: "ssh nas · 登录 shell", blocked: null, note: "终端照开" },
     { act: "new_session", sub: null, blocked: "nas w-down", note: null },
@@ -96,7 +98,7 @@ describe("machineBlock", () => {
 
 describe("machineRows", () => {
   it("每台一行，本机在前；词照成品；Enter 填名字", () => {
-    const rows = machineRows({ nas: state("nas"), "<local>": state("here"), lab: state("lab", { state: "down", word: "w-fail" }) });
+    const rows = machineRows({ nas: state("nas"), "<local>": state("here"), lab: state("lab", { state: "down", dot: "failed", linked: false, word: "w-fail" }) });
     expect(rows.map((r) => [r.title, r.sub, r.dot, r.fill, r.group])).toEqual([
       ["here", undefined, "up", "here", "machine"],
       ["nas", undefined, "up", "nas", "machine"],

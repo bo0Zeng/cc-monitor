@@ -173,6 +173,8 @@ import { machineMeta as machineMetaReal } from "../../../../src/frontend/ui/sett
 const state = (over: Partial<MachineState> = {}): MachineState => ({
   name: "devbox",
   state: "needs_update",
+  dot: "warn",
+  linked: true,
   offline: false,
   reason: null,
   stage: null,
@@ -235,9 +237,9 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★ 本机后端没起来（壳那一格）之后又来一份本机成品 ⇒ 导航点与卡头仍照壳那一格", async () => {
     await mount();
-    captured.localBackend = { state: "down", look: "down", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null };
+    captured.localBackend = { state: "down", dot: "failed", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null };
     captured.local!(captured.localBackend);
-    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     expect(headWord(LOCAL_PAGE), "迟到的本机成品把壳那一句盖了").toBe("壳·没起来");
     expect(problem(LOCAL_PAGE).textContent).toContain("壳·本机后端没起来");
@@ -247,10 +249,10 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★ 卡上「连接这台」表单里关了、还没存 ⇒ 卡头照那台状态，不先写「已停用」", async () => {
     await mount();
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     captured.formOff = true;
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     expect(headWord(REMOTE_PAGE), "表单里没保存的开关写成了「已停用」").toBe("");
     expect(headDot(REMOTE_PAGE)).toBe("up");
@@ -260,7 +262,7 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★「这台上的 cc-monitor」折叠头与后端那一行状态格是同一句", async () => {
     await mount();
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     expect(ccState(REMOTE_PAGE)).not.toBe(copyText("backend.buildCells.querying"));
     expect(ccSummary(REMOTE_PAGE)).toBe(ccState(REMOTE_PAGE));
@@ -269,7 +271,7 @@ describe("设置窗那台的几格只由那台状态写", () => {
   it("★ 版本不可比的那台：后端写在词里的「开发版」卡头只出一次（第二行不另补）", async () => {
     await mount();
     const dev = copyText("machineState.word.incomparable");
-    captured.machine!("devbox", state({ state: "up", word: dev, said: "", version: null, versionRelation: "incomparable" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: dev, said: "", version: null, versionRelation: "incomparable" }));
     await settle();
     const head = pageOf(REMOTE_PAGE).querySelector<HTMLElement>(".machine-head")?.textContent ?? "";
     expect(headWord(REMOTE_PAGE)).toBe(dev);
@@ -278,12 +280,12 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★ 那台的状态帧内容没变、再来一帧 ⇒ 不再重问状态 · 退出策略 · 认不出的会话流", async () => {
     await mount();
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     const before = { ...captured.asked };
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
-    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same" }));
-    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     expect(captured.asked, "同样的一帧又触发了重问").toEqual({
       status: before.status + 1,
@@ -294,11 +296,11 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★ 那台从离线变成连着 ⇒ 后端那一行重问一次，状态格照新的写", async () => {
     await mount();
-    captured.machine!("devbox", state({ state: "down", offline: true, word: "", said: "" }));
+    captured.machine!("devbox", state({ state: "down", dot: "failed", linked: false, offline: true, word: "", said: "" }));
     await settle();
     expect(ccState(REMOTE_PAGE)).toContain(copyText("machinePage.state.down"));
     const before = captured.asked.status;
-    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("devbox", state({ state: "up", dot: "up", word: "", said: "", versionRelation: "same" }));
     await settle();
     expect(captured.asked.status).toBe(before + 1);
     expect(ccState(REMOTE_PAGE)).toContain(copyText("backend.status.connected"));
@@ -306,10 +308,10 @@ describe("设置窗那台的几格只由那台状态写", () => {
 
   it("★ 壳推了本机后端没起来之后，后端那一行问回来的旧「起着」不盖它", async () => {
     await mount();
-    captured.local!({ state: "down", look: "down", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null });
+    captured.local!({ state: "down", dot: "failed", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null });
     // `backend_status` 的回包还是旧的那一份（起着）：它不许写本机那一格。
     captured.localBackend = { state: "up" };
-    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same", version: "1.2.3" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", dot: "up", word: "", said: "", versionRelation: "same", version: "1.2.3" }));
     await settle();
     expect(headWord(LOCAL_PAGE), "回包里那份旧的盖了壳推来的那一格").toBe("壳·没起来");
   });

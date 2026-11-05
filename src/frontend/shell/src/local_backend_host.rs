@@ -1729,7 +1729,7 @@ pub(crate) fn local_backend_now() -> LocalBackend {
 pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     use cmd_wire::attach::Relation;
     use cmd_wire::cells::Tone;
-    use cmd_wire::machine::MachineStateKind;
+    use cmd_wire::machine::MachineDot;
     if channel {
         return LocalBackend::Up;
     }
@@ -1739,7 +1739,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     let machine = copy_core::local_machine();
     if LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst) {
         return LocalBackend::Starting {
-            look: MachineStateKind::Connecting,
+            dot: MachineDot::Pending,
             tone: Tone::Busy,
             word: copy_text("machineState.word.connecting", &[]),
             said: copy_text(
@@ -1763,7 +1763,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     }];
     match relation {
         Relation::Older => LocalBackend::Older {
-            look: MachineStateKind::NeedsUpdate,
+            dot: MachineDot::Warn,
             tone: Tone::Warn,
             word: copy_text("machineState.word.needsUpdate", &[]),
             said: copy_text("front.title.update", &[("machine", &machine)]),
@@ -1772,7 +1772,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
         },
         // 口上那一份比这一版新也是没连着：点画成没连着（`Newer` 那一态是连着的点），与出错那一句对上。
         Relation::Newer => LocalBackend::Newer {
-            look: MachineStateKind::Down,
+            dot: MachineDot::Failed,
             tone: Tone::Fail,
             word: copy_text("machineState.word.newer", &[]),
             said: copy_text("machineState.problem.newer", &[("machine", &machine)]),
@@ -1781,7 +1781,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
         },
         // 起不来过 ⇒ 说起不来的那一句（没带后端 · 释放失败 · 起了接不上 · 被拒）；没有 ⇒ 只说没在跑。
         Relation::Same | Relation::Incomparable => LocalBackend::Down {
-            look: MachineStateKind::Down,
+            dot: MachineDot::Failed,
             tone: Tone::Fail,
             word: copy_text("machinePage.state.down", &[]),
             said: lock(&LOCAL_FAILED).unwrap_or_else(|| copy_text("machineState.down.local", &[])),

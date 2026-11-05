@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.link
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Failed
-import com.ccmonitor.mobile.core.wire.gen.LinkLine
 
 /**
  * 屏上那一句 ＋ 复制详情。核心写好的失败（[Failed]）原样：`said` 上屏、`detail` 进详情；
@@ -15,12 +14,6 @@ data class Problem(
 )
 
 private fun core(f: Failed) = Problem(f.said, f.detail)
-
-/** 那台状态成品的那一句 ＋ 复制详情（接一台走不通 ⇒ 核心说的那一句）。 */
-fun LinkLine.problem(): Problem = Problem(machine.said, machine.detail.orEmpty())
-
-/** 通着、但那台旧了 · 较新（照用对得上的那几条）⇒ 成品那一句；成品不出问题行 ⇒ `null`。 */
-fun LinkLine.Up.notice(): Problem? = problem().takeIf { it.text.isNotEmpty() }
 
 /**
  * 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。

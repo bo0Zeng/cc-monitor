@@ -59,7 +59,7 @@ const opened = (): Record<string, unknown>[] => sent.filter((s) => s.op === "ses
 
 const FACTS = { recent: [], tmux: true, hosts: ["tmux"], run: "direct", agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }], fork: null };
 const machineOf = (name: string) => ({
-  name, state: "up", offline: false, reason: null, stage: null, version: null, versionRelation: null, os: null,
+  name, state: "up", dot: "up", linked: true, offline: false, reason: null, stage: null, version: null, versionRelation: null, os: null,
   word: "", said: "", offlineSaid: `${name} 离线`, fixes: [], seenHostKey: null, expectedHostKey: null, detail: null,
 });
 const OK = {

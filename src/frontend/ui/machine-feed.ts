@@ -111,11 +111,11 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
   };
 }
 
-/** 那台变成连着的那一刻（起着 / 断开之后接上）叫一次；连着时再来的帧不叫。回退订函数。 */
+/** 那台变成连着的那一刻（起着 / 断开之后接上；连着没有照成品的 `linked`）叫一次；连着时再来的帧不叫。回退订函数。 */
 export function onMachineUp(cb: (origin: string) => void): () => void {
   const up = new Set<string>();
   return onMachineState((origin, m) => {
-    if (m.state !== "up") {
+    if (!m.linked) {
       up.delete(origin);
       return;
     }

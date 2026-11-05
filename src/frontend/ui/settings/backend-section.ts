@@ -606,9 +606,9 @@ export class BackendSection {
     this.paintedOf.set(origin, this.paintKey(origin));
     try {
       const st = await commands.backend_status({ origin });
-      // 本机：壳那条连接在不在；远端：后端推来的那台成品说它离不离线（与名字旁的点同一个源，壳不另答）。
+      // 本机：壳那条连接在不在；远端：后端推来的那台成品说它连着没有（`linked`，与名字旁的点同一个源，壳不另答）。
       const m = this.stateOf?.(origin) ?? null;
-      const on = isLocalOrigin(origin) ? st.channel === true : m !== null && !m.offline;
+      const on = isLocalOrigin(origin) ? st.channel === true : m !== null && m.linked;
       const word = on ? copyText("backend.status.connected") : copyText("machinePage.state.down");
       const ver = m?.version ?? null;
       if (state.nextElementSibling?.hasAttribute("data-unregistered-why")) state.nextElementSibling.remove();

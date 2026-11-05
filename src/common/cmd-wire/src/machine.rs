@@ -292,6 +292,23 @@ pub enum MachineStateKind {
     Unknown,
 }
 
+/// 那台的点画哪一档（闭集，判定只在后端 `deploy::machine::dot`；两端照它挑样子）：`up` 连着 · `pending` 正在连 / 装 / 更新 / 还不知道 ·
+/// `warn` 连着但那台旧了 · `failed` 没连上 / 指纹不对 / 做不了 · `off` 「连接这台」关着。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineDot {
+    Up,
+    Pending,
+    Warn,
+    Failed,
+    Off,
+}
+
 /// 正在连时到哪一步：部署预检（核对版本）· 接那台的常驻后端。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -362,6 +379,10 @@ pub struct MachineState {
     /// 给人看的那台的名字（问题行那一句里说的就是它）。
     pub name: String,
     pub state: MachineStateKind,
+    /// 那台的点画哪一档（两端都只照这一格挑点，不照 `state` 另挑）。
+    pub dot: MachineDot,
+    /// 那台连着没有（连着 · 那台旧了 · 那台比这一版新 ⇒ 是）：新建框能不能选它 · 设置里那一行算不算连着 · 「那台上线了」都照这一格。
+    pub linked: bool,
     /// 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
     pub offline: bool,
     /// 没连上的原因码（`down` · `host_key_changed` 才有）。

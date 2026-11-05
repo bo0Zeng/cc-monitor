@@ -106,11 +106,11 @@ async function mount(
   opts: { cellsThrow?: boolean } = {},
 ): Promise<{ sec: RemoteSection; backend: BackendSection }> {
   ipc.hosts = hosts;
-  // 远端那一格的在不在照后端推来的那台成品：甲机此刻在线。
+  // 远端那一格的在不在照后端推来的那台成品：甲机此刻连着。
   const backend = new BackendSection({
     headless: true,
     hosted: true,
-    stateOf: (o) => (o === "甲机" ? ({ offline: false } as MachineState) : null),
+    stateOf: (o) => (o === "甲机" ? ({ offline: false, linked: true } as MachineState) : null),
   });
   cur.backend = backend;
   cur.cellsThrow = opts.cellsThrow;

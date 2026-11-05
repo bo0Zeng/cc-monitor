@@ -369,8 +369,7 @@ export class RemoteSection {
     // 本机那一行建页时成品多半还没到（标题是「机器不明」）⇒ 成品到一份、标题照成品的 `name` 换一次（先换、点那一句才叫对名字）。
     // 远端那几行的标题是机器表里的键（编辑那台时跟着卡片改），不归这里。
     if (pageId === LOCAL_MACHINE_PAGE_ID) this.retitleLocal(m.name);
-    const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
-    this.paintFace(pageId, machineFace(m), up, m.state !== "disabled" && m.state !== "unknown");
+    this.paintFace(pageId, machineFace(m), m.linked, m.state !== "disabled" && m.state !== "unknown");
   }
 
   /** 本机那一行与那一页的标题换成 `name`（同名 ⇒ 不动）。 */

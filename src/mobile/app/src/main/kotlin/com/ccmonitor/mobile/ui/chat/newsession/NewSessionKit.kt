@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.chat.newsession
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -153,18 +151,6 @@ internal fun AccountBadge(
     val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
         Text(text ?: copyText("acct.val.none"), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
-    }
-}
-
-/** 机器那一颗状态点：通着 ⇒ 实心绿；断着 ⇒ 空心；还没连过 ⇒ 不画（[up] 为 `null`）。 */
-@Composable
-internal fun MachineDot(up: Boolean?) {
-    val tokens = LocalAppTokens.current
-    val m = Modifier.size(8.dp)
-    when (up) {
-        true -> Box(m.background(tokens.success, CircleShape))
-        false -> Box(m.border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
-        null -> Box(m)
     }
 }
 

@@ -675,6 +675,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const m: MachineState = {
       name: "box-1",
       state: "up",
+      dot: "up",
+      linked: true,
       offline: false,
       reason: null,
       stage: null,
@@ -706,6 +708,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const ms = (over: Partial<MachineState>): MachineState => ({
       name: "m",
       state: "up",
+      dot: "up",
+      linked: true,
       offline: false,
       reason: null,
       stage: null,
@@ -723,15 +727,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
     // 各台成品到了、计数那一句还没到 ⇒ 页头不自己数。
     sec.setMachine("machine:a", ms({ state: "needs_update", word: "w", said: "s" }));
-    sec.setMachine("machine:c", ms({ state: "down", offline: true, said: "s" }));
+    sec.setMachine("machine:c", ms({ state: "down", dot: "failed", linked: false, offline: true, said: "s" }));
     expect(count()).toBe("");
     sec.setFleet(fleet("核心·机器 4 那一句"));
     expect(count()).toBe("核心·机器 4 那一句");
     // 再来一台的成品、连接变了 ⇒ 页头不动，等后端那一份。
-    sec.setMachine("machine:b", ms({ state: "down", offline: true, said: "s" }));
+    sec.setMachine("machine:b", ms({ state: "down", dot: "failed", linked: false, offline: true, said: "s" }));
     expect(count()).toBe("核心·机器 4 那一句");
     // 本机后端没起来（壳那一格）⇒ 计数那一句不出。
-    sec.setLocalBackend({ state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null });
+    sec.setLocalBackend({ state: "down", dot: "failed", tone: "fail", word: "w", said: "s", fixes: [], next: null });
     expect(count()).toBe("");
     // 本机那一台的成品又到了 ⇒ 仍等下一份计数那一句。
     sec.setMachine(LOCAL_MACHINE_PAGE_ID, ms({}));
@@ -750,6 +754,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const m: MachineState = {
       name: "a",
       state: "installing",
+      dot: "pending",
+      linked: false,
       offline: false,
       reason: null,
       stage: null,
@@ -1140,6 +1146,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       sec.setMachine("machine:a", {
         name: "a",
         state: "disabled",
+        dot: "off",
+        linked: false,
         offline: false,
         reason: null,
         stage: null,
@@ -1168,6 +1176,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       sec.setMachine("machine:a", {
         name: "a",
         state: "up",
+        dot: "up",
+        linked: true,
         offline: false,
         reason: null,
         stage: null,

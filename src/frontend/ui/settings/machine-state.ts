@@ -1,6 +1,6 @@
 /**
  * 每台机器的状态成品：排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
- * 哪一态、那一句、给哪几颗修法、按钮上的字、问题行的语气与带不带进度都是后端定的（`deploy::machine`）；这里只挑样子：点照那一态，语气 · 进度条照 `strip`。
+ * 哪一态、那一句、给哪几颗修法、按钮上的字、问题行的语气与带不带进度都是后端定的（`deploy::machine`）；这里只挑样子：点照 `dot` 那一档，语气 · 进度条照 `strip`。
  */
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
@@ -38,7 +38,7 @@ const TONE: Record<Tone, MachineFace["tone"]> = { plain: "warn", now: "busy", bu
 
 export function machineFace(m: MachineState): MachineFace {
   return {
-    dot: machineDot(m.state),
+    dot: machineDot(m.dot),
     word: m.word,
     problem: m.said,
     // 不进条（连着 · 较新 · 停用 · 不明）还有那一句 ⇒ 待办：这几样都不是出错。

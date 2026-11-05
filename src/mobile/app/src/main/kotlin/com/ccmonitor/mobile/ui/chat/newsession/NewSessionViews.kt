@@ -32,6 +32,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
+import com.ccmonitor.mobile.ui.common.StatusDot
 
 /** 供 UI 测试与冒烟定位的 tag（与文案解耦）。 */
 object NewSessionTags {
@@ -48,11 +50,15 @@ object NewSessionTags {
 /** 选项那几个底部抽屉。 */
 enum class NewSessionSheet { Machine, Agent, Account, Cwd }
 
-/** 手机上的一台机器（机器抽屉一行）：[up] ＝ 那台常驻流此刻通不通（还没连过 ⇒ `null`）。 */
+/**
+ * 手机上的一台机器（机器抽屉一行）：[dot] · [linked] 是那台成品的那两格（点画哪一档 · 连着没有，后端一处定，桌面同一份）；
+ * 核心还没交过那一行 ⇒ 都是 `null`（不画点、不说离线）。
+ */
 data class MachineRow(
     val hostId: String,
     val name: String,
-    val up: Boolean?,
+    val dot: MachineDot?,
+    val linked: Boolean?,
 )
 
 /**
@@ -119,10 +125,10 @@ fun MachineSheet(
         PickRow(
             title = m.name,
             tag = NewSessionTags.ROW,
-            second = if (m.up == false) copyText("machinePage.state.down") else null,
+            second = if (m.linked == false) copyText("machinePage.state.down") else null,
             selected = m.hostId == current,
             onClick = { onPick(m.hostId) },
-            lead = { MachineDot(m.up) },
+            lead = { StatusDot(m.dot, null) },
         )
     }
 }

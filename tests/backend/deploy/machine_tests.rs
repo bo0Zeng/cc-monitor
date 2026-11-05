@@ -999,3 +999,74 @@ fn the_strip_tone_is_the_shared_cell_tone() {
     assert_eq!(down.tone, cmd_wire::cells::Tone::Offline);
     assert_eq!(serde_json::to_value(down).unwrap()["tone"], "offline");
 }
+
+/// 那台的点画哪一档 · 算不算连着：每一态一行，只在这里定（两端照 `dot` · `linked` 画，不各自照 `state` 挑）。
+/// 停用 ⇒ `off`（手机与桌面同一档）；那台旧了 ⇒ 仍连着（新建框不标「未连接」）。
+#[test]
+fn every_state_lands_on_its_dot_and_whether_it_is_linked() {
+    use cmd_wire::machine::MachineDot as D;
+    let cases: Vec<(&str, MachineState, D, bool)> = vec![
+        ("连着", of(vec![up(Relation::Same, &[])], true), D::Up, true),
+        (
+            "比这一版新",
+            of(vec![up(Relation::Newer, &[])], true),
+            D::Up,
+            true,
+        ),
+        (
+            "那台旧",
+            of(vec![up(Relation::Older, &[])], true),
+            D::Warn,
+            true,
+        ),
+        (
+            "停用",
+            of(vec![up(Relation::Same, &[])], false),
+            D::Off,
+            false,
+        ),
+        ("还不知道", of(vec![], true), D::Pending, false),
+        (
+            "正在连",
+            of(vec![round(Round::Connecting)], true),
+            D::Pending,
+            false,
+        ),
+        (
+            "正在装",
+            of(vec![Fact::Step(Step::Place { updating: false })], true),
+            D::Pending,
+            false,
+        ),
+        (
+            "正在更新",
+            of(vec![Fact::Step(Step::Place { updating: true })], true),
+            D::Pending,
+            false,
+        ),
+        (
+            "没连上",
+            of(vec![down_(Some(Why::Timeout))], true),
+            D::Failed,
+            false,
+        ),
+        (
+            "指纹不对",
+            of(vec![down_(Some(Why::HostKey))], true),
+            D::Failed,
+            false,
+        ),
+        ("做不了", of(vec![unsupported()], true), D::Failed, false),
+    ];
+    for (name, got, dot, linked) in cases {
+        assert_eq!(
+            (got.dot, got.linked),
+            (dot, linked),
+            "{name}（{:?}）",
+            got.state
+        );
+    }
+    let wire = serde_json::to_value(of(vec![up(Relation::Same, &[])], false)).unwrap();
+    assert_eq!(wire["dot"], "off", "线上名是小写词");
+    assert_eq!(wire["linked"], false);
+}

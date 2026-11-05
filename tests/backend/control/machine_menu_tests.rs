@@ -79,6 +79,8 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
     MachineState {
         name: "nas".into(),
         state: kind,
+        dot: deploy::machine::dot(kind),
+        linked: deploy::machine::linked(kind),
         offline,
         reason: None,
         stage: None,
