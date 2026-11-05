@@ -544,7 +544,7 @@ pub async fn capture_full(dial: &Value, command: String) -> Result<crate::dial::
         .map_err(|f| unreachable(&f))
 }
 
-/// ssh 自己出错（连不上 · 认证没过 · 中途断开）的退出码（`man ssh`：「exits with 255 if an error occurred」）。
+/// ssh 自己出错（没连上 · 认证没过 · 中途断开）的退出码（`man ssh`：「exits with 255 if an error occurred」）。
 const SSH_OWN_FAILURE: u32 = 255;
 
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
@@ -571,7 +571,7 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
         let code = envelope.as_ref().and_then(|e| e.code.clone());
         let message = match envelope.and_then(|e| e.message) {
             Some(m) if !m.trim().is_empty() => m,
-            // ssh 自己出错退 255、那台一个字不回 ⇒ 是这一跳的连接断了（连不上 · 中途断开），不是那台的命令失败。
+            // ssh 自己出错退 255、那台一个字不回 ⇒ 是这一跳的连接断了（没连上 · 中途断开），不是那台的命令失败。
             _ if stderr.trim().is_empty() && got.exit_status == Some(SSH_OWN_FAILURE) => copy_text(
                 "beRemoteAsk.run.unreachable",
                 &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
