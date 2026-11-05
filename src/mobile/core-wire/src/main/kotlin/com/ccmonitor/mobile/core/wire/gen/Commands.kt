@@ -1960,6 +1960,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.LsSortBy::class.java to com.ccmonitor.mobile.core.wire.gen.LsSortBy.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MachineBlocker::class.java to com.ccmonitor.mobile.core.wire.gen.MachineBlocker.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MachineCheck::class.java to com.ccmonitor.mobile.core.wire.gen.MachineCheck.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.MachineDot::class.java to com.ccmonitor.mobile.core.wire.gen.MachineDot.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MachineEdit::class.java to com.ccmonitor.mobile.core.wire.gen.MachineEdit.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MachineFault::class.java to com.ccmonitor.mobile.core.wire.gen.MachineFault.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.MachineFaultCode::class.java to com.ccmonitor.mobile.core.wire.gen.MachineFaultCode.ADAPTER,

@@ -15106,6 +15106,7 @@ hint: string,
  * 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
  */
 count: string, };
+type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, empty: FleetLines, };
@@ -15116,6 +15117,14 @@ type MachineState = {
  * 给人看的那台的名字（问题行那一句里说的就是它）。
  */
 name: string, state: MachineStateKind, 
+/**
+ * 那台的点画哪一档（两端都只照这一格挑点，不照 `state` 另挑）。
+ */
+dot: MachineDot, 
+/**
+ * 那台连着没有（连着 · 那台旧了 · 那台比这一版新 ⇒ 是）：新建框能不能选它 · 设置里那一行算不算连着 · 「那台上线了」都照这一格。
+ */
+linked: boolean, 
 /**
  * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
  */
@@ -15218,6 +15227,7 @@ nth: number | null, };
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type Machine = string;
+type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
@@ -15233,6 +15243,14 @@ type MachineState = {
  * 给人看的那台的名字（问题行那一句里说的就是它）。
  */
 name: string, state: MachineStateKind, 
+/**
+ * 那台的点画哪一档（两端都只照这一格挑点，不照 `state` 另挑）。
+ */
+dot: MachineDot, 
+/**
+ * 那台连着没有（连着 · 那台旧了 · 那台比这一版新 ⇒ 是）：新建框能不能选它 · 设置里那一行算不算连着 · 「那台上线了」都照这一格。
+ */
+linked: boolean, 
 /**
  * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
  */
@@ -15310,6 +15328,7 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
+type MachineDot = "up" | "pending" | "warn" | "failed" | "off";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineStage = "deploy" | "attach";
@@ -15318,6 +15337,14 @@ type MachineState = {
  * 给人看的那台的名字（问题行那一句里说的就是它）。
  */
 name: string, state: MachineStateKind, 
+/**
+ * 那台的点画哪一档（两端都只照这一格挑点，不照 `state` 另挑）。
+ */
+dot: MachineDot, 
+/**
+ * 那台连着没有（连着 · 那台旧了 · 那台比这一版新 ⇒ 是）：新建框能不能选它 · 设置里那一行算不算连着 · 「那台上线了」都照这一格。
+ */
+linked: boolean, 
 /**
  * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
  */

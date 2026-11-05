@@ -12553,7 +12553,7 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Starting(
-        val look: MachineStateKind,
+        val dot: MachineDot,
         val tone: Tone,
         val word: String,
         val said: String,
@@ -12563,7 +12563,7 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Down(
-        val look: MachineStateKind,
+        val dot: MachineDot,
         val tone: Tone,
         val word: String,
         val said: String,
@@ -12575,7 +12575,7 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Older(
-        val look: MachineStateKind,
+        val dot: MachineDot,
         val tone: Tone,
         val word: String,
         val said: String,
@@ -12587,7 +12587,7 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Newer(
-        val look: MachineStateKind,
+        val dot: MachineDot,
         val tone: Tone,
         val word: String,
         val said: String,
@@ -12613,52 +12613,52 @@ sealed interface LocalBackend {
                 Variant("starting", LocalBackend.Starting::class.java, obj(
                         listOf(
                         Field("state", { tag("starting") }, optional = false, nullable = false),
-                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("dot", { MachineDot.ADAPTER }, optional = false, nullable = false),
                         Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> LocalBackend.Starting(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String) },
-                        { v -> arrayOf("starting", v.look, v.tone, v.word, v.said) },
+                        { a -> LocalBackend.Starting(a[1] as MachineDot, a[2] as Tone, a[3] as String, a[4] as String) },
+                        { v -> arrayOf("starting", v.dot, v.tone, v.word, v.said) },
                     )),
                 Variant("down", LocalBackend.Down::class.java, obj(
                         listOf(
                         Field("state", { tag("down") }, optional = false, nullable = false),
-                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("dot", { MachineDot.ADAPTER }, optional = false, nullable = false),
                         Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Down(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
-                        { v -> arrayOf("down", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Down(a[1] as MachineDot, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("down", v.dot, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 Variant("older", LocalBackend.Older::class.java, obj(
                         listOf(
                         Field("state", { tag("older") }, optional = false, nullable = false),
-                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("dot", { MachineDot.ADAPTER }, optional = false, nullable = false),
                         Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Older(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
-                        { v -> arrayOf("older", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Older(a[1] as MachineDot, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("older", v.dot, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 Variant("newer", LocalBackend.Newer::class.java, obj(
                         listOf(
                         Field("state", { tag("newer") }, optional = false, nullable = false),
-                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("dot", { MachineDot.ADAPTER }, optional = false, nullable = false),
                         Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Newer(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
-                        { v -> arrayOf("newer", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Newer(a[1] as MachineDot, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("newer", v.dot, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 ),
             )
@@ -13218,6 +13218,19 @@ data class MachineCheck(
     }
 }
 
+enum class MachineDot(val wire: String) {
+    UP("up"),
+    PENDING("pending"),
+    WARN("warn"),
+    FAILED("failed"),
+    OFF("off"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineDot> = enumOf(entries) { it.wire }
+    }
+}
+
 sealed interface MachineEdit {
     /** 判别格（`op`）那个词。 */
     val op: String
@@ -13642,6 +13655,8 @@ enum class MachineStage(val wire: String) {
 data class MachineState(
     val name: String,
     val state: MachineStateKind,
+    val dot: MachineDot,
+    val linked: Boolean,
     val offline: Boolean,
     val reason: DialWhy?,
     val stage: MachineStage?,
@@ -13665,6 +13680,8 @@ data class MachineState(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
             Field("state", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+            Field("dot", { MachineDot.ADAPTER }, optional = false, nullable = false),
+            Field("linked", { Bool }, optional = false, nullable = false),
             Field("offline", { Bool }, optional = false, nullable = false),
             Field("reason", { opt(DialWhy.ADAPTER) }, optional = false, nullable = true),
             Field("stage", { opt(MachineStage.ADAPTER) }, optional = false, nullable = true),
@@ -13681,8 +13698,8 @@ data class MachineState(
             Field("route", { opt(Str) }, optional = true, nullable = true),
             Field("strip", { opt(MachineStripLine.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?, a[16] as MachineStripLine?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as MachineDot, a[3] as Boolean, a[4] as Boolean, a[5] as DialWhy?, a[6] as MachineStage?, a[7] as String?, a[8] as VersionRelation?, a[9] as String?, a[10] as String, a[11] as String, a[12] as String, a[13] as List<MachineFixButton>, a[14] as String?, a[15] as String?, a[16] as String?, a[17] as String?, a[18] as MachineStripLine?) },
+            { v -> arrayOf(v.name, v.state, v.dot, v.linked, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
         )
     }
 }
