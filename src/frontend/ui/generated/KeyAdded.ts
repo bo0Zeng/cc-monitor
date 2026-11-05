@@ -4,4 +4,12 @@ import type { PushOutcome } from "./PushOutcome";
 /**
  * `authorized-keys-add` 的应答。
  */
-export type KeyAdded = { outcome: PushOutcome, };
+export type KeyAdded = { 
+/**
+ * 加上了 · 本来就有：本机后端照它配带路径的那一句（[`pushed_said`]）。
+ */
+outcome: PushOutcome, 
+/**
+ * 屏上那一句（不带路径，[`added_said`]）：手机照摆。
+ */
+said: string, };

@@ -2216,7 +2216,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.PubkeyPushed::class.java to com.ccmonitor.mobile.core.wire.gen.PubkeyPushed.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Pulled::class.java to com.ccmonitor.mobile.core.wire.gen.Pulled.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.PushOutcome::class.java to com.ccmonitor.mobile.core.wire.gen.PushOutcome.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.PushVia::class.java to com.ccmonitor.mobile.core.wire.gen.PushVia.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QueueCancelled::class.java to com.ccmonitor.mobile.core.wire.gen.QueueCancelled.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QueueItem::class.java to com.ccmonitor.mobile.core.wire.gen.QueueItem.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.QueueList::class.java to com.ccmonitor.mobile.core.wire.gen.QueueList.ADAPTER,
