@@ -472,7 +472,7 @@ class ChatSessionTest {
             assertTrue("回执到了的两句离开待发、流里不另画", s.local().isEmpty())
             val (c, d) = s.box()
             assertEquals(copyText("mobChat.delivery.sending") to false, c.said to c.failed)
-            assertEquals(copyText("terminal.input.failed", "why" to "队满了") to true, d.said to d.retry)
+            assertEquals("队满了" to true, d.said to d.retry)
         }
 
     @Test

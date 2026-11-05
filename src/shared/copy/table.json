@@ -20002,6 +20002,12 @@
       "zh": "发送中",
       "args": []
     },
+    "mobChat.delivery.refused": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未送达 · 内容保留",
+      "args": []
+    },
     "beQueue.said.place": {
       "kind": "body",
       "role": "状态",
