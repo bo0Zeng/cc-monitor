@@ -1,6 +1,7 @@
 {
   "history-facts": {
     "agent": "claude",
+    "askEnd": null,
     "autoAnswer": null,
     "autoAnswerChoices": [
       {
@@ -20,7 +21,6 @@
         "text": "30m"
       }
     ],
-    "autoAnswered": null,
     "background": null,
     "children": [],
     "childrenText": null,

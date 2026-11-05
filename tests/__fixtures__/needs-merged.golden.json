@@ -3,7 +3,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "manual",
@@ -90,7 +90,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "manual",
@@ -132,7 +132,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "manual",
@@ -190,7 +190,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": []
         }
       },
@@ -207,7 +207,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -330,7 +330,7 @@
           ]
         },
         "gpu-01": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "manual",
@@ -516,7 +516,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -883,7 +883,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -985,7 +985,7 @@
           ]
         },
         "gpu-01": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "manual",
@@ -1153,7 +1153,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -1378,7 +1378,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -1597,7 +1597,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -1777,7 +1777,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -2118,7 +2118,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -2298,7 +2298,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -2478,7 +2478,7 @@
     {
       "answers": {
         "<local>": {
-          "answered": [],
+          "ended": [],
           "items": [
             {
               "kind": "session",
@@ -2580,7 +2580,7 @@
           ]
         },
         "gpu-01": {
-          "answered": [],
+          "ended": [],
           "items": [],
           "manualUnreadable": "核心·账号库无法解析"
         }
