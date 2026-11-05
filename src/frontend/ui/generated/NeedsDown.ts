@@ -2,6 +2,6 @@
 import type { Machine } from "./Machine";
 
 /**
- * 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
+ * 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …；句里叫出了那台）· 复制详情（没有 ⇒ 空）。
  */
-export type NeedsDown = { origin: Machine, said: string, };
+export type NeedsDown = { origin: Machine, said: string, detail: string, };

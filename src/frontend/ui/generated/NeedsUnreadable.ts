@@ -3,6 +3,6 @@ import type { Machine } from "./Machine";
 import type { Words } from "./Words";
 
 /**
- * 会话外那一截读不出的一台：哪台 · 那台写的那一句。
+ * 会话外那一截读不出的一台：哪台 · 那台写的那一句（长按 · 悬停看）· 那一行（「<那台> · 需手动清单无法读取」）。
  */
-export type NeedsUnreadable = { origin: Machine, said: Words, };
+export type NeedsUnreadable = { origin: Machine, said: Words, line: Words, };

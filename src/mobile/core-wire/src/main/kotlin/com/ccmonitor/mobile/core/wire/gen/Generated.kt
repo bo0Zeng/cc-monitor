@@ -15444,6 +15444,7 @@ data class NeedsClock(
 data class NeedsDown(
     val origin: String,
     val said: String,
+    val detail: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15452,9 +15453,10 @@ data class NeedsDown(
             listOf(
             Field("origin", { Str }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
+            Field("detail", { Str }, optional = false, nullable = false),
             ),
-            { a -> NeedsDown(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.origin, v.said) },
+            { a -> NeedsDown(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.origin, v.said, v.detail) },
         )
     }
 }
@@ -15591,6 +15593,8 @@ data class NeedsMergeReq(
 data class NeedsMerged(
     val items: List<NeedsAt>,
     val total: Int,
+    val head: String,
+    val sure: Boolean,
     val unreadable: List<NeedsUnreadable>,
     val down: List<NeedsDown>,
 ) : Ordered {
@@ -15601,11 +15605,13 @@ data class NeedsMerged(
             listOf(
             Field("items", { arr(NeedsAt.ADAPTER) }, optional = false, nullable = false),
             Field("total", { Int32 }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            Field("sure", { Bool }, optional = false, nullable = false),
             Field("unreadable", { arr(NeedsUnreadable.ADAPTER) }, optional = false, nullable = false),
             Field("down", { arr(NeedsDown.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> NeedsMerged(a[0] as List<NeedsAt>, a[1] as Int, a[2] as List<NeedsUnreadable>, a[3] as List<NeedsDown>) },
-            { v -> arrayOf(v.items, v.total, v.unreadable, v.down) },
+            { a -> NeedsMerged(a[0] as List<NeedsAt>, a[1] as Int, a[2] as String, a[3] as Boolean, a[4] as List<NeedsUnreadable>, a[5] as List<NeedsDown>) },
+            { v -> arrayOf(v.items, v.total, v.head, v.sure, v.unreadable, v.down) },
         )
     }
 }
@@ -15698,6 +15704,7 @@ data class NeedsRow(
 data class NeedsUnreadable(
     val origin: String,
     val said: String,
+    val line: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15706,9 +15713,10 @@ data class NeedsUnreadable(
             listOf(
             Field("origin", { Str }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
+            Field("line", { Str }, optional = false, nullable = false),
             ),
-            { a -> NeedsUnreadable(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.origin, v.said) },
+            { a -> NeedsUnreadable(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.origin, v.said, v.line) },
         )
     }
 }
