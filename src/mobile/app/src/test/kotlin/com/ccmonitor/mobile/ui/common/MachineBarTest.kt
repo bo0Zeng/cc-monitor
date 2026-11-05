@@ -1,7 +1,5 @@
 package com.ccmonitor.mobile.ui.common
 
-import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
@@ -62,10 +60,9 @@ class MachineBarTest {
     }
 
     @Test
-    fun `那台旧了 ⇒ 琥珀条、核心那一句与［更新］；装没装上 ⇒ 失败那一句与详情、按钮照留`() {
+    fun `那台旧了 ⇒ 琥珀条、核心那一句与［更新］`() {
         val old = linkUp("s-old", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN)
         assertEquals(BarLook("s-old", Tone.WARN, update), barOf(old))
-        assertEquals(BarLook("s-fail", Tone.FAIL, update, detail = "d-fail"), barOf(old, Deploying.Failed(Failed("io_failed", "s-fail", "d-fail"))))
     }
 
     @Test

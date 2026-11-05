@@ -21,7 +21,7 @@
 
 **分叉不是例外**：从某一轮分叉（帧命令 `session-fork`，本体 `control/fork_write.rs`）只新增一份 `<new-sid>.jsonl`：`create_new(true)`（`O_EXCL`）、只收 sid、原会话零改动。后端写盘只许发生在登记过的模块里（§41.6）。
 
-**起进程不算后端写**：后端起 `ccm` / `claude` 之后由被起的程序写它自己的文件；后端的责任是不替用户决定往它的配置里塞什么。起进程的面逐条登记（`readonly_guard.rs` 的 `ALLOWED`）。`ccm` 不写 agent 的信任项，也不往会话里按键去答信任框。
+**起进程不算后端写**：后端起 `ccm` / `claude` 之后由被起的程序写它自己的文件；后端的责任是不替用户决定往它的配置里塞什么。起进程的面逐条登记（后端 `src/backend/clippy.toml` 起进程那一组：`Child::new` · `host::tmux::child` 逐处在调用点放行、写清起什么）。`ccm` 不写 agent 的信任项，也不往会话里按键去答信任框。
 
 **文件管理器不在本约管辖内**：原生文件窗口经后端文件管理写面改用户浏览到的任意文件（会话文件也能改），每次写都是一次直接的用户手势，没有自动 / 后台写。
 
@@ -29,7 +29,7 @@
 
 **发按键只进本工具建的 tmux 会话**：会话名由后端派生（`control/ccm/plan.rs`），`control/gate_rules.rs::is_ccm_tmux_name` 白名单门控送键；kill 只在精确命中 `@ccm_sid` 时做（§34）。
 
-**为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
+**为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（「文件与数据」页逐条列出）。
 
 **谁在守**：`src/frontend/clippy.toml` 写盘那一组（壳往盘上写只经 `platform/own_fs.rs`，按落点各一组函数，没有「用户文件」一组）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · 后端 `src/backend/clippy.toml` 起进程那一组（`Child::new` · `host::tmux::child` 逐处在调用点放行、写清起什么） · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
@@ -210,7 +210,7 @@
 
 ### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`
 
-未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；在设置「机器 → 足迹 → 未识别的数据」查看。
+未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`，各台合一份是本机后端的 `drift-merge`）；设置「诊断」复制出的诊断信息里「未识别数据」那一段就是它。
 
 上屏只分一刀，判在适配层一处（`record_of::quiet_unread_of`）：没见过的 `type` 又没有链身份 ⇒ 那一家的簿记行，不画「认不出的记录」卡，会话事实 `quietUnread` 照实记几行、哪几种；带链身份的、已知类型形状变了的，照旧一行一张卡。
 
@@ -288,7 +288,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等（issue #25）
 
-行投递不保证恰好一次：重连重放、快照与实时的重叠区是同 seq 重投；截断重读时后端从 0 重数、不逐行重发，发 `session_file_reread` 带行数（前端那个会话整份重来、照宣告那样从尾段取）。两端只消费以 `\n` 结尾的完整行。`tab.seenSeqs` 挡同 seq 重投；**任何按 uuid 累积状态或构建拓扑的前端模块必须对「同一条再来一遍」幂等**（入口按 uuid 拒重、保首见），例：`BranchFolder.seenUuids`。
+行投递不保证恰好一次：重连重放、快照与实时的重叠区是同 seq 重投；截断重读时后端从 0 重数、不逐行重发，发 `session_file_reread` 带行数（前端那个会话整份重来、照宣告那样从尾段取）。两端只消费以 `\n` 结尾的完整行。`tab.seenSeqs` 挡同 seq 重投；**任何按 uuid 累积状态或构建拓扑的前端模块必须对「同一条再来一遍」幂等**（入口按 uuid 拒重、保首见）。
 
 **为什么不能松动**：一条重复记录就能毒化拓扑计数，把整段历史误折成「已被 ESC 回退」；重复的常是不出 DOM 的记录，肉眼看不见、F5 后带毒不自愈。
 
@@ -325,7 +325,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 `/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位、对会话句柄打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的是终端名单 `terminals-list`（`host/tmux.rs::parse_rows`）。`@ccm_sid_expect` 是起会话时声明的意图，**任何破坏性判断只认 `@ccm_sid`**。
 
-**铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作警告并按第一个继续，破坏性动作（kill · 换号重启）拒绝。没有后端时在 tmux 里起有身份的 agent ⇒ `ccm` 响亮失败（逃生口 `CCM_NO_BACKEND=1` 也要说一句）。
+**铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作警告并按第一个继续，破坏性动作（kill · 换号重启）拒绝。没有后端时在 tmux 里起有身份的 agent ⇒ `ccm` 响亮失败。
 
 ## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令
 
@@ -427,21 +427,21 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ### 41.4 红线：绝不为了让守卫变绿而删掉唯一信号源
 
-后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（今天都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`。
+后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（今天都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`；散文里许诺定时 / 轮询兜底的话也归它（只许变少）。
 
 三条派生纪律：① 后端源码的散文里不逐字引守卫的禁用模式（守卫连注释一起扫，改措辞，不改守卫）；② 删一个周期性信号时，要连依赖那个节拍的 e2e 一起跑；③ 源码扫描型守卫「剥测试段」的剥法必须同时防欠剥与过剥 —— 剥法只有共享 crate `src/common/guard-core` 一份，剥完断言残留 `#[test]` 为 0（`guard_core::assert_no_test_code`），扫描面用字节总量下限 ＋ 文件数与独立遍历相等双判据钉住。验证一条守卫只有一种算数：把违规代码分别放进「应被扫到」与「应被剥掉」的位置，看红绿是否相反。
 
 ### 41.6 后端的写盘边界（铁律 I7，2026-07-31 G2 起收窄）
 
-**后端不许改动用户既有数据，只有登记过的几层可以写**（`readonly_guard.rs`，各层按仓相对路径匹配）：
+**后端不许改动用户既有数据：碰盘只经 `platform/fs/` 交出去的几种句柄，写要拿到句柄，句柄只在该造的那几处造**（`readonly_guard.rs` 头注）：
 
-| 层 | 范围 | 判据 |
+| 句柄 | 谁造 · 交给谁 | 能做什么 |
 |---|---|---|
-| 默认层 | 下面几层之外的全部后端生产源码 | 写模式一条都不许出现 |
-| 新建层 | `control/fork_write.rs` | 必须含 `.create_new(true)`（带前导点：只许由调用满足，不许被注释喂饱）；不得有删除 / 改名 / 复制 / 链接 / 截断 / 追加 / 覆盖写 / 建目录 / `set_len` / `.create(true)` |
-| 文件管理写面 | `files/write.rs` · `files/commit.rs` | 改动动词是闭集；每一处改动之前先过路径解析（`files::write::walk_in_root`：逐段只许普通段、解成真路径仍在根下、从根句柄逐段不跟链接地开到那一层，写只经那个目录句柄；跟链接的动词解到底），`Face` 的写方法只收它交回的 `Resolved`；这一面不问数据是谁的（文件管理器可以改会话文件） |
-| 后端自有状态文件 | 按文件登记（第四层表，相等断言） | 每份只写它自己那一个文件 |
-| 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload`；换进 `~/.cc-monitor/bin/` · 卸载由传上去的那一份在那台上自己做（`--place-self` · `--unplace-self`） |
+| `Ro` | 不用递 | 只读；`Ro::open` 交回的那一份不实现 `Write` |
+| `Face`（写方法只收 `Resolved`） | 分派那一层造，只递给文件管理那一族（`files/write.rs` · `files/commit.rs` …） | 改动动词是闭集；每一处改动之前先过路径解析（`common/root_path.rs::walk_in_root`：逐段只许普通段、解成真路径仍在根下、从根句柄逐段不跟链接地开到那一层，写只经那个目录句柄；跟链接的动词解到底）；这一面不问数据是谁的（文件管理器可以改会话文件） |
+| `NewFile` | 只给分叉那两条命令造（`control/fork_write.rs` 写） | 只会 `O_EXCL` 新建一份此前不存在的文件、一次写满；改 · 删 · 覆盖都拿不到 |
+| `Own` · `DiagLog` | 只在启动入口造一次、顺着入口递下去 | 后端自家状态与诊断文件，每份只写它自己那一个（§2.2） |
+| 远端（SFTP，不在本机） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload`；换进 `~/.cc-monitor/bin/` · 卸载由传上去的那一份在那台上自己做（`--place-self` · `--unplace-self`）。这一维由 `readonly_guard.rs` 的远端那一层守 |
 
 碰盘只经 `platform/fs/`：`std::fs` · `tokio::fs` 的各函数与开法、`os::unix::fs` 的建链接 · 改属主与扩展特征上那几样、`libc` 按路径或 `*at` 改盘的系统调用列在 `src/backend/clippy.toml` 碰盘那一组（deny），只在 `platform/fs/` 的 `ro` · `face` · `own` 逐处 `expect` 放行。只在 clippy 里红；名单认不出的几形写在那份 toml 的头注里。
 

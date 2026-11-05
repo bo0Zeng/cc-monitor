@@ -40,7 +40,7 @@ internal object Fixtures {
             "background" to null,
             "autoAnswer" to null,
             "autoAnswerChoices" to emptyList<Any>(),
-            "autoAnswered" to null,
+            "askEnd" to null,
             "mcp" to emptyList<Any>(),
             "startedBy" to null,
             "children" to emptyList<Any>(),

@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard } from "../../../../src/frontend/ui/cards/api-error";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { RetryRun } from "../../../../src/frontend/ui/generated/RetryRun";
@@ -46,6 +47,18 @@ describe("重试细条：字照后端那一行 · 一串照会话事实的整句
     expect(card.querySelector(".api-error-next-text")?.textContent).toBe("RUN-NEXT");
     expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(2);
     expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
+  });
+});
+
+describe("报错卡「下一步」那一格只一条路写", () => {
+  it("★ 建卡时空着：不写前端自己那一句；事实没说那一串 ⇒ 一直空着", () => {
+    const card = buildApiErrorCard({ timeLabel: "02:12", title: "CARD-HEAD", text: "boom" });
+    const next = card.querySelector(".api-error-next-text");
+    expect(next, "那一格还在（事实到了往里写）").not.toBeNull();
+    expect(next?.textContent).toBe("");
+    expect(card.textContent).not.toContain(copyText("apiError.card.nextBare"));
+    applyRetries(stream(card), runs({ id: "r1", outcome: "failed", text: "RUN-NEXT" }));
+    expect(next?.textContent, "前面没有那一串的细条 ⇒ 不写").toBe("");
   });
 });
 

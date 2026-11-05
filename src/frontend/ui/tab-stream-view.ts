@@ -740,6 +740,7 @@ export class TabStreamView {
     renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
     if (inserted) tab.branchFolder.cardsAdded(); // 新卡可能落在回退掉的那一段里 ⇒ 帧末按清单重折
+    if (inserted && payload.record.t === "reply" && payload.record.error) applyRetries(tab.streamEl, tab.retries); // 报错卡落下 ⇒ 照手上那一份重试串摆
 
     // unread 计数：只有真新 entry 入 timeline 才算（注入进旧卡的工具结果不算）
     if (inserted && this.store.activeId !== tab.sessionId) {
@@ -1024,6 +1025,7 @@ export class TabStreamView {
     for (const el of reconcilePendingToolResults(ctx)) tab.timeline.removeByElement(el);
     tab.branchFolder.rebuildNow();
     applyNotices(tab.streamEl, this.notices.get(tab) ?? []); // 这一批里的通知卡照手上那一份通知组摆
+    applyRetries(tab.streamEl, tab.retries); // 这一批里的细条 · 报错卡照手上那一份重试串摆（事实先到、卡后画）
   }
 
   /** 物化 tab 的尾段：从窗口账本弹出 seq 最高的 ≤ k 条建卡。对象是没有滚动位置要保的 tab，不做滚动补偿（那在 fillAbove）。 */

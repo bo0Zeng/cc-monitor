@@ -9,7 +9,7 @@
           "title": "未登录 · 终端里用该账号运行 /login",
           "warn": true
         },
-        "baseUrl": null,
+        "endpointHost": null,
         "configDir": null,
         "configDirShown": null,
         "email": "",
@@ -37,7 +37,7 @@
           "title": "",
           "warn": false
         },
-        "baseUrl": null,
+        "endpointHost": null,
         "configDir": "<root>/accts/acct-a",
         "configDirShown": "<root>/accts/acct-a",
         "email": "a@x",
@@ -65,7 +65,7 @@
           "title": "已配置 · 会话请求经此机中转发送\n按凭据文件里该行换上 key · key 对不对要到 claude 那边才知道",
           "warn": false
         },
-        "baseUrl": "https://api.example.com",
+        "endpointHost": "api.example.com",
         "configDir": "<root>/accts/acct-b",
         "configDirShown": "<root>/accts/acct-b",
         "email": "",

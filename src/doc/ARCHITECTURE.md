@@ -86,7 +86,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
 - **流只发要看的会话**：每台一张名单台（`resident-client` 的 `watch::Desk`）：attach 行带上「在看哪几个会话」、那台从第一帧起照它发，之后变了经 `stream-watch {sids}` 报；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。名单从空开始；桌面名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（壳 `stream_watch.rs` 交名单台），手机是它屏上的会话（核心 `resident.rs` 计数）。
 - **seq 是后端给的行号**，界面 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/recognize/turns.rs`）。
-- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是共享核心那一份 `face_core::book`，手机同一份）。到那台的连接断了，由本机后端给那台活的 · 可重连的每一条发一帧 `session_left`（「说不清」那张脸），并在机器状态里记「这台 N 条状态不明」（`MachineState.unclear`）；monitor 不合成，只把那台「清单报完了」作废。
+- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是共享核心那一份 `face_core::book`，手机同一份）。到那台的连接断了，由本机后端给那台活的 · 可重连的每一条发一帧 `session_left`（「说不清」那张脸，`control/feeds.rs`）；monitor 不合成，只把那台「清单报完了」作废。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后。本机活会话的骨架 tab 也由这条流的起停帧给出。
@@ -344,7 +344,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 会话打标 `@ccm_sid` | `control/identity_tag.rs`（INVARIANTS §30） |
 | 终端名单 | `control/terminals.rs`（`terminals-list`） |
 | 往会话里送字 · 送键 | `terminal-input`（桌面终端管理页 · 手机聊天屏都走它） |
-| 看画面 · 跟随 | `control/capture_pane.rs` · `control/terminal_follow.rs`，帧 `terminal_screen`，壳的分派直接交会话流句柄（`event_replay.rs`，撤流时它替界面退订） |
+| 看画面 · 跟随 | `control/capture_pane.rs` · `control/terminal_follow.rs`（托管终端那一臂读它自己的画面，`control/terminals.rs`；等报到超时也照这一屏说），帧 `terminal_screen`，壳的分派直接交会话流句柄（`event_replay.rs`，撤流时它替界面退订） |
 | tmux 观测 | `observe/tmux_observe.rs` · `control/tmux_hook.rs`（事件，不轮询） |
 
 ### 3.6 文案表
@@ -370,7 +370,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 | 模块 | 管什么 |
 |---|---|
-| `app` | 屏与导航、注入、前台保活；主机连接的生死只经 `ssh/HostConnector.kt`；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏一条 shell 命令都不拼：进哪儿问那台 `session-open`、列 · 结束 · 新建 tmux 会话也问那台核心（`ui/session/TerminalOps.kt`）；［安装］/［更新］后端（`ui/common/BackendDeploy.kt`） |
+| `app` | 屏与导航、注入、前台保活；主机连接的生死只经 `ssh/HostConnector.kt`；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏一条 shell 命令都不拼：进哪儿问那台 `session-open`、列 · 结束 · 建终端也问那台核心，建在哪种宿主由那台定（`ui/session/TerminalOps.kt`）；［安装］/［更新］后端（`ui/common/BackendDeploy.kt`） |
 | `core-claude` | `link/`：那台常驻流交来的事（会话簿 · 活卡 · 记录行 · 一问一答的结局 · 那台的状态成品）落成手机这一侧的几条流（`CoreLink`）；接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`（桌面同一份）；`model/` 把通用记录映射成渲染单元 |
 | `core-wire` | 线上契约的 Kotlin 那一头：生成的类与编解码（`gen/`，不手改），不放判定 |
 | `core-ssh` | 终端 · 文件走的那层 SSH 连接（按机器单飞）与 `RustTransport`：SSH 本身走 `core-rs`；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接 |
@@ -394,9 +394,9 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 组员关系：那台后端 `groups-write move`（与那一片同一把锁里改）；固定：`history-annotate`（`pinned`） |
 
 谁调谁：
-- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`groups::merge`，纯函数）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
-- 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么，不补发。
-- 哪台的组那一片变了，那台 watcher 推 `changed {groups}`，出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
+- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`face_core::groups::merge`，纯函数，手机核心调同一份）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（本机后端内存里一份，也记进这台的上次值 `cache/last-seen.json`，本机后端新起时照盘上那份出）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
+- 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么；没送到的记进这一端的待补（`history/groups_owed.rs`，`groups-owed.json`），那台下一次答 `groups-here` 时照它那一片判一次、该补的补发。
+- 哪台的组那一片变了，那台 watcher 推 `changed {groups}`；本机后端那几条常驻流里哪台接上 · 断开也推一声（`control/feeds.rs`）。出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
 
 ---
 
@@ -418,7 +418,7 @@ monitor 与每台后端自己的文件都在那台的 `~/.cc-monitor/`。有哪�
 
 后端只读 `projects/` 与 `sessions/`。写入一律是用户显式触发，而且只经那台后端的文件管理面：删历史会话只收 sid（`files-delete-session`）；从某一轮分叉只新增一份 `<new-sid>.jsonl`，`O_EXCL` 新建、绝不覆盖，原会话零改动（`control/fork_write`）。按 sid 找那份会话文件只有一份实现，两处共用。装别名块、skill、MCP 是用户点名的写，别名块只动 BEGIN / END 块内。
 
-**为什么**：用户对「数据源就是我自己的命令痕迹」的认知不能破；写是必要时的可选副作用，就得是显式的、可见的（足迹页逐条列出）。
+**为什么**：用户对「数据源就是我自己的命令痕迹」的认知不能破；写是必要时的可选副作用，就得是显式的、可见的（「文件与数据」页逐条列出）。
 
 ### 起子进程只有一个出口
 

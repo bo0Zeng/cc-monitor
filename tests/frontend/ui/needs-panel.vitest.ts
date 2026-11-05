@@ -3,7 +3,7 @@
  *
  * - n ＝ 合好的总数（在等的会话 ＋ 计划项 ＋ 会话外的每一项）；窗口标题同一个数（`needs-bar` 那一份见 `main-window-needs.vitest.ts`）。
  * - 浮层：会话行（照「需手动」的序）· 分隔线 · 会话外每一项（第一行 `said`、第二行机器名；`fix` 为空 ⇒ 第二行写 `why`、不画按钮）；
- *   断开那台一条「{machine} 离线 · 未计入」；那台会外那一截读不出 ⇒ 入口不带数字、虚线框，底部一条「{machine} · 需手动清单无法读取」（那台那一句在悬停里）。
+ *   没问到的那台一条，照后端写的那一句（够不着 · 常驻不在 · 答了失败）；那台会外那一截读不出 ⇒ 入口不带数字、虚线框，底部一条「{machine} · 需手动清单无法读取」（那台那一句在悬停里）。
  * - 点会话行 ⇒ 切过去；点会话外那一行或［登录…］⇒ 开登录抽屉（交那一项）；↑↓ · Enter · Esc。最后一项刚解决、浮层开着 ⇒「无需手动事项」，关了入口才消失。
  * - 各台从哪来：本机后端 `sessions-needs-merge` 问到各台再合（替身 `needs-fake.ts`；扇出与合的判法在后端判据里）。
  *
@@ -58,7 +58,7 @@ const machine = (waits: string[], manual: ManualItem[], unreadable?: string): Ne
   listOf([...waits.map((sid) => sessionItem(sid, waiting.needs)), ...(unreadable === undefined ? manual.map(manualItem) : [])], unreadable);
 
 /** 台架：标签页栏 ＋ 一本账（每台答什么由 `answers` 定，改了再 `refresh`）。 */
-function rig(tabs: Tab[], answers: Record<string, NeedsRead>) {
+function rig(tabs: Tab[], answers: Record<string, NeedsRead>, reply?: Parameters<typeof fakeNeedsBook>[1]) {
   const store = new TabStore();
   for (const t of tabs) {
     store.tabs.set(t.sessionId, t);
@@ -74,7 +74,7 @@ function rig(tabs: Tab[], answers: Record<string, NeedsRead>) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, host);
-  const { book, asked } = fakeNeedsBook(answers);
+  const { book, asked } = fakeNeedsBook(answers, reply);
   const login = vi.fn();
   view.needs = { book, login };
   book.subscribe(() => view.planNeedsChanged());
@@ -188,15 +188,14 @@ describe("浮层", () => {
     expect(r.login).not.toHaveBeenCalled();
   });
 
-  it("★ 一台断开 ⇒ 底部「{machine} 离线 · 未计入」，不计数；回了话、清单无法读取 ⇒ 入口不带数字、虚线框，底部那一句、原话在悬停里", async () => {
+  it("★ 一台没问到 ⇒ 底部一条照后端写的那一句，不计数；回了话、清单无法读取 ⇒ 入口不带数字、虚线框，底部那一句、原话在悬停里", async () => {
     const r = rig([tab("a", waiting)], { [LOCAL]: machine(["a"], [acctItem("t1")]), devbox: { t: "offline" } });
     await r.book.refreshAll([LOCAL, "devbox" as Machine]);
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("2");
     r.strip.click();
-    expect(panel()!.querySelector('[data-note="offline"]')?.textContent).toBe(copyText("needs.panel.offline", { machine: "devbox" }));
     const said = r.book.offline().find((d) => d.origin === "devbox")?.said;
     expect(said, "回包里那台带着后端写的那一句").toBeTruthy();
-    expect(panel()!.querySelector<HTMLElement>('[data-note="offline"]')?.title, "后端那一句原样在悬停里").toBe(said);
+    expect(panel()!.querySelector('[data-note="offline"]')?.textContent, "后端那一句原样摆").toBe(said);
     r.strip.click();
     r.answers["gpu-01"] = machine([], [], "核心·账号库无法解析");
     await r.book.refresh("gpu-01" as Machine);
@@ -207,6 +206,15 @@ describe("浮层", () => {
     expect(note.textContent).toBe(copyText("needs.panel.unreadable", { machine: "gpu-01" }));
     expect(note.title).toContain("核心·账号库无法解析");
     expect(rows().map((e) => e.dataset.row), "读到的照常列").toEqual(["session", "manual"]);
+  });
+
+  it("★ 那台答了、答的是失败 ⇒ 底部那一条是那一句，不说成离线", async () => {
+    const r = rig([], {}, () => ({ items: [], total: 0, unreadable: [], down: [{ origin: "devbox" as Machine, said: "核心·devbox 答了失败" }] }));
+    await r.book.refreshAll([LOCAL, "devbox" as Machine]);
+    r.strip.click();
+    const note = panel()!.querySelector<HTMLElement>('[data-note="offline"]')!;
+    expect(note.textContent).toBe("核心·devbox 答了失败");
+    expect(note.textContent).not.toContain(copyText("machinePage.state.down"));
   });
 
   it("★ 最后一项刚解决、浮层开着 ⇒「无需手动事项」、入口去掉数字、不自己关；关了入口才消失", async () => {

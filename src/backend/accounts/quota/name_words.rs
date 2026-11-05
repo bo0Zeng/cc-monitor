@@ -48,16 +48,16 @@ pub fn kind_text(kind: cmd_wire::quota::Kind) -> String {
     }
 }
 
-/// ★ 账号行第二行那一句：类型字 · 这个号的那一格（订阅号：没登录 ⇒ 需登录、有邮箱 ⇒ 邮箱；按量号：配了端点 ⇒ 端点的主机）；
-/// 那一格没有 ⇒ 只有类型字。`accounts-list` 每个号的 `kindLine`，两端照摆。
+/// ★ 账号行第二行那一句：类型字 · 这个号的那一格（订阅号：没登录 ⇒ 需登录、有邮箱 ⇒ 邮箱；按量号：配了端点 ⇒ 端点的主机，
+/// 即 [`endpoint_host`] 写好的那一格）；那一格没有 ⇒ 只有类型字。`accounts-list` 每个号的 `kindLine`，两端照摆。
 pub fn kind_line(
     kind: cmd_wire::quota::Kind,
     logged_in: bool,
     email: &str,
-    base_url: Option<&str>,
+    endpoint_host: Option<&Words>,
 ) -> Words {
     let detail = match kind {
-        cmd_wire::quota::Kind::Api => base_url.map(host_of),
+        cmd_wire::quota::Kind::Api => endpoint_host.map(|h| h.0.clone()),
         cmd_wire::quota::Kind::Sub if !logged_in => Some(copy_text("acct.tag.login", &[])),
         cmd_wire::quota::Kind::Sub => (!email.is_empty()).then(|| email.to_string()),
     };
@@ -68,13 +68,16 @@ pub fn kind_line(
     })
 }
 
-/// 端点的主机（带端口）：去掉 `scheme://` 与路径；认不出 scheme ⇒ 原样。
-fn host_of(url: &str) -> String {
-    url.split_once("://")
-        .map_or(url, |(_, rest)| {
-            rest.split(['/', '?', '#']).next().unwrap_or(rest)
-        })
-        .to_string()
+/// ★ 端点的主机（带端口），唯一一处：去掉 `scheme://` 与路径 · 查询 · 片段；认不出 scheme ⇒ 原样。
+/// `accounts-list` 每个号的 `endpointHost` 与 [`kind_line`] 里的主机都是它。
+pub fn endpoint_host(url: &str) -> Words {
+    Words(
+        url.split_once("://")
+            .map_or(url, |(_, rest)| {
+                rest.split(['/', '?', '#']).next().unwrap_or(rest)
+            })
+            .to_string(),
+    )
 }
 
 /// 一个语义位在人眼里叫什么：`5h` · `7d` 各一个字；认不出的照原样。

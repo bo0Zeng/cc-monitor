@@ -536,22 +536,14 @@ export class HistoryView {
     openPopover(this.filterBtn, panel, { label: copyText("history.page.filter") });
   }
 
-  /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）；那台上次没读到 ⇒ 标「离线」。 */
+  /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）。那台没读到由列表顶上那条提示说（`machineStrips`），这一格不另标。 */
   private machineCheck(m: Machine, changed: (refetch: boolean) => void): HTMLElement {
-    const c = checkbox(machineWord(m), !this.prefs.off.includes(m), (on) => {
+    return checkbox(machineWord(m), !this.prefs.off.includes(m), (on) => {
       this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
       changed(false);
       this.restart();
       this.refresh(on && isRemoteOrigin(m) ? [m] : []);
     });
-    const read = this.readOf(m)?.is;
-    if (read === "failed" || read === "stale") {
-      const w = document.createElement("span");
-      w.className = s.hvFilterWarn;
-      w.textContent = copyText("machinePage.state.down");
-      c.appendChild(w);
-    }
-    return c;
   }
 
   private clearFilters(): void {

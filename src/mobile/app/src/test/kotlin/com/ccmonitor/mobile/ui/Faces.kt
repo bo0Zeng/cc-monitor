@@ -29,9 +29,10 @@ internal object Wires {
     fun accountRow(vararg set: Pair<String, Any?>): Map<String, Any?> =
         mapOf(
             "keyMasked" to null,
-            "baseUrl" to null,
+            "endpointHost" to null,
             "badge" to mapOf("text" to "已登录", "warn" to false, "title" to ""),
             "plate" to "",
+            "kindLine" to "",
             "quota" to null,
             "unselectable" to null,
             "login" to false,
@@ -84,7 +85,7 @@ internal object Wires {
                 "cost",
                 "background",
                 "autoAnswer",
-                "autoAnswered",
+                "askEnd",
                 "startedBy",
                 "line",
                 "quietUnread",
