@@ -63,11 +63,11 @@ class RecordUnitsTest {
         assertEquals("事实还没到 ⇒ 记录那一行、在重试", RetryStrip("服务器过载 · 重试 2/10 · 01:30 起", faded = false), RetryLook.strip(strip, emptyList()))
         val ok = RetryRun("r-full", RetryOutcome.RECOVERED, "重试 3 次后接上")
         assertEquals("接上了 ⇒ 那一串的整句、变淡", RetryStrip("重试 3 次后接上", faded = true), RetryLook.strip(strip, listOf(ok)))
-        assertEquals("接上了 ⇒ 报错卡照通用那一句", null, RetryLook.next(us, "a-err", listOf(ok)))
+        assertEquals("接上了 ⇒ 报错卡不画下一步那一行", null, RetryLook.next(us, "a-err", listOf(ok)))
         val failed = RetryRun("r-full", RetryOutcome.FAILED, "重试 10 次仍未接上")
         assertEquals("没接上 ⇒ 细条收起", null, RetryLook.strip(strip, listOf(failed)))
         assertEquals("没接上 ⇒ 整句进紧跟着的报错卡", "重试 10 次仍未接上", RetryLook.next(us, "a-err", listOf(failed)))
-        assertEquals("报错卡前面不是细条 ⇒ 通用那一句", null, RetryLook.next(units("reply-error"), "a-err", listOf(failed)))
+        assertEquals("报错卡前面不是细条 ⇒ 不画下一步那一行", null, RetryLook.next(units("reply-error"), "a-err", listOf(failed)))
     }
 
     @Test

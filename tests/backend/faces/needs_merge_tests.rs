@@ -45,6 +45,11 @@ async fn the_local_backend_asks_each_machine_its_needs_and_merges() {
     assert_eq!(v["down"].as_array().map(Vec::len), Some(1));
     assert_eq!(v["down"][0]["origin"], "pi");
     assert!(v["down"][0]["said"].as_str().unwrap().contains("pi"), "{v}");
+    assert!(!got.sure, "有哪台没问到 ⇒ 数说不准、头那一句不带数");
+    assert_eq!(
+        got.head.0,
+        copy_core::copy_text("beSession.needs.unknown", &[])
+    );
     let asked = peers.asked();
     assert_eq!(asked.len(), 2);
     for (command, line) in &asked {
