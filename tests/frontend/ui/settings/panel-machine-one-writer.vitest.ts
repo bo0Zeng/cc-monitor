@@ -17,6 +17,10 @@ const captured = vi.hoisted(() => ({
   formOff: false,
   /** 壳此刻说本机后端怎样（`backend_status` 的 `local` 照它答，与推来的那一帧同一个事实）。 */
   localBackend: { state: "up" } as Record<string, unknown>,
+  /** 每一问问了几次（`backend_status` · 读退出策略那一问 · 读认不出的会话流那一问）。 */
+  asked: { status: 0, exit: 0, drift: 0 },
+  /** 宿主喂进机器列表那一侧的那台事实（卡头第二行照它拼）。 */
+  facts: new Map<string, unknown>(),
 }));
 
 vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
@@ -39,9 +43,12 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           case "backend_machines":
             return Promise.resolve(["<local>", "devbox"]);
           case "backend_status":
+            captured.asked.status++;
             return Promise.resolve({ channel: captured.localBackend.state === "up", pid: 7, health: HEALTH_GOLDEN.cases[0].face, local: captured.localBackend });
           case "chan_call": {
             const op = (args as { op?: unknown } | undefined)?.op;
+            if (op === "exit-policy-read") captured.asked.exit++;
+            else captured.asked.drift++;
             if (op !== "exit-policy-read") return Promise.reject(new Error("没有这一问"));
             const u = new TextEncoder().encode(JSON.stringify({ state: "absent", killOnExit: false, said: "退出时后台照常跑" }));
             return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
@@ -61,10 +68,16 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (origin: string): string | null => (origin === "devbox" ? REMOTE_PAGE : null);
     menuFor = (): unknown[] => [];
-    metaOfPage = (): string | null => null;
+    metaOfPage = (id: string): string | null => {
+      const origin = id === REMOTE_PAGE ? "devbox" : null;
+      const facts = origin === null ? undefined : captured.facts.get(origin);
+      return facts === undefined ? null : machineMetaReal("head", "devbox", facts as never);
+    };
     setMachine = (): void => {};
     setLocalBackend = (): void => {};
-    setFacts = (): void => {};
+    setFacts = (origin: string, facts: unknown): void => {
+      captured.facts.set(origin, facts);
+    };
     originOfPage = (id: string): string | null => (id === REMOTE_PAGE ? "devbox" : null);
     isUnconfiguredPage = (): boolean => false;
     isDisabledPage = (id: string): boolean => id === REMOTE_PAGE && captured.formOff;
@@ -154,6 +167,7 @@ import type { MachineState } from "../../../../src/frontend/ui/settings/machine-
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { factsOn } from "../../../test-support/host-facts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { machineMeta as machineMetaReal } from "../../../../src/frontend/ui/settings/machine-page";
 
 /** 那台的状态（结构夹具：只填界面读的那几格；字是夹具自己的）。 */
 const state = (over: Partial<MachineState> = {}): MachineState => ({
@@ -203,6 +217,8 @@ beforeEach(() => {
   captured.local = null;
   captured.formOff = false;
   captured.localBackend = { state: "up" };
+  captured.asked = { status: 0, exit: 0, drift: 0 };
+  captured.facts.clear();
   document.body.textContent = "";
 });
 afterEach(() => __setHostFactsForTests(null));
@@ -248,5 +264,53 @@ describe("设置窗那台的几格只由那台状态写", () => {
     await settle();
     expect(ccState(REMOTE_PAGE)).not.toBe(copyText("backend.buildCells.querying"));
     expect(ccSummary(REMOTE_PAGE)).toBe(ccState(REMOTE_PAGE));
+  });
+
+  it("★ 版本不可比的那台：后端写在词里的「开发版」卡头只出一次（第二行不另补）", async () => {
+    await mount();
+    const dev = copyText("machineState.word.incomparable");
+    captured.machine!("devbox", state({ state: "up", word: dev, said: "", version: null, versionRelation: "incomparable" }));
+    await settle();
+    const head = pageOf(REMOTE_PAGE).querySelector<HTMLElement>(".machine-head")?.textContent ?? "";
+    expect(headWord(REMOTE_PAGE)).toBe(dev);
+    expect(head.split(dev).length - 1, `卡头「${head}」里「${dev}」出了不止一次`).toBe(1);
+  });
+
+  it("★ 那台的状态帧内容没变、再来一帧 ⇒ 不再重问状态 · 退出策略 · 认不出的会话流", async () => {
+    await mount();
+    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    await settle();
+    const before = { ...captured.asked };
+    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same" }));
+    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same" }));
+    await settle();
+    expect(captured.asked, "同样的一帧又触发了重问").toEqual({
+      status: before.status + 1,
+      exit: before.exit + 1,
+      drift: before.drift + 1,
+    });
+  });
+
+  it("★ 那台从离线变成连着 ⇒ 后端那一行重问一次，状态格照新的写", async () => {
+    await mount();
+    captured.machine!("devbox", state({ state: "down", offline: true, word: "", said: "" }));
+    await settle();
+    expect(ccState(REMOTE_PAGE)).toContain(copyText("machinePage.state.down"));
+    const before = captured.asked.status;
+    captured.machine!("devbox", state({ state: "up", word: "", said: "", versionRelation: "same" }));
+    await settle();
+    expect(captured.asked.status).toBe(before + 1);
+    expect(ccState(REMOTE_PAGE)).toContain(copyText("backend.status.connected"));
+  });
+
+  it("★ 壳推了本机后端没起来之后，后端那一行问回来的旧「起着」不盖它", async () => {
+    await mount();
+    captured.local!({ state: "down", look: "down", tone: "fail", word: "壳·没起来", said: "壳·本机后端没起来", fixes: [], next: null });
+    // `backend_status` 的回包还是先前那一份（起着）：它不许写本机那一格。
+    captured.localBackend = { state: "up" };
+    captured.machine!("<local>", state({ name: "local", state: "up", word: "", said: "", versionRelation: "same", version: "1.2.3" }));
+    await settle();
+    expect(headWord(LOCAL_PAGE), "回包里那份旧的盖了壳推来的那一格").toBe("壳·没起来");
   });
 });
