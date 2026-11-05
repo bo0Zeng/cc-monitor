@@ -544,6 +544,9 @@ pub async fn capture_full(dial: &Value, command: String) -> Result<crate::dial::
         .map_err(|f| unreachable(&f))
 }
 
+/// ssh 自己出错（连不上 · 认证没过 · 中途断开）的退出码（`man ssh`：「exits with 255 if an error occurred」）。
+const SSH_OWN_FAILURE: u32 = 255;
+
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
 /// 非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
 fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
@@ -568,6 +571,11 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
         let code = envelope.as_ref().and_then(|e| e.code.clone());
         let message = match envelope.and_then(|e| e.message) {
             Some(m) if !m.trim().is_empty() => m,
+            // ssh 自己出错退 255、那台一个字不回 ⇒ 是这一跳的连接断了（连不上 · 中途断开），不是那台的命令失败。
+            _ if stderr.trim().is_empty() && got.exit_status == Some(SSH_OWN_FAILURE) => copy_text(
+                "beRemoteAsk.run.unreachable",
+                &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
+            ),
             _ if stderr.trim().is_empty() => copy_text("beRemoteAsk.run.failedNoReason", &[]),
             // 不是信封的原样 stderr：句子只说「后端报错」，那台的原话记一行日志（这一跳的失败形没有原话位）。
             _ => crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
@@ -593,6 +601,10 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
 #[cfg(test)]
 #[path = "../../../tests/backend/stream/remote_ask_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial/remote_ask_tests.rs"]
+mod hop_tests;
 
 // 判据用的「那几台」（替身）：跨台合并那几条的判据共用（上层的判据经 `test-support` 够到）。
 #[cfg(any(test, feature = "test-support"))]
