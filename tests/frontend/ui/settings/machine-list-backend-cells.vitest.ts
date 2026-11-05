@@ -178,6 +178,20 @@ describe("后端那几格住机器页", () => {
     ).toBe(copyText("backend.status.connected"));
   });
 
+  it("★ 没登记的那台：那台状态又来一份 · 整份重拉 ⇒ 状态格仍是「未登记」、不去问状态，ⓘ 只一颗", async () => {
+    ipc.registered = ["<local>"];
+    const { backend } = await mount([mkH("甲机", "1.1.1.1")]);
+    const cells = pageBox.querySelector<HTMLElement>('[data-backend-cells="甲机"]')!;
+    await backend.refresh();
+    await backend.refresh();
+    backend.machineChanged("甲机");
+    for (let i = 0; i < 4; i++) await tick();
+    expect(cells.querySelector(".backend-row-state")?.textContent, "状态问回来把「未登记」盖了").toBe(copyText("backend.paintUnregistered.unregistered"));
+    expect(cells.querySelectorAll(`[aria-label="${BACKEND_UNREGISTERED_WHY()}"]`).length, "每画一次多挂一颗 ⓘ").toBe(1);
+    const asked = ipc.calls.filter((c) => c.name === "backend_status").map((c) => (c.args as { origin: string }).origin);
+    expect(asked, "没登记的那台还去问了状态").not.toContain("甲机");
+  });
+
   it("★★ 后端清单里有、列表里没有 ⇒ 不丢：列表尾巴里另起一行，且只有这一台", async () => {
     ipc.registered = ["<local>", "甲机", "乙机 (#2)"];
     const { sec, backend } = await mount([mkH("甲机", "1.1.1.1")]);

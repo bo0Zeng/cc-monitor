@@ -23,7 +23,7 @@ import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
-import { buildMachinePage, localMeta, type MachinePage } from "./machine-page";
+import { buildMachinePage, dotLabel, localMeta, UNKNOWN_FACE, type MachinePage } from "./machine-page";
 import { button } from "../kit/button";
 import { icon, type IconName } from "../kit/icon";
 // 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
@@ -71,7 +71,6 @@ import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { ADD_MACHINE_ANCHOR } from "../settings-dest";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError, machineName } from "../control-said";
-import { offlineSaid } from "../ipc/chan-caller";
 import { focusRotation, RotationSection } from "./rot-section";
 
 /**
@@ -217,8 +216,6 @@ export class SettingsPanel {
   /** 机器页 id → 它的分栏。 */
   /** 还没落地的目的地（那台的页还没注册上来时留着，注册了再落）。 */
   private pendingTarget: SettingsTarget | null = null;
-  /** 各台最近一次问到的连接（导航点照它画；机器页后注册的也照它补）。 */
-  private readonly channelOf = new Map<string, boolean | null>();
   /** 机器表那一趟读完了（成或败）：还没注册的机器页不会再来了。 */
   private machinePagesSettled = false;
   /** 当前编辑中的 theme（实时预览用）。 */
@@ -258,6 +255,8 @@ export class SettingsPanel {
   private backendSection?: BackendSection;
   /** 后端报来的各台状态成品（按后端那套名字）。 */
   private readonly stateOf = new Map<string, MachineState>();
+  /** 壳说本机后端此刻没起来的那一格（起着 ⇒ `null`）：有它时本机那台照它画。 */
+  private localDown: LocalBackend | null = null;
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
 
   // 通用页「行为」那几个开关与「恢复」那一组（拨了马上存；存失败拇指退回 ＋ 行下一句）
@@ -289,7 +288,7 @@ export class SettingsPanel {
     // 那台的状态一变，壳推一帧：点 · 词 · 问题行原位换（不轮询）。
     // 机器列表页头那一句（几台 · 离线 · 要更新）由本机后端合好随它推，照摆。
     onMachineState(
-      (origin, m) => this.paintMachine(origin, m),
+      (origin, m) => this.takeMachine(origin, m),
       (f) => this.remoteSection?.setFleet(f),
     );
     onLocalBackend((l) => this.paintLocalBackend(l));
@@ -478,67 +477,58 @@ export class SettingsPanel {
     this.applyPendingTarget();
   }
 
-  /** 「这台上的 cc-monitor」折叠头右侧：`版本 x · 在跑` ／ `未连接`（没问到 ⇒ 空）。 */
-  private ccSummary(origin: string, connected: boolean | null): string {
-    if (connected === null) return "";
-    const state = connected ? copyText("runs.state.running") : copyText("machinePage.state.down");
-    const ver = this.stateOf.get(origin)?.version ?? null;
-    return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
+  /** 那台的一份状态成品到了：记下，照它画（[`paintMachine`]）。 */
+  private takeMachine(origin: string, m: MachineState): void {
+    this.stateOf.set(origin, m);
+    // 「这台上的 cc-monitor」那一格的在不在 · 版本照这份成品：换了一份就叫它重画（它写完那一句，折叠头跟着换）。
+    this.backendSection?.machineChanged(origin);
+    this.paintMachine(origin);
   }
 
   /**
-   * 照后端的状态成品画那台（导航点 · 列表那一行 · 卡头 · 第二行的系统与版本）。
-   * 收不下 / 没问到 ⇒ 不动（「连上没有」那一路照旧画）。
+   * 画那台（导航点 · 列表那一行 · 卡头 · 第二行的系统与版本）：这几格只由这里写，照一份样子 ——
+   * 本机后端没起来 ⇒ 壳那一格（本机那台此刻没有后端写的状态）；有那台的状态成品 ⇒ 照它（停用也是它写的）；都没有 ⇒「说不清」。
+   * 页 · 列表那一行还没建好 ⇒ 建好那一刻再来一次（`addMachinePage` · `onMachinePagesSettled`）。
    */
-  private paintMachine(origin: string, m: MachineState): void {
-    this.stateOf.set(origin, m);
-    // 「该机的 cc-monitor」那一格的在不在照这份成品：换了一份就叫它重画（远端；本机那一格照壳那条连接，起停各有推送）。
-    if (!isLocalOrigin(origin)) this.backendSection?.machineChanged(origin);
+  private paintMachine(origin: string): void {
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
-    const machine = m.name;
-    const face = machineFace(m);
-    this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
-    this.remoteSection?.setMachine(pageId, m);
-    this.router.setNavDot(pageId, face.dot, face.word ? `${machine} · ${face.word}` : copyText("settingsNav.dot.up", { machine }));
+    const name = local ? machineName(LOCAL) : machineName(origin);
     const page = this.machinePages.get(pageId);
+    const down = local && this.localDown ? localBackendFace(this.localDown) : null;
+    if (down && this.localDown) {
+      this.remoteSection?.setLocalBackend(this.localDown);
+      this.router.setNavDot(pageId, down.dot, dotLabel(name, down));
+      page?.setMachine(down);
+      return;
+    }
+    const m = this.stateOf.get(origin) ?? null;
+    const face = m ? machineFace(m) : UNKNOWN_FACE;
+    if (m) this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
+    this.remoteSection?.setMachine(pageId, m);
+    this.router.setNavDot(pageId, face.dot, dotLabel(m?.name ?? name, face));
     if (!page) return;
-    page.setDisabled(m.state === "disabled");
-    if (m.state !== "disabled") page.setMachine(face);
-    page.setCcSummary(this.ccSummary(origin, this.channelOf.get(origin) ?? null));
+    page.setMachine(face);
     const meta = this.remoteSection?.metaOfPage(pageId);
     if (meta !== undefined && meta !== null) page.setMeta(meta);
   }
 
-  /**
-   * 那台的页（或列表那一行）刚建好：照已到的画。先画通道那一路，有成品 ⇒ 再照成品画（成品说得更全，落在最后）。
-   * 成品先于页到时 `paintMachine` 找不到页、那一帧只记在 `stateOf` 里，靠这里补画。
-   */
-  private paintMachineNow(origin: string): void {
-    this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
-    const m = this.stateOf.get(origin);
-    if (!m) return;
-    // 卡上刚关了「连接该机」：已到的那份还是关之前的，等那台的下一份，不拿旧的盖回去。
-    const pageId = isLocalOrigin(origin) ? null : this.remoteSection?.pageIdOfMachine(origin);
-    if (pageId && this.remoteSection?.isDisabledPage(pageId) && m.state !== "disabled") return;
-    this.paintMachine(origin, m);
-  }
-
   /** 每台都照已到的重画一遍（列表重建完 · 机器表改完）。 */
   private repaintMachines(): void {
-    for (const origin of new Set([...this.channelOf.keys(), ...this.stateOf.keys()])) this.paintMachineNow(origin);
+    for (const origin of new Set([...this.stateOf.keys(), ...(this.localDown ? [LOCAL] : [])])) this.paintMachine(origin);
   }
 
-  /** 照壳那一格画本机后端没起来（导航点 · 列表那一行 · 卡头）；连着 ⇒ 不动，本机那一台的成品由本机后端推来。 */
+  /**
+   * 壳说本机后端起没起来：没起来 ⇒ 本机那台照壳那一格画（本机后端先前写的那份已不作数，丢掉）；
+   * 起来了 ⇒ 撤下壳那一格，照本机后端推来的那一份（还没到 ⇒「说不清」）。
+   */
   private paintLocalBackend(l: LocalBackend): void {
-    const face = localBackendFace(l);
-    if (!face) return;
-    this.stateOf.delete(LOCAL);
-    const machine = machineName(LOCAL);
-    this.remoteSection?.setLocalBackend(l);
-    this.router.setNavDot(LOCAL_MACHINE_PAGE_ID, face.dot, `${machine} · ${face.word}`);
-    this.machinePages.get(LOCAL_MACHINE_PAGE_ID)?.setMachine(face);
+    const down = localBackendFace(l) !== null;
+    if (!down && this.localDown === null) return;
+    if (down && this.localDown === null) this.stateOf.delete(LOCAL);
+    this.localDown = down ? l : null;
+    this.paintMachine(LOCAL);
   }
 
   /** 问题行上交到宿主的修法：重试（叫那条流当场重拨）· 更新（换上这一版，再重拨）。 */
@@ -555,32 +545,6 @@ export class SettingsPanel {
     } catch (e) {
       failToast(copyText("mobIdentity.op.failed"), e);
     }
-  }
-
-  /**
-   * 导航里那台机器前的点：连着 · 离线 · 没问到。离线那一句照那台成品写的那一句；
-   * 成品还没到（不知道 ≠ 离线）⇒ 照没问到画。
-   */
-  private paintNavDot(origin: string, given: boolean | null): void {
-    this.channelOf.set(origin, given);
-    const local = isLocalOrigin(origin);
-    const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
-    if (!pageId) return;
-    const machine = machineName(origin);
-    const offlineLine = offlineSaid(origin) ?? "";
-    const connected = given === false && offlineLine === "" ? null : given;
-    this.remoteSection?.setConnected(pageId, connected, offlineLine);
-    if (!local && this.remoteSection?.isDisabledPage(pageId)) {
-      this.machinePages.get(pageId)?.setDisabled(true);
-      this.router.setNavDot(pageId, "exited", copyText("settingsNav.dot.disabled", { machine }));
-      return;
-    }
-    this.machinePages.get(pageId)?.setDisabled(false);
-    this.machinePages.get(pageId)?.setConnected(connected, offlineLine);
-    this.machinePages.get(pageId)?.setCcSummary(this.ccSummary(origin, connected));
-    if (connected === true) this.router.setNavDot(pageId, "up", copyText("settingsNav.dot.up", { machine }));
-    else if (connected === false) this.router.setNavDot(pageId, "failed", offlineLine);
-    else this.router.setNavDot(pageId, "unknown", copyText("settingsNav.dot.unknown", { machine }));
   }
 
   private applyPendingTarget(): void {
@@ -878,7 +842,6 @@ export class SettingsPanel {
     if (parts) page.slots.config.appendChild(parts.terminal);
     this.machinePages.set(pageId, page);
     this.machineTabSlots.set(pageId, { acct: page.slots.acct, rot: page.slots.rot, term: page.slots.config });
-    if (origin) page.setConnected(this.channelOf.get(origin) ?? null, offlineSaid(origin) ?? "");
     return page;
   }
 
@@ -961,7 +924,7 @@ export class SettingsPanel {
       backend = new BackendSection({
         headless: true,
         hosted: true,
-        onChannel: (origin, connected) => this.paintNavDot(origin, connected),
+        onSummary: (origin, text) => this.machinePages.get(isLocalOrigin(origin) ? LOCAL_MACHINE_PAGE_ID : (this.remoteSection?.pageIdOfMachine(origin) ?? ""))?.setCcSummary(text),
         onLocal: (l) => this.paintLocalBackend(l),
         stateOf: (origin) => this.stateOf.get(origin) ?? null,
       });
@@ -1003,7 +966,7 @@ export class SettingsPanel {
               // 本机页一出现就让那几块分节落在它上面（与 `machine-context` 的初始值本机对齐），否则用户点进某台之前它们不在文档里。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(pageEl, true, id);
               const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL : this.remoteSection?.originOfPage(id);
-              if (origin) this.paintMachineNow(origin);
+              if (origin) this.paintMachine(origin);
               this.applyPendingTarget();
             },
             removeMachinePage: (id) => {

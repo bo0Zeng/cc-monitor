@@ -144,7 +144,7 @@ export class BackendSection {
 
   /** 寄居模式：四格挂在机器列表那一行上（`cellsFor`），本块自己的 `element` 只装后端清单里有、机器列表里没有的那几台。 */
   private readonly hosted: boolean;
-  private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
+  private readonly onSummary: ((origin: string, text: string) => void) | undefined;
   private readonly onLocal: ((local: LocalBackend) => void) | undefined;
   private readonly stateOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
@@ -160,15 +160,15 @@ export class BackendSection {
       hosted?: boolean;
       confirm?: ConfirmFn;
       interrupts?: (origin: Machine) => Promise<Interrupts | null>;
-      /** 每次问完那台的连接（`null` ＝ 没问到）。 */
-      onChannel?: (origin: string, connected: boolean | null) => void;
+      /** 状态格每写一次（「这台上的 cc-monitor」折叠头照摆同一句，不另拼）。 */
+      onSummary?: (origin: string, text: string) => void;
       /** 每次问完本机后端起没起来（只本机那一行带）。 */
       onLocal?: (local: LocalBackend) => void;
       /** 那台手上最新那一份成品（各台含本机由本机后端推，`backend_status` 不带）。 */
       stateOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
-    this.onChannel = opts.onChannel;
+    this.onSummary = opts.onSummary;
     this.onLocal = opts.onLocal;
     this.stateOf = opts.stateOf;
     this.hosted = opts.hosted ?? false;
@@ -221,18 +221,14 @@ export class BackendSection {
     await this.paintStatus(origin);
   }
 
-  /** 那台的成品（`MachineState`）刚换了一份：重画它那一格（远端的在不在照这份成品，换了就要跟着变）。 */
+  /** 那台的成品（`MachineState`）刚换了一份：重画它那一格（远端的在不在 · 各台的版本照这份成品，换了就要跟着变）。 */
   machineChanged(origin: string): void {
     if (this.cellHosts.has(origin)) void this.paintStatus(origin);
   }
 
-  /** 画一台：后端清单还没到 ⇒ 等 `refresh`；清单里没有 ⇒ 说没登记；有 ⇒ 问状态。 */
+  /** 画一台：后端清单还没到 ⇒ 等 `refresh`；到了 ⇒ `paintStatus`（清单里没有的它只说没登记）。 */
   private paintOne(origin: string): void {
     if (this.registered === null) return;
-    if (!this.registered.has(origin)) {
-      this.paintUnregistered(origin);
-      return;
-    }
     void this.paintStatus(origin);
   }
 
@@ -245,9 +241,13 @@ export class BackendSection {
     if (!cells) return;
     const state = cells.querySelector<HTMLElement>(".backend-row-state");
     if (state) {
-      state.textContent = copyText("backend.paintUnregistered.unregistered");
+      this.sayState(origin, state, copyText("backend.paintUnregistered.unregistered"));
       state.dataset.on = "unregistered";
-      state.after(makeInfoIcon(BACKEND_UNREGISTERED_WHY()));
+      if (state.nextElementSibling?.hasAttribute("data-unregistered-why") !== true) {
+        const why = makeInfoIcon(BACKEND_UNREGISTERED_WHY());
+        why.dataset.unregisteredWhy = "";
+        state.after(why);
+      }
     }
     for (const col of ["ops", "exit", "drift"] as const) {
       cells.querySelector<HTMLElement>(`[data-col="${col}"]`)?.replaceChildren();
@@ -578,12 +578,23 @@ export class BackendSection {
     }
   }
 
-  /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
+  /** 状态格写一句，「这台上的 cc-monitor」折叠头跟着照摆同一句（那一句只在这里拼）。 */
+  private sayState(origin: string, state: HTMLElement, text: string): void {
+    state.textContent = text;
+    this.onSummary?.(origin, text);
+  }
+
+  /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到 · 后端清单里没有它回 `null`。 */
   private async paintStatus(origin: string): Promise<boolean | null> {
     const cells = this.cellHosts.get(origin);
     if (!cells) return null;
     const state = cells.querySelector<HTMLElement>(".backend-row-state");
     if (!state) return null;
+    // 后端清单里没有它：那一格只说「未登记」，不问状态、不盖它。
+    if (this.registered !== null && !this.registered.has(origin)) {
+      this.paintUnregistered(origin);
+      return null;
+    }
     try {
       const st = await commands.backend_status({ origin });
       // 本机：壳那条连接在不在；远端：后端推来的那台成品说它离不离线（与名字旁的点同一个源，壳不另答）。
@@ -591,11 +602,11 @@ export class BackendSection {
       const on = isLocalOrigin(origin) ? st.channel === true : m !== null && !m.offline;
       const word = on ? copyText("backend.status.connected") : copyText("machinePage.state.down");
       const ver = m?.version ?? null;
-      state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
+      if (state.nextElementSibling?.hasAttribute("data-unregistered-why")) state.nextElementSibling.remove();
+      this.sayState(origin, state, ver ? `${ver}${copyText("kit.text.sep")}${word}` : word);
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
-      this.onChannel?.(origin, on);
       if (st.local) this.onLocal?.(st.local);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
@@ -610,8 +621,7 @@ export class BackendSection {
       this.paintHealth(origin, st.health);
       return on;
     } catch (e) {
-      state.textContent = copyText("runs.state.unknown");
-      this.onChannel?.(origin, null);
+      this.sayState(origin, state, copyText("runs.state.unknown"));
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
       return null;
     }

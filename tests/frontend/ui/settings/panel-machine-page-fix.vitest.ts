@@ -28,12 +28,10 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     pageIdOfMachine = (origin: string): string | null => (origin === "devbox" ? REMOTE_PAGE : null);
     menuFor = (): unknown[] => [];
     metaOfPage = (): string | null => null;
-    setConnected = (): void => {};
     setMachine = (): void => {};
     setFacts = (): void => {};
     originOfPage = (id: string): string | null => (id === REMOTE_PAGE ? "devbox" : null);
     isUnconfiguredPage = (): boolean => false;
-    isDisabledPage = (): boolean => false;
     runFix = (id: string, fix: string): void => void captured.runFix.push([id, fix]);
     element = document.createElement("div");
     refresh = vi.fn();
@@ -120,7 +118,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { buildMachinePage } from "../../../../src/frontend/ui/settings/machine-page";
+import { buildMachinePage, UNKNOWN_FACE } from "../../../../src/frontend/ui/settings/machine-page";
 import type { MachineFace } from "../../../../src/frontend/ui/settings/machine-state";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { factsOn } from "../../../test-support/host-facts";
@@ -164,8 +162,8 @@ describe("机器单页问题行的修法接到真流程", () => {
   });
 });
 
-// 卡头的词与问题行只由那台状态写（`setMachine`）；通道那一路（`setConnected`）只换点。与机器列表那一行同一个做法。
-describe("机器单页卡头：词与问题行只由那台状态写，通道只换点", () => {
+// 卡头的点 · 词 · 问题行只有一个写口（`setMachine`），宿主交的是那台状态的样子，没有状态时是「说不清」那一形。与机器列表那一行同一个做法。
+describe("机器单页卡头：点 · 词 · 问题行只由一份样子写", () => {
   const face = (over: Partial<MachineFace> = {}): MachineFace => ({
     dot: "needs-you",
     word: copyText("machineState.word.installing"),
@@ -194,35 +192,22 @@ describe("机器单页卡头：词与问题行只由那台状态写，通道只�
     return { p, word, problem, dot };
   };
 
-  it("★ 那台推「安装中」、随后通道报连着 ⇒ 词仍是「安装中」、问题行仍是那台那一句，只换点", () => {
+  it("★ 那台推「安装中」⇒ 点 · 词 · 问题行都照那一份；改名不改点", () => {
     const { p, word, problem, dot } = page();
     p.setMachine(face());
-    p.setConnected(true);
+    p.setTitle("devbox-2");
     expect(word()).toBe(copyText("machineState.word.installing"));
     expect(problem().hidden).toBe(false);
     expect(problem().textContent).toContain("那台的一句");
-    expect(dot()).toBe("up");
+    expect(dot()).toBe("needs-you");
   });
 
-  it("通道报断着 ⇒ 不自己写「离线」与离线那一句：词与问题行照那台状态", () => {
+  it("那台没有状态了 ⇒「说不清」那一形：没问到的点，词与问题行收起", () => {
     const { p, word, problem, dot } = page();
-    p.setMachine(face({ dot: "up", word: "", problem: "", tone: "warn", bar: false }));
-    p.setConnected(false, "那台的离线那一句");
-    expect(word()).toBe("");
-    expect(problem().hidden).toBe(true);
-    expect(dot()).toBe("failed");
-  });
-
-  it("停用那一笔：开回来 ⇒「已停用」与那一句撤掉，等那台的下一份", () => {
-    const { p, word, problem } = page();
-    p.setDisabled(true);
-    expect(word()).toBe(copyText("machinePage.state.disabled"));
-    expect(problem().textContent).toContain(copyText("machinePage.problem.disabled"));
-    p.setDisabled(false);
-    p.setConnected(true);
-    expect(word()).toBe("");
-    expect(problem().hidden).toBe(true);
     p.setMachine(face());
-    expect(word()).toBe(copyText("machineState.word.installing"));
+    p.setMachine(UNKNOWN_FACE);
+    expect(word()).toBe("");
+    expect(problem().hidden).toBe(true);
+    expect(dot()).toBe("unknown");
   });
 });

@@ -53,7 +53,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     pageIdOfMachine = (): string | null => null;
     menuFor = (): unknown[] => [];
     metaOfPage = (): string | null => null;
-    setConnected = (): void => {};
+    setMachine = (): void => {};
     originOfPage = (): string | null => null;
     isUnconfiguredPage = (): boolean => false;
     element = document.createElement("div");

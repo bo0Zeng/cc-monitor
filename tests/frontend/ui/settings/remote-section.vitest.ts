@@ -740,7 +740,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(count()).toBe("核心·又一句");
   });
 
-  it("★ 那一行的词 · 问题行只由那台成品写：通道随后报连着 · 断着都不清、不改，只换点", async () => {
+  it("★ 那一行的点 · 词 · 问题行只由那台成品写；没有成品 ⇒「说不清」那一形", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
     const row = () => sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
@@ -766,16 +766,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       strip: { tone: "busy", progress: true },
     };
     sec.setMachine("machine:a", m);
-    sec.setConnected("machine:a", true, "核心·a 离线");
-    expect(word(), "通道报连着把成品写的词清了").toBe("核心·安装中");
+    expect(word()).toBe("核心·安装中");
     expect(problem().hidden).toBe(false);
     expect(problem().textContent).toContain("核心·正在装");
-    expect(dotState()).toBe("up");
-    sec.setConnected("machine:a", false, "核心·a 离线");
-    expect(word(), "通道报断着另写了一个词").toBe("核心·安装中");
-    expect(problem().textContent).toContain("核心·正在装");
-    expect(problem().textContent).not.toContain("核心·a 离线");
-    expect(dotState()).toBe("failed");
+    expect(dotState()).toBe("unknown");
+    // 那台没有状态了（宿主交 `null`）⇒「说不清」那一形：没问到的点，词与问题行收起。
+    sec.setMachine("machine:a", null);
+    expect(word()).toBe("");
+    expect(problem().hidden).toBe(true);
+    expect(dotState()).toBe("unknown");
   });
 
   it("★ 点机器名 → 跳到它那一页", async () => {
@@ -1123,7 +1122,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   describe("连接这台（每台一个开关，当场生效）", () => {
     const tick = () => new Promise((r) => setTimeout(r, 0));
-    it("★ 关掉 ⇒ 本机后端那张表那台记 connect:false（对齐那几条流是壳照 `changed {machines}` 做的，界面不另叫）；那一行空心点 ＋「已停用」＋［连接］；点［连接］⇒ 记回 true", async () => {
+    it("★ 关掉 ⇒ 本机后端那张表那台记 connect:false（对齐那几条流是壳照 `changed {machines}` 做的，界面不另叫）；「已停用」只照那台状态画（空心点 ＋ 词 ＋［连接］）；点［连接］⇒ 记回 true", async () => {
       ipcCalls.length = 0;
       chanOps.length = 0;
       const p = fakePages();
@@ -1136,13 +1135,55 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", false], ["b", true]]);
       expect(chanOps.filter((o) => o === "machines-set"), "改了没交给本机后端").toHaveLength(1);
       const row = sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
-      expect(row.querySelector(".remote-machine-word")!.textContent).toBe(copyText("machinePage.state.disabled"));
+      expect(row.querySelector(".remote-machine-word")!.textContent, "那台状态还没说停用，界面先照开关写了").toBe("");
+      // 那台状态到了：词 · 那一句 · 修法都是那一份写好的。
+      sec.setMachine("machine:a", {
+        name: "a",
+        state: "disabled",
+        offline: false,
+        reason: null,
+        stage: null,
+        version: null,
+        versionRelation: null,
+        os: null,
+        word: "核心·已停用",
+        said: "核心·连接停用了",
+        offlineSaid: "核心·a 离线",
+        fixes: [{ fix: "connect", label: "核心·连接" }],
+        seenHostKey: null,
+        expectedHostKey: null,
+        detail: null,
+      });
+      expect(row.querySelector(".remote-machine-word")!.textContent).toBe("核心·已停用");
       expect(row.querySelector<HTMLElement>("[data-state]")!.dataset.state).toBe("exited");
-      [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === copyText("machinePage.problem.connect"))!.click();
+      [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === "核心·连接")!.click();
       for (let i = 0; i < 6; i++) await tick();
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", true], ["b", true]]);
       expect(chanOps.filter((o) => o === "machines-set")).toHaveLength(2);
-      expect(row.querySelector(".remote-machine-word")!.textContent).toBe("");
+    });
+
+    it("★ 那台连着 ⇒ 测试结果区不自己打四个 ✓（只有测试连接 · 推公钥 · 忘指纹那几样写它）", async () => {
+      const p = fakePages();
+      const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+      sec.setMachine("machine:a", {
+        name: "a",
+        state: "up",
+        offline: false,
+        reason: null,
+        stage: null,
+        version: null,
+        versionRelation: null,
+        os: null,
+        word: "",
+        said: "",
+        offlineSaid: "核心·a 离线",
+        fixes: [],
+        seenHostKey: null,
+        expectedHostKey: null,
+        detail: null,
+      });
+      const out = pageOf(p, "machine:a").querySelector<HTMLElement>(".remote-test-result")!;
+      expect(out.querySelector(".machine-conn-segs"), "连着就自己画了一行 ✓").toBeNull();
     });
   });
 

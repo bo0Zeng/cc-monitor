@@ -18,8 +18,6 @@ const captured = vi.hoisted(() => ({
   /** 机器表改完那一声。 */
   reconciled: null as null | (() => void),
   registered: false,
-  /** 卡上关了「连接该机」。 */
-  disabled: false,
 }));
 
 vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
@@ -39,12 +37,10 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     pageIdOfMachine = (origin: string): string | null => (origin === "devbox" && captured.registered ? REMOTE_PAGE : null);
     menuFor = (): unknown[] => [];
     metaOfPage = (): string | null => null;
-    setConnected = (): void => {};
     setMachine = (id: string, m: unknown): void => void captured.painted.push([id, m]);
     setFacts = (): void => {};
     originOfPage = (id: string): string | null => (id === REMOTE_PAGE ? "devbox" : null);
     isUnconfiguredPage = (): boolean => false;
-    isDisabledPage = (id: string): boolean => id === REMOTE_PAGE && captured.disabled;
     runFix = (): void => {};
     machineCount = (): number => 1;
     element = document.createElement("div");
@@ -171,7 +167,6 @@ beforeEach(() => {
   captured.settle = null;
   captured.reconciled = null;
   captured.registered = false;
-  captured.disabled = false;
   document.body.textContent = "";
 });
 afterEach(() => __setHostFactsForTests(null));
@@ -200,15 +195,14 @@ describe("机器页晚于那台的成品注册", () => {
     expect(captured.painted).toEqual([[REMOTE_PAGE, HOST_KEY_CHANGED]]);
   });
 
-  it("★ 卡上刚关了「连接该机」、机器表改完 ⇒ 不拿关之前那份成品盖回去，等那台的下一份", async () => {
+  it("★ 机器表改完（卡上刚关了「连接该机」）⇒ 重画照的仍是那台最近一份成品：「已停用」等那台的下一份来写，界面不照表单先判", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     captured.machine!("devbox", HOST_KEY_CHANGED);
     captured.register!();
     captured.settle!();
     captured.painted = [];
-    captured.disabled = true;
     captured.reconciled!();
-    expect(captured.painted, "关之前那份又画上去了").toEqual([]);
+    expect(captured.painted).toEqual([[REMOTE_PAGE, HOST_KEY_CHANGED]]);
   });
 });
