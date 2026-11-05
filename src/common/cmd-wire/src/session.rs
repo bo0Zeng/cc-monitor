@@ -628,8 +628,10 @@ pub enum Landed {
 pub struct Opened {
     /// 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
     pub landed: Landed,
-    /// 落在哪个 tmux 会话（`window` ⇒ `null`）。
+    /// 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
     pub session: Option<String>,
+    /// `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ `null`）。等报到那一问照抄这一格，下游不另猜。
+    pub host: Option<crate::frame::TerminalHost>,
     /// 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
     pub line: Option<String>,
     /// 恢复 / 接回 ⇒ 那一条；新起 ⇒ 先定好的 sid（那一家不认先定 ⇒ `null`）。
@@ -663,8 +665,10 @@ pub struct ArriveAsk {
     /// 起之前这台报到的序号：只认这之后报到的。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub since: u64,
-    /// 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+    /// 起在哪个终端里（tmux 会话名 · 托管终端的句柄；没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
     pub session: Option<String>,
+    /// `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+    pub host: Option<crate::frame::TerminalHost>,
 }
 
 /// 认报到：按 sid（恢复 · 先定好 sid 的新起）· 按目录（那之后头一个在这个目录里报到的）。
@@ -695,7 +699,7 @@ pub enum ArriveEnd {
     Missed {
         /// 第一行是标题，其余是正文（含那一屏末几行）。
         said: String,
-        /// 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
+        /// 起在的那个终端此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
         terminal: Option<String>,
     },
 }
