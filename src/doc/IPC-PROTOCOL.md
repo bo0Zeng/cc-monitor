@@ -37,7 +37,7 @@
 
 ### 流只发要看的会话
 
-一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_left`（`face.life` 已结束）（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
+一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不列的会话一帧都不收（手机给每条在看的会话各交一格、手上什么都没有，从头整份收）。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_left`（`face.life` 已结束）（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
 应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
 
 桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
@@ -148,13 +148,13 @@
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：需手动可能变了，进程里只一个铃（`history/needs_changed.rs`），从 watcher 的出方向发、不可丢。带 `key` ＝ 那个会话（挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 那台说进出等人 · 离开「活」），重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号清单动了 · 某个号记「MCP 要登录」的那份文件翻了 · 一份登录作业收了 · 续令牌没成）或计划要人看的数变了，重问 `sessions-needs`（会外那一截在它的整份里）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
-`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
+`body`：`plan` 是 `{needs}`（这个工作区此刻需手动看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 `login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。`machine`：这一端连的某台远端此刻的状态变了（接常驻那一轮 · 部署走到哪一步 · 「连接这台」开关），`key` 是那台的名字，`body` 是那台的状态成品（同 `machine-read` 里那一格）；本机常驻后端才推。
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
 `files_dir`：这台某个正被浏览的目录（名单由 `files-browse` 交）里有了动静，`key` 是那个目录（UTF-8 ⇒ 路径本身；不是 ⇒ `\0` ＋ 十六进制小写）；正开着那个目录的那一屏带着手上的记号（`held`）重问 `files-ls`，回包只带变了的那几行。
 `history_list`：这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则）；同一个会话在这台答下一份清单之前只说一次（记录每长一行不是每行一帧），连着几下没取走也只一帧。正看着清单的那一屏带着手上的记号（`held`）重问 `history-list`，回包只带变了的那几行；看的是远端那台的，本机后端带 `fresh` 先去同步副本。
-`groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
+`groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推；本机后端那几条常驻流里哪台接上 · 断开也推一声）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
 `session_queue`：这台某条会话的输入队动了（投进 · 撤 · 送进 · 标未送达，哪一端、哪个进程写的都算；watcher 盯 `~/.cc-monitor/session-queue/`，一批里动过的每条会话各推一次）；`key` 是会话 id，`body` 是整份名单（同 `session-queue-read` 问这条会话的应答，由那条命令在这台那一半现算）；各端只照这一份画队、不各自记，超了上限或读不出就不带、重问 `session-queue-read`。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
