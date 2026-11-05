@@ -144,13 +144,13 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
 
   it("★ 没有［接管再送］：送字被拒成「输入在另一端」只照那句说", async () => {
     const { page, reads } = rig([row({ terminal: "%7", name: "billing-2", input: "held", holder: { said: "S-here", mine: true } })]);
-    reads.send.mockResolvedValue({ result: "refused", said: "S-held", screen: null, acts: [] });
+    reads.send.mockResolvedValue({ result: "refused", note: "S-held-note", said: "S-held", screen: null, acts: [] });
     page.sessionChanged();
     page.setVisible(true);
     await flush();
     await page.send({ key: "esc" });
     await flush();
-    expect(page.el.textContent).toContain(copyText("terminal.input.failed", { why: "S-held" }));
+    expect(page.el.textContent, "照后端写好的整句摆").toContain("S-held-note");
     expect([...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("front.act.retry"))).toHaveLength(0);
     expect(reads.send.mock.calls.map((c) => c.length)).toEqual([4]);
   });

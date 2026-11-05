@@ -1178,7 +1178,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             .unwrap()
         )
         .unwrap(),
-        r#"{"acts":["retry","relist"],"result":"refused","said":"终端已不在","why":"not_known"}"#
+        r#"{"acts":["retry","relist"],"note":"未送达 · 终端已不在 · 内容保留","result":"refused","said":"终端已不在","why":"not_known"}"#
     );
     use crate::control::terminals as t;
     use crate::control::terminals_wire::SentResult;
@@ -1226,11 +1226,11 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         wire(&t::input_reply(SentResult::Delivered, None, None)),
-        r##"{"result":"delivered"}"##
+        r##"{"note":"已送达","result":"delivered"}"##
     );
     assert_eq!(
         wire(&t::input_reply(SentResult::Unsure, None, None)),
-        r##"{"acts":["recapture"],"result":"unsure"}"##
+        r##"{"acts":["recapture"],"note":"送达未知 · 无应答 · 未重发 · 先看画面","result":"unsure"}"##
     );
     assert_eq!(
         wire(&t::input_reply(
@@ -1238,7 +1238,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             Some(t::Refused::ScreenChanged),
             Some("0000000000000000")
         )),
-        r#"{"acts":["retry","recapture"],"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
+        r#"{"acts":["retry","recapture"],"note":"未送达 · 画面已变 · 内容保留","result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
     // 输入在别的一端手里（画了之后才被抢走那一刻）：没有下一步 —— 按键照名单 / 实时流的 `mine` 灰着，接管走［接管输入］。
     assert_eq!(
@@ -1247,7 +1247,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             Some(t::Refused::HeldElsewhere),
             None
         )),
-        r#"{"result":"refused","said":"输入在另一端 · 未送出","why":"held_elsewhere"}"#
+        r#"{"note":"未送达 · 输入在另一端 · 未送出 · 内容保留","result":"refused","said":"输入在另一端 · 未送出","why":"held_elsewhere"}"#
     );
     // terminal-end：手机那一份入参（`core-claude/.../link/Terminals.kt`）经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 名单里没有它）。
     assert_eq!(

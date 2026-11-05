@@ -105,13 +105,15 @@ describe("抓一屏：金样与形状", () => {
     const shot = shotOf(PREVIEW.reply as unknown as Preview);
     expect([shot.screen, shot.atText]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at_text]);
     expect(shot.lines[0].spans, "抓一屏要连颜色段一起交给画面").toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
-    const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
-    expect(INPUT.replies.map((r) => sentOf(r as Sent))).toEqual([
-      { result: "delivered", acts: [] },
-      { result: "refused", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000", acts: ["retry", "recapture"] },
-      { result: "unsure", acts: ["recapture"] },
+    const INPUT = golden["terminal-input"] as unknown as { replies: { note: string }[] };
+    const note = INPUT.replies.map((r) => r.note);
+    expect(note.every((n) => typeof n === "string" && n !== ""), "三种结局都带后端写好的整句").toBe(true);
+    expect(INPUT.replies.map((r) => sentOf(r as unknown as Sent))).toEqual([
+      { result: "delivered", note: note[0], acts: [] },
+      { result: "refused", note: note[1], said: (INPUT.replies[1] as unknown as { said: string }).said, screen: "0000000000000000", acts: ["retry", "recapture"] },
+      { result: "unsure", note: note[2], acts: ["recapture"] },
     ]);
-    expect(sentOf({ result: "refused", why: "ambiguous", acts: ["retry"] }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", said: copyText("reason.code.refused"), screen: null, acts: ["retry"] });
+    expect(sentOf({ result: "refused", why: "ambiguous", note: "S-整句", acts: ["retry"] }), "原因那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", note: "S-整句", said: copyText("reason.code.refused"), screen: null, acts: ["retry"] });
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {

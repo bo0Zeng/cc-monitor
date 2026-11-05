@@ -44,14 +44,12 @@ impl ModeIo for Fake {
         if self.sent == SentResult::Delivered && !self.stuck {
             self.at = (self.at + 1) % self.order.len();
         }
-        Ok(Sent {
-            result: self.sent,
-            why: (self.sent == SentResult::Refused)
+        Ok(crate::control::terminals::input_reply(
+            self.sent,
+            (self.sent == SentResult::Refused)
                 .then_some(crate::control::terminals::Refused::NotYours),
-            said: None,
-            screen: None,
-            acts: vec![],
-        })
+            None,
+        ))
     }
     fn redrawn(&mut self) -> bool {
         !self.stuck

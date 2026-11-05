@@ -7,13 +7,7 @@ use crate::control::rewind::{RewindIo, UserLine};
 use crate::control::terminals_wire::{Sent, SentResult};
 
 fn delivered() -> Sent {
-    Sent {
-        result: SentResult::Delivered,
-        why: None,
-        said: None,
-        screen: None,
-        acts: vec![],
-    }
+    crate::control::terminals::input_reply(SentResult::Delivered, None, None)
 }
 
 impl RewindIo for FakeTerm {
