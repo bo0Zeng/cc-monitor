@@ -12,7 +12,7 @@
 - **本机与远端是不是同一条路？** 本机就是不走 ssh 的远端：同一个后端、同一条帧命令，只差 `origin`。别为本机单写一条。
 - **后端不在时怎么办？** 不在就说清楚、不发生，不许「问不到就自己干一遍」（那会让同一件事有两份实现，写操作还会有两道宽窄不同的围栏）。
 - **这个判定 / 这个数有没有第二个家？** 一个判定只许一个家，一个数只许一个住址；要两侧共用的只放契约（`src/common/` 的共享 crate），不放判定。
-- **会不会写用户的文件？** 会 ⇒ 只经那台后端的文件管理面，并在足迹里看得见。
+- **会不会写用户的文件？** 会 ⇒ 只经那台后端的文件管理面，并在「文件与数据」页看得见。
 
 ---
 
@@ -112,7 +112,7 @@
 
 ### 2.9 加跨进程文件
 
-做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，登记并写清（后端家里的进 `relay_route_core::OWN_HOME_ENTRIES`，界面这一侧的进 `data_paths.rs`；INVARIANTS §2.1）。后端自己的文件：在 `relay_route_core` 加一个 `Decl` 常量（落点 · 状态还是缓存 · 版本与下限 · 读上限）并排进 `OWN_FILES`，写它的模块里用 `Doc::of` 取一个 `const`（读得懂旧版的挂 `upgrade!`），读写都经它（INVARIANTS §2.2）；只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；`readonly_guard.rs` 的构造判据钉「只许启动入口造」）。
+做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，登记并写清（后端家里的进 `relay_route_core::OWN_HOME_ENTRIES`，界面这一侧的进 `data_paths.rs`；INVARIANTS §2.1）。后端自己的文件：在 `relay_route_core` 加一个 `Decl` 常量（落点 · 状态还是缓存 · 版本与下限 · 读上限）并排进 `OWN_FILES`，写它的模块里用 `Doc::of` 取一个 `const`（读得懂旧版的挂 `upgrade!`），读写都经它（INVARIANTS §2.2）；只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；后端 `src/backend/clippy.toml` 造句柄那一组钉「只许启动入口造」）。
 
 ---
 
