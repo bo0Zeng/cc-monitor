@@ -250,10 +250,14 @@ private fun NewContentButton(
 /** 往上翻没读成：核心写好的那一句原样一行，「再上滑一次可重试」另起一行。 */
 internal fun historyErrorLines(why: String): List<String> = listOf(why, copyText("mobChat.history.retry"))
 
-/** 顶部状态条：正在载 / 已到最早 / 失败，三态互斥。到顶必须说出来，否则用户会以为卡了。 */
+/**
+ * 顶部状态条：正在载 / 已到最早 / 失败，三态互斥。到顶必须说出来，否则用户会以为卡了。
+ * 记录文件不见了 / 从头重读过 ⇒ 上面另有一行，那台写好的那一句原样（会话簿那一格）。
+ */
 @Composable
 private fun HistoryStatusBar(state: ChatUiState) {
     val base = Modifier.fillMaxWidth().padding(8.dp)
+    state.fileNotice?.let { Text(it, modifier = base) }
     when {
         state.historyError != null ->
             Text(

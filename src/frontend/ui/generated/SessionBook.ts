@@ -29,6 +29,10 @@ successors: { [key in string]: string },
  */
 rereads: { [key in string]: number }, 
 /**
+ * 每条会话的记录文件最近怎么了，那台写好的那一句（`session_file_gone` · `session_file_reread` 带的 `said`）：后来的盖前面的，出口照摆。
+ */
+file_said: { [key in string]: string }, 
+/**
  * 那台说「活会话清单报完了」（`sessions_replayed`）。
  */
 listed: boolean, 

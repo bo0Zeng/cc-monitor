@@ -12712,6 +12712,12 @@
       "args": ["why"],
       "limited": ["连接"]
     },
+    "beRemoteAsk.run.hopDropped": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "中途断开",
+      "args": []
+    },
     "beRemoteAsk.cappedLine.tooLong": {
       "kind": "error",
       "role": "报错",

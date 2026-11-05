@@ -23430,6 +23430,7 @@ data class SessionBook(
     val runs: Map<String, SessionRuns>,
     val successors: Map<String, String>,
     val rereads: Map<String, Long>,
+    val fileSaid: Map<String, String>,
     val listed: Boolean,
     val unseen: SessionFace? = null,
 ) : Ordered {
@@ -23443,11 +23444,39 @@ data class SessionBook(
             Field("runs", { dict(SessionRuns.ADAPTER) }, optional = false, nullable = false),
             Field("successors", { dict(Str) }, optional = false, nullable = false),
             Field("rereads", { dict(Lng) }, optional = false, nullable = false),
+            Field("file_said", { dict(Str) }, optional = false, nullable = false),
             Field("listed", { Bool }, optional = false, nullable = false),
             Field("unseen", { opt(SessionFace.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Boolean, a[6] as SessionFace?) },
-            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.listed, v.unseen) },
+            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Map<String, String>, a[6] as Boolean, a[7] as SessionFace?) },
+            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.fileSaid, v.listed, v.unseen) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionBranch(
+    val sid: String,
+    val path: String,
+    val at: Long,
+    val off: List<String>,
+    val runs: List<BranchRun>,
+    val sum: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionBranch> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
+            Field("off", { arr(Str) }, optional = false, nullable = false),
+            Field("runs", { arr(BranchRun.ADAPTER) }, optional = false, nullable = false),
+            Field("sum", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionBranch(a[0] as String, a[1] as String, a[2] as Long, a[3] as List<String>, a[4] as List<BranchRun>, a[5] as String) },
+            { v -> arrayOf(v.sid, v.path, v.at, v.off, v.runs, v.sum) },
         )
     }
 }
@@ -23774,6 +23803,7 @@ data class SessionFileNoticePayload(
     val origin: String,
     val path: String,
     val change: String,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23784,9 +23814,10 @@ data class SessionFileNoticePayload(
             Field("origin", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
             Field("change", { Str }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionFileNoticePayload(a[0] as String, a[1] as String, a[2] as String, a[3] as String) },
-            { v -> arrayOf(v.sessionId, v.origin, v.path, v.change) },
+            { a -> SessionFileNoticePayload(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String) },
+            { v -> arrayOf(v.sessionId, v.origin, v.path, v.change, v.said) },
         )
     }
 }
@@ -23797,6 +23828,7 @@ data class SessionFileReread(
     val path: String,
     val why: RereadWhy,
     val lines: Long,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23807,9 +23839,10 @@ data class SessionFileReread(
             Field("path", { Str }, optional = false, nullable = false),
             Field("why", { RereadWhy.ADAPTER }, optional = false, nullable = false),
             Field("lines", { U64 }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionFileReread(a[0] as String, a[1] as String, a[2] as RereadWhy, a[3] as Long) },
-            { v -> arrayOf(v.sessionId, v.path, v.why, v.lines) },
+            { a -> SessionFileReread(a[0] as String, a[1] as String, a[2] as RereadWhy, a[3] as Long, a[4] as String) },
+            { v -> arrayOf(v.sessionId, v.path, v.why, v.lines, v.said) },
         )
     }
 }

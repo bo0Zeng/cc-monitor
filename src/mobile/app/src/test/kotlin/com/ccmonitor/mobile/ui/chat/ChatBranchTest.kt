@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.BranchFrame
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.wire.gen.BranchRun
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
@@ -105,8 +105,8 @@ class ChatBranchTest {
             val link = link()
             val s = existing(link)
             runCurrent()
-            link.branch(BranchFrame("s1", "/p/other.jsonl", 0, emptyList(), emptyList()))
-            link.branch(BranchFrame("s1", "/p/s1.jsonl", 2, listOf("a2", "u3"), listOf(BranchRun(2, 2, "已被 Esc 回退 · 消息 ×2 · 新"))))
+            link.branch(SessionBranch("s1", "/p/other.jsonl", 0, emptyList(), emptyList(), "x"))
+            link.branch(SessionBranch("s1", "/p/s1.jsonl", 2, listOf("a2", "u3"), listOf(BranchRun(2, 2, "已被 Esc 回退 · 消息 ×2 · 新")), "y"))
             runCurrent()
             assertEquals(listOf("u1", "[已被 Esc 回退 · 消息 ×2]", "[已被 Esc 回退 · 消息 ×2 · 新]", "a3#0"), s.shape())
         }

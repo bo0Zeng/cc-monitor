@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1616,
+  "ceiling": 1613,
   "groups": [
     {
       "kind": "首登",
@@ -136,7 +136,6 @@
         ["src/frontend/ui/new-session.ts", "key", 15],
         ["src/frontend/ui/open-settings.ts", "key", 1],
         ["src/frontend/ui/paste-block.ts", "key", 5],
-        ["src/frontend/ui/record-file-notice.ts", "branch", 3],
         ["src/frontend/ui/record-reads.ts", "key", 1],
         ["src/frontend/ui/resume-menu.ts", "branch", 6],
         ["src/frontend/ui/resume-menu.ts", "key", 4],

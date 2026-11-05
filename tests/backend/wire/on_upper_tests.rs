@@ -215,12 +215,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::SessionFileGone(crate::wire::SessionFileGone {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
+            said: crate::observe::watcher::gone_said(),
         })),
         both(Frame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
             why: RereadWhy::Truncated,
             lines: 7,
+            said: crate::observe::watcher::reread_said(RereadWhy::Truncated),
         })),
         [
             Frame::Transfer(crate::wire::Transfer {
