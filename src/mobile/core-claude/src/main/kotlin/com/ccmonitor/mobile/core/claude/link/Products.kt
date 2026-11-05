@@ -73,7 +73,7 @@ object SessionsNeeds {
     /** 会话那几项（照那台的先后）。 */
     fun of(data: Any?): List<NeedsRow>? = list(data)?.items?.mapNotNull { (it as? NeedsItem.Session)?.session }
 
-    /** 整份（每一项 ＋ 替人答过的那几条 ＋ 会外那一截读不出的那一句）。 */
+    /** 整份（每一项 ＋ 上一条请求收场的那几条（ended）＋ 会外那一截读不出的那一句）。 */
     fun list(data: Any?): NeedsList? = Wire.bind<NeedsList>(data)
 }
 
