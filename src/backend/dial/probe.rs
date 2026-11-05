@@ -15,7 +15,7 @@ use copy_core::copy_text;
 use copy_core::{Discard, Why};
 use resident_client::client::CallError;
 use resident_client::feed::{
-    self, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
+    self, Boxed, Config, Event, Feed, Problem, Progress, State, Transport,
 };
 use resident_client::watch::Desk;
 use serde_json::{json, Value};
@@ -418,17 +418,10 @@ impl Transport for ProbeLink {
         })
     }
 
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         let mut req = self.capture.clone();
         req.command = command;
-        Box::pin(async move {
-            let got = self.dial.capture(req).await.map_err(problem_of)?;
-            Ok(Exec {
-                exit_status: got.exit_code(),
-                stdout: got.stdout,
-                stderr: got.stderr,
-            })
-        })
+        Box::pin(async move { self.dial.capture(req).await.map_err(problem_of) })
     }
 }
 

@@ -39,8 +39,13 @@ pub(crate) fn read_stop(
     exec: &crate::stream_source::RemoteExec,
     machine: &str,
 ) -> Result<StopAnswer, Said> {
-    let got = resident_client::feed::Exec {
-        exit_status: exec.exit_status,
+    // 本机那一趟是本机进程：有码 ⇒ 正常退出；没码 ⇒ 没给码的收尾（不是链路断）。
+    let got = cmd_wire::dial::Captured {
+        ended: exec
+            .exit_status
+            .map_or(cmd_wire::dial::CaptureEnd::ClosedBare, |code| {
+                cmd_wire::dial::CaptureEnd::Exited { code }
+            }),
         stdout: exec.stdout.clone(),
         stderr: exec.stderr.clone(),
     };

@@ -90,7 +90,7 @@ enum Peer {
 #[derive(Default)]
 struct Fake {
     attaches: Mutex<VecDeque<Peer>>,
-    ensures: Mutex<VecDeque<Exec>>,
+    ensures: Mutex<VecDeque<Captured>>,
     attach_at: Mutex<Vec<tokio::time::Instant>>,
     ensured: AtomicUsize,
     /// 那台收到的 attach 行（原样）。
@@ -162,14 +162,14 @@ impl Transport for T {
     fn far(&self) -> bool {
         !self.0.near.load(Ordering::SeqCst)
     }
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
             assert!(command.contains("-- --resident-ensure"), "{command}");
             f.ensured.fetch_add(1, Ordering::SeqCst);
             f.captured.lock().unwrap().push(command.clone());
-            Ok(f.ensures.lock().unwrap().pop_front().unwrap_or(Exec {
-                exit_status: Some(0),
+            Ok(f.ensures.lock().unwrap().pop_front().unwrap_or(Captured {
+                ended: CaptureEnd::Exited { code: 0 },
                 stdout: "{}".into(),
                 stderr: String::new(),
             }))
@@ -196,7 +196,7 @@ impl Transport for D {
     fn far(&self) -> bool {
         T(Arc::clone(&self.0)).far()
     }
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         self.0.steps.lock().unwrap().push(command.clone());
         let t = T(Arc::clone(&self.0));
         Box::pin(async move { t.capture(command).await })
@@ -218,9 +218,9 @@ impl Transport for D {
 }
 
 /// `--resident-ensure --replace` 的答：那台换没换（只升不降在那台判）。
-fn swapped(replaced: bool) -> Exec {
-    Exec {
-        exit_status: Some(0),
+fn swapped(replaced: bool) -> Captured {
+    Captured {
+        ended: CaptureEnd::Exited { code: 0 },
         stdout: format!(r#"{{"pid":7,"replaced":{replaced}}}"#),
         stderr: String::new(),
     }
@@ -758,8 +758,8 @@ async fn a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer() {
 #[tokio::test(start_paused = true)]
 async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
     let f = Arc::new(Fake::default());
-    f.ensures.lock().unwrap().push_back(Exec {
-        exit_status: Some(127),
+    f.ensures.lock().unwrap().push_back(Captured {
+        ended: CaptureEnd::Exited { code: 127 },
         stdout: String::new(),
         stderr: "not found".into(),
     });
@@ -987,8 +987,8 @@ async fn a_host_that_installs_does_nothing_extra_when_the_remote_is_this_build()
 #[tokio::test(start_paused = true)]
 async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
     let f = Arc::new(Fake::default());
-    f.ensures.lock().unwrap().push_back(Exec {
-        exit_status: Some(127),
+    f.ensures.lock().unwrap().push_back(Captured {
+        ended: CaptureEnd::Exited { code: 127 },
         stdout: String::new(),
         stderr: "not found".into(),
     });
@@ -1017,8 +1017,8 @@ async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
 /// 那台不是 Unix（常驻脱离不了）：两端都停在要人动手、不按退避空转，原话进详情；叫醒（机器页「起」· ［重试］）才再试一次。
 #[tokio::test(start_paused = true)]
 async fn a_remote_that_is_not_unix_waits_for_a_hand() {
-    let unsupported = || Exec {
-        exit_status: Some(2),
+    let unsupported = || Captured {
+        ended: CaptureEnd::Exited { code: 2 },
         stdout: String::new(),
         stderr: r#"{"code":"unsupported","said":"setsid: not supported","detail":""}"#.into(),
     };
@@ -1102,8 +1102,8 @@ async fn a_wake_while_dialing_skips_one_wait_and_is_void_once_up() {
     f.holds.lock().unwrap().push_back(Arc::clone(&h1));
     *f.reply_hold.lock().unwrap() = Some(Arc::clone(&h2));
     // 第一轮：没在跑、装过、ensure 也没起来 ⇒ 没成；第二轮：接上、发完 hello 就断；第三轮：接上。
-    f.ensures.lock().unwrap().push_back(Exec {
-        exit_status: Some(1),
+    f.ensures.lock().unwrap().push_back(Captured {
+        ended: CaptureEnd::Exited { code: 1 },
         stdout: String::new(),
         stderr: r#"{"code":"spawn_failed","said":"起不来","detail":""}"#.into(),
     });
@@ -1218,12 +1218,12 @@ async fn a_drop_then_reconnect_hands_over_exactly_these_cells() {
 /// 归成「不是 Unix」；别的失败 ⇒ 那台那一句、它写的详情原样。除了「成了」都是失败，没有回落。
 #[test]
 fn the_ensure_answer_is_read_the_same_on_both_ends() {
-    let exec = |stdout: &str, stderr: &str, code: Option<u32>| Exec {
-        exit_status: code,
+    let exec = |stdout: &str, stderr: &str, code: Option<u32>| Captured {
+        ended: code.map_or(CaptureEnd::ClosedBare, |code| CaptureEnd::Exited { code }),
         stdout: stdout.into(),
         stderr: stderr.into(),
     };
-    let fail = |e: Exec| match read_one_shot(&e, "devbox") {
+    let fail = |e: Captured| match read_one_shot(&e, "devbox") {
         Ok(v) => panic!("该是失败：{v}"),
         Err(Fail { problem, kind }) => (problem, kind),
     };
@@ -1285,6 +1285,49 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, _) = fail(exec("", "garbage", Some(1)));
     assert_eq!(p.said, copy_text("rsRemoteResident.ensure.noReason", &[]));
+}
+
+/// 确保常驻那一跳自己断了（没等到 Close 链路就没了 · ssh 退 255、一个字不回）⇒ 说连接那一类、再试会好；不说「启动后端失败 · 原因不明」、不归成没装。
+/// 被信号杀 ⇒ 照信号说。255 却回了字（那台的进程自己退 255）⇒ 不算链路断，照旧。
+#[test]
+fn an_ensure_hop_that_drops_by_itself_is_a_connection_failure() {
+    let ended = |ended: CaptureEnd, stderr: &str| Captured {
+        ended,
+        stdout: String::new(),
+        stderr: stderr.into(),
+    };
+    let read = |c: Captured| match read_one_shot(&c, "devbox") {
+        Ok(v) => panic!("该是失败：{v}"),
+        Err(Fail { problem, kind }) => (problem.said, kind),
+    };
+    let dropped = (
+        copy_text(
+            "beRemoteAsk.run.unreachable",
+            &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
+        ),
+        FailKind::Transient,
+    );
+    assert_eq!(read(ended(CaptureEnd::Exited { code: 255 }, "")), dropped);
+    assert_eq!(read(ended(CaptureEnd::Dropped, "")), dropped);
+    assert_eq!(
+        read(ended(
+            CaptureEnd::Signaled {
+                signal: "KILL".into()
+            },
+            ""
+        )),
+        (
+            copy_text("beRemoteAsk.run.signaled", &[("sig", "KILL")]),
+            FailKind::Blocked(Blocker::NoBackend)
+        )
+    );
+    assert_eq!(
+        read(ended(CaptureEnd::Exited { code: 255 }, "boom")),
+        (
+            copy_text("rsRemoteResident.ensure.noReason", &[]),
+            FailKind::Blocked(Blocker::NoBackend)
+        )
+    );
 }
 
 /// 中继一直说「没人在听」（ensure 说起了、却一直没绑上口）：至多试 [`RELAY_TRIES`] 回（隔 [`RELAY_WAIT`]），然后说「后端没在运行」、照退避再来；
@@ -1524,8 +1567,8 @@ async fn a_wake_while_up_asks_at_once() {
 /// 等不等人按只看这一端装不装：装不了的（手机）停下等人，装得了的（桌面）下一轮自己装。
 #[tokio::test(start_paused = true)]
 async fn both_ends_record_where_the_round_was_blocked_and_only_the_phone_waits() {
-    let absent = || Exec {
-        exit_status: Some(127),
+    let absent = || Captured {
+        ended: CaptureEnd::Exited { code: 127 },
         stdout: String::new(),
         stderr: "ccm: not found".into(),
     };
@@ -1553,8 +1596,8 @@ async fn both_ends_record_where_the_round_was_blocked_and_only_the_phone_waits()
     assert_eq!(stuck(feed.state()), (Some(Blocker::NoBackend), true));
 
     let f = Arc::new(Fake::default());
-    f.ensures.lock().unwrap().push_back(Exec {
-        exit_status: None,
+    f.ensures.lock().unwrap().push_back(Captured {
+        ended: CaptureEnd::ClosedBare,
         stdout: hello("p0a-ancient"),
         stderr: String::new(),
     });
