@@ -303,7 +303,6 @@ class ChatsBoardTest {
         RawJson.write(
             mapOf(
                 "totalHits" to rows.size,
-                "sessionCount" to rows.size,
                 "truncated" to false,
                 "notes" to listOf("核心·读不动 4 份", "核心·Codex 只按标题"),
                 "down" to emptyList<Any>(),

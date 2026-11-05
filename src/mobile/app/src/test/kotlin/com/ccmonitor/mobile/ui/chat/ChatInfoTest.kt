@@ -199,7 +199,6 @@ class ChatInfoTest {
                     "sampled" to null,
                     "differs" to false,
                     "badge" to null,
-                    "queryable" to true,
                 )
             val task = mapOf("id" to "1", "subject" to "写测试", "status" to "in_progress", "statusText" to "进行中", "blocks" to emptyList<Any>(), "blockedBy" to emptyList<Any>())
             val tasks = mapOf("tasks" to listOf(task), "chip" to "任务 0/1", "hint" to "完成 0 · 进行 1 · 未开始 0")

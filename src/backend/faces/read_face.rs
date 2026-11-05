@@ -651,7 +651,7 @@ pub(crate) fn dress_ask(
     needs
 }
 
-/// 答题口没接上 ⇒ 写好的那一句（会话事实 `answerOff`）；接上了 / 判不了 ⇒ `None`。按持着它的进程现查（`writers` 是它们的 pid）：
+/// 答题口没接上 ⇒ 写好的那一句（后端内部的 `answerOff`，经 `needs.manualText` 出）；接上了 / 判不了 ⇒ `None`。按持着它的进程现查（`writers` 是它们的 pid）：
 /// ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量（值说原因）；换了启动器那一支（ccm 的便条说插件是经环境交下去的）、
 /// 持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去；身上看不出 ccm 挂过 ⇒ 别处起的（`agent` 那一家有答题口才这么说）。
 pub(crate) fn answer_off_of(
