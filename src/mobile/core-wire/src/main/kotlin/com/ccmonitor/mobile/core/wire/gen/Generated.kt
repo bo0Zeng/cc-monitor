@@ -26695,6 +26695,50 @@ data class TerminalItem(
     }
 }
 
+sealed interface TerminalOpened {
+    /** 判别格（`outcome`）那个词。 */
+    val outcome: String
+
+    data object Opened : TerminalOpened {
+        override val outcome: String get() = "opened"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class NoWindow(
+        val said: String,
+        val title: String,
+        val detail: String,
+    ) : TerminalOpened, Ordered {
+        override val outcome: String get() = "noWindow"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalOpened> =
+            tagged<TerminalOpened>(
+                "outcome",
+                listOf(
+                Variant("opened", TerminalOpened.Opened::class.java, obj(
+                        listOf(
+                        Field("outcome", { tag("opened") }, optional = false, nullable = false),
+                        ),
+                        { TerminalOpened.Opened },
+                        { arrayOf("opened") },
+                    )),
+                Variant("noWindow", TerminalOpened.NoWindow::class.java, obj(
+                        listOf(
+                        Field("outcome", { tag("noWindow") }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> TerminalOpened.NoWindow(a[1] as String, a[2] as String, a[3] as String) },
+                        { v -> arrayOf("noWindow", v.said, v.title, v.detail) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class TerminalOutcome(
     val machine: String,
