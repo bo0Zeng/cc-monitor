@@ -12715,7 +12715,7 @@
     "beRemoteAsk.run.hopDropped": {
       "kind": "error",
       "role": "原因格",
-      "zh": "中途断开",
+      "zh": "链路中途中断",
       "args": []
     },
     "beRemoteAsk.cappedLine.tooLong": {
