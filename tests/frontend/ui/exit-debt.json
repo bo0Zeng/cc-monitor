@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1595,
+  "ceiling": 1591,
   "groups": [
     {
       "kind": "首登",
@@ -183,8 +183,7 @@
         ["src/frontend/ui/settings/interrupts.ts", "key", 7],
         ["src/frontend/ui/settings/machine-aliases.ts", "branch", 26],
         ["src/frontend/ui/settings/machine-aliases.ts", "key", 39],
-        ["src/frontend/ui/settings/machine-card.ts", "branch", 2],
-        ["src/frontend/ui/settings/machine-card.ts", "key", 16],
+        ["src/frontend/ui/settings/machine-card.ts", "key", 14],
         ["src/frontend/ui/settings/machine-launch-rows.ts", "branch", 1],
         ["src/frontend/ui/settings/machine-launch-rows.ts", "key", 7],
         ["src/frontend/ui/settings/machine-page.ts", "branch", 2],

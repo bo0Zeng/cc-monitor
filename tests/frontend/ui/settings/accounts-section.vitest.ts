@@ -164,7 +164,7 @@ beforeEach(() => {
   readQuota.mockResolvedValue(quota());
   // readQuota 整块是假的、不经 tookQuota 收表 ⇒ 这里交一张位名表（位名照表出、不拿码兜）。
   takeNames({ accounts: {}, slots: { "5h": "5h", "7d": "7d" } });
-  accountsVerify.mockResolvedValue({ pass: true, fails: 0, warns: 0, checks: [] });
+  accountsVerify.mockResolvedValue({ pass: true, fails: 0, checks: [] });
   readProfiles.mockResolvedValue({
     profiles: [
       { name: "apicc", accountShape: { account: "api", tmux: false } },
@@ -402,7 +402,7 @@ describe("各态", () => {
   it("打开时核一次：有对不上的才出警告条（说那个号 ＋［修复…］）；都对得上 ⇒ 不占地方", async () => {
     let el = await mount();
     expect(el.textContent).not.toContain(copyText("acctPage.verify.fix"));
-    accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+    accountsVerify.mockResolvedValue({ pass: false, fails: 1, checks:[{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     el = await mount();
     expect(el.textContent).toContain("personal：登录信息缺失");
     expect(buttonNamed(el, copyText("acctPage.verify.fix"))).toBeDefined();
@@ -475,7 +475,7 @@ describe("动作", () => {
   });
 
   it("警告条［修复…］：预演出几步 ⇒ 确认框列出来，确认后才修；修过之后条上 ⋯ 里才有「恢复到修复之前」", async () => {
-    accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+    accountsVerify.mockResolvedValue({ pass: false, fails: 1, checks:[{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     const el = await mount();
     expect(buttonNamed(el, copyText("history.row.more"))).toBeUndefined();
     buttonNamed(el, copyText("acctPage.verify.fix")).click();

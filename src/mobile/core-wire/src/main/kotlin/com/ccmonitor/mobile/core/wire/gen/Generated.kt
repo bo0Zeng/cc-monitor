@@ -19319,8 +19319,7 @@ data class PubkeyPushReq(
 
 @Suppress("UNCHECKED_CAST")
 data class PubkeyPushed(
-    val outcome: PushOutcome,
-    val pubPath: String,
+    val said: String,
     val via: PushVia,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -19328,12 +19327,11 @@ data class PubkeyPushed(
     companion object {
         val ADAPTER: JsonAdapter<PubkeyPushed> = obj(
             listOf(
-            Field("outcome", { PushOutcome.ADAPTER }, optional = false, nullable = false),
-            Field("pubPath", { Str }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             Field("via", { PushVia.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PubkeyPushed(a[0] as PushOutcome, a[1] as String, a[2] as PushVia) },
-            { v -> arrayOf(v.outcome, v.pubPath, v.via) },
+            { a -> PubkeyPushed(a[0] as String, a[1] as PushVia) },
+            { v -> arrayOf(v.said, v.via) },
         )
     }
 }

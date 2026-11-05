@@ -15454,18 +15454,13 @@ machine: Host,
 pubKeyPath?: string | null, };
 type PubkeyPushed = { 
 /**
- * `added`（新加的）· `already`（本就有整行相等的一行，没写）。
+ * 屏上那一句：加上了 · 本来就有，都带推的是哪一份（[`pushed_said`]）；界面照摆。
  */
-outcome: PushOutcome, 
-/**
- * 实际推的是哪一份（给人看）。
- */
-pubPath: string, 
+said: string, 
 /**
  * 走了哪条。
  */
 via: PushVia, };
-type PushOutcome = "added" | "already";
 type PushVia = "backend" | "exec";
 ```
 
