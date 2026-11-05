@@ -31,7 +31,7 @@
 //! 那正是上面那张表的病根（cc-bus 的地址是名字型 `proj_cc:0.0`，而名字会被重用）。
 //!
 //! ⚠ **如实写清射程差**：`§30` 的**铁律**那几条枚举的是 attach/resume 那一面
-//! （`tabs.ts::findClaudeTmux`），**没点 cc-bus**。⇒ 本表命中的是 `§30` 的**正题**，
+//! （`host::list` · `control/gate.rs` · `common/session_snapshot.rs`），**没点 cc-bus**。⇒ 本表命中的是 `§30` 的**正题**，
 //! 不在它的铁律清单里；要不要给 `§30` 补一段澄清点名 cc-bus，那要用户拍。
 //! 核对过程住。
 
