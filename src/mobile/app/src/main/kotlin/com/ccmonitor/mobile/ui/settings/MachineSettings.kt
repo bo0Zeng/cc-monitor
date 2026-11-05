@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TabKind
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
@@ -77,8 +77,8 @@ data class MachineSettingsUi(
 }
 
 /**
- * 设置屏与账号一览读写那台的那几份：进来各读一次 `accounts-list` · `quota-read` · `prefs-read`；流上 `quota` 变了换上它带的那份（没带 ⇒ 重读用量）、
- * `accounts` 变了重读账号；换了一条流（离线回来）整份重读。偏好拨了马上 `prefs-set`、照回包画；没存上退回读到的值、那一行下面说一句。
+ * 设置屏与账号一览读写那台的那几份：接上的每一回（核心那一格 [seen]；进来时已通着 ⇒ 当场一回）各读一次 `accounts-list` · `quota-read` · `prefs-read`；
+ * 流上 `quota` 变了换上它带的那份（没带 ⇒ 重读用量）、`accounts` 变了重读账号。偏好拨了马上 `prefs-set`、照回包画；没存上退回读到的值、那一行下面说一句。
  * 判（默认号 · 能不能设为默认 · 用量的字与语气 · 偏好的值）全在那台，这里只按号名对上两份回包。
  */
 class MachineSettings(
@@ -91,8 +91,7 @@ class MachineSettings(
     val state: StateFlow<MachineSettingsUi> = _state.asStateFlow()
 
     init {
-        scope.launch { load() }
-        scope.launch { link.epoch.drop(1).collect { load() } }
+        scope.launch { link.seen.collect { load() } }
         scope.launch {
             changes.collect { c ->
                 when (c) {
