@@ -38,7 +38,7 @@ function whiteSpaceOf(root: HTMLElement, text: string): string | undefined {
 describe("设置窗 · 分行的说明照分行画", () => {
   it("★ 待办点开那一句「为什么」（接中转那一件）", () => {
     const why = copyText("beChore.relay.why");
-    const c = { id: "relay", kind: "optional", state: "todo", name: "relay", loc: "", said: "todo", why, steps: [], diff: null, copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" } as unknown as Chore;
+    const c = { id: "relay", kind: "optional", state: "todo", name: "relay", loc: "", said: "todo", why, steps: [], diff: null, copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet", tag: { text: copyText("dataPage.kind.optional"), kind: "optional" }, tone: "muted" } as unknown as Chore;
     const row = choreRow(c, { open: true, copied: false, onToggle: vi.fn(), onCopied: vi.fn(), onGo: vi.fn(), onOpenFile: null, onDecline: vi.fn(), onRecheck: vi.fn() });
     expect(whiteSpaceOf(row, why)).toBe("pre-line");
   });

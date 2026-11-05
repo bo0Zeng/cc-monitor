@@ -345,6 +345,8 @@ fn 每件的线上形状_键集恰好() {
             "said",
             "state",
             "steps",
+            "tag",
+            "tone",
             "whole",
             "wholeCovers",
             "why"
@@ -465,6 +467,89 @@ fn sshd_关了转发_要做_换那一行() {
         .unwrap()
         .contains("/etc/ssh/sshd_config"));
     assert_eq!(badge_of(&f), 1);
+}
+
+/// 每一件带写好的小标签（字 ＋ 管颜色的类）与点色，界面照摆、不照类 · 态自己选：
+/// 过期 ⇒「过期 · 要做」照要做上色；先决没满足 ⇒「先决未满足」照本类上色；别的照本类出字。
+/// 点色：已做 绿 · 过期 / 要做 红 · 待定 / 要装 琥珀 · 余下（要装 · 可选 · 可选 · 不用了）空心。
+#[test]
+fn 每件带写好的小标签与点色() {
+    let mut f = base();
+    f.stale_ccm = Some(StaleCcm {
+        path: "/x/ccm".into(),
+        needs_root: false,
+    });
+    f.self_paste = Some(SelfPaste {
+        rc: "/h/.bashrc".into(),
+        lines: vec!["x".into()],
+        after_line: 1,
+        present: true,
+    });
+    f.clashes = vec![Clash {
+        name: "cc".into(),
+        path: "/h/.bashrc".into(),
+        line: 3,
+        wins: "yours".into(),
+    }];
+    f.needs_install = vec![
+        Missing {
+            id: "claude-cli",
+            name: "Claude Code".into(),
+            what: "claude",
+            required: true,
+            how_url: None,
+        },
+        Missing {
+            id: "git",
+            name: "git".into(),
+            what: "git",
+            required: false,
+            how_url: None,
+        },
+    ];
+    f.dead = vec![DeadLines {
+        path: "/h/.bashrc".into(),
+        lines: vec![(1, "source /nope".into())],
+    }];
+    f.relay = vec![claude_relay(
+        "stale",
+        "/h/.claude/settings.json",
+        Some("{}"),
+        Some("http://127.0.0.1:1/k/K/claude"),
+    )];
+    f.hooks = Some(Hooks {
+        ccbus: false,
+        installed: false,
+        path: "/h/.claude/settings.json".into(),
+        text: None,
+        items: vec![],
+    });
+    f.mcp_login = vec![McpLogin {
+        name: "m".into(),
+        who: vec![],
+        command: "/mcp",
+    }];
+    f.declined = vec!["mcp-login:m".into()];
+    let c = chores(&f);
+    let of = |id: &str| {
+        let x = c.iter().find(|x| x["id"] == json!(id)).unwrap();
+        (x["tag"].clone(), x["tone"].clone())
+    };
+    let tag = |key: &str, kind: &str| json!({"text": copy_text(key, &[]), "kind": kind});
+    let want = [
+        ("stale-ccm", tag("dataPage.kind.must", "must"), "bad"),
+        ("self-paste", tag("dataPage.kind.must", "must"), "ok"),
+        ("relay:claude-code", tag("dataPage.state.expired", "must"), "bad"),
+        ("clash:cc", tag("dataPage.kind.decide", "decide"), "warn"),
+        ("install:claude-cli", tag("dataPage.install.kind", "install"), "warn"),
+        ("install:git", tag("dataPage.install.kindOptional", "installOptional"), "muted"),
+        ("dead:/h/.bashrc", tag("dataPage.kind.optional", "optional"), "muted"),
+        ("cc-bus-hooks", tag("dataPage.state.blocked", "optional"), "muted"),
+        ("mcp-login:m", tag("dataPage.kind.optional", "optional"), "muted"),
+    ];
+    for (id, t, tone) in want {
+        assert_eq!(of(id), (t, json!(tone)), "{id}");
+    }
 }
 
 /// 贴好了、但某个项目里的设置文件自己写了上游地址 ⇒ 照旧已做，说明换成「被那个项目盖住」，原因行指那份文件。

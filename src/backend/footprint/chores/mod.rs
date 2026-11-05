@@ -4,6 +4,7 @@
 //!   角标只数前三类里还没做完的（[`badge`]）。
 //! - 态：`todo` · `done`（自己认出）· `expired`（贴过的失效了，升成要做）· `blocked`（先决没满足）· `declined`（可选的点过「不用了」）。
 //!   「已复制」只住界面（点了复制的那一刻），不进这里。
+//! - 小标签的字与类、状态点的色也在这里照类 · 态写好（[`face`]），界面照摆。
 //! - 判定只在这里：事实由 [`gather`] 从这台收（别名块 · PATH 上的 ccm · 设置文件 · 记下的选择），本模块是纯函数。
 
 pub(crate) mod gather;
@@ -156,6 +157,55 @@ pub(crate) enum ChoreState {
     Declined,
 }
 
+/// 一件名字旁那枚小标签：字 ＋ 管颜色的类（过期的照要做上色）。界面照摆；「已复制」那一枚只住界面。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub(crate) struct ChoreTag {
+    pub(crate) text: String,
+    pub(crate) kind: ChoreKind,
+}
+
+/// 一件前面那颗状态点的色：已做 绿 · 要做 / 过期 红 · 待定 / 要装 琥珀 · 余下空心。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChoreTone {
+    Ok,
+    Bad,
+    Warn,
+    Muted,
+}
+
+/// 类 · 态定了之后那一件的小标签与点色（[`chores`] 末尾一处填）。
+fn face(kind: ChoreKind, state: ChoreState) -> (ChoreTag, ChoreTone) {
+    let key = match (state, kind) {
+        (ChoreState::Expired, _) => "dataPage.state.expired",
+        (ChoreState::Blocked, _) => "dataPage.state.blocked",
+        (_, ChoreKind::Must) => "dataPage.kind.must",
+        (_, ChoreKind::Install) => "dataPage.install.kind",
+        (_, ChoreKind::Decide) => "dataPage.kind.decide",
+        (_, ChoreKind::InstallOptional) => "dataPage.install.kindOptional",
+        (_, ChoreKind::Optional) => "dataPage.kind.optional",
+    };
+    let tag = ChoreTag {
+        text: copy_text(key, &[]),
+        kind: if state == ChoreState::Expired {
+            ChoreKind::Must
+        } else {
+            kind
+        },
+    };
+    let tone = match (state, kind) {
+        (ChoreState::Done, _) => ChoreTone::Ok,
+        (ChoreState::Expired, _) | (_, ChoreKind::Must) => ChoreTone::Bad,
+        (_, ChoreKind::Decide | ChoreKind::Install) => ChoreTone::Warn,
+        _ => ChoreTone::Muted,
+    };
+    (tag, tone)
+}
+
 /// 收着时那颗主按钮。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -219,10 +269,15 @@ pub(crate) struct Chore {
     pub(crate) go: Option<UndoAt>,
     pub(crate) how_url: Option<String>,
     pub(crate) action: ChoreAction,
+    /// 名字旁那枚小标签（类 · 态定了之后写好）。
+    pub(crate) tag: ChoreTag,
+    /// 状态点的色。
+    pub(crate) tone: ChoreTone,
 }
 
 impl Chore {
     pub(crate) fn new(id: impl Into<String>, kind: ChoreKind, action: ChoreAction) -> Chore {
+        let (tag, tone) = face(kind, ChoreState::Todo);
         Chore {
             id: id.into(),
             kind,
@@ -240,6 +295,8 @@ impl Chore {
             go: None,
             how_url: None,
             action,
+            tag,
+            tone,
         }
     }
 }
@@ -584,6 +641,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         {
             c.state = ChoreState::Declined;
         }
+        (c.tag, c.tone) = face(c.kind, c.state);
     }
     // 急的在前（[`ChoreKind`] 的声明次序）；同类里照收的次序（稳定排序）。
     out.sort_by_key(|c| c.kind);

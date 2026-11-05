@@ -118,6 +118,8 @@ const chore = (over: Record<string, unknown>) => ({
   go: null,
   howUrl: null,
   action: "copySnippet",
+  tag: { text: copyText("dataPage.kind.optional"), kind: "optional" },
+  tone: "muted",
   ...over,
 });
 
@@ -127,8 +129,8 @@ const report = (over: Record<string, unknown> = {}) => ({
   home: "/h",
   changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
   todo: [
-    chore({ id: "install:claude-cli", kind: "install", name: "Claude Code", action: "how", howUrl: "https://example.invalid/claude" }),
-    chore({ id: "install:git", kind: "installOptional", name: "git", action: "how" }),
+    chore({ id: "install:claude-cli", kind: "install", name: "Claude Code", action: "how", howUrl: "https://example.invalid/claude", tag: { text: copyText("dataPage.install.kind"), kind: "install" }, tone: "warn" }),
+    chore({ id: "install:git", kind: "installOptional", name: "git", action: "how", tag: { text: copyText("dataPage.install.kindOptional"), kind: "installOptional" } }),
   ],
   tmux: false,
   counts: counts({ badge: 1, open: 2, install: 1, optional: 1 }),
@@ -220,6 +222,17 @@ describe("待办", () => {
     expect(badge.at(-1)).toBe(4);
     const dev = page.element.querySelector<HTMLElement>('[data-machine="devbox"] .data-machine-head')!;
     expect([...dev.querySelectorAll<HTMLElement>("[data-kind]:not(button)")].map((t) => t.textContent)).toEqual([copyText("dataPage.chores.countOptional", { n: 5 })]);
+  });
+
+  it("★ 小标签的字与类、状态点的色照成品那几格摆，不照类 · 态自己选（夹具故意给对不上类 · 态的）", async () => {
+    answers.set(LOCAL, report({ todo: [chore({ id: "odd", kind: "optional", state: "done", tag: { text: "标签·夹具", kind: "must" }, tone: "warn" })] }));
+    const { page } = mount();
+    page.loadNow();
+    await settle();
+    const row = page.element.querySelector<HTMLElement>('[data-chore="odd"]')!;
+    const t = row.querySelector<HTMLElement>(".data-item-title [data-kind]")!;
+    expect([t.dataset.kind, t.textContent]).toEqual(["must", "标签·夹具"]);
+    expect(row.querySelector<HTMLElement>(".data-dot")!.dataset.tone).toBe("warn");
   });
 
   it("［安装方法］开的是那份成品给的链接；没有链接的那件不摆这颗", async () => {
