@@ -1557,6 +1557,30 @@
       "args": ["dur", "name"],
       "limited": ["tmux"]
     },
+    "beSessionArrive.missed.managed.words": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 托管终端「{name}」末几行\n{words}",
+      "args": ["dur", "name", "words"]
+    },
+    "beSessionArrive.missed.managed.emptyScreen": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 托管终端「{name}」画面为空",
+      "args": ["dur", "name"]
+    },
+    "beSessionArrive.missed.managed.gone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 托管终端「{name}」已不在",
+      "args": ["dur", "name"]
+    },
+    "beSessionArrive.missed.managed.noScreen": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已等 {dur} 未报到 · 读取托管终端「{name}」画面失败 · {why}",
+      "args": ["dur", "name", "why"]
+    },
     "beSessionArrive.missed.noScreen": {
       "kind": "error",
       "role": "报错",
