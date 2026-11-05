@@ -117,11 +117,6 @@ pub fn take(id: &str, front: &str) -> std::io::Result<()> {
     hold::take(&sock(id)?, id, front)
 }
 
-/// 抓 `id` 一屏（[`client::capture`]）。
-pub fn capture(id: &str, back: usize, color: bool) -> std::io::Result<client::Captured> {
-    client::capture(&sock(id)?, back, color)
-}
-
 /// 打标的结局：（这条会话的容器，这次真写了没有）—— 同 `control::identity_tag::tag_seen` 交回的那一对。
 pub type Tagged = (Option<crate::wire::SessionContainer>, bool);
 

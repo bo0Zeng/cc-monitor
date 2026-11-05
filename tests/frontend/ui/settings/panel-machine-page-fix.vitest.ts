@@ -120,6 +120,8 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
+import { buildMachinePage } from "../../../../src/frontend/ui/settings/machine-page";
+import type { MachineFace } from "../../../../src/frontend/ui/settings/machine-state";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { factsOn } from "../../../test-support/host-facts";
 
@@ -159,5 +161,68 @@ describe("机器单页问题行的修法接到真流程", () => {
     expect(btn, `机器页问题行里没有［${label}］`).toBeDefined();
     btn!.click();
     expect(captured.runFix).toEqual([[REMOTE_PAGE, "compare_fingerprint"]]);
+  });
+});
+
+// 卡头的词与问题行只由那台状态写（`setMachine`）；通道那一路（`setConnected`）只换点。与机器列表那一行同一个做法。
+describe("机器单页卡头：词与问题行只由那台状态写，通道只换点", () => {
+  const face = (over: Partial<MachineFace> = {}): MachineFace => ({
+    dot: "needs-you",
+    word: copyText("machineState.word.installing"),
+    problem: "那台的一句",
+    tone: "busy",
+    bar: true,
+    fixes: [],
+    detail: "",
+    next: "",
+    route: "",
+    ...over,
+  });
+  const page = () => {
+    const p = buildMachinePage({
+      pageId: REMOTE_PAGE,
+      name: "devbox",
+      meta: "",
+      connection: document.createElement("div"),
+      ccMonitor: [],
+      menu: () => [],
+    });
+    document.body.appendChild(p.element);
+    const word = () => p.element.querySelector<HTMLElement>(".machine-head-state")!.textContent;
+    const problem = () => p.element.querySelector<HTMLElement>(".machine-problem")!;
+    const dot = () => p.element.querySelector<HTMLElement>(".machine-head-top [data-state]")?.dataset.state;
+    return { p, word, problem, dot };
+  };
+
+  it("★ 那台推「安装中」、随后通道报连着 ⇒ 词仍是「安装中」、问题行仍是那台那一句，只换点", () => {
+    const { p, word, problem, dot } = page();
+    p.setMachine(face());
+    p.setConnected(true);
+    expect(word()).toBe(copyText("machineState.word.installing"));
+    expect(problem().hidden).toBe(false);
+    expect(problem().textContent).toContain("那台的一句");
+    expect(dot()).toBe("up");
+  });
+
+  it("通道报断着 ⇒ 不自己写「离线」与离线那一句：词与问题行照那台状态", () => {
+    const { p, word, problem, dot } = page();
+    p.setMachine(face({ dot: "up", word: "", problem: "", tone: "warn", bar: false }));
+    p.setConnected(false, "那台的离线那一句");
+    expect(word()).toBe("");
+    expect(problem().hidden).toBe(true);
+    expect(dot()).toBe("failed");
+  });
+
+  it("停用那一笔：开回来 ⇒「已停用」与那一句撤掉，等那台的下一份", () => {
+    const { p, word, problem } = page();
+    p.setDisabled(true);
+    expect(word()).toBe(copyText("machinePage.state.disabled"));
+    expect(problem().textContent).toContain(copyText("machinePage.problem.disabled"));
+    p.setDisabled(false);
+    p.setConnected(true);
+    expect(word()).toBe("");
+    expect(problem().hidden).toBe(true);
+    p.setMachine(face());
+    expect(word()).toBe(copyText("machineState.word.installing"));
   });
 });
