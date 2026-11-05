@@ -9,7 +9,7 @@ export type Merged = {
 /**
  * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
  */
-totalHits: number, sessionCount: number, 
+totalHits: number, 
 /**
  * 任一行 `hitsTruncated`（每一台都被自己的 `limit` 砍过）。
  */

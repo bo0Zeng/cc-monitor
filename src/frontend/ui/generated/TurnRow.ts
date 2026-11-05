@@ -23,18 +23,18 @@ uuid: string,
  */
 start: string, end: string, 
 /**
- * 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
+ * 起在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
  */
-startText: string, endText: string, 
+startText: string, 
 /**
  * 你那句的第一行（≤ [`SAID_MAX`] 字）。
  */
 said: string, 
 /**
  * 整轮合计：工具调用几次（派 agent 不算）· 思考几段 · 派出几个 agent · 后台任务通知几条（交回过的子 agent 的收场通知不算）·
- * API 重试几次 · 另一会话 / 子 agent 来话几段（交回不算）。
+ * API 重试几次（另一会话 / 子 agent 来话几段只写进过程段那一行）。
  */
-tools: number, thinking: number, agents: number, background: number, retries: number, peers: number, 
+tools: number, thinking: number, agents: number, background: number, retries: number, 
 /**
  * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
  */

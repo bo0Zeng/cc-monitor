@@ -3,4 +3,4 @@
 /**
  * 归档里的节点（被替换的）。
  */
-export type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
+export type PlanArchived = { id: string, title: string | null, kind: string | null, };

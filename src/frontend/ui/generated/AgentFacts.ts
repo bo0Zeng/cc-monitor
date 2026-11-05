@@ -29,8 +29,4 @@ modelNote: string | null,
 /**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */
-permissionModes: Array<AgentPick>, 
-/**
- * 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
- */
-permissionDefault: AgentPick | null, };
+permissionModes: Array<AgentPick>, };

@@ -7,8 +7,4 @@ export type PlanPendingSet = { source: string | null, target: string | null, val
 /**
  * pb 那一句。
  */
-blockedReason: string | null, 
-/**
- * pb 给程序的代号（`source_delegated` …）。
- */
-blockedCode: string | null, };
+blockedReason: string | null, };

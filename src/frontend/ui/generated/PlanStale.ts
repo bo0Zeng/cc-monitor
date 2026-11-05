@@ -3,4 +3,4 @@
 /**
  * 读不成、给的是上一次那一份：那一句 ＋ 原话 ＋ 那一份读到的时刻。
  */
-export type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+export type PlanStale = { said: string | null, raw: string | null, since: number, };

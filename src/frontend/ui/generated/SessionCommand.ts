@@ -22,15 +22,11 @@ scope: CommandScope,
  */
 scopeText: string, 
 /**
- * 要跟参数（填进去停住等补）。
- */
-needsArgs: boolean, 
-/**
  * 发之前先确认。
  */
 confirm: boolean, 
 /**
- * `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+ * 要跟参数（填进去停住等补）时那一格的字（「带参数」）；不要 ⇒ `null`。
  */
 needsArgsText: string | null, 
 /**

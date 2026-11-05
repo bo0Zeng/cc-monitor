@@ -846,7 +846,6 @@ data class AgentFacts(
     val modelDefault: AgentPick?,
     val modelNote: String?,
     val permissionModes: List<AgentPick>,
-    val permissionDefault: AgentPick?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -859,10 +858,9 @@ data class AgentFacts(
             Field("modelDefault", { opt(AgentPick.ADAPTER) }, optional = false, nullable = true),
             Field("modelNote", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModes", { arr(AgentPick.ADAPTER) }, optional = false, nullable = false),
-            Field("permissionDefault", { opt(AgentPick.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> AgentFacts(a[0] as String, a[1] as String, a[2] as List<AgentPick>, a[3] as AgentPick?, a[4] as String?, a[5] as List<AgentPick>, a[6] as AgentPick?) },
-            { v -> arrayOf(v.kind, v.text, v.models, v.modelDefault, v.modelNote, v.permissionModes, v.permissionDefault) },
+            { a -> AgentFacts(a[0] as String, a[1] as String, a[2] as List<AgentPick>, a[3] as AgentPick?, a[4] as String?, a[5] as List<AgentPick>) },
+            { v -> arrayOf(v.kind, v.text, v.models, v.modelDefault, v.modelNote, v.permissionModes) },
         )
     }
 }
@@ -6664,16 +6662,13 @@ data class FactsReply(
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
-    val handedBack: List<String>,
     val retries: List<RetryRun>,
     val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
     val cost: FactsCost?,
-    val bgTasks: List<BgTask>,
     val background: FactsBackground?,
-    val answerOff: String?,
     val autoAnswer: Int?,
     val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
@@ -6704,16 +6699,13 @@ data class FactsReply(
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
-            Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
             Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
             Field("cost", { opt(FactsCost.ADAPTER) }, optional = false, nullable = true),
-            Field("bgTasks", { arr(BgTask.ADAPTER) }, optional = false, nullable = false),
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
-            Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Int32) }, optional = false, nullable = true),
             Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
@@ -6725,8 +6717,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as List<PendingCall>, a[12] as LastSay?, a[13] as Needs?, a[14] as List<String>, a[15] as List<RetryRun>, a[16] as List<NoticeRun>, a[17] as String?, a[18] as String?, a[19] as TokenUse?, a[20] as FactsCost?, a[21] as List<BgTask>, a[22] as FactsBackground?, a[23] as String?, a[24] as Int?, a[25] as List<AutoChoice>, a[26] as String?, a[27] as List<McpTrouble>, a[28] as Kin?, a[29] as List<Kin>, a[30] as String?, a[31] as String?, a[32] as FactsLine?, a[33] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as List<PendingCall>, a[12] as LastSay?, a[13] as Needs?, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as FactsBackground?, a[21] as Int?, a[22] as List<AutoChoice>, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as String?, a[28] as String?, a[29] as FactsLine?, a[30] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }
@@ -14934,7 +14926,6 @@ data class MenuEntry(
 @Suppress("UNCHECKED_CAST")
 data class Merged(
     val totalHits: Long,
-    val sessionCount: Long,
     val truncated: Boolean,
     val sessions: List<MergedRow>,
     val notes: List<String>,
@@ -14947,15 +14938,14 @@ data class Merged(
         val ADAPTER: JsonAdapter<Merged> = obj(
             listOf(
             Field("totalHits", { U64 }, optional = false, nullable = false),
-            Field("sessionCount", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("sessions", { arr(MergedRow.ADAPTER) }, optional = false, nullable = false),
             Field("notes", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
             Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as List<String>, a[5] as List<SearchDown>, a[6] as String) },
-            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.notes, v.down, v.summary) },
+            { a -> Merged(a[0] as Long, a[1] as Boolean, a[2] as List<MergedRow>, a[3] as List<String>, a[4] as List<SearchDown>, a[5] as String) },
+            { v -> arrayOf(v.totalHits, v.truncated, v.sessions, v.notes, v.down, v.summary) },
         )
     }
 }
@@ -16401,7 +16391,6 @@ data class PlanArchived(
     val id: String,
     val title: String?,
     val kind: String?,
-    val replacedBy: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16411,10 +16400,9 @@ data class PlanArchived(
             Field("id", { Str }, optional = false, nullable = false),
             Field("title", { opt(Str) }, optional = false, nullable = true),
             Field("kind", { opt(Str) }, optional = false, nullable = true),
-            Field("replacedBy", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanArchived(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?) },
-            { v -> arrayOf(v.id, v.title, v.kind, v.replacedBy) },
+            { a -> PlanArchived(a[0] as String, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.id, v.title, v.kind) },
         )
     }
 }
@@ -17439,7 +17427,6 @@ data class PlanPendingSet(
     val value: String?,
     val op: UserPathOp,
     val blockedReason: String?,
-    val blockedCode: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17451,10 +17438,9 @@ data class PlanPendingSet(
             Field("value", { opt(Str) }, optional = false, nullable = true),
             Field("op", { UserPathOp.ADAPTER }, optional = false, nullable = false),
             Field("blockedReason", { opt(Str) }, optional = false, nullable = true),
-            Field("blockedCode", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanPendingSet(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as UserPathOp, a[4] as String?, a[5] as String?) },
-            { v -> arrayOf(v.source, v.target, v.value, v.op, v.blockedReason, v.blockedCode) },
+            { a -> PlanPendingSet(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as UserPathOp, a[4] as String?) },
+            { v -> arrayOf(v.source, v.target, v.value, v.op, v.blockedReason) },
         )
     }
 }
@@ -17985,7 +17971,6 @@ data class PlanStale(
     val said: String?,
     val raw: String?,
     val since: Long,
-    val sinceText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17995,10 +17980,9 @@ data class PlanStale(
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("raw", { opt(Str) }, optional = false, nullable = true),
             Field("since", { U64 }, optional = false, nullable = false),
-            Field("sinceText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> PlanStale(a[0] as String?, a[1] as String?, a[2] as Long, a[3] as String?) },
-            { v -> arrayOf(v.said, v.raw, v.since, v.sinceText) },
+            { a -> PlanStale(a[0] as String?, a[1] as String?, a[2] as Long) },
+            { v -> arrayOf(v.said, v.raw, v.since) },
         )
     }
 }
@@ -21763,7 +21747,6 @@ data class RotStrategyItem(
     val error: RotStrategyError? = null,
     val inUse: List<String>,
     val forNew: Boolean,
-    val wordsBad: Boolean,
     val tzUnknown: Boolean,
     val hand: Boolean,
 ) : Ordered {
@@ -21779,12 +21762,11 @@ data class RotStrategyItem(
             Field("error", { opt(RotStrategyError.ADAPTER) }, optional = true, nullable = true),
             Field("inUse", { arr(Str) }, optional = false, nullable = false),
             Field("forNew", { Bool }, optional = false, nullable = false),
-            Field("wordsBad", { Bool }, optional = false, nullable = false),
             Field("tzUnknown", { Bool }, optional = false, nullable = false),
             Field("hand", { Bool }, optional = false, nullable = false),
             ),
-            { a -> RotStrategyItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as RotStrategyError?, a[5] as List<String>, a[6] as Boolean, a[7] as Boolean, a[8] as Boolean, a[9] as Boolean) },
-            { v -> arrayOf(v.id, v.description, v.summary, v.rev, v.error, v.inUse, v.forNew, v.wordsBad, v.tzUnknown, v.hand) },
+            { a -> RotStrategyItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as RotStrategyError?, a[5] as List<String>, a[6] as Boolean, a[7] as Boolean, a[8] as Boolean) },
+            { v -> arrayOf(v.id, v.description, v.summary, v.rev, v.error, v.inUse, v.forNew, v.tzUnknown, v.hand) },
         )
     }
 }
@@ -21829,7 +21811,6 @@ sealed interface RotTarget {
 data class RotTryDecision(
     val pick: String? = null,
     val holdUntil: Long? = null,
-    val holdAccount: String? = null,
     val order: List<String>,
     val why: List<RotTryRow>,
     val fromTemp: Boolean,
@@ -21845,7 +21826,6 @@ data class RotTryDecision(
             listOf(
             Field("pick", { opt(Str) }, optional = true, nullable = true),
             Field("holdUntil", { opt(U64) }, optional = true, nullable = true),
-            Field("holdAccount", { opt(Str) }, optional = true, nullable = true),
             Field("order", { arr(Str) }, optional = false, nullable = false),
             Field("why", { arr(RotTryRow.ADAPTER) }, optional = false, nullable = false),
             Field("fromTemp", { Bool }, optional = false, nullable = false),
@@ -21854,8 +21834,8 @@ data class RotTryDecision(
             Field("nextNode", { opt(U64) }, optional = true, nullable = true),
             Field("strategyError", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RotTryDecision(a[0] as String?, a[1] as Long?, a[2] as String?, a[3] as List<String>, a[4] as List<RotTryRow>, a[5] as Boolean, a[6] as List<String>, a[7] as List<String>, a[8] as Long?, a[9] as String?) },
-            { v -> arrayOf(v.pick, v.holdUntil, v.holdAccount, v.order, v.why, v.fromTemp, v.skipped, v.temp, v.nextNode, v.strategyError) },
+            { a -> RotTryDecision(a[0] as String?, a[1] as Long?, a[2] as List<String>, a[3] as List<RotTryRow>, a[4] as Boolean, a[5] as List<String>, a[6] as List<String>, a[7] as Long?, a[8] as String?) },
+            { v -> arrayOf(v.pick, v.holdUntil, v.order, v.why, v.fromTemp, v.skipped, v.temp, v.nextNode, v.strategyError) },
         )
     }
 }
@@ -21994,7 +21974,6 @@ data class RotTryUse(
     val to: Long,
     val account: String? = null,
     val fromTemp: Boolean,
-    val capUnknown: Boolean,
     val skipped: List<String>,
     val text: String,
 ) : Ordered {
@@ -22007,12 +21986,11 @@ data class RotTryUse(
             Field("to", { U64 }, optional = false, nullable = false),
             Field("account", { opt(Str) }, optional = true, nullable = true),
             Field("fromTemp", { Bool }, optional = false, nullable = false),
-            Field("capUnknown", { Bool }, optional = false, nullable = false),
             Field("skipped", { arr(Str) }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> RotTryUse(a[0] as Long, a[1] as Long, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as List<String>, a[6] as String) },
-            { v -> arrayOf(v.from, v.to, v.account, v.fromTemp, v.capUnknown, v.skipped, v.text) },
+            { a -> RotTryUse(a[0] as Long, a[1] as Long, a[2] as String?, a[3] as Boolean, a[4] as List<String>, a[5] as String) },
+            { v -> arrayOf(v.from, v.to, v.account, v.fromTemp, v.skipped, v.text) },
         )
     }
 }
@@ -23210,7 +23188,6 @@ data class SessionAccountReply(
     val sampled: Long?,
     val differs: Boolean,
     val badge: SessionAccountReplyBadge?,
-    val queryable: Boolean,
     val ownUpstream: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -23230,11 +23207,10 @@ data class SessionAccountReply(
             Field("sampled", { opt(Lng) }, optional = false, nullable = true),
             Field("differs", { Bool }, optional = false, nullable = false),
             Field("badge", { opt(SessionAccountReplyBadge.ADAPTER) }, optional = false, nullable = true),
-            Field("queryable", { Bool }, optional = false, nullable = false),
             Field("ownUpstream", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as Boolean, a[13] as String?) },
-            { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.queryable, v.ownUpstream) },
+            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as String?) },
+            { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.ownUpstream) },
         )
     }
 }
@@ -23608,7 +23584,6 @@ data class SessionCommand(
     val text: String?,
     val scope: CommandScope,
     val scopeText: String,
-    val needsArgs: Boolean,
     val confirm: Boolean,
     val needsArgsText: String?,
     val confirmText: String?,
@@ -23622,13 +23597,12 @@ data class SessionCommand(
             Field("text", { opt(Str) }, optional = false, nullable = true),
             Field("scope", { CommandScope.ADAPTER }, optional = false, nullable = false),
             Field("scopeText", { Str }, optional = false, nullable = false),
-            Field("needsArgs", { Bool }, optional = false, nullable = false),
             Field("confirm", { Bool }, optional = false, nullable = false),
             Field("needsArgsText", { opt(Str) }, optional = false, nullable = true),
             Field("confirmText", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> SessionCommand(a[0] as String, a[1] as String?, a[2] as CommandScope, a[3] as String, a[4] as Boolean, a[5] as Boolean, a[6] as String?, a[7] as String?) },
-            { v -> arrayOf(v.name, v.text, v.scope, v.scopeText, v.needsArgs, v.confirm, v.needsArgsText, v.confirmText) },
+            { a -> SessionCommand(a[0] as String, a[1] as String?, a[2] as CommandScope, a[3] as String, a[4] as Boolean, a[5] as String?, a[6] as String?) },
+            { v -> arrayOf(v.name, v.text, v.scope, v.scopeText, v.confirm, v.needsArgsText, v.confirmText) },
         )
     }
 }
@@ -23796,16 +23770,13 @@ data class SessionFacts(
     val pending: List<PendingCall>,
     val lastSay: LastSay?,
     val needs: Needs?,
-    val handedBack: List<String>,
     val retries: List<RetryRun>,
     val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
     val cost: FactsCost?,
-    val bgTasks: List<BgTask>,
     val background: FactsBackground?,
-    val answerOff: String?,
     val autoAnswer: Int?,
     val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
@@ -23835,16 +23806,13 @@ data class SessionFacts(
             Field("pending", { arr(PendingCall.ADAPTER) }, optional = false, nullable = false),
             Field("lastSay", { opt(LastSay.ADAPTER) }, optional = false, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
-            Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
             Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
             Field("cost", { opt(FactsCost.ADAPTER) }, optional = false, nullable = true),
-            Field("bgTasks", { arr(BgTask.ADAPTER) }, optional = false, nullable = false),
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
-            Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Int32) }, optional = false, nullable = true),
             Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
@@ -23856,8 +23824,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<String>, a[14] as List<RetryRun>, a[15] as List<NoticeRun>, a[16] as String?, a[17] as String?, a[18] as TokenUse?, a[19] as FactsCost?, a[20] as List<BgTask>, a[21] as FactsBackground?, a[22] as String?, a[23] as Int?, a[24] as List<AutoChoice>, a[25] as String?, a[26] as List<McpTrouble>, a[27] as Kin?, a[28] as List<Kin>, a[29] as String?, a[30] as String?, a[31] as FactsLine?, a[32] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Int>, a[8] as String?, a[9] as String?, a[10] as List<PendingCall>, a[11] as LastSay?, a[12] as Needs?, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as FactsBackground?, a[20] as Int?, a[21] as List<AutoChoice>, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as String?, a[27] as String?, a[28] as FactsLine?, a[29] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.writersLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.background, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText, v.line, v.quietUnread) },
         )
     }
 }
@@ -27380,14 +27348,12 @@ data class TurnRow(
     val start: String,
     val end: String,
     val startText: String,
-    val endText: String,
     val said: String,
     val tools: Int,
     val thinking: Int,
     val agents: Int,
     val background: Int,
     val retries: Int,
-    val peers: Int,
     val fails: Int,
     val shown: List<String>,
     val reply: String,
@@ -27406,14 +27372,12 @@ data class TurnRow(
             Field("start", { Str }, optional = false, nullable = false),
             Field("end", { Str }, optional = false, nullable = false),
             Field("startText", { Str }, optional = false, nullable = false),
-            Field("endText", { Str }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             Field("tools", { Int32 }, optional = false, nullable = false),
             Field("thinking", { Int32 }, optional = false, nullable = false),
             Field("agents", { Int32 }, optional = false, nullable = false),
             Field("background", { Int32 }, optional = false, nullable = false),
             Field("retries", { Int32 }, optional = false, nullable = false),
-            Field("peers", { Int32 }, optional = false, nullable = false),
             Field("fails", { Int32 }, optional = false, nullable = false),
             Field("shown", { arr(Str) }, optional = false, nullable = false),
             Field("reply", { Str }, optional = false, nullable = false),
@@ -27421,8 +27385,8 @@ data class TurnRow(
             Field("phase", { TurnPhase.ADAPTER }, optional = false, nullable = false),
             Field("folds", { arr(FoldSegment.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> TurnRow(a[0] as Long, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as String, a[8] as Int, a[9] as Int, a[10] as Int, a[11] as Int, a[12] as Int, a[13] as Int, a[14] as Int, a[15] as List<String>, a[16] as String, a[17] as Boolean, a[18] as TurnPhase, a[19] as List<FoldSegment>) },
-            { v -> arrayOf(v.at, v.line, v.uuid, v.start, v.end, v.startText, v.endText, v.said, v.tools, v.thinking, v.agents, v.background, v.retries, v.peers, v.fails, v.shown, v.reply, v.done, v.phase, v.folds) },
+            { a -> TurnRow(a[0] as Long, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as Int, a[8] as Int, a[9] as Int, a[10] as Int, a[11] as Int, a[12] as Int, a[13] as List<String>, a[14] as String, a[15] as Boolean, a[16] as TurnPhase, a[17] as List<FoldSegment>) },
+            { v -> arrayOf(v.at, v.line, v.uuid, v.start, v.end, v.startText, v.said, v.tools, v.thinking, v.agents, v.background, v.retries, v.fails, v.shown, v.reply, v.done, v.phase, v.folds) },
         )
     }
 }
@@ -27843,7 +27807,6 @@ data class VerifyCheck(
 data class VerifyReport(
     val pass: Boolean,
     val fails: Int,
-    val warns: Int,
     val checks: List<VerifyCheck>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -27853,11 +27816,10 @@ data class VerifyReport(
             listOf(
             Field("pass", { Bool }, optional = false, nullable = false),
             Field("fails", { Int32 }, optional = false, nullable = false),
-            Field("warns", { Int32 }, optional = false, nullable = false),
             Field("checks", { arr(VerifyCheck.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> VerifyReport(a[0] as Boolean, a[1] as Int, a[2] as Int, a[3] as List<VerifyCheck>) },
-            { v -> arrayOf(v.pass, v.fails, v.warns, v.checks) },
+            { a -> VerifyReport(a[0] as Boolean, a[1] as Int, a[2] as List<VerifyCheck>) },
+            { v -> arrayOf(v.pass, v.fails, v.checks) },
         )
     }
 }

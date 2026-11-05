@@ -3,11 +3,7 @@
 /**
  * 「用哪个号」那一条的一段。
  */
-export type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
-/**
- * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
- */
-capUnknown: boolean, skipped: Array<string>, 
+export type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, skipped: Array<string>, 
 /**
  * 这一段写的字：号名 · 停发那一句。
  */

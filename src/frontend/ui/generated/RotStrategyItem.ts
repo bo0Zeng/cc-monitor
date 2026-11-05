@@ -18,10 +18,6 @@ summary: string, rev: string, error?: RotStrategyError,
  */
 inUse: Array<string>, forNew: boolean, 
 /**
- * 这份的设置说明写法不合文案规矩（设置照样能用）。
- */
-wordsBad: boolean, 
-/**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
 tzUnknown: boolean, 

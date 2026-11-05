@@ -18,6 +18,6 @@ end: number,
  */
 next: number | null, 
 /**
- * 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+ * 这一段里的每一轮，文件序；`startText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
  */
 turns: Array<TurnRow>, };

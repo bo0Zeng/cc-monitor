@@ -10,9 +10,9 @@ export type RotTryDecision = {
  */
 pick?: string, 
 /**
- * 停发到几点 · 到时恢复的号（停发才有）。
+ * 停发到几点（停发才有）。
  */
-holdUntil?: number, holdAccount?: string, 
+holdUntil?: number, 
 /**
  * 策略交的先后（此刻愿意用的号）。
  */

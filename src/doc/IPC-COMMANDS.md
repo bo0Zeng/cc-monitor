@@ -2622,10 +2622,6 @@ ghost: boolean,
  */
 title: string, } | null, 
 /**
- * 那台的号查得了（账号库启用了）。
- */
-queryable: boolean, 
-/**
  * 上游是自设的（用户自己的网关）⇒ 写好的那一句（额度看不到 · 换号不适用）：这时不画用量、不出徽章，面板照它出一条提示。不是 ⇒ 不上线。
  */
 ownUpstream?: string, };
@@ -2675,9 +2671,9 @@ type RotTryDecision = {
  */
 pick?: string, 
 /**
- * 停发到几点 · 到时恢复的号（停发才有）。
+ * 停发到几点（停发才有）。
  */
-holdUntil?: number, holdAccount?: string, 
+holdUntil?: number, 
 /**
  * 策略交的先后（此刻愿意用的号）。
  */
@@ -2712,11 +2708,7 @@ switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>,
  * 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
  */
 ticks: Array<RotTryTick>, };
-type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
-/**
- * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
- */
-capUnknown: boolean, skipped: Array<string>, 
+type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, skipped: Array<string>, 
 /**
  * 这一段写的字：号名 · 停发那一句。
  */
@@ -2794,10 +2786,6 @@ summary: string, rev: string, error?: RotStrategyError,
  * 此刻还活着、用着它的会话。
  */
 inUse: Array<string>, forNew: boolean, 
-/**
- * 这份的设置说明写法不合文案规矩（设置照样能用）。
- */
-wordsBad: boolean, 
 /**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
@@ -2952,10 +2940,6 @@ summary: string, rev: string, error?: RotStrategyError,
  */
 inUse: Array<string>, forNew: boolean, 
 /**
- * 这份的设置说明写法不合文案规矩（设置照样能用）。
- */
-wordsBad: boolean, 
-/**
  * 文件头里没写时区（分时段按 UTC 算）。
  */
 tzUnknown: boolean, 
@@ -2970,9 +2954,9 @@ type RotTryDecision = {
  */
 pick?: string, 
 /**
- * 停发到几点 · 到时恢复的号（停发才有）。
+ * 停发到几点（停发才有）。
  */
-holdUntil?: number, holdAccount?: string, 
+holdUntil?: number, 
 /**
  * 策略交的先后（此刻愿意用的号）。
  */
@@ -3007,11 +2991,7 @@ switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>,
  * 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
  */
 ticks: Array<RotTryTick>, };
-type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
-/**
- * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
- */
-capUnknown: boolean, skipped: Array<string>, 
+type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, skipped: Array<string>, 
 /**
  * 这一段写的字：号名 · 停发那一句。
  */
@@ -3955,7 +3935,7 @@ type VerifyReport = {
 /**
  * 没有一条 `fail`。
  */
-pass: boolean, fails: number, warns: number, checks: Array<VerifyCheck>, };
+pass: boolean, fails: number, checks: Array<VerifyCheck>, };
 ```
 
 码：`bad_args` · `io_failed` · `unsupported`
@@ -5745,7 +5725,7 @@ type Merged = {
 /**
  * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
  */
-totalHits: number, sessionCount: number, 
+totalHits: number, 
 /**
  * 任一行 `hitsTruncated`（每一台都被自己的 `limit` 砍过）。
  */
@@ -7981,7 +7961,7 @@ end: number,
  */
 next: number | null, 
 /**
- * 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+ * 这一段里的每一轮，文件序；`startText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
  */
 turns: Array<TurnRow>, };
 type HistoryTurnsReq = { 
@@ -8026,18 +8006,18 @@ uuid: string,
  */
 start: string, end: string, 
 /**
- * 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
+ * 起在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
  */
-startText: string, endText: string, 
+startText: string, 
 /**
  * 你那句的第一行（≤ [`SAID_MAX`] 字）。
  */
 said: string, 
 /**
  * 整轮合计：工具调用几次（派 agent 不算）· 思考几段 · 派出几个 agent · 后台任务通知几条（交回过的子 agent 的收场通知不算）·
- * API 重试几次 · 另一会话 / 子 agent 来话几段（交回不算）。
+ * API 重试几次（另一会话 / 子 agent 来话几段只写进过程段那一行）。
  */
-tools: number, thinking: number, agents: number, background: number, retries: number, peers: number, 
+tools: number, thinking: number, agents: number, background: number, retries: number, 
 /**
  * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
  */
@@ -8712,23 +8692,6 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type AttachFrom = "everywhere" | "elsewhere";
 type AutoChoice = { min: number, text: Words, };
-type BgTask = { 
-/**
- * 起它的那次工具调用 id。
- */
-call: string, 
-/**
- * 它当场拿到的任务号；还没回 ⇒ `null`。
- */
-task: string | null, 
-/**
- * 那条命令原样（适配层给的）；没有 ⇒ `null`。
- */
-cmd: string | null, 
-/**
- * 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
- */
-at: string | null, };
 type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
@@ -8831,10 +8794,6 @@ lastSay: LastSay | null,
  */
 needs: Needs | null, 
 /**
- * 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
- */
-handedBack: Array<string>, 
-/**
  * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。出口那一下照 [`SessionFacts::retry_log`] 写（[`settle_retries`]）。
  */
 retries: Array<RetryRun>, 
@@ -8860,18 +8819,9 @@ tokens: TokenUse | null,
  */
 cost: FactsCost | null, 
 /**
- * 还没收场的后台命令（文件序）：累加的那一份账。
- */
-bgTasks: Array<BgTask>, 
-/**
  * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
-/**
- * **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
- * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
- */
-answerOff: Words | null, 
 /**
  * **无人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
@@ -13793,15 +13743,11 @@ scope: CommandScope,
  */
 scopeText: string, 
 /**
- * 要跟参数（填进去停住等补）。
- */
-needsArgs: boolean, 
-/**
  * 发之前先确认。
  */
 confirm: boolean, 
 /**
- * `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+ * 要跟参数（填进去停住等补）时那一格的字（「带参数」）；不要 ⇒ `null`。
  */
 needsArgsText: string | null, 
 /**
@@ -14510,11 +14456,7 @@ modelNote: string | null,
 /**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */
-permissionModes: Array<AgentPick>, 
-/**
- * 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
- */
-permissionDefault: AgentPick | null, };
+permissionModes: Array<AgentPick>, };
 type AgentKind = string;
 type AgentPick = { 
 /**
@@ -16520,7 +16462,7 @@ top: string | null,
  * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
  */
 root: string | null, };
-type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanStale = { said: string | null, raw: string | null, since: number, };
 ```
 
 码：`bad_args`
@@ -16542,7 +16484,7 @@ type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: SessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
-type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
+type PlanArchived = { id: string, title: string | null, kind: string | null, };
 type PlanBlock = { id: string, 
 /**
  * 根节点（最上面那一个 ⇒ `project`）。
@@ -16735,11 +16677,7 @@ type PlanPendingSet = { source: string | null, target: string | null, value: str
 /**
  * pb 那一句。
  */
-blockedReason: string | null, 
-/**
- * pb 给程序的代号（`source_delegated` …）。
- */
-blockedCode: string | null, };
+blockedReason: string | null, };
 type PlanPhase = { name: string | null, does: string | null, };
 type PlanProgress = { done: number, of: number, };
 type PlanRead = { pb: string | null, workspace: string, 
@@ -16883,7 +16821,7 @@ top: string | null,
  * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
  */
 root: string | null, };
-type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanStale = { said: string | null, raw: string | null, since: number, };
 type PlanState = { value: string, count: number, };
 type PlanTakeover = "open" | "no_line" | "running" | "unsure" | "merging";
 type PlanUnbuilt = { id: string | null, cells: Array<string>, };

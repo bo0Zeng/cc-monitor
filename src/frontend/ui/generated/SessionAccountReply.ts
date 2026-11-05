@@ -58,10 +58,6 @@ ghost: boolean,
  */
 title: string, } | null, 
 /**
- * 那台的号查得了（账号库启用了）。
- */
-queryable: boolean, 
-/**
  * 上游是自设的（用户自己的网关）⇒ 写好的那一句（额度看不到 · 换号不适用）：这时不画用量、不出徽章，面板照它出一条提示。不是 ⇒ 不上线。
  */
 ownUpstream?: string, };

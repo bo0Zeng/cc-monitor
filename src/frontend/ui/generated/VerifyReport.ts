@@ -8,4 +8,4 @@ export type VerifyReport = {
 /**
  * 没有一条 `fail`。
  */
-pass: boolean, fails: number, warns: number, checks: Array<VerifyCheck>, };
+pass: boolean, fails: number, checks: Array<VerifyCheck>, };
