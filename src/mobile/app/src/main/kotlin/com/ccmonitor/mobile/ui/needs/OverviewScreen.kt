@@ -73,7 +73,7 @@ const val NEEDS_SKELETON_TAG = "needs-skeleton"
 fun NeedsEntry(onOpen: () -> Unit) {
     val board = koinInject<NeedsBoard>()
     val all by board.state.collectAsState()
-    NeedsEntryView(board.total(all), all.values.any { it.unreadable != null || it.unread != null }, onOpen)
+    NeedsEntryView(board.total(all), board.uncertain(all), onOpen)
 }
 
 /** 入口那颗写什么：0 且数说得准 ⇒ 不画（`null`）；数说不准 ⇒ 只写「需手动」；否则「需手动 n」。 */
@@ -164,7 +164,7 @@ fun OverviewScreen(
                 item { Note(copyText("needs.panel.empty")) }
                 item { Note(ov.readFrom.joinToString(copyText("kit.text.sep")) { it.label }) }
             }
-            items(ov.down) { h -> Note(copyText("needs.panel.offline", "machine" to h.label), dashed = true) }
+            items(ov.down) { (_, said) -> Note(said, dashed = true) }
             items(ov.unreadable) { (h, said) -> Note(copyText("needs.panel.unreadable", "machine" to h.label), dashed = true, more = said) }
         }
     }

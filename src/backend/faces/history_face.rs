@@ -967,12 +967,33 @@ pub(crate) async fn needs_merge_with(
         match r {
             Ok(list) => answered.push((origin, list)),
             Err(s) => down.push(cmd_wire::needs::NeedsDown {
+                said: down_said(&origin, s),
                 origin,
-                said: s.said,
             }),
         }
     }
     Ok(face_core::needs::merge_needs(answered, down))
+}
+
+/// 没问到那台那一句（`NeedsDown.said`，出口照摆）：常驻那一层说的那几种（常驻不在 · 回复超时 · 后端要更新 · 后端版本不同）
+/// 句里已叫出那台 ⇒ 照原样；别的（本机答失败 · 那台答了一个错原样转回来 · 那台够不着）只说了原因 ⇒「<那台> · <那一句>」。
+fn down_said(origin: &cmd_wire::Machine, s: crate::common::said::Said) -> String {
+    const NAMED: [&str; 4] = [
+        crate::wire::listen::CALL_ABSENT,
+        crate::wire::listen::CALL_TIMED_OUT,
+        "unknown_command",
+        cmd_wire::SHAPE_DIFFERS,
+    ];
+    if s.code.as_deref().is_some_and(|c| NAMED.contains(&c)) {
+        return s.said;
+    }
+    let machine = origin
+        .host_name()
+        .map_or_else(copy_core::local_machine, str::to_string);
+    copy_core::copy_text(
+        "beNeedsMerge.down.said",
+        &[("machine", &machine), ("said", &s.said)],
+    )
 }
 
 // ───────────────────────── 出成品那几条的收集器 ─────────────────────────

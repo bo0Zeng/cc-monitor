@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAccount
 import com.ccmonitor.mobile.core.claude.link.SessionTasks
@@ -32,6 +31,7 @@ import com.ccmonitor.mobile.core.claude.model.RetryStrip
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Kin
 import com.ccmonitor.mobile.core.wire.gen.PendingCall
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
@@ -103,14 +103,17 @@ data class InfoUi(
 )
 
 /**
- * 点顶栏标题出的「会话信息」：只读。三问并着问那台 —— 会话事实（`whereLine` · `writersLine` · `usage.contextText` · `background` ·
- * `startedBy` · `children`）· `session-account`（`accountLine`）· `tasks-list`（`chip` · `hint` · 每条 `statusText`）；手机只摆，不拼、不数。
+ * 点顶栏标题出的「会话信息」：只读。会话事实那几格（`whereLine` · `writersLine` · `usage.contextText` · `background` ·
+ * `startedBy` · `children`）照会话手上那一份（[facts]），不另问；两问并着问那台 —— `session-account`（`accountLine`）·
+ * `tasks-list`（`chip` · `hint` · 每条 `statusText`）；手机只摆，不拼、不数。
  */
 class ChatInfo(
     private val link: CoreLink,
     private val machine: String,
     private val scope: CoroutineScope,
     private val sid: () -> String?,
+    /** 会话手上此刻那一份会话事实（[ChatUiState.facts]，每批记录都刷新）。 */
+    private val facts: () -> FactsReply?,
 ) {
     private val _state = MutableStateFlow<InfoUi?>(null)
     val state: StateFlow<InfoUi?> = _state.asStateFlow()
@@ -119,14 +122,13 @@ class ChatInfo(
         val s = sid() ?: return
         _state.value = InfoUi()
         scope.launch {
-            val facts = async { link.call(HistoryFacts.COMMAND, HistoryFacts.bySid(s), READ_MS) }
             val account = async { link.call(SessionAccount.COMMAND, SessionAccount.args(s), READ_MS) }
             val tasks = async { link.call(SessionTasks.COMMAND, SessionTasks.args(s), READ_MS) }
             val failed = ArrayList<String>()
-            val f = read(facts.await(), HistoryFacts.COMMAND, HistoryFacts::of, failed)
             val a = read(account.await(), SessionAccount.COMMAND, SessionAccount::of, failed)
             val t = read(tasks.await(), SessionTasks.COMMAND, SessionTasks::of, failed)
             if (_state.value == null) return@launch
+            val f = facts()
             _state.value =
                 InfoUi(
                     busy = false,
