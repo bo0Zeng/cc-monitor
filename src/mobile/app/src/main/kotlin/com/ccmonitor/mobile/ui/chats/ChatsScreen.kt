@@ -508,15 +508,14 @@ private fun HostBarView(
         Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }
-    val failed = (b.deploying as? Deploying.Failed)?.failed
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(ChatsTags.PROBLEM)) {
-        ErrorLine(failed?.said ?: b.problem.text)
+        ErrorLine(b.problem.text)
         Row(verticalAlignment = Alignment.CenterVertically) {
             b.fix?.let { fix ->
                 Button(onClick = { act.deploy(b.hostId) }, modifier = Modifier.testTag(ChatsTags.DEPLOY)) { Text(deployLabel(fix)) }
             }
             SecondaryButton(onClick = { act.retry(b) }) { Text(copyText("front.act.retry")) }
-            CopyDetailButton(failed?.said ?: b.problem.text, failed?.detail ?: b.problem.detail)
+            CopyDetailButton(b.problem.text, b.problem.detail)
         }
     }
 }

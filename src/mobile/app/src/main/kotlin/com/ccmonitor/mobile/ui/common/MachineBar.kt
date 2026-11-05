@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -43,15 +42,12 @@ data class BarLook(
 
 /**
  * 核心交的那一行（那台的状态成品，`deploy::machine` 定，桌面同一份）⇒ 机器条：成品不带条上那一格（`strip`）⇒ `null`（不画、不占位）；核心还没交 ⇒ `null`（不猜）。
- * 字 · 按钮字 · 语气都是成品的；手机只照抄，不按态挑样子、不按 SSH 层的通没通自己推，也不自己去抖。[deploying] 装没装上那一趟的结局（失败那一句盖过成品那一句）。
+ * 字 · 按钮字 · 语气都是成品的；手机只照抄，不按态挑样子、不按 SSH 层的通没通自己推，也不自己去抖。
+ * 装 / 更新没做成那一句也在成品里（核心收进那台的成品），这里不另读那一趟的结局。
  */
-fun barOf(
-    line: LinkLine?,
-    deploying: Deploying? = null,
-): BarLook? {
+fun barOf(line: LinkLine?): BarLook? {
     val m = line?.machine ?: return null
     val fix = m.fixes.firstOrNull()
-    (deploying as? Deploying.Failed)?.let { return BarLook(it.failed.said, Tone.FAIL, fix, detail = it.failed.detail) }
     val strip = m.strip ?: return null
     return BarLook(m.said, strip.tone, fix, strip.progress, m.detail.orEmpty())
 }
@@ -69,8 +65,7 @@ fun MachineBar(
     val backends = koinInject<HostBackends>()
     val feed = remember(hostId) { backends.of(hostId) }
     val line by feed.state.collectAsState()
-    val deploying by feed.deploying.collectAsState()
-    val look = barOf(line, deploying) ?: return
+    val look = barOf(line) ?: return
     val deploy = rememberDeployPress(hostId)
     val act: (() -> Unit)? =
         when (look.fix?.fix) {

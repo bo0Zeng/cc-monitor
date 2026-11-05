@@ -169,21 +169,25 @@ async fn run(
             on(h, kind, body);
         }
     };
-    let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
-        Err(f) => failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
+    // 结局那一行 ＋ 没做成那一句（记进那台的成品，机器条照它说）。
+    let (ended, failed) = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
+        Err(f) => (
+            failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
+            Some(f.said),
+        ),
         Ok(plan) => {
             // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
             step(deploy::Step::Restart);
             match feed.replace().await {
-                Ok(_) => done_json(&plan),
+                Ok(_) => (done_json(&plan), None),
                 Err(p) => {
                     let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-                    failed_json("restart_failed", &p.said, raw)
+                    (failed_json("restart_failed", &p.said, raw), Some(p.said))
                 }
             }
         }
     };
-    for (kind, body) in resident::note(h, |f| f.settle(machine)) {
+    for (kind, body) in resident::note(h, |f| f.settle(machine, failed.as_deref())) {
         on(h, kind, body);
     }
     emit(ended);

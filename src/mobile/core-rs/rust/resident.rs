@@ -294,9 +294,18 @@ impl Facts {
     }
 
     /// 部署收了（成没成都算）⇒ 成品回到那条流最新那一轮；换了常驻的，接下来那几轮照常交。
-    pub fn settle(&mut self, machine: &str) -> String {
+    /// `failed` ⇒ 那一趟没做成那一句记进成品（同桌面 `Fact::UpdateFailed`：机器条那一句只由成品说）。
+    pub fn settle(&mut self, machine: &str, failed: Option<&str>) -> String {
         let last = self.last.clone().unwrap_or(State::Connecting);
         self.fold_round(&last);
+        if let Some(said) = failed {
+            fold(
+                &mut self.entry,
+                Fact::UpdateFailed {
+                    said: said.to_string(),
+                },
+            );
+        }
         self.line(machine)
     }
 
@@ -1055,11 +1064,44 @@ mod tests {
             (busy["state"].as_str(), busy["machine"]["state"].as_str()),
             (Some("down"), Some("installing"))
         );
-        assert_eq!(v(f.settle("box")), before);
+        assert_eq!(v(f.settle("box", None)), before);
         let mut fresh = Facts::default();
         let line = v(fresh.step(deploy::Step::Plan, "box"));
         assert_eq!(line["state"], "connecting");
-        assert_eq!(v(fresh.settle("box"))["machine"]["state"], "connecting");
+        assert_eq!(
+            v(fresh.settle("box", None))["machine"]["state"],
+            "connecting"
+        );
+    }
+
+    /// 更新那一趟没换上：成品里那一句就是没换上那一句（同桌面 `deploy::machine` 收 `Fact::UpdateFailed`），
+    /// 那条流再交一轮「还旧」也不丢；再起一趟部署 ⇒ 摘掉。
+    #[test]
+    fn a_failed_update_is_said_by_the_product_until_the_next_deploy() {
+        let v = |t: String| serde_json::from_str::<serde_json::Value>(&t).unwrap();
+        let old = || State::Up {
+            epoch: 1,
+            relation: cmd_wire::attach::Relation::Older,
+            differs: vec![],
+        };
+        let failed = copy_core::copy_text(
+            "machineState.problem.updateFailed",
+            &[("machine", "box"), ("why", "上传后校验失败")],
+        );
+        let mut f = Facts::default();
+        f.round(old(), "box");
+        f.step(deploy::Step::Place { updating: true }, "box");
+        let settled = v(f.settle("box", Some("上传后校验失败")));
+        assert_eq!(
+            (
+                settled["machine"]["state"].as_str(),
+                settled["machine"]["said"].as_str()
+            ),
+            (Some("needs_update"), Some(failed.as_str()))
+        );
+        assert_eq!(v(f.round(old(), "box"))["machine"]["said"], failed);
+        let again = v(f.step(deploy::Step::Plan, "box"));
+        assert_ne!(again["machine"]["said"], failed);
     }
 
     /// 状态那一行的金样：一串事实由生产函数现产，与 `tests/__fixtures__/mobile-state-line.golden.json` 逐字相等；
