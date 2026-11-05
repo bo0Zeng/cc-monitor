@@ -123,10 +123,7 @@ async fn a_machine_that_answered_a_failure_is_named_in_its_down_line() {
             .unwrap_or_else(|| panic!("{m} 不在 down 里：{got:?}"))
     };
     let named = |machine: &str, s: &str| {
-        copy_core::copy_text(
-            "kit.text.machineSaid",
-            &[("machine", machine), ("said", s)],
-        )
+        copy_core::copy_text("kit.text.machineSaid", &[("machine", machine), ("said", s)])
     };
     assert_eq!(said("devbox"), named("devbox", "记录读取失败"));
     assert_eq!(
