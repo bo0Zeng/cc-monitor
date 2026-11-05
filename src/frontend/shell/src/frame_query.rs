@@ -162,6 +162,8 @@ fn said(r: Routed) -> String {
 pub(crate) struct Tail {
     pub plan: cmd_wire::session::TailPlan,
     pub how: cmd_wire::session::TailHow,
+    /// 手上那一份作废的那两种（变短 · 被改写）那台写好的那一句；别的接法 ⇒ 空。
+    pub said: String,
     pub from: u64,
     pub page: Page,
     pub held: cmd_wire::session::Held,
@@ -195,6 +197,7 @@ pub(crate) async fn tail(
     Ok(Tail {
         plan,
         how: reply.how,
+        said: reply.said.map(|w| w.0).unwrap_or_default(),
         from: reply.from,
         page: Page {
             rows,

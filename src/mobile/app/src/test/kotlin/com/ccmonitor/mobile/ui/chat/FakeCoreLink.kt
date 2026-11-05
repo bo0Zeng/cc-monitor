@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.BranchFrame
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.RecordLine
@@ -23,6 +22,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineState
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.SessionLeft
 import com.ccmonitor.mobile.ui.Faces
@@ -92,11 +92,11 @@ internal class FakeCoreLink :
     /** 核心交来一处整份的活卡（照线上那一形，经生成的 [LiveCards] 解）。 */
     suspend fun live(cards: Map<String, Any?>) = liveFlow.emit(Wire.bind<LiveCards>(cards)!!)
 
-    private val branchFlow = MutableSharedFlow<BranchFrame>(extraBufferCapacity = 64)
-    override val branches: SharedFlow<BranchFrame> = branchFlow.asSharedFlow()
+    private val branchFlow = MutableSharedFlow<SessionBranch>(extraBufferCapacity = 64)
+    override val branches: SharedFlow<SessionBranch> = branchFlow.asSharedFlow()
 
     /** 流上来一帧 `session_branch`（主线外清单的一截）。 */
-    suspend fun branch(b: BranchFrame) = branchFlow.emit(b)
+    suspend fun branch(b: SessionBranch) = branchFlow.emit(b)
 
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 

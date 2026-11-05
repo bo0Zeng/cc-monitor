@@ -303,6 +303,7 @@ async fn fetch_snapshot(
                 origin: host_label.to_string(),
                 path: path.to_string(),
                 change: change.as_wire().to_string(),
+                said: tail.said.clone(),
             })
             .await;
     }

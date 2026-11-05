@@ -5,14 +5,14 @@
  * 「原地整份改写 …… 从 0 重读并出声（与截短同一句话族）」。
  *
  * 前端认的三个取值（`record-file-notice.ts::RECORD_FILE_CHANGES`）== monitor 交出来的那三个
- * （`src/frontend/shell/src/stream_source/local.rs::FileChange::as_wire` 源码里现抠，异源）—— 两向相等；再各有一句文案（表里现取）。
+ * （`src/frontend/shell/src/stream_source/local.rs::FileChange::as_wire` 源码里现抠，异源）—— 两向相等。
+ * 那一句不在前端：后端写好随格带来（`SessionFileNoticePayload.said`），这里不照取值映文案。
  * 正控：抠取器在合成语料上认得出三臂。
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RECORD_FILE_CHANGES } from "../../../src/frontend/ui/record-file-notice";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../test-support/non-empty";
 
 /** `fn as_wire(self) -> &'static str { match self { FileChange::X => "x", … } }` 里的字面量。 */
@@ -29,13 +29,10 @@ describe("〔FW1〕记录文件出声的线上字面量", () => {
     expect(asWireLiterals(fake)).toEqual(["a", "b_c", "c"]);
   });
 
-  it("前端认的 == monitor 交的（两向），每一个都有一句文案", () => {
+  it("前端认的 == monitor 交的（两向）", () => {
     const src = readFileSync(join(__dirname, "../../../src/frontend/shell/src/stream_source/local.rs"), "utf8");
     const wire = asWireLiterals(src);
     nonEmpty(wire);
     expect([...RECORD_FILE_CHANGES].sort()).toEqual(wire);
-    for (const c of RECORD_FILE_CHANGES) {
-      expect(() => copyText(`sessionState.recordFile.${c}` as never), c).not.toThrow();
-    }
   });
 });

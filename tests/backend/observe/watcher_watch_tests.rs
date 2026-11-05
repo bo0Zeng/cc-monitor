@@ -103,6 +103,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: B.into(),
         path: "p".into(),
+        said: Default::default(),
     }));
     let mut n = 0;
     while rx.try_recv().is_ok() {
@@ -211,6 +212,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
             Frame::SessionFileGone(crate::wire::SessionFileGone {
                 session_id: sid.into(),
                 path: String::new(),
+                said: Default::default(),
             }),
         );
     }
@@ -443,6 +445,7 @@ fn gone(sid: &str) -> Frame {
     Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: sid.into(),
         path: String::new(),
+        said: Default::default(),
     })
 }
 
@@ -451,6 +454,7 @@ fn filler() -> Frame {
     Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: "f".into(),
         path: "x".repeat(4_000),
+        said: Default::default(),
     })
 }
 
@@ -464,13 +468,22 @@ fn fill(sink: &mut FrameSink, n: usize) {
 /// 把通道余下那一点也用小填料塞满（再来一帧最小的也放不下）。
 fn brim(sink: &mut FrameSink) {
     let small = wire_bytes(&gone("f"));
-    loop {
-        let tx = &sink.subs[0].tx;
-        if tx.held.load(std::sync::atomic::Ordering::Acquire) + small > tx.cap {
-            return;
-        }
-        sink.send_to(1, gone("f"));
+    let tx = &sink.subs[0].tx;
+    let room = tx
+        .cap
+        .saturating_sub(tx.held.load(std::sync::atomic::Ordering::Acquire));
+    if room < small {
+        return;
     }
+    // 一帧「不见了」把余下的整个占掉（路径垫到刚好）：余下的不按一帧的大小取整，比它小的帧（清单报完了那一帧）也塞不进。
+    sink.send_to(
+        1,
+        Frame::SessionFileGone(crate::wire::SessionFileGone {
+            session_id: "f".into(),
+            path: "x".repeat(room - small),
+            said: Default::default(),
+        }),
+    );
 }
 
 /// 读掉通道里的全部，记成一行一件。

@@ -1,12 +1,12 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.BranchFrame
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryBranch
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.model.BranchFolds
 import com.ccmonitor.mobile.core.claude.model.BranchList
 import com.ccmonitor.mobile.core.claude.model.StreamItem
+import com.ccmonitor.mobile.core.wire.gen.SessionBranch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -47,7 +47,7 @@ internal class ChatBranch(
         locked: suspend (() -> Unit) -> Unit,
     ) {
         scope.launch {
-            val frames = Channel<BranchFrame>(Channel.UNLIMITED)
+            val frames = Channel<SessionBranch>(Channel.UNLIMITED)
             val subscribed = CompletableDeferred<Unit>()
             launch { link.branches.onSubscription { subscribed.complete(Unit) }.collect { if (it.sid == sid && it.path == path) frames.send(it) } }
             subscribed.await()

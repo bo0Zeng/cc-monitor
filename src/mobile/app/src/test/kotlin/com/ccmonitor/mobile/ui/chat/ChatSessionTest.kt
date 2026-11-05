@@ -415,6 +415,24 @@ class ChatSessionTest {
         }
 
     @Test
+    fun `记录文件那一句照会话簿里那台写好的摆：不见了 · 从头重读各换成那一句，别的会话的不上这一屏`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u0", "问")))
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val s = existing(link)
+            runCurrent()
+            assertNull(s.state.value.fileNotice)
+            link.table.value = link.table.value.copy(fileSaid = mapOf("s1" to "甲句", "s2" to "乙句"))
+            runCurrent()
+            assertEquals("甲句", s.state.value.fileNotice)
+            link.table.value = link.table.value.copy(fileSaid = mapOf("s1" to "丙句"))
+            runCurrent()
+            assertEquals("丙句", s.state.value.fileNotice)
+        }
+
+    @Test
     fun `点进会话那一刻流不通：不报离线，接上以后照常出第一屏`() =
         runTest {
             val link = FakeCoreLink()

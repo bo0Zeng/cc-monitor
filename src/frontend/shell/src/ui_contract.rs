@@ -236,8 +236,10 @@ pub struct SessionFileNoticePayload {
     /// 那台机器（本机 `<local>`）—— 与行的 `origin` 同一格语义，订阅按它分流。
     pub origin: String,
     pub path: String,
-    /// `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）。
+    /// `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）：前端只据它定什么时候收、要不要整份重来。
     pub change: String,
+    /// 那一句（那台后端写好的：帧上的 `said` · `history-tail` 回包的 `said`），前端照摆。
+    pub said: String,
 }
 
 /// 成批那一段的哪一头。

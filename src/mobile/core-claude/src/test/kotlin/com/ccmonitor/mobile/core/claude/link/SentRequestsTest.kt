@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindWhen
 import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.TerminalHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -146,8 +147,8 @@ class SentRequestsTest {
                 ),
             SessionArrive.COMMAND to
                 listOf(
-                    SessionArrive.args(ArriveAsk(ArriveBy.Cwd("/w"), 3L, "w-cc")),
-                    SessionArrive.args(ArriveAsk(ArriveBy.Sid("s"), 3L, null)),
+                    SessionArrive.args(ArriveAsk(ArriveBy.Cwd("/w"), 3L, "w-cc", TerminalHost.TMUX)),
+                    SessionArrive.args(ArriveAsk(ArriveBy.Sid("s"), 3L, null, null)),
                 ),
             SessionAttachmentCheck.COMMAND to listOf(SessionAttachmentCheck.args("s", listOf(AttachAsk("a.png", 5L)))),
             SessionAttachmentCommit.COMMAND to listOf(SessionAttachmentCommit.args("s", "a.png", Staged("k", 3L, 9L, SHA))),

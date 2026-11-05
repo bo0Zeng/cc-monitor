@@ -2395,6 +2395,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReply::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReply.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReq::class.java to com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionBook::class.java to com.ccmonitor.mobile.core.wire.gen.SessionBook.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.SessionBranch::class.java to com.ccmonitor.mobile.core.wire.gen.SessionBranch.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionBranchPayload::class.java to com.ccmonitor.mobile.core.wire.gen.SessionBranchPayload.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionCan::class.java to com.ccmonitor.mobile.core.wire.gen.SessionCan.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SessionCommand::class.java to com.ccmonitor.mobile.core.wire.gen.SessionCommand.ADAPTER,
