@@ -60,7 +60,7 @@ fn a_stored_skeleton_reads_back_and_a_foreign_one_does_not() {
     // 顶层带表里声明的那一版；对不上 ⇒ 当没有（整份重扫）。
     let raw = std::fs::read_to_string(&f).unwrap();
     let top: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(top["version"], serde_json::json!(9), "顶层没带声明的版本");
+    assert_eq!(top["version"], serde_json::json!(VERSION), "顶层没带声明的版本");
     std::fs::write(
         &f,
         raw.replace(&format!("\"version\":{VERSION}"), "\"version\":999"),
