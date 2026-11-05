@@ -19,7 +19,7 @@ set -euo pipefail
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
+BACKEND="${CCM_E2E_BACKEND:-${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}}"
 [ -x "$BACKEND" ] || { echo "backend 二进制不存在/不可执行：$BACKEND"; exit 1; }
 
 WORK="$(mktemp -d /tmp/e2e-files.XXXXXX)"

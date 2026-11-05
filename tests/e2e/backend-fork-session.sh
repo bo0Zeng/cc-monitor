@@ -30,7 +30,7 @@ trap cleanup EXIT
 
 echo "== 构建 backend =="
 ( cd "$ROOT/src/backend" && cargo build --quiet )
-BIN="$ROOT/.build/backend/debug/cc-monitor-backend"
+BIN="${CCM_E2E_BACKEND_BIN:-$ROOT/.build/backend/debug/cc-monitor-backend}"
 [ -x "$BIN" ] || { echo "backend 二进制没构建出来: $BIN"; exit 1; }
 
 CLAUDE_DIR="$WORK/claude"

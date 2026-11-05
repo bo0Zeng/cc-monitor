@@ -12,7 +12,10 @@
 #   `~/.cc-monitor/accounts/`）、凭据表、cc-bus 目录都换成沙箱；开发机的账号目录变量摘掉。
 
 _ccm_shim_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)" || exit 2
-CCM_E2E_BIN="${CARGO_TARGET_DIR:-$_ccm_shim_root/.build/backend}/debug/cc-monitor-backend"
+# 门禁给了 `CCM_E2E_BACKEND_BIN` ⇒ 照它：那是 e2e 前置那一趟 `cargo build` 刚编完就留的一份。同一棵 target 里随后的
+#   `cargo test` 会把 `debug/cc-monitor-backend` 换成带测试档特性的那一份（dev-dependency 的 `test-support` 并进来：
+#   裸名 tmux 落到私有目录 · 出网断言），拿它跑 e2e 测的不是发出去的那一份。单跑套件不给 ⇒ 照 target 里那一份。
+CCM_E2E_BIN="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$_ccm_shim_root/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$CCM_E2E_BIN" ] || {
   echo "找不到后端二进制 $CCM_E2E_BIN —— 先 \`cd src/backend && cargo build\`" >&2
   exit 2

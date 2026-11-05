@@ -49,7 +49,7 @@ _gc_sock_cleanup() { tmux_shim_cleanup; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
+BACKEND="${CCM_E2E_BACKEND:-${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}}"
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-remote-claude}"
 WORK="$(mktemp -d /tmp/e2e-graylight.XXXXXX)"
 # 家目录换成本趟沙箱：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，

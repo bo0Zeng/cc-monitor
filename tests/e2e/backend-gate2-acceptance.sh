@@ -29,7 +29,7 @@ TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
+BACKEND="${CCM_E2E_BACKEND:-${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}}"
 GOLDEN="$REPO/tests/__fixtures__/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
 # 家目录换成本趟沙箱：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，

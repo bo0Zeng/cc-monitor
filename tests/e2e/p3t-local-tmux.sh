@@ -75,7 +75,7 @@ chmod +x "$BIN/$LAUNCHER"
 # ★ `ccm` 就是**后端二进制本体**（后端只有一个，没有单独的 bash 版 ccm）。
 #   软链的**名字是 `ccm`** —— `control::ccm::intercept` 认的就是 `argv[0]` 的 basename。
 # 🔴 fail-closed：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
+CCM_NATIVE="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$CCM_NATIVE" ] || {
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2

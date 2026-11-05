@@ -136,6 +136,8 @@ GATE_SKIPPED=()    # 这一趟被 GATE_ONLY 挡掉的格（短名，现算）
 declare -A GATE_MS=()   # 这一趟每格的墙钟（毫秒，规范名 → 数），进墙钟那一行
 GATE_WIN=()        # 这一趟每格的起止（`<起 ms> <止 ms> <规范名>`）：`tmux-default` 拿它说外来连接出在哪一格
 GATE_PREP_MS=0          # e2e 前置那一趟 cargo build 的墙钟（不是格，单记）
+# e2e 那几套跑的后端二进制：前置那一趟编完当场留的那一份（`gate_exec_prep`；`ccm-shim.sh` 照它）。住仓里 `.build/`：无网沙箱换了 `/tmp`。
+export CCM_E2E_BACKEND_BIN="$PWD/.build/e2e-backend/cc-monitor-backend"
 GATE_T0=""              # 整趟起点，下面定义完 `gate_now_ms` 就取
 
 # 现在的毫秒数（`EPOCHREALTIME` 是微秒精度；去掉小数点那一位，与 locale 的小数点写法无关）。
@@ -981,7 +983,12 @@ gate_e2e_wanted() {
 }
 gate_exec_prep() {
   gate_now_ms > "$GATE_K.t0"
-  ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
+  rm -f "$CCM_E2E_BACKEND_BIN"
+  # 编完当场留一份给 e2e（`ccm-shim.sh` 照 `CCM_E2E_BACKEND_BIN`）：同一棵 target 里随后 `backend` 那一格的 `cargo test`
+  #   会把 `debug/cc-monitor-backend` 换成带测试档特性的那一份。没编成 ⇒ 不留，e2e 那几套当场说找不到二进制。
+  ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) \
+    && mkdir -p "${CCM_E2E_BACKEND_BIN%/*}" \
+    && cp -f "${CARGO_TARGET_DIR:-.build/backend}/debug/cc-monitor-backend" "$CCM_E2E_BACKEND_BIN" || true
   printf 0 > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
 }

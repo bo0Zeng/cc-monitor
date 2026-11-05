@@ -43,7 +43,7 @@ _gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
+BACKEND="${CCM_E2E_BACKEND:-${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}}"
 FAKE="$E2E_DIR/fake-claude"
 WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
 # 后端盯的账号目录默认落本趟私有的 $WORK 下（原先是固定的 /tmp/e2e-resume-frames：两趟同时跑时后起的那一趟开头

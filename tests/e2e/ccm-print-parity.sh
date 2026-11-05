@@ -31,7 +31,7 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #   后端要保证的命令契约，与用什么语言实现无关。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
+CCM_NATIVE="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$CCM_NATIVE" ] || {
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2

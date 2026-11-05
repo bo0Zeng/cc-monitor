@@ -22,7 +22,7 @@ set -o pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # 后端说的那几句按文案键认，本文件不钉原文：zh = 插好值的整句（与界面同一个取文口）。
 zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
-D="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
+D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$D" ] || { echo "需要先 build backend：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }

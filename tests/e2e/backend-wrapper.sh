@@ -22,7 +22,7 @@ if [ ! -f "$E2E_DIR/backend-path" ] || [ ! -s "$E2E_DIR/tmux-sock" ]; then
   exit 2
 fi
 : "${CCM_E2E_CLAUDE_DIR:=/tmp/e2e-remote-claude}"
-: "${CCM_E2E_BACKEND:=$REPO/.build/backend/debug/cc-monitor-backend}"
+: "${CCM_E2E_BACKEND:=${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}}"
 # ★★ **同目录的 `backend-path` 文件优先于下面的自愈**。
 #
 # 病:全链跑法要求把**本脚本的副本**放进一个目录(见上面的部署告警),而副本一旦离开仓,

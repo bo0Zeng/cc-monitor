@@ -42,7 +42,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # ★★ 被测对象 = 后端二进制，**名字必须是 `ccm`**（`intercept` 认的是
 #   `argv[0]` 的 basename）⇒ 在一次性目录里做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
+CCM_NATIVE="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$CCM_NATIVE" ] || {
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2; }
