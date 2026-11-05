@@ -505,7 +505,10 @@ async fn a_password_from_the_host_logs_in_and_a_wrong_one_is_refused() {
     rd.read_line(&mut line).await.expect("读结果行");
     let got: serde_json::Value = serde_json::from_str(&line).expect("结果行");
     assert_eq!(got["stdout"], "ran\n");
-    assert_eq!(got["ended"], serde_json::json!({"kind": "exited", "code": 0}));
+    assert_eq!(
+        got["ended"],
+        serde_json::json!({"kind": "exited", "code": 0})
+    );
     assert!(log.lock().unwrap().iter().any(|l| l == "exec echo"));
 
     let (ack, ..) = open(req("pw-bad"), crate::uses::Control::none()).await;
@@ -788,8 +791,14 @@ async fn a_granted_exec_keeps_the_bytes_around_the_reply() {
 async fn a_capture_records_how_its_channel_ended() {
     register("ended-pw", TestCred::Password("p".into()));
     for (answer, want) in [
-        (Answer::Yes, serde_json::json!({"kind": "exited", "code": 0})),
-        (Answer::Killed, serde_json::json!({"kind": "signaled", "signal": "KILL"})),
+        (
+            Answer::Yes,
+            serde_json::json!({"kind": "exited", "code": 0}),
+        ),
+        (
+            Answer::Killed,
+            serde_json::json!({"kind": "signaled", "signal": "KILL"}),
+        ),
         (Answer::Bare, serde_json::json!({"kind": "closed_bare"})),
         (Answer::Drops, serde_json::json!({"kind": "dropped"})),
     ] {

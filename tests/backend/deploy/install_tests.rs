@@ -5,10 +5,10 @@
 
 use std::sync::{Arc, Mutex};
 
+use cmd_wire::dial::CaptureEnd;
 use deploy_contract::DeployAction;
 use ssh_dial::sftp::rig;
 use ssh_dial::sftp::Session;
-use cmd_wire::dial::CaptureEnd;
 use ssh_dial::Captured;
 
 use crate::{Facing, Fut, Place, Slot, Step};

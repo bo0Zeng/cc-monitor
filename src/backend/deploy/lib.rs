@@ -265,7 +265,7 @@ async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<
                 ),
             )
         })?;
-    let raw = deploy_contract::key_from_uname(got.exit_code(),&got.stdout, &got.stderr);
+    let raw = deploy_contract::key_from_uname(got.exit_code(), &got.stdout, &got.stderr);
     let key = judge(Route::Remote, raw).map_err(said)?;
     if !carried.contains(&key) {
         return Err(said(Refusal::NotCarried {

@@ -573,9 +573,9 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
             // 这一跳的连接断了，不是那台的命令失败：拨号核心没等到 Close 链路就没了；
             // 或 ssh 自己出错退 255、那台一个字不回（没连上 · 中途断开）。
             CaptureEnd::Dropped => Some(hop_dropped()),
-            CaptureEnd::Exited { code: SSH_OWN_FAILURE } if stderr.trim().is_empty() => {
-                Some(hop_dropped())
-            }
+            CaptureEnd::Exited {
+                code: SSH_OWN_FAILURE,
+            } if stderr.trim().is_empty() => Some(hop_dropped()),
             // 那台的进程被信号杀掉 ⇒ 照信号说。
             CaptureEnd::Signaled { signal } => {
                 Some(copy_text("beRemoteAsk.run.signaled", &[("sig", signal)]))
