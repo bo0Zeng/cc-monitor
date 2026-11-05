@@ -3289,21 +3289,9 @@ type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 ```ts
 type KeySet = { 
 /**
- * 推出来的账号 id。
- */
-account: string, 
-/**
- * 那份文件的绝对路径。
- */
-path: string, 
-/**
  * 这一行 key 的掩码（只留末四位）。
  */
-masked: string, 
-/**
- * 这一行此刻的端点（没配 ⇒ `null`）。
- */
-baseUrl: string | null, };
+masked: string, };
 type KeySetReq = { 
 /**
  * 这个号的账号目录。
@@ -3939,7 +3927,11 @@ type VerifyReport = {
 /**
  * 没有一条 `fail`。
  */
-pass: boolean, fails: number, checks: Array<VerifyCheck>, };
+pass: boolean, fails: number, checks: Array<VerifyCheck>, 
+/**
+ * 有对不上的 ⇒ 写好的那一句（第一条对不上的那句，再接「另 ×N」）：账号页核对条照摆，不数、不挑、不拼。都对得上 ⇒ 不上线。
+ */
+headline?: string, };
 ```
 
 码：`bad_args` · `io_failed` · `unsupported`

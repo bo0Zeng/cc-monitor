@@ -80,20 +80,14 @@ pub struct KeySetReq {
     pub base_url: Option<String>,
 }
 
-/// `apikey-key-set` 的回包：盘上的事实（写完再读一遍）。
+/// `apikey-key-set` 的回包：盘上的事实（写完再读一遍）。只回掩码：账号 id · 文件路径 · 端点两端零读者（界面写完重读那台）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct KeySet {
-    /// 推出来的账号 id。
-    pub(crate) account: String,
-    /// 那份文件的绝对路径。
-    pub(crate) path: String,
     /// 这一行 key 的掩码（只留末四位）。
     pub masked: String,
-    /// 这一行此刻的端点（没配 ⇒ `null`）。
-    pub(crate) base_url: Option<String>,
 }
 
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
@@ -124,13 +118,12 @@ pub fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> {
         .filter(|s| !s.is_empty());
     check_inputs(&req.key, base_url)?;
     write_at(own, &file, account, &req.key, base_url)?;
-    // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码与端点。
+    // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码。
     let row = read_doc(path)?.and_then(|doc| {
         store::read_accounts(&doc)
             .into_iter()
             .find(|e| e.id == account)
     });
-    let base_url_now = row.as_ref().and_then(|e| e.base_url.clone());
     let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or_else(|| {
         Said::new(
             "io_failed",
@@ -143,12 +136,7 @@ pub fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> {
             ),
         )
     })?;
-    Ok(KeySet {
-        account: account.to_string(),
-        path: path.display().to_string(),
-        masked,
-        base_url: base_url_now,
-    })
+    Ok(KeySet { masked })
 }
 
 /// 入参里那个号的账号 id：按 `configDir` 推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。

@@ -8,4 +8,8 @@ export type VerifyReport = {
 /**
  * 没有一条 `fail`。
  */
-pass: boolean, fails: number, checks: Array<VerifyCheck>, };
+pass: boolean, fails: number, checks: Array<VerifyCheck>, 
+/**
+ * 有对不上的 ⇒ 写好的那一句（第一条对不上的那句，再接「另 ×N」）：账号页核对条照摆，不数、不挑、不拼。都对得上 ⇒ 不上线。
+ */
+headline?: string, };

@@ -225,6 +225,10 @@ pub struct VerifyReport {
     pub pass: bool,
     pub fails: u32,
     pub checks: Vec<VerifyCheck>,
+    /// 有对不上的 ⇒ 写好的那一句（第一条对不上的那句，再接「另 ×N」）：账号页核对条照摆，不数、不挑、不拼。都对得上 ⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub headline: Option<String>,
 }
 
 /// `accounts-login-cmd` 的成品：在终端里起 claude 登录这个号的那一行（已 quote）。

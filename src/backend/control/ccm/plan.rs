@@ -585,8 +585,6 @@ pub struct Direct {
     pub cwd: String,
     /// 最终 exec 的 argv：启动器 ＋ 原样透传（`--resume` 这类 ccm 不吃，照写交出去）。
     pub argv: Vec<String>,
-    /// 这一趟有没有身份面（claude 有、codex 没有）。
-    pub has_identity: bool,
     /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
     pub relay: Option<String>,
     /// 这一家怎么指到中转（适配层那一格的计划形）。
@@ -1531,7 +1529,6 @@ pub fn build_among(
         nested: nested_of(face.map(|f| f.nested_env).unwrap_or(&[])),
         cwd,
         argv,
-        has_identity: face.is_some_and(|f| f.has_identity),
         relay_pass_key: relay.as_ref().and(env.relay_pass_key.clone()),
         relay_env: match &relay {
             Some(_) => crate::agents::relay_env_among(registry, &o.agent)
