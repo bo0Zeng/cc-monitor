@@ -4,8 +4,10 @@
       "line": {
         "machine": {
           "detail": null,
+          "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": false,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -32,8 +34,10 @@
         "epoch": 1,
         "machine": {
           "detail": null,
+          "dot": "up",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": true,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -56,6 +60,7 @@
         "epoch": 2,
         "machine": {
           "detail": null,
+          "dot": "warn",
           "expectedHostKey": null,
           "fixes": [
             {
@@ -63,6 +68,7 @@
               "label": "更新"
             }
           ],
+          "linked": true,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -89,8 +95,10 @@
         "epoch": 3,
         "machine": {
           "detail": null,
+          "dot": "up",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": true,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -112,6 +120,7 @@
       "line": {
         "machine": {
           "detail": "exit: 127",
+          "dot": "failed",
           "expectedHostKey": null,
           "fixes": [
             {
@@ -119,6 +128,7 @@
               "label": "安装"
             }
           ],
+          "linked": false,
           "name": "box",
           "offline": true,
           "offlineSaid": "box 离线",
@@ -144,6 +154,7 @@
       "line": {
         "machine": {
           "detail": "refused: x",
+          "dot": "warn",
           "expectedHostKey": null,
           "fixes": [
             {
@@ -151,6 +162,7 @@
               "label": "更新"
             }
           ],
+          "linked": true,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -176,6 +188,7 @@
       "line": {
         "machine": {
           "detail": "命令：dial\n对象：box\n断在：连接失败 · 密钥被拒\n码：auth\n原话：denied",
+          "dot": "failed",
           "expectedHostKey": null,
           "fixes": [
             {
@@ -187,6 +200,7 @@
               "label": "连接设置"
             }
           ],
+          "linked": false,
           "name": "box",
           "offline": true,
           "offlineSaid": "box 离线",
@@ -212,6 +226,7 @@
       "line": {
         "machine": {
           "detail": "对象：box\n断在：box 离线\n码：other",
+          "dot": "failed",
           "expectedHostKey": null,
           "fixes": [
             {
@@ -223,6 +238,7 @@
               "label": "连接设置"
             }
           ],
+          "linked": false,
           "name": "box",
           "offline": true,
           "offlineSaid": "box 离线",
@@ -248,8 +264,10 @@
       "line": {
         "machine": {
           "detail": "setsid",
+          "dot": "failed",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": false,
           "name": "box",
           "offline": true,
           "offlineSaid": "box 离线",
@@ -275,8 +293,10 @@
       "line": {
         "machine": {
           "detail": null,
+          "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": false,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -302,8 +322,10 @@
       "line": {
         "machine": {
           "detail": null,
+          "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": false,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",
@@ -330,8 +352,10 @@
         "epoch": 2,
         "machine": {
           "detail": null,
+          "dot": "pending",
           "expectedHostKey": null,
           "fixes": [],
+          "linked": false,
           "name": "box",
           "offline": false,
           "offlineSaid": "box 离线",

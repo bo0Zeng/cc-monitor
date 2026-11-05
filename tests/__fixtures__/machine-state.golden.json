@@ -3,8 +3,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": true,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -23,8 +25,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": false,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -47,8 +51,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": false,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -71,8 +77,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "pending",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": false,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -95,6 +103,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：auth\n原话：raw words",
+        "dot": "failed",
         "expectedHostKey": null,
         "fixes": [
           {
@@ -106,6 +115,7 @@
             "label": "连接设置"
           }
         ],
+        "linked": false,
         "name": "gpu-01",
         "offline": true,
         "offlineSaid": "gpu-01 离线",
@@ -128,6 +138,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：timeout\n原话：raw words",
+        "dot": "failed",
         "expectedHostKey": null,
         "fixes": [
           {
@@ -139,6 +150,7 @@
             "label": "连接设置"
           }
         ],
+        "linked": false,
         "name": "gpu-01",
         "offline": true,
         "offlineSaid": "gpu-01 离线",
@@ -161,6 +173,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：host_key\n原话：raw words",
+        "dot": "failed",
         "expectedHostKey": "SHA256:old",
         "fixes": [
           {
@@ -168,6 +181,7 @@
             "label": "比对指纹…"
           }
         ],
+        "linked": false,
         "name": "gpu-01",
         "offline": true,
         "offlineSaid": "gpu-01 离线",
@@ -190,6 +204,7 @@
     {
       "machine": {
         "detail": null,
+        "dot": "warn",
         "expectedHostKey": null,
         "fixes": [
           {
@@ -197,6 +212,7 @@
             "label": "更新"
           }
         ],
+        "linked": true,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -219,8 +235,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": true,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -239,8 +257,10 @@
     {
       "machine": {
         "detail": null,
+        "dot": "up",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": true,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
@@ -259,8 +279,10 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：not_unix\n原话：raw words",
+        "dot": "failed",
         "expectedHostKey": null,
         "fixes": [],
+        "linked": false,
         "name": "gpu-01",
         "offline": true,
         "offlineSaid": "gpu-01 离线",
@@ -283,6 +305,7 @@
     {
       "machine": {
         "detail": "命令：dial\n对象：gpu-01\n断在：拨号没成\n码：password\n原话：raw words",
+        "dot": "failed",
         "expectedHostKey": null,
         "fixes": [
           {
@@ -290,6 +313,7 @@
             "label": "推送公钥…"
           }
         ],
+        "linked": false,
         "name": "gpu-01",
         "offline": true,
         "offlineSaid": "gpu-01 离线",
@@ -312,6 +336,7 @@
     {
       "machine": {
         "detail": null,
+        "dot": "off",
         "expectedHostKey": null,
         "fixes": [
           {
@@ -319,6 +344,7 @@
             "label": "连接"
           }
         ],
+        "linked": false,
         "name": "gpu-01",
         "offline": false,
         "offlineSaid": "gpu-01 离线",
