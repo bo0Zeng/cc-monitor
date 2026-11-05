@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -12,8 +13,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 一条会话的目录（⋯「打开工作目录」去的那一处，在它里面「新建会话」也起在那里）是会话帧上的项目目录 `projectDir`，
- * 不是进程起在哪的 `cwd`（那一格只拿来认「刚起的那条起来了」）。
+ * 一条会话的目录（⋯「打开工作目录」去的那一处，在它里面「新建会话」也起在那里）只照会话事实的项目目录 `projectDir`，
+ * 不是会话帧上进程起在哪的 `cwd`（那一格只拿来认「刚起的那条起来了」）。
  * ⋯ 那一项点了去哪：导航层开一个文件标签、落在那个目录（app 不引 Robolectric，点菜单那一下门禁里量不了，这里钉源码里那一条接线）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -21,11 +22,11 @@ class ChatOpenDirTest {
     private val file = FakeCoreLink.File(mutableListOf(human("u1", "你好")))
 
     @Test
-    fun `会话帧上进程目录与项目目录不同 ⇒ 会话的目录是项目目录`() =
+    fun `会话帧上进程目录 · 项目目录与会话事实不同 ⇒ 会话的目录是会话事实的项目目录`() =
         runTest {
             val link = FakeCoreLink()
-            link.report("s1", cwd = "/h/proj/sub", projectDir = "/h/proj")
-            link.answer = { cmd, args -> if (cmd == "history-facts") Reply.LinkDown else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", cwd = "/h/proj/sub", projectDir = "/h/book")
+            link.answer = { cmd, args -> if (cmd == "history-facts") Reply.Ok(Wires.facts("projectDir" to "/h/proj")) else file.answer(cmd, args) ?: Reply.LinkDown }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
             runCurrent()
             assertEquals("/h/proj", s.state.value.cwd)
