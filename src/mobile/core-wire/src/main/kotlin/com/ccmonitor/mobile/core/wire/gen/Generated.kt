@@ -1268,20 +1268,6 @@ data class Answered(
     }
 }
 
-enum class ApiReason(val wire: String) {
-    OVERLOADED("overloaded"),
-    QUOTA("quota"),
-    NETWORK("network"),
-    AUTH("auth"),
-    CONTEXT("context"),
-    UNKNOWN("unknown"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<ApiReason> = enumOf(entries) { it.wire }
-    }
-}
-
 enum class Arrival(val wire: String) {
     ARRIVED("arrived"),
     MISSED("missed"),
