@@ -292,7 +292,8 @@ ADD="$(printf '{"name":"k1","kind":"api-key","key":"%s","baseUrl":"http://127.0.
 if [ "$(printf '%s' "$ADD" | jget keyMasked)" != "null" ]; then ok "远端新建 API key 账号：key 存进那台的 key 表（只回掩码）"
 else bad "远端新建 API key 账号没存上 key：$(printf '%s' "$ADD" | jget keyProblem)"; fi
 : > "$WORK/up-heads"
-E2E_AGENT_OUT="$WORK/agent-out" rcm -- --account k1 --launcher "$WORK/fake-agent" >"$WORK/launch.out" 2>&1
+# 最终 exec 那一跳（直接执行）：当已在托管终端里，不另起托管容器（不在 tmux 里缺省落托管容器，接它要真终端）。
+E2E_AGENT_OUT="$WORK/agent-out" CCM_HOST=e2e-lb rcm -- --account k1 --launcher "$WORK/fake-agent" >"$WORK/launch.out" 2>&1
 HEADS="$(cat "$WORK/up-heads" 2>/dev/null)"
 AUTH="$(printf '%s\n' "$HEADS" | tr ' ' '\n' | grep -cxE 'authorization|x-api-key')"
 if [ "$(cat "$WORK/agent-out" 2>/dev/null)" = 200 ] && [ "$(printf '%s\n' "$HEADS" | grep -c .)" -eq 1 ] && [ "$AUTH" -eq 1 ]; then

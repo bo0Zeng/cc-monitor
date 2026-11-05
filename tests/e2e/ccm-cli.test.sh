@@ -6,6 +6,7 @@
 #
 # 跑法：bash tests/e2e/ccm-cli.test.sh   （npm run test:ccm-cli）
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
+export CCM_HOST=e2e-ccm-cli  # 本套钉最终 exec 那一跳（直接执行）：不在 tmux 里缺省落托管容器 ⇒ 当已在托管终端里；托管那一形另有 plan_tests 钉着
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -263,7 +264,7 @@ printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
 mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
-home_run() { nofrom env -i PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@"; }
+home_run() { nofrom env -i CCM_HOST="$CCM_HOST" PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@"; }
 # 列账号：额度账那一问（`--quota-read`）逐号一行，`account` 是号名（账号库没启用 ⇒ 一个号都不列）；候选那一格（`candidates`）再列一遍同几个号 ⇒ 去重。
 #   读不出（不是那一形）⇒ 印出原话，不当成「零个号」。
 names_of() {
@@ -370,7 +371,7 @@ ck "-- 右边认不得的词直接报错（不猜）" \
    "ccm: $(zh beArgv.parse.unknownRight w=--model)" \
    "$(ccm -- --model opus --ccm-print)"
 ck "后端子命令只能紧跟打头的 --" \
-   "ccm: $(zh beArgv.parse.backendWordAfterClaudeArgs w=--history-list)" \
+   "ccm: $(zh beArgv.parse.unknownRight w=--history-list)" \
    "$(ccm -p -- --history-list)"
 
 echo "===== 没有 -- 又没有终端：不起 claude（被别的程序经管道驱动的裸调用）====="

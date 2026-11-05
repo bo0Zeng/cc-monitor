@@ -59,6 +59,7 @@ CCM="$CCMDIR/ccm"
 
 W="$(mktemp -d)"; trap 'rm -rf "$W" "$CCMDIR"; tmux_shim_cleanup' EXIT
 mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/home"
+printf '{"fake":"z"}' > "$W/acct-z/.credentials.json"; printf '{"fake":"b"}' > "$W/acct-b/.credentials.json"  # 选号照界面那一条判（要登录）⇒ 造的凭据，只 stat 在不在
 CWD="$W/proj"
 
 # ===== tmux shim：**绝不碰用户真 tmux server** =====
@@ -281,7 +282,7 @@ CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
 # `ccm_invocation.rs`：从 `pub const CLI_REQUIRED_CAPS` 那一行抽到 `];`，收引号串 ——
 # 不认行形（`rustfmt` 折不折行都抽得到；整行一行写完的那一形也认 —— `sed` 的范围不在起始行上找终点，
 # 一行写完时会一直抽到下一个 `];`，所以用 awk 在起始行上也看终点）。
-REQ_CAPS="$(awk '/^pub const CLI_REQUIRED_CAPS: /{on=1} on{print} on&&/\];/{exit}' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
+REQ_CAPS="$(awk '/^pub(\(crate\))? const CLI_REQUIRED_CAPS: /{on=1} on{print} on&&/\];/{exit}' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
            | grep -o '"[^"]*"' | tr -d '"')"
 REQ_N="$(printf '%s\n' "$REQ_CAPS" | grep -c .)"
 # ★ 抽取器自检：抽空了的话下面那条"逐个都在"会**零命中零失败**地变绿。

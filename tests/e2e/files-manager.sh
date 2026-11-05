@@ -291,13 +291,17 @@ if sshd_why:
     SKIP += 1
     print(f"  SKIP 传输那一段：{sshd_why}")
 else:
-    dial = {"machine": {"host": "127.0.0.1", "port": int(ssh_port), "user": user,
-                        "keyPath": os.path.join(work, "id")}}
+    # 传输只按机器名寻址（怎么拨照本机后端的机器表）⇒ 先经本机后端的写口把远端那台登进它自己的表，再只交名字。
+    peer = "e2e-peer"
+    r = A.ask("machines-set", {"edits": [{"op": "insertin", "where": [{"fields": ["label", "host"], "equals": peer}],
+                                          "value": {"label": peer, "host": "127.0.0.1", "port": int(ssh_port),
+                                                    "user": user, "keyPath": os.path.join(work, "id")}}]})
+    check(r.get("ok"), "machines-set 把远端那台登进本机后端的机器表", r)
     src = os.path.join(work, "remote-files", "src.bin")
     payload = os.urandom(300 * 1024)
     open(src, "wb").write(payload)
     dl_root = os.path.join(root, "dl"); os.makedirs(dl_root)
-    r = A.ask("transfer-download", {"dial": dial, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
+    r = A.ask("transfer-download", {"machine": peer, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
     it = (opened_items(r) or [{}])[0]
     tid = it.get("id") if it.get("state") == "opened" else None
     s = A.ask("transfer-start", {"id": tid}) if tid else {}
@@ -306,14 +310,14 @@ else:
           and not [n for n in os.listdir(dl_root) if n.endswith(".part")],
           "transfer-download：落点逐字节对、.part 不留", (r, s, end))
     # 本机落点那一侧先探同名：已在、又没答 ⇒ 一单不开、回 exists 带同名清单（本机那一侧，这里测得到）。
-    r = A.ask("transfer-download", {"dial": dial, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
+    r = A.ask("transfer-download", {"machine": peer, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
     names = [c.get("name") for c in ((r.get("data") or {}).get("conflicts") or [])]
     check(not r.get("ok") and code_of(r) == "exists" and names == ["got.bin"],
           "transfer-download 落点已有同名、没答 ⇒ exists 带那一项、一单不开", r)
     # 落点不收相对的目录、不收以 `..` 收尾的落名：整组被拒或那一项没开成，都不许开出单来。
     for args, what in [({"local_dir": "rel", "items": [{"remote_path": src}]}, "目录是相对路径"),
                        ({"local_dir": dl_root, "items": [{"remote_path": src, "name": ".."}]}, "落名是 .."),]:
-        r = A.ask("transfer-download", dict(args, dial=dial))
+        r = A.ask("transfer-download", dict(args, machine=peer))
         items = opened_items(r)
         refused = not r.get("ok") or (items and all(i.get("state") != "opened" and not i.get("id") for i in items))
         check(refused, f"transfer-download {what} ⇒ 不开单（{code_of(r) or [i.get('code') for i in items]}）", r)
@@ -325,7 +329,7 @@ else:
     # 上传先在远端落点探同名（问远端那台的后端 `files-stat`）。本套件的远端只给 sftp、没有后端可问 ⇒ 探不到就当没有同名、照开单；
     # 「远端已有同名 ⇒ exists 带清单」那一半在这里测不到，由 `control/transfer` 的判据（替身落点）判。这里判开单 · 传 · 提交那一半。
     rroot = os.path.join(remote_home, "target"); os.makedirs(rroot)
-    r = A.ask("transfer-upload", {"dial": dial, "remote_dir": rroot, "items": [{"local_path": local_up}]})
+    r = A.ask("transfer-upload", {"machine": peer, "remote_dir": rroot, "items": [{"local_path": local_up}]})
     it = (opened_items(r) or [{}])[0]
     tid = it.get("id") if it.get("state") == "opened" else None
     s = A.ask("transfer-start", {"id": tid}) if tid else {}
