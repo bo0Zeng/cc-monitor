@@ -333,8 +333,6 @@ pub struct LaunchFace {
     /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · 载荷内核）。
     /// 注册表里恰一家为真（`agents_tests.rs` 钉着）。
     pub is_default: bool,
-    /// 这一家的会话有身份面（`@ccm_sid` 回填）。
-    pub has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     pub models: Option<&'static [Choice]>,
     /// 回到这一家缺省模型的那一项（原值 ＋ 字）：会话开着时换模型交它；起会话不交（不选就是默认）。没有 ⇒ `None`。

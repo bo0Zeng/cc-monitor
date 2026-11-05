@@ -113,7 +113,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,
-    has_identity: false,
     models: None,
     model_default: None,
     model_text: None,
