@@ -92,12 +92,12 @@ impl Ssh for Fake {
         })
     }
 
-    fn capture(&self, _machine: &str, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, _machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         assert!(command.contains("-- --resident-ensure"), "{command}");
         self.words.lock().unwrap().push(command);
         Box::pin(async {
-            Ok(Exec {
-                exit_status: Some(0),
+            Ok(Captured {
+                ended: cmd_wire::dial::CaptureEnd::Exited { code: 0 },
                 stdout: r#"{"pid":7,"replaced":false}"#.into(),
                 stderr: String::new(),
             })

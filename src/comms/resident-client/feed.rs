@@ -32,7 +32,7 @@ use crate::frames::Admit;
 use crate::line::BACKEND_FRAME_LINE_CAP;
 use crate::watch::Desk;
 use cmd_wire::attach::Relation;
-use cmd_wire::dial::OLD_BACKEND_MARKER;
+use cmd_wire::dial::{CaptureEnd, Captured, OLD_BACKEND_MARKER};
 use cmd_wire::machine::{Blocker, Why};
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
@@ -78,14 +78,6 @@ impl Problem {
             ..self
         }
     }
-}
-
-/// 一次性 exec 收全的那三样（`exit_status` 缺 ＝ 没退出就收了，如老后端掉进流模式、见到 hello 提前收）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Exec {
-    pub exit_status: Option<u32>,
-    pub stdout: String,
-    pub stderr: String,
 }
 
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -137,7 +129,8 @@ pub trait Transport: Send + Sync + 'static {
         command: String,
         progress: Progress,
     ) -> Boxed<'_, Result<Self::Stream, Problem>>;
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>>;
+    /// 跑一次收全：stdout · stderr · 通道怎么收尾（拨号核心交回的那一行原样）。
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>>;
     /// 把手上这一版的后端放到那台的落点（本机后端：`deploy-install` 那一趟）。只在 [`Self::installs`] 的宿主上、
     /// 接不上或接上的不是这一版（`Relation::Same` 以外）时走，紧接着 `--resident-ensure [--replace]`。装没装成由宿主自己记（机器状态那几步）、
     /// 不阻断这一轮：手动装的后端照样接。缺省不做事。
@@ -1092,13 +1085,31 @@ async fn route(client: &InboundClient, kind: &str, line: &str, events: &Sink) {
 /// shell 找不到命令 / 不能执行。
 const ABSENT_CODES: [u32; 2] = [126, 127];
 
+/// ssh 自己出错（没连上 · 认证没过 · 中途断开）的退出码（`man ssh`：「exits with 255 if an error occurred」）。
+const SSH_OWN_FAILURE: u32 = 255;
+
+/// 这一跳的连接断了，不是那台的命令失败 ⇒「连接失败 · 链路中途中断」，再试会好。
+fn hop_dropped(raw: String) -> Result<serde_json::Value, Fail> {
+    Err(Fail::new(
+        Problem::new(
+            copy_text(
+                "beRemoteAsk.run.unreachable",
+                &[("why", &copy_text("beRemoteAsk.run.hopDropped", &[]))],
+            ),
+            raw,
+        ),
+        FailKind::Transient,
+    ))
+}
+
 /// 一次性 CLI 的回话（`--resident-ensure [--replace]` · `--resident-stop`，桌面停那一趟也读它）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；
 /// stdout 里有 hello（[`OLD_BACKEND_MARKER`]）⇒ 老后端、要更新；127 / 126 ⇒ 没装；非 0 ＋ stderr 一行失败信封（`cmd_wire::failed::Failed`）⇒ 那一句
-/// （`code == "unsupported"` ⇒ 那台不是 Unix）；对不上协议 ⇒ 原样进详情。
-pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> {
+/// （`code == "unsupported"` ⇒ 那台不是 Unix）；不是信封 ⇒ 照通道怎么收尾说：这一跳自己断了（没等到 Close 链路就没了 · ssh 自己出错退 255、
+/// 一个字不回）⇒ 连接失败、再试会好；被信号杀 ⇒ 照信号说；余下对不上协议 ⇒ 原样进详情。
+pub fn read_one_shot(exec: &Captured, machine: &str) -> Result<serde_json::Value, Fail> {
     let out = exec.stdout.trim();
     let err = exec.stderr.trim();
-    let raw = || format!("exit: {:?}\nstdout: {out}\nstderr: {err}", exec.exit_status);
+    let raw = || format!("ended: {:?}\nstdout: {out}\nstderr: {err}", exec.ended);
     let install = |p: Problem| Err(Fail::new(p, FailKind::Blocked(Blocker::NoBackend)));
     if out.contains(OLD_BACKEND_MARKER) {
         return Err(Fail::new(
@@ -1106,7 +1117,7 @@ pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fa
             FailKind::Blocked(Blocker::OldBackend),
         ));
     }
-    match exec.exit_status {
+    match exec.exit_code() {
         Some(0) => match serde_json::from_str::<serde_json::Value>(out)
             .ok()
             .filter(serde_json::Value::is_object)
@@ -1136,10 +1147,20 @@ pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fa
                     FailKind::Blocked(Blocker::NotUnix),
                 )),
                 Some(f) => install(Problem::new(f.said, f.detail)),
-                None => install(Problem::new(
-                    copy_text("rsRemoteResident.ensure.noReason", &[]),
-                    raw(),
-                )),
+                None => match &exec.ended {
+                    CaptureEnd::Dropped => hop_dropped(raw()),
+                    CaptureEnd::Exited {
+                        code: SSH_OWN_FAILURE,
+                    } if out.is_empty() && err.is_empty() => hop_dropped(raw()),
+                    CaptureEnd::Signaled { signal } => install(Problem::new(
+                        copy_text("beRemoteAsk.run.signaled", &[("sig", signal)]),
+                        raw(),
+                    )),
+                    CaptureEnd::Exited { .. } | CaptureEnd::ClosedBare => install(Problem::new(
+                        copy_text("rsRemoteResident.ensure.noReason", &[]),
+                        raw(),
+                    )),
+                },
             }
         }
     }

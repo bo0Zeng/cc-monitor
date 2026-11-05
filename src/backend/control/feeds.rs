@@ -16,11 +16,12 @@
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::{Frame, FrameMake as _};
+use cmd_wire::dial::Captured;
 use cmd_wire::frame::{Changed, Relayed};
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use face_core::book::SessionBook;
-use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
+use resident_client::feed::{self, Boxed, Config, Event, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
@@ -46,7 +47,7 @@ pub(crate) trait Ssh: Send + Sync + 'static {
         progress: Progress,
     ) -> Boxed<'_, Result<Pipe, Problem>>;
     /// 跑一次收全。
-    fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Exec, Problem>>;
+    fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>>;
     /// 把这一版的后端放到那台的落点（成没成记进机器状态，不阻断这一轮）。
     fn install(&self, machine: &str) -> Boxed<'_, ()>;
     /// 到那台的这一跳远不远（池里那条连接的读数，`ssh_dial::pool::far_of`；常驻流照它定要不要那台压）。
@@ -76,7 +77,7 @@ impl Transport for Link {
         self.ssh.open(&self.machine, command, progress)
     }
 
-    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         self.ssh.capture(&self.machine, command)
     }
 
@@ -468,7 +469,7 @@ impl Ssh for Pool {
         })
     }
 
-    fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+    fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>> {
         // 一次性 exec 只经问远端那一跳（`remote_ask::capture_full`：上限 · 老后端见到 hello 就收都在那里）。
         crate::dial::host();
         let dial = crate::dial::request_named(
@@ -479,14 +480,9 @@ impl Ssh for Pool {
         )
         .map_err(|f| Problem::new(f.said, ""));
         Box::pin(async move {
-            let got = crate::dial::remote_ask::capture_full(&dial?, command)
+            crate::dial::remote_ask::capture_full(&dial?, command)
                 .await
-                .map_err(|said| Problem::new(said, ""))?;
-            Ok(Exec {
-                exit_status: got.exit_code(),
-                stdout: got.stdout,
-                stderr: got.stderr,
-            })
+                .map_err(|said| Problem::new(said, ""))
         })
     }
 
