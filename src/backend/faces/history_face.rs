@@ -976,7 +976,7 @@ pub(crate) async fn needs_merge_with(
 }
 
 /// 没问到那台那一句（`NeedsDown.said`，出口照摆）：常驻那一层说的那几种（常驻不在 · 回复超时 · 后端要更新 · 后端版本不同）
-/// 句里已叫出那台 ⇒ 照原样；别的（本机答失败 · 那台答了一个错原样转回来 · 连不上）只说了原因 ⇒「<那台> · <那一句>」。
+/// 句里已叫出那台 ⇒ 照原样；别的（本机答失败 · 那台答了一个错原样转回来 · 那台够不着）只说了原因 ⇒「<那台> · <那一句>」。
 fn down_said(origin: &cmd_wire::Machine, s: crate::common::said::Said) -> String {
     const NAMED: [&str; 4] = [
         crate::wire::listen::CALL_ABSENT,
