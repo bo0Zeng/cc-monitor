@@ -11151,23 +11151,17 @@ data class KeyPair(
 
 @Suppress("UNCHECKED_CAST")
 data class KeySet(
-    val account: String,
-    val path: String,
     val masked: String,
-    val baseUrl: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<KeySet> = obj(
             listOf(
-            Field("account", { Str }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
             Field("masked", { Str }, optional = false, nullable = false),
-            Field("baseUrl", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> KeySet(a[0] as String, a[1] as String, a[2] as String, a[3] as String?) },
-            { v -> arrayOf(v.account, v.path, v.masked, v.baseUrl) },
+            { a -> KeySet(a[0] as String) },
+            { v -> arrayOf(v.masked) },
         )
     }
 }
@@ -27818,6 +27812,7 @@ data class VerifyReport(
     val pass: Boolean,
     val fails: Int,
     val checks: List<VerifyCheck>,
+    val headline: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -27827,9 +27822,10 @@ data class VerifyReport(
             Field("pass", { Bool }, optional = false, nullable = false),
             Field("fails", { Int32 }, optional = false, nullable = false),
             Field("checks", { arr(VerifyCheck.ADAPTER) }, optional = false, nullable = false),
+            Field("headline", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> VerifyReport(a[0] as Boolean, a[1] as Int, a[2] as List<VerifyCheck>) },
-            { v -> arrayOf(v.pass, v.fails, v.checks) },
+            { a -> VerifyReport(a[0] as Boolean, a[1] as Int, a[2] as List<VerifyCheck>, a[3] as String?) },
+            { v -> arrayOf(v.pass, v.fails, v.checks, v.headline) },
         )
     }
 }

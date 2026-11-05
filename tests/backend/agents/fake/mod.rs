@@ -153,7 +153,6 @@ pub const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
-    has_identity: true,
     models: None,
     model_default: None,
     model_text: None,

@@ -303,7 +303,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
         face("codex").nested_env.is_empty(),
         "codex 不清 claude 的嵌套标记"
     );
-    assert!(face("claude").has_identity && !face("codex").has_identity);
 }
 
 /// 「发对了」「缺省尺寸」「控制字符」那几族。

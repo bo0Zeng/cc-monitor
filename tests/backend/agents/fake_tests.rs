@@ -433,7 +433,6 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{} 的嵌套标记",
             a.kind
         );
-        assert_eq!(d.has_identity, face.has_identity, "{} 的身份面", a.kind);
         // 容器路：整条命令里只有键入载荷那一次按键，收尾一个键都不替用户按
         //（agent 问「信任这个目录吗」由用户自己答；替它按 Enter 按中的是缺省那一项「不信任、退出」）。
         for extra in [&["--ccm-tmux=w-x", "--detach"][..], &["--ccm-tmux=w-x"][..]] {
@@ -513,8 +512,8 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             .iter()
             .find(|a| a.kind == AGENT_KIND)
             .expect("在注册表里");
-        (f.has_identity, f.is_default, a.live)
-            != (LAUNCH.has_identity, LAUNCH.is_default, fake.live)
+        (f.rewind.is_some(), f.is_default, a.live)
+            != (LAUNCH.rewind.is_some(), LAUNCH.is_default, fake.live)
     };
     assert!(
         differs("claude") && differs("codex"),

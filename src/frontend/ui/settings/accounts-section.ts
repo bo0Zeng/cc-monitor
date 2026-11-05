@@ -299,14 +299,11 @@ export class AccountsSection {
     return box;
   }
 
-  /** 打开时顺手核过一次：有对不上的才出一条警告条 ＋［修复…］；这次窗口里修复过 ⇒ ⋯ 里有「恢复到修复之前」。 */
+  /** 打开时顺手核过一次：回包里有写好的那一句（有对不上的才有，那台后端写）才出一条警告条 ＋［修复…］；这次窗口里修复过 ⇒ ⋯ 里有「恢复到修复之前」。 */
   private verifyBar(f: Facts): HTMLElement | null {
     const machine = machineName(f.origin);
-    const fails = f.verify?.checks.filter((c) => c.level === "fail") ?? [];
-    if (fails.length === 0) return null;
-    const first = fails[0];
-    const text = first.account ? copyText("acctPage.verify.bar", { name: first.account, what: first.text }) : copyText("acctPage.verify.barGlobal", { what: first.text });
-    const more = fails.length > 1 ? copyText("kit.dialog.more", { n: fails.length - 1 }) : "";
+    const text = f.verify?.headline;
+    if (!text) return null;
     const actions: HTMLElement[] = [button({ label: copyText("acctPage.verify.fix"), size: "compact", onClick: () => void this.repair(f.origin, machine) })];
     if (this.repaired.has(f.origin)) {
       actions.push(
@@ -321,7 +318,7 @@ export class AccountsSection {
         }),
       );
     }
-    return banner("warn", more ? `${text}${copyText("kit.text.sep")}${more}` : text, actions);
+    return banner("warn", text, actions);
   }
 
   private async repair(origin: Machine, machine: string): Promise<void> {

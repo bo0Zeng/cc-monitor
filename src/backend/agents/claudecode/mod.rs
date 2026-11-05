@@ -252,7 +252,6 @@ pub const LAUNCH: super::LaunchFace = super::LaunchFace {
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
-    has_identity: true,
     models: Some(resume::MODEL_ALIASES),
     model_default: Some(resume::MODEL_DEFAULT),
     model_text: Some(resume::model_text),
