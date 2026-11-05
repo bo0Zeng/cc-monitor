@@ -1,7 +1,6 @@
 {
   "history-facts": {
     "agent": "claude",
-    "answerOff": null,
     "autoAnswer": null,
     "autoAnswerChoices": [
       {
@@ -23,14 +22,6 @@
     ],
     "autoAnswered": null,
     "background": null,
-    "bgTasks": [
-      {
-        "at": "2026-10-09T08:00:00.000Z",
-        "call": "tu-b1",
-        "cmd": "make test-all",
-        "task": "bb1"
-      }
-    ],
     "children": [],
     "childrenText": null,
     "cost": {
@@ -39,14 +30,12 @@
       "text": "$0.42"
     },
     "forkedFrom": "src-0",
-    "handedBack": [
-      "ag-7"
-    ],
     "lastSay": {
       "at": "t5",
       "atMs": null,
       "text": "done"
     },
+    "line": null,
     "mcp": [
       {
         "at": null,
@@ -106,7 +95,6 @@
     "permissionMode": "acceptEdits",
     "permissionModeText": "自动接受编辑",
     "projectDir": "/g/proj",
-    "line": null,
     "quietUnread": {
       "count": 1,
       "kinds": [
@@ -300,7 +288,6 @@
         "background": 0,
         "done": true,
         "end": "t8",
-        "endText": "",
         "fails": 1,
         "folds": [
           {
@@ -359,7 +346,6 @@
           }
         ],
         "line": 0,
-        "peers": 0,
         "phase": "idle",
         "reply": "r1\nr2\nr3",
         "retries": 0,
@@ -380,7 +366,6 @@
         "background": 0,
         "done": false,
         "end": "t10",
-        "endText": "",
         "fails": 0,
         "folds": [
           {
@@ -408,7 +393,6 @@
           }
         ],
         "line": 8,
-        "peers": 0,
         "phase": "idle",
         "reply": "",
         "retries": 0,

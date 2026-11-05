@@ -807,12 +807,6 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "answerOff",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
           "path": "autoAnswer",
           "type": "number"
@@ -869,30 +863,6 @@
           "frozen": false,
           "kind": "text",
           "path": "background.what",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "bgTasks[].at",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "bgTasks[].call",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "bgTasks[].cmd",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "bgTasks[].task",
           "type": "string"
         },
         {
@@ -1103,12 +1073,6 @@
           "frozen": false,
           "kind": "value",
           "path": "forkedFrom",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "handedBack[]",
           "type": "string"
         },
         {
