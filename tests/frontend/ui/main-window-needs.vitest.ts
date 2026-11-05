@@ -803,6 +803,23 @@ describe("报错卡上去它的终端那两颗（与会话头同一道）", () =
   });
 });
 
+// **接线判据**：「那台接上」（机器状态翻成连着）那一段在入口脚本里，没有 DOM 判据够得着 ⇒ 读源码。
+// 那台断开又接上时，订着的 `changed {needs}` 收一格 `seen`（⇒ all ⇒ `needsBook.poke`）；起来那一批由 `onMachinesMoved` 的 `refreshAll` 问。
+// 「接上」那一下再问一次就是两问（今天删掉之前就是两次）。
+describe("那台接上 ⇒ 需手动只经订阅重问一次", () => {
+  it("★ main.ts 的 onMachineUp 那一段不问需手动；`changed {needs}` 那一支照旧 poke", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { REPO_ROOT } = await import("../../test-support/repo-root.ts");
+    const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
+    const at = main.indexOf("onMachineUp((origin) => {");
+    expect(at, "main.ts 里找不到 onMachineUp 那一段").toBeGreaterThan(-1);
+    const body = main.slice(at, main.indexOf("\n  });", at));
+    expect(body).not.toMatch(/needsBook\.(refresh|refreshAll|poke)\(/);
+    expect(main.split("needsBook.poke(origin);").length - 1).toBe(1);
+  });
+});
+
 // 窗口标题起步就是产品名：三份入口 HTML 的 <title> 与壳 / 需手动那一路设的基础标题同字（不写死别的产品名）。
 describe("入口 HTML 的 <title> == 窗口的基础标题", () => {
   it("index · settings · viewer 三份都是 needs.windowTitle.base", async () => {

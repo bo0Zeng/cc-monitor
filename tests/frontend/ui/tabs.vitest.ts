@@ -5293,9 +5293,11 @@ describe("〔FW1〕记录文件的出声", () => {
     expect(noticeText(tm), "重读那句被下一行收掉了").toBe("乙句");
     rf.onSessionFileNotice("rf-sid", "truncated", "丙句");
     expect(noticeText(tm), "新的一句没盖掉旧的").toBe("丙句");
-    // 认不出的取值 / 没有这个 tab ⇒ 不画、不抛。
+    // 别的取值：那一句照样是后端写好的 ⇒ 照摆（界面不另抄一份取值表来挡）；只有 `gone` 那一句下一行收。没有这个 tab ⇒ 不画、不抛。
     rf.onSessionFileNotice("rf-sid", "moved", "丁句");
-    expect(noticeText(tm)).toBe("丙句");
+    expect(noticeText(tm)).toBe("丁句");
+    line(3);
+    expect(noticeText(tm), "不是「不见了」那句，下一行不该收").toBe("丁句");
     expect(() => rf.onSessionFileNotice("no-such-sid", "gone", "甲句")).not.toThrow();
   });
 });
