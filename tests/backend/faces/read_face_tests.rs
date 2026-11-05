@@ -1848,7 +1848,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"bytes":1,"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"doc":{"blocks":[{"k":["a"],"t":"p"}],"segs":[]},"more":"〈more〉","type":"prose"}],"draw":"card","human":false,"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
             .replace("〈more〉", &more)
     );
-    assert_eq!(needs, r#"{"answered":[],"items":[]}"#);
+    assert_eq!(needs, r#"{"ended":[],"items":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::recognize::facts::{needs_of, PidWait};

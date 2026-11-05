@@ -37,7 +37,7 @@ export type NeedsRead = { t: "ok"; list: NeedsList } | { t: "offline" };
 
 /** 一台的整份。 */
 export function listOf(items: NeedsItem[], manualUnreadable?: string): NeedsRead {
-  const list: NeedsList = { items, answered: [], ...(manualUnreadable === undefined ? {} : { manualUnreadable }) };
+  const list: NeedsList = { items, ended: [],...(manualUnreadable === undefined ? {} : { manualUnreadable }) };
   return { t: "ok", list };
 }
 
