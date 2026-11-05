@@ -765,10 +765,7 @@ export class MachineCard {
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
       // 表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
-      const r = await pushPublicKey(cfg, pubKeyPath);
-      return r.outcome === "added"
-        ? copyText("machineCard.pushKey.added", { path: r.pubPath })
-        : copyText("machineCard.pushKey.already", { path: r.pubPath });
+      return (await pushPublicKey(cfg, pubKeyPath)).said;
     });
   }
 
