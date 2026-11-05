@@ -149,7 +149,7 @@ const runs = (list: RunInfo[], summary?: string): RunTable => ({
   ...(summary === undefined ? {} : { summary }),
 });
 
-const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ lines: [], text: "", screen: "", atText: "" }), send: async () => ({ result: "delivered", acts: [] }), follow: () => ({ stop: () => {} }) };
+const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ lines: [], text: "", screen: "", atText: "" }), send: async () => ({ result: "delivered", note: "S-delivered", acts: [] }), follow: () => ({ stop: () => {} }) };
 
 function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDrawer } {
   const tasks = new TasksPanel();

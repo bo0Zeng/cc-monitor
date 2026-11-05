@@ -606,7 +606,7 @@ class ChatSession(
             }
         answer.prompt?.let { said ->
             first.handed = true
-            val (delivery, text) = outcomeOf(said, machine)
+            val (delivery, text) = outcomeOf(said)
             // 随起交进去了（那台作为启动参数收下）⇒ 离开待发（说不准交没交到 ⇒ chip 上方那一行写那一句）；没交到 ⇒ 留在待发、能改的给［重试］（那时有 sid，走投进队）。
             if (delivery == DeliveryState.FAILED || delivery == DeliveryState.FAILED_PERMANENT) {
                 mark(first, delivery, text)
@@ -794,20 +794,14 @@ class ChatSession(
     }
 }
 
-/** 那台判的送没送到（`session-open` 回包里第一句的结局）⇒ 标与那一句。能不能再发一次照那台给的下一步（[SentAct.RETRY]）。 */
-private fun outcomeOf(
-    res: TerminalInput.Result,
-    machine: String,
-): Pair<DeliveryState?, String?> =
+/** 那台判的送没送到（`session-open` 回包里第一句的结局）⇒ 标与那一句（那台写好的整句，照摆）。能不能再发一次照那台给的下一步（[SentAct.RETRY]）。 */
+private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
     when (res) {
         TerminalInput.Result.Delivered -> null to null
-        TerminalInput.Result.Unsure -> unsure(machine)
+        is TerminalInput.Result.Unsure -> DeliveryState.UNSURE to res.note
         is TerminalInput.Result.Refused ->
-            (if (SentAct.RETRY in res.acts) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
-                copyText("terminal.input.failed", "why" to res.said)
+            (if (SentAct.RETRY in res.acts) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to res.note
     }
-
-private fun unsure(machine: String) = DeliveryState.UNSURE to copyText("terminal.input.unsure", "machine" to machine)
 
 /** 新起的那一条报到没有：报到了 ⇒ 它的 sid；没报到 ⇒ 上屏那一句。 */
 private sealed interface Arrival {

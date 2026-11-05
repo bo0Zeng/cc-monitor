@@ -750,12 +750,23 @@ pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, Said> {
     }
 }
 
-/// `terminal-input` 的回话构造器（纯）。被拒的带原因码 `why` 与给人看的 `said`。
+/// `terminal-input` 的回话构造器（纯）。被拒的带原因码 `why` 与原因那一句 `said`；结局那一句 `note` 只在这里写
+/// （送达未知不带机器名：说这句的就是那台）。
 pub fn input_reply(result: SentResult, why: Option<Refused>, screen: Option<&str>) -> Sent {
+    let said = why.map(no_said);
+    let note = match result {
+        SentResult::Delivered => copy_text("terminal.input.delivered", &[]),
+        SentResult::Unsure => copy_text("terminal.input.unknown", &[]),
+        SentResult::Refused => copy_text(
+            "terminal.input.failed",
+            &[("why", said.as_deref().unwrap_or(""))],
+        ),
+    };
     Sent {
         result,
         why,
-        said: why.map(no_said),
+        said,
+        note,
         screen: screen.map(str::to_string),
         acts: acts_of(result, why),
     }

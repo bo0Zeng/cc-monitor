@@ -304,25 +304,31 @@ object TerminalInput {
     sealed interface Result {
         data object Delivered : Result
 
-        /** 不知道送没送到：别重发。 */
-        data object Unsure : Result
+        /** 不知道送没送到：别重发。[note] 是那台写好的整句（照摆、不拼）。 */
+        data class Unsure(
+            val note: String,
+        ) : Result
 
-        /** 没送：[said] 是那台写好的那一句，[acts] 是那台判好的下一步（有 [SentAct.RETRY] ⇒ 给［再发一次］）。 */
+        /**
+         * 没送：[note] 是那台写好的整句（照摆、不拼），[said] 是那台写好的原因（别处拿它当原因接着说），
+         * [acts] 是那台判好的下一步（有 [SentAct.RETRY] ⇒ 给［再发一次］）。
+         */
         data class Refused(
+            val note: String,
             val said: String,
             val acts: List<SentAct>,
         ) : Result
     }
 
-    /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
+    /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带原因那一句 ⇒ `null`（没有可上屏的话）。 */
     fun of(data: Any?): Result? = Commands.TerminalInput.reply(data)?.let { of(it) }
 
     /** 解过的回包（`terminal-input` · `session-open` 里第一句那一格同一形）⇒ 结局。 */
     fun of(sent: SentWire): Result? =
         when (sent.result) {
             SentResult.DELIVERED -> Result.Delivered
-            SentResult.UNSURE -> Result.Unsure
-            SentResult.REFUSED -> sent.said?.let { Result.Refused(it, sent.acts.orEmpty()) }
+            SentResult.UNSURE -> Result.Unsure(sent.note)
+            SentResult.REFUSED -> sent.said?.let { Result.Refused(sent.note, it, sent.acts.orEmpty()) }
         }
 }
 

@@ -547,7 +547,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
 
     // 送字：原样进去（`--` 打头的也不被当成 tmux 的旗），回 delivered。
     let r = input_on(iso.on(), &json!({ "terminal": h, "text": "--zq7-marker" })).unwrap();
-    assert_eq!(r, json!({ "result": "delivered" }));
+    assert_eq!(r, input_reply("delivered", None, None));
     assert!(iso.shows(&h, "--zq7-marker"), "送进去的字没出现在那一屏里");
     // 多行按粘贴送。
     let r = input_on(
@@ -630,7 +630,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
         }
         assert_eq!(
             input_on(iso.on(), &args).unwrap(),
-            json!({ "result": "refused", "why": "not_yours", "said": no_said("not_yours") })
+            input_reply("refused", Some("not_yours"), None)
         );
     }
     let r = input_on(
@@ -655,7 +655,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     for raw in ["=pipe-x:", "$1", "%0", "pipe-x"] {
         assert_eq!(
             input_on(iso.on(), &json!({ "terminal": raw, "text": "x" })).unwrap(),
-            json!({ "result": "refused", "why": "not_known", "said": no_said("not_known"), "acts": ["retry", "relist"] })
+            input_reply("refused", Some("not_known"), None)
         );
         assert_eq!(
             preview_on(iso.on(), &json!({ "terminal": raw }), &Default::default())
@@ -751,7 +751,7 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
 
     // 按 sid 送字：落在 A 的窗格（活动的是 B）。
     let r = input_on(iso.on(), &json!({ "sid": "sid-a", "text": "to-a-zq" })).unwrap();
-    assert_eq!(r, json!({ "result": "delivered" }));
+    assert_eq!(r, input_reply("delivered", None, None));
     assert!(iso.shows(&ha, "to-a-zq"), "送进去的字没出现在 A 那一屏");
     let shot_a = preview_on(
         iso.on(),
@@ -776,7 +776,7 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
 
     // 名字不像我们铸的、活动窗格没标签：按挂着 sid 的那个窗格判身份 ⇒ 送得进，且落在它上面。
     let r = input_on(iso.on(), &json!({ "sid": "sid-c", "text": "to-c-zq" })).unwrap();
-    assert_eq!(r, json!({ "result": "delivered" }));
+    assert_eq!(r, input_reply("delivered", None, None));
     assert!(iso.shows(&hc, "to-c-zq"));
     let p = pane_of(&["capture-pane", "-p", "-t", &d]);
     assert!(!p.contains("to-c-zq"), "给 C 的字落进了活动窗格");
@@ -869,7 +869,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
     );
 
     let r = say("sid-live", "say-zq-live");
-    assert_eq!(r, json!({ "result": "delivered" }));
+    assert_eq!(r, input_reply("delivered", None, None));
     assert!(
         iso.shows(&iso.handle_of("live-cc"), "say-zq-live"),
         "该送进 agent 的那一句没到"
@@ -877,7 +877,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
     let r = say("sid-cx", "say-zq-cx");
     assert_eq!(
         r,
-        json!({ "result": "delivered" }),
+        input_reply("delivered", None, None),
         "前台名判不了的被当成没了"
     );
     assert!(iso.shows(&iso.handle_of("live-cx"), "say-zq-cx"));
@@ -1013,6 +1013,23 @@ fn a_refused_take_or_release_says_why_by_its_code() {
             f.raw
         );
     }
+}
+
+/// 结局那一句由这一处写好（`note`，出口照摆、不拼）：送到了 · 被拒（带原因那一句）· 送达未知（不带机器名：说话的就是那台）；
+/// `said` 照旧只是被拒的原因。
+#[test]
+fn the_outcome_sentence_is_written_here() {
+    let d = input_reply("delivered", None, None);
+    assert_eq!(d["note"], copy_text("terminal.input.delivered", &[]));
+    let r = input_reply("refused", Some("not_yours"), None);
+    assert_eq!(r["said"], no_said("not_yours"));
+    assert_eq!(
+        r["note"],
+        copy_text("terminal.input.failed", &[("why", &no_said("not_yours"))])
+    );
+    let u = input_reply("unsure", None, None);
+    assert_eq!(u["note"], copy_text("terminal.input.unknown", &[]));
+    assert!(u.get("said").is_none(), "送达未知没有原因：{u}");
 }
 
 /// 送完之后的下一步由这一处判（出口照 `acts` 摆，不按 `why` 自己挑）：改得了的拒因给［再发一次］，终端可能换了 ⇒ 重读名单，

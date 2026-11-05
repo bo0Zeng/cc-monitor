@@ -5,14 +5,11 @@ use crate::agents::ModelSaid;
 use crate::control::terminals_wire::{Sent, SentResult};
 
 fn sent(result: SentResult) -> Sent {
-    Sent {
+    crate::control::terminals::input_reply(
         result,
-        why: (result == SentResult::Refused)
-            .then_some(crate::control::terminals::Refused::NotYours),
-        said: (result == SentResult::Refused).then(|| "x".to_string()),
-        screen: None,
-        acts: vec![],
-    }
+        (result == SentResult::Refused).then_some(crate::control::terminals::Refused::NotYours),
+        None,
+    )
 }
 
 /// ★ 在等人 ⇒ 不送，回被拒 ＋ `waiting` ＋ 那一句。
@@ -74,10 +71,7 @@ fn a_session_without_its_terminal_keeps_the_model_for_the_next_resume() {
             )
             .map(|()| (sonnet.text)())
         };
-        let gone = Sent {
-            why: Some(why),
-            ..sent(SentResult::Refused)
-        };
+        let gone = crate::control::terminals::input_reply(SentResult::Refused, Some(why), None);
         let r = after_send(gone, &keep).unwrap().unwrap();
         assert_eq!(r.result, SwitchResult::Done);
         assert_eq!(r.model, Some((sonnet.text)()));
