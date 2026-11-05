@@ -9,6 +9,10 @@ export type SessionFileNoticePayload = { session_id: string,
  */
 origin: string, path: string, 
 /**
- * `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）。
+ * `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）：前端只据它定什么时候收、要不要整份重来。
  */
-change: string, };
+change: string, 
+/**
+ * 那一句（那台后端写好的：帧上的 `said` · `history-tail` 回包的 `said`），前端照摆。
+ */
+said: string, };
