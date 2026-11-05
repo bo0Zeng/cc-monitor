@@ -3352,6 +3352,10 @@ badge: Badge,
  */
 plate: Words, 
 /**
+ * 账号行第二行那一句：类型字（同额度卡首行那一格）· 这个号的那一格（邮箱 · 需登录 · 端点的主机），后端写好，两端照摆。
+ */
+kindLine: Words, 
+/**
  * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
  */
 quota: Words | null, 
@@ -10398,6 +10402,10 @@ badge: Badge,
  */
 plate: Words, 
 /**
+ * 账号行第二行那一句：类型字（同额度卡首行那一格）· 这个号的那一格（邮箱 · 需登录 · 端点的主机），后端写好，两端照摆。
+ */
+kindLine: Words, 
+/**
  * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
  */
 quota: Words | null, 
@@ -12429,9 +12437,13 @@ result: SentResult,
  */
 why?: Refused, 
 /**
- * `refused` 时给人看的那一句（后端写好）。
+ * `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
  */
 said?: string, 
+/**
+ * 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+ */
+note: string, 
 /**
  * `screen_changed` 时带的新指纹。
  */
@@ -13511,9 +13523,13 @@ result: SentResult,
  */
 why?: Refused, 
 /**
- * `refused` 时给人看的那一句（后端写好）。
+ * `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
  */
 said?: string, 
+/**
+ * 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+ */
+note: string, 
 /**
  * `screen_changed` 时带的新指纹。
  */
@@ -13653,9 +13669,13 @@ result: SentResult,
  */
 why?: Refused, 
 /**
- * `refused` 时给人看的那一句（后端写好）。
+ * `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
  */
 said?: string, 
+/**
+ * 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+ */
+note: string, 
 /**
  * `screen_changed` 时带的新指纹。
  */
@@ -14333,9 +14353,13 @@ result: SentResult,
  */
 why?: Refused, 
 /**
- * `refused` 时给人看的那一句（后端写好）。
+ * `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
  */
 said?: string, 
+/**
+ * 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+ */
+note: string, 
 /**
  * `screen_changed` 时带的新指纹。
  */
@@ -15456,12 +15480,7 @@ type PubkeyPushed = {
 /**
  * 屏上那一句：加上了 · 本来就有，都带推的是哪一份（[`pushed_said`]）；界面照摆。
  */
-said: string, 
-/**
- * 走了哪条。
- */
-via: PushVia, };
-type PushVia = "backend" | "exec";
+said: string, };
 ```
 
 码：`bad_args` · `bad_jump` · `refused` · `failed`
@@ -15476,7 +15495,15 @@ type PushVia = "backend" | "exec";
 
 ```ts
 type KeyAddReq = { key: string, };
-type KeyAdded = { outcome: PushOutcome, };
+type KeyAdded = { 
+/**
+ * 加上了 · 本来就有：本机后端照它配带路径的那一句（[`pushed_said`]）。
+ */
+outcome: PushOutcome, 
+/**
+ * 屏上那一句（不带路径，[`added_said`]）：手机照摆。
+ */
+said: string, };
 type PushOutcome = "added" | "already";
 ```
 

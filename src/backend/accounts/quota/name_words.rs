@@ -39,6 +39,44 @@ pub fn plate_text(name: &str) -> String {
     }
 }
 
+/// ★ 号的类型字（订阅 · 按量）：唯一一处；额度卡首行（`faces/quota_rows.rs` 的 `head`）与账号行第二行（[`kind_line`]）都照它。
+pub fn kind_text(kind: cmd_wire::quota::Kind) -> String {
+    if kind == cmd_wire::quota::Kind::Api {
+        copy_text("acct.kind.api", &[])
+    } else {
+        copy_text("acct.kind.sub", &[])
+    }
+}
+
+/// ★ 账号行第二行那一句：类型字 · 这个号的那一格（订阅号：没登录 ⇒ 需登录、有邮箱 ⇒ 邮箱；按量号：配了端点 ⇒ 端点的主机）；
+/// 那一格没有 ⇒ 只有类型字。`accounts-list` 每个号的 `kindLine`，两端照摆。
+pub fn kind_line(
+    kind: cmd_wire::quota::Kind,
+    logged_in: bool,
+    email: &str,
+    base_url: Option<&str>,
+) -> Words {
+    let detail = match kind {
+        cmd_wire::quota::Kind::Api => base_url.map(host_of),
+        cmd_wire::quota::Kind::Sub if !logged_in => Some(copy_text("acct.tag.login", &[])),
+        cmd_wire::quota::Kind::Sub => (!email.is_empty()).then(|| email.to_string()),
+    };
+    let word = kind_text(kind);
+    Words(match detail {
+        Some(d) => format!("{word}{}{d}", copy_text("kit.text.sep", &[])),
+        None => word,
+    })
+}
+
+/// 端点的主机（带端口）：去掉 `scheme://` 与路径；认不出 scheme ⇒ 原样。
+fn host_of(url: &str) -> String {
+    url.split_once("://")
+        .map_or(url, |(_, rest)| {
+            rest.split(['/', '?', '#']).next().unwrap_or(rest)
+        })
+        .to_string()
+}
+
 /// 一个语义位在人眼里叫什么：`5h` · `7d` 各一个字；认不出的照原样。
 pub fn slot_text(w: &str) -> String {
     match w {

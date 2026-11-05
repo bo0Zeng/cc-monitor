@@ -43,7 +43,7 @@ pub enum Refused {
     HostOutdated,
 }
 
-/// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。
+/// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 原因那一句；画面变了带新指纹）；结局那一句（`note`）后端写好。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -57,10 +57,12 @@ pub struct Sent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub why: Option<Refused>,
-    /// `refused` 时给人看的那一句（后端写好）。
+    /// `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub said: Option<String>,
+    /// 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+    pub note: String,
     /// `screen_changed` 时带的新指纹。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

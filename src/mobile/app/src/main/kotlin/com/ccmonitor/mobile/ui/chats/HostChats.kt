@@ -318,7 +318,6 @@ data class HostBar(
     val problem: Problem,
     val offline: Boolean,
     val fix: MachineFixButton? = null,
-    val deploying: Deploying? = null,
     val edit: String? = null,
     /** 正在装 / 更新那一句（成品写好的；条上只画它）；没在装 ⇒ `null`。 */
     val busy: Busy? = null,
@@ -340,9 +339,9 @@ internal fun hostPart(
         when {
             ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true, edit = ssh.edit)
             down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), offline = true)
-            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying, busy = down.busy())
+            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), busy = down.busy())
             s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, offline = false)
-            s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy()) }
+            s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), busy = s.link.busy()) }
             else -> null
         }
     val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, r, s.table) }

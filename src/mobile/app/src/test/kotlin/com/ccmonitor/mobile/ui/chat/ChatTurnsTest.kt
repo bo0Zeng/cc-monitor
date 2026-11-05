@@ -48,8 +48,8 @@ class ChatTurnsTest {
         done: Boolean,
         vararg folds: Map<String, Any?>,
     ): Map<String, Any?> {
-        val text = listOf("start", "end", "startText", "endText", "reply").associateWith { "" }
-        val counts = listOf("line", "tools", "thinking", "agents", "background", "retries", "peers", "fails").associateWith { 0 }
+        val text = listOf("start", "end", "startText", "reply").associateWith { "" }
+        val counts = listOf("line", "tools", "thinking", "agents", "background", "retries", "fails").associateWith { 0 }
         val rest =
             mapOf(
                 "at" to at,

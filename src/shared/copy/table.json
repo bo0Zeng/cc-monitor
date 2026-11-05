@@ -19903,11 +19903,11 @@
       "zh": "未送达 · {why} · 内容保留",
       "args": ["why"]
     },
-    "terminal.input.unsure": {
+    "terminal.input.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "送达未知 · {machine} 无应答 · 未重发 · 先看画面",
-      "args": ["machine"]
+      "zh": "送达未知 · 无应答 · 未重发 · 先看画面",
+      "args": []
     },
     "terminal.input.take": {
       "kind": "action",
@@ -21039,24 +21039,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "新建账号",
-      "args": []
-    },
-    "acctPage.row.sub": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "订阅 · {email}",
-      "args": ["email"]
-    },
-    "acctPage.row.apikeyAt": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "API key · {host}",
-      "args": ["host"]
-    },
-    "acctPage.row.notLoggedIn": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "订阅 · 未登录",
       "args": []
     },
     "acctPage.row.keyNotSaved": {

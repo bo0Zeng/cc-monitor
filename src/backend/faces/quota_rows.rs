@@ -38,11 +38,8 @@ fn slot_label(slot: &str) -> Cell {
 fn head(account: &str, kind: Kind, login: LoginState) -> Vec<Cell> {
     let mut row = vec![
         c(crate::accounts::quota::name_words::account_text(account)),
-        c(if kind == Kind::Api {
-            copy_text("acct.kind.api", &[])
-        } else {
-            copy_text("acct.kind.sub", &[])
-        }),
+        // 类型字与账号行第二行（`name_words::kind_line`）同一处写。
+        c(crate::accounts::quota::name_words::kind_text(kind)),
     ];
     match login {
         LoginState::NeedsLogin => row.push(toned(copy_text("acct.tag.login", &[]), Tone::Warn)),

@@ -4,7 +4,7 @@ import type { SentAct } from "./SentAct";
 import type { SentResult } from "./SentResult";
 
 /**
- * `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。
+ * `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 原因那一句；画面变了带新指纹）；结局那一句（`note`）后端写好。
  */
 export type Sent = { 
 /**
@@ -16,9 +16,13 @@ result: SentResult,
  */
 why?: Refused, 
 /**
- * `refused` 时给人看的那一句（后端写好）。
+ * `refused` 的原因那一句（后端写好；别处拿它当原因接着说）。
  */
 said?: string, 
+/**
+ * 结局给人看的整句（送到了 · 被拒 · 送达未知；后端写好，出口照摆、不拼）。
+ */
+note: string, 
 /**
  * `screen_changed` 时带的新指纹。
  */

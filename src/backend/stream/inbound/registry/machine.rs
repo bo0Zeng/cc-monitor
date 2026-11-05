@@ -43,7 +43,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
     super::typed::blocking::<crate::control::deploy_plan::PlaceVerdict>("本机那一份放不放"),
-    // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
+    // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{said}`（那一句后端写好）。
     //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
     super::typed::asynchronous::<crate::assets::pubkey::PubkeyPush>(
         "把本机公钥推进那台的 `authorized_keys`",

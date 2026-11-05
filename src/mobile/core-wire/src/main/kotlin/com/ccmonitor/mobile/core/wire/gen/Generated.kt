@@ -697,6 +697,7 @@ data class AccountRow(
     val baseUrl: String?,
     val badge: Badge,
     val plate: String,
+    val kindLine: String,
     val quota: String?,
     val unselectable: String?,
     val login: Boolean,
@@ -724,6 +725,7 @@ data class AccountRow(
             Field("baseUrl", { opt(Str) }, optional = false, nullable = true),
             Field("badge", { Badge.ADAPTER }, optional = false, nullable = false),
             Field("plate", { Str }, optional = false, nullable = false),
+            Field("kindLine", { Str }, optional = false, nullable = false),
             Field("quota", { opt(Str) }, optional = false, nullable = true),
             Field("unselectable", { opt(Str) }, optional = false, nullable = true),
             Field("login", { Bool }, optional = false, nullable = false),
@@ -741,8 +743,8 @@ data class AccountRow(
             Field("selectable", { Bool }, optional = false, nullable = false),
             Field("color", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> AccountRow(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Badge, a[4] as String, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as Boolean, a[9] as String, a[10] as String, a[11] as String, a[12] as String?, a[13] as Boolean, a[14] as String, a[15] as Boolean, a[16] as Boolean, a[17] as String, a[18] as Boolean, a[19] as Boolean, a[20] as Int) },
-            { v -> arrayOf(v.configDirShown, v.keyMasked, v.baseUrl, v.badge, v.plate, v.quota, v.unselectable, v.login, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
+            { a -> AccountRow(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Badge, a[4] as String, a[5] as String, a[6] as String?, a[7] as String?, a[8] as Boolean, a[9] as Boolean, a[10] as String, a[11] as String, a[12] as String, a[13] as String?, a[14] as Boolean, a[15] as String, a[16] as Boolean, a[17] as Boolean, a[18] as String, a[19] as Boolean, a[20] as Boolean, a[21] as Int) },
+            { v -> arrayOf(v.configDirShown, v.keyMasked, v.baseUrl, v.badge, v.plate, v.kindLine, v.quota, v.unselectable, v.login, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
         )
     }
 }
@@ -11072,6 +11074,7 @@ data class KeyAddReq(
 @Suppress("UNCHECKED_CAST")
 data class KeyAdded(
     val outcome: PushOutcome,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -11079,9 +11082,10 @@ data class KeyAdded(
         val ADAPTER: JsonAdapter<KeyAdded> = obj(
             listOf(
             Field("outcome", { PushOutcome.ADAPTER }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> KeyAdded(a[0] as PushOutcome) },
-            { v -> arrayOf(v.outcome) },
+            { a -> KeyAdded(a[0] as PushOutcome, a[1] as String) },
+            { v -> arrayOf(v.outcome, v.said) },
         )
     }
 }
@@ -19320,7 +19324,6 @@ data class PubkeyPushReq(
 @Suppress("UNCHECKED_CAST")
 data class PubkeyPushed(
     val said: String,
-    val via: PushVia,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19328,10 +19331,9 @@ data class PubkeyPushed(
         val ADAPTER: JsonAdapter<PubkeyPushed> = obj(
             listOf(
             Field("said", { Str }, optional = false, nullable = false),
-            Field("via", { PushVia.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PubkeyPushed(a[0] as String, a[1] as PushVia) },
-            { v -> arrayOf(v.said, v.via) },
+            { a -> PubkeyPushed(a[0] as String) },
+            { v -> arrayOf(v.said) },
         )
     }
 }
@@ -19360,16 +19362,6 @@ enum class PushOutcome(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<PushOutcome> = enumOf(entries) { it.wire }
-    }
-}
-
-enum class PushVia(val wire: String) {
-    BACKEND("backend"),
-    EXEC("exec"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<PushVia> = enumOf(entries) { it.wire }
     }
 }
 
@@ -23130,6 +23122,7 @@ data class Sent(
     val result: SentResult,
     val why: Refused? = null,
     val said: String? = null,
+    val note: String,
     val screen: String? = null,
     val acts: List<SentAct>? = null,
 ) : Ordered {
@@ -23141,11 +23134,12 @@ data class Sent(
             Field("result", { SentResult.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Refused.ADAPTER) }, optional = true, nullable = true),
             Field("said", { opt(Str) }, optional = true, nullable = true),
+            Field("note", { Str }, optional = false, nullable = false),
             Field("screen", { opt(Str) }, optional = true, nullable = true),
             Field("acts", { opt(arr(SentAct.ADAPTER)) }, optional = true, nullable = true),
             ),
-            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String?, a[4] as List<SentAct>?) },
-            { v -> arrayOf(v.result, v.why, v.said, v.screen, v.acts) },
+            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String, a[4] as String?, a[5] as List<SentAct>?) },
+            { v -> arrayOf(v.result, v.why, v.said, v.note, v.screen, v.acts) },
         )
     }
 }

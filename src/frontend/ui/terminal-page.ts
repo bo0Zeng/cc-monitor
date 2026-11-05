@@ -571,12 +571,11 @@ export class TerminalPage {
       return null;
     }
     if (sent.result === "delivered") {
-      this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
+      this.showNote({ text: sent.note, tone: "ok" });
       if (!this.isLive) this.schedule();
       return sent;
     }
-    const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(origin) }) : copyText("terminal.input.failed", { why: sent.said });
-    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}) });
+    this.showNote({ text: sent.note, tone: "error", ...(sent.acts.includes("retry") ? again : {}) });
     if (sent.acts.includes("recapture")) void this.recapture();
     if (sent.acts.includes("relist")) void this.refresh();
     return sent;

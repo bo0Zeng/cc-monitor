@@ -76,7 +76,7 @@ async function terminalText(t: Tab): Promise<string> {
     }),
     list: vi.fn(async () => [{ terminal: `tmux-${t.sessionId}`, name: `${t.sessionId}-cc`, sid: t.sessionId, clients: 0, input: "shared", programExited: false, inputNo: null }]),
     shot: vi.fn(async () => ({ lines: [{ text: "屏", spans: [] }], text: "屏", screen: "fp", atText: "22:13:20" })),
-    send: vi.fn(async () => ({ result: "delivered", acts: [] })),
+    send: vi.fn(async () => ({ result: "delivered", note: "S-delivered", acts: [] })),
   } as unknown as TerminalReads;
   const page = new TerminalPage({ active: () => ({ kind: "tab" as const, tab: t }), front: vi.fn(), focusStream: vi.fn() }, reads);
   document.body.appendChild(page.el);

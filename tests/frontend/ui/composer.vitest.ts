@@ -49,7 +49,7 @@ function rig(
       return () => {};
     }),
   };
-  const interrupt = vi.fn(opts.interrupt ?? (async (): Promise<TerminalSent> => ({ result: "delivered", acts: [] })));
+  const interrupt = vi.fn(opts.interrupt ?? (async (): Promise<TerminalSent> => ({ result: "delivered", note: "S-delivered", acts: [] })));
   const resume = vi.fn(opts.resume ?? (async () => true));
   const outbox = new Outbox(put);
   const c = new Composer({ active: () => tab, resume, front: () => {}, focusStream: () => {} }, outbox, reads, interrupt);
@@ -274,7 +274,7 @@ describe("消息流底下的输入框", () => {
   });
 
   it("■ 那台拒了 ⇒ 框下写那台那一句；送不到（抛）⇒ 写那一句；送到了 ⇒ 不说", async () => {
-    const refused = rig({ face: runningFace(), interrupt: async () => ({ result: "refused", said: "not-yours-said", screen: null, acts: [] }) });
+    const refused = rig({ face: runningFace(), interrupt: async () => ({ result: "refused", note: "not-yours-note", said: "not-yours-said", screen: null, acts: [] }) });
     await flush();
     stopBtn(refused.c)!.click();
     await flush();
