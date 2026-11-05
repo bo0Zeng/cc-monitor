@@ -35,7 +35,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
@@ -134,6 +136,19 @@ interface ResidentCore {
         slots: String,
     ): Boolean
 }
+
+/**
+ * 订着那台 `changed` 的那几样（组 · 清单 · 输入队 · 账号 · 用量 · 偏好 …）该整份重问的那一格，桌面订阅流里 `seen` 那一格同一个意思：
+ * 这台每接上一回（核心换了一条流 ⇒ `state` 那一行换成新的 [LinkLine.Up]）交一次；订的那一刻已经通着 ⇒ 当场一次；断着不交（断着问不到，接上时有这一格）。
+ * 判「又接上了」只在这里；各屏照它重问，不各自看通没通、不另加接上那一刻的那一问。
+ */
+val CoreLink.seen: Flow<Unit>
+    get() =
+        state
+            .map { (it as? LinkLine.Up)?.epoch }
+            .distinctUntilChanged()
+            .filterNotNull()
+            .map { }
 
 /**
  * 一台机器的常驻流：接 · 断了再接 · 握手 · 版本门 · 在看名单 · 一问一答**整条在核心里**（`resident-client`，桌面同一份）。
