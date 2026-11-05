@@ -420,7 +420,8 @@ export class AccountsSection {
     }
     const line2 = document.createElement("div");
     line2.className = "acct-row-kind one-line";
-    line2.textContent = kindLine(a);
+    // 第二行那一句是后端写好的（`name_words::kind_line`），照摆。
+    line2.textContent = a.kindLine ?? "";
     who.append(line1, line2);
 
     const u5 = document.createElement("div");
@@ -775,14 +776,6 @@ function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | 
   if (led) return led;
   const u = quota.unseen.find((x) => x.agent === agent && x.account === account);
   return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login, usage: u.usage } : null;
-}
-
-/** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 未登录`。 */
-function kindLine(a: Account): string {
-  const kind = accountRowKind(a);
-  if (kind === "apikey") return a.baseUrl ? copyText("acctPage.row.apikeyAt", { host: hostOf(a.baseUrl) }) : copyText("acctNew.key.label");
-  if (kind === "notLoggedIn") return copyText("acctPage.row.notLoggedIn");
-  return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acct.kind.sub");
 }
 
 /** `5h 63% ↻18:30` · `7d 41%`；用满 `5h ✕ ↻19:00`（红）· 被拒没用满 `5h 58% · 被拒`（红）；按量号 `按量`；没采样 `—`。 */

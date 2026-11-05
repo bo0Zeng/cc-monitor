@@ -217,7 +217,7 @@ private fun AccountLine(
                 if (isDefault) DefaultTag()
                 if (a.badge.warn) WarnTag(a.badge.text)
             }
-            Text(kindText(a.authKind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(a.kindLine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (stale) {
             Text(copyText("acct.val.none"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -238,9 +238,6 @@ private fun WarnTag(text: String) {
         modifier = Modifier.background(warn.copy(alpha = TAG_BG), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
-
-/** 号的类型（订阅 · 按量；`authKind` 是那台账号库里的事实）。 */
-private fun kindText(authKind: String): String = if (authKind == API_KEY) copyText("acct.kind.api") else copyText("acct.kind.sub")
 
 @Composable
 private fun AccountSheet(
@@ -321,7 +318,6 @@ object AccountsTags {
     const val USAGE = "accounts-usage"
 }
 
-private const val API_KEY = "api-key"
 private const val TAG_BG = 0.12f
 private const val SKELETON_ROWS = 3
 private const val SKELETON_TITLE = 0.5f

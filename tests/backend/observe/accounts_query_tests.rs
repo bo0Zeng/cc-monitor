@@ -1187,6 +1187,7 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
         assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
         assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
         assert!(o.remove("plate").is_some(), "帧面每个号带号牌字");
+        assert!(o.remove("kindLine").is_some(), "帧面每个号带第二行那一句");
         assert!(o.remove("quota").is_some(), "帧面每个号带「5h 那一格」");
         assert!(
             o.remove("unselectable").is_some(),
@@ -1402,6 +1403,56 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
         .cloned()
         .unwrap();
     assert!(b["keyMasked"].is_null() && b["baseUrl"].is_null() && none["meta"]["home"].is_null());
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★★ 账号行第二行那一句是后端写好的 `kindLine`：类型字与额度卡首行同一处写（`name_words::kind_text`），
+/// 后面跟这个号的那一格（订阅已登录 ⇒ 邮箱 · 订阅没登录 ⇒ 需登录 · 按量号配了端点 ⇒ 端点的主机）；两端照摆、不照 `authKind` 选字。
+#[test]
+fn each_account_row_carries_its_written_kind_line() {
+    let (root, accts) = c4c_fixture("c4c-kind-line", true);
+    let sep = copy_text("kit.text.sep", &[]);
+    let sub = copy_text("acct.kind.sub", &[]);
+    let api = copy_text("acct.kind.api", &[]);
+    let line = |v: &serde_json::Value, n: &str| {
+        v["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == n)
+            .map(|a| a["kindLine"].clone())
+            .unwrap()
+    };
+    let routed = list_product_with(
+        &accts,
+        None,
+        &["acct-b".to_string()],
+        &golden_key_facts(&root),
+        "claude-code",
+        "claude-code",
+        false,
+    );
+    assert_eq!(line(&routed, "a"), format!("{sub}{sep}a@x"), "订阅已登录 ⇒ 邮箱");
+    assert_eq!(
+        line(&routed, "b"),
+        format!("{api}{sep}api.example.com"),
+        "按量号配了端点 ⇒ 端点的主机"
+    );
+    assert_eq!(
+        line(&routed, "zero"),
+        format!("{sub}{sep}{}", copy_text("acct.tag.login", &[])),
+        "订阅没登录 ⇒ 需登录"
+    );
+    let bare = list_product_with(
+        &accts,
+        None,
+        &["acct-b".to_string()],
+        &[],
+        "claude-code",
+        "claude-code",
+        false,
+    );
+    assert_eq!(line(&bare, "b"), api, "按量号没配端点 ⇒ 只有类型字");
     let _ = fs::remove_dir_all(&root);
 }
 

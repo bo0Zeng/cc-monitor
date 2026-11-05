@@ -101,6 +101,7 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
     let new_session = super::new_session_of(&a);
     AccountRow {
         plate: Words(a.name.clone()),
+        kind_line: Words::default(),
         config_dir_shown: a.config_dir.clone(),
         scanned: a,
         key_masked: None,
