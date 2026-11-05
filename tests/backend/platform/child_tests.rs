@@ -450,6 +450,27 @@ fn a_terminal_conversation_runs_on_a_tty_and_hands_back_plain_lines() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 它问光标在哪（`ESC [ 6 n`）⇒ 这一头像终端那样答一句光标位置（`ESC [ 行 ; 列 R`）。
+/// Windows 的伪终端（ConPTY）一起来就先这么问，不答就把它的输出整个压住（终端里起的那一个看着像没跑）；这里在 Unix 上照同一个问法钉。
+#[cfg(unix)]
+#[test]
+fn a_terminal_conversation_answers_where_the_cursor_is() {
+    let mut conv = Child::new("sh")
+        .args([
+            "-c",
+            "stty -icanon -echo; printf '\\033[6n'; a=$(head -c 6 | tr -d '\\033'); echo \"got:$a\"",
+        ])
+        .converse_in_terminal()
+        .expect("起在终端里");
+    let rx = conv.take_heard().expect("说的话");
+    let (all, code) = heard_until_exit(&rx);
+    assert_eq!(code, Some(Some(0)), "没等到它退（问了没人答）：{all:?}");
+    assert!(
+        all.iter().any(|l| l.ends_with("got:[1;1R")),
+        "答的不是光标位置：{all:?}"
+    );
+}
+
 /// 放手即收：它与它起的孙进程都没了，直接子进程已收尸。
 #[cfg(target_os = "linux")]
 #[test]

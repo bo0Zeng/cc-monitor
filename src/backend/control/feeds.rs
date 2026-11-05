@@ -483,7 +483,7 @@ impl Ssh for Pool {
                 .await
                 .map_err(|said| Problem::new(said, ""))?;
             Ok(Exec {
-                exit_status: got.exit_status,
+                exit_status: got.exit_code(),
                 stdout: got.stdout,
                 stderr: got.stderr,
             })

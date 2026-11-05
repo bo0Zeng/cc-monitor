@@ -6,17 +6,13 @@
  * - 画在流容器的第一个孩子（贴顶），不进记录那一层；同一个 tab 只有一句，新的盖旧的。
  * - 「不见了」那句：之后这个会话又来了一行（文件回来了）⇒ 收掉。「已从头重读」那句留着（它说的是已经发生的事）。
  * - 不进留存：那句话没了（已知缺口）。
- * 那一句是那台后端写好的（帧上的 `said`，格里原样带来），这里照摆；取值只用来定什么时候收。
+ * 那一句是那台后端写好的（帧上的 `said`，格里原样带来），这里照摆；取值（生成类型 `SessionFileNoticePayload.change`）只用来定什么时候收：
+ * 是「不见了」（`gone`）那一句 ⇒ 下一行收，别的留着。
  */
 import s from "./record-file-notice.module.css";
+import type { SessionFileNoticePayload } from "./generated/SessionFileNoticePayload";
 
-/** 线上三个字面量（monitor `stream_source::FileChange::as_wire`）。 */
-export const RECORD_FILE_CHANGES = ["gone", "truncated", "rewritten"] as const;
-export type RecordFileChange = (typeof RECORD_FILE_CHANGES)[number];
-
-export function isRecordFileChange(c: string): c is RecordFileChange {
-  return (RECORD_FILE_CHANGES as readonly string[]).includes(c);
-}
+type Change = SessionFileNoticePayload["change"];
 
 /** 这个流容器顶上现在挂着的那一句（没有 ⇒ `null`）。 */
 function noticeOf(streamEl: HTMLElement): HTMLElement | null {
@@ -28,7 +24,7 @@ function noticeOf(streamEl: HTMLElement): HTMLElement | null {
 const goneShown = new WeakSet<HTMLElement>();
 
 /** 画 / 换那一句（`said` 照摆）。 */
-export function showRecordFileNotice(streamEl: HTMLElement, change: RecordFileChange, said: string): void {
+export function showRecordFileNotice(streamEl: HTMLElement, change: Change, said: string): void {
   let el = noticeOf(streamEl);
   if (!el) {
     el = document.createElement("div");
@@ -44,17 +40,16 @@ export function showRecordFileNotice(streamEl: HTMLElement, change: RecordFileCh
 
 /**
  * 主窗口的接线（`main.ts` 装进 `EventHandlers`）：只要一个「会话 → 它的流容器」的查法。
- * - `onSessionFileNotice`：认得的取值 ∧ 有这个 tab ⇒ 画；否则不画、不抛。
+ * - `onSessionFileNotice`：有这个 tab ⇒ 画那一句；没有 ⇒ 不画、不抛。
  * - `afterLine`：这个会话又来了一行（`TabManager.onLine` 之后调）⇒ 「不见了」那一句收掉。
  * 只在主窗口接：本模块带一份 CSS Module，从主窗口与独立查看窗共用的 `tabs.ts` 引进来的话，样式会落进共用块、排到全局样式前面。
  */
 export function recordFileWiring(streamElOf: (sessionId: string) => HTMLElement | null): {
-  onSessionFileNotice: (sessionId: string, change: string, said: string) => void;
+  onSessionFileNotice: (sessionId: string, change: Change, said: string) => void;
   afterLine: (sessionId: string) => void;
 } {
   return {
     onSessionFileNotice: (sessionId, change, said) => {
-      if (!isRecordFileChange(change)) return;
       const el = streamElOf(sessionId);
       if (el) showRecordFileNotice(el, change, said);
     },

@@ -99,7 +99,7 @@ impl Transport for PhoneLink {
             }))?;
             let got = ssh_dial::uses::capture(&req).await.map_err(problem_of)?;
             Ok(Exec {
-                exit_status: got.exit_status,
+                exit_status: got.exit_code(),
                 stdout: got.stdout,
                 stderr: got.stderr,
             })

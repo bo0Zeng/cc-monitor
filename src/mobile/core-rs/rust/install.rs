@@ -157,10 +157,14 @@ async fn run(
         Box::pin(async move {
             use resident_client::feed::Transport as _;
             let got = link.capture(command).await.map_err(|p| p.said)?;
+            // 部署只读退出码（`Captured::exit_code`）：常驻流那条链路交回的只有码，没码 ⇒ 记作没给码的正常收尾。
             Ok(ssh_dial::Captured {
                 stdout: got.stdout,
                 stderr: got.stderr,
-                exit_status: got.exit_status,
+                ended: match got.exit_status {
+                    Some(code) => cmd_wire::dial::CaptureEnd::Exited { code },
+                    None => cmd_wire::dial::CaptureEnd::ClosedBare,
+                },
             })
         })
     });

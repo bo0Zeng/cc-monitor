@@ -190,6 +190,17 @@ describe("消息流底下的输入框", () => {
     expect(rows(c)[0]).toContain("text of b");
   });
 
+  it("★ 那台断开又接上 ⇒ 名单只重问一次：订阅重连那一格（`all`）问，「那台接上」那一下不另问", async () => {
+    const { c, push, reads } = rig({ first: list(item("a", 1)) });
+    await flush();
+    expect(reads.read).toHaveBeenCalledTimes(1);
+    // 接上那一刻两样一起来：机器状态翻成连着（宿主叫 machineUp）· 那台 `changed {session_queue}` 订阅收一格 `seen`（⇒ all）。
+    c.machineUp("devbox");
+    push({ got: new Map(), ask: [], all: true });
+    await flush();
+    expect(reads.read).toHaveBeenCalledTimes(2);
+  });
+
   it("［撤回］名单里那一条 ⇒ 照编号请那台撤，照回的名单画", async () => {
     const { c, reads } = rig({ first: list(item("a", 1)) });
     await flush();
