@@ -163,7 +163,7 @@ pub enum LoginStartReq {
 
 /// `sessions-needs-merge` 的回包（几台合法只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台需手动的每一项，先答的在前；
 /// `total` 是各台加起来几项（入口 · 窗口标题照它写）；会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；
-/// 没问到的那几台（不计，各带那一句）。头那一句 · 读屏那一句 · 数说得准说不准都在合的那一下写好，出口照摆。
+/// 没问到的那几台（不计，各带那一句）。头那一句 · 数说得准说不准都在合的那一下写好，出口照摆。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -172,8 +172,6 @@ pub struct NeedsMerged {
     pub total: u32,
     /// 头那一句（入口 · 总览组头）：数说得准 ⇒「需手动 n」；说不准 ⇒「需手动」（不带数）。
     pub head: Words,
-    /// 读屏那一句（「需手动的会话 n」）。
-    pub aria: Words,
     /// 数说得准：没有哪台还在读 · 答失败 · 会外读不出（断着不算，断着的那台本来就不计）。
     pub sure: bool,
     pub unreadable: Vec<NeedsUnreadable>,

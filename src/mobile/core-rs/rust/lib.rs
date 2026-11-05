@@ -2109,10 +2109,6 @@ mod tests {
             only_down["head"],
             copy_core::copy_text("beGroups.count.needs", &[("n", "1")])
         );
-        assert_eq!(
-            only_down["aria"],
-            copy_core::copy_text("tabBar.needs.aria", &[("n", "1")])
-        );
 
         let reading = merge(json!({
             "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],

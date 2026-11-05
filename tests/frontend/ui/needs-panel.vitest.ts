@@ -209,7 +209,7 @@ describe("浮层", () => {
   });
 
   it("★ 那台答了、答的是失败 ⇒ 底部那一条是那一句，不说成离线", async () => {
-    const r = rig([], {}, () => ({ items: [], total: 0, head: "核心·头", aria: "核心·读屏", sure: false, unreadable: [], down: [{ origin: "devbox" as Machine, said: "核心·devbox 答了失败", detail: "" }] }));
+    const r = rig([], {}, () => ({ items: [], total: 0, head: "核心·头", sure: false, unreadable: [], down: [{ origin: "devbox" as Machine, said: "核心·devbox 答了失败", detail: "" }] }));
     await r.book.refreshAll([LOCAL, "devbox" as Machine]);
     r.strip.click();
     const note = panel()!.querySelector<HTMLElement>('[data-note="offline"]')!;

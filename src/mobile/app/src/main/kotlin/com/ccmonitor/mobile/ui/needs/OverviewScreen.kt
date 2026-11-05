@@ -34,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
@@ -77,7 +75,7 @@ fun NeedsEntry(onOpen: () -> Unit) {
     val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
     val m = mergedOf(all, hosts)
-    NeedsEntryView(entryText(m.head, m.total, m.sure), m.aria, uncertain = !m.sure, onOpen)
+    NeedsEntryView(entryText(m.head, m.total, m.sure), uncertain = !m.sure, onOpen)
 }
 
 /** 入口那颗写什么：数说得准且 0 ⇒ 不画（`null`）；别的照核心写好的头那一句 [head]。 */
@@ -87,11 +85,10 @@ fun entryText(
     sure: Boolean,
 ): String? = head.takeUnless { sure && total == 0 }
 
-/** [NeedsEntry] 的样子（[text] ＝ `null` ⇒ 不画；[aria] 读屏那一句，核心写好）。 */
+/** [NeedsEntry] 的样子（[text] ＝ `null` ⇒ 不画；读屏读的就是这一句）。 */
 @Composable
 fun NeedsEntryView(
     text: String?,
-    aria: String,
     uncertain: Boolean,
     onOpen: () -> Unit,
 ) {
@@ -101,7 +98,6 @@ fun NeedsEntryView(
     val base =
         Modifier
             .testTag(NEEDS_ENTRY_TAG)
-            .semantics { contentDescription = aria }
             .padding(horizontal = 4.dp)
             .clip(shape)
             .clickable(onClick = onOpen)

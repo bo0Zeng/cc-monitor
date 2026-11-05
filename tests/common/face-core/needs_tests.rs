@@ -2,7 +2,7 @@
 //!
 //! 1. 跨台只照各项的 `rank` 比；并列 ⇒ 本机在前、再照给的台序与台内原来的先后；每项带回它那台；`total` 是各台加起来几项。
 //! 2. 会外读不出的那几台各带那一句 ＋ 写好的那一行（本机在前）；没问到的那几台原样带上、不计。
-//! 3. 头那一句 · 读屏那一句 · 说得准说不准由这里写：说得准才带数。
+//! 3. 头那一句 · 说得准说不准由这里写：说得准才带数。
 //! 4. 回包那一形照类型解得开（手机核心交 Kotlin 的就是这一形）。
 //!
 //! 每一例的几项写成计划那一臂（合法不看是哪一臂，只看 `rank`），期望手写。
@@ -137,23 +137,21 @@ fn label(m: &Machine) -> String {
     }
 }
 
-/// ★ 头那一句 · 读屏那一句 · 说得准说不准在合的那一下写好：说得准 ⇒ 带数；有哪台会外读不出 · 调用方说有哪台说不准（读中 · 答失败）⇒ 不带数。
+/// ★ 头那一句 · 说得准说不准在合的那一下写好：说得准 ⇒ 带数；有哪台会外读不出 · 调用方说有哪台说不准（读中 · 答失败）⇒ 不带数。
 #[test]
 fn the_head_carries_the_count_only_when_the_count_is_sure() {
     let count = |n: &str| copy_core::copy_text("beGroups.count.needs", &[("n", n)]);
     let unknown = copy_core::copy_text("beSession.needs.unknown", &[]);
-    let aria = |n: &str| copy_core::copy_text("tabBar.needs.aria", &[("n", n)]);
     let two = || split(&[("devbox", "a", 1), ("<local>", "b", 2)]);
 
     let got = merge_needs(two(), vec![], false, label);
     assert!(got.sure);
     assert_eq!(got.head.0, count("2"));
-    assert_eq!(got.aria.0, aria("2"));
 
     let got = merge_needs(two(), vec![], true, label);
     assert!(!got.sure, "调用方说有哪台说不准");
     assert_eq!(got.head.0, unknown);
-    assert_eq!(got.aria.0, aria("2"), "读屏那一句照数");
+    assert_eq!(got.total, 2, "说不准也照数（只是头那一句不带）");
 
     let mut odd = two();
     odd[0].1.manual_unreadable = Some(Words("读不懂".into()));

@@ -309,8 +309,9 @@ class NeedsBoardTest {
             val board = boardOf("a" to a)
             val ov = overviewOf(board.state.value, hosts, current = "a")
             assertEquals(listOf(copyText("peerVersion.said.unreadable", "machine" to "devbox")), ov.down.map { it.said })
-            assertTrue(ov.down.single().detail.contains("sessions-needs"))
-            assertTrue(ov.down.single().retry)
+            val d = ov.down.single()
+            assertTrue(d.detail.contains("sessions-needs"))
+            assertTrue(d.retry)
             assertFalse(ov.sure)
         }
 
