@@ -47,8 +47,8 @@ class ChatBoundTest {
         t: Int,
         done: Boolean,
     ): Map<String, Any?> {
-        val text = listOf("start", "end", "startText", "endText", "reply").associateWith { "" }
-        val counts = listOf("line", "tools", "thinking", "agents", "background", "retries", "peers", "fails").associateWith { 0 }
+        val text = listOf("start", "end", "startText", "reply").associateWith { "" }
+        val counts = listOf("line", "tools", "thinking", "agents", "background", "retries", "fails").associateWith { 0 }
         return text + counts +
             mapOf(
                 "at" to t * 3 * W,

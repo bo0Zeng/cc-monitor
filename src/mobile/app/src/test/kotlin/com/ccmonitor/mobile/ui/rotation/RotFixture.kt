@@ -35,7 +35,6 @@ internal object RotFixture {
             "rev" to rev,
             "inUse" to inUse,
             "forNew" to forNew,
-            "wordsBad" to false,
             "tzUnknown" to false,
             "hand" to hand,
         )
@@ -160,9 +159,9 @@ internal object RotFixture {
                         "switches" to listOf(mapOf("at" to (NOW + 5_000).toDouble(), "atText" to "16:07", "account" to "work")),
                         "uses" to
                             listOf(
-                                mapOf("from" to NOW.toDouble(), "to" to (NOW + 5_000).toDouble(), "account" to "team", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>(), "text" to "team"),
-                                mapOf("from" to (NOW + 5_000).toDouble(), "to" to (NOW + 20_000).toDouble(), "account" to "work", "fromTemp" to false, "capUnknown" to false, "skipped" to listOf("lab"), "text" to "Work"),
-                                mapOf("from" to (NOW + 20_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "account" to "lab", "fromTemp" to false, "capUnknown" to false, "skipped" to emptyList<String>(), "text" to "lab"),
+                                mapOf("from" to NOW.toDouble(), "to" to (NOW + 5_000).toDouble(), "account" to "team", "fromTemp" to false, "skipped" to emptyList<String>(), "text" to "team"),
+                                mapOf("from" to (NOW + 5_000).toDouble(), "to" to (NOW + 20_000).toDouble(), "account" to "work", "fromTemp" to false, "skipped" to listOf("lab"), "text" to "Work"),
+                                mapOf("from" to (NOW + 20_000).toDouble(), "to" to (NOW + 43_200).toDouble(), "account" to "lab", "fromTemp" to false, "skipped" to emptyList<String>(), "text" to "lab"),
                             ),
                         "lanes" to
                             listOf(

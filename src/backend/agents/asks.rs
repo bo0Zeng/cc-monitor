@@ -11,7 +11,7 @@ pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
 pub(crate) const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
 
 /// ccm 起会话时**挂不上**答题 hook（用户自己给的会话级设置读不出 / 不是那一家认的形）⇒ 起的那个进程环境里带这个变量；
-/// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（`answerOff`）。
+/// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（后端内部的 `answerOff`，经 `needs.manualText` 出）。
 pub const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
 
 /// 答题 hook 为什么没挂上（ccm 起会话时定，经 [`ANSWER_HOOK_OFF_ENV`] 的值带到那个进程里，会话事实读回来写那一句）。
@@ -118,7 +118,7 @@ pub fn started_elsewhere(
         && !cmdline.contains(crate::agents::asks::ANSWER_HOOK_FLAG)
 }
 
-/// 「这条会话在这里答不了」那一句（会话事实的 `answerOff` · `needs.manualText`）：照环境里那个值说原因。
+/// 「这条会话在这里答不了」那一句（后端内部的 `answerOff`，经 `needs.manualText` 出）：照环境里那个值说原因。
 pub fn hook_off_words(env_value: &str) -> Words {
     Words(match HookOff::from_env_value(env_value) {
         Some(HookOff::Settings(w)) => {

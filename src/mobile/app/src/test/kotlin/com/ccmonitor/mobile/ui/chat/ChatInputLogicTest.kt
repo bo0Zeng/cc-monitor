@@ -18,7 +18,7 @@ class ChatInputLogicTest {
         scopeText: String = "内置",
         needsArgs: String? = null,
         confirm: String? = null,
-    ) = SessionCommand(name, null, scope, scopeText, needsArgs = needsArgs != null, confirm = confirm != null, needsArgsText = needsArgs, confirmText = confirm)
+    ) = SessionCommand(name, null, scope, scopeText, confirm = confirm != null, needsArgsText = needsArgs, confirmText = confirm)
 
     @Test
     fun `chip：正在换写换成的那一项；读回过写读回的字；都没有写这颗是什么`() {
