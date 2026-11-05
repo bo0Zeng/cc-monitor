@@ -8062,7 +8062,8 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
-type AnsweredRow = { sid: string, said: Words, };
+type AskEnd = { said: Words, stays: boolean, };
+type AskEndRow = { sid: string, end: AskEnd, };
 type AskKind = "approve" | "answer" | "plan";
 type AttachFrom = "everywhere" | "elsewhere";
 type CanAttach = { "can": "yes", from: AttachFrom, } | { "can": "no", why: Words, };
@@ -8221,9 +8222,9 @@ type NeedsList = {
  */
 items: Array<NeedsItem>, 
 /**
- * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+ * 上一条请求收了场的会话（各留最近一次，那条会话下一次挂上请求才换掉），按会话 id 排。
  */
-answered: Array<AnsweredRow>, 
+ended: Array<AskEndRow>, 
 /**
  * 会话外那一截读不出（账号库清单在、却读不懂）⇒ 那一句；那一截这时不列（空清单看起来像「没事」）。读得出 ⇒ 缺。
  */
@@ -8693,6 +8694,7 @@ type Words = string;
 ```ts
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type AskEnd = { said: Words, stays: boolean, };
 type AskKind = "approve" | "answer" | "plan";
 type AttachFrom = "everywhere" | "elsewhere";
 type AutoChoice = { min: number, text: Words, };
@@ -8836,9 +8838,9 @@ autoAnswer: number | null,
  */
 autoAnswerChoices: Array<AutoChoice>, 
 /**
- * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟无人答 · 已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ * 上一条请求怎么收的场（[`cmd_wire::needs::AskEnd`]：写好的那一句 · 留不留着；这条会话下一次挂上请求才换掉）；没有 ⇒ `null`。不累加，每次现查。
  */
-autoAnswered: Words | null, 
+askEnd: AskEnd | null, 
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
