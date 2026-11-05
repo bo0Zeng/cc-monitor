@@ -20403,12 +20403,6 @@
       "zh": "一行一个",
       "args": []
     },
-    "settingsNav.dot.disabled": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} · 已停用",
-      "args": ["machine"]
-    },
     "machinePage.state.disabled": {
       "kind": "body",
       "role": "状态",
@@ -20604,12 +20598,6 @@
       "role": "标题",
       "zh": "重启 cc-monitor · {machine}",
       "args": ["machine"]
-    },
-    "machinePage.cc.summaryVer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "版本 {ver} · {state}",
-      "args": ["ver", "state"]
     },
     "machineState.down.resolve": {
       "kind": "body",
