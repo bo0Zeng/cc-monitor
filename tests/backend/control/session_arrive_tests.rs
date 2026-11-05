@@ -1,6 +1,7 @@
-//! `session-arrive`：报到了回 sid；没见到回那一句（起在 tmux 里的带那一屏末几行）＋ 那个终端还在才给句柄；坏入参不等。
+//! `session-arrive`：报到了回 sid；没见到回那一句（起在终端里的带那一屏末几行；托管终端那几句不提 tmux）＋ 那个终端还在才给句柄；坏入参不等。
 
 use super::*;
+use cmd_wire::frame::TerminalHost;
 use std::sync::Mutex;
 
 /// 替身：报不报到 · 那一屏什么样，都是夹具给的；记下被问过的那几样。
@@ -23,8 +24,12 @@ impl Host for Fake {
             .push(format!("arrival {by:?} {since} {ms}"));
         std::future::ready(self.arrives.clone())
     }
-    fn screen(&self, session: &str) -> impl Future<Output = Screen> + Send {
-        self.asked.lock().unwrap().push(format!("screen {session}"));
+    fn screen(&self, session: &str, host: TerminalHost) -> impl Future<Output = Screen> + Send {
+        let host = host.as_wire();
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("screen {session} {host}"));
         std::future::ready((self.screen)())
     }
 }
@@ -37,11 +42,17 @@ fn fake(arrives: Option<&str>, screen: fn() -> Screen) -> Fake {
     }
 }
 
+/// 起在 tmux 会话 `session` 里（`None` ⇒ 开窗起的）。
 fn ask(by: ArriveBy, session: Option<&str>) -> ArriveAsk {
+    ask_in(by, session.map(|s| (s, TerminalHost::Tmux)))
+}
+
+fn ask_in(by: ArriveBy, at: Option<(&str, TerminalHost)>) -> ArriveAsk {
     ArriveAsk {
         by,
         since: 7,
-        session: session.map(str::to_string),
+        session: at.map(|(s, _)| s.to_string()),
+        host: at.map(|(_, h)| h),
     }
 }
 
@@ -118,7 +129,12 @@ fn missed_in_tmux_says_the_last_words_and_hands_the_terminal() {
         body.ends_with("c\nd\ne\nf\ng\nError: no such flag --x"),
         "末 6 行非空行：{body}"
     );
-    assert!(h.asked.lock().unwrap().iter().any(|a| a == "screen w-1"));
+    assert!(h
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|a| a == "screen w-1 tmux"));
 }
 
 #[test]
@@ -163,6 +179,59 @@ fn missed_says_which_way_the_screen_was_not_there() {
     ))
     .unwrap();
     assert!(said_of(&unread).contains("tmux 坏了"));
+}
+
+/// 托管终端没报到：每一种样子都照托管终端说，一句都不提 tmux（11-04 Win11 上托管终端说成了「tmux 会话已不在」）。
+#[test]
+fn missed_in_a_managed_terminal_never_says_tmux() {
+    let at = Some(("h-7", TerminalHost::Managed));
+    let by = || ArriveBy::Cwd { cwd: "/w".into() };
+    let dur = copy_core::short_duration(1_000);
+    let gone = block(run(ask_in(by(), at), 1_000, &fake(None, || Screen::Gone))).unwrap();
+    let unread = block(run(
+        ask_in(by(), at),
+        1_000,
+        &fake(None, || Screen::Unread("读不动".into())),
+    ))
+    .unwrap();
+    let empty = block(run(
+        ask_in(by(), at),
+        1_000,
+        &fake(None, || Screen::There {
+            terminal: "h-7".into(),
+            text: " \n".into(),
+        }),
+    ))
+    .unwrap();
+    let words = block(run(ask_in(by(), at), 1_000, &fake(None, there))).unwrap();
+    let last = last_words(&match there() {
+        Screen::There { text, .. } => text,
+        _ => unreachable!(),
+    });
+    for (got, key, extra) in [
+        (&gone, "beSessionArrive.managedMissed.gone", None),
+        (
+            &unread,
+            "beSessionArrive.managedMissed.noScreen",
+            Some(("why", "读不动")),
+        ),
+        (&empty, "beSessionArrive.managedMissed.emptyScreen", None),
+        (
+            &words,
+            "beSessionArrive.managedMissed.words",
+            Some(("words", last.as_str())),
+        ),
+    ] {
+        let said = said_of(got);
+        assert!(!said.contains("tmux"), "{key}：{said}");
+        let mut args = vec![("dur", dur.as_str()), ("name", "h-7")];
+        args.extend(extra);
+        assert_eq!(
+            said.split_once('\n').expect("标题 ＋ 正文").1,
+            copy_core::copy_text(key, &args),
+            "{key}"
+        );
+    }
 }
 
 #[test]
@@ -210,6 +279,18 @@ fn a_bad_ask_is_refused_before_waiting() {
         &h
     ))
     .is_err());
+    // 终端名与宿主成对：只给一样 ⇒ 不等、不猜是哪种。
+    for (session, host) in [
+        (Some("w-1".to_string()), None),
+        (None, Some(TerminalHost::Tmux)),
+    ] {
+        let lone = ArriveAsk {
+            session,
+            host,
+            ..ask(ArriveBy::Cwd { cwd: "/w".into() }, None)
+        };
+        assert!(block(run(lone, 1_000, &h)).is_err());
+    }
     assert!(
         block(run(
             ask(ArriveBy::Cwd { cwd: "/w".into() }, None),

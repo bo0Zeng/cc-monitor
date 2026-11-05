@@ -58,13 +58,13 @@ import type { SessionOpenReq } from "../../../src/frontend/ui/generated/SessionO
 
 const RESUME: SessionOpenReq = { what: { kind: "resume", sid: "s-1" }, local: false };
 
-const ASK: ArriveAsk = { by: { kind: "sid", sid: "s-1" }, since: 4, session: "t-1" };
+const ASK: ArriveAsk = { by: { kind: "sid", sid: "s-1" }, since: 4, session: "t-1", host: "tmux" };
 const LANDS: Landed[] = ["window", "started", "in_place", "running", "idle"];
 
 /** 那台的成品：起了一家的（window · started · in_place）带等报到那一问，接上已有的不带（那台定，见 `session_open_tests.rs`）。 */
 function opened(landed: Landed, over: Partial<Opened> = {}): Opened {
   const starts = landed === "window" || landed === "started" || landed === "in_place";
-  return { landed, session: "t-1", line: `line:${landed}`, sid: "s-1", agent: "claude", cwd: "/p", account: null, note: null, prompt: null, arrival: starts ? ASK : null, ...over };
+  return { landed, session: "t-1", host: "tmux", line: `line:${landed}`, sid: "s-1", agent: "claude", cwd: "/p", account: null, note: null, prompt: null, arrival: starts ? ASK : null, ...over };
 }
 
 const arrives = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-arrive").map((s) => s.body);

@@ -9,7 +9,7 @@ import type { ArriveAsk } from "../../../src/frontend/ui/generated/ArriveAsk";
 const NEW_SID = "5e55fff0-0000-4000-8000-00000000fff0";
 
 /** 等报到那一问（`session-open` 回包里那一格，原样交回真后端 `session-arrive`）：认那个 sid · 起在哪个 tmux 会话（开窗起的 ⇒ `null`）。 */
-export const arrivalOf = (sid: string, session: string | null): ArriveAsk => ({ by: { kind: "sid", sid }, since: 0, session });
+export const arrivalOf = (sid: string, session: string | null): ArriveAsk => ({ by: { kind: "sid", sid }, since: 0, session, host: session === null ? null : "tmux" });
 
 export const ACCOUNTS = [
   { name: "work", email: "work@example.com", authKind: "subscription", isDefault: true },
@@ -47,13 +47,13 @@ export function defaultOps(): Record<string, OpHandler> {
     // 起新的 · 恢复 · 接回：那台照意图答落在哪 ＋ 那一行（新起 ⇒ tmux 里起好 / 开窗起；恢复 ⇒ 开窗起；接回 ⇒ 接上在跑的那个）。
     "session-open": (_o, req): Opened => {
       const what = req.what as { kind: string; sid?: string; session?: string; agent?: string; cwd?: string };
-      if (what.kind === "look") return { landed: "running", session: what.session ?? "cc-proj", line: `ccm --attach ${what.session ?? "cc-proj"}`, sid: what.sid ?? null, agent: null, cwd: null, account: null, note: null, prompt: null, arrival: null };
+      if (what.kind === "look") return { landed: "running", session: what.session ?? "cc-proj", host: "tmux", line: `ccm --attach ${what.session ?? "cc-proj"}`, sid: what.sid ?? null, agent: null, cwd: null, account: null, note: null, prompt: null, arrival: null };
       if (what.kind === "new") {
         const session = req.run !== "direct" ? "orders-cc-2" : null;
-        return { landed: session ? "started" : "window", session, line: session ? `ccm --attach ${session}` : "ccm -- new", sid: NEW_SID, agent: (what.agent ?? "claude") as Opened["agent"], cwd: what.cwd ?? "/home/user", account: null, note: null, prompt: null, arrival: arrivalOf(NEW_SID, session) };
+        return { landed: session ? "started" : "window", session, host: session ? "tmux" : null, line: session ? `ccm --attach ${session}` : "ccm -- new", sid: NEW_SID, agent: (what.agent ?? "claude") as Opened["agent"], cwd: what.cwd ?? "/home/user", account: null, note: null, prompt: null, arrival: arrivalOf(NEW_SID, session) };
       }
       const sid = what.sid ?? null;
-      return { landed: "window", session: null, line: `ccm --resume ${sid ?? ""}`, sid, agent: "claude", cwd: "/home/user", account: null, note: null, prompt: null, arrival: sid === null ? null : arrivalOf(sid, null) };
+      return { landed: "window", session: null, host: null, line: `ccm --resume ${sid ?? ""}`, sid, agent: "claude", cwd: "/home/user", account: null, note: null, prompt: null, arrival: sid === null ? null : arrivalOf(sid, null) };
     },
   };
 }
