@@ -1631,6 +1631,8 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.ChoreCounts::class.java to com.ccmonitor.mobile.core.wire.gen.ChoreCounts.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChoreKind::class.java to com.ccmonitor.mobile.core.wire.gen.ChoreKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChoreState::class.java to com.ccmonitor.mobile.core.wire.gen.ChoreState.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.ChoreTag::class.java to com.ccmonitor.mobile.core.wire.gen.ChoreTag.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.ChoreTone::class.java to com.ccmonitor.mobile.core.wire.gen.ChoreTone.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChoresAt::class.java to com.ccmonitor.mobile.core.wire.gen.ChoresAt.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChoresMarkReq::class.java to com.ccmonitor.mobile.core.wire.gen.ChoresMarkReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChoresMarks::class.java to com.ccmonitor.mobile.core.wire.gen.ChoresMarks.ADAPTER,

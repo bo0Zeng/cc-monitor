@@ -2,6 +2,8 @@
 import type { ChoreAction } from "./ChoreAction";
 import type { ChoreKind } from "./ChoreKind";
 import type { ChoreState } from "./ChoreState";
+import type { ChoreTag } from "./ChoreTag";
+import type { ChoreTone } from "./ChoreTone";
 import type { LineDiff } from "./LineDiff";
 import type { UndoAt } from "./UndoAt";
 
@@ -20,4 +22,12 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, 
+/**
+ * 名字旁那枚小标签（类 · 态定了之后写好）。
+ */
+tag: ChoreTag, 
+/**
+ * 状态点的色。
+ */
+tone: ChoreTone, };

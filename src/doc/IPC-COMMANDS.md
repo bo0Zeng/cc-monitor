@@ -10231,7 +10231,15 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, 
+/**
+ * 名字旁那枚小标签（类 · 态定了之后写好）。
+ */
+tag: ChoreTag, 
+/**
+ * 状态点的色。
+ */
+tone: ChoreTone, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreCounts = { 
 /**
@@ -10264,6 +10272,8 @@ optional: number,
 done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type ChoreTag = { text: string, kind: ChoreKind, };
+type ChoreTone = "ok" | "bad" | "warn" | "muted";
 type DataReport = { 
 /**
  * 这台家目录（显示时 `~` 缩写按它）。
@@ -10479,7 +10489,15 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, 
+/**
+ * 名字旁那枚小标签（类 · 态定了之后写好）。
+ */
+tag: ChoreTag, 
+/**
+ * 状态点的色。
+ */
+tone: ChoreTone, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreCounts = { 
 /**
@@ -10512,6 +10530,8 @@ optional: number,
 done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type ChoreTag = { text: string, kind: ChoreKind, };
+type ChoreTone = "ok" | "bad" | "warn" | "muted";
 type DataReport = { 
 /**
  * 这台家目录（显示时 `~` 缩写按它）。
@@ -10713,7 +10733,15 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, 
+/**
+ * 名字旁那枚小标签（类 · 态定了之后写好）。
+ */
+tag: ChoreTag, 
+/**
+ * 状态点的色。
+ */
+tone: ChoreTone, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreCounts = { 
 /**
@@ -10746,6 +10774,8 @@ optional: number,
 done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type ChoreTag = { text: string, kind: ChoreKind, };
+type ChoreTone = "ok" | "bad" | "warn" | "muted";
 type ChoresAt = { origin: Machine, report?: DataReport, said?: string, };
 type ChoresMergeReq = { machines: Array<Machine>, client?: FootprintClient | null, };
 type ChoresMerged = { total: ChoreCounts, machines: Array<ChoresAt>, };

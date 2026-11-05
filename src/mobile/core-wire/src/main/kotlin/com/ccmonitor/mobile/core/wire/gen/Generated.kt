@@ -4448,6 +4448,8 @@ data class Chore(
     val go: UndoAt?,
     val howUrl: String?,
     val action: ChoreAction,
+    val tag: ChoreTag,
+    val tone: ChoreTone,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4470,9 +4472,11 @@ data class Chore(
             Field("go", { opt(UndoAt.ADAPTER) }, optional = false, nullable = true),
             Field("howUrl", { opt(Str) }, optional = false, nullable = true),
             Field("action", { ChoreAction.ADAPTER }, optional = false, nullable = false),
+            Field("tag", { ChoreTag.ADAPTER }, optional = false, nullable = false),
+            Field("tone", { ChoreTone.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Chore(a[0] as String, a[1] as ChoreKind, a[2] as ChoreState, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as List<String>, a[8] as LineDiff?, a[9] as String?, a[10] as String?, a[11] as List<String>, a[12] as String?, a[13] as UndoAt?, a[14] as String?, a[15] as ChoreAction) },
-            { v -> arrayOf(v.id, v.kind, v.state, v.name, v.loc, v.said, v.why, v.steps, v.diff, v.copy, v.whole, v.wholeCovers, v.file, v.go, v.howUrl, v.action) },
+            { a -> Chore(a[0] as String, a[1] as ChoreKind, a[2] as ChoreState, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as List<String>, a[8] as LineDiff?, a[9] as String?, a[10] as String?, a[11] as List<String>, a[12] as String?, a[13] as UndoAt?, a[14] as String?, a[15] as ChoreAction, a[16] as ChoreTag, a[17] as ChoreTone) },
+            { v -> arrayOf(v.id, v.kind, v.state, v.name, v.loc, v.said, v.why, v.steps, v.diff, v.copy, v.whole, v.wholeCovers, v.file, v.go, v.howUrl, v.action, v.tag, v.tone) },
         )
     }
 }
@@ -4543,6 +4547,37 @@ enum class ChoreState(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<ChoreState> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ChoreTag(
+    val text: String,
+    val kind: ChoreKind,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ChoreTag> = obj(
+            listOf(
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("kind", { ChoreKind.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> ChoreTag(a[0] as String, a[1] as ChoreKind) },
+            { v -> arrayOf(v.text, v.kind) },
+        )
+    }
+}
+
+enum class ChoreTone(val wire: String) {
+    OK("ok"),
+    BAD("bad"),
+    WARN("warn"),
+    MUTED("muted"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<ChoreTone> = enumOf(entries) { it.wire }
     }
 }
 
