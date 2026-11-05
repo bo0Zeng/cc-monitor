@@ -44,6 +44,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 2",
         "items": [
           {
             "item": {
@@ -83,6 +84,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 2,
         "unreadable": []
       }
@@ -110,6 +112,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 1",
         "items": [
           {
             "item": {
@@ -125,6 +128,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 1,
         "unreadable": []
       }
@@ -160,6 +164,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 1",
         "items": [
           {
             "item": {
@@ -183,6 +188,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 1,
         "unreadable": []
       }
@@ -199,7 +205,9 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 0",
         "items": [],
+        "sure": true,
         "total": 0,
         "unreadable": []
       }
@@ -359,6 +367,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 4",
         "items": [
           {
             "item": {
@@ -509,6 +518,7 @@
             "origin": "gpu-01"
           }
         ],
+        "sure": true,
         "total": 4,
         "unreadable": []
       }
@@ -697,6 +707,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 2",
         "items": [
           {
             "item": {
@@ -876,6 +887,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 2,
         "unreadable": []
       }
@@ -1017,6 +1029,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 3",
         "items": [
           {
             "item": {
@@ -1146,6 +1159,7 @@
             "origin": "gpu-01"
           }
         ],
+        "sure": true,
         "total": 3,
         "unreadable": []
       }
@@ -1262,10 +1276,12 @@
       "merged": {
         "down": [
           {
+            "detail": "",
             "origin": "devbox",
             "said": "devbox 后端未在运行"
           }
         ],
+        "head": "需手动",
         "items": [
           {
             "item": {
@@ -1371,6 +1387,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": false,
         "total": 2,
         "unreadable": []
       }
@@ -1485,6 +1502,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 2",
         "items": [
           {
             "item": {
@@ -1590,6 +1608,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 2,
         "unreadable": []
       }
@@ -1686,6 +1705,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 1",
         "items": [
           {
             "item": {
@@ -1770,6 +1790,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 1,
         "unreadable": []
       }
@@ -1945,6 +1966,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 2",
         "items": [
           {
             "item": {
@@ -2111,6 +2133,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 2,
         "unreadable": []
       }
@@ -2207,6 +2230,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 1",
         "items": [
           {
             "item": {
@@ -2291,6 +2315,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 1,
         "unreadable": []
       }
@@ -2387,6 +2412,7 @@
       ],
       "merged": {
         "down": [],
+        "head": "需手动 1",
         "items": [
           {
             "item": {
@@ -2471,6 +2497,7 @@
             "origin": "<local>"
           }
         ],
+        "sure": true,
         "total": 1,
         "unreadable": []
       }
@@ -2593,10 +2620,12 @@
       "merged": {
         "down": [
           {
+            "detail": "",
             "origin": "devbox",
             "said": "devbox 后端未在运行"
           }
         ],
+        "head": "需手动",
         "items": [
           {
             "item": {
@@ -2702,9 +2731,11 @@
             "origin": "<local>"
           }
         ],
+        "sure": false,
         "total": 2,
         "unreadable": [
           {
+            "line": "gpu-01 · 需手动清单无法读取",
             "origin": "gpu-01",
             "said": "核心·账号库无法解析"
           }

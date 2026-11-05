@@ -157,9 +157,9 @@ export class NeedsBook {
     return out;
   }
 
-  /** 会话外那一截读不出的那几台（各带那台那一句）。 */
-  unreadable(): { origin: Machine; said: string }[] {
-    return this.merged.unreadable.map((u) => ({ origin: u.origin, said: u.said }));
+  /** 会话外那一截读不出的那几台（各带核心写好的那一行与那台那一句）。 */
+  unreadable(): { origin: Machine; line: string; said: string }[] {
+    return this.merged.unreadable.map((u) => ({ origin: u.origin, line: u.line, said: u.said }));
   }
 
   /** 这一问没问到的那几台（不计；各带后端那一句）。 */

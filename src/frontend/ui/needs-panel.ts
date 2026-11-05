@@ -67,7 +67,7 @@ export interface PanelFacts {
   /** 这一问没问到的那几台（不计；底部一条照摆那一句：够不着 · 常驻不在 · 答了失败）。 */
   offline: readonly { origin: Machine; said: string }[];
   /** 会话外那一截读不出的那几台（那台那一句）。 */
-  unreadable: readonly { origin: Machine; said: string }[];
+  unreadable: readonly { origin: Machine; line: string; said: string }[];
 }
 
 export interface PanelActs {
@@ -158,7 +158,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     root.appendChild(n);
   }
   for (const u of f.unreadable) {
-    const n = note(copyText("needs.panel.unreadable", { machine: machineName(u.origin) }));
+    const n = note(u.line);
     n.dataset.note = "unreadable";
     // 那台那一句在悬停里。
     n.title = u.said;
