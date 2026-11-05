@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1581,
+  "ceiling": 1579,
   "groups": [
     {
       "kind": "首登",
@@ -162,7 +162,7 @@
         ["src/frontend/ui/settings/add-machine.ts", "key", 7],
         ["src/frontend/ui/settings/backend-section.ts", "branch", 11],
         ["src/frontend/ui/settings/backend-section.ts", "key", 11],
-        ["src/frontend/ui/settings/chore-row.ts", "branch", 19],
+        ["src/frontend/ui/settings/chore-row.ts", "branch", 17],
         ["src/frontend/ui/settings/chore-row.ts", "key", 1],
         ["src/frontend/ui/settings/chore-tags.ts", "key", 5],
         ["src/frontend/ui/settings/claude-dir-check.ts", "branch", 4],
