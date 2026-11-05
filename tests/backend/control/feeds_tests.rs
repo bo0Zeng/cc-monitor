@@ -515,9 +515,11 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
         .lock()
         .unwrap()
         .iter()
-        .map(|f| match f {
-            Frame::Relayed(r) => r.clone(),
-            other => panic!("只转 relayed：{other:?}"),
+        .filter_map(|f| match f {
+            Frame::Relayed(r) => Some(r.clone()),
+            // 接上 · 断了那一声组变了（[`a_machine_attaching_and_dropping_each_pushes_groups_changed`] 看它）。
+            Frame::Changed(cmd_wire::frame::Changed::Groups {}) => None,
+            other => panic!("只转 relayed（外加组变了那一声）：{other:?}"),
         })
         .collect();
     let first_end = seen
@@ -702,6 +704,59 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         "{seen:#?}"
     );
     assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
+}
+
+/// ★ 先红的那一条（断开后组那一半没人告诉两端）：那台这一条接上 · 断了，本机后端各从转出口（watcher 出方向，不可丢）推一帧 `changed {groups}`，
+/// 两端照它重问 `groups-read`（断了那台那一半照上次所知出）。接上那一帧在 hello 之后；断了那一帧排在 `ended` 之后（重问时那台已答不上）。
+#[tokio::test]
+async fn a_machine_attaching_and_dropping_each_pushes_groups_changed() {
+    use cmd_wire::frame::{Changed, Relayed};
+    let machine = "feeds-groups";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Talk(crate::common::id::BUILD_ID.to_string(), vec![]));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay);
+    let is_groups = |f: &Frame| matches!(f, Frame::Changed(Changed::Groups {}));
+    let is_end =
+        |f: &Frame| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine);
+    until(
+        "那台这一条断了 ⇒ ended 之后推一帧 changed {groups}",
+        || {
+            let g = got.lock().unwrap();
+            g.iter()
+                .position(is_end)
+                .is_some_and(|i| g[i..].iter().any(is_groups))
+        },
+    )
+    .await;
+    align_in(&[], &ssh, &quiet());
+    let tags: Vec<&str> = got
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|f| match f {
+            f if is_groups(f) => "groups",
+            f if is_end(f) => "ended",
+            Frame::Relayed(Relayed::Line { .. }) => "line",
+            _ => "other",
+        })
+        .collect();
+    let end = tags.iter().position(|t| *t == "ended").unwrap();
+    assert_eq!(
+        tags[..=end + 1],
+        ["line", "groups", "ended", "groups"],
+        "接上（hello 之后）· 断了（ended 之后）各推一帧：{tags:?}"
+    );
+    assert_eq!(
+        tags.iter().filter(|t| **t == "groups").count(),
+        2,
+        "接不上的那几轮（不在 ⇒ 没接上过）不推：{tags:?}"
+    );
 }
 
 /// 一台的成品（只填 `wake_in` 读的那几格）。

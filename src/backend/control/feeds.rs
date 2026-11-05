@@ -11,11 +11,12 @@
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
 //!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（共享核心的会话簿）。
 //!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
+//!   那台接上 · 断了（断了排在 `ended` 之后）还从同一个口推一帧 `changed {groups}`：两端照它重问组，断了那台那一半照上次所知出。
 //! - 在看名单：每台一张名单台（[`Desk`]，随这个进程一直留着，那台换连接重报）；连着本机后端的各条流报那台的名单
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
-use crate::wire::Frame;
-use cmd_wire::frame::Relayed;
+use crate::wire::{Frame, FrameMake as _};
+use cmd_wire::frame::{Changed, Relayed};
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use face_core::book::SessionBook;
@@ -273,8 +274,9 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                 Event::Gap => relay(Frame::Relayed(Relayed::Gap { machine })),
                 Event::State(st) => {
                     let up = matches!(st, feed::State::Up { .. });
-                    let (version, ended, unclear) = {
+                    let (version, ended, unclear, came_up) = {
                         let mut s = lock(&seen);
+                        let came_up = up && s.up.is_none();
                         s.up = up.then(|| crate::dial::streams::hold(&name));
                         let ended = !up && std::mem::take(&mut s.attached);
                         let unclear = if ended {
@@ -282,7 +284,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         } else {
                             Vec::new()
                         };
-                        (s.version.clone(), ended, unclear)
+                        (s.version.clone(), ended, unclear, came_up)
                     };
                     if ended {
                         lock(hellos()).remove(&machine);
@@ -302,6 +304,11 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                             version,
                         },
                     );
+                    // 那台够不够得着翻了（接上 · 断了，断了排在 `ended` 之后）⇒ 推一帧 `changed {groups}`（出方向，不可丢）：
+                    // 两端照它重问 `groups-read`，断了那台那一半照上次所知出。两端不各自在断开 · 接上时重问。
+                    if came_up || ended {
+                        relay(Frame::changed(Changed::Groups {}));
+                    }
                 }
                 Event::Ssh(_) => {}
             }
