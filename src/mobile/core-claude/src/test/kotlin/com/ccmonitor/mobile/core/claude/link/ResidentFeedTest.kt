@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.Inl
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
+import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
@@ -250,6 +251,8 @@ class ResidentFeedTest {
 
     private fun fixOf(wire: String): MachineFix = MachineFix.entries.first { it.name == wire.uppercase() }
 
+    private fun dotOf(wire: String): MachineDot = MachineDot.entries.first { it.name == wire.uppercase() }
+
     @Test
     fun `看一台：名字 · 这一版 · 时区交给核心；拨号请求变了才交（同一份身份上换一条不交，断开交 null）`() =
         runTest(UnconfinedTestDispatcher()) {
@@ -303,7 +306,7 @@ class ResidentFeedTest {
                 assertEquals(name, m["offline"] as Boolean, got.machine.offline)
                 val fixes = m.objs("fixes").need().map { MachineFixButton(fixOf(it.str("fix").need()), it.str("label").need()) }
                 assertEquals(name, fixes, got.machine.fixes)
-                assertEquals(name, m.str("dot").need(), got.machine.dot.name.lowercase())
+                assertEquals(name, dotOf(m.str("dot").need()), got.machine.dot)
                 assertEquals(name, m["linked"] as Boolean, got.machine.linked)
                 line.num("epoch")?.let { assertEquals(name, it, f.epoch.value) }
             }

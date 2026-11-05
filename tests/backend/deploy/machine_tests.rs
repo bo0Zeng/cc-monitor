@@ -1059,7 +1059,12 @@ fn every_state_lands_on_its_dot_and_whether_it_is_linked() {
         ("做不了", of(vec![unsupported()], true), D::Failed, false),
     ];
     for (name, got, dot, linked) in cases {
-        assert_eq!((got.dot, got.linked), (dot, linked), "{name}（{:?}）", got.state);
+        assert_eq!(
+            (got.dot, got.linked),
+            (dot, linked),
+            "{name}（{:?}）",
+            got.state
+        );
     }
     let wire = serde_json::to_value(of(vec![up(Relation::Same, &[])], false)).unwrap();
     assert_eq!(wire["dot"], "off", "线上名是小写词");
