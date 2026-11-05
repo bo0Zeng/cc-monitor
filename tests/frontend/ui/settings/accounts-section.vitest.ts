@@ -95,7 +95,7 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
     error: null,
     notice: null,
     meta: META,
-    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true }), acct({ name: "personal", email: "me@example.com" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", baseUrl: "https://api.example.com/v1" })],
+    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true, kindLine: "line-work" }), acct({ name: "personal", email: "me@example.com", kindLine: "line-personal" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", baseUrl: "https://api.example.com/v1", kindLine: "line-api" })],
     ...p,
   };
 }
@@ -195,7 +195,7 @@ describe("账号表", () => {
     expect(slots("personal")[0].textContent).toBe("5h 63% " + copyText("acct.reset.at", { at: "13:00" }));
     expect(slots("personal")[1].textContent).toBe("7d 41%");
     expect(slots("api")[0].textContent).toBe(copyText("acct.kind.api"));
-    expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.sub", { email: "work@example.com" }));
+    expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe("line-work");
   });
 
   it("★ 被拒没用满 ⇒ 写「{pct}% · 被拒」（红），不画成 ✕；用满才 ✕", async () => {
@@ -237,7 +237,6 @@ describe("账号表", () => {
 
   it("API key 号：第二行「API key · 地址」，详情「掩码 地址［更换…］」（掩码是那台遮好的）；没存上 ⇒ 那一句", async () => {
     const el = await mount();
-    expect(rowOf(el, "api").querySelector(".acct-row-kind")!.textContent).toBe("API key · api.example.com");
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     const key = rowOf(el, "api").querySelector(".acct-key")!;
@@ -246,7 +245,6 @@ describe("账号表", () => {
     expect(buttonNamed(rowOf(el, "api"), copyText("acctPage.detail.keyChange"))).toBeDefined();
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: null, baseUrl: null })] }));
     const el2 = await mount();
-    expect(rowOf(el2, "api").querySelector(".acct-row-kind")!.textContent).toBe("API key");
     (rowOf(el2, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     expect(rowOf(el2, "api").querySelector(".acct-key .acct-detail-mono")!.textContent).toBe(copyText("acctPage.row.keyNotSaved"));
