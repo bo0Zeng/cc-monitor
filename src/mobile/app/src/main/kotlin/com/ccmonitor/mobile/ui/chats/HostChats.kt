@@ -16,6 +16,7 @@ import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.retry
+import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
@@ -42,7 +43,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -88,15 +88,12 @@ class HostChats(
 
     init {
         scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
+        // 接上的每一回（核心那一格，断着漏了的推送跟着补上）：清单 · 组各问一次。
         scope.launch {
-            link.state
-                .map { it is LinkLine.Up }
-                .distinctUntilChanged()
-                .filter { it }
-                .collect {
-                    fetch()
-                    fetchGroups()
-                }
+            link.seen.collect {
+                fetch()
+                fetchGroups()
+            }
         }
         scope.launch { listChanged.debounce(LIST_DEBOUNCE_MS).collect { fetch() } }
         scope.launch { groupsChanged.debounce(LIST_DEBOUNCE_MS).collect { fetchGroups() } }
