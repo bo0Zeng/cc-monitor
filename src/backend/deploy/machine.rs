@@ -29,14 +29,14 @@ pub struct Entry {
     /// 这一条连接上那台说过「活会话清单报完了」（[`Fact::Listed`]；又在连 · 断了 ⇒ 作废）。
     listed: bool,
     /// 上一趟部署（装 · 更新）没做成那一句与详情（再起一趟部署 · 换上了 ⇒ 摘掉）。
-    update_failed: Option<Failed>,
+    update_failed: Option<Miss>,
     /// 接上过那台（有过一轮 `Up`）：之后再在接常驻 ⇒ 说「正在重新连接」。
     was_up: bool,
 }
 
 /// 部署那一趟没做成：那一句（原因）· 那一端排好的复制详情。
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Failed {
+struct Miss {
     said: String,
     detail: String,
 }
@@ -108,7 +108,7 @@ pub fn fold(e: &mut Entry, fact: Fact) {
             e.update_failed = None;
         }
         Fact::Listed => e.listed = true,
-        Fact::UpdateFailed { said, detail } => e.update_failed = Some(Failed { said, detail }),
+        Fact::UpdateFailed { said, detail } => e.update_failed = Some(Miss { said, detail }),
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
