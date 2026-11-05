@@ -535,20 +535,41 @@ fn 每件带写好的小标签与点色() {
         let x = c.iter().find(|x| x["id"] == json!(id)).unwrap();
         (x["tag"].clone(), x["tone"].clone())
     };
-    let tag = |key: &str, kind: &str| json!({"text": copy_text(key, &[]), "kind": kind});
+    // （id, 小标签的字的文案键, 小标签的类, 点色）
     let want = [
-        ("stale-ccm", tag("dataPage.kind.must", "must"), "bad"),
-        ("self-paste", tag("dataPage.kind.must", "must"), "ok"),
-        ("relay:claude-code", tag("dataPage.state.expired", "must"), "bad"),
-        ("clash:cc", tag("dataPage.kind.decide", "decide"), "warn"),
-        ("install:claude-cli", tag("dataPage.install.kind", "install"), "warn"),
-        ("install:git", tag("dataPage.install.kindOptional", "installOptional"), "muted"),
-        ("dead:/h/.bashrc", tag("dataPage.kind.optional", "optional"), "muted"),
-        ("cc-bus-hooks", tag("dataPage.state.blocked", "optional"), "muted"),
-        ("mcp-login:m", tag("dataPage.kind.optional", "optional"), "muted"),
+        ("stale-ccm", "dataPage.kind.must", "must", "bad"),
+        ("self-paste", "dataPage.kind.must", "must", "ok"),
+        ("relay:claude-code", "dataPage.state.expired", "must", "bad"),
+        ("clash:cc", "dataPage.kind.decide", "decide", "warn"),
+        (
+            "install:claude-cli",
+            "dataPage.install.kind",
+            "install",
+            "warn",
+        ),
+        (
+            "install:git",
+            "dataPage.install.kindOptional",
+            "installOptional",
+            "muted",
+        ),
+        (
+            "dead:/h/.bashrc",
+            "dataPage.kind.optional",
+            "optional",
+            "muted",
+        ),
+        (
+            "cc-bus-hooks",
+            "dataPage.state.blocked",
+            "optional",
+            "muted",
+        ),
+        ("mcp-login:m", "dataPage.kind.optional", "optional", "muted"),
     ];
-    for (id, t, tone) in want {
-        assert_eq!(of(id), (t, json!(tone)), "{id}");
+    for (id, key, kind, tone) in want {
+        let tag = json!({"text": copy_text(key, &[]), "kind": kind});
+        assert_eq!(of(id), (tag, json!(tone)), "{id}");
     }
 }
 
