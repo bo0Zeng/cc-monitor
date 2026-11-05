@@ -107,7 +107,8 @@ class NeedsBoardTest {
             val ov = overviewOf(board.state.value, hosts, current = "b")
             assertEquals(listOf("b1", "a1", "x@A2-1", "x@-", "@t"), ov.needs.map(::name))
             assertEquals(5, ov.total)
-            assertEquals(5, board.total())
+            assertEquals("入口那一份与总览同一份合法", 5, mergedOf(board.state.value, hosts).total)
+            assertEquals("头那一句由核心写好", copyText("beGroups.count.needs", "n" to 5), ov.head)
             for (m in listOf(a, b)) {
                 assertEquals("每台只问一次整份", 1, m.asked("sessions-needs"))
                 assertEquals("会外那几项在整份里，不另问", 0, m.asked("manual-list"))
@@ -156,7 +157,12 @@ class NeedsBoardTest {
             val down = overviewOf(board.state.value, hosts, current = "a")
             assertEquals(listOf("a1"), down.needs.map(::name))
             assertEquals(1, down.total)
-            assertEquals("断着那台那一行是那条链上那台写好的那一句", listOf("gpu-01" to "gpu-01 离线"), down.down.map { (h, said) -> h.label to said })
+            assertEquals(
+                "断着那台进核心合：那一行是那条链上那台写好的那一句（已叫出那台），不出［重试］",
+                listOf(Triple("gpu-01", "gpu-01 离线", false)),
+                down.down.map { Triple(it.host.label, it.said, it.retry) },
+            )
+            assertTrue("只是断着 ⇒ 数照样说得准（断着的本来不计）", down.sure)
             b.items = listOf(session("b2"))
             b.link.state.value = linkUp()
             b.link.epoch.value = 1L
@@ -186,9 +192,13 @@ class NeedsBoardTest {
             b.pushes.emit(Changed.Needs())
             settle()
             val ov = overviewOf(board.state.value, hosts, current = "a")
-            assertTrue(ov.uncertain)
-            assertTrue("入口那一格与总览同一份（核心合的 unreadable）", board.uncertain())
-            assertEquals(listOf("gpu-01" to "账号库无法解析"), ov.unreadable.map { (h, s) -> h.label to s })
+            assertFalse(ov.sure)
+            assertFalse("入口那一格与总览同一份（核心合的）", mergedOf(board.state.value, hosts).sure)
+            assertEquals(
+                "那一行由核心写好（照称呼叫出那台），那台那一句长按看",
+                listOf(Triple("gpu-01", copyText("needs.panel.unreadable", "machine" to "gpu-01"), "账号库无法解析")),
+                ov.unreadable.map { Triple(it.host.label, it.line, it.said) },
+            )
         }
 
     @Test
@@ -211,7 +221,7 @@ class NeedsBoardTest {
             advanceTimeBy(NeedsBoard.RETRY_FIRST_MS + NeedsBoard.DEBOUNCE_MS + 1)
             runCurrent()
             assertEquals(2, a.asked("sessions-needs"))
-            assertEquals(1, board.total())
+            assertEquals(1, mergedOf(board.state.value, hosts).total)
             advanceTimeBy(60_000)
             runCurrent()
             assertEquals(2, a.asked("sessions-needs"))
@@ -244,10 +254,10 @@ class NeedsBoardTest {
         }
 
     @Test
-    fun `入口：总数 0 ⇒ 不画；≥ 1 ⇒ 需手动 n；数说不准 ⇒ 不带数字`() {
-        assertNull(entryText(0, uncertain = false))
-        assertEquals(copyText("beGroups.count.needs", "n" to 3), entryText(3, uncertain = false))
-        assertEquals(copyText("beSession.needs.unknown"), entryText(3, uncertain = true))
+    fun `入口：说得准且 0 ⇒ 不画；别的照核心写好的头那一句`() {
+        assertNull(entryText(head = "核心·头", total = 0, sure = true))
+        assertEquals("核心·头", entryText(head = "核心·头", total = 3, sure = true))
+        assertEquals("核心·头", entryText(head = "核心·头", total = 0, sure = false))
     }
 
     @Test
@@ -256,6 +266,7 @@ class NeedsBoardTest {
             val reading = overviewOf(mapOf("a" to MachineNeeds()), hosts, current = "a")
             assertEquals(listOf("devbox"), reading.loading.map { it.label })
             assertFalse("没读到不当没有", reading.empty)
+            assertEquals("读中 ⇒ 头那一句不带数（核心写的）", copyText("beSession.needs.unknown"), reading.head)
             val board = boardOf("a" to Machine(emptyList()), "b" to Machine(emptyList()))
             val none = overviewOf(board.state.value, hosts, current = "a")
             assertTrue(none.empty)
@@ -264,23 +275,43 @@ class NeedsBoardTest {
         }
 
     @Test
-    fun `一台 sessions-needs 读不出 ⇒ 那台一行（那台那一句）、数说不准、不说没有；重问问到了那一行就消失`() =
+    fun `两台里一台答了一个错 ⇒ 核心合出来的 down 里有那台、那一句带机器名（照称呼）、出［重试］；数说不准、头那一句不带数；重问问到了那一行就消失`() =
         runTest {
             val a = Machine(emptyList())
             val ok = a.link.answer
             var fail = true
-            a.link.answer = { cmd, args -> if (cmd == "sessions-needs" && fail) Reply.Failed(Failed("x", "账号库无法解析", "")) else ok(cmd, args) }
-            val board = boardOf("a" to a)
+            a.link.answer = { cmd, args -> if (cmd == "sessions-needs" && fail) Reply.Failed(Failed("io", "记录读取失败", "原话")) else ok(cmd, args) }
+            val b = Machine(listOf(session("b1")))
+            val board = boardOf("a" to a, "b" to b)
             val ov = overviewOf(board.state.value, hosts, current = "a")
-            assertEquals(listOf("devbox" to "账号库无法解析"), ov.failed.map { (h, p) -> h.label to p.text })
-            assertTrue(ov.uncertain)
+            assertEquals(
+                listOf(Triple("devbox", copyText("kit.text.machineSaid", "machine" to "devbox", "said" to "记录读取失败"), true)),
+                ov.down.map { Triple(it.host.label, it.said, it.retry) },
+            )
+            assertEquals("详情原样带着", listOf("原话"), ov.down.map { it.detail })
+            assertEquals("没答上的那台不计", 1, ov.total)
+            assertFalse(ov.sure)
+            assertEquals(copyText("beSession.needs.unknown"), ov.head)
             assertFalse(ov.empty)
             fail = false
             board.reask("a")
             settle()
             val after = overviewOf(board.state.value, hosts, current = "a")
-            assertTrue(after.failed.isEmpty())
-            assertTrue(after.empty)
+            assertTrue(after.down.isEmpty())
+            assertTrue(after.sure)
+        }
+
+    @Test
+    fun `回包解不开 ⇒ 核心写读不出那台回复那一句（叫出那台）、详情带命令名；不计、数说不准`() =
+        runTest {
+            val a = Machine(emptyList())
+            a.link.answer = { cmd, _ -> if (cmd == "sessions-needs") Reply.Ok(mapOf("items" to 3)) else Reply.LinkDown }
+            val board = boardOf("a" to a)
+            val ov = overviewOf(board.state.value, hosts, current = "a")
+            assertEquals(listOf(copyText("peerVersion.said.unreadable", "machine" to "devbox")), ov.down.map { it.said })
+            assertTrue(ov.down.single().detail.contains("sessions-needs"))
+            assertTrue(ov.down.single().retry)
+            assertFalse(ov.sure)
         }
 
     private fun name(l: NeedsLine): String =
