@@ -114,10 +114,18 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
         vec![("dev".to_string(), KEY.to_string())]
     );
     assert!(up.execs.lock().unwrap().is_empty(), "后端在还去 exec 了");
+    // 那一句后端写好（本来就有 · 带推的那一份），界面照摆；结局只住这一句里，回包不另带一格。
     assert_eq!(
-        (v["outcome"].clone(), v["via"].clone()),
-        (json!("already"), json!("backend"))
+        (v["said"].clone(), v["via"].clone()),
+        (
+            json!(copy_text(
+                "machineCard.pushKey.already",
+                &[("path", "/k/id_ed25519.pub")]
+            )),
+            json!("backend")
+        )
     );
+    assert!(v.get("outcome").is_none(), "{v}");
 
     let down = FakeReach::new(false);
     let v = answer_push(&args(), &down, &read).await.unwrap();
@@ -136,9 +144,17 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
     assert!(execs[0].0.get("machine").is_none(), "{}", execs[0].0);
     assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
     assert_eq!(
-        (v["outcome"].clone(), v["via"].clone(), v["pubPath"].clone()),
-        (json!("added"), json!("exec"), json!("/k/id_ed25519.pub"))
+        (v["said"].clone(), v["via"].clone()),
+        (
+            json!(copy_text(
+                "machineCard.pushKey.added",
+                &[("path", "/k/id_ed25519.pub")]
+            )),
+            json!("exec")
+        )
     );
+    // 推的是哪一份只住那一句里（界面除了摆它不读别的）。
+    assert!(v.get("pubPath").is_none(), "{v}");
 }
 
 /// 被写那台：经这台自己的文件管理面写 —— 落在 `<home>/.ssh/authorized_keys`（建父目录）、700 / 600；

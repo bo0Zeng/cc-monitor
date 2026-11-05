@@ -361,10 +361,8 @@ pub(crate) enum PushVia {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct PubkeyPushed {
-    /// `added`（新加的）· `already`（本就有整行相等的一行，没写）。
-    pub(crate) outcome: PushOutcome,
-    /// 实际推的是哪一份（给人看）。
-    pub(crate) pub_path: String,
+    /// 屏上那一句：加上了 · 本来就有，都带推的是哪一份（[`pushed_said`]）；界面照摆。
+    pub(crate) said: String,
     /// 走了哪条。
     pub(crate) via: PushVia,
 }
@@ -439,10 +437,17 @@ pub(crate) async fn answer_push(
         )
     };
     Ok(PubkeyPushed {
-        outcome,
-        pub_path: path,
+        said: pushed_said(outcome, &path),
         via,
     })
+}
+
+/// 推成了的那一句（`path` ＝ 推的那一份 `.pub`）。**纯函数**。
+pub(crate) fn pushed_said(outcome: PushOutcome, path: &str) -> String {
+    match outcome {
+        PushOutcome::Added => copy_text("machineCard.pushKey.added", &[("path", path)]),
+        PushOutcome::Already => copy_text("machineCard.pushKey.already", &[("path", path)]),
+    }
 }
 
 /// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）；`~` 按这台家目录展开（[`read_pub_file`]）。
