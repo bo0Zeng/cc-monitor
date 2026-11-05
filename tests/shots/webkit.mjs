@@ -3,7 +3,7 @@
  * 浏览器换成 python-gi 的 WebKit2（`webkit-shoot.py`，在私有 Xvfb 上开一扇窗、从 Xvfb 截那一块）。Linux 桌面版的壳就是 WebKitGTK，
  * Chromium 那一份截出来对、这一份不对的，就是用户在 Linux 上看到的那样。
  *
- * 系统没有 python-gi WebKit2（或 PIL）⇒ 照实跳过、说缺哪一样，不往用户环境装。
+ * 系统没有 python-gi WebKit2（或 libwebkit2gtk-4.1 · libcairo）⇒ 照实跳过、说缺哪一样，不往用户环境装。
  * 和 Chromium 那一份不一样的：没有调试口 ⇒ 真按键（`__shotsKey`）· 真鼠标拖 / 停（`drag` · `pointer`）做不了，那几幕记成跳过、说为什么；
  * 减少动画是把过渡与动画时长压成 0（没有媒体查询那一句模拟）；页里的控制台不收。
  */
@@ -15,14 +15,19 @@ import { privateXvfb } from "./filewin.mjs";
 
 const SHOOTER = "tests/shots/webkit-shoot.py";
 
-/** 这台缺哪一样（python3 · gi 的 Gtk 3 与 WebKit2 4.1 · PIL）；都在 ⇒ `null`。 */
+/**
+ * 这台缺哪一样（python3 · gi 的 Gtk 3 与 WebKit2 4.1 · 截那一张要直接调的两个库 `libwebkit2gtk-4.1.so.0` 与 `libcairo.so.2`，
+ * 同 `webkit-shoot.py` 开头 `ctypes.CDLL` 的那两个）；都在 ⇒ `null`。
+ */
 export function webkitMissing(env) {
   const probe = [
+    "import ctypes",
     "import gi",
     "gi.require_version('Gtk', '3.0')",
     "gi.require_version('WebKit2', '4.1')",
     "from gi.repository import Gtk, WebKit2",
-    "from PIL import ImageGrab",
+    "ctypes.CDLL('libwebkit2gtk-4.1.so.0')",
+    "ctypes.CDLL('libcairo.so.2')",
   ].join("\n");
   const r = spawnSync("python3", ["-I", "-c", probe], { env, encoding: "utf8" });
   if (r.error) return `没有 python3（${r.error.message}）`;
