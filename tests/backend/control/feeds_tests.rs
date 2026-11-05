@@ -724,12 +724,15 @@ async fn a_machine_attaching_and_dropping_each_pushes_groups_changed() {
     let is_groups = |f: &Frame| matches!(f, Frame::Changed(Changed::Groups {}));
     let is_end =
         |f: &Frame| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine);
-    until("那台这一条断了 ⇒ ended 之后推一帧 changed {groups}", || {
-        let g = got.lock().unwrap();
-        g.iter()
-            .position(is_end)
-            .is_some_and(|i| g[i..].iter().any(is_groups))
-    })
+    until(
+        "那台这一条断了 ⇒ ended 之后推一帧 changed {groups}",
+        || {
+            let g = got.lock().unwrap();
+            g.iter()
+                .position(is_end)
+                .is_some_and(|i| g[i..].iter().any(is_groups))
+        },
+    )
     .await;
     align_in(&[], &ssh, &quiet());
     let tags: Vec<&str> = got
