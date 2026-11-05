@@ -376,17 +376,26 @@ fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
     tx.send(WatchEvent::TmuxProbeDue).discard(Why::PeerGone);
 }
 
-/// 起一次 tmux 探测（一次性后台线程，结果回 `TmuxObserved`）。已有在途的就不起 —— `inflight` 只在这里置位、
+/// tmux 探测的在途账：同时最多一个探测线程（`inflight`）；在途时又来的触发不丢，记成 `again`，
+/// 那一份回来后补探一次（在途那一份是触发之前起的，读到的可能是旧的）。
+#[derive(Default)]
+struct ProbeGate {
+    inflight: bool,
+    again: bool,
+}
+
+/// 起一次 tmux 探测（一次性后台线程，结果回 `TmuxObserved`）。已有在途的就不起、记下回来再探 —— `inflight` 只在这里置位、
 /// 只在收到 `TmuxObserved` 时清。回真 = 这次真起了（会话账本据此知道「摘除之后才起」的那一份在路上了）。
 fn start_tmux_probe(
-    inflight: &mut bool,
+    probe: &mut ProbeGate,
     tx: &std::sync::mpsc::Sender<WatchEvent>,
     sink: &mut FrameSink,
 ) -> bool {
-    if *inflight {
+    if probe.inflight {
+        probe.again = true;
         return false;
     }
-    *inflight = true;
+    probe.inflight = true;
     sink.observing();
     let tx = tx.clone();
     std::thread::spawn(move || {
@@ -1502,7 +1511,7 @@ fn watch_loop(
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
-    let mut tmux_inflight = false;
+    let mut tmux_inflight = ProbeGate::default();
     // S0：本批 notify 事件里是否发生过「pidfile 绑的 sid 变了」。见下方使用处。
     let mut sid_drifted = false;
     // P5：上一份 `tmux ls` 的会话名集合。`None` = 还没成功观测过（第一次不报死亡）。
@@ -1705,12 +1714,9 @@ fn watch_loop(
                 // 于是那套夹具从 08-14 起一格红一格恒真，而云端从 08-05 起没跑到过这一步
                 // ⇒ 09-09 才被逮到。**一句过期的注释，教出了一套错的判据。**
                 if sid_drifted {
-                    // 只在**真的起了**探测时才清标志。在途时清掉会丢信号——那次在途的探测是
-                    // 在漂移**之前**发起的，它带回来的快照照样是旧的。留着标志，下一个事件
-                    // 会补上一次（代价只是晚一拍；这本来就只是"更新鲜"，不是本 bug 的修复）。
-                    if start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink) {
-                        sid_drifted = false;
-                    }
+                    // 在途那一份是漂移之前起的 ⇒ `start_tmux_probe` 记下、回来后补探一次。
+                    start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
+                    sid_drifted = false;
                 }
             }
             WatchEvent::NotifyFailed(e) => tracing::warn!("file watcher failed: {e:?}"),
@@ -1754,7 +1760,8 @@ fn watch_loop(
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
             }
             WatchEvent::TmuxObserved(probe) => {
-                tmux_inflight = false;
+                tmux_inflight.inflight = false;
+                let mut again = std::mem::take(&mut tmux_inflight.again);
                 // P3：先按「我们对 server 的认知」收紧判据，再发帧。
                 let obs = classify_with_server_state(probe.obs, server);
                 // P3：探到了 server ⇒ 挂 pidfd 看守（换了 pid 也要重挂：server 复活是新进程）。
@@ -1769,6 +1776,8 @@ fn watch_loop(
                         // 内存里，server 每次起来都要重装，而 P3 把「server 起来了」变成了事件。
                         // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。装的那一半在控制面（[`Reactions::tmux_server_up`]）。
                         (reactions.tmux_server_up)();
+                        // 这一探到装好 hook 之间新建或改了的会话没有事件报 ⇒ 装好再探一次。
+                        again = true;
                     }
                     None if matches!(obs, TmuxObservation::NoServer) => {
                         server = ServerState::Gone;
@@ -1807,6 +1816,10 @@ fn watch_loop(
                 // 真改了 ⇒ 刚发的那份快照里的 `@ccm_sid` 已过期 ⇒ 再探一次。标签打在各自的窗格上（一个会话里几个 claude
                 // 互不覆盖）⇒ 下一次全是 AlreadyCurrent，不会连环。
                 if retag_tracked(&state, None) > 0 {
+                    start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
+                }
+                // 在途时来过触发 · 刚装好 hook ⇒ 补探一次（上面已经起了一份就不叠）。
+                if again && !tmux_inflight.inflight {
                     start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
                 }
             }

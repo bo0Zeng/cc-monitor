@@ -61,9 +61,10 @@ run_case() {
   printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$REALTMUX" "$sock" > "$bin/tmux"
   chmod +x "$bin/tmux"
 
+  # 建会话与打标一条 tmux 命令做完（server 里一次落定）：`@ccm_sid` 在产品里只由后端自己写、写完那一探必读到新值，
+  #   外面分两条命令后补打标不是产品会出现的路径 —— 分开写时后端恰好探在两条中间就看不到那个 sid。
   if [ "$mode" = early ]; then
-    "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300'
-    "$REALTMUX" -L "$sock" set-option -t "=$label:" @ccm_sid "sid-$label"
+    "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300' \; set-option -t "=$label:" @ccm_sid "sid-$label"
   fi
 
   # backend 起（late 模式下此刻该 socket 上零 server）
@@ -74,8 +75,7 @@ run_case() {
   if [ "$mode" = late ]; then
     # 后端先挂上 socket 目录（零 server 时它唯一的耳朵）、再起 server：不然测的是「起来时就有」那一格。
     wall_until 'grep -qF "已监视 tmux socket 目录" "$W/$label.err"'
-    "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300'
-    "$REALTMUX" -L "$sock" set-option -t "=$label:" @ccm_sid "sid-$label"
+    "$REALTMUX" -L "$sock" new-session -d -s "$label" -c /tmp 'sleep 300' \; set-option -t "=$label:" @ccm_sid "sid-$label"
   fi
   wall_until 'grep -qF "sid-$label" "$out"'
 
