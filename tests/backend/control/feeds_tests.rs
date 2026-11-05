@@ -706,7 +706,7 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
     assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
 }
 
-/// ★ A23-4-3-3 先红的那一条：那台这一条接上 · 断了，本机后端各从转出口（watcher 出方向，不可丢）推一帧 `changed {groups}`，
+/// ★ 先红的那一条（断开后组那一半没人告诉两端）：那台这一条接上 · 断了，本机后端各从转出口（watcher 出方向，不可丢）推一帧 `changed {groups}`，
 /// 两端照它重问 `groups-read`（断了那台那一半照上次所知出）。接上那一帧在 hello 之后；断了那一帧排在 `ended` 之后（重问时那台已答不上）。
 #[tokio::test]
 async fn a_machine_attaching_and_dropping_each_pushes_groups_changed() {
