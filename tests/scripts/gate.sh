@@ -983,12 +983,13 @@ gate_e2e_wanted() {
 }
 gate_exec_prep() {
   gate_now_ms > "$GATE_K.t0"
-  rm -f "$CCM_E2E_BACKEND_BIN"
   # 编完当场留一份给 e2e（`ccm-shim.sh` 照 `CCM_E2E_BACKEND_BIN`）：同一棵 target 里随后 `backend` 那一格的 `cargo test`
-  #   会把 `debug/cc-monitor-backend` 换成带测试档特性的那一份。没编成 ⇒ 不留，e2e 那几套当场说找不到二进制。
+  #   会把 `debug/cc-monitor-backend` 换成带测试档特性的那一份。先拷到旁边再改名换上：`env-sandbox` 的内层门禁也走这一步，
+  #   外层那几套此刻正跑着这一份 ⇒ 不先删、不就地写（正在跑的进程留着旧的那一份，新起的拿到同源同编法的新一份）。
   ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) \
     && mkdir -p "${CCM_E2E_BACKEND_BIN%/*}" \
-    && cp -f "${CARGO_TARGET_DIR:-.build/backend}/debug/cc-monitor-backend" "$CCM_E2E_BACKEND_BIN" || true
+    && cp -f "${CARGO_TARGET_DIR:-.build/backend}/debug/cc-monitor-backend" "$CCM_E2E_BACKEND_BIN.$$" \
+    && mv -f "$CCM_E2E_BACKEND_BIN.$$" "$CCM_E2E_BACKEND_BIN" || true
   printf 0 > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
 }
