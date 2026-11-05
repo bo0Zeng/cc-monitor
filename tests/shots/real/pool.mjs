@@ -191,6 +191,8 @@ srv.wait()
 /** 远端各台沙箱里的跑腿（[`DOER_PY`]）：脚本的位置（每台沙箱同一处）· 它听的套接字（在那台常驻的套接字目录里，本机沙箱挂成 `<PEERS>/<k>/run`）。 */
 const DOER_IN_BOX = "/home/user/.shots-setup/shots-do";
 const DOER_SOCK = "shots-do.sock";
+/** 那台断了的记号：放在那台常驻的套接字目录里（本机沙箱挂得着），假 ssh 见到它就照断网拒（[`forwarderSh`]）。 */
+const CUT_MARK = "shots-cut";
 
 /**
  * 远端那台的跑腿：确保常驻那一问要在那台自己的沙箱里跑（ensure 认在听的那一位要它的 pid，跨进程命名空间认不出），
@@ -251,6 +253,8 @@ export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFT
     lines.push(`  ${p.port}) k=${p.k}; refuse=${q((p.refuse ?? []).join(" "))}; fake=${p.fake ?? ""} ;;`);
   }
   lines.push(`  *) echo "shots: 口 $4 不是台架里的哪一台" >&2; exit 255 ;;`, "esac");
+  // 那台断了（[`CUT_MARK`]，`/__ccm/kill` 放下）：从这一刻起每一跳都同 ssh 断网那样，一个字不回、退 255。
+  lines.push(`[ -e ${PEERS}/$k/run/${CUT_MARK} ] && exit 255`);
   const land = `"$HOME"/.cc-monitor/bin/ccm -- `;
   const peer = `CCM_DATA_DIR=${PEERS}/$k`;
   lines.push(
@@ -674,6 +678,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
     const [prog, ...args] = m.argv;
     const child = spawn(prog, args, { detached: true, env: { PATH: "/usr/bin:/bin" }, stdio: ["ignore", "pipe", "pipe"] });
     w.boxes.push(child);
+    w.boxOf.set(m.origin, child);
     let err = "";
     child.stderr.on("data", (d) => (err = (err + d).slice(-2000)));
     return new Promise((resolve, reject) => {
@@ -750,7 +755,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
       lines.push(`${String(Date.now() - t0).padStart(7)} ${t}`);
       if (lines.length > TRACE_KEEP) lines.splice(0, lines.length - TRACE_KEEP);
     };
-    const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, boxes: [],shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
+    const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, boxes: [], boxOf: new Map(), runOf: new Map(), shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
     for (const res of early.get(key) ?? []) attach(w, res);
     early.delete(key);
@@ -763,6 +768,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
     const peers = table.peers.map((p) => {
       const run = path.join(dir, `m${order.indexOf(p.origin)}`, "home", ".cc-monitor", "run");
       mkdirSync(run, { recursive: true, mode: 0o700 });
+      w.runOf.set(p.origin, run);
       return { ...p, run };
     });
     const list = Object.entries(machines).map(([origin, m0], i) => {
@@ -835,6 +841,26 @@ export function backendPool({ repo, sandbox, disks = null }) {
     return w.sh.face(String(body.machine), body.miss);
   }
 
+  /**
+   * 那台断了（`/__ccm/kill`）：本机那一台 ⇒ 无头壳杀它的后端。远端那一台两跳都断，同真断网：先放下断了的记号（假 ssh 从这一刻起
+   * 每一跳都退 255，本机后端问 · 接 · 确保常驻都够不着），再整组杀它的沙箱（本机后端接着的那条常驻流当场断）。
+   */
+  function cut(w, origin) {
+    const run = w.runOf.get(origin);
+    const box = w.boxOf.get(origin);
+    if (run === undefined || box === undefined) {
+      w.sh.send({ t: "kill", origin });
+      return;
+    }
+    writeFileSync(path.join(run, CUT_MARK), "");
+    w.trace(`${origin} 断了（假 ssh 拒它 · 它的沙箱整组杀）`);
+    try {
+      process.kill(-box.pid, "SIGKILL");
+    } catch {
+      // 已经退了
+    }
+  }
+
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */
   function tell(url, body) {
     const w = worlds.get(body.key);
@@ -844,7 +870,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
     else if (url === "/__ccm/want") w.sh.send({ t: "want", id: body.id, more: body.more });
     else if (url === "/__ccm/stop") w.sh.send({ t: "stop", id: body.id });
     else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
-    else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
+    else if (url === "/__ccm/kill") cut(w, String(body.origin));
     else if (url === "/__ccm/watch") w.sh.send({ t: "watch", sessions: body.sessions });
     else if (url === "/__ccm/kept") w.sh.send({ t: "kept", sessions: body.sessions });
     else if (url === "/__ccm/status") {

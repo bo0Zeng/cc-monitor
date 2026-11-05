@@ -122,7 +122,7 @@ async function shootWeb() {
   if (args.webkit) {
     const missing = webkitMissing(isolatedEnv());
     if (missing) {
-      console.log(`WebKitGTK 那一份跳过：这台没有 python-gi WebKit2 4.1 · PIL（${missing}）；不装`);
+      console.log(`WebKitGTK 那一份跳过：这台没有 python-gi WebKit2 4.1 · libwebkit2gtk-4.1 · libcairo（${missing}）；不装`);
       return;
     }
   }

@@ -108,15 +108,20 @@ async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void>
   await click(await byText('[role="dialog"] button', "新建"));
 }
 
-/** gpu-01 断开，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
+/**
+ * gpu-01 上那个会话是固定着的，那台交完会话之后断了 ⇒ 复活出来「说不清」。
+ * 固定是后端的数据（`history/groups.rs`）：记在会话所在那台的会话注解上（`pinned`）。gpu-01 先接上、本机后端问到它那一半并记下上次所知，
+ * 之后那台后端被杀（`droppedMachines`），菜单照真后端那一份出。
+ */
 function unseenPinnedWorld(): World {
   const w = defaultWorld();
-  w.unseenMachines = ["gpu-01"];
+  w.droppedMachines = ["gpu-01"];
   const s = w.sessions[5];
-  w.config = {
-    ...w.config,
-    tabBar: { pinned: [{ sid: s.sid, origin: "gpu-01", cwd: s.cwd, jsonlPath: `/home/user/.claude/projects/x/${s.sid}.jsonl`, title: "排序模型训练脚本" }] },
-  };
+  const d = w.disk[s.origin];
+  const file = ".cc-monitor/history-metadata.json";
+  const notes = (d.files[file] ? JSON.parse(d.files[file]) : { version: 1, entries: {} }) as { version: 1; entries: Record<string, unknown> };
+  notes.entries[s.sid] = { pinned: true, updatedAt: Date.parse("2026-10-08T08:00:00Z") };
+  w.disk[s.origin] = { ...d, files: { ...d.files, [file]: JSON.stringify(notes) } };
   return w;
 }
 
@@ -274,8 +279,11 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 断开、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
     await mainReady(ALL_TABS);
-    const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].find((x) => (x.textContent ?? "").includes("排序模型"));
-    await rightClick(t ?? "#tab-bar .tab");
+    // 那台后端被杀之后，它那个固定着的 tab 才转成说不清。
+    await waitFor("#tab-bar .tab[data-unseen]");
+    const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab[data-unseen]")].find((x) => (x.textContent ?? "").includes("排序模型"));
+    if (!t) throw new Error("说不清的 tab 里没有「排序模型」那一个");
+    await rightClick(t);
     await sleep(900);
   }, unseenPinnedWorld),
   {
