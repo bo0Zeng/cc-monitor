@@ -1,7 +1,7 @@
 /**
  * 报错卡与重试细条。两种记录：
  *
- * 1. `assistant` + `isApiErrorMessage` —— 重试耗尽 / 不可重试的最终失败 ⇒ 报错卡：后端写好的卡头（`error.title`）＋ 下一步 ＋「原文」折叠。
+ * 1. `assistant` + `isApiErrorMessage` —— 重试耗尽 / 不可重试的最终失败 ⇒ 报错卡：后端写好的卡头（`error.title`）＋ 下一步（会话事实那一串的整句，没有 ⇒ 空着）＋「原文」折叠。
  * 2. `system` + `subtype:"api_error"` —— 这一次失败、CLI 要重试 ⇒ 重试细条；相邻的几条**合成一条**（排版，`render-stream-record.ts` 按时间线邻居做）。
  *    细条上的字：建卡时照那一条记录写好的那一行（`retry.text`）；会话事实到了照那一串写好的整句（`retries[].text`，后端按首条的 uuid 给，[`applyRetries`]）。
  *    接上了 · 人打断了 ⇒ 变淡那一句 · 没接上 ⇒ 细条收起、那一串的整句进紧跟着的报错卡。
@@ -29,9 +29,9 @@ export function buildApiErrorCard(args: { timeLabel: string; title: string; text
 
   const next = document.createElement("div");
   next.className = "api-error-next";
+  // 「下一步」那一句只有会话事实那一路写（[`applyRetries`]：没接上的那一串的整句）；建卡时空着。
   const nextText = document.createElement("span");
   nextText.className = "api-error-next-text";
-  nextText.textContent = copyText("apiError.card.nextBare");
   next.appendChild(nextText);
 
   const raw = document.createElement("details");
@@ -85,7 +85,7 @@ export function isApiErrorCard(el: Element | null | undefined): el is HTMLElemen
 
 /**
  * 会话事实说的那几串（首条 id → 那一串）照画到 `root` 里的每条细条上：结局进 `data-state`、整句照摆。幂等：每到一份事实重摆一遍。
- * 没接上 ⇒ 细条收起、那一串的整句写进紧跟着它的报错卡（那张卡还没画出来 ⇒ 下一份事实再写）。
+ * 没接上 ⇒ 细条收起、那一串的整句写进紧跟着它的报错卡（事实先到、卡后画 ⇒ 宿主在卡落进消息流那一下照手上那一份再摆一遍）。
  */
 export function applyRetries(root: HTMLElement, runs: ReadonlyMap<string, RetryRun>): void {
   for (const bar of root.querySelectorAll<HTMLElement>(".card-api-retry[data-run]")) {
