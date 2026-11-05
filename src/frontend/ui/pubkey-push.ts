@@ -12,7 +12,7 @@ import { LOCAL } from "./ipc/origin";
 import type { PubkeyPushed } from "./generated/PubkeyPushed";
 import { saidOf } from "./kit/detail";
 
-/** 推送的结局（`outcome` · `pubPath` · `via`）。 */
+/** 推送的结局（`said` 后端写好的那一句，界面照摆 · `via`）。 */
 export type PushResult = PubkeyPushed;
 
 /** 期限（值归发起方，DL1）：一次拨号 ＋ 至多一次远端 CLI 往返，秒级；给足余量。 */
