@@ -11,7 +11,7 @@
   · `T2` **零锁 · 零规矩**:`flock` · `route_` 零命中(正控同上)。
   · `T3` **只经后端**:各动词本体问后端的动词(`ccbus_ask <动词>`)集合 == 登记表(两向相等);
         `whoami` 只问 `--session-self`。
-  · `T4` **两边对得上**:脚本问的那几个动词 == 后端登记的 `bus-*` 帧命令(读 `control/cc_bus_wire.rs` 的 `NAME`,两向相等)。
+  · `T4` **两边对得上**:脚本问的那几个动词 == 后端登记的 `bus-*` 帧命令(读 `src/backend` 各份 `.rs` 里 `bus-*` 的 `NAME`,两向相等)。
   · `T5` **`recv` 就是 peek 接 commit**:入口 `cc-bus` 的 recv 那一臂先调 peek、再调 commit,入口里不渲染。
   · `T6` **手册页写了那几句**:`SKILL.md` 里 commit 的四个码(0 · 2 · 11 · 12)·「照常处理手上那段」· at-least-once。
 
@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(os.environ.get("CCBUS_RULER_ROOT") or Path(__file__).resolve().parents[2])
 SCRIPTS = ROOT / "src" / "shared" / "cc-bus" / "scripts"
 SKILL = ROOT / "src" / "shared" / "cc-bus" / "SKILL.md"
-WIRE = ROOT / "src" / "backend" / "control" / "cc_bus_wire.rs"
+BACKEND = ROOT / "src" / "backend"
 
 PASSED = []
 FAILED = []
@@ -121,10 +121,13 @@ def check_t3():
 
 
 def check_t4():
-    names = set(re.findall(r'const NAME: &\'static str = "bus-([a-z]+)";', WIRE.read_text(encoding="utf-8")))
+    # 命令标记不全住控制面：`bus-list` 的标记跟处理器住帧面宿主（`faces/bus_list_face.rs`，孤儿规则）⇒ 照整棵后端源码取。
+    names = set()
+    for f in sorted(BACKEND.rglob("*.rs")):
+        names |= set(re.findall(r'const NAME: &\'static str = "bus-([a-z]+)";', f.read_text(encoding="utf-8")))
     asked = set().union(*ASKS.values())
     if not names:
-        bad("T4", f"{WIRE} 里一条 `bus-*` 都没读到 —— 取法坏了")
+        bad("T4", f"{BACKEND} 里一条 `bus-*` 都没读到 —— 取法坏了")
     elif names != asked:
         bad("T4", f"后端的 bus-* {sorted(names)} 与脚本问的 {sorted(asked)} 不相等")
     else:

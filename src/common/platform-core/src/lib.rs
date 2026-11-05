@@ -8,6 +8,15 @@
 //! 判定不进来：拿这些事实去判「是不是那个进程」「该不该收紧」的规则在调用方。
 //! 本人通道那把「抢不到就算」的门锁不在这里：那是 `own-chan` 的（听的那一个抢门、不等，Windows 上按互斥量已在判）。
 
+// 测试段的夹具收尾时删临时目录、丢结果不写理由 ⇒ 测试段放开吞结果那两条；这一行是整包唯一许写 `allow` 的地方。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok,
+        reason = "测试段放开吞结果那两条：夹具收尾时删临时目录、丢结果"
+    )
+)]
 pub mod atomic;
 pub mod dir;
 pub mod proc;

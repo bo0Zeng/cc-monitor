@@ -1018,7 +1018,7 @@ run_gate_sum backend gate_backend_libs \
 # 测试档的 Rhai 慢几十倍（100 组二十多分钟）⇒ 用 `perf` 档（发布档的优化、不做 LTO，后端 Cargo.toml 里那一节）单编一趟、只跑这一条。
 # gate-affected 里只在改到轮换那几处时点到（map 的 @rotation500），全量里恒跑。
 run_gate rotation-500 '判过的条数 = 1（一条测试里 #22 · #26 · #36 各 500 组随机设置 ＋ 事实，逐发判与推演两边比）；perf 档编、无网沙箱里跑' \
-         gate_cargo_test_nonet src/backend --profile perf --lib -- --ignored --exact accounts::quota::rules::decide::tests::consistency_500_groups
+         gate_cargo_test_nonet src/backend --profile perf -p backend-accounts --lib -- --ignored --exact quota::rules::decide::tests::consistency_500_groups
 run_gate deadcode-backend '不是数出来的数：`src/backend` 的 `cargo check`（非 test，lib ＋ bin）的 `dead_code` 诊断零条才绿，有就逐条列出来；库面对外只有 `run`（模块全私有），`pub` 项零读者也报' \
          gate_deadcode deadcode-backend src/backend cc_monitor_backend
 run_gate clippy-backend '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \

@@ -292,7 +292,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/accounts/quota/rules/decide_tests.rs",
         "consistency_500_groups",
-        Trigger::Filter { by: "tests/scripts/gate.sh", needle: "accounts::quota::rules::decide::tests::consistency_500_groups" },
+        Trigger::Filter { by: "tests/scripts/gate.sh", needle: "quota::rules::decide::tests::consistency_500_groups" },
     ),
     (
         "tests/backend/stream/live_tests.rs",
@@ -930,6 +930,7 @@ fn module_path(
         "src/backend/relay/",
         "src/backend/stderr_log/",
         "src/backend/control/",
+        "src/backend/accounts/",
         "src/backend/test-meters/",
         "src/backend/",
     ];

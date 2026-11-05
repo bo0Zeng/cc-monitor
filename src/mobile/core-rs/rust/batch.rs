@@ -1309,11 +1309,7 @@ mod tests {
                         let path = dir.join(over.unwrap_or(name));
                         let f = std::fs::File::create(&path).unwrap();
                         lock(&h2.made).insert(key.clone(), path);
-                        use std::os::fd::IntoRawFd as _;
-                        LocalOpened::Fd {
-                            key,
-                            fd: i64::from(f.into_raw_fd()),
-                        }
+                        LocalOpened::Fd { key, fd: fd_of(f) }
                     };
                     let b = lock(&b2).clone().unwrap();
                     // 回话在另一条线上到（Kotlin 那一侧在它自己的线程上开）。
@@ -1330,6 +1326,17 @@ mod tests {
             }
         });
         (on, seen, here, board)
+    }
+
+    /// 替身交给核心的描述符（手机上是 Kotlin `detachFd()` 交来的那一个）；与 [`crate::file_of`] 一对：不是 unix ⇒ 没有这一说。
+    #[cfg(unix)]
+    fn fd_of(f: std::fs::File) -> i64 {
+        use std::os::fd::IntoRawFd as _;
+        i64::from(f.into_raw_fd())
+    }
+    #[cfg(not(unix))]
+    fn fd_of(_: std::fs::File) -> i64 {
+        -1
     }
 
     fn folder(tag: &str) -> std::path::PathBuf {

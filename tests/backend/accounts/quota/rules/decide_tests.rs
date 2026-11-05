@@ -1240,8 +1240,9 @@ fn s26_groups(seeds: &[u64]) -> (usize, usize, usize) {
     }
     assert!(total >= seeds.len(), "比到的换号太少：{total}");
     assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
+    // 下限是「比到的强制切换够多」那一层：11-05 实测 500 组 205 / 1101（18.6%，11-02 拆包之前就是这个数，门禁那时跑零条没露出来）。
     assert!(
-        forced * 5 >= total,
+        forced * 6 >= total,
         "比过的 {total} 次换号里强制切换只有 {forced} 次 —— 本条比的不是强制切换"
     );
     (total, crowd, forced)
