@@ -20854,6 +20854,12 @@
       "zh": "{machine} 上次更新失败 · {why}",
       "args": ["machine", "why"]
     },
+    "machineState.problem.installFailed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 上次安装失败 · {why}",
+      "args": ["machine", "why"]
+    },
     "machineState.problem.newer": {
       "kind": "body",
       "role": "说明",
