@@ -424,15 +424,30 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
 }
 
 fn finish(o: Out) -> VerifyReport {
-    let fails = o
+    let failed: Vec<&VerifyCheck> = o
         .checks
         .iter()
         .filter(|c| c.level == CheckLevel::Fail)
-        .count();
+        .collect();
+    let fails = failed.len();
+    let headline = failed.first().map(|first| {
+        let what = first.text.as_str();
+        let line = match first.account.as_deref() {
+            Some(name) => copy_text("acctPage.verify.bar", &[("name", name), ("what", what)]),
+            None => copy_text("acctPage.verify.barGlobal", &[("what", what)]),
+        };
+        if fails > 1 {
+            let more = copy_text("kit.dialog.more", &[("n", &(fails - 1).to_string())]);
+            [line, more].join(&copy_text("kit.text.sep", &[]))
+        } else {
+            line
+        }
+    });
     VerifyReport {
         pass: fails == 0,
         fails: fails as u32,
         checks: o.checks,
+        headline,
     }
 }
 

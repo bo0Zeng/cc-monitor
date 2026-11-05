@@ -335,3 +335,51 @@ fn unknown_names_are_one_quiet_unclassified_line_not_warnings() {
         r.checks
     );
 }
+
+/// 核对条那一句由后端写好（`headline`）：第一条对不上的那句（带号名 ⇒ 「号：…」，全局的 ⇒ 「账号库：…」）
+/// 再接「另 ×N」；一条对不上的都没有 ⇒ 缺。前端照摆，不数、不挑、不拼。
+#[test]
+fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
+    let line = |account: Option<&str>, level: CheckLevel, text: &str| VerifyCheck {
+        level,
+        account: account.map(str::to_string),
+        text: text.to_string(),
+    };
+    let r = finish(Out {
+        checks: vec![
+            line(None, CheckLevel::Warn, "先一条提示"),
+            line(Some("z"), CheckLevel::Fail, "身份文件是链接"),
+            line(None, CheckLevel::Fail, "共享库里留着身份"),
+            line(Some("y"), CheckLevel::Fail, "权限不对"),
+        ],
+    });
+    let first = copy_text(
+        "acctPage.verify.bar",
+        &[("name", "z"), ("what", "身份文件是链接")],
+    );
+    let more = copy_text("kit.dialog.more", &[("n", "2")]);
+    let sep = copy_text("kit.text.sep", &[]);
+    assert_eq!(
+        r.headline.as_deref(),
+        Some(format!("{first}{sep}{more}").as_str())
+    );
+
+    let global = finish(Out {
+        checks: vec![line(None, CheckLevel::Fail, "共享库里留着身份")],
+    });
+    assert_eq!(
+        global.headline.as_deref(),
+        Some(copy_text("acctPage.verify.barGlobal", &[("what", "共享库里留着身份")]).as_str()),
+        "只一条 ⇒ 不接「另 ×N」；全局的 ⇒ 账号库那一式"
+    );
+
+    let none = finish(Out {
+        checks: vec![line(Some("z"), CheckLevel::Warn, "还没登录")],
+    });
+    assert_eq!(none.headline, None, "没有对不上的 ⇒ 缺");
+    assert_eq!(
+        serde_json::to_value(&none).unwrap().get("headline"),
+        None,
+        "缺 ⇒ 不上线"
+    );
+}

@@ -3,7 +3,7 @@
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 写 key（`creds.apikey`） | `apikey-key-set` | `{account, path, masked, baseUrl}` |
+ * | 写 key（`creds.apikey`） | `apikey-key-set` | `{masked}` |
  *
  * 「这几个号在这台表里有没有行 · 这台的中转在不在」两格并进了账号清单那一枚徽章（`accounts-list` 每号 `badge`，那台后端判），
  * 界面不单问这两样。
@@ -26,7 +26,7 @@ const APIKEY_BUDGET_MS = 10_000;
 
 /**
  * 给 `configDir` 那个号配一把 key（与可选的 Base URL），交**那台机器的后端**写（本机 ＝ `<local>` 那条长连接）；
- * 回推出来的账号 id · 那份文件在哪 · 写完读回的掩码与端点（**只有掩码**，`KS6`）。
+ * 回写完读回的掩码（**只有掩码**，`KS6`；账号 id · 文件路径 · 端点两端零读者，不上线）。
  * 明文只在这一发的请求体里（`key`）：不进任何返回值、不进报错文案（报错只说那台后端回的话）。
  * `baseUrl` 缺席 = 不碰那一格。
  */
