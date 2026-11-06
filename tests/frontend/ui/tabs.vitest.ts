@@ -2116,7 +2116,13 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     ] as const) {
       // 建标签页那几下各自起的读（骨架 · 会话事实 …）先落完，量的只是 ↗ 那一下发了什么（慢机器上它们会晚到、混进下面那一段）。
       answer({ labels: [], chain: CHAIN, tmux: false });
-      for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0));
+      // 等到连着 20 拍都没有新的一问（上限 500 拍）：机器慢时那几下读会晚到。
+      for (let i = 0, still = 0, seen = -1; i < 500 && still < 20; i++) {
+        await new Promise((r) => setTimeout(r, 0));
+        const n = mockInvoke.mock.calls.length;
+        still = n === seen ? still + 1 : 0;
+        seen = n;
+      }
       mockInvoke.mockReset();
       const placed = { labels: ["600-639150434950992340"], chain: CHAIN, tmux: sid === "r1" };
       answer(placed, () => Promise.resolve({ kind: "switched" }));

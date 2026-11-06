@@ -88,7 +88,7 @@ async fn end_hangs_up_the_child_group() {
 async fn the_same_id_cannot_be_hosted_twice() {
     let (own, _data) = sandbox_own("twice");
     let (sock, task) = start(&own, spec_ready("t-twice")).await;
-    let again = run(spec_any("t-twice", "true", "exit 0"), &own, |_| {}).await;
+    let again = serve(spec_any("t-twice", "true", "exit 0"), &own, |_| {}).await;
     assert!(again.is_err(), "第二个拿不到锁");
     let mut s = hello(&sock, Want::Input).await;
     read_until_out(&mut s, "ready").await;
@@ -190,7 +190,7 @@ async fn the_host_knows_which_process_each_end_is() {
 async fn a_socket_path_over_the_limit_refuses_to_start_and_says_how_long() {
     let (own, data) = sandbox_own(&"l".repeat(home::SOCK_PATH_MAX));
     let mut bound = false;
-    let got = run(spec("t-long", "true"), &own, |_| bound = true).await;
+    let got = serve(spec("t-long", "true"), &own, |_| bound = true).await;
     let said = got.expect_err("路径超过上限起不来").logged();
     let sock = data.join("hosts").join("t-long").join("sock");
     assert!(

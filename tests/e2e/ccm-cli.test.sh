@@ -67,7 +67,8 @@ for p in claude codex; do printf '#!/bin/sh\n' > "$BIN/$p"; chmod +x "$BIN/$p"; 
 for d in "$FAKECC/bin" "$CCMDIR/nocc"; do for p in mycc ccr; do printf '#!/bin/sh\n' > "$d/$p"; chmod +x "$d/$p"; done; done
 printf '#!/bin/sh\nprintf "@@ccm-session-path@@%%s@@ccm-session-path@@" "$CCM_E2E_SESSION_PATH"\n' > "$CCMDIR/login-shell"
 chmod +x "$CCMDIR/login-shell"
-export SHELL="$CCMDIR/login-shell" CCM_E2E_SESSION_PATH="$BIN:/usr/bin:/bin"
+# 钉住的那份 PATH 以 tmux shim 打头：后端起子进程照它找 tmux，没有 shim 就落到缺省 server。
+export SHELL="$CCMDIR/login-shell" CCM_E2E_SESSION_PATH="$TMUX_SHIM_BIN:$BIN:/usr/bin:/bin"
 ccm_newcc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$FAKECC/bin" CCM_E2E_SESSION_PATH="$FAKECC/bin" "$CCM" "$@"; }
 ccm_nocc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$CCMDIR/nocc" CCM_E2E_SESSION_PATH="$CCMDIR/nocc" "$CCM" "$@"; }
 PLUGIN="export CLAUDE_CODE_PLUGIN_DIRS='$NOHOME/.cc-monitor/answer-plugin'"

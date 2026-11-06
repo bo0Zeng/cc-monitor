@@ -1,6 +1,6 @@
 //! 瘦客户端：假外层终端（键从一条通道进、画进一块内存），真托管进程（`sh` 假程序），沙箱数据目录。
 
-use super::super::run::{run, Spec};
+use super::super::run::{serve, Spec};
 use super::super::wire::Size;
 use super::*;
 use crate::platform::fs::Own;
@@ -42,10 +42,11 @@ async fn host(
     let (tx, rx) = tokio::sync::oneshot::channel();
     let own = own.clone();
     let task = tokio::spawn(async move {
-        run(spec, &own, move |p| {
+        serve(spec, &own, move |p| {
             let _ = tx.send(p.to_path_buf());
         })
         .await
+        .map(drop)
     });
     (rx.await.expect("绑好了"), task)
 }

@@ -2,7 +2,7 @@
 //! 本包判据与上层判据（经 `test-support`）共用；不起真 claude。
 
 use super::super::wire::{read_frame, write_frame, Ctl, Frame, Size, Want, Who, WhoKind, PROTO};
-use super::{run, Spec};
+use super::{serve, Spec};
 use crate::platform::fs::Own;
 use copy_core::said::Said;
 
@@ -70,10 +70,11 @@ pub async fn start(
     let (tx, rx) = tokio::sync::oneshot::channel();
     let own = own.clone();
     let task = tokio::spawn(async move {
-        run(s, &own, move |p| {
+        serve(s, &own, move |p| {
             let _ = tx.send(p.to_path_buf());
         })
         .await
+        .map(drop)
     });
     let sock = rx.await.expect("托管口绑好了");
     (sock, task)
