@@ -29,6 +29,9 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
         "powershell-policy-set",
         crate::assets::aliases::POLICY_SET_CAP,
     ),
+    // 开计划页那两问：起 pb 的总期限，发起方放手了 pb 跟着收（超时照读不成那一路写进回包 / 那一句）。
+    ("plan-list", crate::faces::plan_face::PLAN_READ_CAP),
+    ("plan-read", crate::faces::plan_face::PLAN_READ_CAP),
 ];
 
 /// 发起方期限 − 余量，从此刻起换成截止时刻（没带 ⇒ `None`；不够余量 ⇒ 此刻就到）。

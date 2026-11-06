@@ -51,6 +51,42 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
     }
 }
 
+/// ★ `plan-read` 照盯盘那一路给：已在盯、追上了这期间的动静 ⇒ 本子里那一份，不起 pb；没在盯 ⇒ 起 pb；
+/// 计划审面送退回那一下要此刻的接手（现读）⇒ 一定起 pb。三种都经同一个函数。
+#[test]
+fn a_read_takes_the_watched_copy_unless_asked_to_read_now() {
+    use crate::plan::dump::Ran;
+    use crate::plan::fixture::{dump, who};
+    let tz = crate::common::time::Tz::default();
+    let b = book::Book::default();
+    let runs = std::cell::Cell::new(0);
+    let read = |dir: &Path| -> Result<wire::PlanRead, Said> {
+        runs.set(runs.get() + 1);
+        let doc = dump(&dir.to_string_lossy());
+        let raw = serde_json::to_vec(&doc).unwrap();
+        b.ingest(Ran::Dump { doc, raw }, dir, &who, 1)
+            .map(|d| annotated(d, &tz))
+            .map_err(miss)
+    };
+    let ws = Path::new("/w");
+    let watched = |_: &Path| true;
+    let unwatched = |_: &Path| false;
+    // 没读过、没在盯 ⇒ 起 pb。
+    read_in(&b, ws, Fresh::Kept, &unwatched, &read, &tz).unwrap();
+    assert_eq!(runs.get(), 1);
+    // 盯着、追上了 ⇒ 本子里那一份。
+    let kept = read_in(&b, ws, Fresh::Kept, &watched, &read, &tz).unwrap();
+    assert_eq!(runs.get(), 1, "已在盯又没动静：不该再起 pb");
+    assert_eq!(kept.workspace, "/w");
+    assert!(kept.read_at_text.is_some(), "本子那一份也照常标时刻的字");
+    // 没在盯 ⇒ 起 pb。
+    read_in(&b, ws, Fresh::Kept, &unwatched, &read, &tz).unwrap();
+    assert_eq!(runs.get(), 2);
+    // 现读 ⇒ 盯着也起 pb。
+    read_in(&b, ws, Fresh::Now, &watched, &read, &tz).unwrap();
+    assert_eq!(runs.get(), 3, "送退回要此刻的接手：一定现读");
+}
+
 /// 交出去的那一份：随数据变的那几句后端照文案表写好（`said`），两端不再拼。
 mod said {
     use super::*;

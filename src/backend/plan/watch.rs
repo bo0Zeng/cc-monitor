@@ -7,8 +7,9 @@
 //! 那一片 pb 回 `error` ⇒ 本子给上一次好的、摘要多半不变 ⇒ 不推。
 
 use copy_core::discard::{Discard, Why};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 /// 同时盯着的工作区上限（一个工作区一棵小目录树；再多说明认错了目录）。
 pub(crate) const MAX_WATCHED: usize = 32;
@@ -25,10 +26,11 @@ pub type Reread = Arc<dyn Fn(&Path) -> Option<(Seen, Spots)> + Send + Sync>;
 /// 各片仓库里要盯的：`dirs` 是工作区根往下、到每份声明过的文件所在目录一路上的每一层（都只盯直接子项）；
 /// `hits` 是那几份文件本身。算数的事件：落在 `hits` 上（删了 · 清空 · 写了）或落在 `dirs` 上（一层整个挪走 / 删掉）。
 /// 不整棵盯仓库：编译产物 · 依赖目录天天大批地动，又不在对账里，盯了只会白白重读、白占内核的监听名额。
+/// 两样都是有序集合：一个仓库常声明几千份文件（cc-monitor 五千多处），每条事件、每份声明都要判一次在不在。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spots {
-    pub(crate) dirs: Vec<PathBuf>,
-    pub(crate) hits: Vec<PathBuf>,
+    pub(crate) dirs: BTreeSet<PathBuf>,
+    pub(crate) hits: BTreeSet<PathBuf>,
 }
 
 /// 从一份成品算出 [`Spots`]：每片的仓库照 [`super::owners::repo_dir`]（与文件窗口反查同一处），每格的文件声明相对它。
@@ -51,27 +53,23 @@ pub fn spots(doc: &cmd_wire::plan::PlanRead) -> Spots {
                     continue;
                 }
                 let file = repo.join(p);
-                if !out.hits.contains(&file) {
-                    out.hits.push(file.clone());
-                }
                 if let Some(parent) = file.parent() {
                     want.push(parent.to_path_buf());
                 }
+                out.hits.insert(file);
             }
         }
-        // 每一处往上补到工作区根（不含根：根本层另外盯着）。
+        // 每一处往上补到工作区根（不含根：根本层另外盯着）。某一层已在 ⇒ 它往上的也都在（补它那一趟补过了），不再往上走。
         for w in want {
             let mut at = Some(w.as_path());
             while let Some(d) = at.filter(|d| *d != root && d.starts_with(&root)) {
-                if !out.dirs.iter().any(|x| x == d) {
-                    out.dirs.push(d.to_path_buf());
+                if !out.dirs.insert(d.to_path_buf()) {
+                    break;
                 }
                 at = d.parent();
             }
         }
     }
-    out.dirs.sort();
-    out.hits.sort();
     out
 }
 
@@ -88,14 +86,90 @@ pub fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
 /// 一份活着的监听，重读那条线程换名单时要拿到它（线程里只握弱引用：外面一丢，监听连线程一起走）。
 pub(crate) type Held = Arc<Mutex<Option<crate::platform::watch_file::Watching>>>;
 
-/// 盯着的那几个：工作区 ⇒ 它的监听器（活着就一直盯）。
-static HELD: Mutex<Vec<(PathBuf, Held)>> = Mutex::new(Vec::new());
+/// 盯盘那一路追到哪了：过了过滤的动静听到几条 · 重读追上了几条。两数相等 ⇒ 本子里那一份就是此刻的样子
+/// （`plan-read` 照它给，不再起 pb）。重读那条线程没了（重读时崩了）⇒ `gone`，之后一律当没在盯。
+#[derive(Debug, Default)]
+pub(crate) struct Calm {
+    at: Mutex<CalmAt>,
+    moved: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct CalmAt {
+    heard: u64,
+    caught: u64,
+    gone: bool,
+}
+
+impl Calm {
+    fn at(&self) -> std::sync::MutexGuard<'_, CalmAt> {
+        self.at.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 过滤认了一条（在发给重读线程之前记）。
+    fn heard(&self) {
+        self.at().heard += 1;
+    }
+
+    /// 重读开始那一刻听到了几条（这一趟重读完就追上它们）。
+    fn upto(&self) -> u64 {
+        self.at().heard
+    }
+
+    /// 这一趟重读完了（`gone` ＝ 是崩着出来的，重读线程跟着没了）。
+    fn caught(&self, upto: u64, gone: bool) {
+        let mut g = self.at();
+        g.caught = g.caught.max(upto);
+        g.gone |= gone;
+        drop(g);
+        self.moved.notify_all();
+    }
+
+    /// 等到此刻之前听到的都重读完；回追上了没有（重读线程没了 ⇒ `false`）。不另设期限：每趟重读起的 pb 自带期限
+    /// （`PB_DEADLINE_SECS`），等的至多是正在跑的那一趟 ＋ 紧跟着的一趟。
+    fn wait(&self) -> bool {
+        let g = self.at();
+        let want = g.heard;
+        let g = self
+            .moved
+            .wait_while(g, |s| !s.gone && s.caught < want)
+            .unwrap_or_else(|e| e.into_inner());
+        !g.gone
+    }
+}
+
+/// 一趟重读的收尾：正常回来或崩着出来都记「追上了」（崩着 ⇒ `gone`），等着的那几位不会一直挂着。
+struct Catching<'a> {
+    calm: &'a Calm,
+    upto: u64,
+}
+
+impl Drop for Catching<'_> {
+    fn drop(&mut self) {
+        self.calm.caught(self.upto, std::thread::panicking());
+    }
+}
+
+/// 盯着的那几个：工作区 ⇒ 它的监听器（活着就一直盯）· 追到哪了。
+static HELD: Mutex<Vec<(PathBuf, Held, Arc<Calm>)>> = Mutex::new(Vec::new());
+
+fn held() -> std::sync::MutexGuard<'static, Vec<(PathBuf, Held, Arc<Calm>)>> {
+    HELD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 这个工作区盯盘那一路追上了此刻没有：没在盯 ⇒ `false`（当场回）；在盯 ⇒ 等到此刻之前的动静都重读完，回 `true`
+/// （本子里那一份就是此刻的）；重读线程没了 ⇒ `false`。帧面照它定 `plan-read` 给本子里那一份还是起 pb 现读。
+pub fn settled(ws: &Path) -> bool {
+    let calm = held()
+        .iter()
+        .find(|(p, ..)| p == ws)
+        .map(|(.., c)| Arc::clone(c));
+    calm.is_some_and(|c| c.wait())
+}
 
 /// 这个事件要不要重读：计划仓里的任何东西（连工作区配置）· 各仓库里声明过的文件与通往它们的目录（[`Spots`]）。
 pub(crate) fn concerns(ws: &Path, spots: &Spots, p: &Path) -> bool {
-    p.starts_with(ws.join(PLAN_DIR))
-        || spots.hits.iter().any(|h| h == p)
-        || spots.dirs.iter().any(|d| d == p)
+    p.starts_with(ws.join(PLAN_DIR)) || spots.hits.contains(p) || spots.dirs.contains(p)
 }
 
 /// 此刻真要挂的那几层：工作区根本层 ＋ 计划仓整棵 ＋ [`Spots::dirs`] 里在的那几层（还没有的等它出现：上一层看得见它被建出来）。
@@ -115,10 +189,15 @@ fn dirs_of(ws: &Path, spots: &Spots) -> Vec<crate::platform::watch_file::Dir> {
     dirs
 }
 
-/// 开始盯一个工作区（已在盯 ⇒ 什么都不做；满了 ⇒ 只出声）。`last` 是此刻的样子（之后变了才推）。
-pub fn arm(ws: &Path, spots: Spots, last: Option<Seen>, reread: Reread) {
-    let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
-    if g.iter().any(|(p, _)| p == ws) {
+/// 开始盯一个工作区（已在盯 ⇒ 什么都不做；满了 ⇒ 只出声）。`init` 算此刻的名单与样子（之后变了才推）：
+/// 已在盯就不算（几千份声明算一次名单不白花），算的时候不握着名单锁。
+pub fn arm(ws: &Path, init: impl FnOnce() -> (Spots, Option<Seen>), reread: Reread) {
+    if held().iter().any(|(p, ..)| p == ws) {
+        return;
+    }
+    let (spots, last) = init();
+    let mut g = held();
+    if g.iter().any(|(p, ..)| p == ws) {
         return;
     }
     if g.len() >= MAX_WATCHED {
@@ -129,7 +208,7 @@ pub fn arm(ws: &Path, spots: Spots, last: Option<Seen>, reread: Reread) {
         return;
     }
     match watch(ws, spots, last, reread) {
-        Ok(w) => g.push((ws.to_path_buf(), w)),
+        Ok((w, calm)) => g.push((ws.to_path_buf(), w, calm)),
         Err(e) => tracing::warn!(
             "[plan] 盯不上 {}：{e}（计划变了要重开计划页才看得见）",
             ws.display()
@@ -138,15 +217,17 @@ pub fn arm(ws: &Path, spots: Spots, last: Option<Seen>, reread: Reread) {
 }
 
 /// 挂监听（[`dirs_of`]，经 [`crate::platform::watch_file`]）、起那条重读线程。每次重读完照新的成品换名单
-/// （`pb repo` 搬了家 · 新声明了文件 ⇒ 盯的跟着换）。返回的那一份活着就一直盯。
+/// （`pb repo` 搬了家 · 新声明了文件 ⇒ 盯的跟着换）。返回的那一份活着就一直盯；另回它追到哪了（[`Calm`]）。
 pub(crate) fn watch(
     ws: &Path,
     spots: Spots,
     last: Option<Seen>,
     reread: Reread,
-) -> Result<Held, String> {
+) -> Result<(Held, Arc<Calm>), String> {
     let held: Held = Arc::new(Mutex::new(None));
     let slot = Arc::downgrade(&held);
+    let calm = Arc::new(Calm::default());
+    let (heard, catching) = (Arc::clone(&calm), Arc::clone(&calm));
     let dirs = dirs_of(ws, &spots);
     let now_spots = Arc::new(Mutex::new(spots));
     let filter_spots = Arc::clone(&now_spots);
@@ -157,10 +238,18 @@ pub(crate) fn watch(
         &dirs,
         move |p| {
             let sp = filter_spots.lock().unwrap_or_else(|e| e.into_inner());
-            concerns(&root, &sp, p)
+            let hit = concerns(&root, &sp, p);
+            if hit {
+                heard.heard();
+            }
+            hit
         },
         "plan-watch",
         move |_| {
+            let _done = Catching {
+                calm: &catching,
+                upto: catching.upto(),
+            };
             let Some((now, sp)) = reread(&target) else {
                 return;
             };
@@ -187,7 +276,7 @@ pub(crate) fn watch(
         },
     )?;
     *held.lock().unwrap_or_else(|e| e.into_inner()) = Some(w);
-    Ok(held)
+    Ok((held, calm))
 }
 
 #[cfg(test)]

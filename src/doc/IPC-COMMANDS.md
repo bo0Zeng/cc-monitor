@@ -16448,7 +16448,7 @@ partial: boolean, };
 
 这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-list`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 20 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --plan-list`
 
 入参 `PlanListReq` · 回包 `PlanList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -16519,7 +16519,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, };
 
 一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 20 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --plan-read`
 
 入参 `PlanReadReq` · 回包 `PlanRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 

@@ -5,6 +5,9 @@
 //! - `plan-list {dirs?, fresh?}`：这台的工作区与片。目录 ＝ 此刻活着的会话的工作目录 ∪ `dirs`；每个目录让 pb 自己往上找工作区
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
+//!   已在盯、盯盘那一路追上了这期间的动静 ⇒ 给它读好的那一份，不起 pb；有动静 ⇒ 等那一趟重读完再给；没在盯 ⇒ 起 pb（[`Fresh`]）。
+//!
+//! `plan-list` · `plan-read` 装总期限 [`PLAN_READ_CAP`]（期限表 `caps.rs`）：起的 pb 各等 20 秒与发起方剩下的里小的那个。
 //! - `plan-cell-view {workspace, slice, id}`：一个节点的 agent 视角（点到才起 `pb dump --node`）。
 //! - `plan-command {workspace, cmd: continue|pause|adopt|render|repo, slice?, path?, domain?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；
 //!   `adopt` 接过 `slice` 那个仓库；`repo` 在 `workspace` 那个目录登记 `path` 那一片（新计划框的［新建］·［切到这一片］）。
@@ -23,6 +26,11 @@ use cmd_wire::plan as wire;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+/// `plan-list` · `plan-read` 整条命令的总期限上限：与起一次 pb 的期限（[`crate::plan::PB_DEADLINE_SECS`]）同长，
+/// 发起方带了更短的 ⇒ 按它（客户端放弃了，后端不再空跑 pb）。
+pub const PLAN_READ_CAP: crate::platform::child::Deadline =
+    crate::platform::child::Deadline::secs(crate::plan::PB_DEADLINE_SECS);
 
 fn bad(what: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
@@ -162,9 +170,57 @@ fn arm(entry: &Path, ws: &Path) {
         review.annotate(&mut v);
         Some((seen_of(&v), watch::spots(&v)))
     });
-    let now = book::book().last(&ws.to_string_lossy()).map(marked);
-    let spots = now.as_ref().map(watch::spots).unwrap_or_default();
-    watch::arm(ws, spots, now.as_ref().map(seen_of), reread);
+    let init = || {
+        let now = book::book().last(&ws.to_string_lossy()).map(marked);
+        let spots = now.as_ref().map(watch::spots).unwrap_or_default();
+        (spots, now.as_ref().map(seen_of))
+    };
+    watch::arm(ws, init, reread);
+}
+
+/// 读一个工作区要多新：盯盘那一路给的就行 · 一定起 pb 现读。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fresh {
+    /// 已在盯、追上了这期间的动静（[`watch::settled`]）⇒ 本子里盯盘那一路读好的那一份；没在盯 ⇒ 起 pb。`plan-read` 走它。
+    Kept,
+    /// 一定起 pb（计划审面送退回之前要此刻的接手与状态）。
+    Now,
+}
+
+/// [`read_ws`] 的本体：本子 · 工作区根 · 要多新 · 盯盘那一路追上了没有 · 起 pb 读一次（读成了已标好）。
+fn read_in(
+    b: &book::Book,
+    ws: &Path,
+    how: Fresh,
+    settled: &dyn Fn(&Path) -> bool,
+    read: &dyn Fn(&Path) -> Result<wire::PlanRead, Said>,
+    tz: &crate::common::time::Tz,
+) -> Result<wire::PlanRead, Said> {
+    let kept = (how == Fresh::Kept && settled(ws))
+        .then(|| b.last(&ws.to_string_lossy()))
+        .flatten();
+    match kept {
+        Some(doc) => Ok(annotated(doc, tz)),
+        None => read(ws),
+    }
+}
+
+/// 读一个工作区并标好（认可 · 时刻的字 · 每块的接手会话在哪几组）：`plan-read`（[`Fresh::Kept`]）与
+/// 计划审面送退回 · 问图（[`read_fresh`]，[`Fresh::Now`]）同这一处。
+pub(crate) fn read_ws(
+    ws: &str,
+    tz: &crate::common::time::Tz,
+    how: Fresh,
+) -> Result<wire::PlanRead, Said> {
+    let read = |dir: &Path| {
+        let entry = entry()?;
+        read_dir(&entry, dir)
+            .map(|d| annotated(d, tz))
+            .map_err(miss)
+    };
+    let mut doc = read_in(book::book(), Path::new(ws), how, &watch::settled, &read, tz)?;
+    crate::plan::groups::annotate(&mut doc, &crate::plan::groups::here_ties);
+    Ok(doc)
 }
 
 /// 一份标过的成品此刻的样子（`changed {plan}` 比的那两样）。
@@ -174,12 +230,7 @@ pub(crate) fn seen_of(v: &wire::PlanRead) -> watch::Seen {
 
 /// 现读一个工作区（起 pb）并标好（认可 · 时刻的字 · 每块的接手会话在哪几组）；计划审面送退回之前用它拿此刻的接手与状态。
 pub(crate) fn read_fresh(ws: &str, tz: &crate::common::time::Tz) -> Result<wire::PlanRead, Said> {
-    let entry = entry()?;
-    let mut doc = read_dir(&entry, Path::new(ws))
-        .map(|d| annotated(d, tz))
-        .map_err(miss)?;
-    crate::plan::groups::annotate(&mut doc, &crate::plan::groups::here_ties);
-    Ok(doc)
+    read_ws(ws, tz, Fresh::Now)
 }
 
 fn miss(m: book::Miss) -> Said {
@@ -556,7 +607,7 @@ impl Handle for PlanListCmd {
     }
 }
 
-/// `plan-read`：一个工作区的成品（起 pb ⇒ 阻塞档）。
+/// `plan-read`：一个工作区的成品（可能起 pb、可能等盯盘那一趟重读 ⇒ 阻塞档）。
 pub struct PlanReadCmd;
 
 impl Command for PlanReadCmd {
@@ -569,7 +620,8 @@ impl Command for PlanReadCmd {
 impl Handle for PlanReadCmd {
     type Needs = typed::needs::Nothing;
     async fn run(req: PlanReadReq, cx: Cx<Self::Needs>) -> Result<wire::PlanRead, PlanPbErr> {
-        read_fresh(&req.workspace, &cx.tz).map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
+        read_ws(&req.workspace, &cx.tz, Fresh::Kept)
+            .map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
     }
 }
 
