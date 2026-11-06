@@ -444,17 +444,11 @@ fn an_agent_program_is_found_on_the_session_shell_path_not_the_backend_one() {
         .expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来");
     assert_eq!(l.program, claude.clone().into_os_string());
     assert!(l.lead.is_empty());
-    assert_eq!(
-        l.path.as_deref(),
-        Some(session),
-        "子进程该拿起会话那个 shell 的 PATH"
-    );
-    // 问不出那一份 ⇒ 照本进程的找；本进程的 PATH 上有就起它、PATH 不另给。
+    // 问不出那一份 ⇒ 照本进程的找；本进程的 PATH 上有就起它。
     let own_has = "/u/.local/bin:/usr/bin";
     let l = super::agent_launch_in("claude", None, Some(own_has), false, &is_file)
         .expect("问不出起会话那个 shell 的 PATH ⇒ 照本进程的");
     assert_eq!(l.program, claude.into_os_string());
-    assert_eq!(l.path, None);
     // 查了没有 ⇒ 说的是查过哪一份、几个目录，不是「未装」。
     let not_installed = copy_core::copy_text("reason.spawn.notInstalled", &[]);
     let why = super::agent_launch_in("claude", Some(own), Some(session), false, &is_file)

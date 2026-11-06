@@ -193,13 +193,12 @@ pub fn find_session_command(
     SessionCommand::Absent
 }
 
-/// 起一个 agent 程序（`ccm` 最后那一跳 · 登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）
-/// ＋ 它是哪一种装法。
+/// 起一个 agent 程序（`ccm` 最后那一跳 · 登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 它是哪一种装法。
+/// 子进程拿哪份 `PATH` 不在这里：归起进程的唯一出口 [`crate::platform::child::Child`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentLaunch {
     pub program: std::ffi::OsString,
     pub lead: Vec<std::ffi::OsString>,
-    pub path: Option<String>,
     pub by: StartBy,
 }
 
@@ -252,7 +251,6 @@ pub fn agent_launch_in(
         return Ok(AgentLaunch {
             program: prog.into(),
             lead: Vec::new(),
-            path: session.map(str::to_string),
             by: StartBy::Itself,
         });
     }
@@ -260,12 +258,7 @@ pub fn agent_launch_in(
     match find_session_command(prog, path, windows, is_file) {
         SessionCommand::Found {
             program, lead, by, ..
-        } => Ok(AgentLaunch {
-            program,
-            lead,
-            path: session.map(str::to_string),
-            by,
-        }),
+        } => Ok(AgentLaunch { program, lead, by }),
         SessionCommand::Absent => {
             let dirs = path.map_or(0, |p| path_dirs(p).len()).to_string();
             Err(match session {

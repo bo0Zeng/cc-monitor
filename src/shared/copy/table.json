@@ -11847,6 +11847,12 @@
       "zh": "无可执行的启动器",
       "args": []
     },
+    "beCcm.plan.launcherAbsent": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "启动器 {prog} 未找到 · {why}",
+      "args": ["prog", "why"]
+    },
     "beCcm.execDirect.noCwd": {
       "kind": "error",
       "role": "命令行",
@@ -12090,13 +12096,6 @@
       "role": "命令行",
       "zh": "ccm: 托管终端 {name} 启动失败 · {why}",
       "args": ["name", "why"],
-      "limited": ["ccm"]
-    },
-    "beCcm.execute.hostNotUp": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "ccm: 托管终端 {name} 启动超时 · {secs} 秒（托管口未绑定 · 名字被占）",
-      "args": ["name", "secs"],
       "limited": ["ccm"]
     },
     "beCcm.execute.bareReaped": {
@@ -12438,6 +12437,24 @@
       "role": "报错",
       "zh": "{program} 结果未知",
       "args": ["program"]
+    },
+    "beChild.started.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "就绪前已退出 · 码 {exit}",
+      "args": ["exit"]
+    },
+    "beChild.started.killed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "就绪前被信号终止",
+      "args": []
+    },
+    "beChild.started.stuck": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{dur} 内未就绪 · 进程仍在",
+      "args": ["dur"]
     },
     "beSshAgent.connect.unsupported": {
       "kind": "error",

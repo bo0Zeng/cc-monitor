@@ -678,7 +678,10 @@ impl Started {
             Started::Stuck { said, .. } => (
                 copy_text(
                     "beChild.started.stuck",
-                    &[("secs", &within.shown_secs().to_string())],
+                    &[(
+                        "dur",
+                        &copy_core::format_duration(within.shown_secs().saturating_mul(1000)),
+                    )],
                 ),
                 said,
             ),

@@ -225,6 +225,11 @@ enum Trigger {
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
+        "tests/backend/platform/child_tests.rs",
+        "default_path_helper_inner",
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "child::tests::default_path_helper_inner" },
+    ),
+    (
         "tests/backend/control/tmux_hook_tests.rs",
         "hx2_real_tmux_reading_on_a_private_socket",
         Trigger::Manual("读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
