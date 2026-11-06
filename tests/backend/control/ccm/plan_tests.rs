@@ -10,6 +10,7 @@ use crate::ccm_line::argv::{flag, Die, Parsed};
 use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
 use crate::common::session_snapshot::TakenNames;
 use crate::control::ccm::plan::test_support::no_library;
+use crate::control::ccm::plan::SELF_CHECK_IN_PANE;
 use crate::control::ccm::plan::*;
 use crate::observe::accounts_query::AccountRow;
 use crate::wire::TerminalHost;
