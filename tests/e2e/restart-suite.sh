@@ -39,8 +39,14 @@ printf '{"version":1,"accounts":[{"name":"bold","configDir":"%s","isDefault":fal
 # 中转：一个在听的回环口 ＋ 一把假钥匙（ccm 在最终那一跳判注入）。
 mkdir -p "$HOME/.cc-monitor"
 python3 -c 'import secrets;print(secrets.token_hex(32))' >"$HOME/.cc-monitor/relay-key"
-# 启动命令住这台的偏好（`prefs.json`，那台起会话时现读），不随请求交。
-printf '{"version":1,"launchers":{"claude":"%s"}}\n' "$FAKE" >"$HOME/.cc-monitor/prefs.json"
+# 启动命令住这台的偏好（`prefs.json`，那台起会话时现读），不随请求交。版本照后端今天读的那一版（`relay_route_core::PREFS_FILE`）：
+#   旧版本被当成没设过 ⇒ 启动命令退回那一家的默认词 `claude`、照 PATH 找到的就是这台装着的真 claude（5.1.1 删了第 1 版的迁移之后现过）。
+printf '{"version":2,"launchers":{"claude":"%s"}}\n' "$FAKE" >"$HOME/.cc-monitor/prefs.json"
+# 绊线：默认词 `claude` 在 PATH 上（登录 shell 那一份也是：它保留继承来的前缀）最先找到的是这一份 —— 只记一笔、当场退出，
+#   真 claude 一个都起不来；偏好又没被读到时下面那条「没碰绊线」照实红。
+mkdir -p "$WORK/trip"
+printf '#!/bin/sh\necho "$*" >>"%s/trip.log"\nexit 97\n' "$WORK" >"$WORK/trip/claude" && chmod +x "$WORK/trip/claude"
+export PATH="$WORK/trip:$PATH"
 python3 -c '
 import socket,sys
 s=socket.socket();s.bind(("127.0.0.1",0));s.listen(64)
@@ -122,7 +128,8 @@ live_pids() {
   done
   echo "$n"
 }
-resumed_in() { grep -cE "sid=$2 .*argv=--resume $2" "$1/argv.log" 2>/dev/null || true; }
+# 那个号目录里一次都没起过 ⇒ 没有 argv.log ⇒ 0（不是空串：空串让「没起新的」那几条判成「起了」）。
+resumed_in() { local n; n="$(grep -cE "sid=$2 .*argv=--resume $2" "$1/argv.log" 2>/dev/null)" || true; echo "${n:-0}"; }
 restart_req() {  # <id> <sid> <account> <compact_first> <compact_ms> <local>
   printf '{"id":"%s","cmd":"session-restart","args":{"sid":"%s","cwd":"%s","account":"%s","compact_first":%s,"compact_within_ms":%s,"arrive_within_ms":20000,"local":%s,"agent":"claude"}}' \
     "$1" "$2" "$CWD_DIR" "$3" "$4" "$5" "$6"
@@ -147,7 +154,7 @@ grep -E "sid=$SID1 .*argv=--resume" "$NEW/argv.log" 2>/dev/null | grep -q ' rela
 [ "$(live_pids "$SID1")" = 1 ] && ok "R1 这条会话恰好一个进程在跑" || bad "R1 在跑的进程数=$(live_pids "$SID1")"
 tagged=""
 wall_until 'tagged="$(tmux list-panes -t "=$NAME1:" -F "#{@ccm_sid}" 2>/dev/null | grep -xF "$SID1" || true)"; [ -n "$tagged" ]' || true
-[ -n "$tagged" ] && ok "R1 新会话挂着这条会话的 @ccm_sid（下一次还认得出它在哪）" || { bad "R1 新会话没挂 @ccm_sid"; tmux list-panes -a -F '#{session_name} #{pane_current_command} [#{@ccm_sid}]'; tmux show-options -t "=$NAME1:" 2>&1 | head; }
+[ -n "$tagged" ] && ok "R1 新会话挂着这条会话的 @ccm_sid（下一次还认得出它在哪）" || { bad "R1 新会话没挂 @ccm_sid"; tmux list-panes -a -F '#{session_name} #{pane_current_command} [#{@ccm_sid}]'; tmux show-options -t "=$NAME1:" 2>&1 | head; echo "   窗格里那一屏："; tmux capture-pane -p -J -t "=$NAME1:" 2>&1 | grep -v '^$' | tail -20; }
 
 # ── R2 压缩超时（本机那一形）：到点照常重启 ─────────────────────────────────────────────
 read -r SID2 _NAME2 < <(make_live "CCM_FAKE_COMPACT=ignore")
@@ -189,5 +196,9 @@ else bad "R5 上限内没等到撤单那一帧"; fi
 # 撤单那一帧是终局：发出来时它已经不停、不起了。
 [ "$(live_pids "$SID5")" = 1 ] && ok "R5 旧进程还活着（没停）" || bad "R5 旧进程数=$(live_pids "$SID5")"
 [ "$(resumed_in "$NEW" "$SID5")" = 0 ] && ok "R5 没起新的" || bad "R5 撤单之后还起了新的"
+
+# ── 起的一律是偏好里那条启动命令（假 claude），默认词一次都没落到 PATH 上 ─────────────────────
+[ ! -e "$WORK/trip.log" ] && ok "启动命令照偏好（PATH 上的默认词 claude 一次都没被起）" \
+  || bad "起会话落到了 PATH 上的默认词 claude（偏好没读到）：$(head -3 "$WORK/trip.log")"
 
 finish

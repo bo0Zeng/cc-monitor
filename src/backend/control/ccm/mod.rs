@@ -411,11 +411,11 @@ fn plan_of(
     // ⚠ 探测点仍然只有一个（快照那处），这里不多起进程。
     // 并上这台活着的托管终端（[`taken_here`]，起会话铸名同一份）：托管名与 tmux 名同一份避让，resume 也认托管那几行。
     // tmux 那一份列不成 ⇒ 只照托管那几个名字避让（tmux 那一臂照旧诚实降级）。
-    let hosted = hosted_here();
-    let taken = Some(
+    let taken = taken_for(&env, || {
+        let hosted = hosted_here();
         taken_here(crate::host::snapshot().taken_names(), hosted.clone())
-            .unwrap_or_else(|_| crate::common::session_snapshot::TakenNames::hosted_only(hosted)),
-    );
+            .unwrap_or_else(|_| crate::common::session_snapshot::TakenNames::hosted_only(hosted))
+    });
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
     let mut plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
     // 接管 agent 原本的出网设置（免代理表加中转口）：继承那一格同账号目录，别名预览不继承。
@@ -669,6 +669,15 @@ pub fn terminal_name_mint_among(
     };
     let taken = taken_here(snap.taken_names(), hosted)?;
     Ok(plan::mint_tmux_name(&base, &taken))
+}
+
+/// 算计划用的那份「已占用」：tmux 那一形的自检（[`plan::Env::self_check`]）不问（`None` ＝ 问不到 ⇒ 不避让）——
+/// 它算的是窗格里那一跳的直路那一份，用不着名单，也不为它去问 tmux server；别的照 `ask` 问一次。
+fn taken_for(
+    env: &Env,
+    ask: impl FnOnce() -> crate::common::session_snapshot::TakenNames,
+) -> Option<crate::common::session_snapshot::TakenNames> {
+    (!env.self_check).then(ask)
 }
 
 /// 这台活着的托管终端（名字 ＋ 挂着的 sid），凭盘现读，家由入口装好；没装 ⇒ 一个都没有。

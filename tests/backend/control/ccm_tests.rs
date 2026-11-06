@@ -727,6 +727,31 @@ fn minting_steps_aside_from_live_hosted_terminals_too() {
     );
 }
 
+/// tmux 那一形的自检算计划不问「已占用」（不为它去问 tmux server、不读托管那几行）；不是自检（在不在 tmux 里都一样）⇒ 照问一次。
+#[test]
+fn the_pane_self_check_never_asks_the_tmux_server() {
+    use crate::common::session_snapshot::TakenNames;
+    let asked = std::cell::Cell::new(0);
+    let ask = || {
+        asked.set(asked.get() + 1);
+        TakenNames::hosted_only(Vec::new())
+    };
+    let check = Env {
+        self_check: true,
+        ..Env::default()
+    };
+    assert!(taken_for(&check, ask).is_none(), "自检那一趟交了一份名单");
+    assert_eq!(asked.get(), 0, "自检那一趟去问了 tmux server");
+    for tmux in [Some("/tmp/tmux-1000/default,1,0".to_string()), None] {
+        let e = Env {
+            tmux,
+            ..Env::default()
+        };
+        assert!(taken_for(&e, ask).is_some());
+    }
+    assert_eq!(asked.get(), 2, "不是自检的那两趟各该问一次");
+}
+
 // ── 起会话只有 ccm 一处（要求：「所有的起会话都是一处ccm」）──────────────────────────────
 
 /// 一段生产代码里「直接起 agent 的命令」的痕迹（名字从注册表取，不写死）：
