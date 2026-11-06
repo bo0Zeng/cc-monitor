@@ -153,7 +153,7 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 4,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/CacheDaoTest.kt" to 5,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/HostRemovalDaoTest.kt" to 2,
-                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 26,
+                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 27,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultKeysTest.kt" to 2,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
