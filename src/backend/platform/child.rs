@@ -567,12 +567,124 @@ impl Child {
             .map_err(ChildFail::of_spawn)
     }
 
+    /// 脱离起一个**会回信**的后台进程（自成进程组 · stdin 与 stderr 空；Windows 另同 [`Child::detach`]）：它的 stdout 换成一根回信管道。
+    /// 被起的那一方起好了写一行 [`READY_LINE`]（[`say_ready`]）；起不来就把原话写进去再退出（[`say_not_up`]）。起的那一方读到哪样算哪样：
+    /// - 读到那一行 ⇒ [`Started::Ready`]，当场放手（读端关掉；之后它往 stdout 写只会写错，[`say_ready`] 那一类都不管写错）；
+    /// - 读到头（它关了回信管道 · 退了）⇒ 有界地等它的退出码 ⇒ [`Started::Exited`]，原话是它写过的全部；
+    /// - 期限内两样都没有 ⇒ 看它退没退：退了同上；没退 ⇒ [`Started::Stuck`]（照实说卡住，不杀它）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "起后台进程那一下等它回信的一次有界等待（起好就止，不是节拍）；它退了之后等退出码的一次宽限"
+    )]
+    pub fn detach_until_ready(self, within: Deadline) -> Result<Started, ChildFail> {
+        let mut cmd = self.command();
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut child = os::spawn_detached(&mut cmd).map_err(ChildFail::of_spawn)?;
+        let pid = child.id();
+        let Some(reply) = child.stdout.take() else {
+            return Ok(Started::Stuck { pid });
+        };
+        let (tx, rx) = mpsc::channel::<Reply>();
+        std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let mut r = std::io::BufReader::new(reply);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match r.read_line(&mut line) {
+                    Ok(0) | Err(_) => {
+                        tx.send(Reply::End).discard(Why::PeerGone); // 起的那一方已放手
+                        return;
+                    }
+                    Ok(_) if line.trim_end() == READY_LINE => {
+                        tx.send(Reply::Ready).discard(Why::PeerGone);
+                        return; // 读端随这条线一起关掉
+                    }
+                    Ok(_) => {
+                        if tx.send(Reply::Said(line.clone())).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        let ends = now() + within.0;
+        let mut said = String::new();
+        let ended = loop {
+            match rx.recv_timeout(ends.saturating_duration_since(now())) {
+                Ok(Reply::Ready) => return Ok(Started::Ready { pid }),
+                Ok(Reply::Said(s)) => said.push_str(&s),
+                Ok(Reply::End) | Err(RecvTimeoutError::Disconnected) => break true,
+                Err(RecvTimeoutError::Timeout) => break false,
+            }
+        };
+        if !ended {
+            return Ok(match child.try_wait() {
+                Ok(Some(st)) => Started::Exited {
+                    code: st.code(),
+                    said,
+                },
+                _ => Started::Stuck { pid },
+            });
+        }
+        // 回信管道读到头：它在退（或自己关了管道还跑着 ⇒ 宽限内等不到就算卡住）。
+        let (wtx, wrx) = mpsc::channel();
+        std::thread::spawn(move || {
+            wtx.send(child.wait().ok().map(|s| s.code()))
+                .discard(Why::PeerGone);
+        });
+        Ok(match wrx.recv_timeout(DRAIN_AFTER_KILL.0) {
+            Ok(Some(code)) => Started::Exited { code, said },
+            _ => Started::Stuck { pid },
+        })
+    }
+
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
     /// 起不来 ⇒ `Err`（调用方用自己的主语说）。stdio 照旧继承。
     /// `started(pid)`：将要跑这个程序的那个进程的 pid —— POSIX 是自己（exec 之前调），Windows 是起好的子进程（等它之前调）。
     pub fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         os::exec_replace(self.command(), started)
     }
+}
+
+/// [`Child::detach_until_ready`] 的回信管道里「起好了」那一行。
+pub const READY_LINE: &str = "ccm-host-ready";
+
+/// [`Child::detach_until_ready`] 的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Started {
+    /// 说了起好了。
+    Ready { pid: u32 },
+    /// 没说起好就退了：退出码（被信号收掉 ⇒ `None`）与它在回信管道里写过的原话。
+    Exited { code: Option<i32>, said: String },
+    /// 期限内既没说起好、也没退。
+    Stuck { pid: u32 },
+}
+
+enum Reply {
+    Ready,
+    Said(String),
+    End,
+}
+
+/// 被 [`Child::detach_until_ready`] 起的那一方：起好了，写那一行。起的那一方已经不在了 ⇒ 不管（写错不 panic）。
+pub fn say_ready() {
+    say_on_reply(&format!("{READY_LINE}\n"));
+}
+
+/// 被 [`Child::detach_until_ready`] 起的那一方：起不来，把原话写进回信管道（随后由调用方以那个码退出）。写错不管。
+pub fn say_not_up(words: &str) {
+    say_on_reply(&format!("{}\n", words.trim_end()));
+}
+
+fn say_on_reply(s: &str) {
+    use std::io::Write as _;
+    let mut out = std::io::stdout().lock();
+    out.write_all(s.as_bytes())
+        .and_then(|()| out.flush())
+        .discard(Why::Diag);
 }
 
 /// 跑着的程序文件能不能被覆盖 · 删掉：Windows 上不能（系统攥着它的映像），Unix 上能（换的是目录项，跑着的那一份照跑）。

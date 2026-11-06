@@ -1057,3 +1057,65 @@ fn busy2_after_an_unconfirmed_start_command_join_or_reap() {
         );
     }
 }
+
+/// 起托管终端：托管进程（这里是假的：`sh -c` 一句）还没起好就退了 ⇒ 起的那一方**当场**报「托管进程已退出」、码与它的原话，
+/// 不白等起好的期限、不报一句猜测。
+#[cfg(unix)]
+#[test]
+fn a_hosted_terminal_that_exits_before_it_is_up_is_reported_at_once_with_its_words() {
+    let (own, data) = crate::host::managed::run::test_support::sandbox_own("ccmdbg-exit");
+    let said = "ccm: 托管终端 ccmdbg-x 已在运行";
+    let host = [
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("printf '%s\\n' '{said}'; exit 3"),
+    ];
+    let t0 = std::time::Instant::now();
+    let got = spawn_hosted(&host, &[], "ccmdbg-x", &own);
+    let took = t0.elapsed();
+    let _ = std::fs::remove_dir_all(&data);
+    let m = match got {
+        Err(HostSpawn::Failed(m)) => m,
+        Err(HostSpawn::Refused(m)) => panic!("不该是拒：{m}"),
+        Ok(()) => panic!("托管进程退了却报起好了"),
+    };
+    assert!(
+        took < std::time::Duration::from_secs(5),
+        "等了 {took:?} 才报"
+    );
+    assert!(
+        m.contains(&copy_text(
+            "beCcm.execute.hostExited",
+            &[("name", "ccmdbg-x"), ("code", "3")]
+        )),
+        "{m}"
+    );
+    assert!(m.contains(said), "原话没带上：{m}");
+}
+
+/// 托管进程起好了说一声（回信管道里那一行）⇒ 起的那一方当场算起好，不看盘、不轮询。
+#[cfg(unix)]
+#[test]
+fn a_hosted_terminal_is_up_when_it_says_so() {
+    let (own, data) = crate::host::managed::run::test_support::sandbox_own("ccmdbg-up");
+    let host = [
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("printf '%s\\n' '{}'", crate::platform::child::READY_LINE),
+    ];
+    let t0 = std::time::Instant::now();
+    let got = spawn_hosted(&host, &[], "ccmdbg-y", &own);
+    let took = t0.elapsed();
+    let _ = std::fs::remove_dir_all(&data);
+    assert!(
+        matches!(got, Ok(())),
+        "{:?}",
+        got.err().map(|e| match e {
+            HostSpawn::Failed(m) | HostSpawn::Refused(m) => m,
+        })
+    );
+    assert!(
+        took < std::time::Duration::from_secs(5),
+        "等了 {took:?} 才算起好"
+    );
+}

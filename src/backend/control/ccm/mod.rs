@@ -891,14 +891,15 @@ fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
 }
 
 /// 起托管进程没成：[`HostSpawn::Refused`] ＝ 那一串不成形 · 找不到要跑的那一份程序（`ccm` 照 [`die`] 退 2）；
-/// [`HostSpawn::Failed`] ＝ 起不来 · 期限内没起好（退 4）。都带写好的那一句。
+/// [`HostSpawn::Failed`] ＝ 起不来 · 没起好就退了（码 ＋ 它的原话）· 期限内没起好（退 4）。都带写好的那一句。
 pub(crate) enum HostSpawn {
     Refused(String),
     Failed(String),
 }
 
-/// **起一个托管终端的唯一一处**：脱离起托管进程（`host_run` 打头是自己、后面是 `--host-run` 那一串；stdio 全空、自成一组、
-/// 不继承 `TMUX`、摘 `unset` 那几个）→ 等名叫 `name` 的那个家出现（[`hosted_up`]）。起会话（[`execute_hosted`]）与
+/// **起一个托管终端的唯一一处**：脱离起托管进程（`host_run` 打头是自己、后面是 `--host-run` 那一串；自成一组、
+/// 不继承 `TMUX`、摘 `unset` 那几个）→ 读它的回信管道等它说起好了（[`crate::platform::child::Child::detach_until_ready`]：
+/// 托管口绑好、事实写好它才说；起不来它把原话写进来再退）。起会话（[`execute_hosted`]）与
 /// 开空 shell（[`open_hosted_shell`]）都经它。托管进程与里面那一跳要一直跑着：跑着的程序文件盖不掉的平台上从按版本的副本跑
 /// （[`crate::host::managed::bin::host_program`]）。
 pub(crate) fn spawn_hosted(
@@ -907,6 +908,7 @@ pub(crate) fn spawn_hosted(
     name: &str,
     own: &crate::platform::fs::Own,
 ) -> Result<(), HostSpawn> {
+    use crate::platform::child::Started;
     let failed = |why: &str| {
         copy_text(
             "beCcm.execute.hostSpawnFailed",
@@ -928,7 +930,7 @@ pub(crate) fn spawn_hosted(
     }
     #[expect(
         clippy::disallowed_methods,
-        reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，stdio 全空、自成一组）：被起的托管终端那一形照样归本仓的守法管"
+        reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，自成一组、只留一根回信管道）：被起的托管终端那一形照样归本仓的守法管"
     )]
     let mut spawn = Child::new(&program)
         .args(&rest)
@@ -937,16 +939,28 @@ pub(crate) fn spawn_hosted(
     for k in unset {
         spawn = spawn.env_remove(k);
     }
-    let pid = spawn
-        .detach()
-        .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?;
-    if !hosted_up(own, name, pid) {
-        return Err(HostSpawn::Failed(copy_text(
+    match spawn
+        .detach_until_ready(HOST_UP_WITHIN)
+        .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?
+    {
+        Started::Ready { .. } => Ok(()),
+        // 没说起好就退了：那一句 ＋ 它自己的原话（名字被占 · 托管口绑不上 · 子进程起不来，托管进程写进回信管道的）。
+        Started::Exited { code, said } => {
+            let code = code.map_or_else(|| "—".to_string(), |c| c.to_string());
+            let head = copy_text(
+                "beCcm.execute.hostExited",
+                &[("name", name), ("code", &code)],
+            );
+            Err(HostSpawn::Failed(match said.trim() {
+                "" => head,
+                said => format!("{head}\n{said}"),
+            }))
+        }
+        Started::Stuck { .. } => Err(HostSpawn::Failed(copy_text(
             "beCcm.execute.hostNotUp",
-            &[("name", name), ("secs", &HOST_UP_SECS.to_string())],
-        )));
+            &[("name", name), ("secs", &HOST_UP_WITHIN.shown_secs().to_string())],
+        ))),
     }
-    Ok(())
 }
 
 /// 开一个空 shell 的托管终端（`session-open` 的 `shell {session}` 落在托管里那一形）：名字即句柄；已在 ⇒ 不动它（回 `false`）。
@@ -1052,27 +1066,8 @@ fn finish_container(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 
     }
 }
 
-/// 等托管进程起好的期限（秒）。
-const HOST_UP_SECS: u64 = 10;
-
-/// 刚脱离起的托管进程（`pid`）把家写好了没有：名单里那个名字的事实是它写的（托管口在写事实之前已绑好）。
-/// 脱离起的进程 stdio 全空，没有回信的管道 ⇒ 看盘，一次有界等待（起好就不等）。
-#[expect(
-    clippy::disallowed_methods,
-    reason = "起托管终端那一下等它把托管口绑好的一次有界等待：脱离起的托管进程没有给起它的一方回信的管道；起好即止，不是节拍"
-)]
-fn hosted_up(own: &crate::platform::fs::Own, name: &str, pid: u32) -> bool {
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(HOST_UP_SECS);
-    loop {
-        if crate::host::managed::home::find(own, name).is_some_and(|f| f.host_pid == pid) {
-            return true;
-        }
-        if std::time::Instant::now() >= until {
-            return false;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-}
+/// 等托管进程说起好了的期限（托管口绑好 · 事实写好之后它在回信管道里说）。
+const HOST_UP_WITHIN: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(10);
 
 /// 容器路建会话 · 送启动命令没成之后怎么办。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
