@@ -161,7 +161,7 @@ class InstrumentedTestInventoryTest {
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 5,
             )
 
-        const val PINNED_TOTAL_TESTS = 55
+        const val PINNED_TOTAL_TESTS = 56
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="
