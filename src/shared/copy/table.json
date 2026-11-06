@@ -880,12 +880,6 @@
       "zh": "「{p}」装后改过或装前已在 · 需手动确认 · 全部未删",
       "args": ["p"]
     },
-    "beSkillLedger.read.otherVersion": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 由另一版本的后端写入 · 未改动 · 此后端认格式 {mine} · 它是 {theirs}",
-      "args": ["path", "mine", "theirs"]
-    },
     "beSkillLedger.read.unknown": {
       "kind": "error",
       "role": "报错",
