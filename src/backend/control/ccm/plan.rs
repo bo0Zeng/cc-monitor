@@ -510,7 +510,7 @@ pub fn names(list: &AccountsList, manifest_path: &str) -> String {
 
 /// tmux 那一形的自检照窗格里那一跳的环境算：窗格里有 `TMUX` ⇒ 那一跳算的是直路那一份计划（启动器在计划里就解析）；
 /// 起容器的 ccm 不在 tmux 里时自检也标成在 tmux 里，算的才是同一份计划。值只当「在 tmux 里」那一格用：直路的计划不认 socket，
-/// 顺带列的那一次 tmux 会话名连不上就照不避让算，直路用不着那份名单。起容器的 ccm 已在 tmux 里 ⇒ 照它自己的。
+/// 顺带列的那一次 tmux 会话名列不出就照不避让算，直路用不着那份名单。起容器的 ccm 已在 tmux 里 ⇒ 照它自己的。
 pub const SELF_CHECK_IN_PANE: &str = "TMUX=\"${TMUX:-ccm-self-check}\" ";
 
 /// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。
