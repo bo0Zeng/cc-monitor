@@ -974,11 +974,13 @@ pub(crate) fn spawn_hosted(
         Started::Ready { .. } => Ok(()),
         // 没说起好就退了：那一句 ＋ 它自己的原话（名字被占 · 托管口绑不上 · 子进程起不来，托管进程写进回信管道的）。
         Started::Exited { code, said } => {
-            let code = code.map_or_else(|| "—".to_string(), |c| c.to_string());
-            let head = copy_text(
-                "beCcm.execute.hostExited",
-                &[("name", name), ("code", &code)],
-            );
+            let head = match code {
+                Some(c) => copy_text(
+                    "beCcm.execute.hostExited",
+                    &[("name", name), ("exit", &c.to_string())],
+                ),
+                None => copy_text("beCcm.execute.hostKilled", &[("name", name)]),
+            };
             Err(HostSpawn::Failed(match said.trim() {
                 "" => head,
                 said => format!("{head}\n{said}"),
@@ -986,7 +988,10 @@ pub(crate) fn spawn_hosted(
         }
         Started::Stuck { .. } => Err(HostSpawn::Failed(copy_text(
             "beCcm.execute.hostNotUp",
-            &[("name", name), ("secs", &HOST_UP_WITHIN.shown_secs().to_string())],
+            &[
+                ("name", name),
+                ("secs", &HOST_UP_WITHIN.shown_secs().to_string()),
+            ],
         ))),
     }
 }
@@ -1039,25 +1044,34 @@ const SELF_CHECK_WITHIN: crate::platform::child::Deadline =
 /// 托管那一形的自检：里面那一跳的同一串加 `--ccm-print`，环境同托管进程那一份（摘同几个变量），原生跑一次。
 /// 没过 ⇒ 交回它自己的原话（stderr；起不来 ⇒ 起不来的那句）。
 fn hosted_self_check(c: &plan::Container) -> Result<(), String> {
-    let Some((exe, args)) = c.self_check_argv.split_first() else {
+    let Some(check) = hosted_self_check_child(c) else {
         return Ok(());
     };
+    match check.run(SELF_CHECK_WITHIN) {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).into_owned()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// 自检那一趟要起的那个（[`hosted_self_check`]）：里面那一跳在托管终端里跑、环境里带着托管终端的标记
+/// （`run::HOST_ENV`）⇒ 它算的是直路那一份计划（启动器在计划里就解析）；自检带上同一格，算的才是同一份计划
+/// （不带就又算成「起一个托管终端」，启动器找不找得到它看不见）。没有那一串 ⇒ `None`。
+pub(crate) fn hosted_self_check_child(c: &plan::Container) -> Option<Child> {
+    let (exe, args) = c.self_check_argv.split_first()?;
     #[expect(
         clippy::disallowed_methods,
         reason = "托管那一形的自检：里面那一跳的同一串加 `--ccm-print` 原生跑一次，只算计划、不起会话"
     )]
     let mut check = Child::new(exe)
         .args(args)
+        .env(crate::host::managed::run::HOST_ENV, &c.name)
         .env_remove("TMUX")
         .env_remove("TMUX_PANE");
     for k in &c.unset {
         check = check.env_remove(k);
     }
-    match check.run(SELF_CHECK_WITHIN) {
-        Ok(out) if out.status.success() => Ok(()),
-        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).into_owned()),
-        Err(e) => Err(e.to_string()),
-    }
+    Some(check)
 }
 
 /// `--detach` 报名字那一行的前缀（[`finish_container`] 写、[`session_reported`] 读）。

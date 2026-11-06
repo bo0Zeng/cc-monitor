@@ -207,21 +207,19 @@ pub fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, Stri
         cfg!(windows),
         &|p| p.is_file(),
     )?;
+    // 找到的那个文件：`.ps1` 那一形是交给 PowerShell 的最后一个前导参数，别的就是程序本身。
+    let file = std::path::PathBuf::from(found.lead.last().unwrap_or(&found.program));
     let policy = || powershell::execution_policy(PsHost::Desktop).effective;
-    match refused_for(found.by, &policy) {
+    let as_found = SessionCommand::Found {
+        file: file.clone(),
+        program: found.program.clone(),
+        lead: found.lead.clone(),
+        by: found.by,
+    };
+    match script_refused_by_policy(&as_found, &policy) {
         Some(word) => Err(copy_core::copy_text(
             "beCcm.execDirect.scriptRefused",
-            &[
-                (
-                    "file",
-                    &found
-                        .lead
-                        .last()
-                        .unwrap_or(&found.program)
-                        .to_string_lossy(),
-                ),
-                ("policy", &word),
-            ],
+            &[("file", &file.display().to_string()), ("policy", &word)],
         )),
         None => Ok(found),
     }
@@ -276,17 +274,13 @@ pub fn script_refused_by_policy(
     found: &SessionCommand,
     policy: &dyn Fn() -> Option<String>,
 ) -> Option<String> {
-    match found {
-        SessionCommand::Found { by, .. } => refused_for(*by, policy),
-        _ => None,
-    }
-}
-
-/// [`script_refused_by_policy`] 的本体：按装法判（只有 `.ps1` 那一形才问执行策略）。
-fn refused_for(by: StartBy, policy: &dyn Fn() -> Option<String>) -> Option<String> {
-    if by != StartBy::PowerShellFile {
+    let SessionCommand::Found {
+        by: StartBy::PowerShellFile,
+        ..
+    } = found
+    else {
         return None;
-    }
+    };
     let word = policy()?;
     (powershell::policy_loads_local_script(word.trim()) == Some(false))
         .then(|| word.trim().to_string())

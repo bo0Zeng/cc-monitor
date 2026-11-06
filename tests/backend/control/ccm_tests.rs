@@ -958,12 +958,17 @@ fn the_launcher_is_resolved_in_the_plan_on_the_session_shells_path() {
     let own = "/usr/bin:/bin";
     let unix_has = has(vec![user_bin.join("claude")]);
     let resolved = |d: &mut plan::Direct, session: Option<&str>| {
-        launcher_resolved(d, &|p| agent_launch_in(p, session, Some(own), false, &unix_has))
+        launcher_resolved(d, &|p| {
+            agent_launch_in(p, session, Some(own), false, &unix_has)
+        })
     };
     let mut d = direct_of(&["--model", "m", "--", "--cwd", "/p"], None);
     assert_eq!(d.argv.first().map(String::as_str), Some("claude"), "夹具");
     resolved(&mut d, Some(session)).expect("起会话那个 shell 的 PATH 上有 ⇒ 计划算得出");
-    assert_eq!(d.argv.first().map(String::as_str), Some("/u/.local/bin/claude"));
+    assert_eq!(
+        d.argv.first().map(String::as_str),
+        Some("/u/.local/bin/claude")
+    );
     assert!(
         d.argv.windows(2).any(|w| w == ["--model", "m"]),
         "后面的词原样跟着：{:?}",
@@ -985,13 +990,18 @@ fn the_launcher_is_resolved_in_the_plan_on_the_session_shells_path() {
     let win = |files: Vec<PathBuf>| {
         let mut d = direct_of(&["--", "--cwd", "/p"], None);
         let is = has(files);
-        launcher_resolved(&mut d, &|p| agent_launch_in(p, Some("/w/npm"), None, true, &is))
-            .expect("找得到");
+        launcher_resolved(&mut d, &|p| {
+            agent_launch_in(p, Some("/w/npm"), None, true, &is)
+        })
+        .expect("找得到");
         d.argv
     };
     let cmd = npm.join("claude.cmd").display().to_string();
     let ps = npm.join("claude.ps1").display().to_string();
-    assert_eq!(win(vec![npm.join("claude.cmd"), npm.join("claude.ps1")])[0], cmd);
+    assert_eq!(
+        win(vec![npm.join("claude.cmd"), npm.join("claude.ps1")])[0],
+        cmd
+    );
     assert_eq!(
         win(vec![npm.join("claude.ps1")])[..4],
         ["powershell.exe", "-NoProfile", "-File", ps.as_str()]
@@ -999,8 +1009,10 @@ fn the_launcher_is_resolved_in_the_plan_on_the_session_shells_path() {
     // 用户给了路径 ⇒ 不替他找。
     let mut d = direct_of(&["--cwd", "/p", "--launcher", "/opt/x/claude"], None);
     assert_eq!(d.argv[0], "/opt/x/claude", "夹具：{:?}", d.argv);
-    launcher_resolved(&mut d, &|p| agent_launch_in(p, Some(session), None, false, &has(vec![])))
-        .expect("给了路径 ⇒ 照它");
+    launcher_resolved(&mut d, &|p| {
+        agent_launch_in(p, Some(session), None, false, &has(vec![]))
+    })
+    .expect("给了路径 ⇒ 照它");
     assert_eq!(d.argv[0], "/opt/x/claude");
 }
 
@@ -1054,27 +1066,71 @@ fn a_hosted_terminal_that_exits_before_it_is_up_is_reported_at_once_with_its_wor
         "-c".to_string(),
         format!("printf '%s\\n' '{said}'; exit 3"),
     ];
-    let t0 = std::time::Instant::now();
     let got = spawn_hosted(&host, &[], "ccmdbg-x", &own);
-    let took = t0.elapsed();
     let _ = std::fs::remove_dir_all(&data);
     let m = match got {
         Err(HostSpawn::Failed(m)) => m,
         Err(HostSpawn::Refused(m)) => panic!("不该是拒：{m}"),
         Ok(()) => panic!("托管进程退了却报起好了"),
     };
+    // 「当场」由结构保证（读到回信管道的头就交，没有轮询圈）；这里钉的是结局不是「等到期限」那一句。
     assert!(
-        took < std::time::Duration::from_secs(5),
-        "等了 {took:?} 才报"
+        !m.contains(&copy_text(
+            "beCcm.execute.hostNotUp",
+            &[("name", "ccmdbg-x"), ("secs", "10")]
+        )),
+        "退了却报成等到期限：{m}"
     );
     assert!(
         m.contains(&copy_text(
             "beCcm.execute.hostExited",
-            &[("name", "ccmdbg-x"), ("code", "3")]
+            &[("name", "ccmdbg-x"), ("exit", "3")]
         )),
         "{m}"
     );
     assert!(m.contains(said), "原话没带上：{m}");
+}
+
+/// 托管那一形的自检算的要是里面那一跳那一份计划：里面那一跳的环境里带着托管终端的标记（⇒ 直路，启动器在计划里解析），
+/// 自检也带上同一格 ⇒ 启动器找不到时自检当场没过，不报起好了（里面那一跳一起就退的那一种不再假成功）。
+#[test]
+fn the_hosted_self_check_plans_what_the_hop_inside_will_plan() {
+    let e = Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        account_env: "CLAUDE_CONFIG_DIR".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
+        can_host: true,
+        ..Default::default()
+    };
+    let a: Vec<String> = ["--hosted", "--cwd", "/p"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let o = match argv::test_support::parse(&argv::test_support::mixed_to_split(&a))
+        .expect("该解析得动")
+    {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    let c = match plan::build(&o, &e, &plan::test_support::no_library, None).expect("该算得出计划")
+    {
+        Plan::Container(c) if c.host == plan::TerminalHost::Managed => c,
+        other => panic!("托管测试却算出 {other:?}"),
+    };
+    let check = hosted_self_check_child(&c)
+        .expect("托管那一形有自检")
+        .built();
+    let host = check
+        .get_envs()
+        .find(|(k, _)| *k == crate::host::managed::run::HOST_ENV)
+        .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()));
+    assert_eq!(
+        host.as_deref(),
+        Some(c.name.as_str()),
+        "自检没带托管终端的标记"
+    );
 }
 
 /// 托管进程起好了说一声（回信管道里那一行）⇒ 起的那一方当场算起好，不看盘、不轮询。
@@ -1087,9 +1143,7 @@ fn a_hosted_terminal_is_up_when_it_says_so() {
         "-c".to_string(),
         format!("printf '%s\\n' '{}'", crate::platform::child::READY_LINE),
     ];
-    let t0 = std::time::Instant::now();
     let got = spawn_hosted(&host, &[], "ccmdbg-y", &own);
-    let took = t0.elapsed();
     let _ = std::fs::remove_dir_all(&data);
     assert!(
         matches!(got, Ok(())),
@@ -1097,9 +1151,5 @@ fn a_hosted_terminal_is_up_when_it_says_so() {
         got.err().map(|e| match e {
             HostSpawn::Failed(m) | HostSpawn::Refused(m) => m,
         })
-    );
-    assert!(
-        took < std::time::Duration::from_secs(5),
-        "等了 {took:?} 才算起好"
     );
 }

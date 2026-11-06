@@ -630,7 +630,7 @@ impl Child {
             });
         }
         // 回信管道读到头：它在退（或自己关了管道还跑着 ⇒ 宽限内等不到就算卡住）。
-        let (wtx, wrx) = mpsc::channel();
+        let (wtx, wrx) = mpsc::channel::<Option<Option<i32>>>();
         std::thread::spawn(move || {
             wtx.send(child.wait().ok().map(|s| s.code()))
                 .discard(Why::PeerGone);

@@ -971,7 +971,10 @@ fn a_child_finds_its_program_on_the_session_shells_path_not_the_backends() {
         std::fs::write(p, body).expect("写脚本");
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).expect("可执行");
     };
-    exe(&bin.join("ccmdbgfake-launcher"), "#!/bin/sh\necho launched\n");
+    exe(
+        &bin.join("ccmdbgfake-launcher"),
+        "#!/bin/sh\necho launched\n",
+    );
     let shell = d.join("login-shell");
     exe(
         &shell,
