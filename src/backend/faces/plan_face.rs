@@ -27,10 +27,10 @@ use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// `plan-list` · `plan-read` 整条命令的总期限上限：与起一次 pb 的期限（计划那一族的 `PB_DEADLINE_SECS`）同长，
+/// `plan-list` · `plan-read` 整条命令的总期限上限：与起一次 pb 的期限（[`crate::plan::PB_DEADLINE_SECS`]）同长，
 /// 发起方带了更短的 ⇒ 按它（客户端放弃了，后端不再空跑 pb）。
 pub const PLAN_READ_CAP: crate::platform::child::Deadline =
-    crate::platform::child::Deadline::secs(20);
+    crate::platform::child::Deadline::secs(crate::plan::PB_DEADLINE_SECS);
 
 fn bad(what: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
