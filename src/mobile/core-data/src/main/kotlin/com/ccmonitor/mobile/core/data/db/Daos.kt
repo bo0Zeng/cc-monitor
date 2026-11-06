@@ -50,18 +50,6 @@ interface KnownHostDao {
 }
 
 @Dao
-interface BookmarkDao {
-    @Query("SELECT * FROM bookmarks WHERE hostId = :hostId ORDER BY sortOrder, label")
-    fun observeForHost(hostId: String): Flow<List<Bookmark>>
-
-    @Upsert
-    suspend fun upsert(bookmark: Bookmark)
-
-    @Delete
-    suspend fun delete(bookmark: Bookmark)
-}
-
-@Dao
 interface SettingsDao {
     @Query("SELECT `value` FROM settings WHERE `key` = :key")
     fun observe(key: String): Flow<String?>

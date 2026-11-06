@@ -10,7 +10,6 @@ import com.ccmonitor.mobile.core.data.db.CacheDatabase
 import com.ccmonitor.mobile.core.data.db.allMigrations
 import com.ccmonitor.mobile.core.data.db.cacheDatabase
 import com.ccmonitor.mobile.core.data.db.seedDefaultKeys
-import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
@@ -39,7 +38,6 @@ val dataModule =
         single { get<AppDatabase>().identityDao() }
         single { get<AppDatabase>().knownHostDao() }
         single { get<AppDatabase>().keyDao() }
-        single { get<AppDatabase>().bookmarkDao() }
         single { get<AppDatabase>().settingsDao() }
         single { get<AppDatabase>().handDao() }
         single { get<AppDatabase>().hostRemovalDao() }
@@ -51,7 +49,6 @@ val dataModule =
 
         single { HostRepository(get(), get()) }
         single { IdentityRepository(get(), get()) }
-        single { BookmarkRepository(get()) }
         single { MovedLaunchRepository(get()) }
         single { SettingsRepository(get()) }
     }

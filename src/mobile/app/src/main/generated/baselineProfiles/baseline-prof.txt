@@ -19991,13 +19991,6 @@ SPLcom/ccmonitor/mobile/core/data/db/AppDatabase_Impl$$ExternalSyntheticLambda7;
 Lcom/ccmonitor/mobile/core/data/db/AppDatabase_Impl$createOpenDelegate$_openDelegate$1;
 SPLcom/ccmonitor/mobile/core/data/db/AppDatabase_Impl$createOpenDelegate$_openDelegate$1;-><init>(Lcom/ccmonitor/mobile/core/data/db/AppDatabase_Impl;)V
 SPLcom/ccmonitor/mobile/core/data/db/AppDatabase_Impl$createOpenDelegate$_openDelegate$1;->onOpen(Landroidx/sqlite/SQLiteConnection;)V
-Lcom/ccmonitor/mobile/core/data/db/BookmarkDao;
-Lcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl;
-SPLcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl;-><clinit>()V
-Lcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl$Companion;
-SPLcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl$Companion;-><init>()V
-SPLcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-SPLcom/ccmonitor/mobile/core/data/db/BookmarkDao_Impl$Companion;->getRequiredConverters()Ljava/util/List;
 Lcom/ccmonitor/mobile/core/data/db/CacheDao;
 SPLcom/ccmonitor/mobile/core/data/db/CacheDao;-><clinit>()V
 SPLcom/ccmonitor/mobile/core/data/db/CacheDao;-><init>()V
@@ -20501,7 +20494,6 @@ Lcom/ccmonitor/mobile/core/data/di/DataModuleKt$$ExternalSyntheticLambda9;
 SPLcom/ccmonitor/mobile/core/data/di/DataModuleKt$$ExternalSyntheticLambda9;-><init>()V
 Lcom/ccmonitor/mobile/core/data/di/DataModuleKt$dataModule$1$1$1;
 SPLcom/ccmonitor/mobile/core/data/di/DataModuleKt$dataModule$1$1$1;-><init>()V
-Lcom/ccmonitor/mobile/core/data/repo/BookmarkRepository;
 Lcom/ccmonitor/mobile/core/data/repo/HostRepository;
 SPLcom/ccmonitor/mobile/core/data/repo/HostRepository;-><init>(Lcom/ccmonitor/mobile/core/data/db/HostDao;Lcom/ccmonitor/mobile/core/data/crypto/CryptoBox;)V
 SPLcom/ccmonitor/mobile/core/data/repo/HostRepository;->get(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

@@ -32,7 +32,6 @@ class HostRemovalDaoTest {
         hand.promote(id, "s", PendingSend("p-$id", id, "s", "hi", null, 1, PendingOutcome.UNSURE, 1))
         hand.putDraft(Draft(id, "s", "draft", null, null, null, null, 1))
         hand.putBatch(PendingBatch(id, "t", "{}"))
-        db.bookmarkDao().upsert(Bookmark("b-$id", id, "/srv", "srv"))
     }
 
     /** 每张表里这一台几行（直接问库，不经 DAO）。 */
@@ -68,6 +67,6 @@ class HostRemovalDaoTest {
         }
 
     private companion object {
-        val TABLES = listOf("pending", "drafts", "pending_batches", "bookmarks")
+        val TABLES = listOf("pending", "drafts", "pending_batches")
     }
 }

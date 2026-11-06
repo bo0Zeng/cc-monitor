@@ -6,7 +6,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 
 /**
- * 删了一台、撤销时放得回去的那几样：机器那一行 ＋ 这一端为它留的（草稿 · 待发 · 在做的一组）＋ 旧书签表那几行（书签已归那台，旧行还等着迁）。
+ * 删了一台、撤销时放得回去的那几样：机器那一行 ＋ 这一端为它留的（草稿 · 待发 · 在做的一组）。
  * 那台的缓存（会话列表 · 记号 · 记录页 · 续点）住缓存库、不在里面：删一台时另清一次（[CacheDao.forgetHost]），撤回了，下次连上照那台重取。
  */
 data class HostRows(
@@ -14,7 +14,6 @@ data class HostRows(
     val drafts: List<Draft>,
     val pending: List<PendingSend>,
     val batches: List<PendingBatch>,
-    val bookmarks: List<Bookmark>,
 )
 
 /** 删一台只走这里：一个事务把它在状态库每张表里的行删光（[remove]），撤销照 [HostRows] 放回（[restore]）。 */
@@ -32,9 +31,6 @@ abstract class HostRemovalDao {
     @Query("SELECT * FROM pending_batches WHERE hostId = :id")
     protected abstract suspend fun batches(id: String): List<PendingBatch>
 
-    @Query("SELECT * FROM bookmarks WHERE hostId = :id")
-    protected abstract suspend fun bookmarks(id: String): List<Bookmark>
-
     @Query("DELETE FROM hosts WHERE id = :id")
     protected abstract suspend fun dropHost(id: String)
 
@@ -46,9 +42,6 @@ abstract class HostRemovalDao {
 
     @Query("DELETE FROM pending_batches WHERE hostId = :id")
     protected abstract suspend fun dropBatches(id: String)
-
-    @Query("DELETE FROM bookmarks WHERE hostId = :id")
-    protected abstract suspend fun dropBookmarks(id: String)
 
     @Upsert
     protected abstract suspend fun putHost(host: Host)
@@ -62,19 +55,15 @@ abstract class HostRemovalDao {
     @Upsert
     protected abstract suspend fun putBatches(rows: List<PendingBatch>)
 
-    @Upsert
-    protected abstract suspend fun putBookmarks(rows: List<Bookmark>)
-
     /** 删掉 [id] 那一台在这一端的每一行，回撤销要的那几样；没有这一台 ⇒ `null`，什么都不动。 */
     @Transaction
     open suspend fun remove(id: String): HostRows? {
         val host = host(id) ?: return null
-        val kept = HostRows(host, drafts(id), pending(id), batches(id), bookmarks(id))
+        val kept = HostRows(host, drafts(id), pending(id), batches(id))
         dropHost(id)
         dropPending(id)
         dropDrafts(id)
         dropBatches(id)
-        dropBookmarks(id)
         return kept
     }
 
@@ -85,6 +74,5 @@ abstract class HostRemovalDao {
         putDrafts(rows.drafts)
         putPending(rows.pending)
         putBatches(rows.batches)
-        putBookmarks(rows.bookmarks)
     }
 }

@@ -374,11 +374,6 @@ export class TabBarPrefs {
     return this.persistCollapsed();
   }
 
-  /** 迁移那一趟带来的收着的组（新 id）：记进这扇窗的看法。 */
-  collapseMigrated(gids: readonly string[]): Promise<void> {
-    return this.setCollapsed(gids, true);
-  }
-
   private persistCollapsed(): Promise<void> {
     return writeCollapsed([...this.collapsed]).catch((e: unknown) => this.failed(e));
   }

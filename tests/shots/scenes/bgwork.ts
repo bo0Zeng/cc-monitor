@@ -51,15 +51,20 @@ function bgWorld(folded: readonly string[] = []): World {
     c.say(r.bg ? "已在后台起了命令，跑完再看结果。" : "好的，先看一下现状。", 20_000);
     return session(200 + i, r.origin, r.cwd, c, { sid, ...r.over });
   });
-  const sid = (i: number): string => w.sessions[i].sid;
-  w.config = {
-    ...w.config,
-    tabCollections: [
-      { id: "g1", name: "订单" },
-      { id: "g2", name: "训练" },
-    ].map((g) => (folded.includes(g.id) ? { ...g, collapsed: true } : g)),
-    tabBar: { groupOf: { [sid(0)]: "g1", [sid(1)]: "g1", [sid(2)]: "g1", [sid(3)]: "g2", [sid(4)]: "g2" } },
-  };
+  // 组是后端的数据（`history/groups.rs`）：组那一片住有组员的那台的注解文件，组员关系记在会话所在那台的会话注解上。
+  const at = Date.parse("2026-10-08T08:00:00Z");
+  const names: Record<string, string> = { g1: "订单", g2: "训练" };
+  ["g1", "g1", "g1", "g2", "g2"].forEach((gid, i) => {
+    const s = w.sessions[i];
+    const d = w.disk[s.origin];
+    const file = ".cc-monitor/history-metadata.json";
+    const notes = (d.files[file] ? JSON.parse(d.files[file]) : { version: 1, entries: {} }) as { version: 1; entries: Record<string, unknown>; groups?: Record<string, unknown> };
+    notes.entries[s.sid] = { groups: [gid], updatedAt: at };
+    notes.groups = { ...notes.groups, [gid]: { name: names[gid], made: at, named: at } };
+    w.disk[s.origin] = { ...d, files: { ...d.files, [file]: JSON.stringify(notes) } };
+  });
+  // 收着哪几组是这扇窗的看法（本机 `config.json` 的 `tabBar.collapsed`）。
+  if (folded.length > 0) w.config = { ...w.config, tabBar: { ...(w.config.tabBar as Record<string, unknown> | undefined), collapsed: [...folded] } };
   return w;
 }
 

@@ -1448,12 +1448,6 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "快照是两件事：先问（一问，连第一页正文，`PAGE_BUDGET`）· 剩下的正文（分页，问过之后按还差的字节数给 `read_budget`）",
     ),
     (
-        "bookmarks_migration.rs",
-        "after_ready",
-        1,
-        "书签迁移（下一版删）：连上一台那一刻，旧书签文件里那台那一格有东西才问一次 `bookmarks-edit`（一问，10 秒）",
-    ),
-    (
         "machine_table.rs",
         "refresh",
         1,

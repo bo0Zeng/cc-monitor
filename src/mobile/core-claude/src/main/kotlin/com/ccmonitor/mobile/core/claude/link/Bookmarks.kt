@@ -69,8 +69,10 @@ class BookmarkShelf(
         ask(Bookmarks.EDIT, Bookmarks.edit("remove", listOf(dir), at))
     }
 
-    /** 加上这几条（在的不动）：撤销删除 · 旧书签迁过来。回 `true` ＝ 那台答了 ok（迁移照它才删旧的）。 */
-    suspend fun adopt(dirs: List<String>): Boolean = ask(Bookmarks.EDIT, Bookmarks.edit("add", dirs, at))
+    /** 加上这几条（在的不动）：撤销删除。 */
+    suspend fun adopt(dirs: List<String>) {
+        ask(Bookmarks.EDIT, Bookmarks.edit("add", dirs, at))
+    }
 
     private suspend fun ask(
         cmd: String,

@@ -2,8 +2,6 @@ package com.ccmonitor.mobile.core.data.repo
 
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.rowBinding
-import com.ccmonitor.mobile.core.data.db.Bookmark
-import com.ccmonitor.mobile.core.data.db.BookmarkDao
 import com.ccmonitor.mobile.core.data.db.HOSTS_TABLE
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
@@ -13,7 +11,6 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.db.Settings
 import com.ccmonitor.mobile.core.data.db.SettingsDao
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class HostRepository(
@@ -56,18 +53,6 @@ class HostRepository(
                 Charsets.UTF_8,
             )
         }
-}
-
-/**
- * 〔一次性迁移 · 下一版删〕Room 表里只在手机上的书签：书签归那台后端（`bookmarks-read` / `-edit`），
- * 这里只剩迁移要的两样 —— 读出一台的旧行、迁好之后删掉。Room 那张表随下一次 Room 换形删。
- */
-class BookmarkRepository(
-    private val dao: BookmarkDao,
-) {
-    suspend fun forHost(hostId: String): List<Bookmark> = dao.observeForHost(hostId).first()
-
-    suspend fun delete(bookmark: Bookmark) = dao.delete(bookmark)
 }
 
 /** 应用级设置（键值），类型化访问。 */

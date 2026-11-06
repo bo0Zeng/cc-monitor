@@ -53,8 +53,6 @@ import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { NeedsBook } from "./needs-book";
 import type { GroupBook } from "./group-book";
-import { migrateTabGroups, oldTabGroups } from "./tab-groups-migrate";
-import { loadConfig, patchConfig, removeAt } from "./config";
 import type { ManualItem } from "./login-reads";
 import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
@@ -221,13 +219,11 @@ export class TabManager {
 
   /** 拉一次这扇窗自己的看法（收着的组 · 「已隐藏」那一行）并重画（宿主启动时调一次）。 */
   loadCollections(): Promise<void> {
-    return this.prefs.loadCollections().then(() => this.settleUnarrivedOnce());
+    return this.prefs.loadCollections();
   }
-  /** 接上组的账（主窗口）：组与固定照它画、改的动作交给它；旧的分组三格等各台标签到齐迁一次。 */
+  /** 接上组的账（主窗口）：组与固定照它画、改的动作交给它。 */
   attachGroups(book: GroupBook): void {
-    this.groupBook = book;
     this.prefs.attachBook(book);
-    this.settleUnarrivedOnce();
   }
   /** 启动时把落盘的顺序拉回来。 */
   loadOrder(): Promise<void> {
@@ -1007,15 +1003,9 @@ export class TabManager {
   }
 
   /**
-   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：壳说过、且订着的每台都在自己那条流上报完了）：迁旧分组 · 交 {@link onAllListed}。
+   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：壳说过、且订着的每台都在自己那条流上报完了）：交 {@link onAllListed}。
    */
-  private readonly listed = new AllListed(() => {
-    this.settleUnarrivedOnce();
-    this.onAllListed();
-  });
-  private unarrivedSettled = false;
-  /** 组的账（主窗口接上；撕离出来的查看窗没有）。 */
-  private groupBook: GroupBook | null = null;
+  private readonly listed = new AllListed(() => this.onAllListed());
 
   /** 「各台都报完了」那一刻（只一次；主窗口挂「启动时记住的那一格」没等到就明说）。 */
   onAllListed: () => void = () => {};
@@ -1033,33 +1023,6 @@ export class TabManager {
   /** 「各台都报完了」那一刻到过没有。 */
   get allListed(): boolean {
     return this.listed.settled;
-  }
-
-  /**
-   * 各台都报完了活会话清单 ⇒ 旧的分组三格迁一次（`tab-groups-migrate.ts`：组员照此刻标签在哪台写；只做一次）。
-   * 5.1.0 带它，5.1.1 连同迁移一起删。
-   */
-  private settleUnarrivedOnce(): void {
-    if (this.unarrivedSettled || !this.listed.settled || this.groupBook === null) return;
-    this.unarrivedSettled = true;
-    void this.migrateOldGroups(this.groupBook);
-  }
-
-  private async migrateOldGroups(book: GroupBook): Promise<void> {
-    try {
-      const old = oldTabGroups(await loadConfig());
-      const here = new Map([...this.store.tabs.values()].map((t) => [t.sessionId, t.origin]));
-      const got = await migrateTabGroups(old, here, {
-        make: (name) => book.make(name),
-        join: (origin, sid, group) => book.move(origin, sid, group, null),
-        pin: (origin, sid) => book.pin(origin, sid, true),
-        dropOld: () => patchConfig([removeAt(["tabCollections"]), removeAt(["tabBar", "groupOf"]), removeAt(["tabBar", "pinned"])]),
-      });
-      if (got.collapsed.length > 0) await this.prefs.collapseMigrated(got.collapsed);
-      if (got.lost.length > 0) console.info(`[分组迁移] 认不出在哪台、没迁的 ${got.lost.length} 条：`, got.lost);
-    } catch (e) {
-      console.warn("[分组迁移] 没迁成（下次起来再迁）：", e);
-    }
   }
 
   /** 一台的状态成品来了（本机后端推的 `changed {machine}`）⇒ 栏里那条机器离线条照它画（离线 · 几条状态不明都是后端说的）。 */
