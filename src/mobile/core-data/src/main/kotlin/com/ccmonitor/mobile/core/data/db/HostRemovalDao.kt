@@ -54,6 +54,7 @@ abstract class HostRemovalDao {
 
     @Upsert
     protected abstract suspend fun putBatches(rows: List<PendingBatch>)
+
     /** 删掉 [id] 那一台在这一端的每一行，回撤销要的那几样；没有这一台 ⇒ `null`，什么都不动。 */
     @Transaction
     open suspend fun remove(id: String): HostRows? {
