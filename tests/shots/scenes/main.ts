@@ -171,15 +171,18 @@ function droppedWorld(): World {
 /** 手动建的两个 tab 集合 ＋ 一个固定的 tab。 */
 function groupedWorld(): World {
   const w = defaultWorld();
-  const sid = (i: number): string => w.sessions[i].sid;
-  w.config = {
-    ...w.config,
-    tabCollections: [
-      { id: "c1", name: "订单与控制台" },
-      { id: "c2", name: "训练" },
-    ],
-    tabBar: { pinned: [sid(0)], groupOf: { [sid(0)]: "c1", [sid(1)]: "c1", [sid(5)]: "c2" } },
-  };
+  // 组是后端的数据（`history/groups.rs`）：组那一片住有组员的那台的注解文件；组员与固定记在会话所在那台的会话注解上。
+  const at = Date.parse("2026-10-08T08:00:00Z");
+  const names: Record<string, string> = { c1: "订单与控制台", c2: "训练" };
+  for (const [i, gid, pinned] of [[0, "c1", true], [1, "c1", false], [5, "c2", false]] as const) {
+    const s = w.sessions[i];
+    const d = w.disk[s.origin];
+    const file = ".cc-monitor/history-metadata.json";
+    const notes = (d.files[file] ? JSON.parse(d.files[file]) : { version: 1, entries: {} }) as { version: 1; entries: Record<string, unknown>; groups?: Record<string, unknown> };
+    notes.entries[s.sid] = { groups: [gid], ...(pinned ? { pinned: true } : {}), updatedAt: at };
+    notes.groups = { ...notes.groups, [gid]: { name: names[gid], made: at, named: at } };
+    w.disk[s.origin] = { ...d, files: { ...d.files, [file]: JSON.stringify(notes) } };
+  }
   return w;
 }
 

@@ -86,9 +86,6 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
         r#"{"version":3,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{}}"#.to_string(),
         r#"{"version":2,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{},"more":1}"#.to_string(),
         r#"{"version":2,"launchers":{},"resumeInTmux":true,"models":{},"contextLimits":{}}"#.to_string(),
-        // 第 1 版（缺 `version` 也当 1）读不懂：不升级、不当没有、不覆盖。
-        r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{},"contextLimits":{}}"#.to_string(),
-        r#"{"launchers":{},"models":{},"contextLimits":{}}"#.to_string(),
     ] {
         std::fs::write(&path, &body).unwrap();
         let r = answer_read_in(Some(&home));
@@ -97,6 +94,42 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
         let e = set(&home, serde_json::json!({"resumeWhere": "tmux"})).unwrap_err();
         assert!(matches!(e, PrefsSetErr::Unreadable(_)), "{body} ⇒ {e:?}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "读不懂的那份被盖了");
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 盘上第 1 版（缺 `version` 也当 1）比下限老：不升级、当没有（照缺省办）；写一回 ⇒ 第 2 版，第 1 版原文照字节留成 `prefs.json.v1`。
+#[test]
+fn a_first_version_prefs_file_is_absent_and_kept_beside_on_write() {
+    let home = test_home::scratch("v1");
+    let path = path_in(&home);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    for v1 in [
+        r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{},"contextLimits":{}}"#,
+        r#"{"launchers":{"claude":"cc"},"models":{},"contextLimits":{}}"#,
+    ] {
+        let _ = std::fs::remove_file(path.with_file_name("prefs.json.v1"));
+        std::fs::write(&path, v1).unwrap();
+        let r = answer_read_in(Some(&home));
+        assert_eq!(
+            (r.state, r.prefs.clone()),
+            (FileState::Absent, Prefs::default()),
+            "{v1}"
+        );
+        set(&home, serde_json::json!({"models": {"b": "sonnet"}})).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(raw["version"], 2);
+        assert!(raw.get("resumeInTmux").is_none(), "旧键留下了：{raw}");
+        assert!(
+            raw["launchers"].get("claude").is_none(),
+            "第 1 版的格被升级读进来了：{raw}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(path.with_file_name("prefs.json.v1")).unwrap(),
+            v1,
+            "第 1 版原文没留"
+        );
     }
     let _ = std::fs::remove_dir_all(&home);
 }

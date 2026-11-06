@@ -5,10 +5,10 @@
 //! - 读：[`Doc::read`] / [`Doc::read_with`] / [`Doc::read_stream`] 交三态 —— 不在 / 读得到 / 读不出来。只读常规文件、限量读。
 //!   **状态**读不出来 ⇒ `Unreadable`（调用方不覆盖、照实说出来）；**缓存**读不出来 ⇒ 当没有（`Absent`，记一行日志）。
 //! - 版本（从表取的、格式是 JSON 的那几份；[`Doc::read`] · [`Doc::read_as`]）：顶层整数 `version`，缺了当 1。
-//!   比声明新 · 比下限老 ⇒ 读不出来（状态不覆盖、缓存当没有）；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
+//!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
 //!   流式读写的大缓存不经 `Value`：自己核顶层 `version`，值取 [`Doc::version`]。
-//! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盘上那份状态比声明新 · 比下限老 · 在却读不懂 ⇒ 拒（与读那一侧同一句；
-//!   要盖由调用方先删再写）；盖读得懂的旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
+//! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盘上那份状态比声明新 · 在却读不懂 ⇒ 拒（与读那一侧同一句；
+//!   要盖由调用方先删再写）；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
 //!   一类多份的那几样文件名另给：[`Doc::write_named`]。字节是 [`json_body`]（紧凑 JSON ＋ 收尾换行）。
 
 use crate::common::said::Said;
@@ -131,7 +131,7 @@ impl<T> Doc<T> {
         }
     }
 
-    /// 盘上那一份原文 ⇒ 这一版的原文（`version` 那一格已摘掉）：比声明新 · 比下限老 ⇒ 读不出来；中间的依次过升级步。
+    /// 盘上那一份原文 ⇒ 这一版的原文（`version` 那一格已摘掉）：比声明新 ⇒ 读不出来；比下限老 ⇒ 当没有；中间的依次过升级步。
     fn current(
         &self,
         path: &Path,
@@ -147,7 +147,11 @@ impl<T> Doc<T> {
             return Read::Unreadable(newer(path, found, version));
         }
         if found < u64::from(floor) {
-            return Read::Unreadable(older(path, found, floor, version));
+            tracing::warn!(
+                "{} is format {found}, older than this backend reads ({floor}..={version}); treated as absent",
+                path.display()
+            );
+            return Read::Absent;
         }
         let from = (found - u64::from(floor)) as usize;
         for step in &self.steps[from..] {
@@ -196,7 +200,7 @@ impl<T: serde::de::DeserializeOwned> Doc<T> {
 
 impl<T: serde::Serialize> Doc<T> {
     /// 整份写进 `dir` 底下这份（名字是落点的最后一截），`held` 是 `dir` 的锁。从表取的 JSON：顶层带 `version`；
-    /// 盘上那一份是状态且比声明新 · 比下限老 · 在却读不懂 ⇒ 拒、一个字节不动；读得懂的旧版 ⇒ 原文先照字节留成 `<名>.v<N>`（已有不动）。
+    /// 盘上那一份是状态且比声明新 · 在却读不懂 ⇒ 拒、一个字节不动；比声明老 ⇒ 原文先照字节留成 `<名>.v<N>`（已有不动）。
     pub fn write(&self, own: &Own, dir: &OwnPath, held: &OwnLock, v: &T) -> Result<(), Said> {
         self.write_named(own, dir, relay_route_core::file_name_of(self.rel), held, v)
     }
@@ -212,9 +216,9 @@ impl<T: serde::Serialize> Doc<T> {
     ) -> Result<(), Said> {
         let at = dir.join(name)?;
         let body = match self.format {
-            Format::Json { version, floor } => {
+            Format::Json { version, .. } => {
                 if self.kind == Kind::State {
-                    self.keep_older(own, dir, name, &at, held, (floor, version))?;
+                    self.keep_older(own, dir, name, &at, held, version)?;
                 }
                 versioned_body(at.as_path(), v, version)?
             }
@@ -223,8 +227,8 @@ impl<T: serde::Serialize> Doc<T> {
         own.write(&at, held, &body)
     }
 
-    /// 盖之前看一眼盘上那一份：不在 ⇒ 照写；新版 · 比下限老 · 读不懂 ⇒ 拒，与读那一侧同一句（要盖一份读不懂的 ⇒ 调用方先删再写）；
-    /// 读得懂的旧版 ⇒ 留一份 `<名>.v<N>`。
+    /// 盖之前看一眼盘上那一份：不在 ⇒ 照写；新版 · 读不懂 ⇒ 拒，与读那一侧同一句（要盖一份读不懂的 ⇒ 调用方先删再写）；
+    /// 旧版 ⇒ 留一份 `<名>.v<N>`。
     fn keep_older(
         &self,
         own: &Own,
@@ -232,7 +236,7 @@ impl<T: serde::Serialize> Doc<T> {
         name: &str,
         at: &OwnPath,
         held: &OwnLock,
-        (floor, version): (u32, u32),
+        version: u32,
     ) -> Result<(), Said> {
         let bytes = match read_bytes(at.as_path(), self.cap) {
             Read::Absent => return Ok(()),
@@ -244,9 +248,6 @@ impl<T: serde::Serialize> Doc<T> {
         let found = on_disk_version(at.as_path(), &v)?;
         if found > u64::from(version) {
             return Err(newer(at.as_path(), found, version));
-        }
-        if found < u64::from(floor) {
-            return Err(older(at.as_path(), found, floor, version));
         }
         if found < u64::from(version) {
             let keep = dir.join(&format!("{name}.v{found}"))?;
@@ -278,24 +279,6 @@ fn newer(path: &Path, found: u64, version: u32) -> Said {
         &[
             ("path", &path.display().to_string()),
             ("mine", &version.to_string()),
-            ("theirs", &found.to_string()),
-        ],
-    )
-    .into()
-}
-
-/// 比下限老的那一句（读 · 写同一句）：这一版不再读得懂它。「认格式」那一格写读得懂的那一段。
-fn older(path: &Path, found: u64, floor: u32, version: u32) -> Said {
-    let mine = if floor == version {
-        version.to_string()
-    } else {
-        format!("{floor}–{version}")
-    };
-    copy_text(
-        "beOwnState.read.older",
-        &[
-            ("path", &path.display().to_string()),
-            ("mine", &mine),
             ("theirs", &found.to_string()),
         ],
     )

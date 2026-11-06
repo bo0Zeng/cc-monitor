@@ -58,6 +58,7 @@ class HostRemovalTest {
         override suspend fun putBatches(rows: List<PendingBatch>) {
             batchRows += rows
         }
+
         /** 这一台在四张表里各有几行。 */
         fun count(id: String): Map<String, Int> =
             mapOf(
