@@ -94,6 +94,11 @@ const refKey = (r: SliceRef): string => `${r.origin}\u0000${r.workspace}\u0000${
 /** 一个工作区读到的那一份（选中的片所在的那一个才读）。 */
 type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: PlanRead } | { state: "failed"; prev: PlanRead | null; said: string };
 
+/** 读不成、手上又没有上一份 ⇒ 后端那一句；别的 ⇒ `null`。 */
+function unreadSaid(r: Read | null): string | null {
+  return r?.state === "failed" && !r.prev ? r.said : null;
+}
+
 /** 记住的那一片（`refKey` 的反面）；形状不对 ⇒ `null`。 */
 function refOf(key: string | undefined): SliceRef | null {
   const parts = key?.split("\u0000");
@@ -853,12 +858,12 @@ export class PlanView {
     pane.className = `${s.pvPane} plan-pane`;
     if (!slice) {
       // 读不成、手上又没有上一份 ⇒ 写后端那一句 ＋［重试］（不一直转）；还在读 ⇒ 骨架。
-      const r = this.currentRead();
-      if (r?.state === "failed" && !r.prev) {
+      const said = unreadSaid(this.currentRead());
+      if (said !== null) {
         const ref = this.current!;
         const again = button({ label: copyText("front.act.retry"), kind: "ghost", onClick: () => this.read(ref.origin, ref.workspace) });
         this.bodyEl.className = s.pvWhole;
-        morph(this.bodyEl, [emptyState({ icon: "warning", text: r.said, action: again })]);
+        morph(this.bodyEl, [emptyState({ icon: "warning", text: said, action: again })]);
         return;
       }
       tree.appendChild(skeletonRows(8));

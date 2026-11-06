@@ -267,7 +267,10 @@ fn settled_waits_for_the_reread_of_what_was_heard() {
     std::fs::write(d.join(".planned-build/alpha/图.md"), "x").unwrap();
     let t0 = std::time::Instant::now();
     while started.load(std::sync::atomic::Ordering::SeqCst) == 0 {
-        assert!(t0.elapsed() < guard_core::wall::CEILING, "改了计划仓却没重读");
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "改了计划仓却没重读"
+        );
         std::thread::yield_now();
     }
     let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
