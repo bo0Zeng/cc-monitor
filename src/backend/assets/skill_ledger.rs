@@ -9,8 +9,7 @@
 //!
 //! `{"version":2,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}}}`
 //!
-//! - 版本照声明表（`relay_route_core::SKILL_LEDGER_FILE`，读写口 `common/own_state.rs` 管）：第 1 版把版本写在 `"v"` 里，读的时候经
-//!   [`v1_to_v2`] 摘掉；盖第 1 版那一下原文照字节留成 `skill-installs.json.v1`。
+//! - 版本照声明表（`relay_route_core::SKILL_LEDGER_FILE`，读写口 `common/own_state.rs` 管）：只读得懂第 2 版。
 //! - **键是目录的绝对路径**：记的是「装时写进了哪几个文件」—— 落点是事实，名字只给人看。
 //! - `digest`：**装时写进去的那一份原文**的摘要（`common::digest::Fnv`，只答相同 / 不同，**不防篡改**）。
 //! - `created`：装之前这个路径不在 ⇒ `true`；装时盖掉了这台原有的一份 ⇒ `false`（卸它回不到装之前那一份 ⇒ 卸时要问）。
@@ -45,29 +44,9 @@ use serde_json::Value;
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
 
-/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 版经 [`v1_to_v2`] 读成这一版。
+/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。
 const DOC: crate::common::own_state::Doc<Ledger> =
-    crate::common::upgrade!(relay_route_core::SKILL_LEDGER_FILE, [v1_to_v2]);
-
-/// 第 1 版 ⇒ 第 2 版：版本从 `"v"` 挪到顶层 `version`（读写口管），别的格子不变。`"v"` 不是 1 ⇒ 读不懂（不认的格式不覆盖）。
-fn v1_to_v2(mut v: Value) -> Result<Value, crate::common::said::Said> {
-    let Some(o) = v.as_object_mut() else {
-        return Ok(v);
-    };
-    match o.remove("v") {
-        None => Ok(v),
-        Some(n) if n.as_u64() == Some(1) => Ok(v),
-        Some(n) => Err(copy_text(
-            "beSkillLedger.read.otherVersion",
-            &[
-                ("path", relay_route_core::SKILL_LEDGER_REL),
-                ("mine", "1"),
-                ("theirs", &n.to_string()),
-            ],
-        )
-        .into()),
-    }
-}
+    crate::common::own_state::Doc::of(&relay_route_core::SKILL_LEDGER_FILE);
 /// 一趟 `add` 最多收这么多个文件（与 skill 读 / 装同一个上限，不另起一份）。
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
@@ -126,7 +105,7 @@ pub(crate) fn ledger_path() -> Option<PathBuf> {
 pub(crate) type Read = crate::common::own_state::Read<Ledger>;
 
 pub(crate) fn read_at(path: &Path) -> Read {
-    // 版本由读写口先过（更新的格式整份不认、也不覆盖；第 1 版经升级步），这里只把这一版的原文解成记录。
+    // 版本由读写口先过（更新的格式整份不认、也不覆盖），这里只把这一版的原文解成记录。
     DOC.read_as::<Value>(path)
         .and_then(|v| match serde_json::from_value::<Ledger>(v) {
             Ok(l) => Read::Present(l),

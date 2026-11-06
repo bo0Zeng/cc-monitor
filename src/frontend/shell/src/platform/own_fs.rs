@@ -174,13 +174,6 @@ impl OwnState {
         write_state(&at, bytes)
     }
 
-    /// 建（或截断）一份只给本人的文件，交回句柄（锁旁件这一类：要的是那份文件本身，不是内容）。
-    pub fn create(&self, rel: &str) -> Result<std::fs::File> {
-        let at = self.path(rel)?;
-        Self::parent_ready(&at)?;
-        create_private(&at).map_err(|e| at_path(&at, &e))
-    }
-
     /// 删一份；本来就不在算删成了。
     pub fn remove(&self, rel: &str) -> Result<()> {
         remove_if_there(&self.path(rel)?)

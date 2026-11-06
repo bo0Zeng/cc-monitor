@@ -832,11 +832,30 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→26 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /** 26→27：旧书签表整张删掉（书签归各台后端，不搬行）；别的表一行不丢。 */
     @Test
-    fun migrateAll1To26Validates() {
+    fun migrate26To27DropsTheBookmarksAndKeepsTheRest() {
+        helper.createDatabase(dbName, 26).apply {
+            execSQL("INSERT INTO bookmarks (id, hostId, path, label, sortOrder) VALUES ('b', 'h', '/srv', 'srv', 0)")
+            execSQL("INSERT INTO drafts (hostId, sid, text, cwd, account, model, permission, updatedAt) VALUES ('h', 's', '字', NULL, NULL, NULL, NULL, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 27, true, MIGRATION_26_27)
+        db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toSet()
+            assertTrue("书签表还在：$names", "bookmarks" !in names)
+        }
+        db.query("SELECT text FROM drafts WHERE hostId = 'h'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("字", c.getString(0))
+        }
+    }
+
+    /** 全链路 1→27 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To27Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 26, true, *allMigrations(crypto))
+        val db = helper.runMigrationsAndValidate(dbName, 27, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

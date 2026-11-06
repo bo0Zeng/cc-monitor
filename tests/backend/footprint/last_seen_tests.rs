@@ -120,26 +120,6 @@ impl Drop for Dir {
 }
 
 #[test]
-fn 住缓存目录_旧位置那一份写的那一下删掉() {
-    let d = Dir::new("move");
-    let old = d.0.join(".cc-monitor").join("last-seen.json");
-    std::fs::create_dir_all(old.parent().unwrap()).unwrap();
-    std::fs::write(&old, br#"{"version":2,"origins":{}}"#).unwrap();
-    write_at(
-        &d.own(),
-        &json!({"origin": "devbox", "kind": "accounts", "value": accounts_list()}),
-        7,
-    )
-    .unwrap();
-    assert!(d.file().is_file(), "记在 .cc-monitor/cache/ 底下");
-    assert!(!old.exists(), "旧位置那一份（缓存）删掉，不搬");
-    assert_eq!(
-        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
-        json!(kept(7, &accounts_list()))
-    );
-}
-
-#[test]
 fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     let d = Dir::new("rw");
     let v = accounts_list();

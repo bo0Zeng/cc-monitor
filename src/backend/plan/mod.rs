@@ -67,7 +67,7 @@ pub mod review;
 pub mod watch;
 
 /// 起 pb 的一条命令最多等多久。量过：252 格的研究盘 `dump` 1.1 秒，`render` 同量级；留一个数量级给慢盘与远端。
-pub(crate) const PB_DEADLINE_SECS: u64 = 20;
+pub const PB_DEADLINE_SECS: u64 = 20;
 
 /// 起一次 pb，本族唯一一处：找 python（裸名，在 `PATH` 上按这台的规矩找）· 当前目录设在 `ws`（pb 自己从那儿往上找工作区）·
 /// 环境只给白名单（不带 `PB_ID` ⇒ pb 认作人）· 限时 [`PB_DEADLINE_SECS`]。

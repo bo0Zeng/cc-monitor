@@ -120,16 +120,6 @@ data class KnownHost(
     val addedAt: Long,
 )
 
-/** SFTP 目录书签 / Pin。收藏常用远端目录，一键跳转 / 在此打开终端。 */
-@Entity(tableName = "bookmarks")
-data class Bookmark(
-    @PrimaryKey val id: String,
-    val hostId: String,
-    val path: String,
-    val label: String,
-    val sortOrder: Int = 0,
-)
-
 /** 应用级设置（键值表，增键不用迁移）。类型化访问经 SettingsRepository。 */
 @Entity(tableName = "settings")
 data class Settings(

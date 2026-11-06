@@ -372,12 +372,12 @@ no_platform_cfg_in_the_dial_core_silently_drops_android
 the_android_judge_sees_both_shapes
 test_home_guard
 every_rust_test_binary_pulls_in_the_sandboxed_home
-# 当桥的一次性迁移：书签归各台后端（桌面 · 手机）· 标签组迁进各台。到期由打版本号的那一路连迁移代码与它的测试一起删。
+# 当桥的一次性迁移：书签归各台后端（桌面 · 手机）· 标签组迁进各台。5.1.1 已连迁移代码与它的测试一起删。
 bookmarks_migration	5.1.1
 OLD_FILE	5.1.1
 filewin-bookmarks.json	5.1.1
 BookmarkRepository	5.1.1
-# 上次读数挪进 cache/：旧位置那一份写盘时删一次。到期由打版本号的那一路连这一步一起删。
+# 上次读数挪进 cache/：旧位置那一份写盘时删一次。5.1.1 已连这一步一起删。
 OLD_LAST_SEEN_REL	5.1.1
 drop_old_last_seen	5.1.1
 adoptOldBookmarks	5.1.1

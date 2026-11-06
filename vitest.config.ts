@@ -133,7 +133,6 @@ const NODE_ENV_FILES = [
   "tests/frontend/ui/tab-batch-run.vitest.ts",
   "tests/frontend/ui/tab-drop-default-name.vitest.ts",
   "tests/frontend/ui/tab-group-drop.vitest.ts",
-  "tests/frontend/ui/tab-groups-migrate.vitest.ts",
   "tests/frontend/ui/tab-menu-auto-answer.vitest.ts",
   "tests/frontend/ui/tab-render-context.vitest.ts",
   "tests/frontend/ui/tab-switch-cost.vitest.ts",

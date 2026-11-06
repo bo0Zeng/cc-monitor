@@ -12,13 +12,12 @@ import androidx.room.TypeConverters
         KnownHost::class,
         KeyGroup::class,
         TermKey::class,
-        Bookmark::class,
         Settings::class,
         PendingSend::class,
         Draft::class,
         PendingBatch::class,
     ],
-    version = 26,
+    version = 27,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class, HostConverters::class)
@@ -30,8 +29,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun knownHostDao(): KnownHostDao
 
     abstract fun keyDao(): KeyDao
-
-    abstract fun bookmarkDao(): BookmarkDao
 
     abstract fun settingsDao(): SettingsDao
 

@@ -77,7 +77,6 @@ const CENSUS: readonly string[] = [
   "theme", // src/frontend/ui/theme.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
-  "tabCollections", // src/frontend/ui/tab-groups-migrate.ts（旧组表：迁移那一段读、迁完删）
   "sessionHead", // src/frontend/ui/session-head.ts（会话头按钮）
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
@@ -197,8 +196,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
 
   it("分母：登记了多少个主人", () => {
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
-    // theme · keybindings/store · tab-bar-state · tab-groups-migrate · session-head · behavior · terminal-row · 壳 logging.rs。
-    expect(owners.size, `主人 ${owners.size} 个（现打 8）`).toBe(8);
+    // theme · keybindings/store · tab-bar-state · session-head · behavior · terminal-row · 壳 logging.rs。
+    expect(owners.size, `主人 ${owners.size} 个（现打 7）`).toBe(7);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

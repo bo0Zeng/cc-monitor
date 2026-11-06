@@ -70,8 +70,6 @@ import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybind
 import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
-import { GroupBook } from "../../../src/frontend/ui/group-book";
-import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { announced, goldenFace } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
@@ -306,46 +304,6 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
     const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) => t.textContent?.includes(why) && t.textContent?.includes(face.line));
     expect(said, "点了要有回应：说不清 ⇒ 不起、说一句").toBe(true);
     expect(vi.mocked(invoke).mock.calls.some(([, args]) => (args as { op?: string } | undefined)?.op === "session-open"), "不许交那台起").toBe(false);
-  });
-});
-
-describe("旧的分组三格等每台自己那条流都报完了才迁（组员照那一刻标签在哪台写）", () => {
-  /**
-   * 每台一条会话流：壳在最后报完的那一台的流上说「各台都报完」（`listed.all`），别的台那条流上它自己的宣告与「报完了」可能还在路上。
-   * 那一刻就迁 ⇒ 还没建出标签的组员认不出在哪台、被丢掉。每台都在自己那条流上报完了，才迁。
-   */
-  it("★ 壳说各台都报完、gpu 那台的格还没到 ⇒ 不迁；gpu 的标签到了、也报完了 ⇒ 要组一次、两台各一条进组、删那三格", async () => {
-    const GPU = "gpu" as never;
-    vi.mocked(invoke).mockImplementation((async (cmd: string) =>
-      cmd === "load_config" ? { tabCollections: [{ id: "c1", name: "训练" }], tabBar: { groupOf: { a: "c1", t1: "c1" } } } : undefined) as never);
-    try {
-      const calls: Array<[string, string, unknown]> = [];
-      const rec = { id: "g-new", name: "训练", made: 1, named: 1 };
-      const book = new GroupBook(async (origin, cmd, req) => {
-        calls.push([origin, cmd, req]);
-        const op = (req as { op?: string }).op;
-        return (op === "make" ? { is: "made", ...rec } : op === "move" ? { is: "moved", sid: "x", groups: ["g-new"] } : cmd === "groups-read" ? { groups: [], pinned: [], machines: [] } : { entry: {}, prev: null }) as never;
-      }, 60_000);
-      const tm = makeTabs(["a"]);
-      tm.setMachines([LOCAL, GPU]);
-      tm.attachGroups(book);
-      tm.markOriginSeen(LOCAL);
-      tm.markAllListed(); // 壳那一刻（在本机那条流上到的）
-      await new Promise((r) => setTimeout(r, 0));
-      expect(calls.filter((c) => c[1] !== "groups-read"), "gpu 那条流还没报完：不迁").toEqual([]);
-      tm.ensureTab("t1", "/w/t1", "/p/t1.jsonl", GPU);
-      tm.markOriginSeen(GPU);
-      await vi.waitFor(() => expect(calls.filter((c) => (c[2] as { op?: string }).op === "move")).toHaveLength(2), UNTIL_CEILING);
-      await vi.waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === "patch_config" && JSON.stringify(a).includes("tabCollections"))).toBe(true), UNTIL_CEILING);
-      expect(calls.filter((c) => c[1] !== "groups-read")).toEqual([
-        [LOCAL, "groups-write", { op: "make", name: "训练" }],
-        [LOCAL, "groups-write", { op: "move", sid: "a", join: rec }],
-        ["gpu", "groups-write", { op: "move", sid: "t1", join: rec }],
-      ]);
-    } finally {
-      vi.mocked(invoke).mockReset();
-      vi.mocked(invoke).mockResolvedValue(undefined);
-    }
   });
 });
 

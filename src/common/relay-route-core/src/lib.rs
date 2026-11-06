@@ -563,11 +563,6 @@ const CLIENT_SPOTS: &[Spot] = &[
     room("room:list_holds", Owner::Cache),
     room("room:record_pages", Owner::Cache),
     room("room:sync_anchors", Owner::Cache),
-    // 书签已归那台（②）：旧表那几行等着迁过去，到那一版删表。
-    Spot {
-        until: Some("5.1.1"),
-        ..room("room:bookmarks", Owner::Machine)
-    },
     Spot {
         place: Place::Phone,
         at: "phone-file:known_hosts",
@@ -903,9 +898,9 @@ const PREFS_MAX_BYTES: Cap = Cap {
     bytes: 256 * 1024,
     over: Over::Reject,
 };
-/// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读，5.1.1 起不读）。
+/// 这台的偏好（第 2 版：恢复那一格是三选 `resumeWhere`；第 1 版读不懂）。
 pub const PREFS_FILE: Decl<State> =
-    Decl::<State>::json(PREFS_REL, Owner::Machine, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.1.1");
+    Decl::<State>::json(PREFS_REL, Owner::Machine, 2, 2, PREFS_MAX_BYTES);
 /// 机器表那一份的读上限（至多 256 台）。
 const MACHINES_MAX_BYTES: Cap = Cap {
     bytes: 1024 * 1024,
@@ -959,15 +954,14 @@ const BOOKMARKS_MAX_BYTES: Cap = Cap {
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> =
     Decl::<State>::json(BOOKMARKS_REL, Owner::Machine, 1, 1, BOOKMARKS_MAX_BYTES);
-/// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`；第 1 版经一步升级读，5.1.1 起不读）。
+/// skill 装记录（第 2 版：顶层 `version`；第 1 版读不懂）。
 pub const SKILL_LEDGER_FILE: Decl<State> = Decl::<State>::json(
     SKILL_LEDGER_REL,
     Owner::Machine,
     2,
-    1,
+    2,
     SKILL_LEDGER_MAX_BYTES,
-)
-.floor_raised_in("5.1.1");
+);
 /// skill 装记录那一份的读上限（超了当读不懂：不覆盖、`ledger_unreadable`）。
 const SKILL_LEDGER_MAX_BYTES: Cap = Cap {
     bytes: 4 * 1024 * 1024,

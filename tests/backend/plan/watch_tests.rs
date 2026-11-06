@@ -41,7 +41,7 @@ fn only_the_plan_repo_and_declared_files_concern_us() {
     // 盯的目录：工作区根到每份声明文件所在目录一路上的每一层（都只盯直接子项）；beta 那一片的仓库还不在（只写文档）也在名单上，
     // 出现了才挂（上一层看得见它被建出来）。
     assert_eq!(
-        sp.dirs,
+        sp.dirs.iter().cloned().collect::<Vec<_>>(),
         [
             "/w/beta",
             "/w/repos",
@@ -50,6 +50,7 @@ fn only_the_plan_repo_and_declared_files_concern_us() {
             "/w/repos/alpha/tests"
         ]
         .map(std::path::PathBuf::from)
+        .to_vec()
     );
 }
 
@@ -193,4 +194,119 @@ fn a_change_in_the_need_count_alone_also_pushes() {
         }
     };
     assert_eq!(got, ("r1".to_string(), 2));
+}
+
+/// 一片声明了 `n` 份文件（分在几十层目录里，照 cc-monitor 那样几千份）的成品。
+fn product_with_files(ws: &Path, n: usize) -> cmd_wire::plan::PlanRead {
+    let mut doc = product(ws, "repos/alpha");
+    let cell = doc.slices[0]
+        .cells
+        .iter_mut()
+        .find(|c| !c.files.is_empty())
+        .expect("夹具里有一格声明了文件");
+    let one = cell.files[0].clone();
+    cell.files = (0..n)
+        .map(|i| {
+            let mut f = one.clone();
+            f.path = format!("src/m{}/d{}/f{i}.rs", i % 97, i % 13);
+            f
+        })
+        .collect();
+    doc
+}
+
+/// ★ 大规模声明下不退化：5000 份声明算一次名单，与它的八分之一比，耗时不许照平方涨（平方 ⇒ 64 倍；集合 ⇒ 十倍上下）。
+/// 每档取几次里最快的那一次，挡掉机器忙的抖动。
+#[test]
+fn spots_scale_near_linearly_with_the_declared_files() {
+    let ws = Path::new("/w");
+    let (small, big) = (product_with_files(ws, 625), product_with_files(ws, 5000));
+    let best = |doc: &cmd_wire::plan::PlanRead| {
+        (0..5)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                let sp = spots(doc);
+                let e = t.elapsed();
+                assert!(!sp.hits.is_empty());
+                e
+            })
+            .min()
+            .unwrap()
+    };
+    let (ts, tb) = (best(&small), best(&big));
+    assert!(spots(&big).hits.len() >= 5000, "5000 份声明都在名单上");
+    let ratio = tb.as_secs_f64() / ts.as_secs_f64().max(1e-6);
+    assert!(
+        ratio < 24.0,
+        "声明多八倍、名单慢了 {ratio:.1} 倍（{ts:?} → {tb:?}）：照平方涨了"
+    );
+}
+
+/// 没在盯的工作区 ⇒ 不等、回 false（帧面照此起 pb 现读）。
+#[test]
+fn settled_is_false_for_a_workspace_nobody_watches() {
+    assert!(!settled(Path::new("/nowhere/watched")));
+}
+
+/// ★ 已在盯：这期间没动静 ⇒ 当场 true；有动静 ⇒ 等这一趟重读完才回 true（本子里那一份才是此刻的）。
+#[test]
+fn settled_waits_for_the_reread_of_what_was_heard() {
+    let d = scratch("watch-settled");
+    std::fs::create_dir_all(d.join(".planned-build/alpha")).unwrap();
+    let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
+    let go_rx = Mutex::new(go_rx);
+    let started = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let s = Arc::clone(&started);
+    let reread: Reread = Arc::new(move |_p: &Path| {
+        s.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        go_rx.lock().unwrap().recv().ok();
+        Some((("r2".to_string(), 0), Spots::default()))
+    });
+    arm(&d, || (Spots::default(), Some(("r1".into(), 0))), reread);
+    assert!(settled(&d), "没动静 ⇒ 当场追上");
+    std::fs::write(d.join(".planned-build/alpha/图.md"), "x").unwrap();
+    let t0 = std::time::Instant::now();
+    while started.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "改了计划仓却没重读"
+        );
+        std::thread::yield_now();
+    }
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let dn = Arc::clone(&done);
+    let ws = d.clone();
+    let waiter = std::thread::spawn(move || {
+        let got = settled(&ws);
+        dn.store(true, std::sync::atomic::Ordering::SeqCst);
+        got
+    });
+    let t1 = std::time::Instant::now();
+    while t1.elapsed().as_millis() < 100 {
+        std::thread::yield_now();
+    }
+    assert!(
+        !done.load(std::sync::atomic::Ordering::SeqCst),
+        "重读还没完就回了：本子里那一份是旧的"
+    );
+    // 放行这一趟；之后还有几趟（写一份常是几条事件）也不再卡。
+    go_tx.send(()).unwrap();
+    drop(go_tx);
+    assert!(waiter.join().unwrap(), "重读完了该回 true");
+}
+
+/// ★ 已在盯 ⇒ 不再算一遍此刻的样子与名单（5000 份声明算一次要几百毫秒，每读一次都白算）。
+#[test]
+fn arming_a_watched_workspace_again_does_not_compute_its_spots() {
+    let d = scratch("watch-twice");
+    std::fs::create_dir_all(d.join(".planned-build/alpha")).unwrap();
+    let reread: Reread = Arc::new(|_p: &Path| None);
+    let calls = std::cell::Cell::new(0);
+    let init = || {
+        calls.set(calls.get() + 1);
+        (Spots::default(), None)
+    };
+    arm(&d, init, Arc::clone(&reread));
+    arm(&d, init, reread);
+    assert_eq!(calls.get(), 1, "第二次已在盯，不该再算");
 }

@@ -496,6 +496,14 @@ val MIGRATION_25_26 =
         }
     }
 
+// 26 → 27：书签已归各台后端，旧书签表整张删掉（不搬行）。别的表一字不动。
+val MIGRATION_26_27 =
+    object : Migration(26, 27) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS `bookmarks`")
+        }
+    }
+
 /** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
 fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
@@ -524,4 +532,5 @@ fun allMigrations(crypto: CryptoBox): Array<Migration> =
         MIGRATION_23_24,
         MIGRATION_24_25,
         MIGRATION_25_26,
+        MIGRATION_26_27,
     )

@@ -6,7 +6,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -66,14 +65,12 @@ class BookmarksTest {
         }
 
     @Test
-    fun `旧书签迁过去：一次 add，答 ok 才算迁好`() =
+    fun `撤销删除：一次 add，换上那台回的整份`() =
         runTest {
             val shelf = BookmarkShelf(answering(listOf("/a", "/b")))
-            assertTrue(shelf.adopt(listOf("/a", "/b")))
+            shelf.adopt(listOf("/a", "/b"))
             assertEquals(Bookmarks.EDIT to mapOf("op" to "add", "dirs" to listOf("/a", "/b")), asked.last())
             assertEquals(listOf("/a", "/b"), shelf.dirs.value)
-            val down = BookmarkShelf { _, _ -> Reply.LinkDown }
-            assertFalse("没答 ok ⇒ 旧的那几行不许删", down.adopt(listOf("/a")))
             assertNull(Bookmarks.of(mapOf("dirs" to "x")))
         }
 }
