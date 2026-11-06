@@ -59,8 +59,17 @@ UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_COD
 FAKECC="$CCMDIR/fakecc"; mkdir -p "$FAKECC/versions" "$FAKECC/bin" "$CCMDIR/nocc"
 printf '#!/bin/sh\n' > "$FAKECC/versions/2.1.300"; chmod +x "$FAKECC/versions/2.1.300"
 ln -s "$FAKECC/versions/2.1.300" "$FAKECC/bin/claude"
-ccm_newcc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$FAKECC/bin" "$CCM" "$@"; }
-ccm_nocc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$CCMDIR/nocc" "$CCM" "$@"; }
+# 启动器在计划里就照**起会话那个 shell** 的 PATH 换成找到的那个文件（`--ccm-print` 吐的就是真跑那一行）⇒ 那一份也钉住：
+#   假登录 shell 打出 `CCM_E2E_SESSION_PATH`；缺省那一份上放假的 claude · codex，`ccm_newcc` · `ccm_nocc` 各照自己那一份 PATH
+#   （上面再放假的 mycc · ccr：换启动器那几条找得到它）。
+BIN="$CCMDIR/bin"; mkdir -p "$BIN"
+for p in claude codex; do printf '#!/bin/sh\n' > "$BIN/$p"; chmod +x "$BIN/$p"; done
+for d in "$FAKECC/bin" "$CCMDIR/nocc"; do for p in mycc ccr; do printf '#!/bin/sh\n' > "$d/$p"; chmod +x "$d/$p"; done; done
+printf '#!/bin/sh\nprintf "@@ccm-session-path@@%%s@@ccm-session-path@@" "$CCM_E2E_SESSION_PATH"\n' > "$CCMDIR/login-shell"
+chmod +x "$CCMDIR/login-shell"
+export SHELL="$CCMDIR/login-shell" CCM_E2E_SESSION_PATH="$BIN:/usr/bin:/bin"
+ccm_newcc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$FAKECC/bin" CCM_E2E_SESSION_PATH="$FAKECC/bin" "$CCM" "$@"; }
+ccm_nocc() { nofrom env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$CCMDIR/nocc" CCM_E2E_SESSION_PATH="$CCMDIR/nocc" "$CCM" "$@"; }
 PLUGIN="export CLAUDE_CODE_PLUGIN_DIRS='$NOHOME/.cc-monitor/answer-plugin'"
 
 echo "===== 契约：壳层选项 × 交给 claude 的参数====="
@@ -70,65 +79,65 @@ echo "===== 契约：壳层选项 × 交给 claude 的参数====="
 # 相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
 HERE_P="$(pwd -P)"
 ck "零修饰（--cwd .）：补成绝对的当前目录" \
-   "$UNSET; cd '$HERE_P' && exec claude$(hk "$NOHOME")" \
+   "$UNSET; cd '$HERE_P' && exec $BIN/claude$(hk "$NOHOME")" \
    "$(ccm -- --cwd . --ccm-print)"
 ck "相对 --cwd ../x：按当前目录补全、折掉 .." \
-   "$UNSET; cd '$(dirname "$HERE_P")/x' && exec claude$(hk "$NOHOME")" \
+   "$UNSET; cd '$(dirname "$HERE_P")/x' && exec $BIN/claude$(hk "$NOHOME")" \
    "$(ccm -- --cwd ../x --ccm-print)"
 ck "--resume <sid> 原样交给 claude（ccm 只看不吃）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --resume abc-123" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --resume abc-123" \
    "$(ccm --resume abc-123 -- --cwd /p --ccm-print)"
 ck "--ccm-print 的「来自」那一节进 stderr、每行注释：工作目录照命令行" \
    "# 来自|# 工作目录  /p  · 命令行" \
    "$(env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_SESSION_ID HOME="$NOHOME" "$CCM" -- --cwd /p --ccm-print 2>&1 >/dev/null | head -2 | tr '\n' '|' | sed 's/|$//')"
 ck "-r <sid> 同样原样交出去（不翻译成长形）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") -r abc-123" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") -r abc-123" \
    "$(ccm -r abc-123 -- --cwd /p --ccm-print)"
 ck "--resume=<sid> 等号形式原样交出去" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --resume=abc-123" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --resume=abc-123" \
    "$(ccm --resume=abc-123 -- --cwd /p --ccm-print)"
 # 会话号变量照样清（同起子进程原语：真跑那一趟摘掉它们，打印那一行也写上，print↔exec 才一样）。
 ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌套 env（只清会话号变量）" \
-   "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon" \
+   "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec $BIN/codex --no-daemon" \
    "$(ccm -- --ccm-agent codex --cwd /p --ccm-print)"
 ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形）" \
    "yes" \
-   "$(ccm resume x -- --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex --no-daemon resume x\$" && echo yes || echo no)"
+   "$(ccm resume x -- --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec $BIN/codex --no-daemon resume x\$" && echo yes || echo no)"
 ck "--launcher 覆盖默认启动器：后面的词不动，答题插件经环境交下去" \
-   "$UNSET; $PLUGIN; cd '/p' && exec mycc --resume s1" \
+   "$UNSET; $PLUGIN; cd '/p' && exec $FAKECC/bin/mycc --resume s1" \
    "$(ccm_newcc --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
 ck "--launcher 而 PATH 上没有 claude（认不出版本）：不设那个变量，标 version" \
-   "$UNSET; export CCM_ANSWER_HOOK_OFF=version; cd '/p' && exec mycc --resume s1" \
+   "$UNSET; export CCM_ANSWER_HOOK_OFF=version; cd '/p' && exec $CCMDIR/nocc/mycc --resume s1" \
    "$(ccm_nocc --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
 ck "--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）" \
-   "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$NOHOME")" \
+   "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME")" \
    "$(ccm -- --cwd /p --base --ccm-print)"
 ck "--model 原样交给 claude（不再 export ANTHROPIC_MODEL）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --resume s1 --model opus" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --resume s1 --model opus" \
    "$(ccm --resume s1 --model opus -- --cwd /p --ccm-print)"
 ck "--model=<名> 等号形式原样交出去" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --model=opus" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --model=opus" \
    "$(ccm --model=opus -- --cwd /p --ccm-print)"
 ck "-- 左边透传给 agent，含特殊字符正确 quote" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") 'a b' 'x'\''y'" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") 'a b' 'x'\''y'" \
    "$(ccm "a b" "x'y" -- --cwd /p --ccm-print)"
 ck "-- 左边原样交给 claude，按原顺序" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") -p 'a b' --verbose" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") -p 'a b' --verbose" \
    "$(ccm -p "a b" --verbose -- --cwd /p --ccm-print)"
 ck "claude 自己的 --tmux / --agent 原样交出去（ccm 的改名 --ccm-tmux / --ccm-agent）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --tmux --agent x" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --tmux --agent x" \
    "$(ccm --tmux --agent x -- --cwd /p --ccm-print)"
 ck "ccm new（-- 左边）整个交给 claude，不开例外" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") new" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") new" \
    "$(ccm new -- --cwd /p --ccm-print)"
 ck "new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不写同）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") -p x" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") -p x" \
    "$(ccm -p x -- new --cwd /p --ccm-print)"
 ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
    "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
 ck "--launcher 'ccr code' 拆成词" \
-   "$UNSET; $PLUGIN; cd '/p' && exec ccr code -p x" \
+   "$UNSET; $PLUGIN; cd '/p' && exec $FAKECC/bin/ccr code -p x" \
    "$(ccm_newcc -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \
    "ccm: $(zh beArgv.validate.accountAndBase)" \
@@ -137,10 +146,10 @@ ck "不认识的 agent 报错并说出认得的几家" \
    "ccm: $(zh beAgents.pick.unknown agent=gpt 'known=claude / codex')" \
    "$(ccm -- --ccm-agent gpt --cwd /p --ccm-print)"
 ck "未知选项原样交给 claude（不报「未知选项」）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --nope" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --nope" \
    "$(ccm --nope -- --cwd /p --ccm-print)"
 ck "--help 交给 claude（ccm 自己的帮助是 --ccm-help）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --help" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --help" \
    "$(ccm --help -- --cwd /p --ccm-print)"
 ck "--ccm-version 是 ccm 自己的版本" \
    "ccm 7" \
@@ -163,7 +172,7 @@ cat > "$AL/accounts.json" <<JSON
 JSON
 acct() { nofrom env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" "$CCM" "$@"; }
 ck "显式 --account 注入其 configDir" \
-   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")" \
+   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")" \
    "$(acct -- --cwd /p --account b --ccm-print)"
 # B1：die 在 \$(...) 里只杀子 shell —— 曾"报错后照跑"，落到继承来的账号上且 rc=0
 ck "账号不存在 → 中止（rc≠0，且不得吐出 exec）" \
@@ -173,23 +182,23 @@ ck "账号不存在 → rc=2" "2" \
    "$(acct -- --cwd /p --account nope --ccm-print >/dev/null 2>&1; echo $?)"
 # B2：账号库把凭据搬进各号目录后基座常已无 .credentials.json —— 不落默认号则 cc/cct 掉进未登录目录
 ck "不传 --account → 落 manifest 的 isDefault（复刻旧 _cc_acct_last 粘滞）" \
-   "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")" \
+   "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")" \
    "$(acct -- --cwd /p --ccm-print)"
 ck "--base → 显式不注入（#75 逃生口，压过默认号）" \
-   "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")" \
+   "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")" \
    "$(acct -- --cwd /p --base --ccm-print)"
 ck "无账号库 → 退化为基座（不报错）" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME")" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME")" \
    "$(ccm -- --cwd /p --ccm-print)"
 ck "--account 与 --model 组合：账号目录照注入，--model 原样交给 claude" \
-   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP") --model sonnet" \
+   "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP") --model sonnet" \
    "$(acct --model sonnet -- --cwd /p --account b --ccm-print)"
 rm -rf "$ACCTMP"
 
 echo
 echo "===== 动作/目录语义（D 审计：auto 只对 new 生效）====="
 ck "resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会跑到 git 仓父目录）" \
-   "$UNSET; cd '$PWD' && exec claude$(hk "$NOHOME") --resume s1" \
+   "$UNSET; cd '$PWD' && exec $BIN/claude$(hk "$NOHOME") --resume s1" \
    "$(ccm --resume s1 -- --ccm-print)"
 ck "--attach 后跟 flag → 报错（别把 --ccm-tmux 当会话名）" \
    "ccm: $(zh beArgv.needVal.looksMissing name=--attach v=--ccm-tmux)" \
@@ -218,10 +227,10 @@ cat > "$AL/accounts.json" <<JSON
   { "name": "z", "configDir": "$AL/z", "isDefault": true },
   { "name": "b", "configDir": "$AL/b", "isDefault": false } ] }
 JSON
-ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --ccm-print)"
-ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(nofrom env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" "$CCM" -- --cwd /p --ccm-print)"
-ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --base --ccm-print)"
-ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
+ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --ccm-print)"
+ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")"    "$(nofrom env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" "$CCM" -- --cwd /p --ccm-print)"
+ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --base --ccm-print)"
+ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
 
 # 容器路径另有一个洞：「尊重继承值」在容器路径上不会自己成立。
 # 上面那条注释说"两个场景用同一条 if 天然区分"，**只对非容器路径成立**——
@@ -264,7 +273,7 @@ printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
 mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
-home_run() { nofrom env -i CCM_HOST="$CCM_HOST" PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@"; }
+home_run() { nofrom env -i CCM_HOST="$CCM_HOST" PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" SHELL="$SHELL" CCM_E2E_SESSION_PATH="$CCM_E2E_SESSION_PATH" HOME="$AH" "$CCM" "$@"; }
 # 列账号：额度账那一问（`--quota-read`）逐号一行，`account` 是号名（账号库没启用 ⇒ 一个号都不列）；候选那一格（`candidates`）再列一遍同几个号 ⇒ 去重。
 #   读不出（不是那一形）⇒ 印出原话，不当成「零个号」。
 names_of() {
@@ -273,7 +282,7 @@ names_of() {
   printf '%s' "$o" | grep -o '"account":"[^"]*"' | sed 's/.*:"\(.*\)"/\1/' | sort -u | tr '\n' ' '
 }
 ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号（一个号都不列）" "" "$(names_of)"
-ck "建库前：裸起不落旧清单里的默认号" "$UNSET; cd '/p' && exec claude$(hk "$AH")" "$(home_run -- --cwd /p --ccm-print)"
+ck "建库前：裸起不落旧清单里的默认号" "$UNSET; cd '/p' && exec $BIN/claude$(hk "$AH")" "$(home_run -- --cwd /p --ccm-print)"
 INIT="$(printf '{"name":"d"}' | home_run -- --accounts-init)"
 ck "建库：应答说落了盘" "yes" "$(printf '%s' "$INIT" | grep -qF '"applied":true' && echo yes || echo no)"
 AM="$AH/.cc-monitor/accounts"
@@ -284,7 +293,7 @@ ck "建库：清单不记账号库在哪（由位置决定）" "0" "$(grep -c ac
 ck "建库：号目录里的共享项照旧链回 ~/.claude" "$AH/.claude/skills" "$(readlink "$AM/d/skills")"
 ck "建库：旧位置那份清单一个字节没动" "$OLD_SUM" "$(cksum < "$AH/.claude-alt/accounts.json")"
 ck "ccm --account d：CLAUDE_CONFIG_DIR 指向新位置" \
-   "export CLAUDE_CONFIG_DIR='$AM/d'; $UNSET; cd '/p' && exec claude$(hk "$AH")" \
+   "export CLAUDE_CONFIG_DIR='$AM/d'; $UNSET; cd '/p' && exec $BIN/claude$(hk "$AH")" \
    "$(home_run -- --account d --cwd /p --ccm-print)"
 ck "ccm --account old（只在旧位置的清单里）⇒ rc=2" "2" \
    "$(home_run -- --account old --cwd /p --ccm-print >/dev/null 2>&1; echo $?)"
@@ -365,7 +374,7 @@ ck "正控：内层载荷以本进程被叫的那个入口开头" "yes" "$(print
 
 echo "===== ccm [交给 claude 的…] -- [ccm 自己的…]：按最后一个 -- 切 ====="
 ck "claude 自己的 -- 照写，按最后一个 -- 切（ccm 部分为空时写成 ccm -p -- -x --）" \
-   "$UNSET; cd '$HERE_P' && exec claude$(hk "$NOHOME") -p -- -x" \
+   "$UNSET; cd '$HERE_P' && exec $BIN/claude$(hk "$NOHOME") -p -- -x" \
    "$(cd "$HERE_P" && ccm -p -- -x -- --ccm-print 2>&1 | head -1)"
 ck "-- 右边认不得的词直接报错（不猜）" \
    "ccm: $(zh beArgv.parse.unknownRight w=--model)" \
@@ -379,7 +388,7 @@ echo "===== 没有 -- 又没有终端：不起 claude（被别的程序经管道
 FAKEBIN="$CCMDIR/fakebin"; mkdir -p "$FAKEBIN"
 MARK="$CCMDIR/claude-ran"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n' "$MARK" > "$FAKEBIN/claude"; chmod +x "$FAKEBIN/claude"
-bare() { env -u CLAUDE_CONFIG_DIR -u TMUX PATH="$FAKEBIN:$PATH" HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" "$@"; }
+bare() { env -u CLAUDE_CONFIG_DIR -u TMUX PATH="$FAKEBIN:$PATH" CCM_E2E_SESSION_PATH="$FAKEBIN:$CCM_E2E_SESSION_PATH" HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" "$@"; }
 rm -f "$MARK"; bare </dev/null >"$CCMDIR/out" 2>"$CCMDIR/err"; rc=$?
 ck "零参数、管道驱动：退出码 5" "5" "$rc"
 ck "零参数、管道驱动：claude 没被起" "no" "$([ -e "$MARK" ] && echo yes || echo no)"
@@ -388,12 +397,13 @@ ck "零参数、管道驱动：stdout 一个字都没有" "" "$(cat "$CCMDIR/out
 rm -f "$MARK"; bare --history-list </dev/null >/dev/null 2>&1; rc=$?
 ck "漏了 -- 的一次性叫法（--history-list）：退出码 5、claude 没被起" "5 no" "$rc $([ -e "$MARK" ] && echo yes || echo no)"
 ck "有 -- 的不看终端：-- --ccm-print 照样印出那一行" \
-   "$UNSET; cd '/p' && exec claude$(hk "$NOHOME")" \
+   "$UNSET; cd '/p' && exec $FAKEBIN/claude$(hk "$NOHOME")" \
    "$(nofrom bare -- --cwd /p --ccm-print </dev/null)"
 ck "有 -- 的不看终端：-- --ccm-version 照答" "ccm 7" "$(bare -- --ccm-version </dev/null 2>&1)"
 # 有终端的正常起法不误伤：script 给一个伪终端（同 tmux 窗格、用户自己的终端、别名展开后的那一行）。
-ptyrun() { script -qec "$1" /dev/null >/dev/null 2>&1; }
-Q="env -u CLAUDE_CONFIG_DIR -u TMUX PATH='$FAKEBIN:$PATH' HOME='$NOHOME' CCM_CONFIG=/nonexistent '$CCM'"
+#   `script` 用 `$SHELL -c` 跑那一行 ⇒ 给它一个真 shell；假登录 shell 在那一行里再交给 ccm。
+ptyrun() { SHELL=/bin/sh script -qec "$1" /dev/null >/dev/null 2>&1; }
+Q="env -u CLAUDE_CONFIG_DIR -u TMUX PATH='$FAKEBIN:$PATH' SHELL='$SHELL' CCM_E2E_SESSION_PATH='$FAKEBIN:$CCM_E2E_SESSION_PATH' HOME='$NOHOME' CCM_CONFIG=/nonexistent '$CCM'"
 rm -f "$MARK"; ptyrun "$Q --resume abc"
 ck "伪终端里裸调用照起：claude 收到原样参数" "$(hkraw "$NOHOME") --resume abc" "$(cat "$MARK" 2>/dev/null)"
 rm -f "$MARK"; ptyrun "$Q -r s1 | cat"
@@ -427,10 +437,10 @@ TOML
 ln -s "$CCM_NATIVE" "$CCMDIR/teamcc"
 pccm() { (cd "$1" && shift && nofrom env -u CLAUDE_CONFIG_DIR HOME="$PHOME" "$@"); }
 ck "@cc 从家目录起：进 cwd-if 给的那个目录，你好原样交 claude" \
-   "$UNSET; cd '$PHOME/projects/notes' && exec claude$(hk "$PHOME") '你好'" \
+   "$UNSET; cd '$PHOME/projects/notes' && exec $BIN/claude$(hk "$PHOME") '你好'" \
    "$(pccm "$PHOME" "$CCM" @cc 你好 -- --ccm-print)"
 ck "@cc 从别处起：cwd-if 没对上 ⇒ 就在当前目录" \
-   "$UNSET; cd '$(cd "$CCMDIR/elsewhere" && pwd -P)' && exec claude$(hk "$PHOME") '你好'" \
+   "$UNSET; cd '$(cd "$CCMDIR/elsewhere" && pwd -P)' && exec $BIN/claude$(hk "$PHOME") '你好'" \
    "$(pccm "$CCMDIR/elsewhere" "$CCM" @cc 你好 -- --ccm-print)"
 ck "被叫成 teamcc（指向 ccm 的链接）＝ ccm @teamcc：继承 cc 的目录规则；临时选项盖住配置里的号" \
    "$(pccm "$PHOME" "$CCM" @teamcc 你好 -- --ccm-print --base)" \
@@ -445,7 +455,7 @@ ck "「基于」的那一段不存在：报到那一行" \
    "$(pccm "$PHOME" "$CCM" @orphan -- --ccm-print)"
 ck "没有这一段：说清" "ccm: $(zh beProfile.chain.unknown name=nope)" "$(pccm "$PHOME" "$CCM" @nope -- --ccm-print)"
 ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claude" \
-   "$UNSET; cd '/p' && exec claude$(hk "$PHOME") '@README.md 讲讲'" \
+   "$UNSET; cd '/p' && exec $BIN/claude$(hk "$PHOME") '@README.md 讲讲'" \
    "$(pccm "$PHOME" "$CCM" '@README.md 讲讲' -- --cwd /p --ccm-print)"
 
 finish

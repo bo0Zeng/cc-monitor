@@ -1,6 +1,6 @@
 //! 后端起子进程的**唯一原语**：生产段的 `Command::new` 只住这里。
 //!
-//! 五种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
+//! 五种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach_until_ready`]（脱离起、读回信管道等它说起好了）·
 //! [`Child::exec_replace`]（ccm 最终那一跳：POSIX 就地 exec，Windows 起它、等它、透传退出码）·
 //! [`Child::stream`]（长寿、读它的输出流，拿着的那一方放手 ⇒ 杀整组、收尸：终端实时预览的 tmux 控制模式客户端）·
 //! [`Child::converse`]（一问一答：stdin 写一行、两条输出逐行收，放手 ⇒ 杀整组：在 app 里登录一个号的官方登录子命令）。
@@ -379,6 +379,19 @@ impl Child {
         self.command()
     }
 
+    /// 子进程照哪份 `PATH` —— **只在这里定**：调用方显式给了（设或摘）⇒ 照它；只继承几键（[`Child::inherit_only`]：白名单那一形，
+    /// 插件）⇒ 照白名单（列了 `PATH` 就是本进程的那一份）；
+    /// 别的 ⇒ unix 上给起会话那个 shell 的那一份（[`crate::platform::shell::session_shell_path`]：经 ssh 非登录 shell 起的后端
+    /// 自己的 `PATH` 常没有用户级 `bin`，会话里敲得到的程序它起不来）；问不出 ⇒ 照本进程的。问 `PATH` 的那一趟自己显式给，不递归。
+    /// 非 unix：会话的环境与本进程同源，照本进程的。
+    fn default_path(&self) -> Option<String> {
+        if !cfg!(unix) || self.inherit_only.is_some() || self.envs.iter().any(|(k, _)| k == "PATH")
+        {
+            return None;
+        }
+        crate::platform::shell::session_shell_path()
+    }
+
     /// 每一个口（`run` · `detach` · `stream` · `converse` · 伪终端 · `exec_replace`）起子进程前都经这里造 `Command`；
     /// 先把本进程从上一层继承来的三格标准句柄设成不可继承（[`os::keep_own_stdio`]），这一层起的谁都不顺带攥着它们。
     fn command(&self) -> Command {
@@ -404,6 +417,17 @@ impl Child {
         for (k, _) in std::env::vars_os() {
             if is_internal_name(&k.to_string_lossy()) {
                 c.env_remove(&k);
+            }
+        }
+        // 给的是起会话那个 shell 的 `PATH` ⇒ 带上那一格，子进程不再问（[`crate::platform::shell::SESSION_PATH_GIVEN`]）；
+        // 别的（显式给的 · 只继承几键 · 非 unix）⇒ 摘掉，继承来的那一格不替这一份作保。
+        match self.default_path() {
+            Some(p) => {
+                c.env("PATH", p);
+                c.env(crate::platform::shell::SESSION_PATH_GIVEN, "1");
+            }
+            None => {
+                c.env_remove(crate::platform::shell::SESSION_PATH_GIVEN);
             }
         }
         for (k, v) in &self.envs {
@@ -535,15 +559,82 @@ impl Child {
         }
     }
 
-    /// 脱离起（自成进程组，stdio 全空；Windows 另不要控制台、脱离起它的那个 Job），不等；回它的 pid。
-    pub fn detach(self) -> Result<u32, ChildFail> {
+    /// 脱离起一个**会回信**的后台进程（托管终端 · 常驻后端）：自成进程组 · stdin 与 stderr 空（Windows 另不要控制台、脱离起它的那个 Job），
+    /// 它的 stdout 换成一根回信管道。
+    /// 被起的那一方起好了写一行 [`READY_LINE`]（[`say_ready`]）；起不来就把原话写进去再退出（[`say_not_up`]）。起的那一方读到哪样算哪样：
+    /// - 读到那一行 ⇒ [`Started::Ready`]，当场放手（读端关掉；之后它往 stdout 写只会写错，[`say_ready`] 那一类都不管写错）；
+    /// - 读到头（它关了回信管道 · 退了）⇒ 有界地等它的退出码 ⇒ [`Started::Exited`]，原话是它写过的全部；
+    /// - 期限内两样都没有 ⇒ 看它退没退：退了同上；没退 ⇒ [`Started::Stuck`]（照实说卡住，不杀它）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "起后台进程那一下等它回信的一次有界等待（起好就止，不是节拍）；它退了之后等退出码的一次宽限"
+    )]
+    pub fn detach_until_ready(self, within: Deadline) -> Result<Started, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        os::spawn_detached(&mut cmd)
-            .map(|c| c.id())
-            .map_err(ChildFail::of_spawn)
+        let mut child = os::spawn_detached(&mut cmd).map_err(ChildFail::of_spawn)?;
+        let pid = child.id();
+        let Some(reply) = child.stdout.take() else {
+            return Ok(Started::Stuck {
+                pid,
+                said: String::new(),
+            });
+        };
+        let (tx, rx) = mpsc::channel::<Reply>();
+        std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let mut r = std::io::BufReader::new(reply);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match r.read_line(&mut line) {
+                    Ok(0) | Err(_) => {
+                        tx.send(Reply::End).discard(Why::PeerGone); // 起的那一方已放手
+                        return;
+                    }
+                    Ok(_) if line.trim_end() == READY_LINE => {
+                        tx.send(Reply::Ready).discard(Why::PeerGone);
+                        return; // 读端随这条线一起关掉
+                    }
+                    Ok(_) => {
+                        if tx.send(Reply::Said(line.clone())).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        let ends = now() + within.0;
+        let mut said = String::new();
+        let ended = loop {
+            match rx.recv_timeout(ends.saturating_duration_since(now())) {
+                Ok(Reply::Ready) => return Ok(Started::Ready { pid }),
+                Ok(Reply::Said(s)) => said.push_str(&s),
+                Ok(Reply::End) | Err(RecvTimeoutError::Disconnected) => break true,
+                Err(RecvTimeoutError::Timeout) => break false,
+            }
+        };
+        if !ended {
+            return Ok(match child.try_wait() {
+                Ok(Some(st)) => Started::Exited {
+                    code: st.code(),
+                    said,
+                },
+                _ => Started::Stuck { pid, said },
+            });
+        }
+        // 回信管道读到头：它在退（或自己关了管道还跑着 ⇒ 宽限内等不到就算卡住）。
+        let (wtx, wrx) = mpsc::channel::<Option<Option<i32>>>();
+        std::thread::spawn(move || {
+            wtx.send(child.wait().ok().map(|s| s.code()))
+                .discard(Why::PeerGone);
+        });
+        Ok(match wrx.recv_timeout(DRAIN_AFTER_KILL.0) {
+            Ok(Some(code)) => Started::Exited { code, said },
+            _ => Started::Stuck { pid, said },
+        })
     }
 
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
@@ -552,6 +643,77 @@ impl Child {
     pub fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         os::exec_replace(self.command(), started)
     }
+}
+
+/// [`Child::detach_until_ready`] 的回信管道里「起好了」那一行。
+pub const READY_LINE: &str = "ccm-ready";
+
+/// [`Child::detach_until_ready`] 的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Started {
+    /// 说了起好了。
+    Ready { pid: u32 },
+    /// 没说起好就退了：退出码（被信号收掉 ⇒ `None`）与它在回信管道里写过的原话。
+    Exited { code: Option<i32>, said: String },
+    /// 期限内既没说起好、也没退（它写过的原话照带）。
+    Stuck { pid: u32, said: String },
+}
+
+impl Started {
+    /// 没起好那两种的那一句（怎么没起好；它写过的原话另起一行跟在后面）；起好了 ⇒ `None`。`within` ＝ 起的那一方给的期限。
+    /// 起的那一方各自把它放进自己那一句里（起不来的是什么）。
+    pub fn not_up(&self, within: Deadline) -> Option<String> {
+        let (head, said) = match self {
+            Started::Ready { .. } => return None,
+            Started::Exited {
+                code: Some(c),
+                said,
+            } => (
+                copy_text("beChild.started.exited", &[("exit", &c.to_string())]),
+                said,
+            ),
+            Started::Exited { code: None, said } => {
+                (copy_text("beChild.started.killed", &[]), said)
+            }
+            Started::Stuck { said, .. } => (
+                copy_text(
+                    "beChild.started.stuck",
+                    &[("secs", &within.shown_secs().to_string())],
+                ),
+                said,
+            ),
+        };
+        Some(match said.trim() {
+            "" => head,
+            said => format!("{head}\n{said}"),
+        })
+    }
+}
+
+enum Reply {
+    Ready,
+    Said(String),
+    End,
+}
+
+/// 被 [`Child::detach_until_ready`] 起的那一方：起好了，写那一行；随后把本进程的 stdout 换成 stderr 那一份（起的那一方读完那一行
+/// 就放手，之后再往那根管道写只会写错）。起的那一方已经不在了 ⇒ 不管（写错不 panic）。
+pub fn say_ready() {
+    say_on_reply(&format!("{READY_LINE}\n"));
+    os::stdout_after_ready();
+}
+
+/// 被 [`Child::detach_until_ready`] 起的那一方：起不来，把原话写进回信管道（随后由调用方以那个码退出）。写错不管。
+pub fn say_not_up(words: &str) {
+    say_on_reply(&format!("{}\n", words.trim_end()));
+}
+
+fn say_on_reply(s: &str) {
+    use std::io::Write as _;
+    let mut out = std::io::stdout().lock();
+    out.write_all(s.as_bytes())
+        .and_then(|()| out.flush())
+        .discard(Why::Diag);
 }
 
 /// 跑着的程序文件能不能被覆盖 · 删掉：Windows 上不能（系统攥着它的映像），Unix 上能（换的是目录项，跑着的那一份照跑）。
@@ -739,6 +901,15 @@ mod os {
 
     /// POSIX 上本进程的三格标准句柄就是 0 · 1 · 2，起子进程时被换成指定的那一份，不会另外跟着交下去 ⇒ 不用做。
     pub(super) fn keep_own_stdio() {}
+
+    /// 本进程的 stdout（fd 1）换成 stderr 那一份（fd 2）：说完「起好了」之后回信管道没人读了（[`super::say_ready`]）。
+    /// 被 [`super::Child::detach_until_ready`] 起的 stderr 是空设备；常驻那一形这时 stderr 已接到诊断文件，漏写进 stdout 的落在那里。
+    pub(super) fn stdout_after_ready() {
+        // SAFETY: dup2(2, 1)：对本进程 fd 表的一次普通系统调用，不碰别的内存；失败 ⇒ fd 1 照旧（之后写它只会写错）。
+        unsafe {
+            libc::dup2(2, 1);
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -964,6 +1135,9 @@ mod os {
             }
         }
     }
+
+    /// Windows：说完「起好了」之后只剩托管进程，它此后不写 stdout（写也只会写错，经 [`super::say_on_reply`] 的那几处都不 panic）⇒ 不换。
+    pub(super) fn stdout_after_ready() {}
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;

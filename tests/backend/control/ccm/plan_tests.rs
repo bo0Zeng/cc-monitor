@@ -10,6 +10,7 @@ use crate::ccm_line::argv::{flag, Die, Parsed};
 use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
 use crate::common::session_snapshot::TakenNames;
 use crate::control::ccm::plan::test_support::no_library;
+use crate::control::ccm::plan::SELF_CHECK_IN_PANE;
 use crate::control::ccm::plan::*;
 use crate::observe::accounts_query::AccountRow;
 use crate::wire::TerminalHost;
@@ -985,14 +986,19 @@ fn the_self_check_is_the_payload_itself_plus_print() {
         let Plan::Container(c) = &p else {
             panic!("该是容器路：{p:?}")
         };
-        // ccm 那一半在 `--` 右边、恒在末尾 ⇒ 自检那一趟就是载荷末尾多一个 `--ccm-print`（有没有透传都一样）。
+        // ccm 那一半在 `--` 右边、恒在末尾 ⇒ 自检那一趟就是载荷末尾多一个 `--ccm-print`（有没有透传都一样），
+        //   入口前多一格「在 tmux 里」（照窗格里那一跳的环境算计划）。
         let _ = has_passthru;
         let want = format!("{} '--ccm-print'", c.payload);
-        assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
+        assert_eq!(
+            c.self_check.replacen(SELF_CHECK_IN_PANE, "", 1),
+            want,
+            "自检与载荷不是同一条命令"
+        );
         assert!(
-            c.self_check.starts_with(
-                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; env -u CLAUDE_CODE_SESSION_ID '/opt/cc-monitor-backend' "
-            ),
+            c.self_check.starts_with(&format!(
+                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; env -u CLAUDE_CODE_SESSION_ID {SELF_CHECK_IN_PANE}'/opt/cc-monitor-backend' "
+            )),
             "自检没带同一段 export 前缀 / 同一个入口：{}",
             c.self_check
         );
@@ -2182,7 +2188,9 @@ fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
     let unset = format!("env -u {var} '/usr/local/bin/ccm'");
     assert!(none.starts_with(&unset), "没有父却没摘掉：{none}");
     assert!(
-        none_check.starts_with(&unset),
+        none_check.starts_with(&format!(
+            "env -u {var} {SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'"
+        )),
         "自检那一趟没摘：{none_check}"
     );
     let mut e = env();
@@ -2191,7 +2199,9 @@ fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
     let set = format!("{var}='s-p' '/usr/local/bin/ccm'");
     assert!(with.starts_with(&set), "父没交进去：{with}");
     assert!(
-        with_check.starts_with(&set),
+        with_check.starts_with(&format!(
+            "{var}='s-p' {SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'"
+        )),
         "自检那一趟没交父：{with_check}"
     );
     assert!(

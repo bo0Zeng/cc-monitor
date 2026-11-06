@@ -50,21 +50,35 @@ pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
 
 /// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录；远端开窗那一形是 `bash -lic`），
 /// agent 命令按那里的 `PATH` 找；后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
-/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」· 后端自己起 agent 程序（[`agent_launch`]）都经这一处问。
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」· 找 agent 程序（[`agent_launch`]）都经这一处问；
+/// 起子进程的唯一出口（`platform::child::Child`）缺省也把这一份交给子进程。
 ///
-/// **按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
+/// **按进程生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
 /// 问法与防法见 [`fresh_terminal_path`]；问不出来 ⇒ `None`（调用方不许当成「没有」）。
 /// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
 pub fn session_shell_path() -> Option<String> {
     #[cfg(unix)]
     {
         static ONE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-        ONE.get_or_init(fresh_terminal_path).clone()
+        ONE.get_or_init(|| given_session_path().or_else(fresh_terminal_path))
+            .clone()
     }
     #[cfg(not(unix))]
     {
         std::env::var("PATH").ok()
     }
+}
+
+/// 起本进程的那一方交下来的 `PATH` 就是起会话那个 shell 的那一份（[`SESSION_PATH_GIVEN`] 是 `1`）⇒ 照它，不再问：
+/// 常驻后端 → ccm → 托管进程 → 里面那一跳一条链只问一次登录 shell。
+pub const SESSION_PATH_GIVEN: &str = "CCM_SESSION_PATH";
+
+#[cfg(unix)]
+fn given_session_path() -> Option<String> {
+    (std::env::var(SESSION_PATH_GIVEN).ok().as_deref() == Some("1"))
+        .then(|| std::env::var("PATH").ok())
+        .flatten()
+        .filter(|p| !p.trim().is_empty())
 }
 
 /// 现问一次「新开一个终端时的 `PATH`」，不缓存（`ccm-probe` 每问一次都要此刻的样子）。
@@ -179,35 +193,54 @@ pub fn find_session_command(
     SessionCommand::Absent
 }
 
-/// 后端**自己**起一个 agent 程序（登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）。
+/// 起一个 agent 程序（`ccm` 最后那一跳 · 登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）
+/// ＋ 它是哪一种装法。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentLaunch {
     pub program: std::ffi::OsString,
     pub lead: Vec<std::ffi::OsString>,
     pub path: Option<String>,
+    pub by: StartBy,
 }
 
-/// 后端自己起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序：照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找，
-/// 子进程也拿那一份（npm 装的那一形靠它找 `node`）。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
-/// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按后端生命周期缓存）。
+/// 起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序（`ccm` 最后那一跳在计划里就经它，后端自己起的登录子命令 · 用量探针也是）：
+/// 照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
+/// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按进程生命周期缓存）。
 /// 找不到 ⇒ `Err(查过哪一份 PATH、几个目录)`，不说「未装」（它可能装了、只是不在这一份上）。
+/// 找到的是 `.ps1`、这台的执行策略不让跑本地脚本 ⇒ `Err(那一句)`，不起（执行策略只在这一形才问）。
 pub fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, String> {
     let asked = match given {
         Some(_) => None,
         None => session_shell_path(),
     };
-    agent_launch_in(
+    let found = agent_launch_in(
         prog,
         given.or(asked.as_deref()),
         std::env::var("PATH").ok().as_deref(),
         cfg!(windows),
         &|p| p.is_file(),
-    )
+    )?;
+    // 找到的那个文件：`.ps1` 那一形是交给 PowerShell 的最后一个前导参数，别的就是程序本身。
+    let file = std::path::PathBuf::from(found.lead.last().unwrap_or(&found.program));
+    let policy = || powershell::execution_policy(PsHost::Desktop).effective;
+    let as_found = SessionCommand::Found {
+        file: file.clone(),
+        program: found.program.clone(),
+        lead: found.lead.clone(),
+        by: found.by,
+    };
+    match script_refused_by_policy(&as_found, &policy) {
+        Some(word) => Err(copy_core::copy_text(
+            "beCcm.execDirect.scriptRefused",
+            &[("file", &file.display().to_string()), ("policy", &word)],
+        )),
+        None => Ok(found),
+    }
 }
 
 /// [`agent_launch`] 的本体（两份 `PATH` · 平台 · 查文件都是参数）。起会话那个 shell 的 `PATH` 问不出 ⇒ 照本进程的找、`PATH` 不另给；
-/// 问得出 ⇒ 只照它找（上面没有就是没有，不退回本进程那一份：起会话里敲它也起不来）。
-pub(crate) fn agent_launch_in(
+/// 问得出 ⇒ 只照它找（上面没有就是没有，不退回本进程那一份：起会话里敲它也起不来）。用户给的是路径（带分隔符）⇒ 不替他找，原样起。
+pub fn agent_launch_in(
     prog: &str,
     session: Option<&str>,
     own: Option<&str>,
@@ -215,12 +248,23 @@ pub(crate) fn agent_launch_in(
     is_file: &dyn Fn(&std::path::Path) -> bool,
 ) -> Result<AgentLaunch, String> {
     let session = session.filter(|p| !p.trim().is_empty());
+    if prog.contains('/') || (windows && prog.contains('\\')) {
+        return Ok(AgentLaunch {
+            program: prog.into(),
+            lead: Vec::new(),
+            path: session.map(str::to_string),
+            by: StartBy::Itself,
+        });
+    }
     let path = session.or(own);
     match find_session_command(prog, path, windows, is_file) {
-        SessionCommand::Found { program, lead, .. } => Ok(AgentLaunch {
+        SessionCommand::Found {
+            program, lead, by, ..
+        } => Ok(AgentLaunch {
             program,
             lead,
             path: session.map(str::to_string),
+            by,
         }),
         SessionCommand::Absent => {
             let dirs = path.map_or(0, |p| path_dirs(p).len()).to_string();
@@ -270,7 +314,7 @@ pub fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
     reason = "问起会话那个 shell 的 `PATH`：用户的登录 shell 跑一句只 `printf` 出 `PATH` 的固定脚本、有期限；它读写什么由用户的 rc 定，后端进程自身不写"
 )]
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
-    Child::new(shell)
+    let ask = Child::new(shell)
         .args([
             "-l",
             "-i",
@@ -280,7 +324,12 @@ pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
                 m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
             ),
         ])
-        .env("TERM", "dumb")
+        .env("TERM", "dumb");
+    // 子进程缺省拿的就是这一趟问出来的那一份（`Child` 的 `PATH` 那一格）⇒ 这一趟自己显式给本进程的，不递归。
+    match std::env::var_os("PATH") {
+        Some(p) => ask.env("PATH", p),
+        None => ask.env_remove("PATH"),
+    }
 }
 
 /// 起它（stdin 接空 · 自成一组 · 到期限整组杀，都是 [`Child::run`] 的）、从输出里认那一段。

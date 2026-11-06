@@ -173,9 +173,6 @@ pub(crate) fn answer_probe_with(
     for (k, v) in face.env_set {
         child = child.env(k, v);
     }
-    if let Some(p) = &at.path {
-        child = child.env("PATH", p);
-    }
     let out = child.run(PROBE_WITHIN).map_err(|e| {
         let (code, said) = e.into_cmd_said("failed", failed);
         crate::wire::spec::fail(code, said)

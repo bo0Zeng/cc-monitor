@@ -944,80 +944,76 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
     );
 }
 
-/// 缺陷（10-10）：Windows 上 `ccm` 最后起 agent 那一下按裸名字起，std 只补 `.exe` ⇒ npm 全局的 `.cmd` / `.ps1` 起不来，而足迹说装了。
-/// 今天它与足迹同一个找法（`platform::shell::find_session_command`）：Windows 上裸名字换成找到的那个文件（`.ps1` 经 PowerShell）；
-/// unix · 带路径的 · 找不到的 ⇒ 原样。只有 `.ps1`、执行策略不让跑脚本 ⇒ 不起，`Err` 带那份文件与那一档的原词。
+/// 直路的启动器在**计划里**就换成要起的那个文件，与足迹 · 后端自己起 agent 同一个找法（`platform::shell::agent_launch_in`）：
+/// 后端自己的 `PATH` 上没有、起会话那个 shell 的有（经 ssh 非登录 shell 起的后端）⇒ 计划里是那个文件，`--ccm-print` 与真跑都起得来；
+/// 起会话那个 shell 的上也没有 ⇒ 计划里就拒（托管那一形的自检当场说，不等里面那一跳起了再退）。
+/// Windows：`.cmd` 是那个文件、`.ps1` 经 PowerShell；用户给了路径 ⇒ 不替他找。后面的词原样跟着。
 #[test]
-fn the_final_launch_starts_what_the_footprint_found() {
-    use std::ffi::OsString;
+fn the_launcher_is_resolved_in_the_plan_on_the_session_shells_path() {
+    use crate::platform::shell::agent_launch_in;
     use std::path::{Path, PathBuf};
-    let d = PathBuf::from("/w/npm");
-    let pe = d.to_str().unwrap();
-    let cmd = d.join("claude.cmd");
-    let ps = d.join("claude.ps1");
+    let user_bin = PathBuf::from("/u/.local/bin");
     let has = |set: Vec<PathBuf>| move |p: &Path| set.iter().any(|f| f == p);
-    let bare = |s: &str| Ok((OsString::from(s), Vec::<OsString>::new()));
-    let open = || Some("RemoteSigned".to_string());
-    let shut = || Some("Restricted".to_string());
-
+    let session = "/u/.local/bin:/usr/bin:/bin";
+    let own = "/usr/bin:/bin";
+    let unix_has = has(vec![user_bin.join("claude")]);
+    let resolved = |d: &mut plan::Direct, session: Option<&str>| {
+        launcher_resolved(d, &|p| {
+            agent_launch_in(p, session, Some(own), false, &unix_has)
+        })
+    };
+    let mut d = direct_of(&["--model", "m", "--", "--cwd", "/p"], None);
+    assert_eq!(d.argv.first().map(String::as_str), Some("claude"), "夹具");
+    resolved(&mut d, Some(session)).expect("起会话那个 shell 的 PATH 上有 ⇒ 计划算得出");
     assert_eq!(
-        final_program(
-            "claude",
-            true,
-            Some(pe),
-            &has(vec![cmd.clone(), ps.clone()]),
-            &shut
+        d.argv.first().map(String::as_str),
+        Some("/u/.local/bin/claude")
+    );
+    assert!(
+        d.argv.windows(2).any(|w| w == ["--model", "m"]),
+        "后面的词原样跟着：{:?}",
+        d.argv
+    );
+    // 起会话那个 shell 的 PATH 上没有（只本进程的那一份上有也不算）⇒ 计划里就拒。
+    let mut d = direct_of(&["--", "--cwd", "/p"], None);
+    let why = agent_launch_in("claude", Some(own), Some(session), false, &unix_has)
+        .expect_err("夹具：这一份上没有");
+    assert!(
+        matches!(
+            launcher_resolved(&mut d, &|p| agent_launch_in(p, Some(own), Some(session), false, &unix_has)),
+            Err(Die(m)) if m == copy_text("beCcm.plan.launcherAbsent", &[("prog", "claude"), ("why", &why)])
         ),
-        Ok((cmd.clone().into_os_string(), vec![]))
+        "找不到要在计划里拒"
+    );
+    // Windows：npm 的 .cmd 就是那个文件；只有 .ps1 ⇒ 经 PowerShell 起它。
+    let npm = PathBuf::from("/w/npm");
+    let win = |files: Vec<PathBuf>| {
+        let mut d = direct_of(&["--", "--cwd", "/p"], None);
+        let is = has(files);
+        launcher_resolved(&mut d, &|p| {
+            agent_launch_in(p, Some("/w/npm"), None, true, &is)
+        })
+        .expect("找得到");
+        d.argv
+    };
+    let cmd = npm.join("claude.cmd").display().to_string();
+    let ps = npm.join("claude.ps1").display().to_string();
+    assert_eq!(
+        win(vec![npm.join("claude.cmd"), npm.join("claude.ps1")])[0],
+        cmd
     );
     assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &open),
-        Ok((
-            OsString::from("powershell.exe"),
-            vec![
-                "-NoProfile".into(),
-                "-File".into(),
-                ps.clone().into_os_string()
-            ]
-        ))
+        win(vec![npm.join("claude.ps1")])[..4],
+        ["powershell.exe", "-NoProfile", "-File", ps.as_str()]
     );
-    // 只有 .ps1、执行策略不让 ⇒ 不起、照实说（不加 -ExecutionPolicy Bypass）
-    assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &shut),
-        Err(copy_text(
-            "beCcm.execDirect.scriptRefused",
-            &[
-                ("file", &ps.display().to_string()),
-                ("policy", "Restricted")
-            ]
-        ))
-    );
-    // unix 照旧按名字 exec
-    assert_eq!(
-        final_program(
-            "claude",
-            false,
-            Some(pe),
-            &has(vec![d.join("claude")]),
-            &shut
-        ),
-        bare("claude")
-    );
-    // 找不到 / 判不了 ⇒ 原样（起不来时那句报错说得出是哪个）
-    assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![]), &shut),
-        bare("claude")
-    );
-    assert_eq!(
-        final_program("claude", true, None, &has(vec![cmd.clone()]), &shut),
-        bare("claude")
-    );
-    // 用户给了路径 ⇒ 不替他找
-    let given = "C:\\tools\\claude";
-    assert_eq!(
-        final_program(given, true, Some(pe), &has(vec![cmd]), &shut),
-        bare(given)
-    );
+    // 用户给了路径 ⇒ 不替他找。
+    let mut d = direct_of(&["--cwd", "/p", "--launcher", "/opt/x/claude"], None);
+    assert_eq!(d.argv[0], "/opt/x/claude", "夹具：{:?}", d.argv);
+    launcher_resolved(&mut d, &|p| {
+        agent_launch_in(p, Some(session), None, false, &has(vec![]))
+    })
+    .expect("给了路径 ⇒ 照它");
+    assert_eq!(d.argv[0], "/opt/x/claude");
 }
 
 /// busy2：容器路送启动命令没确认 ⇒ 送达未知且不带 `--detach` 照样接进去；明确没送进且会话是本趟建的 ⇒ 收掉再报；别的照报。
@@ -1056,4 +1052,102 @@ fn busy2_after_an_unconfirmed_start_command_join_or_reap() {
             "{untyped:?} detach={detach}"
         );
     }
+}
+
+/// 起托管终端：托管进程（这里是假的：`sh -c` 一句）还没起好就退了 ⇒ 起的那一方**当场**报「托管进程已退出」、码与它的原话，
+/// 不白等起好的期限、不报一句猜测。
+#[cfg(unix)]
+#[test]
+fn a_hosted_terminal_that_exits_before_it_is_up_is_reported_at_once_with_its_words() {
+    let (own, data) = crate::host::managed::run::test_support::sandbox_own("ccmdbg-exit");
+    let said = "ccm: 托管终端 ccmdbg-x 已在运行";
+    let host = [
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("printf '%s\\n' '{said}'; exit 3"),
+    ];
+    let got = spawn_hosted(&host, &[], "ccmdbg-x", &own);
+    let _ = std::fs::remove_dir_all(&data);
+    let m = match got {
+        Err(HostSpawn::Failed(m)) => m,
+        Err(HostSpawn::Refused(m)) => panic!("不该是拒：{m}"),
+        Ok(()) => panic!("托管进程退了却报起好了"),
+    };
+    // 「当场」由结构保证（读到回信管道的头就交，没有轮询圈）；这里钉的是结局：退了 · 码 3 · 原话，不是「期限内没说」那一句。
+    let exited = crate::platform::child::Started::Exited {
+        code: Some(3),
+        said: format!("{said}\n"),
+    };
+    let why = exited.not_up(HOST_UP_WITHIN).expect("没起好");
+    assert_eq!(
+        m,
+        copy_text(
+            "beCcm.execute.hostSpawnFailed",
+            &[("name", "ccmdbg-x"), ("why", &why)]
+        )
+    );
+    assert!(m.contains(said), "原话没带上：{m}");
+}
+
+/// 托管那一形的自检算的要是里面那一跳那一份计划：里面那一跳的环境里带着托管终端的标记（⇒ 直路，启动器在计划里解析），
+/// 自检也带上同一格 ⇒ 启动器找不到时自检当场没过，不报起好了（里面那一跳一起就退的那一种不再假成功）。
+#[test]
+fn the_hosted_self_check_plans_what_the_hop_inside_will_plan() {
+    let e = Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        account_env: "CLAUDE_CONFIG_DIR".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
+        can_host: true,
+        ..Default::default()
+    };
+    let a: Vec<String> = ["--hosted", "--cwd", "/p"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let o = match argv::test_support::parse(&argv::test_support::mixed_to_split(&a))
+        .expect("该解析得动")
+    {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    let c = match plan::build(&o, &e, &plan::test_support::no_library, None).expect("该算得出计划")
+    {
+        Plan::Container(c) if c.host == plan::TerminalHost::Managed => c,
+        other => panic!("托管测试却算出 {other:?}"),
+    };
+    let check = hosted_self_check_child(&c)
+        .expect("托管那一形有自检")
+        .built();
+    let host = check
+        .get_envs()
+        .find(|(k, _)| *k == crate::host::managed::run::HOST_ENV)
+        .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()));
+    assert_eq!(
+        host.as_deref(),
+        Some(c.name.as_str()),
+        "自检没带托管终端的标记"
+    );
+}
+
+/// 托管进程起好了说一声（回信管道里那一行）⇒ 起的那一方当场算起好，不看盘、不轮询。
+#[cfg(unix)]
+#[test]
+fn a_hosted_terminal_is_up_when_it_says_so() {
+    let (own, data) = crate::host::managed::run::test_support::sandbox_own("ccmdbg-up");
+    let host = [
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("printf '%s\\n' '{}'", crate::platform::child::READY_LINE),
+    ];
+    let got = spawn_hosted(&host, &[], "ccmdbg-y", &own);
+    let _ = std::fs::remove_dir_all(&data);
+    assert!(
+        matches!(got, Ok(())),
+        "{:?}",
+        got.err().map(|e| match e {
+            HostSpawn::Failed(m) | HostSpawn::Refused(m) => m,
+        })
+    );
 }

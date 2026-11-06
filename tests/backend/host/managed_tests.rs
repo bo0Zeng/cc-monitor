@@ -174,6 +174,23 @@ fn only_the_real_terminals_attached_to_a_hosted_terminal_show_it() {
     );
 }
 
+/// 托管进程的退出码就是里面那个子进程的码（起它的那一方 · 收尾那一侧照它判子进程怎么退的）；参数不成形 ⇒ 退 2。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_hosted_process_exits_with_its_childs_code() {
+    let (own, _data) = sandbox_own("ccmdbg-code");
+    // 不经 `main`：它说「起好了」之后把本进程的 stdout 换成空设备（这里是测试进程）。
+    let code = super::run::serve(
+        super::run::test_support::spec("ccmdbg-c", "exit 7"),
+        &own,
+        |_| {},
+    )
+    .await
+    .expect("跑完");
+    assert_eq!(code, Some(7));
+    assert_eq!(super::run::main(&["ccmdbg-c".to_string()], &own).await, 2);
+}
+
 /// 父进程表成了环（进程号复用时快照里会有）⇒ 走到上限就停，不挂死、不瞎认。
 #[test]
 fn walking_the_ancestors_stops_on_a_loop() {

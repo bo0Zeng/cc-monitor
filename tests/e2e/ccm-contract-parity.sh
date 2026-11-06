@@ -99,8 +99,15 @@ base_env() {
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \
+      SHELL="$W/login-shell" CCM_E2E_SESSION_PATH="$W/bin:$PATH" \
       "${BASE_EXTRA[@]}" "$@"
 }
+
+# 起会话那个 shell 的 PATH（ccm 照它在计划里把启动器换成找到的那个文件）也钉住：假登录 shell 打出 `CCM_E2E_SESSION_PATH`，
+#   不起开发机上真的登录 shell（不跑真 rc）；那一份上放一个假的 claude（不给 `--launcher` 的那一条照它说）。
+printf '#!/bin/sh\nprintf "@@ccm-session-path@@%%s@@ccm-session-path@@" "$CCM_E2E_SESSION_PATH"\n' > "$W/login-shell"
+chmod +x "$W/login-shell"
+printf '#!/bin/sh\n' > "$W/bin/claude"; chmod +x "$W/bin/claude"
 
 # ccm 受控的键（其余如 PATH/HOME 是宿主噪声，比了只会假红）。
 CCM_KEYS='^(CLAUDE_CONFIG_DIR|ANTHROPIC_MODEL|CC_BUS_ID|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_CHILD_SESSION|CCM_ENV_PROBE)='
@@ -338,6 +345,13 @@ ck "兑现：--ccm-tmux 的载荷内侧真带 export ANTHROPIC_BASE_URL=（否�
 NORELAY_PRINT="$(base_env "$CCM" -- --ccm-print --ccm-tmux=r61-caps --cwd "$CWD" 2>&1)"
 ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" \
    "$(printf '%s\n' "$NORELAY_PRINT" | grep -c 'ANTHROPIC_BASE_URL')"
+
+echo
+echo "===== 启动器：--ccm-print 就是真跑那一行（找到的那个文件）====="
+ck "不给 --launcher：照起会话那个 shell 的 PATH 换成那个文件" "1" \
+   "$(base_env "$CCM" -- --ccm-agent claude --cwd "$CWD" --ccm-print 2>/dev/null | grep -c "&& exec $W/bin/claude ")"
+ck "那一份 PATH 上没有 ⇒ 在计划里就拒（不吐一行起不来的命令）" "2" \
+   "$(base_env env CCM_E2E_SESSION_PATH=/nonexistent "$CCM" -- --ccm-agent claude --cwd "$CWD" --ccm-print >/dev/null 2>&1; echo $?)"
 
 echo
 finish

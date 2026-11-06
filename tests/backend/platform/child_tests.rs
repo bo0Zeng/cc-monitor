@@ -174,21 +174,17 @@ fn a_real_child_sees_only_the_own_env_passed_on_purpose() {
 fn a_detached_child_leads_its_own_group() {
     let d = test_home::scratch("detach");
     let f = d.join("pgid");
-    let pid = Child::new("sh")
+    let started = Child::new("sh")
         .args([
             "-c",
-            &format!("ps -o pgid= -p $$ > {}.t && mv {0}.t {0}", f.display()),
+            &format!("ps -o pgid= -p $$ > {}; echo {READY_LINE}", f.display()),
         ])
-        .detach()
+        .detach_until_ready(Deadline::secs(20))
         .expect("脱离起");
-    let mut got = String::new();
-    for _ in guard_core::wall::rounds() {
-        if let Ok(s) = std::fs::read_to_string(&f) {
-            got = s;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let Started::Ready { pid } = started else {
+        panic!("没说起好：{started:?}");
+    };
+    let got = std::fs::read_to_string(&f).unwrap_or_default();
     assert_eq!(got.trim(), pid.to_string());
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -738,10 +734,18 @@ fn detach_helper_inner() {
         return;
     }
     let n = (4 * guard_core::wall::CEILING_SECS).to_string();
-    let pid = Child::new("ping.exe")
-        .args(["-n", &n, "127.0.0.1"])
-        .detach()
+    // 先说起好了（回信管道那一行），再一直 ping 着。
+    let started = Child::new("cmd.exe")
+        .args([
+            "/d",
+            "/c",
+            &format!("echo {READY_LINE}&ping -n {n} 127.0.0.1 >nul"),
+        ])
+        .detach_until_ready(Deadline::secs(20))
         .expect("脱离起");
+    let Started::Ready { pid } = started else {
+        panic!("没说起好：{started:?}");
+    };
     let tmp = std::path::PathBuf::from(&f).with_extension("t");
     std::fs::write(&tmp, pid.to_string()).expect("写 pid");
     std::fs::rename(&tmp, &f).expect("改名");
@@ -942,4 +946,112 @@ fn a_detached_child_on_windows_outlives_the_job_that_started_it() {
         }
         let _ = std::fs::remove_dir_all(&d);
     }
+}
+
+/// 回信管道：没说起好就退了 ⇒ 码与它写过的原话；说了起好 ⇒ 起好（之后它再写什么、退不退都不管）。
+#[cfg(unix)]
+#[test]
+fn a_detached_child_says_whether_it_came_up() {
+    let start = |script: &str| {
+        Child::new("sh")
+            .args(["-c", script])
+            .detach_until_ready(Deadline::secs(20))
+            .expect("起得来")
+    };
+    assert_eq!(
+        start("echo 名字被占; exit 3"),
+        Started::Exited {
+            code: Some(3),
+            said: "名字被占\n".to_string()
+        }
+    );
+    assert!(matches!(
+        start(&format!("echo {READY_LINE}; echo 之后的话; exit 5")),
+        Started::Ready { .. }
+    ));
+}
+
+/// 下一条判据的帮手（只被它当子进程叫）：裸名字起 `ccmdbgfake-launcher`，不显式给 `PATH`；起得来 ⇒ 交它的输出。
+#[cfg(unix)]
+#[test]
+#[ignore = "只被「缺省照起会话那个 shell 的 PATH」那条判据当子进程叫"]
+fn default_path_helper_inner() {
+    if std::env::var_os("CCM_T_DEFAULT_PATH").is_none() {
+        return;
+    }
+    // 链上再往下一层（常驻后端 → ccm → 托管进程 → 里面那一跳那一种）：再叫一次自己，不显式给 `PATH`。
+    if std::env::var_os("CCM_T_NEST").is_some() {
+        let r = Child::new(std::env::current_exe().expect("本测试程序"))
+            .args([
+                "child::tests::default_path_helper_inner",
+                "--exact",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env_remove("CCM_T_NEST")
+            .run(Deadline::secs(60))
+            .expect("下一层跑完");
+        assert!(
+            r.status.success(),
+            "下一层没起来：{}{}",
+            String::from_utf8_lossy(&r.stdout),
+            String::from_utf8_lossy(&r.stderr)
+        );
+    }
+    let out = Child::new("ccmdbgfake-launcher")
+        .run(Deadline::secs(20))
+        .expect("裸名字照起会话那个 shell 的 PATH 找得到");
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "launched");
+}
+
+/// 子进程缺省照**起会话那个 shell** 的 `PATH`：本进程的 `PATH` 上没有启动器所在的目录、登录 shell 的有（经 ssh 非登录 shell
+/// 起的常驻后端就是这样）⇒ 裸名字照样起得来。假登录 shell 只认 `-l -i -c`，打出带启动器目录的那一份；帮手进程自己的 `PATH` 不含它。
+/// 整条链只问一次：帮手再起一层自己，两层都起子进程，假登录 shell 只被起了一次（问到的那一份随子进程往下交）。
+#[cfg(unix)]
+#[test]
+fn a_child_finds_its_program_on_the_session_shells_path_not_the_backends() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = test_home::scratch("ccmdbg-default-path");
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).expect("建目录");
+    let exe = |p: &std::path::Path, body: &str| {
+        std::fs::write(p, body).expect("写脚本");
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    };
+    exe(
+        &bin.join("ccmdbgfake-launcher"),
+        "#!/bin/sh\necho launched\n",
+    );
+    let shell = d.join("login-shell");
+    exe(
+        &shell,
+        &format!(
+            "#!/bin/sh\n[ \"$1\" = -l ] || exit 9\necho asked >> '{}'\nprintf '%s%s%s' '{m}' '{}:/usr/bin:/bin' '{m}'\n",
+            d.join("asked").display(),
+            bin.display(),
+            m = crate::platform::shell::SESSION_PATH_MARK
+        ),
+    );
+    let r = Child::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "child::tests::default_path_helper_inner",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("CCM_T_DEFAULT_PATH", "1")
+        .env("CCM_T_NEST", "1")
+        .env("SHELL", &shell)
+        .env("PATH", "/usr/bin:/bin")
+        .run(Deadline::secs(60))
+        .expect("帮手跑完");
+    let asked = std::fs::read_to_string(d.join("asked")).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&d);
+    assert!(
+        r.status.success(),
+        "帮手没起来：{}{}",
+        String::from_utf8_lossy(&r.stdout),
+        String::from_utf8_lossy(&r.stderr)
+    );
+    assert_eq!(asked.lines().count(), 1, "登录 shell 被问了几次：{asked:?}");
 }

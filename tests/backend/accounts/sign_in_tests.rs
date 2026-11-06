@@ -304,17 +304,11 @@ fn link_then_instant_exit() {
     }
 }
 
-/// 缺陷（10-19）：登录子命令照**起会话那个 shell** 的 `PATH` 找、子进程也拿那一份（npm 装的那一形要靠它找 `node`）；
+/// 缺陷（10-19）：登录子命令照**起会话那个 shell** 的 `PATH` 找（子进程拿哪份 `PATH` 归起进程的唯一出口，判据在 `child_tests`）；
 /// 那一份上没有 ⇒ 起不成，说的是查过哪儿，不是「未装」（它可能装了、只是不在后端自己的 `PATH` 上）。
 #[test]
 fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
-    let rig = Rig::new(
-        "spath",
-        &format!(
-            "case \":$PATH:\" in *\":{}:\"*) ;; *) echo \"PATH=$PATH\" >&2; exit 3;; esac\necho \"visit: {FAKE_URL}\"\nsleep 5",
-            rig_bin_marker()
-        ),
-    );
+    let rig = Rig::new("spath", &format!("echo \"visit: {FAKE_URL}\"\nsleep 5"));
     let log: Log = Default::default();
     let (mut a, _) = rig.ask("acct-spath", conn());
     let session = format!(
@@ -323,8 +317,7 @@ fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
         rig_bin_marker()
     );
     a.path = Some(session);
-    let s = start(&a, on_end(&log))
-        .expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来，且子进程拿的是那一份");
+    let s = start(&a, on_end(&log)).expect("起会话那个 shell 的 PATH 上有它 ⇒ 起得来");
     assert_eq!(s.url, FAKE_URL);
     cancel(&s.job);
 

@@ -87,16 +87,17 @@ pub(crate) fn size_of(s: &str) -> Option<Size> {
     (cols > 0 && rows > 0).then_some(Size { rows, cols })
 }
 
-/// 后端词的入口：解参数、跑，交回进程退出码（起不来 2，跑完 0）。
+/// 后端词的入口：解参数、跑，交回进程退出码。起它的那一方经回信管道等它（[`crate::platform::child::Child::detach_until_ready`]）：
+/// 托管口绑好、事实写好 ⇒ 说起好了；起不来 ⇒ 原话写进去、退 2。跑完 ⇒ 子进程的码（没有码 ⇒ 1）。
 pub async fn main(args: &[String], own: &Own) -> i32 {
     let done = match parse(args) {
-        Ok(spec) => run(spec, own, |_| {}).await,
+        Ok(spec) => serve(spec, own, |_| crate::platform::child::say_ready()).await,
         Err(s) => Err(s),
     };
     match done {
-        Ok(()) => 0,
+        Ok(code) => code.unwrap_or(1),
         Err(s) => {
-            eprintln!("ccm: {}", s.logged());
+            crate::platform::child::say_not_up(&format!("ccm: {}", s.logged()));
             2
         }
     }
@@ -164,6 +165,15 @@ pub(crate) async fn run(
     own: &Own,
     ready: impl FnOnce(&std::path::Path),
 ) -> Result<(), Said> {
+    serve(spec, own, ready).await.map(drop)
+}
+
+/// [`run`] 的本体：交回子进程的退出码（被信号收掉 ⇒ `None`）。
+pub(crate) async fn serve(
+    spec: Spec,
+    own: &Own,
+    ready: impl FnOnce(&std::path::Path),
+) -> Result<Option<i32>, Said> {
     super::home::sweep_stale(own);
     let home = Home::claim(own, &spec.id)?;
     // 托管口先绑、再起子进程：子进程一存在口就连得上（里面的 claude 写 pidfile、后端来打标时不扑空）。
@@ -313,7 +323,7 @@ pub(crate) async fn run(
     if let Some(home) = locked(&ctx.home).take() {
         home.clear();
     }
-    Ok(())
+    Ok(code)
 }
 
 /// 子进程退了之后，等它最后那几行读完的宽限（毫秒）。

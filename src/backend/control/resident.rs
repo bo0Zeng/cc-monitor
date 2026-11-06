@@ -134,11 +134,39 @@ pub(crate) fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) 
             )
         }
     };
+    use crate::platform::child::Started;
+    let not_up = |s: &Started| {
+        fail(
+            ENSURE,
+            "spawn_failed",
+            copy_text(
+                "beResident.spawn.failed",
+                &[
+                    ("exe", &exe.display().to_string()),
+                    ("why", &s.not_up(RESIDENT_UP_WITHIN).unwrap_or_default()),
+                ],
+            ),
+        )
+    };
     match spawn_detached(&exe, &child_env(&home, hosted)) {
-        Ok(pid) => {
+        Ok(Started::Ready { pid }) => {
             println!("{}", serde_json::json!({ "pid": pid, "replaced": replace }));
             0
         }
+        // 抢口抢输了：这一刻有别的一位起来在听了 ⇒ 报在听的那一位（同「已有人在听」）。
+        Ok(
+            lost @ Started::Exited {
+                code: Some(crate::wire::listen::EXIT_ADDR_IN_USE),
+                ..
+            },
+        ) => match who_listens(&dh) {
+            Ok(Some(l)) => {
+                println!("{}", serde_json::json!({ "pid": l.pid, "replaced": false }));
+                0
+            }
+            _ => not_up(&lost),
+        },
+        Ok(other) => not_up(&other),
         Err((code, e)) => fail(ENSURE, code, e),
     }
 }
@@ -609,15 +637,19 @@ pub fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)
     env
 }
 
-/// 起一个脱离的自己（常驻载体）：stdio 全空（SSH 断了它不跟着收 SIGPIPE）、自成进程组、不继承 `TMUX`。
+/// 等新起的常驻载体说「起好了」的期限（口绑好、锁抢到它就说）。
+const RESIDENT_UP_WITHIN: Deadline = Deadline::secs(10);
+
+/// 起一个脱离的自己（常驻载体）：stdin · stderr 空（SSH 断了它不跟着收 SIGPIPE）、自成进程组、不继承 `TMUX`；
+/// 读它的回信管道等它说起好了（[`Child::detach_until_ready`]：口绑好、锁抢到它才说），起不来就照它的码与原话报。
 /// 自有那几格（常驻开关 · 诊断文件）是**交给它自己用的**，经 `pass_own` 交；别的经 `env`。
 fn spawn_detached(
     exe: &Path,
     env: &[(String, String)],
-) -> Result<u32, (&'static str, copy_core::said::Said)> {
+) -> Result<crate::platform::child::Started, (&'static str, copy_core::said::Said)> {
     #[expect(
         clippy::disallowed_methods,
-        reason = "`--resident-ensure` 起本二进制自己当远端那台的常驻载体（stdio 全空、自成进程组）：被起的流模式那一臂照样归本仓的守法管；不许加第二种用途"
+        reason = "`--resident-ensure` 起本二进制自己当远端那台的常驻载体（只留一根回信管道、自成进程组）：被起的流模式那一臂照样归本仓的守法管；不许加第二种用途"
     )]
     let mut cmd = Child::new(exe).args(DEFAULT_STREAM_ARGS).env_remove("TMUX");
     for (k, v) in env {
@@ -627,18 +659,19 @@ fn spawn_detached(
             cmd.env(k, v)
         };
     }
-    cmd.detach().map_err(|e| match e {
-        // 不支持：那一句由读的那一方说（「远端只支持 Unix」），`said` 这一格交的就是原话（读的那一方放进复制详情）。
-        ChildFail::Io(io) if io.kind() == std::io::ErrorKind::Unsupported => {
-            ("unsupported", io.to_string().into())
-        }
-        e => e.into_cmd_said("spawn_failed", |why| {
-            copy_text(
-                "beResident.spawn.failed",
-                &[("exe", &exe.display().to_string()), ("why", why)],
-            )
-        }),
-    })
+    cmd.detach_until_ready(RESIDENT_UP_WITHIN)
+        .map_err(|e| match e {
+            // 不支持：那一句由读的那一方说（「远端只支持 Unix」），`said` 这一格交的就是原话（读的那一方放进复制详情）。
+            ChildFail::Io(io) if io.kind() == std::io::ErrorKind::Unsupported => {
+                ("unsupported", io.to_string().into())
+            }
+            e => e.into_cmd_said("spawn_failed", |why| {
+                copy_text(
+                    "beResident.spawn.failed",
+                    &[("exe", &exe.display().to_string()), ("why", why)],
+                )
+            }),
+        })
 }
 
 /// 解旧版那份「谁在听」记录的两行（纯函数；只剩 [`retire_legacy`] 读它）。

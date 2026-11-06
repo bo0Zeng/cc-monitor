@@ -173,6 +173,11 @@ pub async fn run() {
         Ok(got) => got,
         Err(code) => std::process::exit(code),
     };
+    // 常驻那条载体：口绑好、锁抢到 ⇒ 告诉起它的那一方起好了（`--resident-ensure` 读回信管道；本机宿主那一形 stdout 是空设备，写了也没人读）。
+    //   之后连上来的在内核的队里等到收。
+    if listening.is_some() {
+        crate::platform::child::say_ready();
+    }
     tracing::info!("{}", installed.said());
     // 装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
     if let stderr_log::Installed::Logging(p) = &installed {

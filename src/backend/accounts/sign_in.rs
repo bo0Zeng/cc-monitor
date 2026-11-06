@@ -141,9 +141,6 @@ pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     for k in f.env_remove {
         child = child.env_remove(k);
     }
-    if let Some(p) = &at.path {
-        child = child.env("PATH", p);
-    }
     if let Some(d) = &a.cwd {
         child = child.current_dir(d);
     }

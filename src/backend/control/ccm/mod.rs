@@ -425,11 +425,39 @@ fn plan_of(
         crate::agents::proxy_of(&o.agent),
         if inherit_account { &get } else { &nothing },
     );
+    if let Plan::Direct(d) = &mut plan {
+        launcher_resolved(d, &|p| crate::platform::shell::agent_launch(p, None))?;
+    }
     Ok(Planned {
         plan,
         env,
         upstream,
     })
+}
+
+/// 直路最后起的那个启动器**在计划里**就换成要起的那个文件（＋ 前导参数）：找法只一处（`find` 生产是
+/// [`crate::platform::shell::agent_launch`]：照起会话那个 shell 的 `PATH` · Windows 的几种装法 · `.ps1` 的执行策略）。
+/// `--ccm-print`、托管那一形的自检与真跑读的是同一份计划 ⇒ 找不到在计划里就拒、说清查过哪份 `PATH`，不等到起进程那一下。
+pub(crate) fn launcher_resolved(
+    d: &mut plan::Direct,
+    find: &dyn Fn(&str) -> Result<crate::platform::shell::AgentLaunch, String>,
+) -> Result<(), Die> {
+    let Some(prog) = d.argv.first() else {
+        return Ok(());
+    };
+    let at = find(prog).map_err(|why| {
+        Die(copy_text(
+            "beCcm.plan.launcherAbsent",
+            &[("prog", prog), ("why", &why)],
+        ))
+    })?;
+    let rest = d.argv.split_off(1);
+    d.argv = std::iter::once(at.program)
+        .chain(at.lead)
+        .map(|s| s.to_string_lossy().into_owned())
+        .chain(rest)
+        .collect();
+    Ok(())
 }
 
 /// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境（`--ccm-print` 的「来自」按同一份写）＋ 这条会话要留的上游描述那一份。
@@ -891,14 +919,15 @@ fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
 }
 
 /// 起托管进程没成：[`HostSpawn::Refused`] ＝ 那一串不成形 · 找不到要跑的那一份程序（`ccm` 照 [`die`] 退 2）；
-/// [`HostSpawn::Failed`] ＝ 起不来 · 期限内没起好（退 4）。都带写好的那一句。
+/// [`HostSpawn::Failed`] ＝ 起不来 · 没起好就退了（码 ＋ 它的原话）· 期限内没起好（退 4）。都带写好的那一句。
 pub(crate) enum HostSpawn {
     Refused(String),
     Failed(String),
 }
 
-/// **起一个托管终端的唯一一处**：脱离起托管进程（`host_run` 打头是自己、后面是 `--host-run` 那一串；stdio 全空、自成一组、
-/// 不继承 `TMUX`、摘 `unset` 那几个）→ 等名叫 `name` 的那个家出现（[`hosted_up`]）。起会话（[`execute_hosted`]）与
+/// **起一个托管终端的唯一一处**：脱离起托管进程（`host_run` 打头是自己、后面是 `--host-run` 那一串；自成一组、
+/// 不继承 `TMUX`、摘 `unset` 那几个）→ 读它的回信管道等它说起好了（[`crate::platform::child::Child::detach_until_ready`]：
+/// 托管口绑好、事实写好它才说；起不来它把原话写进来再退）。起会话（[`execute_hosted`]）与
 /// 开空 shell（[`open_hosted_shell`]）都经它。托管进程与里面那一跳要一直跑着：跑着的程序文件盖不掉的平台上从按版本的副本跑
 /// （[`crate::host::managed::bin::host_program`]）。
 pub(crate) fn spawn_hosted(
@@ -907,6 +936,7 @@ pub(crate) fn spawn_hosted(
     name: &str,
     own: &crate::platform::fs::Own,
 ) -> Result<(), HostSpawn> {
+    use crate::platform::child::Started;
     let failed = |why: &str| {
         copy_text(
             "beCcm.execute.hostSpawnFailed",
@@ -928,7 +958,7 @@ pub(crate) fn spawn_hosted(
     }
     #[expect(
         clippy::disallowed_methods,
-        reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，stdio 全空、自成一组）：被起的托管终端那一形照样归本仓的守法管"
+        reason = "脱离起本二进制自己当托管进程（`-- --host-run …`，自成一组、只留一根回信管道）：被起的托管终端那一形照样归本仓的守法管"
     )]
     let mut spawn = Child::new(&program)
         .args(&rest)
@@ -937,16 +967,16 @@ pub(crate) fn spawn_hosted(
     for k in unset {
         spawn = spawn.env_remove(k);
     }
-    let pid = spawn
-        .detach()
-        .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?;
-    if !hosted_up(own, name, pid) {
-        return Err(HostSpawn::Failed(copy_text(
-            "beCcm.execute.hostNotUp",
-            &[("name", name), ("secs", &HOST_UP_SECS.to_string())],
-        )));
+    match spawn
+        .detach_until_ready(HOST_UP_WITHIN)
+        .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?
+    {
+        Started::Ready { .. } => Ok(()),
+        // 没起好：怎么没起好（退了 · 码 / 期限内没说）＋ 它自己的原话（名字被占 · 托管口绑不上 · 子进程起不来，托管进程写进回信管道的）。
+        other => Err(HostSpawn::Failed(failed(
+            &other.not_up(HOST_UP_WITHIN).unwrap_or_default(),
+        ))),
     }
-    Ok(())
 }
 
 /// 开一个空 shell 的托管终端（`session-open` 的 `shell {session}` 落在托管里那一形）：名字即句柄；已在 ⇒ 不动它（回 `false`）。
@@ -997,25 +1027,34 @@ const SELF_CHECK_WITHIN: crate::platform::child::Deadline =
 /// 托管那一形的自检：里面那一跳的同一串加 `--ccm-print`，环境同托管进程那一份（摘同几个变量），原生跑一次。
 /// 没过 ⇒ 交回它自己的原话（stderr；起不来 ⇒ 起不来的那句）。
 fn hosted_self_check(c: &plan::Container) -> Result<(), String> {
-    let Some((exe, args)) = c.self_check_argv.split_first() else {
+    let Some(check) = hosted_self_check_child(c) else {
         return Ok(());
     };
+    match check.run(SELF_CHECK_WITHIN) {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).into_owned()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// 自检那一趟要起的那个（[`hosted_self_check`]）：里面那一跳在托管终端里跑、环境里带着托管终端的标记
+/// （`run::HOST_ENV`）⇒ 它算的是直路那一份计划（启动器在计划里就解析）；自检带上同一格，算的才是同一份计划
+/// （不带就又算成「起一个托管终端」，启动器找不找得到它看不见）。没有那一串 ⇒ `None`。
+pub(crate) fn hosted_self_check_child(c: &plan::Container) -> Option<Child> {
+    let (exe, args) = c.self_check_argv.split_first()?;
     #[expect(
         clippy::disallowed_methods,
         reason = "托管那一形的自检：里面那一跳的同一串加 `--ccm-print` 原生跑一次，只算计划、不起会话"
     )]
     let mut check = Child::new(exe)
         .args(args)
+        .env(crate::host::managed::run::HOST_ENV, &c.name)
         .env_remove("TMUX")
         .env_remove("TMUX_PANE");
     for k in &c.unset {
         check = check.env_remove(k);
     }
-    match check.run(SELF_CHECK_WITHIN) {
-        Ok(out) if out.status.success() => Ok(()),
-        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).into_owned()),
-        Err(e) => Err(e.to_string()),
-    }
+    Some(check)
 }
 
 /// `--detach` 报名字那一行的前缀（[`finish_container`] 写、[`session_reported`] 读）。
@@ -1052,27 +1091,8 @@ fn finish_container(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 
     }
 }
 
-/// 等托管进程起好的期限（秒）。
-const HOST_UP_SECS: u64 = 10;
-
-/// 刚脱离起的托管进程（`pid`）把家写好了没有：名单里那个名字的事实是它写的（托管口在写事实之前已绑好）。
-/// 脱离起的进程 stdio 全空，没有回信的管道 ⇒ 看盘，一次有界等待（起好就不等）。
-#[expect(
-    clippy::disallowed_methods,
-    reason = "起托管终端那一下等它把托管口绑好的一次有界等待：脱离起的托管进程没有给起它的一方回信的管道；起好即止，不是节拍"
-)]
-fn hosted_up(own: &crate::platform::fs::Own, name: &str, pid: u32) -> bool {
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(HOST_UP_SECS);
-    loop {
-        if crate::host::managed::home::find(own, name).is_some_and(|f| f.host_pid == pid) {
-            return true;
-        }
-        if std::time::Instant::now() >= until {
-            return false;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-}
+/// 等托管进程说起好了的期限（托管口绑好 · 事实写好之后它在回信管道里说）。
+const HOST_UP_WITHIN: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(10);
 
 /// 容器路建会话 · 送启动命令没成之后怎么办。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1263,31 +1283,15 @@ fn exec_direct(
             &[("cwd", &d.cwd.to_string())],
         ));
     }
+    // 启动器在计划里已换成要起的那个文件（[`launcher_resolved`]）。
     let Some((prog, rest)) = argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
-    };
-    let path = std::env::var("PATH").ok();
-    let policy = || {
-        crate::platform::shell::powershell::execution_policy(
-            crate::platform::shell::PsHost::Desktop,
-        )
-        .effective
-    };
-    let (program, lead) = match final_program(
-        prog,
-        cfg!(windows),
-        path.as_deref(),
-        &|p| p.is_file(),
-        &policy,
-    ) {
-        Ok(v) => v,
-        Err(why) => return die(&why),
     };
     #[expect(
         clippy::disallowed_methods,
         reason = "一次性 ccm 最后那一下换成用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
     )]
-    let agent = Child::new(program).args(lead).args(rest);
+    let agent = Child::new(prog).args(rest);
     exec_or_spawn(agent, &format!("'{prog}'"), note, own)
 }
 
@@ -1407,37 +1411,6 @@ fn write_plugin(
         own.write(&file, &held, body.as_bytes())?;
     }
     Ok(())
-}
-
-/// 最后起 agent 那一下起的程序与前导参数。Windows 上裸名字照 `platform::shell::find_session_command` 换成找到的那个文件
-/// （`.cmd` / `.bat` / `.ps1` 也起得来 —— 与足迹「装没装」、起新会话框同一个找法，认得出就起得来）；
-/// unix（按名字 exec）· 带路径的（用户自己指的）· 找不到 / 判不了的 ⇒ 原样（起不来时那句报错说得出是哪个）。
-/// 只有 `.ps1`、执行策略不运行本地脚本（`platform::shell::script_refused_by_policy`，`policy` 只在那一形才问）⇒ `Err(那句话)`，不起。
-pub(crate) fn final_program(
-    prog: &str,
-    windows: bool,
-    path_env: Option<&str>,
-    is_file: &dyn Fn(&std::path::Path) -> bool,
-    policy: &dyn Fn() -> Option<String>,
-) -> Result<(std::ffi::OsString, Vec<std::ffi::OsString>), String> {
-    use crate::platform::shell::{find_session_command, script_refused_by_policy, SessionCommand};
-    if windows && !prog.contains(['/', '\\']) {
-        let found = find_session_command(prog, path_env, windows, is_file);
-        if let Some(word) = script_refused_by_policy(&found, policy) {
-            let file = match &found {
-                SessionCommand::Found { file, .. } => file.display().to_string(),
-                _ => prog.to_string(),
-            };
-            return Err(copy_text(
-                "beCcm.execDirect.scriptRefused",
-                &[("file", &file), ("policy", &word)],
-            ));
-        }
-        if let SessionCommand::Found { program, lead, .. } = found {
-            return Ok((program, lead));
-        }
-    }
-    Ok((prog.into(), Vec::new()))
 }
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
