@@ -2,7 +2,7 @@
 //! 写的规矩（宿主装、线上改不动）。都对一台**进程内**的 SSH 服务端（[`Door`]，回环口上，测试档不许出网）真拨一趟：
 //! 走生产那条 `uses::run`（拨号 → 鉴权 → 开通道 → 阶段行 ＋ ack ＋ 字节），不另写一份拨号。
 
-use crate::guard_support::{register, remembered, seed_library, test_host, TestCred};
+use crate::guard_support::{forget_port, register, remembered, seed_library, test_host, TestCred};
 use crate::{DialRequest, StageSink};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -299,6 +299,7 @@ async fn door_full(
         .await
         .expect("绑回环口");
     let port = listener.local_addr().expect("口").port();
+    forget_port(port);
     let log: Arc<Mutex<Vec<String>>> = Arc::default();
     let handler = Door {
         password: password.map(str::to_string),

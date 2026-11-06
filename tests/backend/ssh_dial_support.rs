@@ -87,6 +87,23 @@ pub(crate) fn remembered(port: u16) -> Vec<String> {
         .collect()
 }
 
+/// 一个判据的服务端刚占下这个口：库里还记着这个口的那几行是之前用过同一个口的判据留下的（库整个进程一份、口会被系统复用）⇒ 清掉。
+pub(crate) fn forget_port(port: u16) {
+    let me = crate::known_hosts::host_pattern("127.0.0.1", port);
+    let mut l = library().lock().unwrap_or_else(|e| e.into_inner());
+    let kept: String = l
+        .lines()
+        .filter(|line| {
+            !line
+                .split_whitespace()
+                .find(|w| !w.starts_with('#'))
+                .is_some_and(|n| n.split(',').any(|x| x == me))
+        })
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    *l = kept;
+}
+
 /// 判据往库里预先写一行（`[127.0.0.1]:port 算法 base64`，或待核的那一形）。
 pub(crate) fn seed_library(line: &str) {
     test_host();
