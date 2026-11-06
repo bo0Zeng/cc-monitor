@@ -379,18 +379,13 @@ impl Child {
         self.command()
     }
 
-    /// 子进程照哪份 `PATH` —— **只在这里定**：调用方显式给了（设或摘）⇒ 照它；只继承几键而 `PATH` 不在其中 ⇒ 不给；
+    /// 子进程照哪份 `PATH` —— **只在这里定**：调用方显式给了（设或摘）⇒ 照它；只继承几键（[`Child::inherit_only`]：白名单那一形，
+    /// 插件）⇒ 照白名单（列了 `PATH` 就是本进程的那一份）；
     /// 别的 ⇒ unix 上给起会话那个 shell 的那一份（[`crate::platform::shell::session_shell_path`]：经 ssh 非登录 shell 起的后端
     /// 自己的 `PATH` 常没有用户级 `bin`，会话里敲得到的程序它起不来）；问不出 ⇒ 照本进程的。问 `PATH` 的那一趟自己显式给，不递归。
     /// 非 unix：会话的环境与本进程同源，照本进程的。
     fn default_path(&self) -> Option<String> {
-        if !cfg!(unix) || self.envs.iter().any(|(k, _)| k == "PATH") {
-            return None;
-        }
-        if self
-            .inherit_only
-            .as_ref()
-            .is_some_and(|keys| !keys.contains(&"PATH"))
+        if !cfg!(unix) || self.inherit_only.is_some() || self.envs.iter().any(|(k, _)| k == "PATH")
         {
             return None;
         }
@@ -701,11 +696,11 @@ enum Reply {
     End,
 }
 
-/// 被 [`Child::detach_until_ready`] 起的那一方：起好了，写那一行；随后把本进程的 stdout 换成空设备（起的那一方读完那一行就放手，
-/// 之后再往那根管道写只会写错）。起的那一方已经不在了 ⇒ 不管（写错不 panic）。
+/// 被 [`Child::detach_until_ready`] 起的那一方：起好了，写那一行；随后把本进程的 stdout 换成 stderr 那一份（起的那一方读完那一行
+/// 就放手，之后再往那根管道写只会写错）。起的那一方已经不在了 ⇒ 不管（写错不 panic）。
 pub fn say_ready() {
     say_on_reply(&format!("{READY_LINE}\n"));
-    os::stdout_to_null();
+    os::stdout_after_ready();
 }
 
 /// 被 [`Child::detach_until_ready`] 起的那一方：起不来，把原话写进回信管道（随后由调用方以那个码退出）。写错不管。
@@ -907,16 +902,12 @@ mod os {
     /// POSIX 上本进程的三格标准句柄就是 0 · 1 · 2，起子进程时被换成指定的那一份，不会另外跟着交下去 ⇒ 不用做。
     pub(super) fn keep_own_stdio() {}
 
-    /// 本进程的 stdout（fd 1）换成空设备：说完「起好了」之后回信管道没人读了（[`super::say_ready`]）。打不开空设备 ⇒ 不管
-    /// （之后写 stdout 照旧只会写错，经 [`super::say_on_reply`] 的那几处都不 panic）。
-    pub(super) fn stdout_to_null() {
-        // SAFETY: 开一个只写的空设备、dup2 到 1、关掉临时那一格；都是对本进程 fd 表的普通系统调用，不碰别的内存。
+    /// 本进程的 stdout（fd 1）换成 stderr 那一份（fd 2）：说完「起好了」之后回信管道没人读了（[`super::say_ready`]）。
+    /// 被 [`super::Child::detach_until_ready`] 起的 stderr 是空设备；常驻那一形这时 stderr 已接到诊断文件，漏写进 stdout 的落在那里。
+    pub(super) fn stdout_after_ready() {
+        // SAFETY: dup2(2, 1)：对本进程 fd 表的一次普通系统调用，不碰别的内存；失败 ⇒ fd 1 照旧（之后写它只会写错）。
         unsafe {
-            let fd = libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC);
-            if fd >= 0 {
-                libc::dup2(fd, 1);
-                libc::close(fd);
-            }
+            libc::dup2(2, 1);
         }
     }
 }
@@ -1146,7 +1137,7 @@ mod os {
     }
 
     /// Windows：说完「起好了」之后只剩托管进程，它此后不写 stdout（写也只会写错，经 [`super::say_on_reply`] 的那几处都不 panic）⇒ 不换。
-    pub(super) fn stdout_to_null() {}
+    pub(super) fn stdout_after_ready() {}
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;

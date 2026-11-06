@@ -508,6 +508,11 @@ pub fn names(list: &AccountsList, manifest_path: &str) -> String {
         .join(" ")
 }
 
+/// tmux 那一形的自检照窗格里那一跳的环境算：窗格里有 `TMUX` ⇒ 那一跳算的是直路那一份计划（启动器在计划里就解析）；
+/// 本趟不在 tmux 里时自检也标成在 tmux 里，算的才是同一份计划。值只当「在 tmux 里」那一格用（直路的计划不认 socket；
+/// 它顺带列一次 tmux 会话名，连不上就照不避让算，直路用不着那份名单）。本趟已在 tmux 里 ⇒ 照它自己的。
+pub(crate) const SELF_CHECK_IN_PANE: &str = "TMUX=\"${TMUX:-ccm-self-check}\" ";
+
 /// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
@@ -1320,14 +1325,8 @@ pub fn build_among(
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
         let exports = &payload[..payload.len() - bare.len()];
-        // 窗格里那一跳在 tmux 里（有 `TMUX`）⇒ 它算的是直路那一份计划（启动器在计划里就解析）；自检照它的环境算：
-        //   本趟不在 tmux 里 ⇒ 借刚建好的那个会话所在 server 的 `TMUX`（socket 那一段才有用），算的才是同一份计划。
-        let in_pane = format!(
-            "TMUX=\"${{TMUX:-$(tmux display-message -p -t {} '#{{socket_path}},#{{pid}},0')}}\" ",
-            sq(&format!("={name}"))
-        );
         let self_check = format!(
-            "{exports}{scoped}{in_pane}{}",
+            "{exports}{scoped}{SELF_CHECK_IN_PANE}{}",
             dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
         );
 
