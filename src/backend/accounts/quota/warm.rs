@@ -169,10 +169,6 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
     for (k, v) in face.env_set {
         child = child.env(k, v);
     }
-    // 后端经 ssh 非登录 shell 起时自己的 PATH 常没有用户级 bin：交起会话那个 shell 的那一份（ccm 照它找那一家的程序）。
-    if let Some(p) = crate::platform::shell::session_shell_path() {
-        child = child.env("PATH", p);
-    }
     let out = child.run(SEND_WITHIN).map_err(|e| {
         let (code, said) = e.into_cmd_said("failed", |why| {
             copy_text("beQuotaWarm.run.failed", &[("why", why)])

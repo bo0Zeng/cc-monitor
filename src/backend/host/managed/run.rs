@@ -169,7 +169,7 @@ pub(crate) async fn run(
 }
 
 /// [`run`] 的本体：交回子进程的退出码（被信号收掉 ⇒ `None`）。
-async fn serve(
+pub(crate) async fn serve(
     spec: Spec,
     own: &Own,
     ready: impl FnOnce(&std::path::Path),

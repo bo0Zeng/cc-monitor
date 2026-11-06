@@ -972,26 +972,9 @@ pub(crate) fn spawn_hosted(
         .map_err(|e| HostSpawn::Failed(failed(&e.to_string())))?
     {
         Started::Ready { .. } => Ok(()),
-        // 没说起好就退了：那一句 ＋ 它自己的原话（名字被占 · 托管口绑不上 · 子进程起不来，托管进程写进回信管道的）。
-        Started::Exited { code, said } => {
-            let head = match code {
-                Some(c) => copy_text(
-                    "beCcm.execute.hostExited",
-                    &[("name", name), ("exit", &c.to_string())],
-                ),
-                None => copy_text("beCcm.execute.hostKilled", &[("name", name)]),
-            };
-            Err(HostSpawn::Failed(match said.trim() {
-                "" => head,
-                said => format!("{head}\n{said}"),
-            }))
-        }
-        Started::Stuck { .. } => Err(HostSpawn::Failed(copy_text(
-            "beCcm.execute.hostNotUp",
-            &[
-                ("name", name),
-                ("secs", &HOST_UP_WITHIN.shown_secs().to_string()),
-            ],
+        // 没起好：怎么没起好（退了 · 码 / 期限内没说）＋ 它自己的原话（名字被占 · 托管口绑不上 · 子进程起不来，托管进程写进回信管道的）。
+        other => Err(HostSpawn::Failed(failed(
+            &other.not_up(HOST_UP_WITHIN).unwrap_or_default(),
         ))),
     }
 }

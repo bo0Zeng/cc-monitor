@@ -60,12 +60,25 @@ pub fn session_shell_path() -> Option<String> {
     #[cfg(unix)]
     {
         static ONE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-        ONE.get_or_init(fresh_terminal_path).clone()
+        ONE.get_or_init(|| given_session_path().or_else(fresh_terminal_path))
+            .clone()
     }
     #[cfg(not(unix))]
     {
         std::env::var("PATH").ok()
     }
+}
+
+/// 起本进程的那一方交下来的 `PATH` 就是起会话那个 shell 的那一份（[`SESSION_PATH_GIVEN`] 是 `1`）⇒ 照它，不再问：
+/// 常驻后端 → ccm → 托管进程 → 里面那一跳一条链只问一次登录 shell。
+pub const SESSION_PATH_GIVEN: &str = "CCM_SESSION_PATH";
+
+#[cfg(unix)]
+fn given_session_path() -> Option<String> {
+    (std::env::var(SESSION_PATH_GIVEN).ok().as_deref() == Some("1"))
+        .then(|| std::env::var("PATH").ok())
+        .flatten()
+        .filter(|p| !p.trim().is_empty())
 }
 
 /// 现问一次「新开一个终端时的 `PATH`」，不缓存（`ccm-probe` 每问一次都要此刻的样子）。

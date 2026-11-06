@@ -1073,20 +1073,18 @@ fn a_hosted_terminal_that_exits_before_it_is_up_is_reported_at_once_with_its_wor
         Err(HostSpawn::Refused(m)) => panic!("不该是拒：{m}"),
         Ok(()) => panic!("托管进程退了却报起好了"),
     };
-    // 「当场」由结构保证（读到回信管道的头就交，没有轮询圈）；这里钉的是结局不是「等到期限」那一句。
-    assert!(
-        !m.contains(&copy_text(
-            "beCcm.execute.hostNotUp",
-            &[("name", "ccmdbg-x"), ("secs", "10")]
-        )),
-        "退了却报成等到期限：{m}"
-    );
-    assert!(
-        m.contains(&copy_text(
-            "beCcm.execute.hostExited",
-            &[("name", "ccmdbg-x"), ("exit", "3")]
-        )),
-        "{m}"
+    // 「当场」由结构保证（读到回信管道的头就交，没有轮询圈）；这里钉的是结局：退了 · 码 3 · 原话，不是「期限内没说」那一句。
+    let exited = crate::platform::child::Started::Exited {
+        code: Some(3),
+        said: format!("{said}\n"),
+    };
+    let why = exited.not_up(HOST_UP_WITHIN).expect("没起好");
+    assert_eq!(
+        m,
+        copy_text(
+            "beCcm.execute.hostSpawnFailed",
+            &[("name", "ccmdbg-x"), ("why", &why)]
+        )
     );
     assert!(m.contains(said), "原话没带上：{m}");
 }

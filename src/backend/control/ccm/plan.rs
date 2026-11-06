@@ -1320,8 +1320,14 @@ pub fn build_among(
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
         let exports = &payload[..payload.len() - bare.len()];
+        // 窗格里那一跳在 tmux 里（有 `TMUX`）⇒ 它算的是直路那一份计划（启动器在计划里就解析）；自检照它的环境算：
+        //   本趟不在 tmux 里 ⇒ 借刚建好的那个会话所在 server 的 `TMUX`（socket 那一段才有用），算的才是同一份计划。
+        let in_pane = format!(
+            "TMUX=\"${{TMUX:-$(tmux display-message -p -t {} '#{{socket_path}},#{{pid}},0')}}\" ",
+            sq(&format!("={name}"))
+        );
         let self_check = format!(
-            "{exports}{scoped}{}",
+            "{exports}{scoped}{in_pane}{}",
             dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
         );
 
@@ -1335,9 +1341,12 @@ pub fn build_among(
                     .filter(|k| env.inherited_parent.as_ref().is_none_or(|(p, _)| p != k))
                     .map(str::to_string)
                     .collect();
+                // 同真跑那一下（`ccm::hosted_self_check_child`）：带上托管终端的标记，算的是里面那一跳那一份计划。
                 let check = format!(
-                    "{}{}",
+                    "{}{}={} {}",
                     unset_prefix(&unset),
+                    crate::host::managed::run::HOST_ENV,
+                    sq(&name),
                     dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
                 );
                 let run = host_run_argv(
@@ -2041,10 +2050,9 @@ pub fn render_container_tail(c: &Container) -> String {
     // 不是一段时间 —— 零定时器、零轮询。它不过 ⇒ 把它自己的原话转给调用方、`exit 4`（起不来），
     // 后面的接进去与登记一段都不跑。
     //
-    // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · 被叫的那个入口（`argv[0]`）是一份不认这套参数的旧副本。
-    // ⚠ 它**买不到**的（别读成做到了）：`--ccm-print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
-    //   退回 shell 而这里照报成功；agent exec 起来之后自己当场退出，同样看不见。要看见这两类得有一个
-    //   **exec 那一刻的正信号**（今天没有），登记在末尾。
+    // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · 被叫的那个入口（`argv[0]`）是一份不认这套参数的旧副本 ·
+    //   启动器在起会话那个 shell 的 PATH 上找不找得到（自检照窗格里那一跳的环境算，直路的计划里就解析启动器）。
+    // ⚠ 它**买不到**的（别读成做到了）：agent exec 起来之后自己当场退出，看不见；要看见得有一个 **exec 那一刻的正信号**（今天没有）。
     seq.push_str(&format!(
         " && {{ _ccm_e=$({{ {}; }} 2>&1 >/dev/null) || {{ printf '%s\\n' \"$_ccm_e\" >&2; printf {} {} >&2; exit 4; }}; }}",
         c.self_check,

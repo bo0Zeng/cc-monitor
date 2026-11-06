@@ -179,11 +179,15 @@ fn only_the_real_terminals_attached_to_a_hosted_terminal_show_it() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_hosted_process_exits_with_its_childs_code() {
     let (own, _data) = sandbox_own("ccmdbg-code");
-    let args: Vec<String> = ["ccmdbg-c", "--", "sh", "-c", "exit 7"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(super::run::main(&args, &own).await, 7);
+    // 不经 `main`：它说「起好了」之后把本进程的 stdout 换成空设备（这里是测试进程）。
+    let code = super::run::serve(
+        super::run::test_support::spec("ccmdbg-c", "exit 7"),
+        &own,
+        |_| {},
+    )
+    .await
+    .expect("跑完");
+    assert_eq!(code, Some(7));
     assert_eq!(super::run::main(&["ccmdbg-c".to_string()], &own).await, 2);
 }
 
