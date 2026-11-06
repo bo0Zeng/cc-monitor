@@ -944,80 +944,64 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
     );
 }
 
-/// 缺陷（10-10）：Windows 上 `ccm` 最后起 agent 那一下按裸名字起，std 只补 `.exe` ⇒ npm 全局的 `.cmd` / `.ps1` 起不来，而足迹说装了。
-/// 今天它与足迹同一个找法（`platform::shell::find_session_command`）：Windows 上裸名字换成找到的那个文件（`.ps1` 经 PowerShell）；
-/// unix · 带路径的 · 找不到的 ⇒ 原样。只有 `.ps1`、执行策略不让跑脚本 ⇒ 不起，`Err` 带那份文件与那一档的原词。
+/// 直路的启动器在**计划里**就换成要起的那个文件，与足迹 · 后端自己起 agent 同一个找法（`platform::shell::agent_launch_in`）：
+/// 后端自己的 `PATH` 上没有、起会话那个 shell 的有（经 ssh 非登录 shell 起的后端）⇒ 计划里是那个文件，`--ccm-print` 与真跑都起得来；
+/// 起会话那个 shell 的上也没有 ⇒ 计划里就拒（托管那一形的自检当场说，不等里面那一跳起了再退）。
+/// Windows：`.cmd` 是那个文件、`.ps1` 经 PowerShell；用户给了路径 ⇒ 不替他找。后面的词原样跟着。
 #[test]
-fn the_final_launch_starts_what_the_footprint_found() {
-    use std::ffi::OsString;
+fn the_launcher_is_resolved_in_the_plan_on_the_session_shells_path() {
+    use crate::platform::shell::agent_launch_in;
     use std::path::{Path, PathBuf};
-    let d = PathBuf::from("/w/npm");
-    let pe = d.to_str().unwrap();
-    let cmd = d.join("claude.cmd");
-    let ps = d.join("claude.ps1");
+    let user_bin = PathBuf::from("/u/.local/bin");
     let has = |set: Vec<PathBuf>| move |p: &Path| set.iter().any(|f| f == p);
-    let bare = |s: &str| Ok((OsString::from(s), Vec::<OsString>::new()));
-    let open = || Some("RemoteSigned".to_string());
-    let shut = || Some("Restricted".to_string());
-
-    assert_eq!(
-        final_program(
-            "claude",
-            true,
-            Some(pe),
-            &has(vec![cmd.clone(), ps.clone()]),
-            &shut
+    let session = "/u/.local/bin:/usr/bin:/bin";
+    let own = "/usr/bin:/bin";
+    let unix_has = has(vec![user_bin.join("claude")]);
+    let resolved = |d: &mut plan::Direct, session: Option<&str>| {
+        launcher_resolved(d, &|p| agent_launch_in(p, session, Some(own), false, &unix_has))
+    };
+    let mut d = direct_of(&["--model", "m", "--", "--cwd", "/p"], None);
+    assert_eq!(d.argv.first().map(String::as_str), Some("claude"), "夹具");
+    resolved(&mut d, Some(session)).expect("起会话那个 shell 的 PATH 上有 ⇒ 计划算得出");
+    assert_eq!(d.argv.first().map(String::as_str), Some("/u/.local/bin/claude"));
+    assert!(
+        d.argv.windows(2).any(|w| w == ["--model", "m"]),
+        "后面的词原样跟着：{:?}",
+        d.argv
+    );
+    // 起会话那个 shell 的 PATH 上没有（只本进程的那一份上有也不算）⇒ 计划里就拒。
+    let mut d = direct_of(&["--", "--cwd", "/p"], None);
+    let why = agent_launch_in("claude", Some(own), Some(session), false, &unix_has)
+        .expect_err("夹具：这一份上没有");
+    assert!(
+        matches!(
+            launcher_resolved(&mut d, &|p| agent_launch_in(p, Some(own), Some(session), false, &unix_has)),
+            Err(Die(m)) if m == copy_text("beCcm.plan.launcherAbsent", &[("prog", "claude"), ("why", &why)])
         ),
-        Ok((cmd.clone().into_os_string(), vec![]))
+        "找不到要在计划里拒"
     );
+    // Windows：npm 的 .cmd 就是那个文件；只有 .ps1 ⇒ 经 PowerShell 起它。
+    let npm = PathBuf::from("/w/npm");
+    let win = |files: Vec<PathBuf>| {
+        let mut d = direct_of(&["--", "--cwd", "/p"], None);
+        let is = has(files);
+        launcher_resolved(&mut d, &|p| agent_launch_in(p, Some("/w/npm"), None, true, &is))
+            .expect("找得到");
+        d.argv
+    };
+    let cmd = npm.join("claude.cmd").display().to_string();
+    let ps = npm.join("claude.ps1").display().to_string();
+    assert_eq!(win(vec![npm.join("claude.cmd"), npm.join("claude.ps1")])[0], cmd);
     assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &open),
-        Ok((
-            OsString::from("powershell.exe"),
-            vec![
-                "-NoProfile".into(),
-                "-File".into(),
-                ps.clone().into_os_string()
-            ]
-        ))
+        win(vec![npm.join("claude.ps1")])[..4],
+        ["powershell.exe", "-NoProfile", "-File", ps.as_str()]
     );
-    // 只有 .ps1、执行策略不让 ⇒ 不起、照实说（不加 -ExecutionPolicy Bypass）
-    assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![ps.clone()]), &shut),
-        Err(copy_text(
-            "beCcm.execDirect.scriptRefused",
-            &[
-                ("file", &ps.display().to_string()),
-                ("policy", "Restricted")
-            ]
-        ))
-    );
-    // unix 照旧按名字 exec
-    assert_eq!(
-        final_program(
-            "claude",
-            false,
-            Some(pe),
-            &has(vec![d.join("claude")]),
-            &shut
-        ),
-        bare("claude")
-    );
-    // 找不到 / 判不了 ⇒ 原样（起不来时那句报错说得出是哪个）
-    assert_eq!(
-        final_program("claude", true, Some(pe), &has(vec![]), &shut),
-        bare("claude")
-    );
-    assert_eq!(
-        final_program("claude", true, None, &has(vec![cmd.clone()]), &shut),
-        bare("claude")
-    );
-    // 用户给了路径 ⇒ 不替他找
-    let given = "C:\\tools\\claude";
-    assert_eq!(
-        final_program(given, true, Some(pe), &has(vec![cmd]), &shut),
-        bare(given)
-    );
+    // 用户给了路径 ⇒ 不替他找。
+    let mut d = direct_of(&["--cwd", "/p", "--launcher", "/opt/x/claude"], None);
+    assert_eq!(d.argv[0], "/opt/x/claude", "夹具：{:?}", d.argv);
+    launcher_resolved(&mut d, &|p| agent_launch_in(p, Some(session), None, false, &has(vec![])))
+        .expect("给了路径 ⇒ 照它");
+    assert_eq!(d.argv[0], "/opt/x/claude");
 }
 
 /// busy2：容器路送启动命令没确认 ⇒ 送达未知且不带 `--detach` 照样接进去；明确没送进且会话是本趟建的 ⇒ 收掉再报；别的照报。

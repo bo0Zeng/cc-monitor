@@ -425,11 +425,39 @@ fn plan_of(
         crate::agents::proxy_of(&o.agent),
         if inherit_account { &get } else { &nothing },
     );
+    if let Plan::Direct(d) = &mut plan {
+        launcher_resolved(d, &|p| crate::platform::shell::agent_launch(p, None))?;
+    }
     Ok(Planned {
         plan,
         env,
         upstream,
     })
+}
+
+/// 直路最后起的那个启动器**在计划里**就换成要起的那个文件（＋ 前导参数）：找法只一处（`find` 生产是
+/// [`crate::platform::shell::agent_launch`]：照起会话那个 shell 的 `PATH` · Windows 的几种装法 · `.ps1` 的执行策略）。
+/// `--ccm-print`、托管那一形的自检与真跑读的是同一份计划 ⇒ 找不到在计划里就拒、说清查过哪份 `PATH`，不等到起进程那一下。
+pub(crate) fn launcher_resolved(
+    d: &mut plan::Direct,
+    find: &dyn Fn(&str) -> Result<crate::platform::shell::AgentLaunch, String>,
+) -> Result<(), Die> {
+    let Some(prog) = d.argv.first() else {
+        return Ok(());
+    };
+    let at = find(prog).map_err(|why| {
+        Die(copy_text(
+            "beCcm.plan.launcherAbsent",
+            &[("prog", prog), ("why", &why)],
+        ))
+    })?;
+    let rest = d.argv.split_off(1);
+    d.argv = std::iter::once(at.program)
+        .chain(at.lead)
+        .map(|s| s.to_string_lossy().into_owned())
+        .chain(rest)
+        .collect();
+    Ok(())
 }
 
 /// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境（`--ccm-print` 的「来自」按同一份写）＋ 这条会话要留的上游描述那一份。
@@ -1258,31 +1286,15 @@ fn exec_direct(
             &[("cwd", &d.cwd.to_string())],
         ));
     }
+    // 启动器在计划里已换成要起的那个文件（[`launcher_resolved`]）。
     let Some((prog, rest)) = argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
-    };
-    let path = std::env::var("PATH").ok();
-    let policy = || {
-        crate::platform::shell::powershell::execution_policy(
-            crate::platform::shell::PsHost::Desktop,
-        )
-        .effective
-    };
-    let (program, lead) = match final_program(
-        prog,
-        cfg!(windows),
-        path.as_deref(),
-        &|p| p.is_file(),
-        &policy,
-    ) {
-        Ok(v) => v,
-        Err(why) => return die(&why),
     };
     #[expect(
         clippy::disallowed_methods,
         reason = "一次性 ccm 最后那一下换成用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
     )]
-    let agent = Child::new(program).args(lead).args(rest);
+    let agent = Child::new(prog).args(rest);
     exec_or_spawn(agent, &format!("'{prog}'"), note, own)
 }
 
@@ -1402,37 +1414,6 @@ fn write_plugin(
         own.write(&file, &held, body.as_bytes())?;
     }
     Ok(())
-}
-
-/// 最后起 agent 那一下起的程序与前导参数。Windows 上裸名字照 `platform::shell::find_session_command` 换成找到的那个文件
-/// （`.cmd` / `.bat` / `.ps1` 也起得来 —— 与足迹「装没装」、起新会话框同一个找法，认得出就起得来）；
-/// unix（按名字 exec）· 带路径的（用户自己指的）· 找不到 / 判不了的 ⇒ 原样（起不来时那句报错说得出是哪个）。
-/// 只有 `.ps1`、执行策略不运行本地脚本（`platform::shell::script_refused_by_policy`，`policy` 只在那一形才问）⇒ `Err(那句话)`，不起。
-pub(crate) fn final_program(
-    prog: &str,
-    windows: bool,
-    path_env: Option<&str>,
-    is_file: &dyn Fn(&std::path::Path) -> bool,
-    policy: &dyn Fn() -> Option<String>,
-) -> Result<(std::ffi::OsString, Vec<std::ffi::OsString>), String> {
-    use crate::platform::shell::{find_session_command, script_refused_by_policy, SessionCommand};
-    if windows && !prog.contains(['/', '\\']) {
-        let found = find_session_command(prog, path_env, windows, is_file);
-        if let Some(word) = script_refused_by_policy(&found, policy) {
-            let file = match &found {
-                SessionCommand::Found { file, .. } => file.display().to_string(),
-                _ => prog.to_string(),
-            };
-            return Err(copy_text(
-                "beCcm.execDirect.scriptRefused",
-                &[("file", &file), ("policy", &word)],
-            ));
-        }
-        if let SessionCommand::Found { program, lead, .. } = found {
-            return Ok((program, lead));
-        }
-    }
-    Ok((prog.into(), Vec::new()))
 }
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。

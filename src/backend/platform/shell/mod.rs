@@ -50,9 +50,10 @@ pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
 
 /// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录；远端开窗那一形是 `bash -lic`），
 /// agent 命令按那里的 `PATH` 找；后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
-/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」· 后端自己起 agent 程序（[`agent_launch`]）都经这一处问。
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」· 找 agent 程序（[`agent_launch`]）都经这一处问；
+/// 起子进程的唯一出口（`platform::child::Child`）缺省也把这一份交给子进程。
 ///
-/// **按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
+/// **按进程生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
 /// 问法与防法见 [`fresh_terminal_path`]；问不出来 ⇒ `None`（调用方不许当成「没有」）。
 /// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
 pub fn session_shell_path() -> Option<String> {
@@ -179,35 +180,56 @@ pub fn find_session_command(
     SessionCommand::Absent
 }
 
-/// 后端**自己**起一个 agent 程序（登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）。
+/// 起一个 agent 程序（`ccm` 最后那一跳 · 登录子命令 · 用量探针）怎么起：找到的那个文件 ＋ 前导参数 ＋ 子进程的 `PATH`（`None` ＝ 照本进程的）
+/// ＋ 它是哪一种装法。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentLaunch {
     pub program: std::ffi::OsString,
     pub lead: Vec<std::ffi::OsString>,
     pub path: Option<String>,
+    pub by: StartBy,
 }
 
-/// 后端自己起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序：照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找，
-/// 子进程也拿那一份（npm 装的那一形靠它找 `node`）。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
-/// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按后端生命周期缓存）。
+/// 起 agent 程序的那一下 —— **只经这一处**拿 `PATH`、找程序（`ccm` 最后那一跳在计划里就经它，后端自己起的登录子命令 · 用量探针也是）：
+/// 照起会话那个 shell 的 `PATH`（[`session_shell_path`]）找。后端经 ssh 非登录 shell 起时它自己的 `PATH` 常常没有用户级 `bin` ⇒ 不能照它找。
+/// `given` ＝ 判据交的那一份「起会话那个 shell 的 `PATH`」；生产 `None` ⇒ 现问（按进程生命周期缓存）。
 /// 找不到 ⇒ `Err(查过哪一份 PATH、几个目录)`，不说「未装」（它可能装了、只是不在这一份上）。
+/// 找到的是 `.ps1`、这台的执行策略不让跑本地脚本 ⇒ `Err(那一句)`，不起（执行策略只在这一形才问）。
 pub fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, String> {
     let asked = match given {
         Some(_) => None,
         None => session_shell_path(),
     };
-    agent_launch_in(
+    let found = agent_launch_in(
         prog,
         given.or(asked.as_deref()),
         std::env::var("PATH").ok().as_deref(),
         cfg!(windows),
         &|p| p.is_file(),
-    )
+    )?;
+    let policy = || powershell::execution_policy(PsHost::Desktop).effective;
+    match refused_for(found.by, &policy) {
+        Some(word) => Err(copy_core::copy_text(
+            "beCcm.execDirect.scriptRefused",
+            &[
+                (
+                    "file",
+                    &found
+                        .lead
+                        .last()
+                        .unwrap_or(&found.program)
+                        .to_string_lossy(),
+                ),
+                ("policy", &word),
+            ],
+        )),
+        None => Ok(found),
+    }
 }
 
 /// [`agent_launch`] 的本体（两份 `PATH` · 平台 · 查文件都是参数）。起会话那个 shell 的 `PATH` 问不出 ⇒ 照本进程的找、`PATH` 不另给；
-/// 问得出 ⇒ 只照它找（上面没有就是没有，不退回本进程那一份：起会话里敲它也起不来）。
-pub(crate) fn agent_launch_in(
+/// 问得出 ⇒ 只照它找（上面没有就是没有，不退回本进程那一份：起会话里敲它也起不来）。用户给的是路径（带分隔符）⇒ 不替他找，原样起。
+pub fn agent_launch_in(
     prog: &str,
     session: Option<&str>,
     own: Option<&str>,
@@ -215,12 +237,23 @@ pub(crate) fn agent_launch_in(
     is_file: &dyn Fn(&std::path::Path) -> bool,
 ) -> Result<AgentLaunch, String> {
     let session = session.filter(|p| !p.trim().is_empty());
+    if prog.contains('/') || (windows && prog.contains('\\')) {
+        return Ok(AgentLaunch {
+            program: prog.into(),
+            lead: Vec::new(),
+            path: session.map(str::to_string),
+            by: StartBy::Itself,
+        });
+    }
     let path = session.or(own);
     match find_session_command(prog, path, windows, is_file) {
-        SessionCommand::Found { program, lead, .. } => Ok(AgentLaunch {
+        SessionCommand::Found {
+            program, lead, by, ..
+        } => Ok(AgentLaunch {
             program,
             lead,
             path: session.map(str::to_string),
+            by,
         }),
         SessionCommand::Absent => {
             let dirs = path.map_or(0, |p| path_dirs(p).len()).to_string();
@@ -243,13 +276,17 @@ pub fn script_refused_by_policy(
     found: &SessionCommand,
     policy: &dyn Fn() -> Option<String>,
 ) -> Option<String> {
-    let SessionCommand::Found {
-        by: StartBy::PowerShellFile,
-        ..
-    } = found
-    else {
+    match found {
+        SessionCommand::Found { by, .. } => refused_for(*by, policy),
+        _ => None,
+    }
+}
+
+/// [`script_refused_by_policy`] 的本体：按装法判（只有 `.ps1` 那一形才问执行策略）。
+fn refused_for(by: StartBy, policy: &dyn Fn() -> Option<String>) -> Option<String> {
+    if by != StartBy::PowerShellFile {
         return None;
-    };
+    }
     let word = policy()?;
     (powershell::policy_loads_local_script(word.trim()) == Some(false))
         .then(|| word.trim().to_string())
