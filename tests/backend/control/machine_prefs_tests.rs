@@ -85,9 +85,10 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
         "{not json".to_string(),
         r#"{"version":3,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{}}"#.to_string(),
         r#"{"version":2,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{},"more":1}"#.to_string(),
-        // 旧那一格只在第 1 版认：第 2 版里还写着它 ⇒ 读不懂；第 1 版里多一格同样读不懂。
         r#"{"version":2,"launchers":{},"resumeInTmux":true,"models":{},"contextLimits":{}}"#.to_string(),
-        r#"{"version":1,"resumeInTmux":true,"more":1}"#.to_string(),
+        // 第 1 版（缺 `version` 也当 1）读不懂：不升级、不当没有、不覆盖。
+        r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{},"contextLimits":{}}"#.to_string(),
+        r#"{"launchers":{},"models":{},"contextLimits":{}}"#.to_string(),
     ] {
         std::fs::write(&path, &body).unwrap();
         let r = answer_read_in(Some(&home));
@@ -96,47 +97,6 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
         let e = set(&home, serde_json::json!({"resumeWhere": "tmux"})).unwrap_err();
         assert!(matches!(e, PrefsSetErr::Unreadable(_)), "{body} ⇒ {e:?}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "读不懂的那份被盖了");
-    }
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 盘上第 1 版（恢复那一格是开关 `resumeInTmux`）⇒ 读成第 2 版：开 ⇒ tmux，关 / 缺 ⇒ 托管，别的几格原样。
-/// 写一回 ⇒ 带 `version: 2`、旧键不在，第 1 版原文照字节留成 `prefs.json.v1`。
-#[test]
-fn a_first_version_prefs_file_reads_as_the_second_and_is_kept_beside_on_write() {
-    use cmd_wire::session::ResumeWhere;
-    let home = test_home::scratch("v1");
-    let path = path_in(&home);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let v1 = r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{"work":"opus"},"contextLimits":{},"childTab":"show"}"#;
-    std::fs::write(&path, v1).unwrap();
-    let r = answer_read_in(Some(&home));
-    assert_eq!(r.state, FileState::Ok, "{:?}", r.reason);
-    assert_eq!(r.prefs.resume_where, ResumeWhere::Tmux);
-    assert_eq!(
-        r.prefs.launchers.get("claude").map(String::as_str),
-        Some("cc")
-    );
-    assert_eq!(r.prefs.models.get("work").map(String::as_str), Some("opus"));
-    assert_eq!(r.prefs.child_tab, cmd_wire::session::Tab::Show);
-    set(&home, serde_json::json!({"models": {"b": "sonnet"}})).unwrap();
-    let raw: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(raw["version"], 2);
-    assert_eq!(raw["resumeWhere"], "tmux");
-    assert!(raw.get("resumeInTmux").is_none(), "旧键留下了：{raw}");
-    assert_eq!(
-        std::fs::read_to_string(path.with_file_name("prefs.json.v1")).unwrap(),
-        v1,
-        "第 1 版原文没留"
-    );
-    for body in [r#"{"version":1,"resumeInTmux":false}"#, r#"{"version":1}"#] {
-        std::fs::write(&path, body).unwrap();
-        assert_eq!(
-            read_at(&path).prefs().resume_where,
-            ResumeWhere::Managed,
-            "{body}"
-        );
     }
     let _ = std::fs::remove_dir_all(&home);
 }

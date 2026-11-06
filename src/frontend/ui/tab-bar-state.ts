@@ -3,7 +3,6 @@
  *
  * 三个键：`order`（顺序）· `collapsed`（收着的组 id）· `hiddenOpen`（栏底「已隐藏」那一行展开着没有，缺 ＝ 收着）。
  * 每个键只动自己：`writeSegKey` 是它们唯一的写口（`tab-bar-state.vitest.ts` 各有一格盯着）。
- * 旧的分组 · 固定那两格只剩迁移那一段读（`tab-groups-migrate.ts`），迁完删掉。
  */
 import { loadConfig, patchConfig, setAt } from "./config";
 

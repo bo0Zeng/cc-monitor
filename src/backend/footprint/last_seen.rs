@@ -1,7 +1,6 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份（账号清单 · 「文件与数据」那一份），断开时界面照它画「上次的」，跨重启还在。
 //! 住 `~/.cc-monitor/cache/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），别台那几份的副本，按缓存记（再连上一次就有）；存储在 `common/last_seen_store.rs`
 //! （同一份里还记着组的上次所知，`history/groups.rs` 记、读，这两条命令不碰它，删机器时整台一起清）。
-//! 缓存目录之前它住 `~/.cc-monitor/last-seen.json`（[`OLD_LAST_SEEN_REL`]）：写的那一下删掉，不搬内容。
 //! 界面那两样唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! 每一样按它那条命令的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`Seen`]）。
 //! 种类闭集 [`SeenKind`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
@@ -218,28 +217,12 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
         true
     })
     .map_err(io)?;
-    drop_old_last_seen(own);
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
 /// 存储那一层的失败照 `io_failed` 交出去。
 fn io(e: Said) -> Said {
     crate::wire::spec::fail("io_failed", e)
-}
-
-/// 缓存目录之前的落点（缓存：写的那一下删掉，不搬；这一步挂到期那一版，见 retired-names）。
-pub(crate) const OLD_LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
-
-/// 旧位置那一份还在 ⇒ 删掉（删不掉只留一行日志：它只是缓存）。
-fn drop_old_last_seen(own: &Own) {
-    let Ok(old) = own.at_home(OLD_LAST_SEEN_REL) else {
-        return;
-    };
-    if old.as_path().is_file() {
-        if let Err(e) = own.delete_file(&old) {
-            tracing::warn!(target: "last_seen", path = %old.as_path().display(), error = %e, "old last-seen not removed");
-        }
-    }
 }
 
 /// 清掉一台的上次值（每一样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。

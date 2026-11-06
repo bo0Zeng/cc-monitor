@@ -288,18 +288,30 @@ fn v3_upgrades_run_in_order_from_the_version_on_disk() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// V4：比下限老 ⇒ 当没有（状态缓存都是），盘上字节不变。
+/// V4：比下限老（缺 `version` 也当 1）⇒ 状态读不懂、写也拒（与读那一侧同一句），盘上字节不变、不留 `.v<N>`；
+/// 缓存同一份 ⇒ 当没有、照写。
 #[test]
-fn v4_older_than_the_floor_is_absent() {
+fn v4_a_state_older_than_the_floor_is_unreadable_and_a_cache_is_absent() {
     let base = test_home::scratch("v4");
-    let p = base.join("v.json");
-    std::fs::write(&p, b"{\"version\":1,\"a\":1}").expect("seed");
-    assert!(matches!(STATE_V.read(&p), Read::Absent));
-    assert!(matches!(CACHE_V.read(&p), Read::Absent));
-    assert_eq!(
-        std::fs::read(&p).expect("read back"),
-        b"{\"version\":1,\"a\":1}"
-    );
+    let (own, dir) = own_in(&base);
+    let held = own.lock(&dir).expect("lock");
+    let p = dir.as_path().join("v.json");
+    for seed in [&b"{\"version\":1,\"a\":1}"[..], &b"{\"a\":1}"[..]] {
+        std::fs::write(&p, seed).expect("seed");
+        let Read::Unreadable(read_said) = STATE_V.read(&p) else {
+            panic!("比下限老的状态没答读不懂：{:?}", STATE_V.read(&p));
+        };
+        let Err(write_said) = STATE_V.write(&own, &dir, &held, &Shape { a: 2 }) else {
+            panic!("盖掉了一份比下限老的状态");
+        };
+        assert_eq!(write_said.said, read_said.said, "写与读说两样");
+        assert_eq!(std::fs::read(&p).expect("read back"), seed, "盘上字节被动了");
+        assert!(!dir.as_path().join("v.json.v1").exists(), "留了旁件");
+        assert!(matches!(CACHE_V.read(&p), Read::Absent));
+    }
+    CACHE_V
+        .write(&own, &dir, &held, &Shape { a: 2 })
+        .expect("旧版缓存照盖");
     std::fs::remove_dir_all(&base).ok();
 }
 

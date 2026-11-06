@@ -79,7 +79,9 @@ fn an_install_over_identical_files_refreshes_a_stale_record() {
     for f in l.installs.values_mut().flat_map(|i| i.files.values_mut()) {
         f.digest = "0000000000000000".into();
     }
-    std::fs::write(&ledger, serde_json::to_string(&l).unwrap()).unwrap();
+    let mut l = serde_json::to_value(&l).unwrap();
+    l["version"] = json!(2);
+    std::fs::write(&ledger, l.to_string()).unwrap();
     let again = install_at(&FilesHere, &skills, &rec).expect("再装");
     assert_eq!(again["written"], json!([]), "{again}");
     let dir = skills.join(NAME).display().to_string();

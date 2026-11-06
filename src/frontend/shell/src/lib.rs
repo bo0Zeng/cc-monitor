@@ -37,8 +37,6 @@
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
 mod asset_sync; // 资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；看机器页那一问界面直问）
 mod auto_launch;
-// 〔一次性迁移 · 下一版删〕桌面旧书签文件连上一台就交给那台后端、答 ok 删那一格。
-mod bookmarks_migration;
 // 🔴 `origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
 // 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流这里再导出、路径不变；

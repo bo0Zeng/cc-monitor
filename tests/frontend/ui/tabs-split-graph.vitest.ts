@@ -120,7 +120,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
-    "src/frontend/ui/tab-groups-migrate.ts", // 旧分组三格迁进各台（同上，随迁移一起删）
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
     "src/frontend/ui/session-hidden-cmds.ts", // 「无人答时自动答」那一格（`history-annotate`）

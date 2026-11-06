@@ -226,9 +226,9 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
         b"{not json".to_vec(),
         // 形状本身读得懂、只是版本比这一版新 ⇒ 仍然不认（别让 `deny_unknown_fields` 替版本闸挡了这一形）
         br#"{"version":3,"installs":{}}"#.to_vec(),
-        // 第 1 版那一格写的不是 1 ⇒ 不认
-        br#"{"v":2,"installs":{}}"#.to_vec(),
-        br#"{"v":1,"installs":{"/x":{"name":"x","files":{"a":{"digest":"0000000000000001","created":"yes"}}}}}"#.to_vec(),
+        // 第 1 版（版本写在 `"v"` 里、顶层没有 `version`）⇒ 不认、不当空的、不覆盖
+        br#"{"v":1,"installs":{}}"#.to_vec(),
+        br#"{"version":1,"installs":{}}"#.to_vec(),
     ] {
         std::fs::write(&file, &body).unwrap();
         let e = record_at(
@@ -399,7 +399,9 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
         .into_iter()
         .collect(),
     );
-    std::fs::write(&file, serde_json::to_string(&alpha).unwrap()).unwrap();
+    let mut alpha = serde_json::to_value(&alpha).unwrap();
+    alpha["version"] = json!(2);
+    std::fs::write(&file, alpha.to_string()).unwrap();
     drop(held);
     assert!(
         rx.recv_timeout(guard_core::wall::CEILING)
@@ -413,40 +415,3 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 第 1 版（版本写在 `"v"` 里）读得出、记一笔之后盘上是第 2 版（顶层 `version`，没有 `"v"`），第 1 版的原文逐字节留在 `.v1`。
-#[test]
-fn a_format_one_ledger_is_upgraded_and_its_original_kept_beside() {
-    let d = test_home::scratch("v1");
-    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
-    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-    let root = d.join("skills");
-    let old_dir = root.join("old").display().to_string();
-    let v1 = serde_json::to_vec(&json!({
-        "v": 1,
-        "installs": {old_dir.as_str(): {"name": "old", "files": {"a": rec(D1, true)}}}
-    }))
-    .unwrap();
-    std::fs::write(&file, &v1).unwrap();
-    let l = read_ok(&file);
-    assert_eq!(l.installs[&old_dir].files["a"].digest, D1, "第 1 版读丢了");
-    record_at(
-        &own_at(&file),
-        Some(&root),
-        &json!({"op": "add", "name": "demo", "files": {"b": rec(D2, true)}}),
-    )
-    .expect("记");
-    let on_disk: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-    assert_eq!(
-        on_disk["version"],
-        json!(2),
-        "写出去的不是第 2 版：{on_disk}"
-    );
-    assert!(on_disk.get("v").is_none(), "第 2 版还带着 `v`：{on_disk}");
-    assert!(
-        on_disk["installs"].get(&old_dir).is_some(),
-        "第 1 版的那条丢了"
-    );
-    let kept = file.with_file_name("skill-installs.json.v1");
-    assert_eq!(std::fs::read(&kept).unwrap(), v1, "第 1 版的原文没留下");
-    let _ = std::fs::remove_dir_all(&d);
-}

@@ -13,25 +13,9 @@ use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// 这台偏好：状态（读不懂不覆盖）。第 1 版经 [`v1_to_v2`] 读成这一版。
+/// 这台偏好：状态（读不懂不覆盖）。
 pub(crate) const DOC: crate::common::own_state::Doc<Prefs> =
-    crate::common::upgrade!(relay_route_core::PREFS_FILE, [v1_to_v2]);
-
-/// 第 1 版 ⇒ 第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`（开 ⇒ tmux，关 / 缺 ⇒ 托管），别的几格原样。
-fn v1_to_v2(mut v: serde_json::Value) -> Result<serde_json::Value, Said> {
-    use cmd_wire::session::ResumeWhere;
-    let Some(o) = v.as_object_mut() else {
-        return Ok(v);
-    };
-    let tmux = o.remove("resumeInTmux").and_then(|b| b.as_bool()) == Some(true);
-    let w = if tmux {
-        ResumeWhere::Tmux
-    } else {
-        ResumeWhere::Managed
-    };
-    o.insert("resumeWhere".into(), serde_json::json!(w));
-    Ok(v)
-}
+    crate::common::own_state::Doc::of(&relay_route_core::PREFS_FILE);
 
 /// 一张表至多几条（启动命令按家 · 模型按号 · 上限按子串）。
 pub(crate) const PREFS_ROWS_MAX: usize = 256;
@@ -229,7 +213,7 @@ pub fn check(p: &Prefs) -> Result<(), String> {
     Ok(())
 }
 
-/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁；盖第 1 版先把原文留成 `prefs.json.v1`）。只有 `prefs-set` 写。
+/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。只有 `prefs-set` 写。
 pub fn write(own: &crate::platform::Own, p: &Prefs) -> Result<(), Said> {
     let dir = own.home_dir()?;
     own.ensure_dir(&dir).map_err(|e| {

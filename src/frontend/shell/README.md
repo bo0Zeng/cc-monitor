@@ -18,7 +18,6 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 | 终端与窗口 | `launch.rs`（开终端窗口）· `bind.rs`（↗ 认窗口：点那一刻问本机后端 `session-window`，先按窗口标签、再沿进程链问每一级显示在哪个窗口）· `spawn_managed.rs`（起子进程的唯一出口） |
 | 文件窗口 | `filewin/`（开窗那一侧；窗口本体是独立包 `src/frontend/filewin/`）· `files_batch_relay.rs`（后端推来的 `files_batch` 进度按票转给订了它的那扇窗口） |
 | monitor 自己的事 | `config.rs`（`config.json` 唯一写口 `patch_config_at`）· `logging.rs` · `ui_error.rs`（要让用户知道的出错只此一种事件）· `ui_contract.rs`（事件名与载荷）· `data_paths.rs` · `diagnostics_report.rs` · `auto_launch.rs` · `app_restart.rs` · `clipboard.rs` · `footprint_client.rs` · `asset_sync.rs` · `detail.rs` · `utils.rs` |
-| 一次性迁移（下一版整份删） | `bookmarks_migration.rs`（桌面旧书签迁到各台后端） |
 | 本机 `ccm` | `backend_once.rs`（问自己放下去的那份后端一次） |
 | 平台原语 | `platform/`（壳里平台 cfg 的唯一住址：文件原语 · 控制台 · 窗口 · 进程 · 通知 · 单实例 …） |
 | 判据宿主 | 生产树里不放判据：判据本体住 `tests/frontend/shell/`，由 `lib.rs` 经 `#[path]` 挂成 `#[cfg(test)]` 模块（`judges_live_in_tests` 钉）。历史的事都在那台后端，壳里没有 |

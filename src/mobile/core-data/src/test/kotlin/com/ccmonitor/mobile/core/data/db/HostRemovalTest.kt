@@ -11,13 +11,12 @@ import org.junit.Test
  * 漏删一张、漏放回一样都红。SQL 写得对不对看设备上的 `HostRemovalDaoTest`。缓存住另一个库，删一台时另清（`CacheDao.forgetHost`）。
  */
 class HostRemovalTest {
-    /** 内存里状态库那五张表，一张一个可变表；行都带 hostId（机器那一张是 id）。 */
+    /** 内存里状态库那四张表，一张一个可变表；行都带 hostId（机器那一张是 id）。 */
     private class FakeTables : HostRemovalDao() {
         val hosts = mutableListOf<Host>()
         val pendingRows = mutableListOf<PendingSend>()
         val draftRows = mutableListOf<Draft>()
         val batchRows = mutableListOf<PendingBatch>()
-        val bookmarkRows = mutableListOf<Bookmark>()
 
         override suspend fun host(id: String) = hosts.firstOrNull { it.id == id }
 
@@ -26,8 +25,6 @@ class HostRemovalTest {
         override suspend fun pending(id: String) = pendingRows.filter { it.hostId == id }
 
         override suspend fun batches(id: String) = batchRows.filter { it.hostId == id }
-
-        override suspend fun bookmarks(id: String) = bookmarkRows.filter { it.hostId == id }
 
         override suspend fun dropHost(id: String) {
             hosts.removeAll { it.id == id }
@@ -43,10 +40,6 @@ class HostRemovalTest {
 
         override suspend fun dropBatches(id: String) {
             batchRows.removeAll { it.hostId == id }
-        }
-
-        override suspend fun dropBookmarks(id: String) {
-            bookmarkRows.removeAll { it.hostId == id }
         }
 
         override suspend fun putHost(host: Host) {
@@ -65,19 +58,13 @@ class HostRemovalTest {
         override suspend fun putBatches(rows: List<PendingBatch>) {
             batchRows += rows
         }
-
-        override suspend fun putBookmarks(rows: List<Bookmark>) {
-            bookmarkRows += rows
-        }
-
-        /** 这一台在五张表里各有几行。 */
+        /** 这一台在四张表里各有几行。 */
         fun count(id: String): Map<String, Int> =
             mapOf(
                 "hosts" to hosts.count { it.id == id },
                 "pending" to pendingRows.count { it.hostId == id },
                 "drafts" to draftRows.count { it.hostId == id },
                 "pending_batches" to batchRows.count { it.hostId == id },
-                "bookmarks" to bookmarkRows.count { it.hostId == id },
             )
 
         /** 给 [id] 那一台每张表写一行。 */
@@ -86,13 +73,12 @@ class HostRemovalTest {
             pendingRows += PendingSend("p-$id", id, "s", "hi", null, 1, PendingOutcome.UNSURE, 1)
             draftRows += Draft(id, "s", "draft", null, null, null, null, 1)
             batchRows += PendingBatch(id, "t", "{}")
-            bookmarkRows += Bookmark("b-$id", id, "/srv", "srv")
         }
     }
 
-    private fun ones() = listOf("hosts", "pending", "drafts", "pending_batches", "bookmarks").associateWith { 1 }
+    private fun ones() = listOf("hosts", "pending", "drafts", "pending_batches").associateWith { 1 }
 
-    /** 删 h1 ⇒ 它在五张表里一行不剩；h2 一行不少。 */
+    /** 删 h1 ⇒ 它在四张表里一行不剩；h2 一行不少。 */
     @Test
     fun removingAHostLeavesNoRowOfItInAnyTableAndTouchesNoOtherHost() =
         runBlocking {
@@ -115,7 +101,6 @@ class HostRemovalTest {
             assertEquals(1, kept.drafts.size)
             assertEquals(1, kept.pending.size)
             assertEquals(1, kept.batches.size)
-            assertEquals(1, kept.bookmarks.size)
             t.restore(kept)
             assertEquals(ones(), t.count("h1"))
         }

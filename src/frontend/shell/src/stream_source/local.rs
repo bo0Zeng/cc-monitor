@@ -210,7 +210,7 @@ async fn relayed(
     }
 }
 
-/// 那台这一条连接接上了（里面那一行 hello）：记下它的能力事实 · 资产同步 · 书签迁移 · 报在看名单 · 订阅收 `Seen`。
+/// 那台这一条连接接上了（里面那一行 hello）：记下它的能力事实 · 资产同步 · 报在看名单 · 订阅收 `Seen`。
 fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<EventReplay>) {
     let at = origin.to_string();
     let Some(Frame::Hello(h)) = hello else {
@@ -226,8 +226,6 @@ fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<E
     let offer = crate::inbound_client::reached(origin, &h);
     // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
     crate::asset_sync::on_remote_ready(&at, offer.admits(crate::asset_sync::REMOTE_NEEDS));
-    // 〔一次性迁移 · 下一版删〕桌面旧书签文件里这台那一格交给这台后端。
-    crate::bookmarks_migration::after_ready(origin.clone());
     // 那台的在看名单经本机后端交那台的名单台（这条连接上整份报一次）。
     if let Some(client) = crate::inbound_client::local_client() {
         crate::stream_watch::desk(origin).up(&client, None);
