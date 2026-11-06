@@ -270,7 +270,7 @@ pub fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
     reason = "问起会话那个 shell 的 `PATH`：用户的登录 shell 跑一句只 `printf` 出 `PATH` 的固定脚本、有期限；它读写什么由用户的 rc 定，后端进程自身不写"
 )]
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
-    Child::new(shell)
+    let ask = Child::new(shell)
         .args([
             "-l",
             "-i",
@@ -280,7 +280,12 @@ pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
                 m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
             ),
         ])
-        .env("TERM", "dumb")
+        .env("TERM", "dumb");
+    // 子进程缺省拿的就是这一趟问出来的那一份（`Child` 的 `PATH` 那一格）⇒ 这一趟自己显式给本进程的，不递归。
+    match std::env::var_os("PATH") {
+        Some(p) => ask.env("PATH", p),
+        None => ask.env_remove("PATH"),
+    }
 }
 
 /// 起它（stdin 接空 · 自成一组 · 到期限整组杀，都是 [`Child::run`] 的）、从输出里认那一段。

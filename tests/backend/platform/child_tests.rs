@@ -943,3 +943,61 @@ fn a_detached_child_on_windows_outlives_the_job_that_started_it() {
         let _ = std::fs::remove_dir_all(&d);
     }
 }
+
+/// 下一条判据的帮手（只被它当子进程叫）：裸名字起 `ccmdbgfake-launcher`，不显式给 `PATH`；起得来 ⇒ 交它的输出。
+#[cfg(unix)]
+#[test]
+#[ignore = "只被「缺省照起会话那个 shell 的 PATH」那条判据当子进程叫"]
+fn default_path_helper_inner() {
+    if std::env::var_os("CCM_T_DEFAULT_PATH").is_none() {
+        return;
+    }
+    let out = Child::new("ccmdbgfake-launcher")
+        .run(Deadline::secs(20))
+        .expect("裸名字照起会话那个 shell 的 PATH 找得到");
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "launched");
+}
+
+/// 子进程缺省照**起会话那个 shell** 的 `PATH`：本进程的 `PATH` 上没有启动器所在的目录、登录 shell 的有（经 ssh 非登录 shell
+/// 起的常驻后端就是这样）⇒ 裸名字照样起得来。假登录 shell 只认 `-l -i -c`，打出带启动器目录的那一份；帮手进程自己的 `PATH` 不含它。
+#[cfg(unix)]
+#[test]
+fn a_child_finds_its_program_on_the_session_shells_path_not_the_backends() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = test_home::scratch("ccmdbg-default-path");
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).expect("建目录");
+    let exe = |p: &std::path::Path, body: &str| {
+        std::fs::write(p, body).expect("写脚本");
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    };
+    exe(&bin.join("ccmdbgfake-launcher"), "#!/bin/sh\necho launched\n");
+    let shell = d.join("login-shell");
+    exe(
+        &shell,
+        &format!(
+            "#!/bin/sh\n[ \"$1\" = -l ] || exit 9\nprintf '%s%s%s' '{m}' '{}:/usr/bin:/bin' '{m}'\n",
+            bin.display(),
+            m = crate::platform::shell::SESSION_PATH_MARK
+        ),
+    );
+    let r = Child::new(std::env::current_exe().expect("本测试程序"))
+        .args([
+            "child::tests::default_path_helper_inner",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("CCM_T_DEFAULT_PATH", "1")
+        .env("SHELL", &shell)
+        .env("PATH", "/usr/bin:/bin")
+        .run(Deadline::secs(60))
+        .expect("帮手跑完");
+    let _ = std::fs::remove_dir_all(&d);
+    assert!(
+        r.status.success(),
+        "帮手没起来：{}{}",
+        String::from_utf8_lossy(&r.stdout),
+        String::from_utf8_lossy(&r.stderr)
+    );
+}

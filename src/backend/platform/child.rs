@@ -379,6 +379,24 @@ impl Child {
         self.command()
     }
 
+    /// 子进程照哪份 `PATH` —— **只在这里定**：调用方显式给了（设或摘）⇒ 照它；只继承几键而 `PATH` 不在其中 ⇒ 不给；
+    /// 别的 ⇒ unix 上给起会话那个 shell 的那一份（[`crate::platform::shell::session_shell_path`]：经 ssh 非登录 shell 起的后端
+    /// 自己的 `PATH` 常没有用户级 `bin`，会话里敲得到的程序它起不来）；问不出 ⇒ 照本进程的。问 `PATH` 的那一趟自己显式给，不递归。
+    /// 非 unix：会话的环境与本进程同源，照本进程的。
+    fn default_path(&self) -> Option<String> {
+        if !cfg!(unix) || self.envs.iter().any(|(k, _)| k == "PATH") {
+            return None;
+        }
+        if self
+            .inherit_only
+            .as_ref()
+            .is_some_and(|keys| !keys.contains(&"PATH"))
+        {
+            return None;
+        }
+        crate::platform::shell::session_shell_path()
+    }
+
     /// 每一个口（`run` · `detach` · `stream` · `converse` · 伪终端 · `exec_replace`）起子进程前都经这里造 `Command`；
     /// 先把本进程从上一层继承来的三格标准句柄设成不可继承（[`os::keep_own_stdio`]），这一层起的谁都不顺带攥着它们。
     fn command(&self) -> Command {
@@ -405,6 +423,9 @@ impl Child {
             if is_internal_name(&k.to_string_lossy()) {
                 c.env_remove(&k);
             }
+        }
+        if let Some(p) = self.default_path() {
+            c.env("PATH", p);
         }
         for (k, v) in &self.envs {
             match v {
