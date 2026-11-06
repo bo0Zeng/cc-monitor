@@ -266,8 +266,10 @@ pub(crate) const INHERIT: &[Inherit] = &[
 pub struct Env {
     pub home: String,
     pub pwd: String,
-    /// `$TMUX` —— 只有**被 attach 的那个进程**才有它。
+    /// `$TMUX` —— 只有**被 attach 的那个进程**才有它。计划不认它的值（不认 socket），只问在不在 tmux 里（[`Env::in_tmux`]）。
     pub tmux: Option<String>,
+    /// 这一趟是 tmux 那一形的自检（[`SELF_CHECK_IN_PANE`] 设的标记）：照窗格里那一跳算（在 tmux 里），不为它去问 tmux server。
+    pub self_check: bool,
     /// 不在 tmux 里敲 `cc` 落托管容器（各平台都能托管；已在托管终端里 —— `CCM_HOST` 设了 —— 不再套一层）；`false` ⇒ 直路。
     pub can_host: bool,
     /// 调用方**继承来的**账号配置目录（`agents::claudecode::paths::CONFIG_DIR_ENV`
@@ -377,6 +379,7 @@ impl Env {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default(),
             tmux: get("TMUX"),
+            self_check: get(PANE_SELF_CHECK_ENV).is_some(),
             // 托管进程给里面那一跳设了 `CCM_HOST` ⇒ 已在托管终端里：直路（不再套一层）。
             can_host: get(crate::host::managed::run::HOST_ENV).is_none(),
             // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
@@ -428,6 +431,7 @@ impl Env {
         Env {
             pwd: home.clone(),
             tmux: None,
+            self_check: false,
             // 新终端里敲：不在 tmux、不在托管终端里 ⇒ 落托管（同真跑）。
             can_host: true,
             base_url_env: String::new(),
@@ -508,10 +512,20 @@ pub fn names(list: &AccountsList, manifest_path: &str) -> String {
         .join(" ")
 }
 
-/// tmux 那一形的自检照窗格里那一跳的环境算：窗格里有 `TMUX` ⇒ 那一跳算的是直路那一份计划（启动器在计划里就解析）；
-/// 起容器的 ccm 不在 tmux 里时自检也标成在 tmux 里，算的才是同一份计划。值只当「在 tmux 里」那一格用：直路的计划不认 socket，
-/// 顺带列的那一次 tmux 会话名列不出就照不避让算，直路用不着那份名单。起容器的 ccm 已在 tmux 里 ⇒ 照它自己的。
-pub const SELF_CHECK_IN_PANE: &str = "TMUX=\"${TMUX:-ccm-self-check}\" ";
+/// tmux 那一形的自检照窗格里那一跳的环境算：窗格里有 `TMUX` ⇒ 那一跳算的是直路那一份计划（启动器在计划里就解析）。
+/// 自检交给计划的是「在 tmux 里」这一事实本身（[`PANE_SELF_CHECK_ENV`]），不拿一个值去冒充 `TMUX`：tmux 客户端照 `TMUX` 找 server，
+/// 冒充的值不是 socket 路径。直路的计划不认 socket、用不着会话名单 ⇒ 自检那一趟不问 tmux server（[`Env::self_check`]）。
+pub const SELF_CHECK_IN_PANE: &str = "CCM_PANE_SELF_CHECK=1 ";
+
+/// 自检那一格的名字（[`SELF_CHECK_IN_PANE`] 设它；空值当没有）。
+pub const PANE_SELF_CHECK_ENV: &str = "CCM_PANE_SELF_CHECK";
+
+impl Env {
+    /// 在不在 tmux 里（计划只认这一格，不认 socket）：`$TMUX` 有值，或这一趟是 tmux 那一形的自检。
+    pub fn in_tmux(&self) -> bool {
+        self.tmux.is_some() || self.self_check
+    }
+}
 
 /// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1044,7 +1058,7 @@ fn container_host(o: &Opts, env: &Env, use_tmux: bool) -> Option<TerminalHost> {
         Some(TerminalHost::Managed)
     } else if use_tmux {
         Some(TerminalHost::Tmux)
-    } else if !o.use_tmux && env.tmux.is_none() && env.can_host {
+    } else if !o.use_tmux && !env.in_tmux() && env.can_host {
         Some(TerminalHost::Managed)
     } else {
         None
@@ -1227,7 +1241,7 @@ pub fn build_among(
 
     // ── 已在 tmux 里且没给名 ⇒ 就地起（旧 `cct` 那条分支）────────────────
     let mut use_tmux = o.use_tmux;
-    if use_tmux && env.tmux.is_some() && o.tmux_name.is_empty() && o.tmux_base.is_empty() {
+    if use_tmux && env.in_tmux() && o.tmux_name.is_empty() && o.tmux_base.is_empty() {
         // 这条分支会让 `--detach` / `--tmux-size` 双双落空，而调用方要的是
         // 「建完就返回」，拿到的却是**阻塞式 exec** —— 语义完全相反。显式 die。
         if o.detach || !o.tmux_size.is_empty() {

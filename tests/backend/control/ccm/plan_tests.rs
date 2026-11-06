@@ -2834,6 +2834,40 @@ fn in_a_tmux_pane_or_where_hosting_is_off_a_plain_cc_still_runs_in_place() {
     }
 }
 
+/// tmux 那一形的自检把「在 tmux 里」这一事实交给计划，不冒充 `$TMUX`：前缀里没有 `TMUX`（tmux 客户端照它找 server，
+/// 冒充的值不是 socket 路径 ⇒ 算计划取会话快照时连错台）。照那段前缀设的环境读出来是「在 tmux 里 · 是自检」，算的是直路那一份；
+/// 真 `$TMUX` 只说在 tmux 里、不是自检；都没有 ⇒ 都不是。
+#[test]
+fn the_pane_self_check_says_in_tmux_without_posing_as_tmux() {
+    assert!(
+        !SELF_CHECK_IN_PANE.contains("TMUX"),
+        "自检前缀冒充了 $TMUX（tmux 客户端会照它找 server）：{SELF_CHECK_IN_PANE}"
+    );
+    // 前缀设的就是入口读的那一格（`Env::from_process` 读 [`PANE_SELF_CHECK_ENV`]，空值当没有）。
+    let (k, v) = SELF_CHECK_IN_PANE
+        .trim_end()
+        .split_once('=')
+        .expect("自检前缀是一格 名字=值");
+    assert_eq!(k, PANE_SELF_CHECK_ENV, "自检前缀设的不是入口读的那一格");
+    assert!(!v.is_empty(), "自检那一格是空值（入口当没有）");
+    let check = Env {
+        self_check: true,
+        ..hosting_env()
+    };
+    assert!(check.in_tmux(), "自检那一趟没算成在 tmux 里");
+    let p = plan_of(&["--cwd", "/x/proj"], &check, &no_library);
+    assert!(matches!(p, Plan::Direct(_)), "自检该算直路那一份：{p:?}");
+    let pane = Env {
+        tmux: Some("/tmp/tmux-1000/default,1,0".into()),
+        ..hosting_env()
+    };
+    assert!(
+        pane.in_tmux() && !pane.self_check,
+        "真 $TMUX 只说在 tmux 里"
+    );
+    assert!(!hosting_env().in_tmux(), "都没有 ⇒ 不在 tmux 里");
+}
+
 /// `--hosted` ⇒ 托管容器（在 tmux 窗格里也是）；`--detach` 认托管那一形；与 `--ccm-tmux` 不同时给。
 #[test]
 fn hosted_asks_for_a_managed_container_and_takes_detach() {
