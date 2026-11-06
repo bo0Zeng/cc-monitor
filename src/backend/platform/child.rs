@@ -1,6 +1,6 @@
 //! 后端起子进程的**唯一原语**：生产段的 `Command::new` 只住这里。
 //!
-//! 五种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
+//! 五种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach_until_ready`]（脱离起、读回信管道等它说起好了）·
 //! [`Child::exec_replace`]（ccm 最终那一跳：POSIX 就地 exec，Windows 起它、等它、透传退出码）·
 //! [`Child::stream`]（长寿、读它的输出流，拿着的那一方放手 ⇒ 杀整组、收尸：终端实时预览的 tmux 控制模式客户端）·
 //! [`Child::converse`]（一问一答：stdin 写一行、两条输出逐行收，放手 ⇒ 杀整组：在 app 里登录一个号的官方登录子命令）。
